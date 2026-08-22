@@ -1627,6 +1627,17 @@ else
   rc=1
 fi
 
+echo "== (2b-i-b) R-S11hg/R-S11e-245 Windows service endpoint protocol authority =="
+if (
+  cd "$REPO"
+  python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test
+); then
+  note "ok  R-S11hg/R-S11e-245 Windows service credential and control endpoints parse only their own closed directional protocols"
+else
+  echo "  FAIL R-S11hg/R-S11e-245 Windows service credential/control endpoint protocol authority escaped"
+  rc=1
+fi
+
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="
 r_s11b2=$(<"$apple_password_gate_dir/r_s11b2")
 grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"

@@ -554,7 +554,7 @@ def validate(sources: Dict[str, str]) -> None:
     desktop_url_sender = region(
         sources["ipc"],
         "pub async fn send_url_scheme(url: String) -> ResultType<()> {",
-        "\n#[cfg(target_os = \"windows\")]\nasync fn windows_service_main_request(",
+        "\n#[cfg(target_os = \"windows\")]\nasync fn windows_service_control_request(",
         "desktop URL IPC typed senders",
     )
     require_all(

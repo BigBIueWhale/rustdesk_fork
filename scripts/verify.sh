@@ -1016,7 +1016,13 @@ echo "$ipc_start_block" | grep -q 'Config::ensure_loaded();' || r_s11="$r_s11 ma
 grep -q 'authorize_windows_main_ipc_connection(&stream, "")' src/ipc.rs              || r_s11="$r_s11 windows-main-peer-auth-missing"
 grep -q 'pub(crate) const WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX: &str = "_service_main_control";' src/ipc.rs || r_s11="$r_s11 windows-service-main-control-endpoint-missing"
 grep -q 'pub(crate) const WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";' src/ipc.rs || r_s11="$r_s11 windows-service-credential-endpoint-missing"
-grep -q 'WindowsServiceMainRequest' src/ipc.rs                                       || r_s11="$r_s11 windows-service-main-request-enum-missing"
+grep -q 'WindowsServiceCredentialRequest' src/ipc.rs                                 || r_s11="$r_s11 windows-service-credential-request-enum-missing"
+grep -q 'WindowsServiceCredentialResponse' src/ipc.rs                                || r_s11="$r_s11 windows-service-credential-response-enum-missing"
+grep -q 'WindowsServiceControlRequest' src/ipc.rs                                    || r_s11="$r_s11 windows-service-control-request-enum-missing"
+grep -q 'WindowsServiceControlResponse' src/ipc.rs                                   || r_s11="$r_s11 windows-service-control-response-enum-missing"
+if grep -q 'WindowsServiceMain\(Endpoint\|Request\|Response\)' src/ipc.rs; then
+  r_s11="$r_s11 windows-service-cross-endpoint-protocol-union-present"
+fi
 grep -q 'prepare_windows_service_main_ipc().await' src/ipc.rs                         || r_s11="$r_s11 windows-service-main-listeners-not-prepared"
 grep -q 'run_windows_service_main_ipc(service_main)' src/ipc.rs                       || r_s11="$r_s11 windows-service-main-listeners-not-run"
 grep -q 'authorize_windows_service_main_ipc_connection(&stream)' src/ipc.rs           || r_s11="$r_s11 windows-service-main-client-auth-missing"
@@ -2905,6 +2911,11 @@ if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
   cat "$VERIFY_TMP/rd_verify_macos_service_credential_ipc"
   r_s11b2="$r_s11b2 macos-raw-credential-semantic-verifier-failed"
 fi
+if ! python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test \
+    >"$VERIFY_TMP/rd_verify_windows_service_channel_protocols" 2>&1; then
+  cat "$VERIFY_TMP/rd_verify_windows_service_channel_protocols"
+  r_s11b2="$r_s11b2 windows-service-channel-protocol-verifier-failed"
+fi
 grep -Fq '<span class="id">R-S11ep</span>' requirements.html || r_s11b2="$r_s11b2 macos-raw-credential-requirement-missing"
 grep -Fq 'R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-raw-credential-ledger-missing"
 grep -Fq '<span class="id">R-S11fd</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-requirement-missing"
@@ -2951,7 +2962,7 @@ main_request = between(ipc, "pub enum MainIpcRequest {", "pub enum MainIpcRespon
 data_enum = between(ipc, "pub enum Data {", "pub struct FS")
 windows_control = between(
     ipc,
-    "enum WindowsServiceMainRequest {",
+    "enum WindowsServiceCredentialRequest {",
     "pub(crate) struct WindowsCredentialReplicaState",
 )
 obsolete_variants = (

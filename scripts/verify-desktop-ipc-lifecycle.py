@@ -215,7 +215,7 @@ def validate(sources: Dict[str, str]) -> None:
     windows_run = region(
         ipc,
         "async fn run_windows_service_main_ipc(",
-        '\n#[cfg(target_os = "windows")]\nasync fn handle_windows_service_main_transaction',
+        '\n#[cfg(target_os = "windows")]\nasync fn handle_windows_service_credential_transaction',
         "Windows service-main IPC run/drain",
     )
     ordered(

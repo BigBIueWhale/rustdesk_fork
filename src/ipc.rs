@@ -612,31 +612,29 @@ impl Drop for LocalIpcListenerGuard {
 }
 
 #[cfg(target_os = "windows")]
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum WindowsServiceMainEndpoint {
-    Credential,
-    Control,
+fn try_acquire_windows_service_credential_transaction_slot() -> Option<OwnedSemaphorePermit> {
+    WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_SLOTS
+        .get_or_init(|| {
+            Arc::new(Semaphore::new(
+                WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_BUDGET,
+            ))
+        })
+        .clone()
+        .try_acquire_owned()
+        .ok()
 }
 
 #[cfg(target_os = "windows")]
-fn try_acquire_windows_service_main_transaction_slot(
-    endpoint: WindowsServiceMainEndpoint,
-) -> Option<OwnedSemaphorePermit> {
-    let slots = match endpoint {
-        WindowsServiceMainEndpoint::Credential => WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_SLOTS
-            .get_or_init(|| {
-                Arc::new(Semaphore::new(
-                    WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_BUDGET,
-                ))
-            }),
-        WindowsServiceMainEndpoint::Control => WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_SLOTS
-            .get_or_init(|| {
-                Arc::new(Semaphore::new(
-                    WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_BUDGET,
-                ))
-            }),
-    };
-    slots.clone().try_acquire_owned().ok()
+fn try_acquire_windows_service_control_transaction_slot() -> Option<OwnedSemaphorePermit> {
+    WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_SLOTS
+        .get_or_init(|| {
+            Arc::new(Semaphore::new(
+                WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_BUDGET,
+            ))
+        })
+        .clone()
+        .try_acquire_owned()
+        .ok()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2664,10 +2662,10 @@ pub(crate) const WINDOWS_SERVICE_SUPERVISOR_PID_ENV: &str =
 pub(crate) const WINDOWS_SERVICE_SUPERVISOR_CREATION_ENV: &str =
     "RUSTDESK_WINDOWS_SERVICE_SUPERVISOR_CREATION";
 
-#[cfg(target_os = "windows")]
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "t", content = "c")]
-enum WindowsServiceMainRequest {
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", content = "c", deny_unknown_fields)]
+enum WindowsServiceCredentialRequest {
     QuiesceCredentialReplica {
         transition_id: String,
     },
@@ -2681,30 +2679,37 @@ enum WindowsServiceMainRequest {
     ResumeCredentialReplica {
         transition_id: String,
     },
-    PortForwardSessionCount,
-    Shutdown,
 }
 
 #[cfg(any(target_os = "windows", test))]
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct WindowsCredentialReplicaState {
     pub(crate) transition_id: Option<String>,
     pub(crate) replica_tag: [u8; 32],
     pub(crate) quiesced: bool,
 }
 
-#[cfg(target_os = "windows")]
-#[derive(Debug, Serialize, Deserialize)]
-enum WindowsCredentialReplicaResponse {
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", content = "c", deny_unknown_fields)]
+enum WindowsServiceCredentialResponse {
     State(WindowsCredentialReplicaState),
     Rejected,
 }
 
-#[cfg(target_os = "windows")]
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "t", content = "c")]
-enum WindowsServiceMainResponse {
-    CredentialReplica(WindowsCredentialReplicaResponse),
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(tag = "t", content = "c", deny_unknown_fields)]
+enum WindowsServiceControlRequest {
+    PortForwardSessionCount,
+    Shutdown,
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(tag = "t", content = "c", deny_unknown_fields)]
+enum WindowsServiceControlResponse {
     PortForwardSessionCount(usize),
     ShutdownAccepted,
 }
@@ -3871,16 +3876,11 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
                 if !authorize_windows_service_main_ipc_connection(&stream) {
                     continue;
                 }
-                let endpoint = WindowsServiceMainEndpoint::Control;
-                let Some(permit) = try_acquire_windows_service_main_transaction_slot(endpoint) else {
+                let Some(permit) = try_acquire_windows_service_control_transaction_slot() else {
                     log::debug!("Rejected Windows service-main control connection because work is at capacity");
                     continue;
                 };
-                transactions.spawn(handle_windows_service_main_transaction(
-                    stream,
-                    permit,
-                    endpoint,
-                ));
+                transactions.spawn(handle_windows_service_control_transaction(stream, permit));
             }
             completed = transactions.join_next(), if !transactions.is_empty() => {
                 if let Some(Err(err)) = completed {
@@ -3904,16 +3904,11 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
                 if !authorize_windows_service_main_ipc_connection(&stream) {
                     continue;
                 }
-                let endpoint = WindowsServiceMainEndpoint::Credential;
-                let Some(permit) = try_acquire_windows_service_main_transaction_slot(endpoint) else {
+                let Some(permit) = try_acquire_windows_service_credential_transaction_slot() else {
                     log::debug!("Rejected Windows service credential connection because work is at capacity");
                     continue;
                 };
-                transactions.spawn(handle_windows_service_main_transaction(
-                    stream,
-                    permit,
-                    endpoint,
-                ));
+                transactions.spawn(handle_windows_service_credential_transaction(stream, permit));
             }
         }
     }
@@ -3943,22 +3938,21 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
 }
 
 #[cfg(target_os = "windows")]
-async fn handle_windows_service_main_transaction(
+async fn handle_windows_service_credential_transaction(
     mut stream: Connection,
     _permit: OwnedSemaphorePermit,
-    endpoint: WindowsServiceMainEndpoint,
 ) {
     let request = match stream
-        .next_windows_service_main_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .next_windows_service_credential_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
         .await
     {
         Ok(Some(request)) => request,
         Ok(None) => {
-            log::warn!("Rejected malformed Windows service-main IPC request");
+            log::warn!("Rejected malformed Windows service credential IPC request");
             return;
         }
         Err(err) => {
-            log::trace!("Windows service-main IPC request timed out: {err}");
+            log::trace!("Windows service credential IPC request timed out: {err}");
             return;
         }
     };
@@ -3966,44 +3960,36 @@ async fn handle_windows_service_main_transaction(
         return;
     }
     match request {
-        WindowsServiceMainRequest::QuiesceCredentialReplica { transition_id } => {
-            if endpoint != WindowsServiceMainEndpoint::Credential {
-                log::warn!("Rejected credential quiesce on Windows service-main control IPC");
-                return;
-            }
+        WindowsServiceCredentialRequest::QuiesceCredentialReplica { transition_id } => {
             let response = if !password_mutation_id_is_valid(&transition_id) {
-                WindowsCredentialReplicaResponse::Rejected
+                WindowsServiceCredentialResponse::Rejected
             } else {
                 match crate::server::quiesce_windows_credential_replica(&transition_id) {
-                    Ok(state) => WindowsCredentialReplicaResponse::State(state),
+                    Ok(state) => WindowsServiceCredentialResponse::State(state),
                     Err(err) => {
                         log::warn!("Rejected Windows credential replica quiesce: {err}");
-                        WindowsCredentialReplicaResponse::Rejected
+                        WindowsServiceCredentialResponse::Rejected
                     }
                 }
             };
-            write_response_with_deadline(
+            write_windows_service_credential_response_with_deadline(
                 &mut stream,
-                &WindowsServiceMainResponse::CredentialReplica(response),
+                &response,
                 "Windows credential replica quiesce",
             )
             .await;
         }
-        WindowsServiceMainRequest::ApplyCredentialReplica {
+        WindowsServiceCredentialRequest::ApplyCredentialReplica {
             transition_id,
             storage,
             salt,
             replica_tag,
         } => {
-            if endpoint != WindowsServiceMainEndpoint::Credential {
-                log::warn!("Rejected credential apply on Windows service-main control IPC");
-                return;
-            }
             let response = if !password_mutation_id_is_valid(&transition_id)
                 || storage.len() > WINDOWS_CREDENTIAL_SNAPSHOT_COMPONENT_MAX_BYTES
                 || salt.len() > WINDOWS_CREDENTIAL_SNAPSHOT_COMPONENT_MAX_BYTES
             {
-                WindowsCredentialReplicaResponse::Rejected
+                WindowsServiceCredentialResponse::Rejected
             } else {
                 match crate::server::apply_windows_credential_replica(
                     &transition_id,
@@ -4011,63 +3997,77 @@ async fn handle_windows_service_main_transaction(
                     &salt,
                     replica_tag,
                 ) {
-                    Ok(state) => WindowsCredentialReplicaResponse::State(state),
+                    Ok(state) => WindowsServiceCredentialResponse::State(state),
                     Err(err) => {
                         log::warn!("Rejected Windows credential replica apply: {err}");
-                        WindowsCredentialReplicaResponse::Rejected
+                        WindowsServiceCredentialResponse::Rejected
                     }
                 }
             };
-            write_response_with_deadline(
+            write_windows_service_credential_response_with_deadline(
                 &mut stream,
-                &WindowsServiceMainResponse::CredentialReplica(response),
+                &response,
                 "Windows credential replica apply",
             )
             .await;
         }
-        WindowsServiceMainRequest::QueryCredentialReplica => {
-            if endpoint != WindowsServiceMainEndpoint::Credential {
-                log::warn!("Rejected credential query on Windows service-main control IPC");
-                return;
-            }
-            let response = WindowsCredentialReplicaResponse::State(
+        WindowsServiceCredentialRequest::QueryCredentialReplica => {
+            let response = WindowsServiceCredentialResponse::State(
                 crate::server::query_windows_credential_replica(),
             );
-            write_response_with_deadline(
+            write_windows_service_credential_response_with_deadline(
                 &mut stream,
-                &WindowsServiceMainResponse::CredentialReplica(response),
+                &response,
                 "Windows credential replica query",
             )
             .await;
         }
-        WindowsServiceMainRequest::ResumeCredentialReplica { transition_id } => {
-            if endpoint != WindowsServiceMainEndpoint::Credential {
-                log::warn!("Rejected credential resume on Windows service-main control IPC");
-                return;
-            }
+        WindowsServiceCredentialRequest::ResumeCredentialReplica { transition_id } => {
             let response = if !password_mutation_id_is_valid(&transition_id) {
-                WindowsCredentialReplicaResponse::Rejected
+                WindowsServiceCredentialResponse::Rejected
             } else {
                 match crate::server::resume_windows_credential_replica(&transition_id) {
-                    Ok(state) => WindowsCredentialReplicaResponse::State(state),
+                    Ok(state) => WindowsServiceCredentialResponse::State(state),
                     Err(err) => {
                         log::warn!("Rejected Windows credential replica resume: {err}");
-                        WindowsCredentialReplicaResponse::Rejected
+                        WindowsServiceCredentialResponse::Rejected
                     }
                 }
             };
-            write_response_with_deadline(
+            write_windows_service_credential_response_with_deadline(
                 &mut stream,
-                &WindowsServiceMainResponse::CredentialReplica(response),
+                &response,
                 "Windows credential replica resume",
             )
             .await;
         }
-        WindowsServiceMainRequest::PortForwardSessionCount => {
-            if endpoint != WindowsServiceMainEndpoint::Control {
-                log::warn!("Rejected port-forward count on Windows service credential IPC");
-                return;
-            }
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn handle_windows_service_control_transaction(
+    mut stream: Connection,
+    _permit: OwnedSemaphorePermit,
+) {
+    let request = match stream
+        .next_windows_service_control_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .await
+    {
+        Ok(Some(request)) => request,
+        Ok(None) => {
+            log::warn!("Rejected malformed Windows service-main control IPC request");
+            return;
+        }
+        Err(err) => {
+            log::trace!("Windows service-main control IPC request timed out: {err}");
+            return;
+        }
+    };
+    if !authorize_windows_service_main_ipc_connection(&stream) {
+        return;
+    }
+    match request {
+        WindowsServiceControlRequest::PortForwardSessionCount => {
             let count = crate::server::AUTHED_CONNS
                 .lock()
                 .unwrap()
@@ -4076,21 +4076,17 @@ async fn handle_windows_service_main_transaction(
                     connection.conn_type == crate::server::AuthConnType::PortForward
                 })
                 .count();
-            let response = WindowsServiceMainResponse::PortForwardSessionCount(count);
-            write_response_with_deadline(
+            let response = WindowsServiceControlResponse::PortForwardSessionCount(count);
+            write_windows_service_control_response_with_deadline(
                 &mut stream,
                 &response,
                 "Windows service-main session count",
             )
             .await;
         }
-        WindowsServiceMainRequest::Shutdown => {
-            if endpoint != WindowsServiceMainEndpoint::Control {
-                log::warn!("Rejected shutdown on Windows service credential IPC");
-                return;
-            }
-            let response = WindowsServiceMainResponse::ShutdownAccepted;
-            if !write_response_with_deadline(
+        WindowsServiceControlRequest::Shutdown => {
+            let response = WindowsServiceControlResponse::ShutdownAccepted;
+            if !write_windows_service_control_response_with_deadline(
                 &mut stream,
                 &response,
                 "Windows service-main shutdown acknowledgement",
@@ -6855,25 +6851,63 @@ where
         Ok(timeout(ms_timeout, self.next_json()).await??)
     }
     #[cfg(target_os = "windows")]
-    async fn send_windows_service_main_request_timeout(
+    async fn send_windows_service_credential_request_timeout(
         &mut self,
-        request: &WindowsServiceMainRequest,
+        request: &WindowsServiceCredentialRequest,
         ms_timeout: u64,
     ) -> ResultType<()> {
         self.send_json_timeout(request, ms_timeout).await
     }
     #[cfg(target_os = "windows")]
-    async fn next_windows_service_main_request_timeout(
+    async fn next_windows_service_credential_request_timeout(
         &mut self,
         ms_timeout: u64,
-    ) -> ResultType<Option<WindowsServiceMainRequest>> {
+    ) -> ResultType<Option<WindowsServiceCredentialRequest>> {
         Ok(timeout(ms_timeout, self.next_json()).await??)
     }
     #[cfg(target_os = "windows")]
-    async fn next_windows_service_main_response_timeout(
+    async fn send_windows_service_credential_response_timeout(
+        &mut self,
+        response: &WindowsServiceCredentialResponse,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(response, ms_timeout).await
+    }
+    #[cfg(target_os = "windows")]
+    async fn next_windows_service_credential_response_timeout(
         &mut self,
         ms_timeout: u64,
-    ) -> ResultType<Option<WindowsServiceMainResponse>> {
+    ) -> ResultType<Option<WindowsServiceCredentialResponse>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "windows")]
+    async fn send_windows_service_control_request_timeout(
+        &mut self,
+        request: &WindowsServiceControlRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    #[cfg(target_os = "windows")]
+    async fn next_windows_service_control_request_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WindowsServiceControlRequest>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "windows")]
+    async fn send_windows_service_control_response_timeout(
+        &mut self,
+        response: &WindowsServiceControlResponse,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(response, ms_timeout).await
+    }
+    #[cfg(target_os = "windows")]
+    async fn next_windows_service_control_response_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WindowsServiceControlResponse>> {
         Ok(timeout(ms_timeout, self.next_json()).await??)
     }
 
@@ -6934,6 +6968,45 @@ where
 {
     match stream
         .send_json_timeout(response, MAIN_IPC_TRANSACTION_TIMEOUT_MS)
+        .await
+    {
+        Ok(()) => true,
+        Err(err) => {
+            log::warn!("{context} response failed: {err}");
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn write_windows_service_credential_response_with_deadline(
+    stream: &mut Connection,
+    response: &WindowsServiceCredentialResponse,
+    context: &str,
+) -> bool {
+    match stream
+        .send_windows_service_credential_response_timeout(
+            response,
+            MAIN_IPC_TRANSACTION_TIMEOUT_MS,
+        )
+        .await
+    {
+        Ok(()) => true,
+        Err(err) => {
+            log::warn!("{context} response failed: {err}");
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn write_windows_service_control_response_with_deadline(
+    stream: &mut Connection,
+    response: &WindowsServiceControlResponse,
+    context: &str,
+) -> bool {
+    match stream
+        .send_windows_service_control_response_timeout(response, MAIN_IPC_TRANSACTION_TIMEOUT_MS)
         .await
     {
         Ok(()) => true,
@@ -7929,20 +8002,18 @@ pub async fn activate_main_instance() -> ResultType<bool> {
 }
 
 #[cfg(target_os = "windows")]
-async fn windows_service_main_request(
-    expected_identity: Option<WindowsProcessIdentityKey>,
-    request: WindowsServiceMainRequest,
+async fn windows_service_control_request(
+    expected_identity: WindowsProcessIdentityKey,
+    request: WindowsServiceControlRequest,
     ms_timeout: u64,
-) -> ResultType<WindowsServiceMainResponse> {
+) -> ResultType<WindowsServiceControlResponse> {
     let mut stream = connect(ms_timeout, WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX).await?;
-    if let Some(expected_identity) = expected_identity {
-        ensure_windows_service_main_server_pid(&stream, expected_identity)?;
-    }
+    ensure_windows_service_main_server_pid(&stream, expected_identity)?;
     stream
-        .send_windows_service_main_request_timeout(&request, ms_timeout)
+        .send_windows_service_control_request_timeout(&request, ms_timeout)
         .await?;
     stream
-        .next_windows_service_main_response_timeout(ms_timeout)
+        .next_windows_service_control_response_timeout(ms_timeout)
         .await?
         .ok_or_else(|| {
             hbb_common::anyhow::anyhow!("Windows service-main IPC returned a malformed response")
@@ -7952,25 +8023,23 @@ async fn windows_service_main_request(
 #[cfg(target_os = "windows")]
 async fn windows_service_credential_request(
     expected_identity: WindowsProcessIdentityKey,
-    request: WindowsServiceMainRequest,
+    request: WindowsServiceCredentialRequest,
     ms_timeout: u64,
 ) -> ResultType<WindowsCredentialReplicaState> {
     let mut stream = connect(ms_timeout, WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX).await?;
     ensure_windows_service_main_server_pid(&stream, expected_identity)?;
     stream
-        .send_windows_service_main_request_timeout(&request, ms_timeout)
+        .send_windows_service_credential_request_timeout(&request, ms_timeout)
         .await?;
     match stream
-        .next_windows_service_main_response_timeout(ms_timeout)
+        .next_windows_service_credential_response_timeout(ms_timeout)
         .await?
     {
-        Some(WindowsServiceMainResponse::CredentialReplica(
-            WindowsCredentialReplicaResponse::State(state),
-        )) => Ok(state),
-        Some(WindowsServiceMainResponse::CredentialReplica(
-            WindowsCredentialReplicaResponse::Rejected,
-        )) => bail!("Windows service-owned credential replica rejected the request"),
-        _ => bail!("invalid Windows service-owned credential replica response"),
+        Some(WindowsServiceCredentialResponse::State(state)) => Ok(state),
+        Some(WindowsServiceCredentialResponse::Rejected) => {
+            bail!("Windows service-owned credential replica rejected the request")
+        }
+        None => bail!("Windows service-owned credential replica returned no response"),
     }
 }
 
@@ -7993,7 +8062,7 @@ pub(crate) async fn quiesce_windows_service_owned_credential(
 ) -> ResultType<WindowsCredentialReplicaState> {
     windows_service_credential_request(
         expected_identity,
-        WindowsServiceMainRequest::QuiesceCredentialReplica { transition_id },
+        WindowsServiceCredentialRequest::QuiesceCredentialReplica { transition_id },
         ms_timeout,
     )
     .await
@@ -8010,7 +8079,7 @@ pub(crate) async fn apply_windows_service_owned_credential(
 ) -> ResultType<WindowsCredentialReplicaState> {
     windows_service_credential_request(
         expected_identity,
-        WindowsServiceMainRequest::ApplyCredentialReplica {
+        WindowsServiceCredentialRequest::ApplyCredentialReplica {
             transition_id,
             storage,
             salt,
@@ -8028,7 +8097,7 @@ pub(crate) async fn query_windows_service_owned_credential(
 ) -> ResultType<WindowsCredentialReplicaState> {
     windows_service_credential_request(
         expected_identity,
-        WindowsServiceMainRequest::QueryCredentialReplica,
+        WindowsServiceCredentialRequest::QueryCredentialReplica,
         ms_timeout,
     )
     .await
@@ -8042,7 +8111,7 @@ pub(crate) async fn resume_windows_service_owned_credential(
 ) -> ResultType<WindowsCredentialReplicaState> {
     windows_service_credential_request(
         expected_identity,
-        WindowsServiceMainRequest::ResumeCredentialReplica { transition_id },
+        WindowsServiceCredentialRequest::ResumeCredentialReplica { transition_id },
         ms_timeout,
     )
     .await
@@ -8053,14 +8122,14 @@ pub async fn get_windows_service_owned_port_forward_session_count(
     expected_identity: WindowsProcessIdentityKey,
     ms_timeout: u64,
 ) -> ResultType<usize> {
-    match windows_service_main_request(
-        Some(expected_identity),
-        WindowsServiceMainRequest::PortForwardSessionCount,
+    match windows_service_control_request(
+        expected_identity,
+        WindowsServiceControlRequest::PortForwardSessionCount,
         ms_timeout,
     )
     .await?
     {
-        WindowsServiceMainResponse::PortForwardSessionCount(count) => Ok(count),
+        WindowsServiceControlResponse::PortForwardSessionCount(count) => Ok(count),
         _ => bail!("invalid Windows service-main port-forward response"),
     }
 }
@@ -8070,14 +8139,14 @@ pub async fn close_windows_service_owned_main_server(
     expected_identity: WindowsProcessIdentityKey,
     ms_timeout: u64,
 ) -> ResultType<()> {
-    match windows_service_main_request(
-        Some(expected_identity),
-        WindowsServiceMainRequest::Shutdown,
+    match windows_service_control_request(
+        expected_identity,
+        WindowsServiceControlRequest::Shutdown,
         ms_timeout,
     )
     .await?
     {
-        WindowsServiceMainResponse::ShutdownAccepted => Ok(()),
+        WindowsServiceControlResponse::ShutdownAccepted => Ok(()),
         _ => bail!("invalid Windows service-main shutdown response"),
     }
 }
@@ -9360,6 +9429,104 @@ mod test {
         let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
         assert!(serde_json::from_slice::<WindowsServiceSasIpcRequest>(&cross_purpose).is_err());
         assert!(serde_json::from_slice::<WindowsServiceSasIpcResponse>(&cross_purpose).is_err());
+    }
+
+    #[test]
+    fn windows_service_credential_and_control_channels_use_closed_directional_protocols() {
+        let credential_request = serde_json::to_vec(
+            &WindowsServiceCredentialRequest::QuiesceCredentialReplica {
+                transition_id: "transition".to_owned(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            credential_request,
+            br#"{"t":"QuiesceCredentialReplica","c":{"transition_id":"transition"}}"#
+        );
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceCredentialRequest>(&credential_request)
+                .unwrap(),
+            WindowsServiceCredentialRequest::QuiesceCredentialReplica {
+                transition_id: "transition".to_owned(),
+            }
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceControlRequest>(&credential_request).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceCredentialRequest>(
+                br#"{"t":"QuiesceCredentialReplica","c":{"transition_id":"transition"},"extra":true}"#
+            )
+            .is_err()
+        );
+
+        let control_request =
+            serde_json::to_vec(&WindowsServiceControlRequest::Shutdown).unwrap();
+        assert_eq!(control_request, br#"{"t":"Shutdown"}"#);
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceControlRequest>(&control_request).unwrap(),
+            WindowsServiceControlRequest::Shutdown
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceCredentialRequest>(&control_request).is_err()
+        );
+        assert!(serde_json::from_slice::<WindowsServiceControlRequest>(
+            br#"{"t":"Shutdown","c":null}"#
+        )
+        .is_err());
+
+        let credential_response =
+            serde_json::to_vec(&WindowsServiceCredentialResponse::Rejected).unwrap();
+        assert_eq!(credential_response, br#"{"t":"Rejected"}"#);
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceCredentialResponse>(&credential_response)
+                .unwrap(),
+            WindowsServiceCredentialResponse::Rejected
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceCredentialRequest>(&credential_response)
+                .is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceControlResponse>(&credential_response).is_err()
+        );
+        let state_with_unknown_field = serde_json::json!({
+            "t": "State",
+            "c": {
+                "transition_id": null,
+                "replica_tag": vec![0; 32],
+                "quiesced": false,
+                "extra": true,
+            },
+        });
+        assert!(serde_json::from_value::<WindowsServiceCredentialResponse>(
+            state_with_unknown_field
+        )
+        .is_err());
+
+        let control_response =
+            serde_json::to_vec(&WindowsServiceControlResponse::ShutdownAccepted).unwrap();
+        assert_eq!(control_response, br#"{"t":"ShutdownAccepted"}"#);
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceControlResponse>(&control_response).unwrap(),
+            WindowsServiceControlResponse::ShutdownAccepted
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceControlRequest>(&control_response).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceCredentialResponse>(&control_response).is_err()
+        );
+
+        let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
+        assert!(
+            serde_json::from_slice::<WindowsServiceCredentialRequest>(&cross_purpose).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WindowsServiceCredentialResponse>(&cross_purpose).is_err()
+        );
+        assert!(serde_json::from_slice::<WindowsServiceControlRequest>(&cross_purpose).is_err());
+        assert!(serde_json::from_slice::<WindowsServiceControlResponse>(&cross_purpose).is_err());
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

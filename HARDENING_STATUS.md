@@ -6261,8 +6261,8 @@ network configuration was inspected or changed.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
-  SYSTEM-only `_service_main_control` endpoint with typed `WindowsServiceMainRequest::Shutdown` /
-  `ShutdownAccepted`. Boundary: local IPC peer ↔ service-owned process-control action. Attack surface closed: an
+  SYSTEM-only `_service_main_control` endpoint with typed `WindowsServiceControlRequest::Shutdown` /
+  `WindowsServiceControlResponse::ShutdownAccepted`. Boundary: local IPC peer ↔ service-owned process-control action. Attack surface closed: an
   ordinary main-channel or `_service` peer has no close vocabulary. SCM stop/preshutdown is the sole service-loop
   stop authority; the service authenticates `_service_main_control` as the exact retained child PID and creation
   time before requesting graceful shutdown. The child acknowledges on the control endpoint, closes admission,
@@ -26182,12 +26182,112 @@ process/service/package behavior; independent reproduction; R-V3 external review
 causation; and proof that the complete connection flow is correct and performant all
 remain explicit release obligations and explicit user requests.
 
+### R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols (2026-08-22)
+
+**SOURCE IMPLEMENTED; CONFINED SOURCE AND DELIBERATE-MUTATION VERIFICATION RECORDED
+BELOW; EXACT WINDOWS COMPILATION, NATIVE SERVICE/CHILD EXCHANGE, INSTALLED ARTIFACT,
+COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW EVIDENCE OPEN.** Platform:
+the Windows installed service supervisor's exact retained `--server` child. Endpoints:
+the existing protected `_service_credential` replica channel and independently budgeted
+`_service_main_control` lifecycle/query channel. This slice does not change the ordinary
+main IPC, general `_service`, `_service_sas`, password mutation wire, service supervisor,
+listener inventory, named-pipe paths or DACLs, process roles, service lifecycle, or any
+network surface.
+
+Read-only source tracing proved a narrower protocol-authority defect than an
+authentication bypass. The two privileged endpoints already had separate listeners,
+independent transaction semaphores, protected 32-KiB frame codecs, request deadlines,
+exact retained-child PID/creation-time client proof, LocalSystem/exact-generation server
+admission, and a second authorization check after parsing and before action. However,
+both listeners called one `handle_windows_service_main_transaction`, which first
+deserialized the shared `WindowsServiceMainRequest` union. Only its later match arms
+compared a separately supplied `WindowsServiceMainEndpoint` discriminator. Consequently
+`_service_credential` parsed `PortForwardSessionCount` and `Shutdown`, while
+`_service_main_control` parsed complete credential replica payloads, before rejecting
+them. The response side likewise shared `WindowsServiceMainResponse`. Blame attributes
+the surrounding authenticated service-main path to `57bcb529` (2026-07-13); the later
+closed-directional generic service/SAS correction in `85604a6b` (2026-07-27) did not
+split this Windows service-main union.
+
+The existing endpoint guards were load-bearing and no action path bypass was found.
+This ledger therefore makes no claim that an unprivileged or cross-endpoint caller
+could execute the rejected operation, no claim of compromise, and no claim that this
+source debt caused any reported Android/Windows display symptom. The defect was that
+wire vocabulary and compile-time receiver authority were broader than the endpoint,
+leaving future match-arm changes, reused helpers, and response handling able to
+reactivate cross-purpose behavior after successful parsing.
+
+The shared endpoint enum, request union, response union, generic service-main transport
+methods, and shared handler are deleted. `_service_credential` now owns the closed
+`WindowsServiceCredentialRequest` variants `QuiesceCredentialReplica`,
+`ApplyCredentialReplica`, `QueryCredentialReplica`, and `ResumeCredentialReplica`, plus
+the closed `WindowsServiceCredentialResponse` variants `State` and `Rejected`.
+`_service_main_control` owns the closed `WindowsServiceControlRequest` variants
+`PortForwardSessionCount` and `Shutdown`, plus the closed
+`WindowsServiceControlResponse` variants `PortForwardSessionCount` and
+`ShutdownAccepted`. All four adjacent-tag JSON envelopes use `deny_unknown_fields`.
+Credential/control request and response tags are disjoint, so opposite-direction,
+unknown-field, generic-`Data`, and cross-endpoint input fails during typed
+deserialization rather than entering a shared dispatch allowlist.
+
+Each accept branch now acquires its pre-existing endpoint semaphore directly and
+spawns only its endpoint-specific handler. Each handler reads and writes only its own
+types and preserves the exact reauthorization check before action. Endpoint-specific
+client helpers retain the exact expected child-generation proof and cannot compile
+with the other endpoint's request or response. The existing frame bounds, timeouts,
+transaction drain, shutdown acknowledgement-before-latch order, credential validation,
+replica state transitions, listeners, roles, and LocalSystem policy are unchanged.
+No retry, reconnect, timer, poller, worker class, runtime, listener, port, dependency,
+privilege transition, service restart, network change, or new credential operation is
+introduced.
+
+The deterministic Rust wire regression (compiled on every test target through test-only
+type visibility) fixes exact credential/control request and response encodings and
+requires own-direction acceptance plus opposite-direction, cross-endpoint,
+unknown-field, and generic `Data::Close` rejection. The focused
+`scripts/verify-windows-service-channel-protocols.py` gate independently parses exact
+variant inventories, envelopes, listener-to-budget/handler mapping, endpoint-specific
+readers/writers, receiver vocabulary, exact-server clients, wire fixtures, requirements,
+ledger, source map, and shared/Apple/independent wiring, then attacks those obligations
+with deliberate source mutations. The independent workspace validator separately
+models the four protocols, deleted union residue, listener dispatch, receiver types,
+regressions, focused verifier structure, and documentation rather than trusting the
+focused gate's verdict.
+
+Final verification is confined to the authorized immutable local inspection image with
+network disabled, a read-only repository bind, non-root UID/GID 1000, all capabilities
+dropped, `no-new-privileges`, a read-only root filesystem, bounded PIDs/memory/CPU, and
+no Docker socket, device, host namespace, or published port. That image has Python and
+shell but no Rust/Cargo or Windows target toolchain; the exact pinned development image
+is absent and no authenticated local `online/` toolchain/vendor closure exists. Current
+Rust compilation and execution are therefore explicitly not claimed, and no substitute
+image, network pull, dependency acquisition, or long release build is used. On the final
+implementation and verifier bytes, the focused Windows service channel gate rejected all
+30 deliberate mutations; the adjacent desktop IPC lifecycle, Windows production-listener
+DACL, and macOS service credential gates rejected all 26, 36, and 53 deliberate mutations,
+respectively. The independent workspace validator passed in normal mode and its complete
+source-mutation matrix rejected all 4,812 registered mutations. Both native-codec ledger
+modes passed, the three modified shell gates passed syntax parsing, `requirements.html`
+parsed successfully, and its independently computed SHA-256 was
+`1b8eed7f43451114b78cf336d29777aed73096479e7104a16a0df87eed2e64aa`. After this
+evidence-only ledger paragraph was recorded, the focused gate, independent normal mode,
+requirements parse/hash checks, and native-codec ledger modes were rerun against the final
+documentation bytes.
+
+This slice does not inspect, stop, restart, modify, or connect to a host RustDesk process
+or service; does not inspect or change host firewall/network/listener state; does not
+touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated
+container/image; and does not request or acquire root. Exact current Windows build and
+native supervisor/child transactions, malformed/cross-endpoint live named-pipe tests,
+cold R-B2/R-B10 equality, installed service behavior, independent reproduction, and
+R-V3 external review remain explicit release obligations.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d5b94384d3e4e287fdeb1c0e9b96e3b8796b961345fdad1ac6bb88625b40c5b3  requirements.html
+1b8eed7f43451114b78cf336d29777aed73096479e7104a16a0df87eed2e64aa  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26262,3 +26362,4 @@ The same identity additionally binds R-S11hc and Appendix C #364.
 The same identity additionally binds R-S11hd and Appendix C #365.
 The same identity additionally binds R-S11he and Appendix C #366.
 The same identity additionally binds R-S11hf and Appendix C #367.
+The same identity additionally binds R-S11hg and Appendix C #368.

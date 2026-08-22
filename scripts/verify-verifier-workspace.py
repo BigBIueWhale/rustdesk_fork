@@ -16782,6 +16782,204 @@ def validate_service_ipc_protocol_authority_contract(sources):
     )
 
 
+def validate_windows_service_channel_protocol_contract(sources):
+    ipc = sources["ipc_source"]
+    focused = sources["windows_service_channel_protocol_verifier"]
+    expected = (
+        (
+            "enum WindowsServiceCredentialRequest",
+            (
+                "QuiesceCredentialReplica",
+                "ApplyCredentialReplica",
+                "QueryCredentialReplica",
+                "ResumeCredentialReplica",
+            ),
+            "Windows service credential request protocol",
+        ),
+        (
+            "enum WindowsServiceCredentialResponse",
+            ("State", "Rejected"),
+            "Windows service credential response protocol",
+        ),
+        (
+            "enum WindowsServiceControlRequest",
+            ("PortForwardSessionCount", "Shutdown"),
+            "Windows service control request protocol",
+        ),
+        (
+            "enum WindowsServiceControlResponse",
+            ("PortForwardSessionCount", "ShutdownAccepted"),
+            "Windows service control response protocol",
+        ),
+    )
+    for declaration, variants, label in expected:
+        actual = extract_rust_enum_variants(ipc, declaration, label)
+        if actual != variants:
+            raise VerificationError(
+                f"{label}: expected exact variants {variants!r}, found {actual!r}"
+            )
+        require_text(
+            ipc,
+            '#[serde(tag = "t", content = "c", deny_unknown_fields)]\n'
+            + declaration,
+            f"closed {label} envelope",
+        )
+    for retired in (
+        "WindowsServiceMainEndpoint",
+        "WindowsServiceMainRequest",
+        "WindowsServiceMainResponse",
+        "WindowsCredentialReplicaResponse",
+        "send_windows_service_main_request_timeout",
+        "next_windows_service_main_request_timeout",
+        "next_windows_service_main_response_timeout",
+        "handle_windows_service_main_transaction",
+        "try_acquire_windows_service_main_transaction_slot",
+    ):
+        require_absent(ipc, retired, "shared Windows service-main protocol authority")
+    require_text(
+        ipc,
+        "#[serde(deny_unknown_fields)]\n"
+        "pub(crate) struct WindowsCredentialReplicaState",
+        "closed Windows credential state payload",
+    )
+
+    listener = extract_between(
+        ipc,
+        "async fn run_windows_service_main_ipc(",
+        "\n}\n\n#[cfg(target_os = \"windows\")]\n"
+        "async fn handle_windows_service_credential_transaction(",
+        "Windows service listener owner",
+    )
+    require_order(
+        listener,
+        (
+            "result = control_incoming.next()",
+            "try_acquire_windows_service_control_transaction_slot()",
+            "handle_windows_service_control_transaction(stream, permit)",
+            "result = credential_incoming.next()",
+            "try_acquire_windows_service_credential_transaction_slot()",
+            "handle_windows_service_credential_transaction(stream, permit)",
+        ),
+        "endpoint-specific Windows service listener dispatch",
+    )
+    credential = extract_between(
+        ipc,
+        "async fn handle_windows_service_credential_transaction(",
+        "\n}\n\n#[cfg(target_os = \"windows\")]\n"
+        "async fn handle_windows_service_control_transaction(",
+        "Windows service credential receiver",
+    )
+    require_order(
+        credential,
+        (
+            ".next_windows_service_credential_request_timeout(",
+            "authorize_windows_service_main_ipc_connection(&stream)",
+            "match request",
+            "WindowsServiceCredentialRequest::QuiesceCredentialReplica",
+            "WindowsServiceCredentialRequest::ApplyCredentialReplica",
+            "WindowsServiceCredentialRequest::QueryCredentialReplica",
+            "WindowsServiceCredentialRequest::ResumeCredentialReplica",
+        ),
+        "credential-only parse and dispatch",
+    )
+    require_text(
+        credential,
+        "write_windows_service_credential_response_with_deadline(",
+        "credential-only response writer",
+    )
+    require_absent(
+        credential,
+        "WindowsServiceControl",
+        "control protocol in credential receiver",
+    )
+    control = extract_between(
+        ipc,
+        "async fn handle_windows_service_control_transaction(",
+        "\n}\npub async fn new_listener(",
+        "Windows service control receiver",
+    )
+    require_order(
+        control,
+        (
+            ".next_windows_service_control_request_timeout(",
+            "authorize_windows_service_main_ipc_connection(&stream)",
+            "match request",
+            "WindowsServiceControlRequest::PortForwardSessionCount",
+            "WindowsServiceControlRequest::Shutdown",
+        ),
+        "control-only parse and dispatch",
+    )
+    require_text(
+        control,
+        "write_windows_service_control_response_with_deadline(",
+        "control-only response writer",
+    )
+    require_absent(
+        control,
+        "WindowsServiceCredential",
+        "credential protocol in control receiver",
+    )
+    for text, label in (
+        (
+            "fn windows_service_credential_and_control_channels_use_closed_directional_protocols()",
+            "cross-endpoint wire regression",
+        ),
+        (
+            "serde_json::from_slice::<WindowsServiceControlRequest>(&credential_request).is_err()",
+            "credential request rejection by control protocol",
+        ),
+        (
+            "serde_json::from_slice::<WindowsServiceCredentialRequest>(&control_request).is_err()",
+            "control request rejection by credential protocol",
+        ),
+        (
+            "serde_json::from_value::<WindowsServiceCredentialResponse>(",
+            "nested credential-state unknown-field rejection",
+        ),
+        (
+            "python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test",
+            "focused verifier self-test wiring",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "focused mutation inventory"),
+        ("run_mutations(sources)", "focused mutation dispatch"),
+    ):
+        require_text(
+            ipc if text.startswith(("fn ", "serde_json")) else focused,
+            text,
+            label,
+        )
+    gate = "python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test"
+    require_text(sources["verify"], gate, "shared Windows service protocol gate")
+    require_text(sources["apple"], gate, "Apple/shared Windows service protocol gate")
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11hg</span>',
+        "Windows service endpoint protocol requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>368</td>",
+        "Windows service endpoint protocol Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols",
+        "Windows service endpoint protocol hardening ledger",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        '            "windows_service_channel_protocol_verifier": (\n'
+        '                repo / "scripts/verify-windows-service-channel-protocols.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "Windows service focused-verifier source binding",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_windows_service_channel_protocol_contract(sources)\n",
+        "Windows service protocol validation dispatch",
+    )
+
+
 def validate_pulse_audio_ipc_protocol_contract(sources):
     ipc = sources["ipc_source"]
     audio = sources["audio_service_source"]
@@ -49923,6 +50121,7 @@ def validate_sources(sources):
     validate_linux_nondumpable_cm_contract(sources)
     validate_unix_helper_process_role_contract(sources)
     validate_service_ipc_protocol_authority_contract(sources)
+    validate_windows_service_channel_protocol_contract(sources)
     validate_pulse_audio_ipc_protocol_contract(sources)
     validate_whiteboard_ipc_protocol_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
@@ -66498,6 +66697,97 @@ def run_source_mutations(sources):
             "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
             "R-S11fe/R-S11e-192 unbounded macOS launchd proof-child resources",
             "bounded macOS launchd proof-child hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "enum WindowsServiceCredentialRequest",
+            "enum WindowsServiceMainRequest",
+            "Windows service credential request protocol",
+        ),
+        (
+            "ipc_source",
+            '#[serde(tag = "t", content = "c", deny_unknown_fields)]\n'
+            "enum WindowsServiceControlResponse",
+            '#[serde(tag = "t", content = "c")]\n'
+            "enum WindowsServiceControlResponse",
+            "closed Windows service control response protocol envelope",
+        ),
+        (
+            "ipc_source",
+            "#[serde(deny_unknown_fields)]\n"
+            "pub(crate) struct WindowsCredentialReplicaState",
+            "pub(crate) struct WindowsCredentialReplicaState",
+            "closed Windows credential state payload",
+        ),
+        (
+            "ipc_source",
+            "handle_windows_service_control_transaction(stream, permit)",
+            "handle_windows_service_credential_transaction(stream, permit)",
+            "endpoint-specific Windows service listener dispatch",
+        ),
+        (
+            "ipc_source",
+            ".next_windows_service_credential_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            ".next_windows_service_control_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            "credential-only parse and dispatch",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<WindowsServiceControlRequest>(&credential_request).is_err()",
+            "serde_json::from_slice::<WindowsServiceControlRequest>(&credential_request).is_ok()",
+            "credential request rejection by control protocol",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test",
+            "true # Windows service protocol gate disabled",
+            "shared Windows service protocol gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test",
+            "true # Windows service protocol gate disabled",
+            "Apple/shared Windows service protocol gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11hg</span>',
+            '<span class="id">R-S11hg-disabled</span>',
+            "Windows service endpoint protocol requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>368</td>",
+            "<tr><td>368-disabled</td>",
+            "Windows service endpoint protocol Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols",
+            "R-S11hg-disabled/R-S11e-245 — endpoint-specific Windows service credential/control protocols",
+            "Windows service endpoint protocol hardening ledger",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            "MUTATIONS: Tuple[Mutation, ...] = (",
+            "MUTATIONS_DISABLED: Tuple[Mutation, ...] = (",
+            "focused mutation inventory",
+        ),
+        (
+            "workspace_verifier",
+            '            "windows_service_channel_protocol_verifier": (\n'
+            '                repo / "scripts/verify-windows-service-channel-protocols.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "windows_service_channel_protocol_verifier_disabled": (\n'
+            '                repo / "scripts/verify-windows-service-channel-protocols.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "Windows service focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_windows_service_channel_protocol_contract(sources)\n",
+            "    validate_windows_service_channel_protocol_contract_disabled(sources)\n",
+            "Windows service protocol validation dispatch",
         ),
         (
             "ipc_source",
@@ -84823,6 +85113,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "macos_service_credential_ipc_verifier": (
                 repo / "scripts/verify-macos-service-credential-ipc.py"
+            ).read_text(encoding="utf-8"),
+            "windows_service_channel_protocol_verifier": (
+                repo / "scripts/verify-windows-service-channel-protocols.py"
             ).read_text(encoding="utf-8"),
             "macos_helper_binding_validator": (
                 repo / "scripts/verify-macos-helper-build-binding.py"

@@ -1577,7 +1577,6 @@ pub struct LoginConfigHandler {
     pub supported_encoding: SupportedEncoding,
     pub restarting_remote_device: bool,
     pub received: bool,
-    pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub custom_fps: Arc<Mutex<Option<usize>>>,
     pub last_auto_fps: Option<usize>,
     pub mark_unsupported: Vec<CodecFormat>,

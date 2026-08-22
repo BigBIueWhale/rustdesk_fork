@@ -45280,6 +45280,199 @@ def validate_account_control_plane_excision_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_account_storage_excision_contract(sources):
+    focused = sources["account_storage_excision_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "account storage excision focused runtime validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "account storage excision focused mutation inventory",
+    )
+    for text, label in (
+        ("def validate(sources", "focused semantic entry"),
+        ('"pub struct AbPeer"', "focused address-book model exclusion"),
+        ('"pub struct GroupPeer"', "focused group model exclusion"),
+        ('"fn store_raw_config_bytes("', "focused raw-store exclusion"),
+        ('"OPTION_PRESET_ADDRESS_BOOK_NAME"', "focused address-book option exclusion"),
+        ('"OPTION_PRESET_DEVICE_GROUP_NAME"', "focused device-group option exclusion"),
+        ('"main_save_ab"', "focused native FFI exclusion"),
+        ('"mainSaveAb"', "focused web bridge exclusion"),
+        ('"save_ab_password_to_recent"', "focused password-provenance exclusion"),
+        ('"PresetAddressBookName"', "focused main-status exclusion"),
+        ('"kOptionCurrentAbName"', "focused Dart option exclusion"),
+        ('"assets/address_book.ttf"', "focused packaged glyph exclusion"),
+        ('"    - assets/\\n"', "focused recursive-asset exclusion"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "focused mutation inventory"),
+        ("run_self_test(sources)", "focused mutation dispatch"),
+    ):
+        source = focused if text.startswith(("def ", "MUTATIONS", "run_")) else validation
+        require_text(source, text, label)
+    for text, label in (
+        ('("config", "pub const OPTION_DISPLAY_NAME", "pub struct Ab { access_token: String }', "focused data-model mutation"),
+        ('("config", "enum ConfigStoreFault", "fn store_raw_config_bytes() {}', "focused raw-store mutation"),
+        ('("flutter_ffi", "pub fn main_start_dbus_server()", "pub fn main_save_ab() {}', "focused native-FFI mutation"),
+        ('("pubspec", "  assets:\\n", "  assets:\\n    - assets/\\n"', "focused recursive-asset mutation"),
+        ('"    validate_account_storage_excision_contract(sources)\\n"', "focused independent-dispatch mutation"),
+    ):
+        require_text(mutation_inventory, text, label)
+
+    config = sources["config_source"]
+    for token in (
+        "pub struct AbPeer",
+        "pub struct AbEntry",
+        "pub struct Ab {",
+        "pub struct GroupPeer",
+        "pub struct GroupUser",
+        "pub struct DeviceGroup",
+        "pub struct Group {",
+        "fn load_raw_config_bytes(",
+        "fn store_raw_config_bytes(",
+        "fn encrypted_json_config_bytes(",
+        "fn load_encrypted_json_config",
+        "fn remove_raw_config_file(",
+        "fn preserve_raw_config_file(",
+        "OPTION_HIDE_AB_TAGS_PANEL",
+        "OPTION_SYNC_AB_WITH_RECENT_SESSIONS",
+        "OPTION_SYNC_AB_TAGS",
+        "OPTION_FILTER_AB_BY_INTERSECTION",
+        "OPTION_PRESET_ADDRESS_BOOK_NAME",
+        "OPTION_PRESET_ADDRESS_BOOK_TAG",
+        "OPTION_PRESET_ADDRESS_BOOK_ALIAS",
+        "OPTION_PRESET_ADDRESS_BOOK_PASSWORD",
+        "OPTION_PRESET_ADDRESS_BOOK_NOTE",
+        "OPTION_FLUTTER_CURRENT_AB_NAME",
+        "OPTION_DISABLE_GROUP_PANEL",
+        "OPTION_PRESET_DEVICE_USERNAME",
+        "OPTION_PRESET_DEVICE_NAME",
+        "OPTION_PRESET_NOTE",
+        "OPTION_PRESET_DEVICE_GROUP_NAME",
+        "OPTION_PRESET_USERNAME",
+        "OPTION_PRESET_STRATEGY_NAME",
+        "OPTION_ALLOW_ASK_FOR_NOTE",
+    ):
+        require_absent(config, token, f"independent retired account config symbol {token}")
+    for token in (
+        "main_save_ab",
+        "main_clear_ab",
+        "main_load_ab",
+        "main_save_group",
+        "main_clear_group",
+        "main_load_group",
+        "config::Ab",
+        "config::Group",
+    ):
+        require_absent(
+            sources["flutter_ffi_source"], token, f"independent retired native FFI {token}"
+        )
+    for token in (
+        "mainSaveAb",
+        "mainClearAb",
+        "mainLoadAb",
+        "mainSaveGroup",
+        "mainClearGroup",
+        "mainLoadGroup",
+        "onLoadAbFinished",
+        "onLoadGroupFinished",
+    ):
+        require_absent(
+            sources["web_bridge_dart"], token, f"independent retired web bridge {token}"
+        )
+    require_absent(
+        sources["client_source"],
+        "save_ab_password_to_recent",
+        "independent retired address-book password provenance",
+    )
+    for token in (
+        "PresetAddressBookName",
+        "PresetAddressBookTag",
+        "PresetAddressBookAlias",
+        "PresetAddressBookNote",
+        "PresetDeviceUsername",
+        "PresetDeviceName",
+        "PresetNote",
+    ):
+        require_absent(
+            sources["ipc_source"], token, f"independent retired main-status option {token}"
+        )
+    for token in ("kOptionCurrentAbName", "kOptionAllowAskForNoteAtEndOfConnection"):
+        require_absent(
+            sources["consts_dart"], token, f"independent retired Dart option {token}"
+        )
+    for token in (
+        "AddressBook",
+        "DeviceGroup",
+        "assets/address_book.ttf",
+        "assets/device_group.ttf",
+    ):
+        require_absent(
+            sources["common_dart"] + sources["flutter_pubspec_yaml"],
+            token,
+            f"independent retired packaged glyph {token}",
+        )
+    require_absent(
+        sources["flutter_pubspec_yaml"],
+        "    - assets/\n",
+        "independent recursive Flutter asset packaging",
+    )
+    for token in (
+        "    - assets/actions.svg",
+        "    - assets/win.svg",
+        "    - family: GestureIcons",
+        "    - family: More",
+    ):
+        require_text(
+            sources["flutter_pubspec_yaml"], token, "independent explicit retained asset manifest"
+        )
+    for token in (
+        "cargo test -p hbb_common --lib config::tests::store_raw_config_bytes",
+        "config::tests::raw_encrypted_json_load_failure_preserves_payload_for_recovery",
+        "address-book-or-group-raw-store-not-used",
+    ):
+        require_absent(sources["verify"], token, "independent superseded raw-store gate")
+    for source, token, label in (
+        (
+            sources["verify"],
+            "python3 scripts/verify-account-storage-excision.py --repo . --self-test",
+            "account storage shared focused gate",
+        ),
+        (
+            sources["apple"],
+            "python3 scripts/verify-account-storage-excision.py --repo . --self-test",
+            "account storage Apple focused gate",
+        ),
+        (
+            sources["requirements"],
+            '<div class="req"><span class="id">R-S11hj</span>',
+            "account storage excision requirement",
+        ),
+        (sources["requirements"], "<tr><td>370</td>", "account storage Appendix C row"),
+        (
+            sources["hardening"],
+            "### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision",
+            "account storage hardening ledger",
+        ),
+        (
+            sources["workspace_verifier"],
+            '            "account_storage_excision_verifier": (\n'
+            '                repo / "scripts/verify-account-storage-excision.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "account storage focused-verifier source binding",
+        ),
+        (
+            sources["workspace_verifier"],
+            "    validate_account_storage_excision_contract(sources)\n",
+            "account storage independent validation dispatch",
+        ),
+    ):
+        require_text(source, token, label)
+
+
 def validate_password_confirmation_comparison_contract(sources):
     password = sources["ipc_password_source"]
     core = sources["core_main"]
@@ -50331,6 +50524,7 @@ def validate_sources(sources):
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
+    validate_account_storage_excision_contract(sources)
     validate_password_confirmation_comparison_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_permanent_password_salt_reader_excision_contract(sources)
@@ -62620,8 +62814,8 @@ def run_source_mutations(sources):
         ),
         (
             "config_source",
-            '    pub const OPTION_PRESET_DEVICE_NAME: &str = "preset-device-name";',
-            '    pub const OPTION_REGISTER_DEVICE: &str = "register-device";\n    pub const OPTION_PRESET_DEVICE_NAME: &str = "preset-device-name";',
+            '    pub const OPTION_DISPLAY_NAME: &str = "display-name";',
+            '    pub const OPTION_REGISTER_DEVICE: &str = "register-device";\n    pub const OPTION_DISPLAY_NAME: &str = "display-name";',
             "account registration built-in key",
         ),
         (
@@ -63826,8 +64020,8 @@ def run_source_mutations(sources):
         ),
         (
             "client_source",
-            "    pub received: bool,\n    pub save_ab_password_to_recent: bool,",
-            "    pub received: bool,\n    switch_uuid: Option<String>,\n    pub save_ab_password_to_recent: bool,",
+            "    pub received: bool,\n    pub custom_fps: Arc<Mutex<Option<usize>>>,",
+            "    pub received: bool,\n    switch_uuid: Option<String>,\n    pub custom_fps: Arc<Mutex<Option<usize>>>,",
             "viewer login role-swap token switch_uuid",
         ),
         (
@@ -67877,6 +68071,130 @@ def run_source_mutations(sources):
             "    validate_viewer_audio_mailbox_contract(sources)\n",
             "    validate_viewer_audio_mailbox_contract_disabled(sources)\n",
             "viewer audio independent validation dispatch",
+        ),
+        (
+            "account_storage_excision_verifier",
+            '"pub struct AbPeer"',
+            '"pub struct AbPeerDisabled"',
+            "focused address-book model exclusion",
+        ),
+        (
+            "account_storage_excision_verifier",
+            '"fn store_raw_config_bytes("',
+            '"fn store_raw_config_bytes_disabled("',
+            "focused raw-store exclusion",
+        ),
+        (
+            "account_storage_excision_verifier",
+            '"main_save_ab"',
+            '"main_save_ab_disabled"',
+            "focused native FFI exclusion",
+        ),
+        (
+            "config_source",
+            "    pub const OPTION_DISPLAY_NAME: &str = \"display-name\";",
+            "    pub struct Ab { access_token: String }\n    pub const OPTION_DISPLAY_NAME: &str = \"display-name\";",
+            "independent retired account config symbol pub struct Ab {",
+        ),
+        (
+            "config_source",
+            "enum ConfigStoreFault {",
+            "fn store_raw_config_bytes() {}\nenum ConfigStoreFault {",
+            "independent retired account config symbol fn store_raw_config_bytes(",
+        ),
+        (
+            "config_source",
+            "    pub const OPTION_DISPLAY_NAME: &str = \"display-name\";",
+            "    pub const OPTION_PRESET_ADDRESS_BOOK_NAME: &str = \"preset-address-book-name\";\n    pub const OPTION_DISPLAY_NAME: &str = \"display-name\";",
+            "independent retired account config symbol OPTION_PRESET_ADDRESS_BOOK_NAME",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_start_dbus_server() {",
+            "pub fn main_save_ab() {}\npub fn main_start_dbus_server() {",
+            "independent retired native FFI main_save_ab",
+        ),
+        (
+            "web_bridge_dart",
+            "  Future<void> mainStartDbusServer({dynamic hint}) {",
+            "  Future<void> mainSaveAb({dynamic hint}) async {}\n  Future<void> mainStartDbusServer({dynamic hint}) {",
+            "independent retired web bridge mainSaveAb",
+        ),
+        (
+            "client_source",
+            "    pub received: bool,",
+            "    pub received: bool,\n    pub save_ab_password_to_recent: bool,",
+            "independent retired address-book password provenance",
+        ),
+        (
+            "ipc_source",
+            "    AllowWebsocket,",
+            "    AllowWebsocket,\n    PresetAddressBookName,",
+            "independent retired main-status option PresetAddressBookName",
+        ),
+        (
+            "consts_dart",
+            "const String kOptionPeerCardUiType = \"peer-card-ui-type\";",
+            "const String kOptionCurrentAbName = \"current-ab-name\";\nconst String kOptionPeerCardUiType = \"peer-card-ui-type\";",
+            "independent retired Dart option kOptionCurrentAbName",
+        ),
+        (
+            "flutter_pubspec_yaml",
+            "  assets:\n",
+            "  assets:\n    - assets/\n",
+            "independent recursive Flutter asset packaging",
+        ),
+        (
+            "flutter_pubspec_yaml",
+            "    - family: More",
+            "    - family: AddressBook\n      fonts:\n        - asset: assets/address_book.ttf\n    - family: More",
+            "independent retired packaged glyph AddressBook",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-account-storage-excision.py --repo . --self-test",
+            "true # account storage verifier removed",
+            "account storage shared focused gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-account-storage-excision.py --repo . --self-test",
+            "true # account storage verifier removed",
+            "account storage Apple focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hj</span>',
+            '<div class="req"><span class="id">R-S11hj-disabled</span>',
+            "account storage excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>370</td>",
+            "<tr><td>370-disabled</td>",
+            "account storage Appendix C row",
+        ),
+        (
+            "hardening",
+            "### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision",
+            "### R-S11hj-disabled/R-S11e-247 — complete account storage and presentation authority excision",
+            "account storage hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "account_storage_excision_verifier": (\n'
+            '                repo / "scripts/verify-account-storage-excision.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "account_storage_excision_verifier_disabled": (\n'
+            '                repo / "scripts/verify-account-storage-excision.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "account storage focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_account_storage_excision_contract(sources)\n",
+            "    validate_account_storage_excision_contract_disabled(sources)\n",
+            "account storage independent validation dispatch",
         ),
         (
             "viewer_file_finality_verifier",
@@ -85827,6 +86145,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_audio_mailbox_verifier": (
                 repo / "scripts/verify-viewer-audio-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "account_storage_excision_verifier": (
+                repo / "scripts/verify-account-storage-excision.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

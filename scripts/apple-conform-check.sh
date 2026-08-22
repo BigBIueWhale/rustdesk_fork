@@ -3638,6 +3638,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2-00) R-S11hj complete account storage/presentation authority excision =="
+if python3 scripts/verify-account-storage-excision.py --repo . --self-test; then
+  note "ok  R-S11hj Apple/shared account/address-book/group storage, bridge, option, IPC, and packaged glyph authority is absent"
+else
+  echo "  FAIL R-S11hj Apple/shared account/address-book/group persistence, bridge, option, presentation, or detached-worker authority regrew"
+  rc=1
+fi
+
 echo "== (2g-c2a) R-S11gu bounded exact-owner native-to-Dart cursor publication =="
 if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
   note "ok  R-S11gu Apple/shared cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"

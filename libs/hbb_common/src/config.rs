@@ -36,11 +36,10 @@ pub use permanent_password::{
 };
 
 use crate::{
-    compress::{compress, decompress},
     log,
     password_security::{
         decrypt_str_or_original, decrypt_vec_or_original, encrypt_str_or_original,
-        encrypt_vec_or_original, symmetric_crypt,
+        encrypt_vec_or_original,
     },
 };
 
@@ -2013,24 +2012,6 @@ pub fn store_path<T: serde::Serialize>(path: PathBuf, cfg: T) -> crate::ResultTy
     store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)
 }
 
-fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>> {
-    #[cfg(windows)]
-    if windows_machine_config::contains(path) {
-        return windows_machine_config::read(path).map_err(Into::into);
-    }
-    #[cfg(windows)]
-    windows_config_acl::prepare_config_path_for_load(path)?;
-
-    let mut file = fs::File::open(path)?;
-    let mut data = Vec::new();
-    file.read_to_end(&mut data)?;
-    Ok(data)
-}
-
-fn store_raw_config_bytes(path: PathBuf, data: &[u8]) -> Result<()> {
-    store_config_bytes_transaction(&path, data, ConfigStoreFault::None)
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ConfigStoreFault {
     None,
@@ -2435,105 +2416,6 @@ fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFa
     }
     fs::write(path, data)?;
     Ok(())
-}
-
-fn encrypted_json_config_bytes(label: &str, json: String) -> Option<Vec<u8>> {
-    let data = compress(json.as_bytes());
-    let max_len = 64 * 1024 * 1024;
-    if data.len() > max_len {
-        log::error!("{label} data too large, {} > {}", data.len(), max_len);
-        return None;
-    }
-    match symmetric_crypt(&data, true) {
-        Ok(data) => Some(data),
-        Err(_) => {
-            log::error!("Failed to encrypt {label} data");
-            None
-        }
-    }
-}
-
-fn load_encrypted_json_config<T: serde::de::DeserializeOwned>(
-    path: &Path,
-    label: &str,
-) -> Result<Option<T>> {
-    let data = match load_raw_config_bytes(path) {
-        Ok(data) => data,
-        Err(err) => {
-            if is_not_found_error(&err) {
-                return Ok(None);
-            }
-            return Err(anyhow!(
-                "Failed to read {label} '{}': {err}",
-                path.display()
-            ));
-        }
-    };
-    let data = match symmetric_crypt(&data, false) {
-        Ok(data) => data,
-        Err(_) => {
-            return Err(anyhow!("Failed to decrypt {label} '{}'", path.display()));
-        }
-    };
-    let data = decompress(&data);
-    match serde_json::from_slice::<T>(&data) {
-        Ok(value) => Ok(Some(value)),
-        Err(err) => Err(anyhow!(
-            "Failed to parse {label} '{}': {err}",
-            path.display()
-        )),
-    }
-}
-
-fn is_not_found_error(err: &anyhow::Error) -> bool {
-    err.downcast_ref::<io::Error>()
-        .map_or(false, |err| err.kind() == io::ErrorKind::NotFound)
-}
-
-fn remove_raw_config_file(path: PathBuf, label: &str) {
-    match fs::remove_file(&path) {
-        Ok(()) => {}
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-        Err(err) => log::error!("Failed to remove {label} '{}': {err}", path.display()),
-    }
-}
-
-fn preserve_raw_config_file(path: &Path, label: &str) {
-    if !path.exists() {
-        return;
-    }
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("raw_config");
-    let mut backup = path.to_path_buf();
-    backup.set_file_name(format!("{name}.corrupt.{stamp}"));
-    match fs::rename(path, &backup) {
-        Ok(()) => {
-            if let Err(err) = harden_preserved_config_file(&backup) {
-                log::error!(
-                    "Preserved corrupt {label} '{}' as '{}', but failed to harden recovery file: {err}",
-                    path.display(),
-                    backup.display()
-                );
-                return;
-            }
-
-            log::error!(
-                "Preserved corrupt {label} '{}' as '{}' for recovery",
-                path.display(),
-                backup.display()
-            );
-        }
-        Err(err) => log::error!(
-            "Could not preserve corrupt {label} '{}' for recovery: {err}",
-            path.display()
-        ),
-    }
 }
 
 impl Config {
@@ -4034,125 +3916,6 @@ impl UserDefaultConfig {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct AbPeer {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub id: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub hash: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub username: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub hostname: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub platform: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub alias: String,
-    #[serde(default, deserialize_with = "deserialize_vec_string")]
-    pub tags: Vec<String>,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct AbEntry {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub guid: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub name: String,
-    #[serde(default, deserialize_with = "deserialize_vec_abpeer")]
-    pub peers: Vec<AbPeer>,
-    #[serde(default, deserialize_with = "deserialize_vec_string")]
-    pub tags: Vec<String>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub tag_colors: String,
-}
-
-impl AbEntry {
-    pub fn personal(&self) -> bool {
-        self.name == "My address book" || self.name == "Legacy address book"
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct Ab {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub access_token: String,
-    #[serde(default, deserialize_with = "deserialize_vec_abentry")]
-    pub ab_entries: Vec<AbEntry>,
-}
-
-impl Ab {
-    fn path() -> PathBuf {
-        let filename = format!("{}_ab", APP_NAME.read().unwrap().clone());
-        Config::path(filename)
-    }
-
-    pub fn store(json: String) {
-        let Some(data) = encrypted_json_config_bytes("address book", json) else {
-            return;
-        };
-        if let Err(err) = store_raw_config_bytes(Self::path(), &data) {
-            log::error!("Failed to store address book: {err}");
-        }
-    }
-
-    pub fn load() -> Ab {
-        let path = Self::path();
-        match load_encrypted_json_config::<Ab>(&path, "address book") {
-            Ok(Some(ab)) => return ab,
-            Ok(None) => {}
-            Err(err) => {
-                log::error!("{err}");
-                preserve_raw_config_file(&path, "address book");
-            }
-        }
-        Ab::default()
-    }
-
-    pub fn remove() {
-        remove_raw_config_file(Self::path(), "address book");
-    }
-}
-
 // use default value when field type is wrong
 macro_rules! deserialize_default {
     ($func_name:ident, $return_type:ty) => {
@@ -4165,125 +3928,11 @@ macro_rules! deserialize_default {
     };
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct GroupPeer {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub id: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub username: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub hostname: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub platform: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub login_name: String,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct GroupUser {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub name: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub display_name: String,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct DeviceGroup {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub name: String,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct Group {
-    #[serde(
-        default,
-        deserialize_with = "deserialize_string",
-        skip_serializing_if = "String::is_empty"
-    )]
-    pub access_token: String,
-    #[serde(default, deserialize_with = "deserialize_vec_groupuser")]
-    pub users: Vec<GroupUser>,
-    #[serde(default, deserialize_with = "deserialize_vec_grouppeer")]
-    pub peers: Vec<GroupPeer>,
-    #[serde(default, deserialize_with = "deserialize_vec_devicegroup")]
-    pub device_groups: Vec<DeviceGroup>,
-}
-
-impl Group {
-    fn path() -> PathBuf {
-        let filename = format!("{}_group", APP_NAME.read().unwrap().clone());
-        Config::path(filename)
-    }
-
-    pub fn store(json: String) {
-        let Some(data) = encrypted_json_config_bytes("group", json) else {
-            return;
-        };
-        if let Err(err) = store_raw_config_bytes(Self::path(), &data) {
-            log::error!("Failed to store group: {err}");
-        }
-    }
-
-    pub fn load() -> Self {
-        let path = Self::path();
-        match load_encrypted_json_config::<Self>(&path, "group") {
-            Ok(Some(group)) => return group,
-            Ok(None) => {}
-            Err(err) => {
-                log::error!("{err}");
-                preserve_raw_config_file(&path, "group");
-            }
-        }
-        Self::default()
-    }
-
-    pub fn remove() {
-        remove_raw_config_file(Self::path(), "group");
-    }
-}
-
 deserialize_default!(deserialize_string, String);
 deserialize_default!(deserialize_bool, bool);
 deserialize_default!(deserialize_vec_u8, Vec<u8>);
 deserialize_default!(deserialize_vec_string, Vec<String>);
 deserialize_default!(deserialize_vec_i32_string_i32, Vec<(i32, String, i32)>);
-deserialize_default!(deserialize_vec_abpeer, Vec<AbPeer>);
-deserialize_default!(deserialize_vec_abentry, Vec<AbEntry>);
-deserialize_default!(deserialize_vec_groupuser, Vec<GroupUser>);
-deserialize_default!(deserialize_vec_grouppeer, Vec<GroupPeer>);
-deserialize_default!(deserialize_vec_devicegroup, Vec<DeviceGroup>);
 deserialize_default!(deserialize_keypair, KeyPair);
 deserialize_default!(deserialize_size, Size);
 deserialize_default!(deserialize_hashmap_string_string, HashMap<String, String>);
@@ -4438,7 +4087,6 @@ pub mod keys {
     pub const OPTION_LANGUAGE: &str = "lang";
     pub const OPTION_REMOTE_MENUBAR_DRAG_LEFT: &str = "remote-menubar-drag-left";
     pub const OPTION_REMOTE_MENUBAR_DRAG_RIGHT: &str = "remote-menubar-drag-right";
-    pub const OPTION_HIDE_AB_TAGS_PANEL: &str = "hideAbTagsPanel";
     pub const OPTION_ENABLE_CONFIRM_CLOSING_TABS: &str = "enable-confirm-closing-tabs";
     pub const OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS: &str =
         "enable-open-new-connections-in-tabs";
@@ -4448,9 +4096,6 @@ pub mod keys {
     // OPTION_ALLOW_AUTO_UPDATE ("allow-auto-update") are removed — the version-check (R-SV3)
     // and the fetch-and-run updater (R-X1) are excised, so no key gates a removed feature.
     // The latter is also dropped from KEYS_SETTINGS below (no longer DEFAULT/OVERWRITE-settable).
-    pub const OPTION_SYNC_AB_WITH_RECENT_SESSIONS: &str = "sync-ab-with-recent-sessions";
-    pub const OPTION_SYNC_AB_TAGS: &str = "sync-ab-tags";
-    pub const OPTION_FILTER_AB_BY_INTERSECTION: &str = "filter-ab-by-intersection";
     pub const OPTION_ACCESS_MODE: &str = "access-mode";
     pub const OPTION_ENABLE_KEYBOARD: &str = "enable-keyboard";
     pub const OPTION_ENABLE_CLIPBOARD: &str = "enable-clipboard";
@@ -4484,14 +4129,6 @@ pub mod keys {
     pub const OPTION_API_SERVER: &str = "api-server";
     pub const OPTION_KEY: &str = "key";
     pub const OPTION_ALLOW_WEBSOCKET: &str = "allow-websocket";
-    pub const OPTION_PRESET_ADDRESS_BOOK_NAME: &str = "preset-address-book-name";
-    pub const OPTION_PRESET_ADDRESS_BOOK_TAG: &str = "preset-address-book-tag";
-    pub const OPTION_PRESET_ADDRESS_BOOK_ALIAS: &str = "preset-address-book-alias";
-    pub const OPTION_PRESET_ADDRESS_BOOK_PASSWORD: &str = "preset-address-book-password";
-    pub const OPTION_PRESET_ADDRESS_BOOK_NOTE: &str = "preset-address-book-note";
-    pub const OPTION_PRESET_DEVICE_USERNAME: &str = "preset-device-username";
-    pub const OPTION_PRESET_DEVICE_NAME: &str = "preset-device-name";
-    pub const OPTION_PRESET_NOTE: &str = "preset-note";
     pub const OPTION_ENABLE_DIRECTX_CAPTURE: &str = "enable-directx-capture";
     pub const OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE: &str =
         "enable-android-software-encoding-half-scale";
@@ -4513,14 +4150,9 @@ pub mod keys {
     // So `OPTION_SHOW_VIRTUAL_MOUSE` should also be set if `OPTION_SHOW_VIRTUAL_JOYSTICK` is set.
     pub const OPTION_SHOW_VIRTUAL_JOYSTICK: &str = "show-virtual-joystick";
     pub const OPTION_ENABLE_FLUTTER_HTTP_ON_RUST: &str = "enable-flutter-http-on-rust";
-    pub const OPTION_ALLOW_ASK_FOR_NOTE: &str = "allow-ask-for-note";
-
     // built-in options
     pub const OPTION_DISPLAY_NAME: &str = "display-name";
     pub const OPTION_AVATAR: &str = "avatar";
-    pub const OPTION_PRESET_DEVICE_GROUP_NAME: &str = "preset-device-group-name";
-    pub const OPTION_PRESET_USERNAME: &str = "preset-user-name";
-    pub const OPTION_PRESET_STRATEGY_NAME: &str = "preset-strategy-name";
     pub const OPTION_HIDE_SECURITY_SETTINGS: &str = "hide-security-settings";
     pub const OPTION_HIDE_NETWORK_SETTINGS: &str = "hide-network-settings";
     pub const OPTION_HIDE_SERVER_SETTINGS: &str = "hide-server-settings";
@@ -4551,8 +4183,6 @@ pub mod keys {
     pub const OPTION_FLUTTER_PEER_TAB_ORDER: &str = "peer-tab-order";
     pub const OPTION_FLUTTER_PEER_TAB_VISIBLE: &str = "peer-tab-visible";
     pub const OPTION_FLUTTER_PEER_CARD_UI_TYLE: &str = "peer-card-ui-type";
-    pub const OPTION_FLUTTER_CURRENT_AB_NAME: &str = "current-ab-name";
-
     // android floating window options
     pub const OPTION_DISABLE_FLOATING_WINDOW: &str = "disable-floating-window";
     pub const OPTION_FLOATING_WINDOW_SIZE: &str = "floating-window-size";
@@ -4571,7 +4201,6 @@ pub mod keys {
     pub const OPTION_KEEP_AWAKE_DURING_OUTGOING_SESSIONS: &str =
         "keep-awake-during-outgoing-sessions";
 
-    pub const OPTION_DISABLE_GROUP_PANEL: &str = "disable-group-panel";
     pub const OPTION_DISABLE_DISCOVERY_PANEL: &str = "disable-discovery-panel";
     pub const OPTION_PRE_ELEVATE_SERVICE: &str = "pre-elevate-service";
 
@@ -4621,19 +4250,14 @@ pub mod keys {
         OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS,
         OPTION_TEXTURE_RENDER,
         OPTION_ALLOW_D3D_RENDER,
-        OPTION_SYNC_AB_WITH_RECENT_SESSIONS,
-        OPTION_SYNC_AB_TAGS,
-        OPTION_FILTER_AB_BY_INTERSECTION,
         OPTION_REMOTE_MENUBAR_DRAG_LEFT,
         OPTION_REMOTE_MENUBAR_DRAG_RIGHT,
-        OPTION_HIDE_AB_TAGS_PANEL,
         OPTION_FLUTTER_REMOTE_MENUBAR_STATE,
         OPTION_FLUTTER_PEER_SORTING,
         OPTION_FLUTTER_PEER_TAB_INDEX,
         OPTION_FLUTTER_PEER_TAB_ORDER,
         OPTION_FLUTTER_PEER_TAB_VISIBLE,
         OPTION_FLUTTER_PEER_CARD_UI_TYLE,
-        OPTION_FLUTTER_CURRENT_AB_NAME,
         OPTION_DISABLE_FLOATING_WINDOW,
         OPTION_FLOATING_WINDOW_SIZE,
         OPTION_FLOATING_WINDOW_UNTOUCHABLE,
@@ -4642,7 +4266,6 @@ pub mod keys {
         OPTION_KEEP_SCREEN_ON,
         // Client-side: keep client system awake during outgoing sessions (General setting)
         OPTION_KEEP_AWAKE_DURING_OUTGOING_SESSIONS,
-        OPTION_DISABLE_GROUP_PANEL,
         OPTION_DISABLE_DISCOVERY_PANEL,
         OPTION_PRE_ELEVATE_SERVICE,
         OPTION_ALLOW_AUTO_RECORD_OUTGOING,
@@ -4651,7 +4274,6 @@ pub mod keys {
         OPTION_SHOW_VIRTUAL_MOUSE,
         OPTION_SHOW_VIRTUAL_JOYSTICK,
         OPTION_ENABLE_FLUTTER_HTTP_ON_RUST,
-        OPTION_ALLOW_ASK_FOR_NOTE,
     ];
     // DEFAULT_SETTINGS, OVERWRITE_SETTINGS
     pub const KEYS_SETTINGS: &[&str] = &[
@@ -4686,14 +4308,6 @@ pub mod keys {
         OPTION_API_SERVER,
         OPTION_KEY,
         OPTION_ALLOW_WEBSOCKET,
-        OPTION_PRESET_ADDRESS_BOOK_NAME,
-        OPTION_PRESET_ADDRESS_BOOK_TAG,
-        OPTION_PRESET_ADDRESS_BOOK_ALIAS,
-        OPTION_PRESET_ADDRESS_BOOK_PASSWORD,
-        OPTION_PRESET_ADDRESS_BOOK_NOTE,
-        OPTION_PRESET_DEVICE_USERNAME,
-        OPTION_PRESET_DEVICE_NAME,
-        OPTION_PRESET_NOTE,
         OPTION_ENABLE_DIRECTX_CAPTURE,
         OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE,
         OPTION_RELAY_SERVER,
@@ -4772,9 +4386,6 @@ pub mod keys {
     pub const KEYS_BUILDIN_SETTINGS: &[&str] = &[
         OPTION_DISPLAY_NAME,
         OPTION_AVATAR,
-        OPTION_PRESET_DEVICE_GROUP_NAME,
-        OPTION_PRESET_USERNAME,
-        OPTION_PRESET_STRATEGY_NAME,
         OPTION_HIDE_SECURITY_SETTINGS,
         OPTION_HIDE_NETWORK_SETTINGS,
         OPTION_HIDE_SERVER_SETTINGS,
@@ -5697,72 +5308,6 @@ unrelated = "preserved"
         let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
         fs::remove_dir_all(&dir).ok();
         assert_eq!(mode, 0o600);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn store_raw_config_bytes_writes_owner_only_permissions() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = unique_tmp_dir("raw-mode600");
-        let file = dir.join("raw");
-        store_raw_config_bytes(file.clone(), b"secret").unwrap();
-
-        let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
-        let data = load_raw_config_bytes(&file).unwrap();
-        fs::remove_dir_all(&dir).ok();
-        assert_eq!(mode, 0o600);
-        assert_eq!(data, b"secret");
-    }
-
-    #[test]
-    fn store_raw_config_bytes_replaces_existing_file() {
-        let dir = unique_tmp_dir("raw-replace");
-        let file = dir.join("raw");
-        store_raw_config_bytes(file.clone(), b"old").unwrap();
-        store_raw_config_bytes(file.clone(), b"new").unwrap();
-
-        let data = load_raw_config_bytes(&file).unwrap();
-        fs::remove_dir_all(&dir).ok();
-        assert_eq!(data, b"new");
-    }
-
-    #[test]
-    fn raw_encrypted_json_load_failure_preserves_payload_for_recovery() {
-        #[cfg(unix)]
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = unique_tmp_dir("raw-corrupt");
-        let file = dir.join("ab");
-        let corrupt_json = symmetric_crypt(&compress(b"not-json"), true).unwrap();
-        store_raw_config_bytes(file.clone(), &corrupt_json).unwrap();
-        #[cfg(unix)]
-        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
-
-        let err = load_encrypted_json_config::<Ab>(&file, "address book").unwrap_err();
-        assert!(err.to_string().contains("Failed to parse address book"));
-        preserve_raw_config_file(&file, "address book");
-
-        assert!(!file.exists());
-        let backups: Vec<PathBuf> = fs::read_dir(&dir)
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| name.starts_with("ab.corrupt."))
-                    .unwrap_or(false)
-            })
-            .collect();
-        assert_eq!(backups.len(), 1);
-        #[cfg(unix)]
-        {
-            let mode = fs::metadata(&backups[0]).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o600);
-        }
-        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

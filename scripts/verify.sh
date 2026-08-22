@@ -1385,21 +1385,16 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1b) credential-bearing local stores use one durable transactional writer (R-S11b-4d) =="
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never
+echo "== (3b-iii-a1b) credential-bearing peer config uses one durable transactional writer (R-S11b-4d/R-S11hj) =="
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_path_writes_owner_only_permissions --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::config_transaction --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::raw_encrypted_json_load_failure_preserves_payload_for_recovery --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::preserved_config_hardening_rejects_symlink_targets --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_unreadable_is_transient_not_stale --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::empty_peer_cleanup_requires_loaded_semantically_empty_config --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::peer_cleanup_decision_is_bound_to_the_enumerated_path --color never
 index_s11b4d=
-grep -q 'fn store_raw_config_bytes(path: PathBuf, data: &\[u8\]) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-helper-missing"
-grep -q 'fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-helper-missing"
-grep -q 'store_config_bytes_transaction(&path, data, ConfigStoreFault::None)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-not-routed-through-transaction"
 grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d toml-store-not-routed-through-transaction"
-grep -q 'windows_config_acl::prepare_config_path_for_load(path)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-windows-acl-not-prepared"
 unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)
 grep -q 'O_WRONLY' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-write-open-missing"
 grep -q 'O_CREAT' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-create-missing"
@@ -1455,30 +1450,18 @@ fi
 if grep -q 'confy::load_path(Self::path(id))' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d peer-config-direct-confy-load-present"
 fi
-[ "$(grep -c 'store_raw_config_bytes(Self::path(), &data)' libs/hbb_common/src/config.rs)" -eq 2 ] || index_s11b4d="$index_s11b4d address-book-or-group-raw-store-not-used"
-grep -q 'load_encrypted_json_config::<Ab>(&path, "address book")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d address-book-raw-load-not-used"
-grep -q 'load_encrypted_json_config::<Self>(&path, "group")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d group-raw-load-not-used"
-grep -q 'preserve_raw_config_file(&path, "address book")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d address-book-corrupt-preserve-missing"
-grep -q 'preserve_raw_config_file(&path, "group")' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d group-corrupt-preserve-missing"
-grep -q 'fn preserve_raw_config_file(path: &Path, label: &str)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-corrupt-preserve-helper-missing"
 grep -q 'fn harden_preserved_config_file(path: &Path) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-hardener-missing"
 grep -q 'crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-no-nofollow-open"
 grep -q 'crate::libc::fchmod(file.as_raw_fd(), 0o600 as crate::libc::mode_t)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-no-fd-chmod"
 grep -q 'preserved_config_hardening_rejects_symlink_targets' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-symlink-test-missing"
-[ "$(grep -c 'harden_preserved_config_file(&backup)' libs/hbb_common/src/config.rs)" -eq 2 ] || index_s11b4d="$index_s11b4d corrupt-recovery-paths-not-hardened"
-if grep -q 'std::fs::File::create(Self::path())' libs/hbb_common/src/config.rs; then
-  index_s11b4d="$index_s11b4d address-book-or-group-direct-create-present"
-fi
-if grep -q 'file.write_all(&data).ok()' libs/hbb_common/src/config.rs; then
-  index_s11b4d="$index_s11b4d address-book-or-group-silent-write-present"
-fi
+[ "$(grep -c 'harden_preserved_config_file(&backup)' libs/hbb_common/src/config.rs)" -eq 1 ] || index_s11b4d="$index_s11b4d toml-corrupt-recovery-path-not-exact"
 if grep -q 'fs::set_permissions(&backup, fs::Permissions::from_mode(0o600))' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d corrupt-recovery-path-chmod-present"
 fi
 grep -q 'R-S11b-4d' requirements.html || index_s11b4d="$index_s11b4d requirements-disposition-missing"
 grep -q 'R-S11b-4d' HARDENING_STATUS.md || index_s11b4d="$index_s11b4d hardening-ledger-missing"
 if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing store hardening:$index_s11b4d"; rc=1; else
-  echo "  ok  R-S11b-4d TOML and raw encrypted stores share one no-follow, owner-only, synchronized temp-and-replace transaction; PeerConfig cleanup remains exact-path, loaded-only, and semantically-empty-only"; fi
+  echo "  ok  R-S11b-4d peer TOML uses the no-follow, owner-only, synchronized temp-and-replace transaction; cleanup remains exact-path, loaded-only, and semantically-empty-only; retired account raw stores are absent under R-S11hj"; fi
 
 echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never
@@ -9507,6 +9490,12 @@ if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11hi/R-S11e-246 peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"
 else
   echo "  FAIL R-S11hi/R-S11e-246: peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
+  rc=1
+fi
+if python3 scripts/verify-account-storage-excision.py --repo . --self-test; then
+  echo "  ok  R-S11hj/R-S11e-247 dormant account/address-book/group storage, option, IPC, web, and packaged glyph authority is absent"
+else
+  echo "  FAIL R-S11hj/R-S11e-247: account/address-book/group persistence, bridge, option, presentation, or detached-worker authority regrew"
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never

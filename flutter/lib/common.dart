@@ -118,8 +118,6 @@ bool isDoubleEqual(double a, double b) {
 class IconFont {
   static const _family1 = 'Tabbar';
   static const _family2 = 'PeerSearchbar';
-  // R-G4: the 'AddressBook' + 'DeviceGroup' glyph families backed the excised Address-book /
-  // "Accessible devices" tab icons; their IconData entries are removed with the tabs.
   static const _family5 = 'More';
 
   IconFont._();

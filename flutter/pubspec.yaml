@@ -143,7 +143,46 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/
+    - assets/actions.svg
+    - assets/actions_mobile.svg
+    - assets/android.svg
+    - assets/arrow.svg
+    - assets/call_end.svg
+    - assets/call_wait.svg
+    - assets/chat.svg
+    - assets/chat2.svg
+    - assets/checkbox-outline.svg
+    - assets/chevron_up_chevron_down.svg
+    - assets/close.svg
+    - assets/display.svg
+    - assets/dots.svg
+    - assets/file.svg
+    - assets/file_transfer.svg
+    - assets/folder.svg
+    - assets/folder_new.svg
+    - assets/fullscreen.svg
+    - assets/fullscreen_exit.svg
+    - assets/home.svg
+    - assets/icon.svg
+    - assets/kb_layout_iso.svg
+    - assets/kb_layout_not_iso.svg
+    - assets/keyboard_mouse.svg
+    - assets/linux.svg
+    - assets/mac.svg
+    - assets/message_24dp_5F6368.svg
+    - assets/pinned.svg
+    - assets/rec.svg
+    - assets/record_screen.svg
+    - assets/refresh.svg
+    - assets/screen.svg
+    - assets/search.svg
+    - assets/secure.svg
+    - assets/transfer.svg
+    - assets/trash.svg
+    - assets/unpinned.svg
+    - assets/voice_call.svg
+    - assets/voice_call_waiting.svg
+    - assets/win.svg
 
   fonts:
     - family: GestureIcons
@@ -155,12 +194,6 @@ flutter:
     - family: PeerSearchbar
       fonts:
         - asset: assets/peer_searchbar.ttf
-    - family: AddressBook
-      fonts:
-        - asset: assets/address_book.ttf
-    - family: DeviceGroup
-      fonts:
-        - asset: assets/device_group.ttf
     - family: More
       fonts:
         - asset: assets/more.ttf

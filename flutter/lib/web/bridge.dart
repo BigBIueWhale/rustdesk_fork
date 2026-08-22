@@ -1147,55 +1147,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainStartDbusServer");
   }
 
-  Future<void> mainSaveAb({required String json, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['save_ab', json]));
-  }
-
-  Future<void> mainClearAb({dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['clear_ab']));
-  }
-
-  Future<String> mainLoadAb({dynamic hint}) {
-    Completer<String> completer = Completer();
-    Future<String> timeoutFuture = completer.future.timeout(
-      Duration(seconds: 2),
-      onTimeout: () {
-        completer.completeError(TimeoutException('Load ab timed out'));
-        return 'Timeout';
-      },
-    );
-    js.context["onLoadAbFinished"] = (String s) {
-      completer.complete(s);
-    };
-    js.context.callMethod('setByName', ['load_ab']);
-    return timeoutFuture;
-  }
-
-  Future<void> mainSaveGroup({required String json, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['save_group', json]));
-  }
-
-  Future<void> mainClearGroup({dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['clear_group']));
-  }
-
-  Future<String> mainLoadGroup({dynamic hint}) {
-    Completer<String> completer = Completer();
-    Future<String> timeoutFuture = completer.future.timeout(
-      Duration(seconds: 2),
-      onTimeout: () {
-        completer.completeError(TimeoutException('Load group timed out'));
-        return 'Timeout';
-      },
-    );
-    js.context["onLoadGroupFinished"] = (String s) {
-      completer.complete(s);
-    };
-    js.context.callMethod('setByName', ['load_group']);
-    return timeoutFuture;
-  }
-
   Future<void> sessionSendPointer(
       {required UuidValue sessionId, required String msg, dynamic hint}) {
     throw UnimplementedError("sessionSendPointer");

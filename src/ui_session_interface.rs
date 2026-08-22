@@ -102,6 +102,20 @@ fn serialize_connection_worker_handoff(conn_type: ConnType) -> bool {
     matches!(conn_type, ConnType::PORT_FORWARD | ConnType::RDP)
 }
 
+/// A port-forward session owns long-lived listeners and many independent remote connections.
+/// Retrying the whole session when one accepted connection fails drops every healthy tunnel and
+/// can turn a transient server-side admission rejection into a permanent reconnect storm.
+fn should_retry_connection_error(
+    conn_type: ConnType,
+    msgtype: &str,
+    title: &str,
+    text: &str,
+    before_first_peer_message: bool,
+) -> bool {
+    !matches!(conn_type, ConnType::PORT_FORWARD | ConnType::RDP)
+        && check_if_retry(msgtype, title, text, before_first_peer_message)
+}
+
 /// ConnectionRoundState is used to control the reconnecting logic.
 pub struct ConnectionRoundState {
     round: u32,
@@ -157,7 +171,10 @@ impl Default for ConnectionRoundState {
 
 #[cfg(test)]
 mod connection_round_tests {
-    use super::{serialize_connection_worker_handoff, ConnectionRoundState, ConnectionState};
+    use super::{
+        serialize_connection_worker_handoff, should_retry_connection_error, ConnectionRoundState,
+        ConnectionState,
+    };
     use hbb_common::rendezvous_proto::ConnType;
 
     #[test]
@@ -179,6 +196,27 @@ mod connection_round_tests {
         assert!(!serialize_connection_worker_handoff(ConnType::DEFAULT_CONN));
         assert!(!serialize_connection_worker_handoff(
             ConnType::FILE_TRANSFER
+        ));
+    }
+
+    #[test]
+    fn tunnel_subconnection_error_never_retries_the_listener_session() {
+        for conn_type in [ConnType::PORT_FORWARD, ConnType::RDP] {
+            assert!(!should_retry_connection_error(
+                conn_type,
+                "error",
+                "Connection Error",
+                "Reset by the peer",
+                true,
+            ));
+        }
+
+        assert!(should_retry_connection_error(
+            ConnType::DEFAULT_CONN,
+            "error",
+            "Connection Error",
+            "Reset by the peer",
+            true,
         ));
     }
 }
@@ -1732,10 +1770,17 @@ impl<T: InvokeUiSession> Interface for Session<T> {
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str) {
-        let direct = self.lc.read().unwrap().direct;
-        let received = self.lc.read().unwrap().received;
-        let retry_for_relay = direct == Some(true) && !received;
-        let retry = check_if_retry(msgtype, title, text, retry_for_relay);
+        let lc = self.lc.read().unwrap();
+        let conn_type = lc.conn_type;
+        let before_first_peer_message = lc.direct == Some(true) && !lc.received;
+        drop(lc);
+        let retry = should_retry_connection_error(
+            conn_type,
+            msgtype,
+            title,
+            text,
+            before_first_peer_message,
+        );
         self.ui_handler.msgbox(msgtype, title, text, link, retry);
     }
 

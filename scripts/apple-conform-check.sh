@@ -3654,6 +3654,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2-001) R-S11hl reserve-before-dispatch file-response ownership =="
+if python3 scripts/verify-file-response-ownership.py --repo . --self-test; then
+  note "ok  R-S11hl Apple/shared file-directory responses reserve bounded exact-session owners before dispatch"
+else
+  echo "  FAIL R-S11hl Apple/shared file-directory requests regained send-before-register loss, unbounded retention, stale response authority, or incomplete timer cleanup"
+  rc=1
+fi
+
 echo "== (2g-c2a) R-S11gu bounded exact-owner native-to-Dart cursor publication =="
 if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
   note "ok  R-S11gu Apple/shared cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"

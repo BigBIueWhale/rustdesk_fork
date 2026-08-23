@@ -46,6 +46,37 @@ class JobID {
 
 typedef GetSessionID = SessionID Function();
 typedef GetDialogManager = OverlayDialogManager? Function();
+typedef ReadRemoteDirectory = Future<void> Function(
+    SessionID sessionId, String path, bool showHidden);
+typedef ReadRemoteDirectoryTree = Future<void> Function(SessionID sessionId,
+    int actionId, String path, bool isRemote, bool showHidden);
+
+class FileFetcherRequests {
+  const FileFetcherRequests({
+    required this.readDirectory,
+    required this.readEmptyDirectories,
+    required this.readDirectoryTree,
+  });
+
+  final ReadRemoteDirectory readDirectory;
+  final ReadRemoteDirectory readEmptyDirectories;
+  final ReadRemoteDirectoryTree readDirectoryTree;
+
+  static final native = FileFetcherRequests(
+    readDirectory: (sessionId, path, showHidden) => bind.sessionReadRemoteDir(
+        sessionId: sessionId, path: path, includeHidden: showHidden),
+    readEmptyDirectories: (sessionId, path, showHidden) =>
+        bind.sessionReadRemoteEmptyDirsRecursiveSync(
+            sessionId: sessionId, path: path, includeHidden: showHidden),
+    readDirectoryTree: (sessionId, actionId, path, isRemote, showHidden) =>
+        bind.sessionReadDirToRemoveRecursive(
+            sessionId: sessionId,
+            actId: actionId,
+            path: path,
+            isRemote: isRemote,
+            showHidden: showHidden),
+  );
+}
 
 @immutable
 class FileOverrideConfirmation {
@@ -180,6 +211,7 @@ class FileModel {
     if (parent.target?.sessionId != expectedSessionId) return;
     await evtLoop.close();
     if (parent.target?.sessionId != expectedSessionId) return;
+    fileFetcher.cancelPending();
     parent.target?.dialogManager.dismissAll();
     await localController.close(expectedSessionId);
     if (parent.target?.sessionId != expectedSessionId) return;
@@ -191,24 +223,30 @@ class FileModel {
     await remoteController.refresh();
   }
 
-  void receiveFileDir(Map<String, dynamic> evt) {
+  void receiveFileDir(
+      Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) return;
     if (evt['is_local'] == "false") {
       // init remote home, the remote connection will send one dir event when established. TODO opt
       remoteController.initDirAndHome(evt);
     }
-    fileFetcher.tryCompleteTask(evt['value'], evt['is_local']);
+    fileFetcher.tryCompleteTask(
+        expectedSessionId, evt['value'], evt['is_local']);
   }
 
-  void receiveEmptyDirs(Map<String, dynamic> evt) {
-    fileFetcher.tryCompleteEmptyDirsTask(evt['value'], evt['is_local']);
+  void receiveEmptyDirs(
+      Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) return;
+    fileFetcher.tryCompleteEmptyDirsTask(
+        expectedSessionId, evt['value'], evt['is_local']);
   }
 
   // This method fixes a deadlock that occurred when the previous code directly
   // called jobController.jobError(evt) in the job_error event handler.
   //
   // The problem with directly calling jobController.jobError():
-  //   1. fetchDirectoryRecursiveToRemove(jobID) registers readRecursiveTasks[jobID]
-  //      and waits for completion
+  //   1. fetchDirectoryRecursiveToRemove(jobID) reserves the recursive response
+  //      owner before dispatch and waits for completion
   //   2. If the remote has no permission (or some other errors), it returns a FileTransferError
   //   3. The error triggers job_error event, which called jobController.jobError()
   //   4. jobController.jobError() calls getJob(jobID) to find the job in jobTable
@@ -219,11 +257,13 @@ class FileModel {
   //
   // Solution: Before calling jobController.jobError(), we first check if there's
   // a pending readRecursiveTasks with this ID and complete it with the error.
-  void handleJobError(Map<String, dynamic> evt) {
+  void handleJobError(Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) return;
     final id = int.tryParse(evt['id']?.toString() ?? '');
     if (id != null) {
       final err = evt['err']?.toString() ?? 'Unknown error';
-      fileFetcher.tryCompleteRecursiveTaskWithError(id, err);
+      fileFetcher.tryCompleteRecursiveTaskWithError(
+          expectedSessionId, id, err);
     }
     // Always call jobController.jobError(evt) to ensure all error events are processed,
     // even if the event does not have a valid job ID. This allows for generic error handling
@@ -1385,203 +1425,301 @@ class JobResultListener<T> {
 }
 
 class FileFetcher {
-  // Map<String,Completer<FileDirectory>> localTasks = {}; // now we only use read local dir sync
-  Map<String, Completer<FileDirectory>> remoteTasks = {};
-  Map<String, Completer<List<FileDirectory>>> remoteEmptyDirsTasks = {};
-  Map<int, Completer<FileDirectory>> readRecursiveTasks = {};
+  final Map<String, _PendingFileRequest<FileDirectory>> _remoteTasks = {};
+  final Map<String, _PendingFileRequest<List<FileDirectory>>>
+      _remoteEmptyDirsTasks = {};
+  final Map<int, _PendingFileRequest<FileDirectory>> _readRecursiveTasks = {};
 
   final GetSessionID getSessionID;
+  final FileFetcherRequests _requests;
+  final int maxPending;
+  final Duration requestTimeout;
   SessionID get sessionId => getSessionID();
 
-  FileFetcher(this.getSessionID);
+  FileFetcher(this.getSessionID,
+      {FileFetcherRequests? requests,
+      this.maxPending = 64,
+      this.requestTimeout = const Duration(seconds: 2)})
+      : _requests = requests ?? FileFetcherRequests.native {
+    if (maxPending < 1) {
+      throw ArgumentError.value(maxPending, 'maxPending');
+    }
+    if (requestTimeout.inMicroseconds < 1) {
+      throw ArgumentError.value(requestTimeout, 'requestTimeout');
+    }
+  }
+
+  int get _pendingCount =>
+      _remoteTasks.length +
+      _remoteEmptyDirsTasks.length +
+      _readRecursiveTasks.length;
 
   void cancelPending() {
-    for (final task in remoteTasks.values) {
-      if (!task.isCompleted) {
-        task.completeError("Superseded file-transfer session");
-      }
+    final directoryTasks = _remoteTasks.values.toList(growable: false);
+    final emptyDirectoryTasks =
+        _remoteEmptyDirsTasks.values.toList(growable: false);
+    final recursiveTasks =
+        _readRecursiveTasks.values.toList(growable: false);
+    _remoteTasks.clear();
+    _remoteEmptyDirsTasks.clear();
+    _readRecursiveTasks.clear();
+    final error = StateError('Superseded file-transfer session');
+    for (final task in directoryTasks) {
+      task.completeError(error);
     }
-    for (final task in remoteEmptyDirsTasks.values) {
-      if (!task.isCompleted) {
-        task.completeError("Superseded file-transfer session");
-      }
+    for (final task in emptyDirectoryTasks) {
+      task.completeError(error);
     }
-    for (final task in readRecursiveTasks.values) {
-      if (!task.isCompleted) {
-        task.completeError("Superseded file-transfer session");
-      }
+    for (final task in recursiveTasks) {
+      task.completeError(error);
     }
-    remoteTasks.clear();
-    remoteEmptyDirsTasks.clear();
-    readRecursiveTasks.clear();
   }
 
-  Future<List<FileDirectory>> registerReadEmptyDirsTask(
-      bool isLocal, String path) {
-    // final jobs = isLocal?localJobs:remoteJobs; // maybe we will use read local dir async later
-    final tasks = remoteEmptyDirsTasks; // bypass now
-    if (tasks.containsKey(path)) {
-      throw "Failed to registerReadEmptyDirsTask, already have same read job";
+  _PendingFileRequest<T> _reserve<K, T>(
+      Map<K, _PendingFileRequest<T>> tasks,
+      K key,
+      SessionID expectedSessionId,
+      bool isLocal,
+      String operation) {
+    if (tasks.containsKey(key)) {
+      throw StateError('$operation is already pending');
     }
-    final c = Completer<List<FileDirectory>>();
-    tasks[path] = c;
-
-    Timer(Duration(seconds: 2), () {
-      if (identical(tasks[path], c)) {
-        tasks.remove(path);
-      }
-      if (c.isCompleted) return;
-      c.completeError("Failed to read empty dirs, timeout");
+    if (_pendingCount >= maxPending) {
+      throw StateError('File request capacity exhausted');
+    }
+    final pending = _PendingFileRequest<T>(expectedSessionId, isLocal);
+    tasks[key] = pending;
+    pending.startTimeout(requestTimeout, () {
+      if (!identical(tasks[key], pending)) return;
+      // The wire response has no per-request nonce. Keep this exact owner as a
+      // bounded tombstone so a late response cannot complete a same-key retry.
+      pending.completeError(TimeoutException(
+          '$operation did not receive a response', requestTimeout));
     });
-    return c.future;
+    return pending;
   }
 
-  Future<FileDirectory> registerReadTask(bool isLocal, String path) {
-    // final jobs = isLocal?localJobs:remoteJobs; // maybe we will use read local dir async later
-    final tasks = remoteTasks; // bypass now
-    if (tasks.containsKey(path)) {
-      throw "Failed to registerReadTask, already have same read job";
-    }
-    final c = Completer<FileDirectory>();
-    tasks[path] = c;
-
-    Timer(Duration(seconds: 2), () {
-      if (identical(tasks[path], c)) {
-        tasks.remove(path);
+  Future<T> _dispatchAndWait<K, T>(
+      Map<K, _PendingFileRequest<T>> tasks,
+      K key,
+      _PendingFileRequest<T> pending,
+      Future<void> Function() dispatch) {
+    late final Future<void> dispatchResult;
+    try {
+      dispatchResult = dispatch();
+    } catch (error, stackTrace) {
+      if (identical(tasks[key], pending)) {
+        tasks.remove(key);
       }
-      if (c.isCompleted) return;
-      c.completeError("Failed to read dir, timeout");
-    });
-    return c.future;
-  }
-
-  Future<FileDirectory> registerReadRecursiveTask(int actID) {
-    final tasks = readRecursiveTasks;
-    if (tasks.containsKey(actID)) {
-      throw "Failed to registerRemoveTask, already have same ReadRecursive job";
+      pending.completeError(error, stackTrace);
+      return pending.future;
     }
-    final c = Completer<FileDirectory>();
-    tasks[actID] = c;
 
-    Timer(Duration(seconds: 2), () {
-      if (identical(tasks[actID], c)) {
-        tasks.remove(actID);
+    unawaited(dispatchResult.then<void>((_) {
+      pending.markDispatchSettled();
+      if (pending.responseReceived && identical(tasks[key], pending)) {
+        tasks.remove(key);
       }
-      if (c.isCompleted) return;
-      c.completeError("Failed to read dir, timeout");
-    });
-    return c.future;
+    }, onError: (Object error, StackTrace stackTrace) {
+      if (identical(tasks[key], pending)) {
+        tasks.remove(key);
+        pending.completeError(error, stackTrace);
+      }
+    }));
+    return pending.future;
   }
 
-  tryCompleteEmptyDirsTask(String? msg, String? isLocalStr) {
-    if (msg == null || isLocalStr == null) return;
-    late final Map<String, Completer<List<FileDirectory>>> tasks;
+  bool _complete<K, T>(
+      Map<K, _PendingFileRequest<T>> tasks,
+      K key,
+      SessionID expectedSessionId,
+      bool isLocal,
+      T value) {
+    final pending = tasks[key];
+    if (pending == null ||
+        pending.expectedSessionId != expectedSessionId ||
+        pending.isLocal != isLocal) {
+      return false;
+    }
+    if (pending.responseReceived) return false;
+    if (pending.isCompleted) {
+      // Consume the late response owned by a timed-out tombstone. It must not
+      // escape to a same-key request admitted afterward.
+      tasks.remove(key);
+      return false;
+    }
+    pending.complete(value);
+    if (pending.dispatchSettled) {
+      tasks.remove(key);
+    }
+    return true;
+  }
+
+  static bool? _parseIsLocal(Object? value) {
+    if (value == 'true') return true;
+    if (value == 'false') return false;
+    return null;
+  }
+
+  bool tryCompleteEmptyDirsTask(SessionID expectedSessionId, Object? msg,
+      Object? isLocalValue) {
+    final isLocal = _parseIsLocal(isLocalValue);
+    if (msg is! String || isLocal == null) return false;
     try {
       final map = jsonDecode(msg);
       final String path = map["path"];
       final List<dynamic> fdJsons = map["empty_dirs"];
       final List<FileDirectory> fds =
           fdJsons.map((fdJson) => FileDirectory.fromJson(fdJson)).toList();
-
-      tasks = remoteEmptyDirsTasks;
-      final completer = tasks.remove(path);
-
-      completer?.complete(fds);
+      return _complete(_remoteEmptyDirsTasks, path, expectedSessionId,
+          isLocal, fds);
     } catch (e) {
       debugPrint("tryCompleteJob err: $e");
+      return false;
     }
   }
 
-  tryCompleteTask(String? msg, String? isLocalStr) {
-    if (msg == null || isLocalStr == null) return;
-    late final Map<Object, Completer<FileDirectory>> tasks;
+  bool tryCompleteTask(SessionID expectedSessionId, Object? msg,
+      Object? isLocalValue) {
+    final isLocal = _parseIsLocal(isLocalValue);
+    if (msg is! String || isLocal == null) return false;
     try {
       final fd = FileDirectory.fromJson(jsonDecode(msg));
       if (fd.id > 0) {
-        // fd.id > 0 is result for read recursive
-        // to-do later,will be better if every fetch use ID,so that there will only one task map for read and recursive read
-        tasks = readRecursiveTasks;
-        final completer = tasks.remove(fd.id);
-        completer?.complete(fd);
-      } else if (fd.path.isNotEmpty) {
-        // result for normal read dir
-        // final jobs = isLocal?localJobs:remoteJobs; // maybe we will use read local dir async later
-        tasks = remoteTasks; // bypass now
-        final completer = tasks.remove(fd.path);
-        completer?.complete(fd);
+        return _complete(_readRecursiveTasks, fd.id, expectedSessionId,
+            isLocal, fd);
+      } else if (fd.id == 0 && fd.path.isNotEmpty) {
+        return _complete(
+            _remoteTasks, fd.path, expectedSessionId, isLocal, fd);
       }
     } catch (e) {
       debugPrint("tryCompleteJob err: $e");
     }
+    return false;
   }
 
   // Complete a pending recursive read task with an error.
   // See FileModel.handleJobError() for why this is necessary.
-  void tryCompleteRecursiveTaskWithError(int id, String error) {
-    final completer = readRecursiveTasks.remove(id);
-    if (completer != null && !completer.isCompleted) {
-      completer.completeError(error);
+  bool tryCompleteRecursiveTaskWithError(
+      SessionID expectedSessionId, int id, String error) {
+    final pending = _readRecursiveTasks[id];
+    if (pending == null ||
+        pending.expectedSessionId != expectedSessionId) {
+      return false;
     }
+    if (pending.responseReceived) return false;
+    if (pending.isCompleted) {
+      _readRecursiveTasks.remove(id);
+      return false;
+    }
+    pending.completeResponseError(StateError(error));
+    if (pending.dispatchSettled) {
+      _readRecursiveTasks.remove(id);
+    }
+    return true;
   }
 
   Future<List<FileDirectory>> readEmptyDirs(
-      String path, bool isLocal, bool showHidden) async {
-    try {
-      if (isLocal) {
-        final res = await bind.sessionReadLocalEmptyDirsRecursiveSync(
-            sessionId: sessionId, path: path, includeHidden: showHidden);
+      String path, bool isLocal, bool showHidden,
+      {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (isLocal) {
+      final res = await bind.sessionReadLocalEmptyDirsRecursiveSync(
+          sessionId: selectedSessionId,
+          path: path,
+          includeHidden: showHidden);
 
-        final List<dynamic> fdJsons = jsonDecode(res);
+      final List<dynamic> fdJsons = jsonDecode(res);
 
-        final List<FileDirectory> fds =
-            fdJsons.map((fdJson) => FileDirectory.fromJson(fdJson)).toList();
-        return fds;
-      } else {
-        await bind.sessionReadRemoteEmptyDirsRecursiveSync(
-            sessionId: sessionId, path: path, includeHidden: showHidden);
-        return registerReadEmptyDirsTask(isLocal, path);
-      }
-    } catch (e) {
-      return Future.error(e);
+      return fdJsons
+          .map((fdJson) => FileDirectory.fromJson(fdJson))
+          .toList();
     }
+    final pending = _reserve(_remoteEmptyDirsTasks, path, selectedSessionId,
+        false, 'Remote empty-directory request');
+    return _dispatchAndWait(_remoteEmptyDirsTasks, path, pending,
+        () => _requests.readEmptyDirectories(
+            selectedSessionId, path, showHidden));
   }
 
   Future<FileDirectory> fetchDirectory(
       String path, bool isLocal, bool showHidden,
       {SessionID? expectedSessionId}) async {
     final selectedSessionId = expectedSessionId ?? sessionId;
-    try {
-      if (isLocal) {
-        final res = await bind.sessionReadLocalDirSync(
-            sessionId: selectedSessionId, path: path, showHidden: showHidden);
-        final fd = FileDirectory.fromJson(jsonDecode(res));
-        return fd;
-      } else {
-        await bind.sessionReadRemoteDir(
-            sessionId: selectedSessionId,
-            path: path,
-            includeHidden: showHidden);
-        return registerReadTask(isLocal, path);
-      }
-    } catch (e) {
-      return Future.error(e);
+    if (isLocal) {
+      final res = await bind.sessionReadLocalDirSync(
+          sessionId: selectedSessionId, path: path, showHidden: showHidden);
+      return FileDirectory.fromJson(jsonDecode(res));
     }
+    final pending = _reserve(_remoteTasks, path, selectedSessionId, false,
+        'Remote directory request');
+    return _dispatchAndWait(_remoteTasks, path, pending,
+        () => _requests.readDirectory(selectedSessionId, path, showHidden));
   }
 
   Future<FileDirectory> fetchDirectoryRecursiveToRemove(
-      int actID, String path, bool isLocal, bool showHidden) async {
+      int actID, String path, bool isLocal, bool showHidden,
+      {SessionID? expectedSessionId}) async {
     // TODO test Recursive is show hidden default?
-    try {
-      await bind.sessionReadDirToRemoveRecursive(
-          sessionId: sessionId,
-          actId: actID,
-          path: path,
-          isRemote: !isLocal,
-          showHidden: showHidden);
-      return registerReadRecursiveTask(actID);
-    } catch (e) {
-      return Future.error(e);
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    final pending = _reserve(_readRecursiveTasks, actID, selectedSessionId,
+        isLocal, 'Recursive directory request');
+    return _dispatchAndWait(
+        _readRecursiveTasks,
+        actID,
+        pending,
+        () => _requests.readDirectoryTree(
+            selectedSessionId, actID, path, !isLocal, showHidden));
+  }
+}
+
+class _PendingFileRequest<T> {
+  _PendingFileRequest(this.expectedSessionId, this.isLocal);
+
+  final SessionID expectedSessionId;
+  final bool isLocal;
+  final Completer<T> _done = Completer<T>();
+  Timer? _timer;
+  bool _dispatchSettled = false;
+  bool _responseReceived = false;
+
+  Future<T> get future => _done.future;
+  bool get dispatchSettled => _dispatchSettled;
+  bool get isCompleted => _done.isCompleted;
+  bool get responseReceived => _responseReceived;
+
+  void startTimeout(Duration timeout, void Function() onTimeout) {
+    if (_timer != null || _done.isCompleted) {
+      throw StateError('File request timeout already started');
     }
+    _timer = Timer(timeout, onTimeout);
+  }
+
+  void complete(T value) {
+    if (_done.isCompleted) return;
+    _responseReceived = true;
+    _timer?.cancel();
+    _timer = null;
+    _done.complete(value);
+  }
+
+  void completeError(Object error, [StackTrace? stackTrace]) {
+    if (_done.isCompleted) return;
+    _timer?.cancel();
+    _timer = null;
+    _done.completeError(error, stackTrace);
+  }
+
+  void completeResponseError(Object error) {
+    if (_done.isCompleted) return;
+    _responseReceived = true;
+    _timer?.cancel();
+    _timer = null;
+    _done.completeError(error);
+  }
+
+  void markDispatchSettled() {
+    _dispatchSettled = true;
   }
 }
 

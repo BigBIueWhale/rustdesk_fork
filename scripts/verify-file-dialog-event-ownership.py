@@ -527,7 +527,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("file_model", "rawJobId != jobId.toString() ||", "false ||", "canonical job identity"),
     ("file_model", "rawFileNum != fileNum.toString() ||", "false ||", "canonical file number"),
     ("file_model", "readPath.contains('\\u0000') ||", "false ||", "NUL path refusal"),
-    ("file_model", "if (value == 'false') return false;", "if (value != 'true') return false;", "closed boolean vocabulary"),
+    (
+        "file_model",
+        "static bool? _tryParseBool(String value) {\n"
+        "    if (value == 'true') return true;\n"
+        "    if (value == 'false') return false;",
+        "static bool? _tryParseBool(String value) {\n"
+        "    if (value == 'true') return true;\n"
+        "    if (value != 'true') return false;",
+        "closed boolean vocabulary",
+    ),
     (
         "file_model",
         "bool postOverrideFileConfirm(\n"

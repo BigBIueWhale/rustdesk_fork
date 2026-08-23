@@ -569,9 +569,9 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'terminal_response') {
       parent.target?.routeTerminalResponse(evt);
     } else if (name == 'file_dir') {
-      parent.target?.fileModel.receiveFileDir(evt);
+      parent.target?.fileModel.receiveFileDir(evt, sessionId);
     } else if (name == 'empty_dirs') {
-      parent.target?.fileModel.receiveEmptyDirs(evt);
+      parent.target?.fileModel.receiveEmptyDirs(evt, sessionId);
     } else if (name == 'job_progress') {
       parent.target?.fileModel.jobController.tryUpdateJobProgress(evt);
     } else if (name == 'job_done') {
@@ -583,7 +583,7 @@ class FfiModel with ChangeNotifier {
         parent.target?.fileModel.refreshAll();
       }
     } else if (name == 'job_error') {
-      parent.target?.fileModel.handleJobError(evt);
+      parent.target?.fileModel.handleJobError(evt, sessionId);
     } else if (name == 'override_file_confirm') {
       final ffi = parent.target;
       if (ffi != null &&

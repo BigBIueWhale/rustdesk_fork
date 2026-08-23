@@ -26636,12 +26636,151 @@ independent reproduction, R-V3 external review, causation, and proof that the
 complete connection flow is correct and performant remain explicit release
 obligations and explicit user requests.
 
+### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership (2026-08-22)
+
+**SOURCE IMPLEMENTED AND CONFINED SOURCE-GATED; EXACT DART/FLUTTER/NATIVE AND
+PHYSICAL-PLATFORM EVIDENCE OPEN.** Platform: the
+shared native Flutter file-transfer viewer on Android, iOS, Windows, Linux, and
+macOS. Endpoint/action: a Dart directory operation emits one native remote-read
+command and later consumes its asynchronous `file_dir`, `empty_dirs`, or
+recursive-read/error event. Boundary: the exact current Flutter session and
+typed operation/key/side reservation ↔ the one native response allowed to
+complete that request.
+
+Read-only source and history review found that all three inherited remote
+directory paths awaited native dispatch before calling their respective
+`registerRead*Task` method. The event stream could therefore deliver and discard
+a sufficiently fast response while no completer existed, after which the UI
+reported only the artificial two-second timeout. Session replacement while the
+bridge dispatch was suspended was worse: `beginSession` could clear the old
+maps, then the resumed old call could register stale work after that cleanup.
+The three public registration APIs also owned independent unbounded maps, and
+successful responses removed a completer without cancelling the timer that
+continued retaining its closure. Native `update_folder_files` compounded the
+ambiguity by ignoring its `is_local` argument and always labeling the event
+remote even though the local recursive-read branch deliberately passes true.
+The source's existing recursive-job error
+comment already described the resulting two-second lost-completion symptom, but
+its stated step order did not match the actual send-before-register code. This
+is shared source-proven file request/response order and resource-finality debt,
+not evidence that an unidentified deployed artifact exercised it and not a
+cause claim for the separately reported display-only delay.
+
+The corrected `FileFetcher` has no public register-after-send API. It reserves
+one `_PendingFileRequest` before invoking the typed `FileFetcherRequests`
+operation. One total count caps normal-directory, empty-directory, and
+recursive-directory maps at 64, including timed-out tombstones and a completed
+response retained while bridge dispatch drains. Each reservation retains the
+exact session ID, expected local/remote side, operation-specific map, and path
+or positive action key. Duplicate or saturated admission fails before native
+dispatch. Successful directory completion requires the exact key plus session
+and side on the correct response method; a recursive job error requires its
+exact current-session positive action key on the recursive map. Wrong-session,
+wrong-side, wrong-operation, wrong-key, negative-ID, malformed/non-string,
+unsolicited, and stale events cannot consume an active waiter. No guessed
+authority is derived from an ID-zero generic error: that event has no
+path or operation discriminator, so it cannot select a normal/empty-directory
+owner and the bounded deadline/tombstone behavior remains authoritative.
+`FfiModel` now carries the event-stream session ID through `FileModel` into both success and
+recursive-error completion instead of consulting a replaceable current-session
+value. Native
+`update_folder_files` serializes the actual boolean side, so a local recursive
+response and remote directory response retain their distinct identities.
+
+One exact timer belongs to each admitted reservation, and its caller-visible
+deadline remains live even while the bridge dispatch Future is suspended.
+Success or exact recursive error completes the caller and cancels the timer,
+while the exact map owner remains until dispatch settles so a stuck dispatch
+cannot escape total capacity. Normal and empty-directory wire responses have no
+per-request nonce. Their timeout therefore cannot safely authorize a same-path
+replacement: it converts the owner into a bounded tombstone, refuses that key,
+and consumes a matching late response without completing later work. Exact
+session retirement is the other safe way to clear that tombstone. Dispatch
+failure removes only its still-current owner and completes it if no earlier
+terminal edge won. Session replacement and explicit exact-session file-model
+close clear all maps before completing active waiters with the retirement
+error, so a suspended dispatch may drain but cannot register afterward or
+authorize a replacement generation. The small typed request dependency exists
+to deterministically suspend the three existing generated native calls in
+tests; production constructs it solely from those calls. It adds no alternate
+transport, buffer, retry, reconnect, timer beyond the already required bounded
+request deadline, poller, worker, isolate, thread, runtime, service restart,
+listener, port, privilege, dependency, or network behavior.
+
+Six focused Dart regressions cover caller-visible response completion plus
+retained capacity while dispatch remains blocked; exact
+session/side/operation/key, negative-ID, and malformed-type refusal; retirement
+during dispatch and exact-generation same-key replacement; dispatch-failure
+cleanup; one capacity shared by all maps; timeout tombstone/same-key refusal and
+late-response consumption; and successful timer cancellation. The existing
+`dart-verify.sh` transaction owns that test. The focused
+`scripts/verify-file-response-ownership.py` validator independently parses the
+closed three-operation native dependency, all reserve/dispatch/complete paths,
+the exact pending owner and timer finality, lifecycle/event routing, tests,
+requirements/Appendix/ledger identity, shared and Apple wiring, and independent
+workspace binding; its deliberate mutations attack each boundary. The
+independent workspace validator separately derives the product contract from
+the Dart source and carries its own product, test, focused-verifier, wiring, and
+ledger mutations.
+
+Final confined source verification used only the approved immutable image as
+numeric UID:GID 1000:1000, with no pull or network, a read-only repository,
+all capabilities dropped, no-new-privileges, and bounded processes, memory,
+swap, CPU, and private tmpfs. The focused file-response validator passes its
+baseline and rejects all 36 deliberate mutations. The file-dialog ownership
+validator rejects all 40 deliberate mutations, and the shared Android
+voice-call ownership validator passes its baseline and rejects all 536
+deliberate mutations after being brought forward to the current lifecycle
+contract. The independent workspace baseline passes. After every catalog
+correction below, one fresh complete, unsliced
+`--source-mutations-only` execution from mutation 1 completed with exit code 0
+and `verify-verifier-workspace: ok`; only that final uninterrupted execution is
+represented as the complete catalog pass. The native-codec requirements watch
+passes in normal and hostile-mutation modes. Python AST compilation, HTML
+parsing, Bash parsing, the requirements digest, and Git whitespace validation
+also pass.
+
+Verification was allowed to fail loudly and its diagnostic history is retained.
+Review first corrected a focused-parser prefix collision, outdated assumptions
+in the shared Android ownership verifier, and the native `is_local` hardcode;
+deeper response-lifetime review then replaced a dispatch-awaited deadline with
+a live caller deadline and retained no-nonce timeout tombstones. Before the
+final complete catalog pass, five complete catalog attempts exposed independent
+fixture defects in sequence: missing `beginSession` retirement coverage;
+ambiguous begin/close cancellation labels; an over-broad timer-cancellation
+target; duplicate Dart-wiring authority already owned by the Android validator;
+and the two differently labelled focused session-identity occurrences. Each was
+corrected and the catalog restarted from mutation 1. One subsequent short
+preflight rejected an incorrectly quoted split target before product mutations
+began; the target was replaced with two exact multiline fixtures before the
+final run. None of those incomplete or failed attempts is represented as a
+pass.
+
+The sole authorized image has no Dart/Flutter or Rust/Cargo/native platform
+toolchain, so the six committed Dart regressions, analyzer/formatter, generated
+bridge, native compilation, and platform execution remain explicitly
+unexecuted rather than being replaced by a host run or an unapproved image.
+
+This slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change host firewall/network/listener
+state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
+unrelated container/image; or request/acquire root. Exact Dart/Flutter/native
+execution, current physical Android task-swipe/reopen/Force-Stop and Windows
+focus/minimize/reconnect reproduction, Linux/macOS/iOS/web and cross-version
+transfer behavior, capture-through-compositor timestamps and explicit
+end-to-end latency/queue/CPU/memory budgets, sustained
+connection/reconnect/focus/background/file/control/resource/performance soak,
+clean cold R-B2/R-B10 equality, installed artifacts/service behavior, fresh
+independent reproduction, R-V3 external review, causation, and proof that the
+complete connection flow is correct and performant remain explicit release
+obligations and explicit user requests.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c68b3305623074bc3a9b68bf9b1e03040a2b3b877d936c0af83dba59febc25cf  requirements.html
+5ae5b80ba3b1280ed3a0235241f63b60ca5fd8a2555ce561bb31427009d0aa0c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26720,3 +26859,4 @@ The same identity additionally binds R-S11hg and Appendix C #368.
 The same identity additionally binds R-S11hi and Appendix C #369.
 The same identity additionally binds R-S11hj and Appendix C #370.
 The same identity additionally binds R-S11hk and Appendix C #371.
+The same identity additionally binds R-S11hl and Appendix C #372.

@@ -2198,7 +2198,7 @@ impl InvokeUiSession for FlutterHandler {
         id: i32,
         entries: &Vec<FileEntry>,
         path: String,
-        #[allow(unused_variables)] is_local: bool,
+        is_local: bool,
         only_count: bool,
     ) {
         // TODO opt
@@ -2209,10 +2209,11 @@ impl InvokeUiSession for FlutterHandler {
                 &[],
             );
         } else {
+            let is_local = is_local.to_string();
             self.push_event(
                 "file_dir",
                 &[
-                    ("is_local", "false"),
+                    ("is_local", &is_local),
                     ("value", &crate::common::make_fd_to_json(id, path, entries)),
                 ],
                 &[],

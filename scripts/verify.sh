@@ -9504,6 +9504,12 @@ else
   echo "  FAIL R-S11hk/R-S11e-248: file-confirm events regained raw maps, polling, unbounded retention, stale generation, silent refusal, or hidden failure"
   rc=1
 fi
+if python3 scripts/verify-file-response-ownership.py --repo . --self-test; then
+  echo "  ok  R-S11hl/R-S11e-249 file-directory responses reserve bounded exact-session owners before dispatch"
+else
+  echo "  FAIL R-S11hl/R-S11e-249: file-directory requests regained send-before-register loss, unbounded retention, stale response authority, or incomplete timer cleanup"
+  rc=1
+fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never

@@ -29627,8 +29627,8 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "mobile_file_lifecycle_test",
-            "expect(directory.path, path);",
-            "Android retired file timeout replacement behavior source",
+            "retirement cancels an in-flight dispatch and permits replacement",
+            "Android reserve-before-dispatch retirement behavior source",
         ),
         (
             "android_main_activity",
@@ -30001,8 +30001,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_exact_count(
         sources["file_model_dart"],
-        "if (identical(tasks[",
-        3,
+        "if (!identical(tasks[key], pending)) return;",
+        1,
         "Android file-fetch timeout exact-completer retirement source",
     )
     require_exact_count(
@@ -45823,6 +45823,375 @@ def validate_file_dialog_event_ownership_contract(sources):
     )
 
 
+def validate_file_response_ownership_contract(sources):
+    focused = sources["file_response_ownership_verifier"]
+    try:
+        ast.parse(focused, filename="scripts/verify-file-response-ownership.py")
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"file-response focused verifier does not parse: {exc}"
+        ) from exc
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "file-response focused runtime validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "file-response focused mutation inventory",
+    )
+    for text, label in (
+        ('"this.maxPending = 64,"', "focused total response capacity"),
+        ('"if (_pendingCount >= maxPending)"', "focused capacity refusal"),
+        ('"tasks[key] = pending;"', "focused reservation publication"),
+        ('"dispatchResult = dispatch();"', "focused dispatch edge"),
+        ('"wire response has no per-request nonce"', "focused timeout tombstone"),
+        ('"if (pending.responseReceived) return false;"', "focused completed-response authority"),
+        ('"pending.expectedSessionId != expectedSessionId ||"', "focused session identity"),
+        ('"pending.isLocal != isLocal"', "focused response side identity"),
+        ('"_timer?.cancel();"', "focused timer finality"),
+        ('"receiveFileDir(evt, sessionId);"', "focused stream identity propagation"),
+        ('(\"is_local\", &is_local),', "focused native response side"),
+        ('"directory response owner exists before bridge dispatch settles"', "focused fast-response regression"),
+        ('"flutter test --no-pub test/mobile_file_session_lifecycle_test.dart"', "focused Dart behavior wiring"),
+    ):
+        require_text(validation, text, label)
+    for text, label in (
+        ('"this.maxPending = 64,"', "focused capacity mutation"),
+        ('"pending.expectedSessionId != expectedSessionId ||"', "focused session mutation"),
+        ('"pending.isLocal != isLocal"', "focused response-side mutation"),
+        ('"timeout tombstone retention"', "focused timeout-tombstone mutation"),
+        ('"negative response ID refusal"', "focused negative-ID mutation"),
+        ('(\"is_local\", &is_local),', "focused native response-side mutation"),
+        ('"directory response owner exists before bridge dispatch settles"', "focused fast-response test mutation"),
+        ('"    validate_file_response_ownership_contract(sources)\\n"', "focused independent dispatch mutation"),
+    ):
+        require_text(mutation_inventory, text, label)
+    require_text(focused, "run_self_test(sources)", "focused mutation dispatch")
+    require_text(
+        focused,
+        'if signature.rstrip().endswith("("):',
+        "focused named-argument body extraction",
+    )
+
+    file_model = sources["file_model_dart"]
+    request_surface = extract_between(
+        file_model,
+        "class FileFetcherRequests {",
+        "\n}\n\n@immutable",
+        "independent typed file request surface",
+    )
+    require_order(
+        request_surface,
+        (
+            "final ReadRemoteDirectory readDirectory;",
+            "final ReadRemoteDirectory readEmptyDirectories;",
+            "final ReadRemoteDirectoryTree readDirectoryTree;",
+            "static final native = FileFetcherRequests(",
+            "bind.sessionReadRemoteDir(",
+            "bind.sessionReadRemoteEmptyDirsRecursiveSync(",
+            "bind.sessionReadDirToRemoveRecursive(",
+        ),
+        "independent closed native file request surface",
+    )
+    for forbidden, label in (
+        ("Timer", "independent request-surface timer"),
+        ("retry", "independent request-surface retry"),
+        ("StreamController", "independent alternate response transport"),
+    ):
+        require_absent(request_surface, forbidden, label)
+
+    fetcher = extract_between(
+        file_model,
+        "class FileFetcher {",
+        "\n}\n\nclass _PendingFileRequest",
+        "independent file response owner",
+    )
+    require_order(
+        fetcher,
+        (
+            "final Map<String, _PendingFileRequest<FileDirectory>> _remoteTasks = {};",
+            "_remoteEmptyDirsTasks = {};",
+            "final Map<int, _PendingFileRequest<FileDirectory>> _readRecursiveTasks = {};",
+            "this.maxPending = 64,",
+            "this.requestTimeout = const Duration(seconds: 2)",
+            "int get _pendingCount =>",
+            "_remoteTasks.length +",
+            "_remoteEmptyDirsTasks.length +",
+            "_readRecursiveTasks.length;",
+            "if (_pendingCount >= maxPending)",
+            "final pending = _PendingFileRequest<T>(expectedSessionId, isLocal);",
+            "tasks[key] = pending;",
+            "pending.startTimeout(requestTimeout, ()",
+            "if (!identical(tasks[key], pending)) return;",
+            "wire response has no per-request nonce",
+            "pending.completeError(TimeoutException(",
+            "dispatchResult = dispatch();",
+            "catch (error, stackTrace)",
+            "if (identical(tasks[key], pending))",
+            "tasks.remove(key);",
+            "pending.completeError(error, stackTrace);",
+            "unawaited(dispatchResult.then<void>",
+            "pending.markDispatchSettled();",
+            "if (pending.responseReceived && identical(tasks[key], pending))",
+            "final pending = tasks[key];",
+            "pending.expectedSessionId != expectedSessionId ||",
+            "pending.isLocal != isLocal",
+            "if (pending.responseReceived) return false;",
+            "if (pending.isCompleted)",
+            "tasks.remove(key);",
+            "pending.complete(value);",
+            "if (pending.dispatchSettled)",
+            "tasks.remove(key);",
+        ),
+        "independent bounded exact-response state machine",
+    )
+    reserve = extract_between(
+        fetcher,
+        "_PendingFileRequest<T> _reserve<",
+        "\n  Future<T> _dispatchAndWait<",
+        "independent file response reservation",
+    )
+    require_absent(
+        reserve,
+        "tasks.remove(key);",
+        "independent timeout tombstone removal",
+    )
+    dispatch = extract_between(
+        fetcher,
+        "Future<T> _dispatchAndWait<",
+        "\n  bool _complete<",
+        "independent file response dispatch",
+    )
+    require_absent(dispatch, "await dispatch", "independent blocking bridge dispatch")
+    require_absent(dispatch, ") async {", "independent async dispatch wrapper")
+    for legacy in (
+        "registerReadTask",
+        "registerReadEmptyDirsTask",
+        "registerReadRecursiveTask",
+        "Map<String, Completer<FileDirectory>> remoteTasks",
+    ):
+        require_absent(fetcher, legacy, "independent send-before-register API")
+    response = extract_between(
+        fetcher,
+        "bool tryCompleteTask(",
+        "\n  // Complete a pending recursive read task with an error.",
+        "independent typed file response",
+    )
+    require_order(
+        response,
+        (
+            "Object? msg,",
+            "Object? isLocalValue",
+            "if (msg is! String || isLocal == null) return false;",
+            "if (fd.id > 0)",
+            "else if (fd.id == 0 && fd.path.isNotEmpty)",
+        ),
+        "independent malformed and negative-ID response refusal",
+    )
+    require_order(
+        extract_between(
+            fetcher,
+            "Future<List<FileDirectory>> readEmptyDirs(",
+            "\n  Future<FileDirectory> fetchDirectory(",
+            "independent empty-directory request",
+        ),
+        (
+            "final pending = _reserve(_remoteEmptyDirsTasks, path, selectedSessionId,",
+            "return _dispatchAndWait(_remoteEmptyDirsTasks, path, pending,",
+            "_requests.readEmptyDirectories(",
+        ),
+        "independent empty-directory reserve-before-dispatch",
+    )
+    require_order(
+        extract_between(
+            fetcher,
+            "Future<FileDirectory> fetchDirectory(",
+            "\n  Future<FileDirectory> fetchDirectoryRecursiveToRemove(",
+            "independent directory request",
+        ),
+        (
+            "final pending = _reserve(_remoteTasks, path, selectedSessionId, false,",
+            "return _dispatchAndWait(_remoteTasks, path, pending,",
+            "_requests.readDirectory(selectedSessionId, path, showHidden)",
+        ),
+        "independent directory reserve-before-dispatch",
+    )
+    require_order(
+        extract_between(
+            file_model,
+            "Future<FileDirectory> fetchDirectoryRecursiveToRemove(",
+            "\n  }\n}\n\nclass _PendingFileRequest",
+            "independent recursive directory request",
+        ),
+        (
+            "final pending = _reserve(_readRecursiveTasks, actID, selectedSessionId,",
+            "return _dispatchAndWait(",
+            "_requests.readDirectoryTree(",
+        ),
+        "independent recursive reserve-before-dispatch",
+    )
+
+    pending = extract_between(
+        file_model,
+        "class _PendingFileRequest<T> {",
+        "\n}\n\nclass FileDirectory",
+        "independent pending file response",
+    )
+    require_order(
+        pending,
+        (
+            "final SessionID expectedSessionId;",
+            "final bool isLocal;",
+            "final Completer<T> _done = Completer<T>();",
+            "Timer? _timer;",
+            "bool _dispatchSettled = false;",
+            "bool _responseReceived = false;",
+            "_timer = Timer(timeout, onTimeout);",
+            "void complete(T value)",
+            "_responseReceived = true;",
+            "_timer?.cancel();",
+            "_done.complete(value);",
+            "void completeError(Object error, [StackTrace? stackTrace])",
+            "_timer?.cancel();",
+            "_done.completeError(error, stackTrace);",
+            "void completeResponseError(Object error)",
+            "_responseReceived = true;",
+            "_timer?.cancel();",
+            "_done.completeError(error);",
+            "void markDispatchSettled()",
+            "_dispatchSettled = true;",
+        ),
+        "independent exact timer finality",
+    )
+    begin = extract_between(
+        file_model,
+        "void beginSession(SessionID expectedSessionId)",
+        "\n  Future<void> onReady(",
+        "independent file-model session start",
+    )
+    require_order(
+        begin,
+        (
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "fileFetcher.cancelPending();",
+            "jobController.clear();",
+            "localController.resetForSession();",
+            "remoteController.resetForSession();",
+        ),
+        "independent begin-owned request retirement",
+    )
+    close = extract_between(
+        file_model,
+        "Future<void> close(SessionID expectedSessionId)",
+        "\n  Future<void> refreshAll()",
+        "independent file-model close",
+    )
+    require_order(
+        close,
+        (
+            "if (parent.target?.sessionId != expectedSessionId) return;",
+            "await evtLoop.close();",
+            "if (parent.target?.sessionId != expectedSessionId) return;",
+            "fileFetcher.cancelPending();",
+        ),
+        "independent close-owned request retirement",
+    )
+    handler = extract_between(
+        sources["model_dart"],
+        "Future<void> _handleSessionEvent(",
+        "\n  _handleScreenshot(",
+        "independent session file-response routing",
+    )
+    require_order(
+        handler,
+        (
+            "else if (name == 'file_dir')",
+            "receiveFileDir(evt, sessionId);",
+            "else if (name == 'empty_dirs')",
+            "receiveEmptyDirs(evt, sessionId);",
+            "else if (name == 'job_error')",
+            "handleJobError(evt, sessionId);",
+        ),
+        "independent stream session identity propagation",
+    )
+    producer = extract_between(
+        sources["flutter_source"],
+        "fn update_folder_files(",
+        "\n    fn update_empty_dirs(",
+        "independent native directory response producer",
+    )
+    require_order(
+        producer,
+        (
+            "is_local: bool,",
+            "if only_count",
+            "let is_local = is_local.to_string();",
+            '"file_dir",',
+            '("is_local", &is_local),',
+            '("value", &crate::common::make_fd_to_json(id, path, entries)),',
+        ),
+        "independent actual recursive-directory response side",
+    )
+    require_absent(
+        producer,
+        '("is_local", "false")',
+        "independent hardcoded recursive-directory response side",
+    )
+
+    test = sources["mobile_file_lifecycle_test"]
+    for text, label in (
+        ("directory response owner exists before bridge dispatch settles", "independent fast response regression"),
+        ("response must match session, locality, operation, and key", "independent correlation regression"),
+        ("retirement cancels an in-flight dispatch and permits replacement", "independent retirement regression"),
+        ("dispatch failure removes its exact reservation", "independent dispatch regression"),
+        ("one total capacity bounds all response maps", "independent capacity regression"),
+        ("timeout quarantines its key until the late response is consumed", "independent timeout regression"),
+        ("await dispatchEntered.future;", "independent blocked-dispatch fixture"),
+        ("maxPending: 1,", "independent blocked-dispatch retained capacity"),
+        ("'/different-path'", "independent blocked-dispatch cross-key capacity"),
+        ("maxPending: 2,", "independent cross-map capacity fixture"),
+        ("throwsA(isA<TimeoutException>())", "independent timeout assertion"),
+        ("directoryResponse('/owned', id: -1)", "independent negative-ID refusal"),
+        ("fetcher.tryCompleteTask(session, 7, 'false')", "independent malformed-type refusal"),
+        ("session, 0, 'anonymous error'", "independent anonymous-error refusal"),
+        ("path now would let the stale answer complete", "independent timeout retry refusal"),
+    ):
+        require_text(test, text, label)
+    for source, text, label in (
+        (sources["dart_verify"], "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "independent Dart behavior gate"),
+        (sources["verify"], "python3 scripts/verify-file-response-ownership.py --repo . --self-test", "independent shared focused gate"),
+        (sources["apple"], "python3 scripts/verify-file-response-ownership.py --repo . --self-test", "independent Apple focused gate"),
+        (sources["requirements"], '<div class="req"><span class="id">R-S11hl</span>', "independent R-S11hl requirement"),
+        (sources["requirements"], "timeout <span class=\"kw\">MUST</span> retain the exact owner as a bounded tombstone", "independent no-nonce timeout requirement"),
+        (sources["requirements"], "<tr><td>372</td>", "independent Appendix C #372"),
+        (sources["hardening"], "### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership", "independent R-S11hl ledger"),
+        (
+            sources["workspace_verifier"],
+            '            "file_response_ownership_verifier": (\n'
+            '                repo / "scripts/verify-file-response-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent focused-verifier source binding",
+        ),
+        (sources["workspace_verifier"], "    validate_file_response_ownership_contract(sources)\n", "independent file-response validator dispatch"),
+    ):
+        require_text(source, text, label)
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(
+        sources["hardening"],
+        f"{digest}  requirements.html",
+        "independent file-response requirements hash",
+    )
+    require_text(
+        sources["native_watch"],
+        f"Requirements hash: {digest}",
+        "independent file-response native-watch hash",
+    )
+
+
 def validate_password_confirmation_comparison_contract(sources):
     password = sources["ipc_password_source"]
     core = sources["core_main"]
@@ -50876,6 +51245,7 @@ def validate_sources(sources):
     validate_account_control_plane_excision_contract(sources)
     validate_account_storage_excision_contract(sources)
     validate_file_dialog_event_ownership_contract(sources)
+    validate_file_response_ownership_contract(sources)
     validate_password_confirmation_comparison_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_permanent_password_salt_reader_excision_contract(sources)
@@ -76021,9 +76391,23 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "fileFetcher.cancelPending();",
-            "// stale file tasks retained",
-            "Android stale file-task retirement source",
+            "parent.target?.dialogManager.dismissAll();\n"
+            "    fileFetcher.cancelPending();\n"
+            "    jobController.clear();",
+            "parent.target?.dialogManager.dismissAll();\n"
+            "    // stale file tasks retained\n"
+            "    jobController.clear();",
+            "independent begin-owned request retirement",
+        ),
+        (
+            "file_model_dart",
+            "if (parent.target?.sessionId != expectedSessionId) return;\n"
+            "    fileFetcher.cancelPending();\n"
+            "    parent.target?.dialogManager.dismissAll();",
+            "if (parent.target?.sessionId != expectedSessionId) return;\n"
+            "    // stale file tasks retained\n"
+            "    parent.target?.dialogManager.dismissAll();",
+            "independent close-owned request retirement",
         ),
         (
             "file_model_dart",
@@ -76039,8 +76423,8 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "if (identical(tasks[",
-            "if (false && identical(tasks[",
+            "if (!identical(tasks[key], pending)) return;",
+            "if (false) return;",
             "Android file-fetch timeout exact-completer retirement source",
         ),
         (
@@ -76223,9 +76607,9 @@ def run_source_mutations(sources):
         ),
         (
             "mobile_file_lifecycle_test",
-            "expect(directory.path, path);",
-            "expect(directory.path, isEmpty);",
-            "Android retired file timeout replacement behavior source",
+            "retirement cancels an in-flight dispatch and permits replacement",
+            "retirement loses replacement ownership",
+            "Android reserve-before-dispatch retirement behavior source",
         ),
         (
             "dart_verify",
@@ -85725,6 +86109,206 @@ def run_source_mutations(sources):
             "    validate_file_dialog_event_ownership_contract_disabled(sources)\n",
             "independent file-dialog validator dispatch",
         ),
+        (
+            "file_model_dart",
+            "this.maxPending = 64,",
+            "this.maxPending = 6400,",
+            "independent bounded exact-response state machine",
+        ),
+        (
+            "file_model_dart",
+            "pending.expectedSessionId != expectedSessionId ||",
+            "false ||",
+            "independent bounded exact-response state machine",
+        ),
+        (
+            "file_model_dart",
+            "pending.isLocal != isLocal",
+            "false",
+            "independent bounded exact-response state machine",
+        ),
+        (
+            "file_model_dart",
+            "// The wire response has no per-request nonce. Keep this exact owner as a",
+            "tasks.remove(key);\n      // The wire response has no per-request nonce. Keep this exact owner as a",
+            "independent timeout tombstone removal",
+        ),
+        (
+            "file_model_dart",
+            "unawaited(dispatchResult.then<void>",
+            "Future<void>.value().then<void>",
+            "independent bounded exact-response state machine",
+        ),
+        (
+            "file_model_dart",
+            "} else if (fd.id == 0 && fd.path.isNotEmpty) {",
+            "} else if (fd.path.isNotEmpty) {",
+            "independent malformed and negative-ID response refusal",
+        ),
+        (
+            "file_model_dart",
+            "bool tryCompleteTask(SessionID expectedSessionId, Object? msg,\n"
+            "      Object? isLocalValue) {\n"
+            "    final isLocal = _parseIsLocal(isLocalValue);\n"
+            "    if (msg is! String || isLocal == null) return false;",
+            "bool tryCompleteTask(SessionID expectedSessionId, Object? msg,\n"
+            "      Object? isLocalValue) {\n"
+            "    final isLocal = _parseIsLocal(isLocalValue);\n"
+            "    if (msg == null || isLocal == null) return false;",
+            "independent malformed and negative-ID response refusal",
+        ),
+        (
+            "file_model_dart",
+            "final pending = _reserve(_remoteTasks, path, selectedSessionId, false,",
+            "final pending = _PendingFileRequest<FileDirectory>(selectedSessionId, false);",
+            "independent directory reserve-before-dispatch",
+        ),
+        (
+            "file_model_dart",
+            "void complete(T value) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    _timer?.cancel();",
+            "void complete(T value) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    // timer retained",
+            "independent exact timer finality",
+        ),
+        (
+            "file_model_dart",
+            "void completeError(Object error, [StackTrace? stackTrace]) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _timer?.cancel();",
+            "void completeError(Object error, [StackTrace? stackTrace]) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    // timer retained",
+            "independent exact timer finality",
+        ),
+        (
+            "file_model_dart",
+            "void completeResponseError(Object error) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    _timer?.cancel();",
+            "void completeResponseError(Object error) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    // timer retained",
+            "independent exact timer finality",
+        ),
+        (
+            "model_dart",
+            "receiveFileDir(evt, sessionId);",
+            "receiveFileDir(evt, parent.target!.sessionId);",
+            "independent stream session identity propagation",
+        ),
+        (
+            "flutter_source",
+            '("is_local", &is_local),',
+            '("is_local", "false"),',
+            "independent actual recursive-directory response side",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "directory response owner exists before bridge dispatch settles",
+            "directory response runs after bridge dispatch settles",
+            "independent fast response regression",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "timeout quarantines its key until the late response is consumed",
+            "timeout permits an immediate same-key retry",
+            "independent timeout regression",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "maxPending: 1,",
+            "maxPending: 64,",
+            "independent blocked-dispatch retained capacity",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "directoryResponse('/owned', id: -1)",
+            "directoryResponse('/owned', id: 0)",
+            "independent negative-ID refusal",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "session, 0, 'anonymous error'",
+            "session, 7, 'anonymous error'",
+            "independent anonymous-error refusal",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-file-response-ownership.py --repo . --self-test",
+            "true # file-response focused gate disabled",
+            "independent shared focused gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-file-response-ownership.py --repo . --self-test",
+            "true # file-response Apple gate disabled",
+            "independent Apple focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hl</span>',
+            '<div class="req"><span class="id">R-S11hl-disabled</span>',
+            "independent R-S11hl requirement",
+        ),
+        (
+            "requirements",
+            'timeout <span class="kw">MUST</span> retain the exact owner as a bounded tombstone',
+            'timeout <span class="kw">MAY</span> discard the exact owner',
+            "independent no-nonce timeout requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>372</td>",
+            "<tr><td>372-disabled</td>",
+            "independent Appendix C #372",
+        ),
+        (
+            "hardening",
+            "### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership",
+            "### R-S11hl-disabled/R-S11e-249 — reserve-before-dispatch file-response ownership",
+            "independent R-S11hl ledger",
+        ),
+        (
+            "file_response_ownership_verifier",
+            '            "pending.expectedSessionId != expectedSessionId ||",\n'
+            '            "pending.isLocal != isLocal",',
+            '            "pending.expectedSessionId_disabled != expectedSessionId ||",\n'
+            '            "pending.isLocal != isLocal",',
+            "focused session identity",
+        ),
+        (
+            "file_response_ownership_verifier",
+            '        "pending.expectedSessionId != expectedSessionId ||",\n'
+            '        "false ||",\n'
+            '        "response session identity",',
+            '        "pending.expectedSessionId_disabled != expectedSessionId ||",\n'
+            '        "false ||",\n'
+            '        "response session identity",',
+            "focused session mutation",
+        ),
+        (
+            "workspace_verifier",
+            '            "file_response_ownership_verifier": (\n'
+            '                repo / "scripts/verify-file-response-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "file_response_ownership_verifier_disabled": (\n'
+            '                repo / "scripts/verify-file-response-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_file_response_ownership_contract(sources)\n",
+            "    validate_file_response_ownership_contract_disabled(sources)\n",
+            "independent file-response validator dispatch",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -86741,6 +87325,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "file_dialog_event_ownership_verifier": (
                 repo / "scripts/verify-file-dialog-event-ownership.py"
+            ).read_text(encoding="utf-8"),
+            "file_response_ownership_verifier": (
+                repo / "scripts/verify-file-response-ownership.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

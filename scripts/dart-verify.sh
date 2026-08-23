@@ -262,7 +262,7 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/server_status_refresh_loop_test.dart
     echo "  == R-S11hf flutter test: global event dispatch is bounded and exact-generation-owned =="
     flutter test --no-pub test/global_event_dispatcher_test.dart
-    echo "  == R-S11eb flutter test: retired file timeout cannot remove replacement =="
+    echo "  == R-S11eb/R-S11hl flutter test: file responses are reserve-first, bounded, and exact-session-owned =="
     flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
     echo "  == R-S11hk flutter test: file confirmations are bounded and exact-session-owned =="
     flutter test --no-pub test/file_dialog_event_loop_test.dart

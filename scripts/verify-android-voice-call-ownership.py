@@ -40,7 +40,10 @@ def extract_item(source: str, signature: str, label: str) -> str:
     start = source.find(signature)
     if start < 0:
         raise VerificationError(f"missing {label}")
-    open_brace = source.find("{", start + len(signature))
+    if signature.rstrip().endswith("{"):
+        open_brace = start + signature.rfind("{")
+    else:
+        open_brace = source.find("{", start + len(signature))
     if open_brace < 0:
         raise VerificationError(f"missing body for {label}")
     depth = 0
@@ -2108,13 +2111,13 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_count(
         dart_file_model,
-        "if (identical(tasks[",
-        3,
+        "if (!identical(tasks[key], pending)) return;",
+        1,
         "file-fetch timeout exact-completer retirement",
     )
     file_fetcher = extract_item(
         dart_file_model,
-        "class FileFetcher",
+        "class FileFetcher {",
         "connection-aware file fetcher",
     )
     require_order(
@@ -2123,8 +2126,9 @@ def validate(sources: Dict[str, str]) -> None:
             "Future<FileDirectory> fetchDirectory(",
             "{SessionID? expectedSessionId}) async {",
             "final selectedSessionId = expectedSessionId ?? sessionId;",
-            "sessionId: selectedSessionId, path: path, showHidden: showHidden",
-            "sessionId: selectedSessionId,",
+            "final pending = _reserve(_remoteTasks, path, selectedSessionId, false,",
+            "return _dispatchAndWait(_remoteTasks, path, pending,",
+            "_requests.readDirectory(selectedSessionId, path, showHidden)",
         ),
         "file-fetcher captured-session native operations",
     )
@@ -2748,14 +2752,18 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         sources["mobile_file_lifecycle_test"],
         (
-            "final retired = fetcher.registerReadTask(false, path);",
+            "final retired = fetcher.fetchDirectory('/same-path', false, false,",
+            "await firstDispatchEntered.future;",
             "fetcher.cancelPending();",
-            "final replacement = fetcher.registerReadTask(false, path);",
-            "fetcher.tryCompleteTask(",
-            "await replacement.timeout(",
-            "expect(directory.path, path);",
+            "await retiredResult;",
+            "currentSession = replacementSession;",
+            "final replacement = fetcher.fetchDirectory('/same-path', false, false,",
+            "releaseFirstDispatch.complete();",
+            "retiredSession, directoryResponse('/same-path'), 'false'",
+            "replacementSession, directoryResponse('/same-path'), 'false'",
+            "expect((await replacement).path, '/same-path');",
         ),
-        "retired file timeout versus replacement behavior proof",
+        "reserve-before-dispatch retirement versus replacement behavior proof",
     )
     remote_keyboard = extract_item(
         sources["mobile_remote"],
@@ -5505,7 +5513,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_file_model", "localController.resetForSession();", "// local controller retained", "file-controller prior-peer state retirement"),
     ("dart_file_model", "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = false;", "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = true;", "file-dialog remembered-policy retirement"),
     ("dart_file_model", "if (model == null || !model._isCurrentSession(expectedSessionId))", "if (model == null)", "file-dialog stale-session callback refusal"),
-    ("dart_file_model", "if (identical(tasks[", "if (false && identical(tasks[", "file-fetch timeout exact-completer retirement"),
+    ("dart_file_model", "if (!identical(tasks[key], pending)) return;", "if (false) return;", "file-fetch timeout exact-completer retirement"),
     ("dart_file_model", "Future<bool> _openDirectoryPath(String path,\n      {bool isBack = false, SessionID? expectedSessionId}) async {\n    final selectedSessionId = expectedSessionId ?? sessionId;", "Future<bool> _openDirectoryPath(String path,\n      {bool isBack = false, SessionID? expectedSessionId}) async {\n    final selectedSessionId = sessionId;", "file-controller captured directory session"),
     ("dart_file_model", "Future<FileDirectory> fetchDirectory(\n      String path, bool isLocal, bool showHidden,\n      {SessionID? expectedSessionId}) async {\n    final selectedSessionId = expectedSessionId ?? sessionId;", "Future<FileDirectory> fetchDirectory(\n      String path, bool isLocal, bool showHidden,\n      {SessionID? expectedSessionId}) async {\n    final selectedSessionId = sessionId;", "file-fetcher captured native session"),
     ("dart_file_model", "final home = await bind.mainGetHomeDir();\n      if (!_isCurrentSession(expectedSessionId)) return;\n      options.value.home = home;", "options.value.home = await bind.mainGetHomeDir();", "file-controller local-home post-await refusal"),
@@ -5860,7 +5868,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),
     ("dart_verify", "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "true # mobile file-session lifecycle test disabled", "mobile file-session lifecycle behavior gate"),
-    ("mobile_file_lifecycle_test", "expect(directory.path, path);", "expect(directory.path, isEmpty);", "retired file timeout replacement behavior proof"),
+    ("mobile_file_lifecycle_test", "expect((await replacement).path, '/same-path');", "expect((await replacement).path, isEmpty);", "reserve-before-dispatch retirement versus replacement behavior proof"),
     ("io_loop", "self.voice_call_audio = self.start_voice_call();\n                                if self.voice_call_audio.is_some() {\n                                    self.handler.on_voice_call_started();", "self.handler.on_voice_call_started();\n                                self.voice_call_audio = self.start_voice_call();\n                                if self.voice_call_audio.is_some() {", "audio-owner-before-native voice activation"),
     ("io_loop", '.on_voice_call_closed("Failed to start voice call audio")', '.on_voice_call_started()', "outgoing voice start-failure retirement"),
     ("test", "one controlled teardown cleared another owner", "controlled teardown passed", "controlled behavior proof"),

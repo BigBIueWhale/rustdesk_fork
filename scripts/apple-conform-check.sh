@@ -2105,6 +2105,10 @@ grep -q 'let _terminal = WhiteboardIpcTerminalGuard;' "$REPO/src/whiteboard/serv
 grep -q 'terminate_whiteboard_ipc_generation();' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 terminal-finalizer-does-not-exit-overlay"
 grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-command-channel-unbounded"
 grep -q 'sender.try_send(command)' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
+grep -q 'static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState>' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-lifecycle-owner-not-unified"
+grep -q 'worker: Option<(u64, tokio::task::JoinHandle<()>)>' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-task-handle-not-retained"
+grep -q 'runtime.spawn(run_whiteboard_worker(generation))' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-worker-does-not-use-existing-runtime"
+grep -q 'let _terminal = WhiteboardClientWorkerGuard { generation };' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-worker-finalizer-missing"
 grep -q 'drop(tx);' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 local-sender-prevents-channel-closure"
 grep -q 'send_whiteboard_command_timeout(' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 typed-deadline-command-writer-missing"
 grep -q 'register_whiteboard(self.inner.id)' "$REPO/src/server/connection.rs" || r_s11c8="$r_s11c8 connection-register-not-id-based"
@@ -2128,6 +2132,9 @@ if grep -q 'new_listener("_whiteboard")' "$REPO/src/whiteboard/server.rs"; then
 fi
 if grep -q 'tokio::spawn(handle_new_stream' "$REPO/src/whiteboard/server.rs"; then
   r_s11c8="$r_s11c8 detached-whiteboard-stream-handler-present"
+fi
+if grep -Eq 'std::thread::spawn|#\[tokio::main|STARTING_WHITEBOARD|TX_WHITEBOARD|static ref CONNS' "$REPO/src/whiteboard/client.rs"; then
+  r_s11c8="$r_s11c8 detached-nested-or-split-client-lifecycle-present"
 fi
 data_protocol=$(awk '/^pub enum Data \{/{capture=1} capture{print} capture && /^}/{exit}' "$REPO/src/ipc.rs")
 if echo "$data_protocol" | grep -Eq 'Whiteboard(EndpointChallenge|EndpointProof|ServerChallenge|ServerProof|Bind|Event|Close|Shutdown)'; then
@@ -3724,6 +3731,14 @@ if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   note "ok  R-S11hn Apple/shared whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
 else
   echo "  FAIL R-S11hn Apple/shared whiteboard IPC/event-loop finality regained a lost startup edge, detached worker, unbounded stop channel, or incomplete join"
+  rc=1
+fi
+
+echo "== (2g-c2adaaa) R-S11ho exact-generation whiteboard client worker ownership =="
+if python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test; then
+  note "ok  R-S11ho Apple/shared whiteboard client demand, task, sender, and shutdown use one exact-generation lifecycle owner"
+else
+  echo "  FAIL R-S11ho Apple/shared whiteboard client lifecycle regained duplicate launch, nested runtime, lost stop-window demand, automatic failure retry, or stale finalization"
   rc=1
 fi
 

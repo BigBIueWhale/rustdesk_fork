@@ -17553,13 +17553,15 @@ def validate_whiteboard_ipc_protocol_contract(sources):
             "conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
             "random::<[u8; 32]>()",
             "WhiteboardIpcCommand::Bind",
+            "state.lifecycle.request_worker()",
+            "install_reserved_whiteboard_worker(&mut state, generation)",
         ),
-        "whiteboard bounded minted connection authority",
+        "whiteboard bounded minted connection and worker authority",
     )
     queue = extract_between(
         client,
-        "fn send_whiteboard_command",
-        "\n\nfn close_whiteboard_if_idle",
+        "fn send_command(&mut self",
+        "\n    }\n}\n\nstruct Conn",
         "whiteboard command admission",
     )
     require_order(
@@ -17568,7 +17570,8 @@ def validate_whiteboard_ipc_protocol_contract(sources):
             "sender.try_send(command)",
             "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
             "TrySendError::Full(_)",
-            "TX_WHITEBOARD.write().unwrap().take()",
+            "self.sender.take()",
+            "self.lifecycle.sender_failed(generation)",
             "TrySendError::Closed(_)",
         ),
         "whiteboard bounded nonblocking overflow policy",
@@ -17599,8 +17602,28 @@ def validate_whiteboard_ipc_protocol_contract(sources):
     for forbidden, label in (
         ("unbounded_channel", "unbounded whiteboard command queue"),
         ("allow_err!(stream", "ignored whiteboard transport error"),
+        ("std::thread::spawn", "detached whiteboard client worker"),
+        ("#[tokio::main", "nested whiteboard client runtime"),
+        ("STARTING_WHITEBOARD", "split whiteboard startup flag"),
+        ("TX_WHITEBOARD", "split whiteboard sender global"),
+        ("static ref CONNS", "split whiteboard connection global"),
     ):
         require_absent(client, forbidden, label)
+    for marker, label in (
+        (
+            "worker: Option<(u64, tokio::task::JoinHandle<()>)>",
+            "retained generation-bound whiteboard task",
+        ),
+        (
+            "runtime.spawn(run_whiteboard_worker(generation))",
+            "existing-runtime whiteboard task",
+        ),
+        (
+            "let _terminal = WhiteboardClientWorkerGuard { generation };",
+            "whiteboard client task finalizer",
+        ),
+    ):
+        require_text(client, marker, label)
 
     regression = extract_between(
         ipc,
@@ -17960,6 +17983,291 @@ def validate_whiteboard_ipc_lifecycle_contract(sources):
         sources["native_watch"],
         f"Requirements hash: {digest}",
         "independent whiteboard lifecycle native-watch hash",
+    )
+
+
+def validate_whiteboard_client_lifecycle_contract(sources):
+    focused = sources["whiteboard_client_lifecycle_verifier"]
+    focused_validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "whiteboard client lifecycle focused validation",
+    )
+    for text, label in (
+        ("def extract_braced_item(", "focused balanced Rust item parser"),
+        ("one active generation and stop-window successor demand", "focused demand check"),
+        ("sender failure without automatic restart", "focused no-retry check"),
+        ("retained existing-runtime task", "focused runtime/task check"),
+        ("fixed-allocation two-command cursor publication", "focused hot-path check"),
+        ("first-action client worker finalizer", "focused finalizer check"),
+        ("independent whiteboard client lifecycle dispatch must occur exactly once", "focused dispatch check"),
+        ("exact hardening requirements digest", "focused hardening digest check"),
+        ("exact native-watch requirements digest", "focused native-watch digest check"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("std::thread::spawn", "focused detached-thread prohibition"),
+        ("#[tokio::main", "focused nested-runtime prohibition"),
+        ("STARTING_WHITEBOARD", "focused split-start prohibition"),
+        ("TX_WHITEBOARD", "focused split-sender prohibition"),
+        ("static ref CONNS", "focused split-connection prohibition"),
+        ("Vec::with_capacity(2)", "focused hot-path allocation prohibition"),
+    ):
+        require_text(focused_validation, text, label)
+
+    client = sources["whiteboard_client"]
+    for forbidden, label in (
+        ("std::thread::spawn", "independent detached whiteboard client thread"),
+        ("#[tokio::main", "independent nested whiteboard client runtime"),
+        ("STARTING_WHITEBOARD", "independent split whiteboard startup flag"),
+        ("TX_WHITEBOARD", "independent split whiteboard sender global"),
+        ("static ref CONNS", "independent split whiteboard connection global"),
+        ("SimpleCallOnReturn", "independent ad-hoc whiteboard client cleanup"),
+        ("runtime::Builder", "independent replacement whiteboard runtime"),
+        ("Vec::with_capacity(2)", "independent hot-path two-command allocation"),
+    ):
+        require_absent(client, forbidden, label)
+
+    lifecycle = extract_between(
+        client,
+        "enum WhiteboardWorkerPhase",
+        "\n\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\nenum WhiteboardCommandAdmission",
+        "independent whiteboard client worker lifecycle",
+    )
+    require_order(
+        lifecycle,
+        (
+            "Idle",
+            "Starting",
+            "Running",
+            "Stopping",
+            "restart_requested: bool",
+            ".checked_add(1)",
+            "WhiteboardWorkerPhase::Starting { generation };",
+            "fn request_worker(&mut self)",
+            "WhiteboardWorkerPhase::Idle",
+            "self.reserve_next_generation().map(Some)",
+            "WhiteboardWorkerPhase::Starting { .. }",
+            "WhiteboardWorkerPhase::Running { .. }",
+            "WhiteboardWorkerPhase::Stopping",
+            "restart_requested: true",
+            "fn publish(&mut self, generation: u64)",
+            "WhiteboardWorkerPhase::Running { generation };",
+            "fn begin_stop(&mut self, generation: u64)",
+            "restart_requested: false",
+            "fn sender_failed(&mut self, generation: u64)",
+            "restart_requested: false",
+            "restart_requested && has_demand",
+            "_ => return Ok(None)",
+            "self.phase = WhiteboardWorkerPhase::Idle;",
+            "self.reserve_next_generation().map(Some)",
+        ),
+        "independent exact-generation no-retry lifecycle state machine",
+    )
+    sender_failed = extract_between(
+        lifecycle,
+        "fn sender_failed(&mut self, generation: u64)",
+        "\n    fn cancel_reserved_generation",
+        "independent sender failure transition",
+    )
+    require_absent(
+        sender_failed,
+        "has_demand",
+        "independent automatic failure restart",
+    )
+    require_text(
+        lifecycle,
+        "WhiteboardWorkerPhase::Starting { .. }\n"
+        "            | WhiteboardWorkerPhase::Running { .. } => Ok(None),",
+        "independent shared Starting/Running duplicate-launch refusal",
+    )
+
+    state_and_admission = extract_between(
+        client,
+        "struct WhiteboardClientState",
+        "\n\nstruct Conn",
+        "independent unified whiteboard client state",
+    )
+    require_order(
+        state_and_admission,
+        (
+            "lifecycle: WhiteboardWorkerLifecycle",
+            "sender: Option<(u64, Sender<WhiteboardIpcCommand>)>",
+            "worker: Option<(u64, tokio::task::JoinHandle<()>)>",
+            "conns: HashMap<i32, Conn>",
+            "self.sender.as_ref()",
+            "self.lifecycle.running_generation()",
+            "self.lifecycle.sender_failed(generation)",
+            "sender.try_send(command)",
+            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
+            "TrySendError::Full(_)",
+            "self.sender.take()",
+            "self.lifecycle.sender_failed(generation)",
+            "TrySendError::Closed(_)",
+        ),
+        "independent generation-bound task/sender/connections and bounded admission",
+    )
+    require_absent(
+        state_and_admission,
+        "sender.clone()",
+        "independent per-command sender clone",
+    )
+
+    task_owner = extract_between(
+        client,
+        "fn install_reserved_whiteboard_worker(",
+        "\npub fn register_whiteboard",
+        "independent retained whiteboard task owner",
+    )
+    require_order(
+        task_owner,
+        (
+            "WhiteboardWorkerPhase::Starting { generation }",
+            "state.worker.is_some()",
+            "tokio::runtime::Handle::try_current()",
+            "runtime.spawn(run_whiteboard_worker(generation))",
+            "state.worker = Some((generation, worker));",
+            "finish_whiteboard_worker(self.generation);",
+            "state.sender.take()",
+            "state.worker.take()",
+            "state.lifecycle.finish(generation, has_demand)",
+            "install_reserved_whiteboard_worker(&mut state, restart_generation)",
+            "cancel_reserved_generation(restart_generation)",
+            "drop(retired_worker);",
+            "async fn run_whiteboard_worker(generation: u64)",
+            "let _terminal = WhiteboardClientWorkerGuard { generation };",
+            "AssertUnwindSafe(start_whiteboard_(generation))",
+            ".catch_unwind()",
+        ),
+        "independent existing-runtime exact-task lifecycle",
+    )
+
+    register = extract_between(
+        client,
+        "pub fn register_whiteboard",
+        "\n\npub fn unregister_whiteboard",
+        "independent whiteboard registration",
+    )
+    require_order(
+        register,
+        (
+            "if conn_id <= 0",
+            "WHITEBOARD_CLIENT.lock().unwrap()",
+            "state.conns.contains_key(&conn_id)",
+            "state.conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "random::<[u8; 32]>()",
+            "WhiteboardIpcCommand::Bind",
+            "state.lifecycle.request_worker()",
+            "state.send_command(command)",
+            "if !matches!(admission, WhiteboardCommandAdmission::Accepted)",
+            "state.lifecycle.request_worker()",
+            "install_reserved_whiteboard_worker(&mut state, generation)",
+        ),
+        "independent duplicate-safe registration and stop-window demand",
+    )
+
+    unregister_and_update = extract_between(
+        client,
+        "pub fn unregister_whiteboard",
+        "\n\nfn whiteboard_launch_env",
+        "independent whiteboard command producers",
+    )
+    require_order(
+        unregister_and_update,
+        (
+            ".remove(&conn_id)",
+            "WhiteboardIpcCommand::Close",
+            "state.conns.is_empty()",
+            "state.send_command(WhiteboardIpcCommand::Shutdown)",
+            "let mut commands = [None, None];",
+            "commands.into_iter().flatten().enumerate()",
+            "state.lifecycle.begin_stop(generation)",
+            "state.sender.take()",
+        ),
+        "independent fixed-allocation publication and exact idle stop",
+    )
+
+    start = extract_between(
+        client,
+        "async fn start_whiteboard_(generation: u64)",
+        "\n\n#[cfg(test)]",
+        "independent generation-bound whiteboard stream owner",
+    )
+    require_order(
+        start,
+        (
+            "run_me_with_env_and_parent_death(",
+            "connect_whiteboard_endpoint(1000, &postfix, &launch_token)",
+            "channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY)",
+            "state.lifecycle.publish(generation)",
+            "state.sender = Some((generation, tx.clone()));",
+            "state.conns.iter()",
+            "drop(tx);",
+            "close_whiteboard_if_idle(generation)",
+        ),
+        "independent startup snapshot and generation-bound stop",
+    )
+    require_exact_count(
+        start,
+        ".send_whiteboard_command_timeout(",
+        5,
+        "independent whiteboard deadline write sites",
+    )
+
+    for test in (
+        "r_s11ho_duplicate_whiteboard_demand_owns_one_generation",
+        "r_s11ho_demand_during_committed_stop_starts_one_successor",
+        "r_s11ho_unexpected_worker_failure_does_not_self_retry",
+        "r_s11ho_stale_finalizer_cannot_retire_current_generation",
+    ):
+        require_text(client, test, f"independent {test} regression")
+
+    gate = "python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test"
+    for source, text, label in (
+        (sources["verify"], gate, "independent shared focused gate"),
+        (
+            sources["verify"],
+            "cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never",
+            "independent shared behavior gate",
+        ),
+        (sources["apple"], gate, "independent Apple focused gate"),
+        (
+            sources["requirements"],
+            '<div class="req"><span class="id">R-S11ho</span>',
+            "independent R-S11ho requirement",
+        ),
+        (sources["requirements"], "<tr><td>375</td>", "independent Appendix C #375"),
+        (
+            sources["hardening"],
+            "### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership",
+            "independent whiteboard client lifecycle ledger",
+        ),
+        (
+            sources["workspace_verifier"],
+            '            "whiteboard_client_lifecycle_verifier": (\n'
+            '                repo / "scripts/verify-whiteboard-client-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent client-lifecycle focused-verifier source binding",
+        ),
+        (
+            sources["workspace_verifier"],
+            "    validate_whiteboard_client_lifecycle_contract(sources)\n",
+            "independent client-lifecycle validator dispatch",
+        ),
+    ):
+        require_text(source, text, label)
+
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(
+        sources["hardening"],
+        f"{digest}  requirements.html",
+        "independent whiteboard client lifecycle requirements hash",
+    )
+    require_text(
+        sources["native_watch"],
+        f"Requirements hash: {digest}",
+        "independent whiteboard client lifecycle native-watch hash",
     )
 
 
@@ -52036,6 +52344,7 @@ def validate_sources(sources):
     validate_pulse_audio_ipc_protocol_contract(sources)
     validate_whiteboard_ipc_protocol_contract(sources)
     validate_whiteboard_ipc_lifecycle_contract(sources)
+    validate_whiteboard_client_lifecycle_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_x11_capture_shared_memory_contract(sources)
@@ -69008,14 +69317,14 @@ def run_source_mutations(sources):
         ),
         (
             "whiteboard_client",
-            "sender.as_ref().map(|sender| sender.try_send(command))",
-            "sender.as_ref().map(|sender| sender.blocking_send(command))",
+            "(*generation, sender.try_send(command))",
+            "(*generation, sender.blocking_send(command))",
             "whiteboard bounded nonblocking overflow policy",
         ),
         (
             "whiteboard_client",
-            "Some(Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. })))",
-            "Some(Err(TrySendError::Full(_)))",
+            "Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))",
+            "Err(TrySendError::Full(_))",
             "whiteboard bounded nonblocking overflow policy",
         ),
         (
@@ -87697,6 +88006,178 @@ def run_source_mutations(sources):
             "    validate_whiteboard_ipc_lifecycle_contract_disabled(sources)\n",
             "independent lifecycle validator dispatch",
         ),
+        (
+            "whiteboard_client",
+            "restart_requested: bool",
+            "restart_requested: usize",
+            "independent exact-generation no-retry lifecycle state machine",
+        ),
+        (
+            "whiteboard_client",
+            ".checked_add(1)",
+            ".wrapping_add(1)",
+            "independent exact-generation no-retry lifecycle state machine",
+        ),
+        (
+            "whiteboard_client",
+            "restart_requested && has_demand",
+            "restart_requested || has_demand",
+            "independent exact-generation no-retry lifecycle state machine",
+        ),
+        (
+            "whiteboard_client",
+            "worker: Option<(u64, tokio::task::JoinHandle<()>)>",
+            "worker: Option<tokio::task::JoinHandle<()>>",
+            "retained generation-bound whiteboard task",
+        ),
+        (
+            "whiteboard_client",
+            "runtime.spawn(run_whiteboard_worker(generation))",
+            "tokio::spawn(run_whiteboard_worker(generation))",
+            "existing-runtime whiteboard task",
+        ),
+        (
+            "whiteboard_client",
+            "state.worker = Some((generation, worker));",
+            "drop(worker);",
+            "independent existing-runtime exact-task lifecycle",
+        ),
+        (
+            "whiteboard_client",
+            "let _terminal = WhiteboardClientWorkerGuard { generation };",
+            "let _terminal_finalizer_was_removed = ();",
+            "whiteboard client task finalizer",
+        ),
+        (
+            "whiteboard_client",
+            "state.lifecycle.finish(generation, has_demand)",
+            "state.lifecycle.finish(generation + 1, has_demand)",
+            "independent existing-runtime exact-task lifecycle",
+        ),
+        (
+            "whiteboard_client",
+            "state.conns.contains_key(&conn_id)",
+            "false",
+            "independent duplicate-safe registration and stop-window demand",
+        ),
+        (
+            "whiteboard_client",
+            "if !matches!(admission, WhiteboardCommandAdmission::Accepted)",
+            "if false",
+            "independent duplicate-safe registration and stop-window demand",
+        ),
+        (
+            "whiteboard_client",
+            "let mut commands = [None, None];",
+            "let mut commands = Vec::with_capacity(2);",
+            "independent hot-path two-command allocation",
+        ),
+        (
+            "whiteboard_client",
+            "state.lifecycle.begin_stop(generation)",
+            "true",
+            "independent fixed-allocation publication and exact idle stop",
+        ),
+        (
+            "whiteboard_client",
+            "state.lifecycle.publish(generation)",
+            "true",
+            "independent startup snapshot and generation-bound stop",
+        ),
+        (
+            "whiteboard_client",
+            "state.sender = Some((generation, tx.clone()));",
+            "state.sender = Some((0, tx.clone()));",
+            "independent startup snapshot and generation-bound stop",
+        ),
+        (
+            "whiteboard_client",
+            "close_whiteboard_if_idle(generation)",
+            "close_whiteboard_if_idle(0)",
+            "independent startup snapshot and generation-bound stop",
+        ),
+        (
+            "whiteboard_client",
+            "fn r_s11ho_duplicate_whiteboard_demand_owns_one_generation",
+            "fn whiteboard_duplicate_demand_may_launch_again",
+            "independent r_s11ho_duplicate_whiteboard_demand_owns_one_generation regression",
+        ),
+        (
+            "whiteboard_client",
+            "fn r_s11ho_demand_during_committed_stop_starts_one_successor",
+            "fn whiteboard_terminal_demand_may_be_lost",
+            "independent r_s11ho_demand_during_committed_stop_starts_one_successor regression",
+        ),
+        (
+            "whiteboard_client",
+            "fn r_s11ho_unexpected_worker_failure_does_not_self_retry",
+            "fn whiteboard_failure_may_self_retry",
+            "independent r_s11ho_unexpected_worker_failure_does_not_self_retry regression",
+        ),
+        (
+            "whiteboard_client",
+            "fn r_s11ho_stale_finalizer_cannot_retire_current_generation",
+            "fn stale_finalizer_may_retire_current_generation",
+            "independent r_s11ho_stale_finalizer_cannot_retire_current_generation regression",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test",
+            "true # whiteboard client lifecycle gate disabled",
+            "independent shared focused gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never",
+            "true # whiteboard client lifecycle tests disabled",
+            "independent shared behavior gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test",
+            "true # whiteboard client lifecycle Apple gate disabled",
+            "independent Apple focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ho</span>',
+            '<div class="req"><span class="id">R-S11ho-disabled</span>',
+            "independent R-S11ho requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>375</td>",
+            "<tr><td>375-disabled</td>",
+            "independent Appendix C #375",
+        ),
+        (
+            "hardening",
+            "### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership",
+            "### R-S11ho-disabled/R-S11e-252 — exact-generation whiteboard client worker ownership",
+            "independent whiteboard client lifecycle ledger",
+        ),
+        (
+            "whiteboard_client_lifecycle_verifier",
+            '"one active generation and stop-window successor demand"',
+            '"one active generation check disabled"',
+            "focused demand check",
+        ),
+        (
+            "workspace_verifier",
+            '            "whiteboard_client_lifecycle_verifier": (\n'
+            '                repo / "scripts/verify-whiteboard-client-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "whiteboard_client_lifecycle_verifier_disabled": (\n'
+            '                repo / "scripts/verify-whiteboard-client-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent client-lifecycle focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_whiteboard_client_lifecycle_contract(sources)\n",
+            "    validate_whiteboard_client_lifecycle_contract_disabled(sources)\n",
+            "independent client-lifecycle validator dispatch",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -88731,6 +89212,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "whiteboard_ipc_lifecycle_verifier": (
                 repo / "scripts/verify-whiteboard-ipc-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "whiteboard_client_lifecycle_verifier": (
+                repo / "scripts/verify-whiteboard-client-lifecycle.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

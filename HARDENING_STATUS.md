@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-0be2a6a866d4f631f20a5e41f5ff08393aa997aabad40c32984f12f498b27baf  requirements.html
+b4f938bc62433a314a186dacde7db9c1f20addc6e05cebf340b384ae2b7959b5  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26862,6 +26862,7 @@ The same identity additionally binds R-S11hk and Appendix C #371.
 The same identity additionally binds R-S11hl and Appendix C #372.
 The same identity additionally binds R-S11hm and Appendix C #373.
 The same identity additionally binds R-S11hn and Appendix C #374.
+The same identity additionally binds R-S11ho and Appendix C #375.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
@@ -27102,3 +27103,143 @@ capture-through-compositor timestamps, explicit end-to-end
 latency/queue/CPU/memory budgets, cross-version behavior, and proof that the
 complete connection flow is correct and performant also remain open release
 obligations.
+
+### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
+
+**Status:** SOURCE IMPLEMENTED / CONFINED SOURCE AND MUTATION EVIDENCE
+COMPLETE / FOCUSED RUST TESTS AUTHORED BUT UNEXECUTED / EXACT RUST/NATIVE,
+PLATFORM, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.
+
+Read-only continuation review of the adjacent controlled-side whiteboard
+launcher found a second, independent lifecycle defect after R-S11hn corrected
+the helper process. Every call to `register_whiteboard`, including a duplicate
+`show_my_cursor=Yes` for an already-registered authenticated Remote connection,
+performed a raw detached `std::thread::spawn`. That thread constructed a nested
+current-thread Tokio runtime before discovering that a sender or
+`STARTING_WHITEBOARD` flag already existed. An authenticated peer could
+therefore drive redundant OS-thread/runtime construction without creating new
+whiteboard authority.
+
+The startup flag also covered the worker's complete lifetime, not merely
+startup. Once the live worker observed an empty connection map, took the
+separately locked global sender, and committed to shutdown, a new registration
+could arrive before the old worker returned. Its newly spawned thread observed
+the lifetime-wide flag, exited as “already starting,” and discarded its handle;
+the old worker then cleared the flag and exited. The new registration remained
+in the separate global map with no command sender or worker. Reapplying the
+option later could recover it, which is source-level cleanup-mediated recovery
+debt. This is shared Windows/macOS/Linux local resource and connection-flow
+lifecycle debt. It is not evidence of compromise, exploitation, public
+exposure, privilege escalation, host RustDesk/service/firewall/network
+modification, or proof that unidentified deployed artifacts exercised the
+defect or that it caused the separately reported Android/Windows display-only
+delay.
+
+The correction replaces `STARTING_WHITEBOARD`, `TX_WHITEBOARD`, and `CONNS`
+with one mutex-owned `WhiteboardClientState`. It holds the registration map,
+one exact-generation bounded sender, one retained Tokio task handle, and a
+closed `Idle`/`Starting`/`Running`/`Stopping` phase. Idle demand reserves one
+checked monotonically increasing generation. Duplicate Starting demand is
+included in the eventual atomic registration snapshot; duplicate Running
+demand does not launch or bind again; a new Running registration publishes its
+exact Bind through that generation's sender. One task runs on the existing
+Tokio runtime. The raw OS thread, nested `#[tokio::main]` runtime, detached
+handle, lifetime-wide atomic flag, split connection/sender locks, and ad-hoc
+cleanup callbacks are deleted.
+
+The runtime-owned task retains its generation and installs
+`WhiteboardClientWorkerGuard` as its first action. Returned errors and caught
+panics are diagnosed before that finalizer consumes the exact retained task
+handle and clears only its exact sender. Sender publication and the initial
+registration snapshot occur under the same lifecycle lock. A stale finalizer
+cannot mutate another generation. Runtime acquisition or task installation
+failure cancels only the exact reserved generation and is visible; it does not
+create a fallback thread/runtime.
+
+Idle shutdown now proves the same locked registration map is empty, moves the
+exact Running generation to Stopping with no restart request, and takes only
+its sender. A registration arriving after that commit latches one successor
+request. Finalization rechecks that demand is still live and reserves at most
+one successor; removal of the intervening demand cancels that restart. Demand
+arriving earlier during Starting or Running remains on the current generation.
+Unexpected startup, transport, sender, task, or helper failure moves the
+generation to Idle without self-retry. If a new Bind itself observes the
+sender closing or saturated, that same explicit registration latches the
+single successor edge; background failure or retained registrations alone do
+not create a retry/reconnect loop. A later explicit option registration may
+reserve a new generation.
+
+The existing 64-command nonblocking queue, 16-registration authority cap,
+token-derived endpoint, launch/parent proof, parent-death behavior, typed
+deadline writes, and event-only lossy overflow policy remain unchanged.
+Required command refusal retires the sender and phase; it is never converted
+to blocking admission. The high-frequency cursor path uses fixed two-slot
+stack storage and a scoped sender borrow instead of adding a per-event heap
+allocation or per-command sender clone. No listener, transport, protocol,
+port, service/activity kill, Android foreground-service weakening, timer,
+poller, reconnect loop, OS thread, nested runtime, dependency, privilege
+transition, or alternate command route is added.
+
+Four deterministic Rust state regressions bind duplicate demand to one
+generation, demand crossing committed stop to one successor, startup and
+sender failure to no self-retry, and stale-finalizer refusal. The focused
+`scripts/verify-whiteboard-client-lifecycle.py` validator parses the exact
+phase/generation state, unified owner, existing-runtime task and first-action
+guard, failure-versus-demand distinction, fixed-allocation command path,
+registration/shutdown/startup interleavings, regressions, shared and Apple
+gates, adjacent Linux verifier, requirements/Appendix/ledger identity,
+independent workspace binding, and exact requirements hashes. Its deliberate
+mutations independently weaken those boundaries. The workspace verifier also
+derives the product contract directly and carries separate product, phase,
+task, hot-path, regression, gate, requirement, ledger, source-binding, and
+dispatch mutations rather than trusting the focused verifier's verdict.
+
+Confined source verification used only the approved immutable verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+with `--pull=never`, networking disabled, a read-only root and repository, all
+capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, bounded
+PIDs/memory/swap/CPU, and a bounded private no-exec tmpfs. The focused
+whiteboard-client lifecycle verifier rejected all 47 deliberate mutations;
+the adjacent Linux nondumpable/CM/PA/whiteboard verifier rejected all 71; the
+independent workspace baseline passed; and a narrowed execution through the
+real `validate_sources` function rejected all 28 new R-S11ho catalog entries.
+On those exact product, gate, verifier, requirement, and digest bytes, one
+fresh complete unsliced `--source-mutations-only` execution then ran
+uninterrupted from mutation one in exact container `be9dadd446d1`. Docker's
+daemon event record reports `execDuration=9851`, `exitCode=0`, the approved
+image digest above, and the subsequent expected `--rm` destroy. The unified
+terminal handle expired after container exit before returning final stdout, so
+no captured terminal-text receipt is claimed. Only that final complete
+zero-exit execution is counted as the catalog pass.
+
+Verification was allowed to fail loudly. One initial preflight attempt stopped
+before product mutation because a focused-verifier fixture named a stale
+string. Two later complete attempts are also uncounted: each correctly
+rejected a weakened production owner, first the retained generation-bound task
+and then the existing-runtime spawn, but the new catalog entry expected a
+broader R-S11ho diagnostic than the earlier whiteboard protocol validator
+emitted. The mutation expectations were aligned to those already-enforced,
+narrower diagnostics; the same overlap audit also aligned the existing
+first-action finalizer and hot-path allocation diagnostics. No production
+code, invariant, validator requirement, or mutation was removed or weakened.
+The complete 28-entry narrowed pass preceded the final full restart.
+
+The approved verifier image contains Python, shell, and Node but no Rust,
+Cargo, rustfmt, Dart, Flutter, or native platform toolchain. No image was
+pulled, built, or tagged, and no host Rust command was run. The authored Rust
+regressions therefore remain explicitly uncompiled and unexecuted; confined
+source and mutation evidence is not represented as native behavior evidence.
+No host RustDesk process, configuration, service, listener, port,
+firewall/network state, VM, device, unrelated workload, or privilege boundary
+was inspected or changed by this slice.
+
+Exact Rust/native compilation and tests, Windows/macOS/Linux physical
+multi-connection/duplicate-toggle/stop-window execution, helper-process
+startup and orphan observation, sustained thread/task/queue/CPU/memory and
+latency soak, clean committed cold R-B2/R-B10 equality, installed
+artifacts/service behavior, fresh independent reproduction, R-V3 external
+review, connection-flow causation, physical Android
+task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
+capture-through-compositor timestamps, cross-version behavior, and proof that
+the complete connection flow is correct and performant remain explicitly open
+release obligations and explicit user requests.

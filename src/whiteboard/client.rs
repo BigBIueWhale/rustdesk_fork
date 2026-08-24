@@ -4,9 +4,10 @@ use crate::{
     CHILD_PROCESS,
 };
 use hbb_common::{
-    allow_err,
     anyhow::anyhow,
-    bail, log, sleep,
+    bail,
+    futures::FutureExt,
+    log, sleep,
     tokio::{
         self,
         sync::mpsc::{channel, error::TrySendError, Sender},
@@ -17,18 +18,200 @@ use hbb_common::{
 use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        RwLock,
-    },
+    panic::AssertUnwindSafe,
+    sync::Mutex,
     time::Instant,
 };
 
 lazy_static! {
-    static ref TX_WHITEBOARD: RwLock<Option<Sender<WhiteboardIpcCommand>>> =
-        RwLock::new(None);
-    static ref CONNS: RwLock<HashMap<i32, Conn>> = Default::default();
-    static ref STARTING_WHITEBOARD: AtomicBool = AtomicBool::new(false);
+    static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState> =
+        Mutex::new(WhiteboardClientState::default());
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WhiteboardWorkerPhase {
+    Idle,
+    Starting {
+        generation: u64,
+    },
+    Running {
+        generation: u64,
+    },
+    Stopping {
+        generation: u64,
+        restart_requested: bool,
+    },
+}
+
+impl Default for WhiteboardWorkerPhase {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+#[derive(Default)]
+struct WhiteboardWorkerLifecycle {
+    phase: WhiteboardWorkerPhase,
+    last_generation: u64,
+}
+
+impl WhiteboardWorkerLifecycle {
+    fn reserve_next_generation(&mut self) -> ResultType<u64> {
+        let generation = self
+            .last_generation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("whiteboard worker generation exhausted"))?;
+        self.last_generation = generation;
+        self.phase = WhiteboardWorkerPhase::Starting { generation };
+        Ok(generation)
+    }
+
+    fn request_worker(&mut self) -> ResultType<Option<u64>> {
+        match self.phase {
+            WhiteboardWorkerPhase::Idle => self.reserve_next_generation().map(Some),
+            WhiteboardWorkerPhase::Starting { .. }
+            | WhiteboardWorkerPhase::Running { .. } => Ok(None),
+            WhiteboardWorkerPhase::Stopping {
+                generation,
+                ..
+            } => {
+                self.phase = WhiteboardWorkerPhase::Stopping {
+                    generation,
+                    restart_requested: true,
+                };
+                Ok(None)
+            }
+        }
+    }
+
+    fn publish(&mut self, generation: u64) -> bool {
+        if self.phase != (WhiteboardWorkerPhase::Starting { generation }) {
+            return false;
+        }
+        self.phase = WhiteboardWorkerPhase::Running { generation };
+        true
+    }
+
+    fn running_generation(&self) -> Option<u64> {
+        match self.phase {
+            WhiteboardWorkerPhase::Running { generation } => Some(generation),
+            _ => None,
+        }
+    }
+
+    fn begin_stop(&mut self, generation: u64) -> bool {
+        if self.phase != (WhiteboardWorkerPhase::Running { generation }) {
+            return false;
+        }
+        self.phase = WhiteboardWorkerPhase::Stopping {
+            generation,
+            restart_requested: false,
+        };
+        true
+    }
+
+    fn sender_failed(&mut self, generation: u64) {
+        match self.phase {
+            WhiteboardWorkerPhase::Running {
+                generation: current,
+            } if current == generation => {
+                self.phase = WhiteboardWorkerPhase::Stopping {
+                    generation,
+                    restart_requested: false,
+                };
+            }
+            _ => {}
+        }
+    }
+
+    fn cancel_reserved_generation(&mut self, generation: u64) {
+        if self.phase == (WhiteboardWorkerPhase::Starting { generation }) {
+            self.phase = WhiteboardWorkerPhase::Idle;
+        }
+    }
+
+    fn finish(
+        &mut self,
+        generation: u64,
+        has_demand: bool,
+    ) -> ResultType<Option<u64>> {
+        let restart = match self.phase {
+            WhiteboardWorkerPhase::Starting {
+                generation: current,
+            }
+            | WhiteboardWorkerPhase::Running {
+                generation: current,
+            } if current == generation => false,
+            WhiteboardWorkerPhase::Stopping {
+                generation: current,
+                restart_requested,
+            } if current == generation => restart_requested && has_demand,
+            _ => return Ok(None),
+        };
+        self.phase = WhiteboardWorkerPhase::Idle;
+        if restart {
+            self.reserve_next_generation().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WhiteboardCommandAdmission {
+    Accepted,
+    NoWorker,
+    EventDropped,
+    WorkerRetiredAfterSaturation,
+    WorkerRetiredAfterClosure,
+}
+
+struct WhiteboardClientState {
+    lifecycle: WhiteboardWorkerLifecycle,
+    sender: Option<(u64, Sender<WhiteboardIpcCommand>)>,
+    worker: Option<(u64, tokio::task::JoinHandle<()>)>,
+    conns: HashMap<i32, Conn>,
+}
+
+impl Default for WhiteboardClientState {
+    fn default() -> Self {
+        Self {
+            lifecycle: WhiteboardWorkerLifecycle::default(),
+            sender: None,
+            worker: None,
+            conns: HashMap::new(),
+        }
+    }
+}
+
+impl WhiteboardClientState {
+    fn send_command(&mut self, command: WhiteboardIpcCommand) -> WhiteboardCommandAdmission {
+        let (generation, result) = {
+            let Some((generation, sender)) = self.sender.as_ref() else {
+                if let Some(generation) = self.lifecycle.running_generation() {
+                    self.lifecycle.sender_failed(generation);
+                }
+                return WhiteboardCommandAdmission::NoWorker;
+            };
+            (*generation, sender.try_send(command))
+        };
+        match result {
+            Ok(()) => WhiteboardCommandAdmission::Accepted,
+            Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. })) => {
+                WhiteboardCommandAdmission::EventDropped
+            }
+            Err(TrySendError::Full(_)) => {
+                self.sender.take();
+                self.lifecycle.sender_failed(generation);
+                WhiteboardCommandAdmission::WorkerRetiredAfterSaturation
+            }
+            Err(TrySendError::Closed(_)) => {
+                self.sender.take();
+                self.lifecycle.sender_failed(generation);
+                WhiteboardCommandAdmission::WorkerRetiredAfterClosure
+            }
+        }
+    }
 }
 
 struct Conn {
@@ -48,23 +231,132 @@ pub fn get_key_cursor(conn_id: i32) -> String {
     format!("{}-cursor", conn_id)
 }
 
+fn install_reserved_whiteboard_worker(
+    state: &mut WhiteboardClientState,
+    generation: u64,
+) -> ResultType<()> {
+    if state.lifecycle.phase != (WhiteboardWorkerPhase::Starting { generation }) {
+        bail!("whiteboard worker generation {generation} was not reserved");
+    }
+    if state.worker.is_some() {
+        bail!("whiteboard worker ownership overlaps generation {generation}");
+    }
+    let runtime = tokio::runtime::Handle::try_current()
+        .map_err(|err| anyhow!("whiteboard worker requires the existing Tokio runtime: {err}"))?;
+    let worker = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        runtime.spawn(run_whiteboard_worker(generation))
+    }))
+    .map_err(|_| {
+        anyhow!("existing Tokio runtime refused whiteboard worker generation {generation}")
+    })?;
+    state.worker = Some((generation, worker));
+    Ok(())
+}
+
+struct WhiteboardClientWorkerGuard {
+    generation: u64,
+}
+
+impl Drop for WhiteboardClientWorkerGuard {
+    fn drop(&mut self) {
+        finish_whiteboard_worker(self.generation);
+    }
+}
+
+fn finish_whiteboard_worker(generation: u64) {
+    let mut diagnostics = Vec::new();
+    let retired_worker = {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if state.sender.as_ref().map(|(owner, _)| *owner) == Some(generation) {
+            state.sender.take();
+        }
+        let retired_worker =
+            if state.worker.as_ref().map(|(owner, _)| *owner) == Some(generation) {
+                state.worker.take().map(|(_, worker)| worker)
+            } else {
+                diagnostics.push(format!(
+                    "whiteboard worker generation {generation} lost its exact task handle"
+                ));
+                None
+            };
+        let has_demand = !state.conns.is_empty();
+        let restart_generation = match state.lifecycle.finish(generation, has_demand) {
+            Ok(generation) => generation,
+            Err(err) => {
+                diagnostics.push(format!("whiteboard worker finalization failed: {err}"));
+                None
+            }
+        };
+        if let Some(restart_generation) = restart_generation {
+            if let Err(err) =
+                install_reserved_whiteboard_worker(&mut state, restart_generation)
+            {
+                state
+                    .lifecycle
+                    .cancel_reserved_generation(restart_generation);
+                diagnostics.push(format!(
+                    "failed to start demanded whiteboard successor generation {restart_generation}: {err}"
+                ));
+            }
+        }
+        retired_worker
+    };
+    drop(retired_worker);
+    for diagnostic in diagnostics {
+        log::error!("{diagnostic}");
+    }
+}
+
+async fn run_whiteboard_worker(generation: u64) {
+    let _terminal = WhiteboardClientWorkerGuard { generation };
+    match AssertUnwindSafe(start_whiteboard_(generation))
+        .catch_unwind()
+        .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => {
+            log::error!("Whiteboard worker generation {generation} failed: {err}")
+        }
+        Err(_) => log::error!("Whiteboard worker generation {generation} panicked"),
+    }
+}
+
+fn log_whiteboard_command_admission(admission: WhiteboardCommandAdmission) {
+    match admission {
+        WhiteboardCommandAdmission::Accepted | WhiteboardCommandAdmission::NoWorker => {}
+        WhiteboardCommandAdmission::EventDropped => {
+            log::debug!("Dropping a whiteboard event because the bounded queue is full");
+        }
+        WhiteboardCommandAdmission::WorkerRetiredAfterSaturation => {
+            log::warn!("Retiring a saturated whiteboard command owner");
+        }
+        WhiteboardCommandAdmission::WorkerRetiredAfterClosure => {
+            log::warn!("Retiring a closed whiteboard command owner");
+        }
+    }
+}
+
 pub fn register_whiteboard(conn_id: i32) {
     if conn_id <= 0 {
         log::warn!("Rejecting whiteboard registration for invalid connection id {conn_id}");
         return;
     }
-    let mut bind = None;
+    let mut launch_error = None;
+    let mut admission = WhiteboardCommandAdmission::NoWorker;
     {
-        let mut conns = CONNS.write().unwrap();
-        if !conns.contains_key(&conn_id) {
-            if conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        let bind = if state.conns.contains_key(&conn_id) {
+            None
+        } else {
+            if state.conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS {
+                drop(state);
                 log::warn!(
                     "Rejecting whiteboard registration beyond the active-connection limit"
                 );
                 return;
             }
             let token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
-            conns.insert(
+            state.conns.insert(
                 conn_id,
                 Conn {
                     token: token.clone(),
@@ -76,117 +368,151 @@ pub fn register_whiteboard(conn_id: i32) {
                     },
                 },
             );
-            bind = Some(WhiteboardIpcCommand::Bind { conn_id, token });
+            Some(WhiteboardIpcCommand::Bind { conn_id, token })
+        };
+        let launch_generation = match state.lifecycle.request_worker() {
+            Ok(generation) => generation,
+            Err(err) => {
+                launch_error = Some(err.to_string());
+                None
+            }
+        };
+        if let Some(command) = bind {
+            admission = state.send_command(command);
+            if !matches!(admission, WhiteboardCommandAdmission::Accepted) {
+                if let Err(err) = state.lifecycle.request_worker() {
+                    launch_error = Some(err.to_string());
+                }
+            }
+        }
+        if let Some(generation) = launch_generation {
+            if let Err(err) = install_reserved_whiteboard_worker(&mut state, generation) {
+                state.lifecycle.cancel_reserved_generation(generation);
+                launch_error = Some(err.to_string());
+            }
         }
     }
-    std::thread::spawn(|| {
-        allow_err!(start_whiteboard_());
-    });
-    if let Some(command) = bind {
-        send_whiteboard_command(command);
+    log_whiteboard_command_admission(admission);
+    if let Some(err) = launch_error {
+        log::error!("Failed to start whiteboard worker: {err}");
     }
 }
 
 pub fn unregister_whiteboard(conn_id: i32) {
-    let (command, is_conns_empty) = {
-        let mut conns = CONNS.write().unwrap();
-        let command = conns
+    let admissions = {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        let command = state
+            .conns
             .remove(&conn_id)
             .map(|conn| WhiteboardIpcCommand::Close {
                 conn_id,
                 token: conn.token,
             });
-        (command, conns.is_empty())
+        let is_empty = state.conns.is_empty();
+        let mut admissions = [None; 2];
+        if let Some(command) = command {
+            admissions[0] = Some(state.send_command(command));
+        }
+        if is_empty {
+            admissions[1] = Some(state.send_command(WhiteboardIpcCommand::Shutdown));
+        }
+        admissions
     };
-
-    if let Some(command) = command {
-        send_whiteboard_command(command);
-    }
-    if is_conns_empty {
-        send_whiteboard_command(WhiteboardIpcCommand::Shutdown);
-    }
+    admissions
+        .into_iter()
+        .flatten()
+        .for_each(log_whiteboard_command_admission);
 }
 
 pub fn update_whiteboard(conn_id: i32, e: CustomEvent) {
-    let mut conns = CONNS.write().unwrap();
-    let Some(conn) = conns.get_mut(&conn_id) else {
-        return;
-    };
-    match &e {
-        CustomEvent::Cursor(cursor) => {
-            conn.last_cursor_evt.c += 1;
-            conn.last_cursor_evt.tm = Instant::now();
-            if cursor.btns == 0 {
-                // Send one movement event every 4.
-                if conn.last_cursor_evt.c > 3 {
-                    conn.last_cursor_evt.c = 0;
-                    conn.last_cursor_evt.evt = None;
-                    tx_send_event(conn, conn_id, e);
-                } else {
-                    conn.last_cursor_evt.evt = Some(e);
+    let admissions = {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        let commands = {
+            let Some(conn) = state.conns.get_mut(&conn_id) else {
+                return;
+            };
+            let mut commands = [None, None];
+            let mut command_count = 0;
+            match &e {
+                CustomEvent::Cursor(cursor) => {
+                    conn.last_cursor_evt.c += 1;
+                    conn.last_cursor_evt.tm = Instant::now();
+                    if cursor.btns == 0 {
+                        // Send one movement event every 4.
+                        if conn.last_cursor_evt.c > 3 {
+                            conn.last_cursor_evt.c = 0;
+                            conn.last_cursor_evt.evt = None;
+                            commands[command_count] =
+                                Some(whiteboard_event_command(conn, conn_id, e));
+                        } else {
+                            conn.last_cursor_evt.evt = Some(e);
+                        }
+                    } else {
+                        if let Some(evt) = conn.last_cursor_evt.evt.take() {
+                            commands[command_count] =
+                                Some(whiteboard_event_command(conn, conn_id, evt));
+                            command_count += 1;
+                            conn.last_cursor_evt.c = 0;
+                        }
+                        let click_evt = CustomEvent::Cursor(Cursor {
+                            x: conn.last_cursor_pos.0,
+                            y: conn.last_cursor_pos.1,
+                            argb: cursor.argb,
+                            btns: cursor.btns,
+                            text: cursor.text.clone(),
+                        });
+                        commands[command_count] =
+                            Some(whiteboard_event_command(conn, conn_id, click_evt));
+                    }
                 }
-            } else {
-                if let Some(evt) = conn.last_cursor_evt.evt.take() {
-                    tx_send_event(conn, conn_id, evt);
-                    conn.last_cursor_evt.c = 0;
+                _ => {
+                    commands[command_count] =
+                        Some(whiteboard_event_command(conn, conn_id, e));
                 }
-                let click_evt = CustomEvent::Cursor(Cursor {
-                    x: conn.last_cursor_pos.0,
-                    y: conn.last_cursor_pos.1,
-                    argb: cursor.argb,
-                    btns: cursor.btns,
-                    text: cursor.text.clone(),
-                });
-                tx_send_event(conn, conn_id, click_evt);
             }
+            commands
+        };
+        let mut admissions = [None; 2];
+        for (index, command) in commands.into_iter().flatten().enumerate() {
+            admissions[index] = Some(state.send_command(command));
         }
-        _ => {
-            tx_send_event(conn, conn_id, e);
-        }
-    }
+        admissions
+    };
+    admissions
+        .into_iter()
+        .flatten()
+        .for_each(log_whiteboard_command_admission);
 }
 
 #[inline]
-fn tx_send_event(conn: &mut Conn, conn_id: i32, event: CustomEvent) {
+fn whiteboard_event_command(
+    conn: &mut Conn,
+    conn_id: i32,
+    event: CustomEvent,
+) -> WhiteboardIpcCommand {
     if let CustomEvent::Cursor(cursor) = &event {
         if cursor.btns == 0 {
             conn.last_cursor_pos = (cursor.x, cursor.y);
         }
     }
 
-    send_whiteboard_command(WhiteboardIpcCommand::Event {
+    WhiteboardIpcCommand::Event {
         conn_id,
         token: conn.token.clone(),
         event,
-    });
-}
-
-fn send_whiteboard_command(command: WhiteboardIpcCommand) {
-    let result = {
-        let sender = TX_WHITEBOARD.read().unwrap();
-        sender.as_ref().map(|sender| sender.try_send(command))
-    };
-    match result {
-        None | Some(Ok(())) => {}
-        Some(Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))) => {
-            log::debug!("Dropping a whiteboard event because the bounded queue is full");
-        }
-        Some(Err(TrySendError::Full(_))) => {
-            log::warn!("Retiring a saturated whiteboard command channel");
-            TX_WHITEBOARD.write().unwrap().take();
-        }
-        Some(Err(TrySendError::Closed(_))) => {
-            TX_WHITEBOARD.write().unwrap().take();
-        }
     }
 }
 
-fn close_whiteboard_if_idle() -> bool {
-    let conns = CONNS.read().unwrap();
-    if !conns.is_empty() {
+fn close_whiteboard_if_idle(generation: u64) -> bool {
+    let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+    if !state.conns.is_empty() {
         return false;
     }
-    TX_WHITEBOARD.write().unwrap().take();
+    if state.lifecycle.begin_stop(generation)
+        && state.sender.as_ref().map(|(owner, _)| *owner) == Some(generation)
+    {
+        state.sender.take();
+    }
     true
 }
 
@@ -213,23 +539,7 @@ async fn connect_whiteboard_endpoint(
     Ok(stream)
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn start_whiteboard_() -> ResultType<()> {
-    if TX_WHITEBOARD.read().unwrap().is_some() {
-        log::warn!("Whiteboard already started");
-        return Ok(());
-    }
-    if STARTING_WHITEBOARD.swap(true, Ordering::SeqCst) {
-        log::warn!("Whiteboard already starting");
-        return Ok(());
-    }
-    let _starting_guard = crate::common::SimpleCallOnReturn {
-        b: true,
-        f: Box::new(move || {
-            STARTING_WHITEBOARD.store(false, Ordering::SeqCst);
-        }),
-    };
-
+async fn start_whiteboard_(generation: u64) -> ResultType<()> {
     let headless_service_user = loop {
         if crate::platform::is_headless_no_console_user() {
             break true;
@@ -299,33 +609,28 @@ async fn start_whiteboard_() -> ResultType<()> {
     let mut stream = stream.ok_or(anyhow!("none stream"))?;
     let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);
     let initial_binds = {
-        let conns = CONNS.read().unwrap();
-        let mut tx_whiteboard = TX_WHITEBOARD.write().unwrap();
-        if tx_whiteboard.is_some() {
-            log::warn!("Whiteboard already started");
-            return Ok(());
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if !state.lifecycle.publish(generation) {
+            bail!("whiteboard worker generation {generation} lost startup ownership");
         }
-        tx_whiteboard.replace(tx.clone());
-        for (conn_id, conn) in conns.iter() {
+        if state.sender.is_some() {
+            bail!("whiteboard command sender ownership overlapped generation {generation}");
+        }
+        state.sender = Some((generation, tx.clone()));
+        for (conn_id, conn) in state.conns.iter() {
             tx.try_send(WhiteboardIpcCommand::Bind {
                 conn_id: *conn_id,
                 token: conn.token.clone(),
             })
             .map_err(|err| anyhow!("failed to enqueue initial whiteboard bind: {err}"))?;
         }
-        conns.len()
+        state.conns.len()
     };
     if initial_binds == 0 {
         tx.try_send(WhiteboardIpcCommand::Shutdown)
             .map_err(|err| anyhow!("failed to enqueue initial whiteboard shutdown: {err}"))?;
     }
     drop(tx);
-    let _call_on_ret = crate::common::SimpleCallOnReturn {
-        b: true,
-        f: Box::new(move || {
-            let _ = TX_WHITEBOARD.write().unwrap().take();
-        }),
-    };
 
     let dur = tokio::time::Duration::from_millis(300);
     let mut timer = interval_at(tokio::time::Instant::now() + dur, dur);
@@ -362,7 +667,7 @@ async fn start_whiteboard_() -> ResultType<()> {
                         timer.reset();
                     }
                     Some(WhiteboardIpcCommand::Shutdown) => {
-                        if close_whiteboard_if_idle() {
+                        if close_whiteboard_if_idle(generation) {
                             break;
                         }
                     }
@@ -373,9 +678,9 @@ async fn start_whiteboard_() -> ResultType<()> {
             },
             _ = timer.tick() => {
                 let pending = {
-                    let mut conns = CONNS.write().unwrap();
+                    let mut state = WHITEBOARD_CLIENT.lock().unwrap();
                     let mut pending = Vec::new();
-                    for (k, conn) in conns.iter_mut() {
+                    for (k, conn) in state.conns.iter_mut() {
                         if conn.last_cursor_evt.tm.elapsed().as_millis() > 300 {
                             if let Some(evt) = conn.last_cursor_evt.evt.take() {
                                 pending.push((*k, conn.token.clone(), evt));
@@ -412,6 +717,67 @@ async fn start_whiteboard_() -> ResultType<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn r_s11ho_duplicate_whiteboard_demand_owns_one_generation() {
+        let mut lifecycle = WhiteboardWorkerLifecycle::default();
+        let generation = lifecycle.request_worker().unwrap().unwrap();
+        assert_eq!(lifecycle.request_worker().unwrap(), None);
+        assert!(lifecycle.publish(generation));
+        assert_eq!(lifecycle.request_worker().unwrap(), None);
+        assert_eq!(
+            lifecycle.phase,
+            WhiteboardWorkerPhase::Running { generation }
+        );
+    }
+
+    #[test]
+    fn r_s11ho_demand_during_committed_stop_starts_one_successor() {
+        let mut lifecycle = WhiteboardWorkerLifecycle::default();
+        let first = lifecycle.request_worker().unwrap().unwrap();
+        assert!(lifecycle.publish(first));
+        assert!(lifecycle.begin_stop(first));
+        assert_eq!(lifecycle.request_worker().unwrap(), None);
+        assert_eq!(lifecycle.request_worker().unwrap(), None);
+
+        let second = lifecycle.finish(first, true).unwrap().unwrap();
+        assert_ne!(first, second);
+        assert_eq!(
+            lifecycle.phase,
+            WhiteboardWorkerPhase::Starting { generation: second }
+        );
+        assert_eq!(lifecycle.request_worker().unwrap(), None);
+    }
+
+    #[test]
+    fn r_s11ho_unexpected_worker_failure_does_not_self_retry() {
+        let mut lifecycle = WhiteboardWorkerLifecycle::default();
+        let failed = lifecycle.request_worker().unwrap().unwrap();
+        assert_eq!(lifecycle.finish(failed, true).unwrap(), None);
+        assert_eq!(lifecycle.phase, WhiteboardWorkerPhase::Idle);
+
+        let failed_transport = lifecycle.request_worker().unwrap().unwrap();
+        assert_ne!(failed, failed_transport);
+        assert!(lifecycle.publish(failed_transport));
+        lifecycle.sender_failed(failed_transport);
+        assert_eq!(lifecycle.finish(failed_transport, true).unwrap(), None);
+        assert_eq!(lifecycle.phase, WhiteboardWorkerPhase::Idle);
+
+        let explicit_retry = lifecycle.request_worker().unwrap().unwrap();
+        assert_ne!(failed_transport, explicit_retry);
+    }
+
+    #[test]
+    fn r_s11ho_stale_finalizer_cannot_retire_current_generation() {
+        let mut lifecycle = WhiteboardWorkerLifecycle::default();
+        let generation = lifecycle.request_worker().unwrap().unwrap();
+        assert_eq!(lifecycle.finish(generation + 1, true).unwrap(), None);
+        assert_eq!(
+            lifecycle.phase,
+            WhiteboardWorkerPhase::Starting { generation }
+        );
+        assert!(lifecycle.publish(generation));
+    }
 
     #[test]
     fn whiteboard_command_queue_has_a_hard_capacity() {

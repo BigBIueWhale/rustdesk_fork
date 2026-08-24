@@ -882,11 +882,13 @@ def validate(sources: Dict[str, str]) -> None:
             "conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
             "random::<[u8; 32]>()",
             "WhiteboardIpcCommand::Bind",
+            "state.lifecycle.request_worker()",
+            "install_reserved_whiteboard_worker(&mut state, generation)",
         ),
-        "bounded minted whiteboard connection authority",
+        "bounded minted whiteboard connection and worker authority",
     )
     whiteboard_queue = block(
-        whiteboard_client, "fn send_whiteboard_command", "whiteboard queue admission"
+        whiteboard_client, "fn send_command(&mut self", "whiteboard queue admission"
     )
     ordered(
         whiteboard_queue,
@@ -894,7 +896,8 @@ def validate(sources: Dict[str, str]) -> None:
             "sender.try_send(command)",
             "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
             "TrySendError::Full(_)",
-            "TX_WHITEBOARD.write().unwrap().take()",
+            "self.sender.take()",
+            "self.lifecycle.sender_failed(generation)",
             "TrySendError::Closed(_)",
         ),
         "bounded nonblocking whiteboard queue overflow policy",
@@ -916,6 +919,29 @@ def validate(sources: Dict[str, str]) -> None:
         )
     absent(whiteboard_client, "unbounded_channel", "unbounded whiteboard command queue")
     absent(whiteboard_client, "allow_err!(stream", "ignored whiteboard transport error")
+    for forbidden, label in (
+        ("std::thread::spawn", "detached whiteboard client worker"),
+        ("#[tokio::main", "nested whiteboard client runtime"),
+        ("STARTING_WHITEBOARD", "split whiteboard startup flag"),
+        ("TX_WHITEBOARD", "split whiteboard sender global"),
+        ("static ref CONNS", "split whiteboard connection global"),
+    ):
+        absent(whiteboard_client, forbidden, label)
+    for marker, label in (
+        (
+            "worker: Option<(u64, tokio::task::JoinHandle<()>)>",
+            "retained generation-bound whiteboard task",
+        ),
+        (
+            "runtime.spawn(run_whiteboard_worker(generation))",
+            "existing-runtime whiteboard task",
+        ),
+        (
+            "let _terminal = WhiteboardClientWorkerGuard { generation };",
+            "whiteboard client task finalizer",
+        ),
+    ):
+        require(whiteboard_client, marker, label)
 
     for marker, label in (
         (
@@ -1334,14 +1360,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "whiteboard_client",
-        "sender.as_ref().map(|sender| sender.try_send(command))",
-        "sender.as_ref().map(|sender| sender.blocking_send(command))",
+        "(*generation, sender.try_send(command))",
+        "(*generation, sender.blocking_send(command))",
         "whiteboard nonblocking command admission",
     ),
     (
         "whiteboard_client",
-        "Some(Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. })))",
-        "Some(Err(TrySendError::Full(_)))",
+        "Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))",
+        "Err(TrySendError::Full(_))",
         "whiteboard event overflow policy",
     ),
     (

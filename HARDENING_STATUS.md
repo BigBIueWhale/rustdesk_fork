@@ -27230,8 +27230,14 @@ pulled, built, or tagged, and no host Rust command was run. The authored Rust
 regressions therefore remain explicitly uncompiled and unexecuted; confined
 source and mutation evidence is not represented as native behavior evidence.
 No host RustDesk process, configuration, service, listener, port,
-firewall/network state, VM, device, unrelated workload, or privilege boundary
-was inspected or changed by this slice.
+firewall/network state, VM, device, or privilege boundary was inspected or
+changed by this slice. One broad read-only `docker ps` status query used to
+locate the long-running verifier also returned container IDs, image IDs,
+status, commands, and names for unrelated running containers, including
+Haggai; no unrelated container was entered, signalled, stopped, restarted, or
+changed, and no unrelated files, logs, sockets, namespaces, or internal
+process state were inspected. Subsequent status queries were restricted to the
+exact verifier container ID or approved image.
 
 Exact Rust/native compilation and tests, Windows/macOS/Linux physical
 multi-connection/duplicate-toggle/stop-window execution, helper-process

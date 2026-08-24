@@ -1,4 +1,4 @@
-use super::{server::EVENT_PROXY, Cursor, CustomEvent, Ripple};
+use super::{server::install_whiteboard_event_proxy, Cursor, CustomEvent, Ripple};
 use core_graphics::context::CGContextRef;
 use foreign_types::ForeignTypeRef;
 use hbb_common::{bail, log, ResultType};
@@ -223,13 +223,7 @@ pub(super) fn create_event_loop() -> ResultType<()> {
     let windows = create_windows(&event_loop)?;
 
     let proxy = event_loop.create_proxy();
-    EVENT_PROXY.write().unwrap().replace(proxy);
-    let _call_on_ret = crate::common::SimpleCallOnReturn {
-        b: true,
-        f: Box::new(move || {
-            let _ = EVENT_PROXY.write().unwrap().take();
-        }),
-    };
+    let _event_proxy = install_whiteboard_event_proxy(proxy);
 
     let mut window_ripples: HashMap<WindowId, Vec<Ripple>> = HashMap::new();
     let mut last_cursors: HashMap<String, CursorInfo> = HashMap::new();

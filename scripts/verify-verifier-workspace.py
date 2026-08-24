@@ -17475,7 +17475,7 @@ def validate_whiteboard_ipc_protocol_contract(sources):
 
     admission = extract_between(
         server,
-        "pub(super) async fn start_ipc",
+        "async fn start_ipc",
         "\nenum WhiteboardIpcAction",
         "whiteboard listener admission",
     )
@@ -17485,7 +17485,7 @@ def validate_whiteboard_ipc_protocol_contract(sources):
             "Connection::new_whiteboard(stream)",
             "authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)",
             "answer_whiteboard_endpoint_challenge(&mut stream).await",
-            "handle_new_stream(stream, &mut rx_exit).await",
+            "handle_new_stream(stream, &mut stop_requested).await",
             "break",
         ),
         "whiteboard cap, parent/proof admission, and single owned stream",
@@ -17525,15 +17525,19 @@ def validate_whiteboard_ipc_protocol_contract(sources):
     require_order(
         handler,
         (
-            "rx_exit.try_recv()",
+            "stop_requested.try_recv()",
             "next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
             "Err(err) =>",
             "Ok(Some(command))",
             "state.apply(command)",
             "Ok(None) =>",
-            'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
         ),
-        "whiteboard cancellation wake and terminal overlay exit",
+        "whiteboard cancellation wake and command finality",
+    )
+    require_text(
+        server,
+        "let _terminal = WhiteboardIpcTerminalGuard;",
+        "whiteboard startup-wide terminal finalizer",
     )
 
     register = extract_between(
@@ -17684,6 +17688,279 @@ def validate_whiteboard_ipc_protocol_contract(sources):
         ),
     ):
         require_text(sources[source_key], text, label)
+
+
+def validate_whiteboard_ipc_lifecycle_contract(sources):
+    focused = sources["whiteboard_ipc_lifecycle_verifier"]
+    focused_validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "whiteboard lifecycle focused validation",
+    )
+    for text, label in (
+        ("def extract_braced_item(", "focused balanced Rust item parser"),
+        ("termination-before-proxy latch delivery", "focused early-terminal check"),
+        ("proxy-before-termination exact take", "focused installed-proxy check"),
+        ("startup-wide finalizer and one-shot cancellation ownership", "focused startup-finalizer check"),
+        ("first-action terminal finalizer", "focused first-action finalizer check"),
+        ("one-shot stop followed by exact join", "focused worker-finality check"),
+        ("Linux event-loop and worker ownership", "focused Linux owner check"),
+        ("independent whiteboard lifecycle dispatch must occur exactly once", "focused exact workspace dispatch check"),
+        ("exact hardening requirements digest", "focused hardening digest check"),
+        ("exact native-watch requirements digest", "focused native-watch digest check"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("unbounded_channel", "focused unbounded-channel prohibition"),
+        ("UnboundedReceiver", "focused unbounded-receiver prohibition"),
+        ("EVENT_PROXY", "focused direct-proxy-global prohibition"),
+        ("std::thread::spawn(", "focused detached-thread prohibition"),
+        ("forbid(handler, \"CustomEvent::Exit\"", "focused inner-handler terminal prohibition"),
+    ):
+        require_text(focused_validation, text, label)
+
+    server = sources["whiteboard_server"]
+    platforms = (
+        server
+        + sources["whiteboard_linux"]
+        + sources["whiteboard_windows"]
+        + sources["whiteboard_macos"]
+    )
+    for forbidden, label in (
+        ("unbounded_channel", "independent unbounded whiteboard lifecycle channel"),
+        ("UnboundedReceiver", "independent unbounded whiteboard lifecycle receiver"),
+        ("EVENT_PROXY", "independent direct whiteboard event-proxy global"),
+        ("std::thread::spawn(", "independent detached whiteboard IPC thread"),
+    ):
+        require_absent(platforms, forbidden, label)
+
+    lifecycle = extract_between(
+        server,
+        "struct WhiteboardEventLifecycle<Proxy>",
+        "\nlazy_static!",
+        "independent whiteboard event lifecycle state",
+    )
+    require_order(
+        lifecycle,
+        (
+            "proxy: Option<Proxy>",
+            "ipc_terminated: bool",
+            "if self.ipc_terminated",
+            "Some(proxy)",
+            "self.proxy = Some(proxy);",
+            "if self.ipc_terminated",
+            "return None;",
+            "self.ipc_terminated = true;",
+            "self.proxy.take()",
+            "fn clear_proxy(&mut self)",
+            "self.proxy = None;",
+        ),
+        "independent level-triggered proxy/terminal state machine",
+    )
+    require_absent(
+        extract_between(
+            lifecycle,
+            "fn clear_proxy(&mut self)",
+            "\n    }\n}",
+            "independent proxy retirement",
+        ),
+        "ipc_terminated = false",
+        "independent terminal-latch reset on event-loop retirement",
+    )
+
+    lifecycle_delivery = extract_between(
+        server,
+        "pub(super) struct WhiteboardEventProxyGuard",
+        "\npub(super) struct WhiteboardIpcWorker",
+        "independent lifecycle publication guards",
+    )
+    require_order(
+        lifecycle_delivery,
+        (
+            "EVENT_LIFECYCLE.write().unwrap().clear_proxy();",
+            "EVENT_LIFECYCLE.write().unwrap().install(proxy)",
+            "proxy.send_event((String::new(), CustomEvent::Exit))",
+            "EVENT_LIFECYCLE.write().unwrap().terminate()",
+            "proxy.send_event((String::new(), CustomEvent::Exit))",
+            "terminate_whiteboard_ipc_generation();",
+        ),
+        "independent serialized exact-once lifecycle publication",
+    )
+
+    worker = extract_between(
+        server,
+        "pub(super) struct WhiteboardIpcWorker",
+        "\nconst RIPPLE_DURATION",
+        "independent retained whiteboard IPC worker",
+    )
+    require_order(
+        worker,
+        (
+            "stop: oneshot::Sender<()>",
+            "thread: std::thread::JoinHandle<()>",
+            "let (stop, stop_requested) = oneshot::channel();",
+            "std::thread::Builder::new()",
+            '.name("rustdesk-whiteboard-ipc".to_owned())',
+            ".spawn(move || run_whiteboard_ipc_worker(stop_requested))",
+            "Ok(Self { stop, thread })",
+            "self.stop.send(()).is_err()",
+            "self.thread",
+            ".join()",
+            "whiteboard IPC worker panicked",
+        ),
+        "independent one-shot named fallible worker and exact join",
+    )
+
+    run = extract_between(
+        server,
+        "pub fn run()",
+        "\n\n#[tokio::main",
+        "independent Windows/macOS helper owner",
+    )
+    require_order(
+        run,
+        (
+            "WhiteboardIpcWorker::spawn()",
+            "super::create_event_loop()",
+            "worker.stop_and_join()",
+        ),
+        "independent returning event-loop worker finality",
+    )
+    worker_entry = extract_between(
+        server,
+        "fn run_whiteboard_ipc_worker(",
+        "\n}\n\nconst RIPPLE_DURATION",
+        "independent whiteboard IPC worker entrypoint",
+    )
+    require_text(
+        worker_entry,
+        "fn run_whiteboard_ipc_worker(stop_requested: oneshot::Receiver<()>) {\n"
+        "    let _terminal = WhiteboardIpcTerminalGuard;\n"
+        "    start_ipc(stop_requested);",
+        "independent first-action terminal finalizer",
+    )
+    start = extract_between(
+        server,
+        "async fn start_ipc(",
+        "\nenum WhiteboardIpcAction",
+        "independent whiteboard IPC runtime",
+    )
+    require_order(
+        start,
+        (
+            "ipc::whiteboard_endpoint_postfix_from_env()",
+            "WHITEBOARD_LAUNCH_PARENT_ENV",
+            "new_listener(&postfix).await",
+            "_ = &mut stop_requested",
+            "handle_new_stream(stream, &mut stop_requested).await",
+        ),
+        "independent startup-wide finalizer and one-shot cancellation",
+    )
+    handler = extract_between(
+        server,
+        "async fn handle_new_stream(",
+        "\n\n#[cfg(test)]",
+        "independent owned whiteboard stream handler",
+    )
+    require_order(
+        handler,
+        (
+            "stop_requested.try_recv()",
+            "TryRecvError::Closed",
+            "TryRecvError::Empty",
+            "next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
+        ),
+        "independent bounded stream cancellation wake",
+    )
+    require_absent(
+        handler,
+        "CustomEvent::Exit",
+        "independent inner-handler-only terminal publication",
+    )
+
+    linux = sources["whiteboard_linux"]
+    require_order(
+        linux,
+        (
+            "install_whiteboard_event_proxy(event_loop_proxy)",
+            "WhiteboardIpcWorker::spawn()",
+            "WhiteboardApplication::new(&event_loop)",
+            "event_loop.run_app(&mut app)",
+            "worker.stop_and_join()",
+        ),
+        "independent Linux event-loop/worker ownership",
+    )
+    require_exact_count(
+        linux,
+        "worker.stop_and_join()",
+        2,
+        "independent Linux construction-failure and event-loop-return joins",
+    )
+    require_text(
+        sources["whiteboard_windows"],
+        "install_whiteboard_event_proxy(proxy)",
+        "independent Windows proxy lifecycle",
+    )
+    require_text(
+        sources["whiteboard_macos"],
+        "install_whiteboard_event_proxy(proxy)",
+        "independent macOS proxy lifecycle",
+    )
+
+    for test in (
+        "r_s11hn_whiteboard_ipc_termination_before_proxy_is_delivered_once",
+        "r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once",
+        "r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch",
+    ):
+        require_text(server, test, f"independent {test} regression")
+
+    gate = "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test"
+    for source, text, label in (
+        (sources["verify"], gate, "independent shared focused gate"),
+        (
+            sources["verify"],
+            "cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never",
+            "independent shared behavior gate",
+        ),
+        (sources["apple"], gate, "independent Apple focused gate"),
+        (
+            sources["requirements"],
+            '<div class="req"><span class="id">R-S11hn</span>',
+            "independent R-S11hn requirement",
+        ),
+        (sources["requirements"], "<tr><td>374</td>", "independent Appendix C #374"),
+        (
+            sources["hardening"],
+            "### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership",
+            "independent whiteboard lifecycle ledger",
+        ),
+        (
+            sources["workspace_verifier"],
+            '            "whiteboard_ipc_lifecycle_verifier": (\n'
+            '                repo / "scripts/verify-whiteboard-ipc-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent lifecycle focused-verifier source binding",
+        ),
+        (
+            sources["workspace_verifier"],
+            "    validate_whiteboard_ipc_lifecycle_contract(sources)\n",
+            "independent lifecycle validator dispatch",
+        ),
+    ):
+        require_text(source, text, label)
+
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(
+        sources["hardening"],
+        f"{digest}  requirements.html",
+        "independent whiteboard lifecycle requirements hash",
+    )
+    require_text(
+        sources["native_watch"],
+        f"Requirements hash: {digest}",
+        "independent whiteboard lifecycle native-watch hash",
+    )
 
 
 def validate_unix_listener_incumbent_contract(sources):
@@ -51758,6 +52035,7 @@ def validate_sources(sources):
     validate_windows_service_channel_protocol_contract(sources)
     validate_pulse_audio_ipc_protocol_contract(sources)
     validate_whiteboard_ipc_protocol_contract(sources)
+    validate_whiteboard_ipc_lifecycle_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_x11_capture_shared_memory_contract(sources)
@@ -68694,8 +68972,8 @@ def run_source_mutations(sources):
         ),
         (
             "whiteboard_server",
-            "handle_new_stream(stream, &mut rx_exit).await;",
-            "tokio::spawn(handle_new_stream(stream, &mut rx_exit));",
+            "handle_new_stream(stream, &mut stop_requested).await;",
+            "tokio::spawn(handle_new_stream(stream, &mut stop_requested));",
             "whiteboard cap, parent/proof admission, and single owned stream",
         ),
         (
@@ -68714,13 +68992,13 @@ def run_source_mutations(sources):
             "whiteboard_server",
             ".next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
             ".next()",
-            "whiteboard cancellation wake and terminal overlay exit",
+            "whiteboard cancellation wake and command finality",
         ),
         (
             "whiteboard_server",
-            'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
-            'log::info!("whiteboard stream ended");',
-            "whiteboard cancellation wake and terminal overlay exit",
+            "let _terminal = WhiteboardIpcTerminalGuard;",
+            "let _terminal_finalizer_was_removed = ();",
+            "whiteboard startup-wide terminal finalizer",
         ),
         (
             "whiteboard_client",
@@ -87212,6 +87490,213 @@ def run_source_mutations(sources):
             "    validate_file_command_session_ownership_contract_disabled(sources)\n",
             "independent validator dispatch",
         ),
+        (
+            "whiteboard_server",
+            "ipc_terminated: bool",
+            "ipc_termination_was_advisory: bool",
+            "independent level-triggered proxy/terminal state machine",
+        ),
+        (
+            "whiteboard_server",
+            "if self.ipc_terminated {\n            Some(proxy)",
+            "if false {\n            Some(proxy)",
+            "independent level-triggered proxy/terminal state machine",
+        ),
+        (
+            "whiteboard_server",
+            "self.ipc_terminated = true;",
+            "self.ipc_terminated = false;",
+            "independent level-triggered proxy/terminal state machine",
+        ),
+        (
+            "whiteboard_server",
+            "fn clear_proxy(&mut self) {\n        self.proxy = None;",
+            "fn clear_proxy(&mut self) {\n        self.ipc_terminated = false;",
+            "independent level-triggered proxy/terminal state machine",
+        ),
+        (
+            "whiteboard_server",
+            "EVENT_LIFECYCLE.write().unwrap().install(proxy)",
+            "WhiteboardEventLifecycle::default().install(proxy)",
+            "independent serialized exact-once lifecycle publication",
+        ),
+        (
+            "whiteboard_server",
+            "EVENT_LIFECYCLE.write().unwrap().terminate()",
+            "WhiteboardEventLifecycle::default().terminate()",
+            "independent serialized exact-once lifecycle publication",
+        ),
+        (
+            "whiteboard_server",
+            "terminate_whiteboard_ipc_generation();",
+            "// whiteboard terminal finalization removed",
+            "independent serialized exact-once lifecycle publication",
+        ),
+        (
+            "whiteboard_server",
+            "let (stop, stop_requested) = oneshot::channel();",
+            "let (stop, stop_requested) = tokio::sync::mpsc::unbounded_channel();",
+            "independent unbounded whiteboard lifecycle channel",
+        ),
+        (
+            "whiteboard_server",
+            "std::thread::Builder::new()",
+            "std::thread::spawn(",
+            "independent detached whiteboard IPC thread",
+        ),
+        (
+            "whiteboard_server",
+            '.name("rustdesk-whiteboard-ipc".to_owned())',
+            '.name("anonymous".to_owned())',
+            "independent one-shot named fallible worker and exact join",
+        ),
+        (
+            "whiteboard_server",
+            ".spawn(move || run_whiteboard_ipc_worker(stop_requested))",
+            ".spawn(move || start_ipc(stop_requested))",
+            "independent one-shot named fallible worker and exact join",
+        ),
+        (
+            "whiteboard_server",
+            ".join()\n            .map_err",
+            ".is_finished()\n            .then_some(())\n            .ok_or_else",
+            "independent one-shot named fallible worker and exact join",
+        ),
+        (
+            "whiteboard_linux",
+            "install_whiteboard_event_proxy(event_loop_proxy)",
+            "event_loop_proxy",
+            "independent Linux event-loop/worker ownership",
+        ),
+        (
+            "whiteboard_linux",
+            "event_loop.run_app(&mut app)",
+            "Ok(())",
+            "independent Linux event-loop/worker ownership",
+        ),
+        (
+            "whiteboard_linux",
+            "            if let Err(err) = worker.stop_and_join() {\n"
+            "                log::error!(\"Failed to finish whiteboard IPC worker: {err}\");\n"
+            "            }\n"
+            "            return;",
+            "            if let Err(err) = Ok(()) {\n"
+            "                log::error!(\"Failed to finish whiteboard IPC worker: {err}\");\n"
+            "            }\n"
+            "            return;",
+            "independent Linux construction-failure and event-loop-return joins",
+        ),
+        (
+            "whiteboard_linux",
+            "    if let Err(err) = worker.stop_and_join() {\n"
+            "        log::error!(\"Failed to finish whiteboard IPC worker: {err}\");\n"
+            "    }\n"
+            "}",
+            "    if let Err(err) = Ok(()) {\n"
+            "        log::error!(\"Failed to finish whiteboard IPC worker: {err}\");\n"
+            "    }\n"
+            "}",
+            "independent Linux event-loop/worker ownership",
+        ),
+        (
+            "whiteboard_windows",
+            "install_whiteboard_event_proxy(proxy)",
+            "proxy",
+            "independent Windows proxy lifecycle",
+        ),
+        (
+            "whiteboard_macos",
+            "install_whiteboard_event_proxy(proxy)",
+            "proxy",
+            "independent macOS proxy lifecycle",
+        ),
+        (
+            "whiteboard_server",
+            "fn r_s11hn_whiteboard_ipc_termination_before_proxy_is_delivered_once",
+            "fn whiteboard_ipc_termination_before_proxy_may_be_lost",
+            "independent r_s11hn_whiteboard_ipc_termination_before_proxy_is_delivered_once regression",
+        ),
+        (
+            "whiteboard_server",
+            "fn r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once",
+            "fn whiteboard_ipc_termination_may_repeat",
+            "independent r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once regression",
+        ),
+        (
+            "whiteboard_server",
+            "fn r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch",
+            "fn whiteboard_event_loop_retirement_resets_terminal_latch",
+            "independent r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch regression",
+        ),
+        (
+            "whiteboard_server",
+            "fn run_whiteboard_ipc_worker(stop_requested: oneshot::Receiver<()>) {\n"
+            "    let _terminal = WhiteboardIpcTerminalGuard;\n"
+            "    start_ipc(stop_requested);",
+            "fn run_whiteboard_ipc_worker(stop_requested: oneshot::Receiver<()>) {\n"
+            "    let _work_before_terminal = ipc::whiteboard_endpoint_postfix_from_env();\n"
+            "    let _terminal = WhiteboardIpcTerminalGuard;\n"
+            "    start_ipc(stop_requested);",
+            "independent first-action terminal finalizer",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test",
+            "true # whiteboard lifecycle focused gate disabled",
+            "independent shared focused gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never",
+            "true # whiteboard lifecycle tests disabled",
+            "independent shared behavior gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test",
+            "true # whiteboard lifecycle Apple gate disabled",
+            "independent Apple focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hn</span>',
+            '<div class="req"><span class="id">R-S11hn-disabled</span>',
+            "independent R-S11hn requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>374</td>",
+            "<tr><td>374-disabled</td>",
+            "independent Appendix C #374",
+        ),
+        (
+            "hardening",
+            "### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership",
+            "### R-S11hn-disabled/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership",
+            "independent whiteboard lifecycle ledger",
+        ),
+        (
+            "whiteboard_ipc_lifecycle_verifier",
+            '        "termination-before-proxy latch delivery",',
+            '        "termination-before-proxy delivery disabled",',
+            "focused early-terminal check",
+        ),
+        (
+            "workspace_verifier",
+            '            "whiteboard_ipc_lifecycle_verifier": (\n'
+            '                repo / "scripts/verify-whiteboard-ipc-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "whiteboard_ipc_lifecycle_verifier_disabled": (\n'
+            '                repo / "scripts/verify-whiteboard-ipc-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent lifecycle focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_whiteboard_ipc_lifecycle_contract(sources)\n",
+            "    validate_whiteboard_ipc_lifecycle_contract_disabled(sources)\n",
+            "independent lifecycle validator dispatch",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -88244,6 +88729,9 @@ def main():
             "file_command_session_ownership_verifier": (
                 repo / "scripts/verify-file-command-session-ownership.py"
             ).read_text(encoding="utf-8"),
+            "whiteboard_ipc_lifecycle_verifier": (
+                repo / "scripts/verify-whiteboard-ipc-lifecycle.py"
+            ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"
             ).read_text(encoding="utf-8"),
@@ -88624,6 +89112,9 @@ def main():
                 repo / "libs/clipboard/src/platform/unix/fuse/cs.rs"
             ).read_text(encoding="utf-8"),
             "whiteboard_server": (repo / "src/whiteboard/server.rs").read_text(encoding="utf-8"),
+            "whiteboard_linux": (repo / "src/whiteboard/linux.rs").read_text(encoding="utf-8"),
+            "whiteboard_windows": (repo / "src/whiteboard/windows.rs").read_text(encoding="utf-8"),
+            "whiteboard_macos": (repo / "src/whiteboard/macos.rs").read_text(encoding="utf-8"),
             "direct_service": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
             "desktop_input_source": (

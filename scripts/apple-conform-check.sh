@@ -2097,11 +2097,12 @@ grep -q 'let role = current_whiteboard_process_role()?' "$REPO/src/ipc.rs" || r_
 grep -q 'WhiteboardIpcState' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-state-machine-missing"
 grep -q 'super::client::get_key_cursor(conn_id)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
 grep -q 'Connection::new_whiteboard(stream)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 accepted-stream-not-frame-capped"
-grep -q 'handle_new_stream(stream, &mut rx_exit).await' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 accepted-stream-not-owned"
+grep -q 'handle_new_stream(stream, &mut stop_requested).await' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 accepted-stream-not-owned"
 grep -q 'next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-command-read-not-bounded"
 grep -q 'self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-active-token-map-unbounded"
 grep -q 'whiteboard_connection_token_is_valid(&token)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-accepts-malformed-token"
-grep -q 'send_whiteboard_event("".to_string(), CustomEvent::Exit);' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 terminal-stream-does-not-exit-overlay"
+grep -q 'let _terminal = WhiteboardIpcTerminalGuard;' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 terminal-finalizer-does-not-cover-startup"
+grep -q 'terminate_whiteboard_ipc_generation();' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 terminal-finalizer-does-not-exit-overlay"
 grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-command-channel-unbounded"
 grep -q 'sender.try_send(command)' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
 grep -q 'drop(tx);' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 local-sender-prevents-channel-closure"
@@ -3715,6 +3716,14 @@ if python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test; 
   note "ok  R-S11hb Apple/shared native clipboard-listener callbacks are bounded, exact-generation-owned, and terminal-final"
 else
   echo "  FAIL R-S11hb Apple/shared native clipboard-listener callbacks regained unbounded retention, name-only cleanup, or incomplete terminal finality"
+  rc=1
+fi
+
+echo "== (2g-c2adaa) R-S11hn lossless whiteboard IPC/event-loop lifecycle ownership =="
+if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
+  note "ok  R-S11hn Apple/shared whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
+else
+  echo "  FAIL R-S11hn Apple/shared whiteboard IPC/event-loop finality regained a lost startup edge, detached worker, unbounded stop channel, or incomplete join"
   rc=1
 fi
 

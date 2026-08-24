@@ -7214,11 +7214,12 @@ grep -q 'let role = current_whiteboard_process_role()?' src/ipc.rs || r_s11c8="$
 grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-state-machine-missing"
 grep -q 'super::client::get_key_cursor(conn_id)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
 grep -q 'Connection::new_whiteboard(stream)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-frame-capped"
-grep -q 'handle_new_stream(stream, &mut rx_exit).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-owned"
+grep -q 'handle_new_stream(stream, &mut stop_requested).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-owned"
 grep -q 'next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-command-read-not-bounded"
 grep -q 'self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-active-token-map-unbounded"
 grep -q 'whiteboard_connection_token_is_valid(&token)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-accepts-malformed-token"
-grep -q 'send_whiteboard_event("".to_string(), CustomEvent::Exit);' src/whiteboard/server.rs || r_s11c8="$r_s11c8 terminal-stream-does-not-exit-overlay"
+grep -q 'let _terminal = WhiteboardIpcTerminalGuard;' src/whiteboard/server.rs || r_s11c8="$r_s11c8 terminal-finalizer-does-not-cover-startup"
+grep -q 'terminate_whiteboard_ipc_generation();' src/whiteboard/server.rs || r_s11c8="$r_s11c8 terminal-finalizer-does-not-exit-overlay"
 grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-channel-unbounded"
 grep -q 'sender.try_send(command)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
 grep -q 'TrySendError::Full(WhiteboardIpcCommand::Event { .. })' src/whiteboard/client.rs || r_s11c8="$r_s11c8 event-overflow-policy-missing"
@@ -9524,6 +9525,7 @@ fi
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11gx_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
@@ -9574,6 +9576,12 @@ if python3 scripts/verify-tray-session-count-mailbox.py --repo . --self-test; th
   echo "  ok  R-S11hc Windows tray session-count publication is latest-state bounded and receiver-final"
 else
   echo "  FAIL R-S11hc: Windows tray session-count publication regained an unbounded queue, stale history, or incomplete retirement"
+  rc=1
+fi
+if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
+  echo "  ok  R-S11hn/R-S11e-251 whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
+else
+  echo "  FAIL R-S11hn/R-S11e-251: whiteboard IPC/event-loop finality regained a lost startup edge, detached worker, unbounded stop channel, or incomplete join"
   rc=1
 fi
 if python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test; then

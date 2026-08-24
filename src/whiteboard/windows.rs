@@ -1,5 +1,5 @@
 use super::{
-    server::{Ripple, EVENT_PROXY},
+    server::{install_whiteboard_event_proxy, Ripple},
     win_linux::{create_font_face, draw_text},
     Cursor, CustomEvent,
 };
@@ -61,13 +61,7 @@ pub(super) fn create_event_loop() -> ResultType<()> {
     })?;
 
     let proxy = event_loop.create_proxy();
-    EVENT_PROXY.write().unwrap().replace(proxy);
-    let _call_on_ret = crate::common::SimpleCallOnReturn {
-        b: true,
-        f: Box::new(move || {
-            let _ = EVENT_PROXY.write().unwrap().take();
-        }),
-    };
+    let _event_proxy = install_whiteboard_event_proxy(proxy);
 
     let mut ripples: Vec<Ripple> = Vec::new();
     let mut last_cursors: HashMap<String, Cursor> = HashMap::new();

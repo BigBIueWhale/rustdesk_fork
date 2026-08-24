@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f6ab321984fc25139504676bf13a7fb5bc46264b2eca6d5bb63c1780856893ca  requirements.html
+0be2a6a866d4f631f20a5e41f5ff08393aa997aabad40c32984f12f498b27baf  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26861,6 +26861,7 @@ The same identity additionally binds R-S11hj and Appendix C #370.
 The same identity additionally binds R-S11hk and Appendix C #371.
 The same identity additionally binds R-S11hl and Appendix C #372.
 The same identity additionally binds R-S11hm and Appendix C #373.
+The same identity additionally binds R-S11hn and Appendix C #374.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
@@ -26990,3 +26991,114 @@ clean committed cold R-B2/R-B10 equality, installed artifacts/service
 behavior, fresh independent reproduction, R-V3 external review, causation, and
 proof that the complete connection flow is correct and performant remain
 explicit release obligations and explicit user requests.
+
+### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
+
+**Status:** SOURCE IMPLEMENTED / FOCUSED RUST TESTS AUTHORED / CONFINED
+SOURCE EVIDENCE COMPLETE / NATIVE PLATFORM EXECUTION EVIDENCE OPEN.
+
+This continuation selected one residual helper-lifecycle slice under the
+binding R-S11b/R-S11c loop. The prior R-S11c-8/R-S11dz correction gave the
+dedicated whiteboard helper a token-derived endpoint, exact launch-parent and
+role proof, bounded directional protocol, and one authenticated stream owner.
+Its process lifecycle was nevertheless incomplete. `start_ipc` could return
+while resolving missing or invalid launch environment, creating the listener,
+observing listener end, or handling comparable early terminal outcomes. The
+only overlay `CustomEvent::Exit` publication lived after
+`handle_new_stream`, so those pre-stream returns could strand the transparent
+overlay event loop. Windows and macOS started the IPC thread before their
+event-loop constructors published `EVENT_PROXY`; a direct early event would
+therefore also have been lossy. A single terminal edge used an unbounded
+channel, each launcher used a raw detached `std::thread::spawn`, and the thread
+handle was discarded. This is source-proven local helper finality and orphan
+process debt. It is not proof of compromise, exploitation, public exposure,
+privilege escalation, host RustDesk/service/firewall/network modification, or
+causation for the separately reported Android/Windows display-only delay.
+
+The corrected authority model treats this dedicated helper process as one IPC
+generation with one locked level-triggered `(event-loop proxy, terminal
+latch)` owner. Termination before proxy installation latches the edge; the
+later platform install immediately consumes its supplied proxy to emit exactly
+one Exit and does not retain it. Proxy installation before termination retains
+that exact proxy; the first terminal finalizer takes it and emits exactly one
+Exit, while repeated finalization is inert. Event-loop retirement clears only
+the retained proxy and cannot reset terminal history. Lock ownership is
+released before synchronous event delivery. A synchronous worker entrypoint
+installs its function-scoped terminal guard as its first action, before invoking
+the runtime-backed `start_ipc` function and therefore before runtime
+construction, launch-environment, parent, listener, proof, transport, or
+command work. Runtime-construction panic and every later return path now
+converge on the same terminal publication owner. The authenticated stream
+handler observes cancellation but no longer owns or emits process termination.
+
+`WhiteboardIpcWorker` now retains one Tokio one-shot stop sender and the exact
+thread handle. Its fallible `std::thread::Builder` gives the worker a diagnostic
+name and makes spawn failure visible. Returning event-loop owners request stop
+and join that exact thread; join panic is caller-visible. Linux performs the
+join both when application construction fails and after `run_app` returns.
+The shared Windows/macOS owner performs the join whenever its platform event
+loop returns or fails. An already-finished receiver is diagnosed at debug level
+before the same exact join, rather than silently discarding that outcome. The
+unbounded lifecycle channel, raw detached spawn, inner-handler terminal event,
+direct platform-global proxy mutation, and obsolete cleanup callback are
+deleted. No retry, reconnect, polling loop, new listener/runtime/worker,
+service/activity kill, Android foreground-service weakening, port, network
+behavior, dependency, privilege transition, or alternate command route is
+added.
+
+Three deterministic generic state-machine regressions prove
+termination-before-proxy delivery once, proxy-before-termination exact take
+and repeated-finalization refusal, and event-loop retirement followed by
+preserved latched delivery. The focused
+`scripts/verify-whiteboard-ipc-lifecycle.py` validator binds the state machine,
+terminal guards, one-shot named worker, exact join sites, all three platform
+proxy owners, absence of obsolete semantics, focused Rust tests,
+requirements/Appendix/ledger identity, shared and Apple wiring, independent
+workspace dispatch, and requirements hashes. Its self-test deliberately
+mutates those boundaries. The workspace verifier independently derives the
+product contract and carries separate product, platform, regression,
+focused-verifier, wiring, requirement, ledger, and dispatch mutations. The
+older R-S11dz shared, Apple, Linux-focused, and independent checks were updated
+to require startup-wide finality instead of incorrectly requiring termination
+inside the post-authenticated stream handler.
+
+One preflight command mistakenly invoked Python bytecode compilation directly
+on the host while checking the newly edited verifier scripts. It read only
+repository scripts, used no networking or privilege, and did not inspect or
+touch RustDesk, a service, listener, firewall, device, VM, or unrelated
+workload. Its result is discarded as validation evidence and its generated
+`scripts/__pycache__` residue is removed. All reported parser and verifier
+evidence for this slice must come from the sole approved networkless,
+read-only, capability-dropped verifier container.
+
+Confined source evidence used the approved verifier image identity
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+with no network, a read-only repository mount, all capabilities dropped,
+`no-new-privileges`, non-root UID/GID 1000, bounded PIDs/memory/CPU, and only a
+bounded private `/tmp`. The focused lifecycle verifier passed its complete
+38-mutation self-test; the independent workspace baseline passed; a targeted
+preflight of all 31 new lifecycle fixtures plus the two affected legacy
+whiteboard fixtures passed; and the final complete unsliced independent
+`--source-mutations-only` catalog ran uninterrupted from mutation one to
+terminal `verify-verifier-workspace: ok` with exit code zero. The updated
+Linux nondumpable/CM/PA/whiteboard verifier passed all 71 mutations. Native
+codec watch normal and self-test modes, Python AST parsing of the three edited
+verifiers, requirements HTML parsing, and Bash syntax parsing of both edited
+gate scripts also passed under that confinement. Earlier deliberately
+interrupted catalogs and the discarded host bytecode-compilation command are
+not counted as passes. The approved image contains no Rust/Cargo, Dart/Flutter,
+or native platform toolchain, so the authored focused Rust behavior test and
+all native builds/tests remain explicitly unexecuted rather than being
+misrepresented as passing.
+
+Exact Rust/native compilation and tests, Windows/macOS/Linux platform
+execution, physical helper startup/failure/exit reproduction, orphan-process
+observation, cold committed R-B2/R-B10 equality, installed artifacts/service
+behavior, independent reproduction, R-V3 external review, connection-flow
+causation, and sustained correctness/performance/resource evidence remain
+explicitly open. The broader user-requested Android task-swipe/reopen/Force-Stop
+and Windows focus/minimize/reconnect display-latency reproduction,
+capture-through-compositor timestamps, explicit end-to-end
+latency/queue/CPU/memory budgets, cross-version behavior, and proof that the
+complete connection flow is correct and performant also remain open release
+obligations.

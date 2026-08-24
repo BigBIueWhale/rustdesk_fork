@@ -655,7 +655,7 @@ def validate(sources: Dict[str, str]) -> None:
 
     whiteboard_server = sources["whiteboard_server"]
     whiteboard_admission = block(
-        whiteboard_server, "pub(super) async fn start_ipc", "whiteboard IPC receiver"
+        whiteboard_server, "async fn start_ipc", "whiteboard IPC receiver"
     )
     ordered(
         whiteboard_admission,
@@ -663,7 +663,7 @@ def validate(sources: Dict[str, str]) -> None:
             "Connection::new_whiteboard(stream)",
             "authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)",
             "answer_whiteboard_endpoint_challenge(&mut stream).await",
-            "handle_new_stream(stream, &mut rx_exit).await",
+            "handle_new_stream(stream, &mut stop_requested).await",
             "break",
         ),
         "whiteboard capped stream, parent proof, mutual HMAC, and owned terminal traffic",
@@ -857,15 +857,19 @@ def validate(sources: Dict[str, str]) -> None:
     ordered(
         whiteboard_handler,
         (
-            "rx_exit.try_recv()",
+            "stop_requested.try_recv()",
             "next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
             "Err(err) =>",
             "Ok(Some(command))",
             "state.apply(command)",
             "Ok(None) =>",
-            'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
         ),
-        "whiteboard cancellation wake, terminal failure, and overlay exit",
+        "whiteboard cancellation wake and command finality",
+    )
+    require(
+        whiteboard_server,
+        "let _terminal = WhiteboardIpcTerminalGuard;",
+        "whiteboard startup-wide terminal finalizer",
     )
 
     whiteboard_register = block(
@@ -1294,8 +1298,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "whiteboard_server",
-        "handle_new_stream(stream, &mut rx_exit).await;",
-        "tokio::spawn(handle_new_stream(stream, &mut rx_exit));",
+        "handle_new_stream(stream, &mut stop_requested).await;",
+        "tokio::spawn(handle_new_stream(stream, &mut stop_requested));",
         "whiteboard stream ownership",
     ),
     (
@@ -1318,9 +1322,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "whiteboard_server",
-        'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
-        'log::info!("whiteboard stream ended");',
-        "whiteboard terminal overlay exit",
+        "let _terminal = WhiteboardIpcTerminalGuard;",
+        "let _terminal_finalizer_was_removed = ();",
+        "whiteboard startup-wide terminal finalizer",
     ),
     (
         "whiteboard_client",

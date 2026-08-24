@@ -1,9 +1,9 @@
 use super::{
-    server::{Ripple, EVENT_PROXY},
+    server::{install_whiteboard_event_proxy, Ripple, WhiteboardIpcWorker},
     win_linux::{create_font_face, draw_text},
     Cursor, CustomEvent,
 };
-use hbb_common::{bail, log, tokio::sync::mpsc::unbounded_channel, ResultType};
+use hbb_common::{bail, log, ResultType};
 use softbuffer::{Context, Surface};
 use std::{
     collections::HashMap,
@@ -98,26 +98,32 @@ pub fn run() {
     };
 
     let event_loop_proxy = event_loop.create_proxy();
-    EVENT_PROXY.write().unwrap().replace(event_loop_proxy);
+    let _event_proxy = install_whiteboard_event_proxy(event_loop_proxy);
 
-    let (tx_exit, rx_exit) = unbounded_channel();
-    std::thread::spawn(move || {
-        super::server::start_ipc(rx_exit);
-    });
+    let worker = match WhiteboardIpcWorker::spawn() {
+        Ok(worker) => worker,
+        Err(err) => {
+            log::error!("Failed to start whiteboard IPC worker: {err}");
+            return;
+        }
+    };
 
     let mut app = match WhiteboardApplication::new(&event_loop) {
         Ok(app) => app,
         Err(e) => {
             log::error!("Failed to create whiteboard application: {}", e);
-            tx_exit.send(()).ok();
+            if let Err(err) = worker.stop_and_join() {
+                log::error!("Failed to finish whiteboard IPC worker: {err}");
+            }
             return;
         }
     };
 
     if let Err(e) = event_loop.run_app(&mut app) {
         log::error!("Failed to run app: {}", e);
-        tx_exit.send(()).ok();
-        return;
+    }
+    if let Err(err) = worker.stop_and_join() {
+        log::error!("Failed to finish whiteboard IPC worker: {err}");
     }
 }
 

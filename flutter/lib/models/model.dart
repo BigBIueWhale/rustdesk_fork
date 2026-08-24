@@ -573,14 +573,15 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'empty_dirs') {
       parent.target?.fileModel.receiveEmptyDirs(evt, sessionId);
     } else if (name == 'job_progress') {
-      parent.target?.fileModel.jobController.tryUpdateJobProgress(evt);
+      parent.target?.fileModel.jobController
+          .tryUpdateJobProgress(evt, sessionId);
     } else if (name == 'job_done') {
-      bool? refresh =
-          await parent.target?.fileModel.jobController.jobDone(evt);
+      bool? refresh = await parent.target?.fileModel.jobController
+          .jobDone(evt, sessionId);
       if (_isCurrentSession(sessionId) && refresh == true) {
         // many job done for delete directory
         // todo: refresh may not work when confirm delete local directory
-        parent.target?.fileModel.refreshAll();
+        await parent.target?.fileModel.refreshAll(sessionId);
       }
     } else if (name == 'job_error') {
       parent.target?.fileModel.handleJobError(evt, sessionId);
@@ -591,9 +592,11 @@ class FfiModel with ChangeNotifier {
         ffi.reportFileDialogFailure(sessionId);
       }
     } else if (name == 'load_last_job') {
-      parent.target?.fileModel.jobController.loadLastJob(evt);
+      await parent.target?.fileModel.jobController
+          .loadLastJob(evt, sessionId);
     } else if (name == 'update_folder_files') {
-      parent.target?.fileModel.jobController.updateFolderFiles(evt);
+      parent.target?.fileModel.jobController
+          .updateFolderFiles(evt, sessionId);
     } else if (name == 'add_connection') {
       parent.target?.serverModel.addConnection(evt);
     } else if (name == 'on_client_remove') {
@@ -640,15 +643,16 @@ class FfiModel with ChangeNotifier {
       _handleUseTextureRender(evt, sessionId, peerId);
     } else if (name == "selected_files") {
       if (isWeb) {
-        parent.target?.fileModel.onSelectedFiles(evt);
+        await parent.target?.fileModel.onSelectedFiles(evt, sessionId);
       }
     } else if (name == "send_emptry_dirs") {
       if (isWeb) {
-        final future = parent.target?.fileModel.sendEmptyDirs(evt);
-        if (future != null) {
-          unawaited(future.catchError((Object error) {
+        try {
+          await parent.target?.fileModel.sendEmptyDirs(evt, sessionId);
+        } catch (error) {
+          if (_isCurrentSession(sessionId)) {
             debugPrint('Failed to create remote empty directories: $error');
-          }));
+          }
         }
       }
     } else if (name == "record_status") {
@@ -5010,6 +5014,7 @@ class FFI {
     }
     _terminalModels.clear();
     try {
+      await fileModel.close(closingSessionId);
       if (imageModel.image != null && !isWebDesktop) {
         await setCanvasConfig(
             closingSessionId,

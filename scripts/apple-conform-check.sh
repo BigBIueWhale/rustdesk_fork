@@ -3662,6 +3662,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2-002) R-S11hm exact-session file-command and job-result ownership =="
+if python3 scripts/verify-file-command-session-ownership.py --repo . --self-test; then
+  note "ok  R-S11hm Apple/shared file commands and job results remain bounded exact-session owners through retirement"
+else
+  echo "  FAIL R-S11hm Apple/shared file commands or job-result continuations regained dynamic-session retargeting, anonymous completion, or incomplete retirement"
+  rc=1
+fi
+
 echo "== (2g-c2a) R-S11gu bounded exact-owner native-to-Dart cursor publication =="
 if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
   note "ok  R-S11gu Apple/shared cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"

@@ -46,10 +46,42 @@ class JobID {
 
 typedef GetSessionID = SessionID Function();
 typedef GetDialogManager = OverlayDialogManager? Function();
+typedef IsCurrentSession = bool Function(SessionID sessionId);
+typedef GetPeerPlatform = String? Function();
+typedef GetPeerVersion = String Function();
 typedef ReadRemoteDirectory = Future<void> Function(
     SessionID sessionId, String path, bool showHidden);
 typedef ReadRemoteDirectoryTree = Future<void> Function(SessionID sessionId,
     int actionId, String path, bool isRemote, bool showHidden);
+typedef SendFilesRequest = Future<void> Function(
+    SessionID sessionId,
+    int actionId,
+    String path,
+    String to,
+    int fileNum,
+    bool includeHidden,
+    bool isRemote,
+    bool isDirectory);
+typedef RemoveFileRequest = Future<void> Function(SessionID sessionId,
+    int actionId, String path, bool isRemote, int fileNum);
+typedef RemoveEmptyDirectoriesRequest = Future<void> Function(
+    SessionID sessionId, int actionId, String path, bool isRemote);
+typedef CreateDirectoryRequest = Future<void> Function(
+    SessionID sessionId, int actionId, String path, bool isRemote);
+typedef RenameFileRequest = Future<void> Function(SessionID sessionId,
+    int actionId, String path, String newName, bool isRemote);
+typedef CancelJobRequest = Future<void> Function(
+    SessionID sessionId, int actionId);
+typedef AddJobRequest = Future<void> Function(
+    SessionID sessionId,
+    bool isRemote,
+    bool includeHidden,
+    int actionId,
+    String path,
+    String to,
+    int fileNum);
+typedef ResumeJobRequest = Future<void> Function(
+    SessionID sessionId, int actionId, bool isRemote);
 
 class FileFetcherRequests {
   const FileFetcherRequests({
@@ -75,6 +107,90 @@ class FileFetcherRequests {
             path: path,
             isRemote: isRemote,
             showHidden: showHidden),
+  );
+}
+
+class FileControllerRequests {
+  const FileControllerRequests({
+    required this.sendFiles,
+    required this.removeFile,
+    required this.removeEmptyDirectories,
+    required this.createDirectory,
+    required this.renameFile,
+  });
+
+  final SendFilesRequest sendFiles;
+  final RemoveFileRequest removeFile;
+  final RemoveEmptyDirectoriesRequest removeEmptyDirectories;
+  final CreateDirectoryRequest createDirectory;
+  final RenameFileRequest renameFile;
+
+  static final native = FileControllerRequests(
+    sendFiles: (sessionId, actionId, path, to, fileNum, includeHidden,
+            isRemote, isDirectory) =>
+        bind.sessionSendFiles(
+            sessionId: sessionId,
+            actId: actionId,
+            path: path,
+            to: to,
+            fileNum: fileNum,
+            includeHidden: includeHidden,
+            isRemote: isRemote,
+            isDir: isDirectory),
+    removeFile: (sessionId, actionId, path, isRemote, fileNum) =>
+        bind.sessionRemoveFile(
+            sessionId: sessionId,
+            actId: actionId,
+            path: path,
+            isRemote: isRemote,
+            fileNum: fileNum),
+    removeEmptyDirectories: (sessionId, actionId, path, isRemote) =>
+        bind.sessionRemoveAllEmptyDirs(
+            sessionId: sessionId,
+            actId: actionId,
+            path: path,
+            isRemote: isRemote),
+    createDirectory: (sessionId, actionId, path, isRemote) =>
+        bind.sessionCreateDir(
+            sessionId: sessionId,
+            actId: actionId,
+            path: path,
+            isRemote: isRemote),
+    renameFile: (sessionId, actionId, path, newName, isRemote) =>
+        bind.sessionRenameFile(
+            sessionId: sessionId,
+            actId: actionId,
+            path: path,
+            newName: newName,
+            isRemote: isRemote),
+  );
+}
+
+class JobControllerRequests {
+  const JobControllerRequests({
+    required this.cancelJob,
+    required this.addJob,
+    required this.resumeJob,
+  });
+
+  final CancelJobRequest cancelJob;
+  final AddJobRequest addJob;
+  final ResumeJobRequest resumeJob;
+
+  static final native = JobControllerRequests(
+    cancelJob: (sessionId, actionId) =>
+        bind.sessionCancelJob(sessionId: sessionId, actId: actionId),
+    addJob: (sessionId, isRemote, includeHidden, actionId, path, to, fileNum) =>
+        bind.sessionAddJob(
+            sessionId: sessionId,
+            isRemote: isRemote,
+            includeHidden: includeHidden,
+            actId: actionId,
+            path: path,
+            to: to,
+            fileNum: fileNum),
+    resumeJob: (sessionId, actionId, isRemote) => bind.sessionResumeJob(
+        sessionId: sessionId, actId: actionId, isRemote: isRemote),
   );
 }
 
@@ -148,7 +264,6 @@ class FileOverrideConfirmation {
 
 class FileModel {
   final WeakReference<FFI> parent;
-  // late final String sessionId;
   late final FileFetcher fileFetcher;
   late final JobController jobController;
 
@@ -159,34 +274,46 @@ class FileModel {
   late final GetDialogManager getDialogManager;
   SessionID get sessionId => getSessionID();
   late final FileDialogEventLoop evtLoop;
+  SessionID? _ownedSessionId;
 
   FileModel(this.parent) {
     getSessionID = () => parent.target!.sessionId;
     getDialogManager = () => parent.target?.dialogManager;
+    final isCurrentSession = _isCurrentSession;
     fileFetcher = FileFetcher(getSessionID);
-    jobController = JobController(getSessionID, getDialogManager);
+    jobController = JobController(getSessionID, getDialogManager,
+        isCurrentSession: isCurrentSession);
     localController = FileController(
         isLocal: true,
         getSessionID: getSessionID,
-        rootState: parent,
+        getDialogManager: getDialogManager,
+        isCurrentSession: isCurrentSession,
+        getPeerPlatform: () => parent.target?.ffiModel.pi.platform,
+        getPeerVersion: () => parent.target?.ffiModel.pi.version ?? '',
         jobController: jobController,
         fileFetcher: fileFetcher,
         getOtherSideDirectoryData: () => remoteController.directoryData());
     remoteController = FileController(
         isLocal: false,
         getSessionID: getSessionID,
-        rootState: parent,
+        getDialogManager: getDialogManager,
+        isCurrentSession: isCurrentSession,
+        getPeerPlatform: () => parent.target?.ffiModel.pi.platform,
+        getPeerVersion: () => parent.target?.ffiModel.pi.version ?? '',
         jobController: jobController,
         fileFetcher: fileFetcher,
         getOtherSideDirectoryData: () => localController.directoryData());
     evtLoop = FileDialogEventLoop();
+    _ownedSessionId = getSessionID();
   }
 
   bool _isCurrentSession(SessionID expectedSessionId) =>
+      _ownedSessionId == expectedSessionId &&
       parent.target?.isCurrentSession(expectedSessionId) == true;
 
   void beginSession(SessionID expectedSessionId) {
-    if (!_isCurrentSession(expectedSessionId)) return;
+    if (parent.target?.isCurrentSession(expectedSessionId) != true) return;
+    _ownedSessionId = null;
     unawaited(evtLoop.close());
     parent.target?.dialogManager.dismissAll();
     fileFetcher.cancelPending();
@@ -194,10 +321,12 @@ class FileModel {
     localController.resetForSession();
     remoteController.resetForSession();
     fileConfirmCheckboxRemember = false;
+    _ownedSessionId = expectedSessionId;
   }
 
   Future<void> onReady(SessionID expectedSessionId) async {
-    if (!_isCurrentSession(expectedSessionId)) return;
+    if (_ownedSessionId != expectedSessionId ||
+        !_isCurrentSession(expectedSessionId)) return;
     await evtLoop.onReady();
     if (!_isCurrentSession(expectedSessionId)) return;
     if (!isWeb) {
@@ -208,19 +337,31 @@ class FileModel {
   }
 
   Future<void> close(SessionID expectedSessionId) async {
-    if (parent.target?.sessionId != expectedSessionId) return;
-    await evtLoop.close();
-    if (parent.target?.sessionId != expectedSessionId) return;
+    if (_ownedSessionId != expectedSessionId ||
+        parent.target?.sessionId != expectedSessionId) return;
+    // Retire every file-operation admission edge synchronously. Cleanup may
+    // await native state persistence, but no old continuation may survive that
+    // await and become work owned by a replacement mobile session.
+    _ownedSessionId = null;
+    final eventLoopClose = evtLoop.close();
     fileFetcher.cancelPending();
+    jobController.clear();
     parent.target?.dialogManager.dismissAll();
+    fileConfirmCheckboxRemember = false;
+    await eventLoopClose;
+    if (parent.target?.sessionId != expectedSessionId) return;
     await localController.close(expectedSessionId);
     if (parent.target?.sessionId != expectedSessionId) return;
     await remoteController.close(expectedSessionId);
   }
 
-  Future<void> refreshAll() async {
-    if (!isWeb) await localController.refresh();
-    await remoteController.refresh();
+  Future<void> refreshAll(SessionID expectedSessionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
+    if (!isWeb) {
+      await localController.refresh(expectedSessionId: expectedSessionId);
+      if (!_isCurrentSession(expectedSessionId)) return;
+    }
+    await remoteController.refresh(expectedSessionId: expectedSessionId);
   }
 
   void receiveFileDir(
@@ -268,7 +409,7 @@ class FileModel {
     // Always call jobController.jobError(evt) to ensure all error events are processed,
     // even if the event does not have a valid job ID. This allows for generic error handling
     // or logging of unexpected errors.
-    jobController.jobError(evt);
+    jobController.jobError(evt, expectedSessionId);
   }
 
   bool postOverrideFileConfirm(
@@ -286,8 +427,7 @@ class FileModel {
       bool skip = false}) async {
     if (!_isCurrentSession(expectedSessionId)) return;
     final id = confirmation.jobId;
-    final jobIndex = jobController.getJob(id);
-    if (jobIndex == -1) {
+    if (jobController.getJob(id) == -1) {
       throw StateError('File confirmation has no matching job');
     }
     // If `skip == true`, it means to skip this file without showing dialog.
@@ -300,9 +440,13 @@ class FileModel {
             : null);
     if (!_isCurrentSession(expectedSessionId)) return;
     if (false == resp) {
-      await jobController.cancelJob(id);
+      final canceled = await jobController.cancelJob(id,
+          expectedSessionId: expectedSessionId);
+      if (!canceled) return;
       if (!_isCurrentSession(expectedSessionId)) return;
-      final job = jobController.jobTable[jobIndex];
+      final currentJobIndex = jobController.getJob(id);
+      if (currentJobIndex == -1) return;
+      final job = jobController.jobTable[currentJobIndex];
       job.state = JobState.done;
       jobController.jobTable.refresh();
     } else {
@@ -413,9 +557,11 @@ class FileModel {
     }, useAnimation: false);
   }
 
-  void onSelectedFiles(dynamic obj) {
+  Future<void> onSelectedFiles(
+      dynamic obj, SessionID expectedSessionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
     localController.selectedItems.clear();
-
+    int? jobID;
     try {
       int handleIndex = int.parse(obj['handleIndex']);
       final file = jsonDecode(obj['file']);
@@ -425,8 +571,9 @@ class FileModel {
       final toPath = otherSideData.directory.path;
       final isWindows = otherSideData.options.isWindows;
       final showHidden = otherSideData.options.showHidden;
-      final jobID = jobController.addTransferJob(entry, false);
-      webSendLocalFiles(
+      jobID = jobController.addTransferJob(entry, false, expectedSessionId);
+      if (jobID == null) return;
+      await webSendLocalFiles(
         handleIndex: handleIndex,
         actId: jobID,
         path: entry.path,
@@ -435,12 +582,20 @@ class FileModel {
         includeHidden: showHidden,
         isRemote: false,
       );
-    } catch (e) {
-      debugPrint("Failed to decode onSelectedFiles: $e");
+      if (!_isCurrentSession(expectedSessionId)) return;
+    } catch (error) {
+      if (!_isCurrentSession(expectedSessionId)) return;
+      if (jobID != null) {
+        jobController.updateJobStatus(expectedSessionId, jobID,
+            error: error.toString(), state: JobState.error);
+      }
+      debugPrint("Failed to send selected web files: $error");
     }
   }
 
-  Future<void> sendEmptyDirs(dynamic obj) async {
+  Future<void> sendEmptyDirs(
+      dynamic obj, SessionID expectedSessionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
     late final List<dynamic> emptyDirs;
     try {
       emptyDirs = jsonDecode(obj['dirs'] as String);
@@ -454,11 +609,13 @@ class FileModel {
 
     final isLocalWindows = isWindows || isWebOnWindows;
     for (var dir in emptyDirs) {
+      if (!_isCurrentSession(expectedSessionId)) return;
       if (isLocalWindows != isPeerWindows) {
         dir = PathUtil.convert(dir, isLocalWindows, isPeerWindows);
       }
       var peerPath = PathUtil.join(toPath, dir, isPeerWindows);
-      await remoteController.createDirWithRemote(peerPath, true);
+      await remoteController.createDirWithRemote(peerPath, true,
+          expectedSessionId: expectedSessionId);
     }
   }
 }
@@ -469,10 +626,49 @@ class DirectoryData {
   DirectoryData(this.directory, this.options);
 }
 
+@immutable
+class _FileOperationEntry {
+  const _FileOperationEntry({
+    required this.entryType,
+    required this.name,
+    required this.path,
+    required this.size,
+  });
+
+  factory _FileOperationEntry.fromEntry(Entry entry) => _FileOperationEntry(
+      entryType: entry.entryType,
+      name: entry.name,
+      path: entry.path,
+      size: entry.size);
+
+  final int entryType;
+  final String name;
+  final String path;
+  final int size;
+
+  bool get isFile => entryType > 3;
+  bool get isDirectory => entryType < 3;
+
+  Entry toEntry() => Entry()
+    ..entryType = entryType
+    ..name = name
+    ..path = path
+    ..size = size;
+}
+
+class _RemoveConfirmationState {
+  bool remember = false;
+}
+
 class FileController {
   final bool isLocal;
   final GetSessionID getSessionID;
   SessionID get sessionId => getSessionID();
+  final GetDialogManager getDialogManager;
+  final IsCurrentSession isCurrentSession;
+  final GetPeerPlatform getPeerPlatform;
+  final GetPeerVersion getPeerVersion;
+  final FileControllerRequests _requests;
 
   final FileFetcher fileFetcher;
 
@@ -483,7 +679,6 @@ class FileController {
   final sortBy = SortBy.name.obs;
   var sortAscending = true;
   final JobController jobController;
-  final WeakReference<FFI> rootState;
 
   final DirectoryData Function() getOtherSideDirectoryData;
   late final SelectedItems selectedItems = SelectedItems(isLocal: isLocal);
@@ -491,10 +686,15 @@ class FileController {
   FileController(
       {required this.isLocal,
       required this.getSessionID,
-      required this.rootState,
+      required this.getDialogManager,
+      required this.isCurrentSession,
+      required this.getPeerPlatform,
+      required this.getPeerVersion,
       required this.jobController,
       required this.fileFetcher,
-      required this.getOtherSideDirectoryData});
+      required this.getOtherSideDirectoryData,
+      FileControllerRequests? requests})
+      : _requests = requests ?? FileControllerRequests.native;
 
   void resetForSession() {
     directory.value.clear();
@@ -505,7 +705,7 @@ class FileController {
 
   String get homePath => options.value.home;
   void set homePath(String path) => options.value.home = path;
-  OverlayDialogManager? get dialogManager => rootState.target?.dialogManager;
+  OverlayDialogManager? get dialogManager => getDialogManager();
 
   String get shortPath {
     final dirPath = directory.value.path;
@@ -527,7 +727,7 @@ class FileController {
   }
 
   bool _isCurrentSession(SessionID expectedSessionId) =>
-      rootState.target?.isCurrentSession(expectedSessionId) == true;
+      isCurrentSession(expectedSessionId);
 
   Future<void> onReady(SessionID expectedSessionId) async {
     if (!_isCurrentSession(expectedSessionId)) return;
@@ -545,7 +745,7 @@ class FileController {
     options.value.showHidden = showHidden;
     options.value.isWindows = isLocal
         ? isWindows
-        : rootState.target?.ffiModel.pi.platform == kPeerPlatformWindows;
+        : getPeerPlatform() == kPeerPlatformWindows;
 
     await Future.delayed(Duration(milliseconds: 100));
     if (!_isCurrentSession(expectedSessionId)) return;
@@ -584,7 +784,7 @@ class FileController {
   }
 
   Future<void> close(SessionID expectedSessionId) async {
-    if (rootState.target?.sessionId != expectedSessionId) return;
+    if (sessionId != expectedSessionId) return;
     // save config
     Map<String, String> msgMap = {};
     msgMap[isLocal ? "local_dir" : "remote_dir"] = directory.value.path;
@@ -593,18 +793,26 @@ class FileController {
     for (final msg in msgMap.entries) {
       await bind.sessionPeerOption(
           sessionId: expectedSessionId, name: msg.key, value: msg.value);
-      if (rootState.target?.sessionId != expectedSessionId) return;
+      if (sessionId != expectedSessionId) return;
     }
     directory.value.clear();
     options.value.clear();
   }
 
-  void toggleShowHidden({bool? showHidden}) {
+  void toggleShowHidden(
+      {bool? showHidden, SessionID? expectedSessionId}) {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
     options.value.showHidden = showHidden ?? !options.value.showHidden;
-    refresh();
+    unawaited(refresh(expectedSessionId: selectedSessionId));
   }
 
-  void changeSortStyle(SortBy sort, {bool? isLocal, bool ascending = true}) {
+  void changeSortStyle(SortBy sort,
+      {bool? isLocal,
+      bool ascending = true,
+      SessionID? expectedSessionId}) {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
     sortBy.value = sort;
     sortAscending = ascending;
     directory.update((dir) {
@@ -612,20 +820,52 @@ class FileController {
     });
   }
 
-  Future<bool> refresh() async {
+  Future<bool> refresh({SessionID? expectedSessionId}) async {
     // "." can be both a refresh command and a real remote directory path.
     // Refresh must bypass openDirectory's command dispatch to avoid recursion.
-    return await _openDirectoryPath(directory.value.path, isBack: true);
+    return await _openDirectoryPath(directory.value.path,
+        isBack: true, expectedSessionId: expectedSessionId);
   }
 
-  Future<bool> openDirectory(String path, {bool isBack = false}) async {
+  Future<bool> openDirectory(String path,
+      {bool isBack = false, SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return false;
     if (!isBack && path == ".") {
-      return await refresh();
+      return await refresh(expectedSessionId: selectedSessionId);
     }
     if (!isBack && path == "..") {
-      return await _goToParentDirectory(isBack: isBack);
+      return await _goToParentDirectory(
+          isBack: isBack, expectedSessionId: selectedSessionId);
     }
-    return await _openDirectoryPath(path, isBack: isBack);
+    return await _openDirectoryPath(path,
+        isBack: isBack, expectedSessionId: selectedSessionId);
+  }
+
+  Future<List<Entry>?> listWindowsDrives(
+      {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return null;
+    final showHidden = options.value.showHidden;
+    try {
+      final fd = await fileFetcher.fetchDirectory(
+          '/', isLocal, showHidden,
+          expectedSessionId: selectedSessionId);
+      if (!_isCurrentSession(selectedSessionId)) return null;
+      return fd.entries
+          .map((entry) => Entry()
+            ..entryType = entry.entryType
+            ..modifiedTime = entry.modifiedTime
+            ..name = entry.name
+            ..path = entry.path
+            ..size = entry.size)
+          .toList(growable: false);
+    } catch (error) {
+      if (_isCurrentSession(selectedSessionId)) {
+        debugPrint('listWindowsDrives failed: $error');
+      }
+      return null;
+    }
   }
 
   Future<bool> _openDirectoryPath(String path,
@@ -664,39 +904,55 @@ class FileController {
     history.add(directory.value.path);
   }
 
-  void goToHomeDirectory() {
+  void goToHomeDirectory({SessionID? expectedSessionId}) {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
     if (isLocal) {
-      openDirectory(homePath);
+      unawaited(openDirectory(homePath,
+          expectedSessionId: selectedSessionId));
       return;
     }
     homePath = "";
-    openDirectory(homePath);
+    unawaited(openDirectory(homePath,
+        expectedSessionId: selectedSessionId));
   }
 
-  void goBack() {
+  void goBack({SessionID? expectedSessionId}) {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
     if (history.isEmpty) return;
     final path = history.removeAt(history.length - 1);
     if (path.isEmpty) return;
     if (directory.value.path == path) {
-      goBack();
+      goBack(expectedSessionId: selectedSessionId);
       return;
     }
-    unawaited(_openDirectoryPath(path, isBack: true).then<void>((_) {}));
+    unawaited(_openDirectoryPath(path,
+            isBack: true, expectedSessionId: selectedSessionId)
+        .then<void>((_) {}));
   }
 
-  void goToParentDirectory() {
-    unawaited(_goToParentDirectory().then<void>((_) {}));
+  void goToParentDirectory({SessionID? expectedSessionId}) {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
+    unawaited(_goToParentDirectory(expectedSessionId: selectedSessionId)
+        .then<void>((_) {}));
   }
 
-  Future<bool> _goToParentDirectory({bool isBack = false}) async {
+  Future<bool> _goToParentDirectory(
+      {bool isBack = false, SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return false;
     final isWindows = options.value.isWindows;
     final dirPath = directory.value.path;
     var parent = PathUtil.dirname(dirPath, isWindows);
     // specially for C:\, D:\, goto '/'
     if (parent == dirPath && isWindows) {
-      return await _openDirectoryPath('/', isBack: isBack);
+      return await _openDirectoryPath('/',
+          isBack: isBack, expectedSessionId: selectedSessionId);
     }
-    return await _openDirectoryPath(parent, isBack: isBack);
+    return await _openDirectoryPath(parent,
+        isBack: isBack, expectedSessionId: selectedSessionId);
   }
 
   // TODO deprecated this
@@ -730,204 +986,236 @@ class FileController {
 
   /// sendFiles from current side (FileController.isLocal) to other side (SelectedItems).
   Future<void> sendFiles(
-      SelectedItems items, DirectoryData otherSideData) async {
-    /// ignore wrong items side status
+      SelectedItems items, DirectoryData otherSideData,
+      {SessionID? expectedSessionId}) async {
     if (items.isLocal != isLocal) {
       return;
     }
-
-    // alias
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
+    final entries = items.items
+        .map(_FileOperationEntry.fromEntry)
+        .toList(growable: false);
     final isRemoteToLocal = !isLocal;
-
     final toPath = otherSideData.directory.path;
-    final isWindows = otherSideData.options.isWindows;
+    final isPeerWindows = otherSideData.options.isWindows;
     final showHidden = otherSideData.options.showHidden;
-    for (var from in items.items) {
-      final jobID = jobController.addTransferJob(from, isRemoteToLocal);
+    final sourceRootPath = directory.value.path;
+    final isSourceWindows = options.value.isWindows;
+    final peerVersion = getPeerVersion();
+
+    for (final from in entries) {
+      if (!_isCurrentSession(selectedSessionId)) return;
+      final jobID = jobController.addTransferJob(
+          from.toEntry(), isRemoteToLocal, selectedSessionId);
+      if (jobID == null) return;
+      final destination =
+          PathUtil.join(toPath, from.name, isPeerWindows);
       try {
-        await bind.sessionSendFiles(
-            sessionId: sessionId,
-            actId: jobID,
-            path: from.path,
-            to: PathUtil.join(toPath, from.name, isWindows),
-            fileNum: 0,
-            includeHidden: showHidden,
-            isRemote: isRemoteToLocal,
-            isDir: from.isDirectory);
-      } catch (e) {
-        jobController.updateJobStatus(jobID,
-            error: e.toString(), state: JobState.error);
+        await _requests.sendFiles(selectedSessionId, jobID, from.path,
+            destination, 0, showHidden, isRemoteToLocal, from.isDirectory);
+      } catch (error) {
+        if (!_isCurrentSession(selectedSessionId)) return;
+        jobController.updateJobStatus(selectedSessionId, jobID,
+            error: error.toString(), state: JobState.error);
         rethrow;
       }
-      debugPrint(
-          "path: ${from.path}, toPath: $toPath, to: ${PathUtil.join(toPath, from.name, isWindows)}");
+      if (!_isCurrentSession(selectedSessionId)) return;
+      debugPrint('path: ${from.path}, to: $destination');
     }
 
     if (isWeb ||
-        (!isLocal &&
-            versionCmp(rootState.target!.ffiModel.pi.version, '1.3.3') < 0)) {
+        (!isLocal && versionCmp(peerVersion, '1.3.3') < 0)) {
       return;
     }
-
-    final List<Entry> entrys = items.items.toList();
-    var isRemote = isLocal == true ? true : false;
-
-    await Future.forEach(entrys, (Entry item) async {
+    final createRemotely = isLocal;
+    for (final item in entries) {
+      if (!_isCurrentSession(selectedSessionId)) return;
       if (!item.isDirectory) {
-        return;
+        continue;
       }
-
-      final List<String> paths = [];
-
-      final emptyDirs =
-          await fileFetcher.readEmptyDirs(item.path, isLocal, showHidden);
-
+      final emptyDirs = await fileFetcher.readEmptyDirs(
+          item.path, isLocal, showHidden,
+          expectedSessionId: selectedSessionId);
+      if (!_isCurrentSession(selectedSessionId)) return;
       if (emptyDirs.isEmpty) {
-        return;
-      } else {
-        for (var dir in emptyDirs) {
-          paths.add(dir.path);
-        }
+        continue;
       }
-
-      final dirs = paths.map((path) {
-        return PathUtil.getOtherSidePath(directory.value.path, path,
-            options.value.isWindows, toPath, isWindows);
-      });
-
-      for (var dir in dirs) {
-        await createDirWithRemote(dir, isRemote);
+      for (final emptyDir in emptyDirs) {
+        final target = PathUtil.getOtherSidePath(sourceRootPath,
+            emptyDir.path, isSourceWindows, toPath, isPeerWindows);
+        final created = await createDirWithRemote(target, createRemotely,
+            expectedSessionId: selectedSessionId);
+        if (!created) return;
       }
-    });
+    }
   }
 
-  bool _removeCheckboxRemember = false;
-
-  Future<void> removeAction(SelectedItems items) async {
-    _removeCheckboxRemember = false;
+  Future<void> removeAction(SelectedItems items,
+      {SessionID? expectedSessionId}) async {
     if (items.isLocal != isLocal) {
       debugPrint("Failed to removeFile, wrong files");
       return;
     }
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
+    final selectedEntries = items.items
+        .map(_FileOperationEntry.fromEntry)
+        .toList(growable: false);
     final isWindows = options.value.isWindows;
-    await Future.forEach(items.items, (Entry item) async {
-      final jobID = JobController.jobID.next();
+    final manager = dialogManager;
+    final confirmationState = _RemoveConfirmationState();
+    for (final item in selectedEntries) {
+      if (!_isCurrentSession(selectedSessionId)) return;
+      final jobID = jobController.allocateJobId(selectedSessionId);
+      if (jobID == null) return;
       var title = "";
       var content = "";
-      late final List<Entry> entries;
+      late final List<_FileOperationEntry> entries;
       if (item.isFile) {
         title = translate("Are you sure you want to delete this file?");
         content = item.name;
         entries = [item];
       } else if (item.isDirectory) {
         title = translate("Not an empty directory");
-        dialogManager?.showLoading(translate("Waiting"));
+        manager?.showLoading(translate("Waiting"));
         final FileDirectory fd;
         try {
           fd = await fileFetcher.fetchDirectoryRecursiveToRemove(
-              jobID, item.path, items.isLocal, true);
-        } catch (e) {
-          dialogManager?.dismissAll();
-          final dm = dialogManager;
-          if (dm != null) {
-            msgBox(sessionId, 'custom-error-nook-nocancel-hasclose',
-                translate("Error"), e.toString(), '', dm);
+              jobID, item.path, items.isLocal, true,
+              expectedSessionId: selectedSessionId);
+        } catch (error) {
+          if (!_isCurrentSession(selectedSessionId)) return;
+          manager?.dismissAll();
+          if (manager != null) {
+            msgBox(selectedSessionId, 'custom-error-nook-nocancel-hasclose',
+                translate("Error"), error.toString(), '', manager);
           } else {
-            debugPrint("removeAction error msgbox failed: $e");
+            debugPrint("removeAction error msgbox failed: $error");
           }
-          return;
+          continue;
         }
+        if (!_isCurrentSession(selectedSessionId)) return;
         if (fd.path.isEmpty) {
           fd.path = item.path;
         }
         fd.format(isWindows);
-        dialogManager?.dismissAll();
+        manager?.dismissAll();
         if (fd.entries.isEmpty) {
-          var deleteJobId = jobController.addDeleteDirJob(item, !isLocal, 0);
-          final confirm = await showRemoveDialog(
+          final deleteJobId = jobController.addDeleteDirJob(
+              item.toEntry(), !isLocal, 0, selectedSessionId);
+          if (deleteJobId == null) return;
+          final confirm = await _showRemoveDialog(
               translate(
                   "Are you sure you want to delete this empty directory?"),
               item.name,
-              false);
+              false,
+              selectedSessionId,
+              manager,
+              confirmationState);
+          if (!_isCurrentSession(selectedSessionId)) return;
           if (confirm == true) {
-            await sendRemoveEmptyDir(
-              item.path,
-              0,
-              deleteJobId,
-            );
+            await _sendRemoveEmptyDir(
+                selectedSessionId, item.path, deleteJobId);
           } else {
-            jobController.updateJobStatus(deleteJobId,
+            jobController.updateJobStatus(selectedSessionId, deleteJobId,
                 error: "cancel", state: JobState.done);
           }
-          return;
+          continue;
         }
-        entries = fd.entries;
+        entries = fd.entries
+            .map(_FileOperationEntry.fromEntry)
+            .toList(growable: false);
       } else {
         entries = [];
       }
       int deleteJobId;
       if (item.isDirectory) {
-        deleteJobId =
-            jobController.addDeleteDirJob(item, !isLocal, entries.length);
+        final id = jobController.addDeleteDirJob(
+            item.toEntry(), !isLocal, entries.length, selectedSessionId);
+        if (id == null) return;
+        deleteJobId = id;
       } else {
-        deleteJobId = jobController.addDeleteFileJob(item, !isLocal);
+        final id = jobController.addDeleteFileJob(
+            item.toEntry(), !isLocal, selectedSessionId);
+        if (id == null) return;
+        deleteJobId = id;
       }
 
       for (var i = 0; i < entries.length; i++) {
+        if (!_isCurrentSession(selectedSessionId)) return;
         final dirShow = item.isDirectory
             ? "${translate("Are you sure you want to delete the file of this directory?")}\n"
             : "";
         final count = entries.length > 1 ? "${i + 1}/${entries.length}" : "";
         content = "$dirShow\n\n${entries[i].path}".trim();
-        final confirm = await showRemoveDialog(
+        final confirm = await _showRemoveDialog(
           count.isEmpty ? title : "$title ($count)",
           content,
           item.isDirectory,
+          selectedSessionId,
+          manager,
+          confirmationState,
         );
+        if (!_isCurrentSession(selectedSessionId)) return;
         try {
           if (confirm == true) {
-            await sendRemoveFile(entries[i].path, i, deleteJobId);
-            final res = await jobController.jobResultListener.start();
-            // handle remove res;
+            final res = await _removeFileAndWait(selectedSessionId,
+                entries[i].path, i, deleteJobId);
+            if (!_isCurrentSession(selectedSessionId)) return;
             if (item.isDirectory &&
                 res['file_num'] == (entries.length - 1).toString()) {
-              await sendRemoveEmptyDir(item.path, i, deleteJobId);
+              await _sendRemoveEmptyDir(
+                  selectedSessionId, item.path, deleteJobId);
             }
           } else {
-            jobController.updateJobStatus(deleteJobId,
+            jobController.updateJobStatus(selectedSessionId, deleteJobId,
                 file_num: i, error: "cancel");
           }
-          if (_removeCheckboxRemember) {
+          if (confirmationState.remember) {
             if (confirm == true) {
               for (var j = i + 1; j < entries.length; j++) {
-                await sendRemoveFile(entries[j].path, j, deleteJobId);
-                final res = await jobController.jobResultListener.start();
+                final res = await _removeFileAndWait(selectedSessionId,
+                    entries[j].path, j, deleteJobId);
+                if (!_isCurrentSession(selectedSessionId)) return;
                 if (item.isDirectory &&
                     res['file_num'] == (entries.length - 1).toString()) {
-                  await sendRemoveEmptyDir(item.path, i, deleteJobId);
+                  await _sendRemoveEmptyDir(
+                      selectedSessionId, item.path, deleteJobId);
                 }
               }
             } else {
-              jobController.updateJobStatus(deleteJobId,
+              jobController.updateJobStatus(selectedSessionId, deleteJobId,
                   error: "cancel",
                   file_num: entries.length,
                   state: JobState.done);
             }
             break;
           }
-        } catch (e) {
-          jobController.updateJobStatus(deleteJobId,
-              file_num: i, error: e.toString(), state: JobState.error);
+        } catch (error) {
+          if (!_isCurrentSession(selectedSessionId)) return;
+          jobController.updateJobStatus(selectedSessionId, deleteJobId,
+              file_num: i,
+              error: error.toString(),
+              state: JobState.error);
           rethrow;
         }
       }
-    });
-    refresh();
+    }
+    if (_isCurrentSession(selectedSessionId)) {
+      await refresh(expectedSessionId: selectedSessionId);
+    }
   }
 
-  Future<bool?> showRemoveDialog(
-      String title, String content, bool showCheckbox) async {
-    return await dialogManager?.show<bool>(
+  Future<bool?> _showRemoveDialog(
+      String title,
+      String content,
+      bool showCheckbox,
+      SessionID expectedSessionId,
+      OverlayDialogManager? manager,
+      _RemoveConfirmationState confirmationState) async {
+    if (!_isCurrentSession(expectedSessionId) || manager == null) return null;
+    final result = await manager.show<bool>(
         (setState, Function(bool v) close, context) {
       cancel() => close(false);
       submit() => close(true);
@@ -964,10 +1252,10 @@ class FileController {
                     title: Text(
                       translate("Do this for all conflicts"),
                     ),
-                    value: _removeCheckboxRemember,
+                    value: confirmationState.remember,
                     onChanged: (v) {
                       if (v == null) return;
-                      setState(() => _removeCheckboxRemember = v);
+                      setState(() => confirmationState.remember = v);
                     },
                   )
                 : const SizedBox.shrink()
@@ -990,135 +1278,181 @@ class FileController {
         onCancel: cancel,
       );
     }, useAnimation: false);
+    if (!_isCurrentSession(expectedSessionId)) return null;
+    return result;
   }
 
-  Future<void> sendRemoveFile(String path, int fileNum, int actId) async {
-    await bind.sessionRemoveFile(
-        sessionId: sessionId,
-        actId: actId,
-        path: path,
-        isRemote: !isLocal,
-        fileNum: fileNum);
+  Future<Map<String, dynamic>> _removeFileAndWait(SessionID expectedSessionId,
+      String path, int fileNum, int actionId) {
+    return jobController.dispatchAndWaitForResult(
+        expectedSessionId: expectedSessionId,
+        actionId: actionId,
+        fileNum: fileNum,
+        dispatch: () => _requests.removeFile(
+            expectedSessionId, actionId, path, !isLocal, fileNum));
   }
 
-  Future<void> sendRemoveEmptyDir(String path, int fileNum, int actId) async {
+  Future<bool> _sendRemoveEmptyDir(SessionID expectedSessionId, String path,
+      int actionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return false;
     history.removeWhere((element) => element.contains(path));
-    await bind.sessionRemoveAllEmptyDirs(
-        sessionId: sessionId, actId: actId, path: path, isRemote: !isLocal);
+    await _requests.removeEmptyDirectories(
+        expectedSessionId, actionId, path, !isLocal);
+    return _isCurrentSession(expectedSessionId);
   }
 
-  Future<void> createDirWithRemote(String path, bool isRemote) async {
-    await bind.sessionCreateDir(
-        sessionId: sessionId,
-        actId: JobController.jobID.next(),
-        path: path,
-        isRemote: isRemote);
+  Future<bool> createDirWithRemote(String path, bool isRemote,
+      {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return false;
+    final actionId = jobController.allocateJobId(selectedSessionId);
+    if (actionId == null) return false;
+    await _requests.createDirectory(
+        selectedSessionId, actionId, path, isRemote);
+    return _isCurrentSession(selectedSessionId);
   }
 
-  Future<void> createDir(String path) async {
-    await createDirWithRemote(path, !isLocal);
+  Future<bool> createDir(String path, {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    return await createDirWithRemote(path, !isLocal,
+        expectedSessionId: selectedSessionId);
   }
 
-  Future<void> renameAction(Entry item, bool isLocal) async {
-    final textEditingController = TextEditingController(text: item.name);
+  Future<void> renameAction(Entry item, bool isLocal,
+      {SessionID? expectedSessionId}) async {
+    if (isLocal != this.isLocal) return;
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return;
+    final ownedItem = _FileOperationEntry.fromEntry(item);
+    final manager = dialogManager;
+    if (manager == null) return;
+    final textEditingController = TextEditingController(text: ownedItem.name);
     String? errorText;
-    await dialogManager?.show((setState, close, context) {
-      textEditingController.addListener(() {
-        if (errorText != null) {
-          setState(() {
-            errorText = null;
-          });
-        }
-      });
-      submit() async {
-        final newName = textEditingController.text;
-        if (newName.isEmpty || newName == item.name) {
+    try {
+      await manager.show((setState, close, context) {
+        textEditingController.addListener(() {
+          if (errorText != null && _isCurrentSession(selectedSessionId)) {
+            setState(() {
+              errorText = null;
+            });
+          }
+        });
+        submit() async {
+          if (!_isCurrentSession(selectedSessionId)) return;
+          final newName = textEditingController.text;
+          if (newName.isEmpty || newName == ownedItem.name) {
+            close();
+            return;
+          }
+          if (directory.value.entries.any((e) => e.name == newName)) {
+            setState(() {
+              errorText = translate("Already exists");
+            });
+            return;
+          }
+          final targetIsWindows = options.value.isWindows;
+          if (!PathUtil.validName(newName, targetIsWindows)) {
+            setState(() {
+              if (ownedItem.isDirectory) {
+                errorText = translate("Invalid folder name");
+              } else {
+                errorText = translate("Invalid file name");
+              }
+            });
+            return;
+          }
+          final actionId = jobController.allocateJobId(selectedSessionId);
+          if (actionId == null) return;
+          try {
+            await _requests.renameFile(selectedSessionId, actionId,
+                ownedItem.path, newName, !isLocal);
+          } catch (error) {
+            if (!_isCurrentSession(selectedSessionId)) return;
+            setState(() {
+              errorText = error.toString();
+            });
+            return;
+          }
+          if (!_isCurrentSession(selectedSessionId)) return;
           close();
-          return;
         }
-        if (directory.value.entries.any((e) => e.name == newName)) {
-          setState(() {
-            errorText = translate("Already exists");
-          });
-          return;
-        }
-        if (!PathUtil.validName(newName, options.value.isWindows)) {
-          setState(() {
-            if (item.isDirectory) {
-              errorText = translate("Invalid folder name");
-            } else {
-              errorText = translate("Invalid file name");
-            }
-          });
-          return;
-        }
-        try {
-          await bind.sessionRenameFile(
-              sessionId: sessionId,
-              actId: JobController.jobID.next(),
-              path: item.path,
-              newName: newName,
-              isRemote: !isLocal);
-        } catch (e) {
-          setState(() {
-            errorText = e.toString();
-          });
-          return;
-        }
-        close();
-      }
 
-      return CustomAlertDialog(
-        content: Column(
-          children: [
-            DialogTextField(
-              title: '${translate('Rename')} ${item.name}',
-              controller: textEditingController,
-              errorText: errorText,
+        return CustomAlertDialog(
+          content: Column(
+            children: [
+              DialogTextField(
+                title: '${translate('Rename')} ${ownedItem.name}',
+                controller: textEditingController,
+                errorText: errorText,
+              ),
+            ],
+          ),
+          actions: [
+            dialogButton(
+              "Cancel",
+              icon: Icon(Icons.close_rounded),
+              onPressed: close,
+              isOutline: true,
+            ),
+            dialogButton(
+              "OK",
+              icon: Icon(Icons.done_rounded),
+              onPressed: submit,
             ),
           ],
-        ),
-        actions: [
-          dialogButton(
-            "Cancel",
-            icon: Icon(Icons.close_rounded),
-            onPressed: close,
-            isOutline: true,
-          ),
-          dialogButton(
-            "OK",
-            icon: Icon(Icons.done_rounded),
-            onPressed: submit,
-          ),
-        ],
-        onSubmit: submit,
-        onCancel: close,
-      );
-    });
+          onSubmit: submit,
+          onCancel: close,
+        );
+      });
+    } finally {
+      textEditingController.dispose();
+    }
   }
 }
 
 const _kOneWayFileTransferError = 'one-way-file-transfer-tip';
+const _kMaxNativeFileJobInt = 0x7fffffff;
 
 class JobController {
   static final JobID jobID = JobID();
   final jobTable = List<JobProgress>.empty(growable: true).obs;
-  final jobResultListener = JobResultListener<Map<String, dynamic>>();
+  final JobResultListener jobResultListener;
   final GetSessionID getSessionID;
   final GetDialogManager getDialogManager;
+  final IsCurrentSession isCurrentSession;
+  final JobControllerRequests _requests;
+  final int Function() _nextJobId;
   SessionID get sessionId => getSessionID();
   OverlayDialogManager? get alogManager => getDialogManager();
   int _lastTimeShowMsgbox = DateTime.now().millisecondsSinceEpoch;
 
-  JobController(this.getSessionID, this.getDialogManager);
+  JobController(this.getSessionID, this.getDialogManager,
+      {required this.isCurrentSession,
+      JobControllerRequests? requests,
+      int Function()? nextJobId,
+      Duration resultTimeout = const Duration(seconds: 5)})
+      : _requests = requests ?? JobControllerRequests.native,
+        _nextJobId = nextJobId ?? JobController.jobID.next,
+        jobResultListener = JobResultListener(requestTimeout: resultTimeout);
+
+  int? allocateJobId(SessionID expectedSessionId) {
+    if (!isCurrentSession(expectedSessionId)) return null;
+    final id = _nextJobId();
+    if (id <= 0 || id > _kMaxNativeFileJobInt) {
+      throw StateError('Invalid file-job action ID');
+    }
+    return id;
+  }
 
   int getJob(int id) {
     return jobTable.indexWhere((element) => element.id == id);
   }
 
   // return jobID
-  int addTransferJob(Entry from, bool isRemoteToLocal) {
-    final jobID = JobController.jobID.next();
+  int? addTransferJob(
+      Entry from, bool isRemoteToLocal, SessionID expectedSessionId) {
+    final jobID = allocateJobId(expectedSessionId);
+    if (jobID == null) return null;
     jobTable.add(JobProgress()
       ..type = JobType.transfer
       ..fileName = path.basename(from.path)
@@ -1130,8 +1464,10 @@ class JobController {
     return jobID;
   }
 
-  int addDeleteFileJob(Entry file, bool isRemote) {
-    final jobID = JobController.jobID.next();
+  int? addDeleteFileJob(
+      Entry file, bool isRemote, SessionID expectedSessionId) {
+    final jobID = allocateJobId(expectedSessionId);
+    if (jobID == null) return null;
     jobTable.add(JobProgress()
       ..type = JobType.deleteFile
       ..fileName = path.basename(file.path)
@@ -1143,8 +1479,10 @@ class JobController {
     return jobID;
   }
 
-  int addDeleteDirJob(Entry file, bool isRemote, int fileCount) {
-    final jobID = JobController.jobID.next();
+  int? addDeleteDirJob(Entry file, bool isRemote, int fileCount,
+      SessionID expectedSessionId) {
+    final jobID = allocateJobId(expectedSessionId);
+    if (jobID == null) return null;
     jobTable.add(JobProgress()
       ..type = JobType.deleteDir
       ..fileName = path.basename(file.path)
@@ -1157,14 +1495,26 @@ class JobController {
     return jobID;
   }
 
-  void tryUpdateJobProgress(Map<String, dynamic> evt) {
+  static int? _eventInt(Object? value, {bool positive = false}) {
+    if (value is! String) return null;
+    final parsed = int.tryParse(value);
+    if (parsed == null || value != parsed.toString()) return null;
+    if (positive ? parsed <= 0 : parsed < 0) return null;
+    if (parsed > _kMaxNativeFileJobInt) return null;
+    return parsed;
+  }
+
+  void tryUpdateJobProgress(
+      Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (!isCurrentSession(expectedSessionId)) return;
     try {
-      int id = int.parse(evt['id']);
-      // id = index + 1
+      final id = _eventInt(evt['id'], positive: true);
+      final fileNum = _eventInt(evt['file_num']);
+      if (id == null || fileNum == null) return;
       final jobIndex = getJob(id);
       if (jobIndex >= 0 && jobTable.length > jobIndex) {
         final job = jobTable[jobIndex];
-        job.fileNum = int.parse(evt['file_num']);
+        job.fileNum = fileNum;
         job.speed = double.parse(evt['speed']);
         job.finishedSize = int.parse(evt['finished_size']);
         job.recvJobRes = true;
@@ -1175,27 +1525,22 @@ class JobController {
     }
   }
 
-  Future<bool> jobDone(Map<String, dynamic> evt) async {
-    if (jobResultListener.isListening) {
-      jobResultListener.complete(evt);
-      // return;
-    }
-    int id = -1;
-    int? fileNum = 0;
+  Future<bool> jobDone(
+      Map<String, dynamic> evt, SessionID expectedSessionId) async {
+    if (!isCurrentSession(expectedSessionId)) return false;
+    final id = _eventInt(evt['id'], positive: true);
+    final eventFileNum = _eventInt(evt['file_num']);
+    if (id == null || eventFileNum == null) return false;
+    jobResultListener.tryComplete(expectedSessionId, evt);
+    int? fileNum = eventFileNum;
     double? speed = 0;
-    try {
-      id = int.parse(evt['id']);
-    } catch (_) {}
     final jobIndex = getJob(id);
-    if (jobIndex == -1) return true;
+    if (jobIndex == -1) return false;
     final job = jobTable[jobIndex];
     job.recvJobRes = true;
     if (job.type == JobType.deleteFile) {
       job.state = JobState.done;
     } else if (job.type == JobType.deleteDir) {
-      try {
-        fileNum = int.tryParse(evt['file_num']);
-      } catch (_) {}
       if (fileNum != null) {
         if (fileNum < job.fileNum) return true; // file_num can be 0 at last
         job.fileNum = fileNum;
@@ -1205,7 +1550,6 @@ class JobController {
       }
     } else {
       try {
-        fileNum = int.tryParse(evt['file_num']);
         speed = double.tryParse(evt['speed']);
       } catch (_) {}
       if (fileNum != null) job.fileNum = fileNum;
@@ -1220,9 +1564,14 @@ class JobController {
     }
   }
 
-  void jobError(Map<String, dynamic> evt) {
-    final err = evt['err'].toString();
-    int jobIndex = getJob(int.parse(evt['id']));
+  void jobError(Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (!isCurrentSession(expectedSessionId)) return;
+    final id = _eventInt(evt['id'], positive: true);
+    final errValue = evt['err'];
+    if (id == null || errValue is! String) return;
+    final err = errValue;
+    jobResultListener.tryCompleteError(expectedSessionId, evt);
+    final jobIndex = getJob(id);
     if (jobIndex != -1) {
       final job = jobTable[jobIndex];
       job.state = JobState.error;
@@ -1236,15 +1585,8 @@ class JobController {
           job.finishedSize = job.totalSize;
         }
       } else if (job.type == JobType.deleteDir) {
-        if (jobResultListener.isListening) {
-          jobResultListener.complete(evt);
-        }
-        int? fileNum = int.tryParse(evt['file_num']);
+        final fileNum = _eventInt(evt['file_num']);
         if (fileNum != null) job.fileNum = fileNum;
-      } else if (job.type == JobType.deleteFile) {
-        if (jobResultListener.isListening) {
-          jobResultListener.complete(evt);
-        }
       }
       jobTable.refresh();
     }
@@ -1253,15 +1595,16 @@ class JobController {
         final dm = alogManager;
         if (dm != null) {
           _lastTimeShowMsgbox = DateTime.now().millisecondsSinceEpoch;
-          msgBox(sessionId, 'custom-nocancel', 'Error', err, '', dm);
+          msgBox(expectedSessionId, 'custom-nocancel', 'Error', err, '', dm);
         }
       }
     }
     debugPrint("jobError $evt");
   }
 
-  void updateJobStatus(int id,
+  void updateJobStatus(SessionID expectedSessionId, int id,
       {int? file_num, String? error, JobState? state}) {
+    if (!isCurrentSession(expectedSessionId)) return;
     final jobIndex = getJob(id);
     if (jobIndex < 0) return;
     final job = jobTable[jobIndex];
@@ -1282,32 +1625,74 @@ class JobController {
     jobTable.refresh();
   }
 
-  Future<void> cancelJob(int id) async {
-    await bind.sessionCancelJob(sessionId: sessionId, actId: id);
+  Future<bool> cancelJob(int id, {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!isCurrentSession(selectedSessionId)) return false;
+    await _requests.cancelJob(selectedSessionId, id);
+    return isCurrentSession(selectedSessionId);
   }
 
-  Future<void> loadLastJob(Map<String, dynamic> evt) async {
+  Future<Map<String, dynamic>> dispatchAndWaitForResult(
+      {required SessionID expectedSessionId,
+      required int actionId,
+      required int fileNum,
+      required Future<void> Function() dispatch}) {
+    if (!isCurrentSession(expectedSessionId)) {
+      return Future.error(StateError('Superseded file-transfer session'));
+    }
+    return jobResultListener.dispatchAndWait(
+        expectedSessionId: expectedSessionId,
+        actionId: actionId,
+        fileNum: fileNum,
+        dispatch: dispatch);
+  }
+
+  Future<void> loadLastJob(
+      Map<String, dynamic> evt, SessionID expectedSessionId) async {
+    if (!isCurrentSession(expectedSessionId)) return;
     debugPrint("load last job: $evt");
-    Map<String, dynamic> jobDetail = json.decode(evt['value']);
-    String remote = jobDetail['remote'];
-    String to = jobDetail['to'];
-    bool showHidden = jobDetail['show_hidden'];
-    int fileNum = jobDetail['file_num'];
-    bool isRemote = jobDetail['is_remote'];
+    final encoded = evt['value'];
+    if (encoded is! String) return;
+    final Object? decoded;
+    try {
+      decoded = json.decode(encoded);
+    } catch (_) {
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) return;
+    final jobDetail = decoded;
+    final remoteValue = jobDetail['remote'];
+    final toValue = jobDetail['to'];
+    final showHiddenValue = jobDetail['show_hidden'];
+    final fileNumValue = jobDetail['file_num'];
+    final isRemoteValue = jobDetail['is_remote'];
+    if (remoteValue is! String ||
+        toValue is! String ||
+        showHiddenValue is! bool ||
+        fileNumValue is! int ||
+        fileNumValue < 0 ||
+        fileNumValue > _kMaxNativeFileJobInt ||
+        isRemoteValue is! bool) return;
+    final remote = remoteValue;
+    final to = toValue;
+    final showHidden = showHiddenValue;
+    final fileNum = fileNumValue;
+    final isRemote = isRemoteValue;
     bool isAutoStart = jobDetail['auto_start'] == true;
     int currJobId = -1;
     if (isAutoStart) {
       // Ensure jobDetail['id'] exists and is an int
-      if (jobDetail.containsKey('id') &&
-          jobDetail['id'] != null &&
-          jobDetail['id'] is int) {
-        currJobId = jobDetail['id'];
+      final id = jobDetail['id'];
+      if (id is int && id > 0 && id <= _kMaxNativeFileJobInt) {
+        currJobId = id;
       }
     }
     if (currJobId < 0) {
       // If id is missing or invalid, disable auto-start and assign a new job id
       isAutoStart = false;
-      currJobId = JobController.jobID.next();
+      final allocated = allocateJobId(expectedSessionId);
+      if (allocated == null) return;
+      currJobId = allocated;
     }
 
     if (!isAutoStart) {
@@ -1333,36 +1718,39 @@ class JobController {
       jobTable.add(jobProgress);
     }
 
-    await bind.sessionAddJob(
-      sessionId: sessionId,
-      isRemote: isRemote,
-      includeHidden: showHidden,
-      actId: currJobId,
-      path: isRemote ? remote : to,
-      to: isRemote ? to : remote,
-      fileNum: fileNum,
-    );
+    await _requests.addJob(expectedSessionId, isRemote, showHidden,
+        currJobId, isRemote ? remote : to, isRemote ? to : remote, fileNum);
+    if (!isCurrentSession(expectedSessionId)) return;
 
     if (isAutoStart) {
-      await bind.sessionResumeJob(
-          sessionId: sessionId, actId: currJobId, isRemote: isRemote);
+      await _requests.resumeJob(expectedSessionId, currJobId, isRemote);
     }
   }
 
-  Future<void> resumeJob(int jobId) async {
+  Future<bool> resumeJob(int jobId, {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!isCurrentSession(selectedSessionId)) return false;
     final jobIndex = getJob(jobId);
     if (jobIndex != -1) {
       final job = jobTable[jobIndex];
-      await bind.sessionResumeJob(
-          sessionId: sessionId, actId: job.id, isRemote: job.isRemoteToLocal);
-      job.state = JobState.inProgress;
+      final actionId = job.id;
+      final isRemote = job.isRemoteToLocal;
+      await _requests.resumeJob(selectedSessionId, actionId, isRemote);
+      if (!isCurrentSession(selectedSessionId)) return false;
+      final currentIndex = getJob(actionId);
+      if (currentIndex == -1) return false;
+      jobTable[currentIndex].state = JobState.inProgress;
       jobTable.refresh();
+      return true;
     } else {
       debugPrint("jobId $jobId is not exists");
+      return false;
     }
   }
 
-  void updateFolderFiles(Map<String, dynamic> evt) {
+  void updateFolderFiles(
+      Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (!isCurrentSession(expectedSessionId)) return;
     // ret: "{\"id\":1,\"num_entries\":12,\"total_size\":1264822.0}"
     Map<String, dynamic> info = json.decode(evt['info']);
     int id = info['id'];
@@ -1382,45 +1770,232 @@ class JobController {
     jobTable.clear();
     jobResultListener.clear();
   }
+
+  bool clearForSession(SessionID expectedSessionId) {
+    if (!isCurrentSession(expectedSessionId)) return false;
+    clear();
+    return true;
+  }
+
+  bool removeJob(SessionID expectedSessionId, int id) {
+    if (!isCurrentSession(expectedSessionId)) return false;
+    final index = getJob(id);
+    if (index == -1) return false;
+    jobTable.removeAt(index);
+    return true;
+  }
 }
 
-class JobResultListener<T> {
-  Completer<T>? _completer;
-  Timer? _timer;
-  final int _timeoutSecond = 5;
-
-  bool get isListening => _completer != null;
-
-  clear() {
-    if (_completer != null) {
-      _timer?.cancel();
-      _timer = null;
-      _completer!.completeError("Cancel manually");
-      _completer = null;
-      return;
+class JobResultListener {
+  JobResultListener(
+      {this.maxPending = 64,
+      this.requestTimeout = const Duration(seconds: 5)}) {
+    if (maxPending < 1) {
+      throw ArgumentError.value(maxPending, 'maxPending');
+    }
+    if (requestTimeout.inMicroseconds < 1) {
+      throw ArgumentError.value(requestTimeout, 'requestTimeout');
     }
   }
 
-  Future<T> start() {
-    if (_completer != null) return Future.error("Already start listen");
-    _completer = Completer();
-    _timer = Timer(Duration(seconds: _timeoutSecond), () {
-      if (!_completer!.isCompleted) {
-        _completer!.completeError("Time out");
-      }
-      _completer = null;
+  final int maxPending;
+  final Duration requestTimeout;
+  final Map<_JobResultKey, _PendingJobResult> _pending = {};
+
+  Future<Map<String, dynamic>> dispatchAndWait(
+      {required SessionID expectedSessionId,
+      required int actionId,
+      required int fileNum,
+      required Future<void> Function() dispatch}) {
+    if (actionId <= 0 ||
+        actionId > _kMaxNativeFileJobInt ||
+        fileNum < 0 ||
+        fileNum > _kMaxNativeFileJobInt) {
+      return Future.error(ArgumentError('Invalid file-job result owner'));
+    }
+    final key = _JobResultKey(expectedSessionId, actionId, fileNum);
+    if (_pending.containsKey(key)) {
+      return Future.error(StateError('File-job result is already pending'));
+    }
+    if (_pending.length >= maxPending) {
+      return Future.error(StateError('File-job result capacity exhausted'));
+    }
+    final pending = _PendingJobResult();
+    _pending[key] = pending;
+    pending.startTimeout(requestTimeout, () {
+      if (!identical(_pending[key], pending)) return;
+      // Keep an exact bounded tombstone. A late response must be consumed by
+      // this owner instead of completing a same-key retry. The same deadline
+      // also covers a bridge dispatch that never settles after an early event.
+      pending.completeError(TimeoutException(
+          'File-job transaction did not settle', requestTimeout));
     });
-    return _completer!.future;
+
+    late final Future<void> dispatchResult;
+    try {
+      dispatchResult = dispatch();
+    } catch (error, stackTrace) {
+      _pending.remove(key);
+      pending.completeError(error, stackTrace);
+      return pending.future;
+    }
+    unawaited(dispatchResult.then<void>((_) {
+      pending.markDispatchSettled();
+      if (pending.responseReceived && identical(_pending[key], pending)) {
+        _pending.remove(key);
+      }
+    }, onError: (Object error, StackTrace stackTrace) {
+      if (identical(_pending[key], pending)) {
+        _pending.remove(key);
+        pending.completeError(error, stackTrace);
+      }
+    }));
+    return pending.future;
   }
 
-  complete(T res) {
-    if (_completer != null) {
-      _timer?.cancel();
-      _timer = null;
-      _completer!.complete(res);
-      _completer = null;
+  bool tryComplete(
+      SessionID expectedSessionId, Map<String, dynamic> event) {
+    final actionId = JobController._eventInt(event['id'], positive: true);
+    final fileNum = JobController._eventInt(event['file_num']);
+    if (actionId == null || fileNum == null) return false;
+    final key = _JobResultKey(expectedSessionId, actionId, fileNum);
+    final pending = _pending[key];
+    if (pending == null) return false;
+    if (pending.isCompleted) {
+      _retainLateResponseUntilDispatchSettles(key, pending);
+      return false;
+    }
+    if (pending.responseReceived) return false;
+    pending.complete(Map<String, dynamic>.unmodifiable(event));
+    if (pending.dispatchSettled) {
+      _pending.remove(key);
+    }
+    return true;
+  }
+
+  bool tryCompleteError(
+      SessionID expectedSessionId, Map<String, dynamic> event) {
+    final actionId = JobController._eventInt(event['id'], positive: true);
+    final fileNum = JobController._eventInt(event['file_num']);
+    final error = event['err'];
+    if (actionId == null || fileNum == null || error is! String) return false;
+    final key = _JobResultKey(expectedSessionId, actionId, fileNum);
+    final pending = _pending[key];
+    if (pending == null) return false;
+    if (pending.isCompleted) {
+      _retainLateResponseUntilDispatchSettles(key, pending);
+      return false;
+    }
+    if (pending.responseReceived) return false;
+    pending.completeResponseError(StateError(error));
+    if (pending.dispatchSettled) {
+      _pending.remove(key);
+    }
+    return true;
+  }
+
+  void _retainLateResponseUntilDispatchSettles(
+      _JobResultKey key, _PendingJobResult pending) {
+    if (!pending.markLateResponseReceived()) return;
+    if (pending.dispatchSettled && identical(_pending[key], pending)) {
+      _pending.remove(key);
+    }
+  }
+
+  void clear() {
+    final pending = _pending.values.toList(growable: false);
+    _pending.clear();
+    final error = StateError('Superseded file-transfer session');
+    for (final result in pending) {
+      result.completeError(error);
+    }
+  }
+}
+
+@immutable
+class _JobResultKey {
+  const _JobResultKey(this.sessionId, this.actionId, this.fileNum);
+
+  final SessionID sessionId;
+  final int actionId;
+  final int fileNum;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _JobResultKey &&
+      other.sessionId == sessionId &&
+      other.actionId == actionId &&
+      other.fileNum == fileNum;
+
+  @override
+  int get hashCode => Object.hash(sessionId, actionId, fileNum);
+}
+
+class _PendingJobResult {
+  final Completer<Map<String, dynamic>> _done =
+      Completer<Map<String, dynamic>>();
+  Timer? _timer;
+  bool _dispatchSettled = false;
+  bool _responseReceived = false;
+  Map<String, dynamic>? _responseValue;
+  Object? _responseError;
+
+  Future<Map<String, dynamic>> get future => _done.future;
+  bool get dispatchSettled => _dispatchSettled;
+  bool get isCompleted => _done.isCompleted;
+  bool get responseReceived => _responseReceived;
+
+  void startTimeout(Duration timeout, void Function() onTimeout) {
+    _timer = Timer(timeout, onTimeout);
+  }
+
+  void complete(Map<String, dynamic> value) {
+    if (_done.isCompleted) return;
+    _responseReceived = true;
+    _responseValue = value;
+    _completeResponseIfDispatchSettled();
+  }
+
+  void completeError(Object error, [StackTrace? stackTrace]) {
+    if (_done.isCompleted) return;
+    _timer?.cancel();
+    _timer = null;
+    _done.completeError(error, stackTrace);
+  }
+
+  void completeResponseError(Object error) {
+    if (_done.isCompleted) return;
+    _responseReceived = true;
+    _responseError = error;
+    _completeResponseIfDispatchSettled();
+  }
+
+  void markDispatchSettled() {
+    _dispatchSettled = true;
+    _completeResponseIfDispatchSettled();
+  }
+
+  bool markLateResponseReceived() {
+    if (!_done.isCompleted || _responseReceived) return false;
+    _responseReceived = true;
+    return true;
+  }
+
+  void _completeResponseIfDispatchSettled() {
+    if (!_dispatchSettled || !_responseReceived || _done.isCompleted) return;
+    _timer?.cancel();
+    _timer = null;
+    final error = _responseError;
+    if (error != null) {
+      _done.completeError(error);
       return;
     }
+    final value = _responseValue;
+    if (value == null) {
+      _done.completeError(StateError('File-job result payload is missing'));
+      return;
+    }
+    _done.complete(value);
   }
 }
 

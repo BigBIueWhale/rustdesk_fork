@@ -215,6 +215,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
             'flutter test --no-pub test/mobile_file_session_lifecycle_test.dart',
+            'flutter test --no-pub test/file_command_session_ownership_test.dart',
             'flutter test --no-pub test/desktop_texture_lifecycle_test.dart',
             'flutter test --no-pub test/desktop_tab_retirement_test.dart',
             'flutter test --no-pub test/password_field_semantics_test.dart',
@@ -771,6 +772,12 @@ MUTATIONS = (
         "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
         "true # mobile file-session lifecycle test disabled",
         "mobile file-session lifecycle regression",
+    ),
+    Mutation(
+        "dart",
+        "flutter test --no-pub test/file_command_session_ownership_test.dart",
+        "true # file-command session ownership test disabled",
+        "file-command session ownership regression",
     ),
     Mutation(
         "dart",

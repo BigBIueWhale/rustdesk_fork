@@ -2065,7 +2065,7 @@ def validate(sources: Dict[str, str]) -> None:
         "second pending-event retirement owner",
     )
     file_controller = extract_item(
-        dart_file_model, "class FileController", "reused file controller"
+        dart_file_model, "class FileController {", "reused file controller"
     )
     file_controller_reset = extract_item(
         file_controller, "  void resetForSession()", "file-controller session reset"

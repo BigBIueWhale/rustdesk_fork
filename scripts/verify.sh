@@ -9510,6 +9510,12 @@ else
   echo "  FAIL R-S11hl/R-S11e-249: file-directory requests regained send-before-register loss, unbounded retention, stale response authority, or incomplete timer cleanup"
   rc=1
 fi
+if python3 scripts/verify-file-command-session-ownership.py --repo . --self-test; then
+  echo "  ok  R-S11hm/R-S11e-250 file commands and job results remain bounded exact-session owners through retirement"
+else
+  echo "  FAIL R-S11hm/R-S11e-250: file commands or job-result continuations regained dynamic-session retargeting, anonymous completion, or incomplete retirement"
+  rc=1
+fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never

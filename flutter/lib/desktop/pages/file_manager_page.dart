@@ -86,6 +86,7 @@ class _FileManagerPageState extends State<FileManagerPage>
   final _uniqueKey = UniqueKey();
 
   late FFI _ffi;
+  late final SessionID _sessionId;
 
   FileModel get model => _ffi.fileModel;
   JobController get jobController => model.jobController;
@@ -94,24 +95,26 @@ class _FileManagerPageState extends State<FileManagerPage>
   void initState() {
     super.initState();
     _ffi = FFI(null);
-    _ffi.start(widget.id,
+    _sessionId = _ffi.start(widget.id,
         isFileTransfer: true,
         password: widget.password,
         isSharedPassword: widget.isSharedPassword,
         connToken: widget.connToken);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_ffi.isCurrentSession(_sessionId)) return;
       _ffi.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);
     });
     Get.put<FFI>(_ffi, tag: 'ft_${widget.id}');
     WakelockManager.enable(_uniqueKey);
     if (isWeb) {
-      _ffi.ffiModel.updateEventListener(_ffi.sessionId, widget.id);
+      _ffi.ffiModel.updateEventListener(_sessionId, widget.id);
     }
     debugPrint("File manager page init success with id ${widget.id}");
     _ffi.dialogManager.setOverlayState(_overlayKeyState);
     // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_ffi.isCurrentSession(_sessionId)) return;
       widget.tabController?.onSelected?.call(widget.id);
     });
     WidgetsBinding.instance.addObserver(this);
@@ -119,12 +122,26 @@ class _FileManagerPageState extends State<FileManagerPage>
 
   @override
   void dispose() {
-    model.close(_ffi.sessionId).whenComplete(() {
-      _ffi.close();
-      _ffi.dialogManager.dismissAll();
-      WakelockManager.disable(_uniqueKey);
-      Get.delete<FFI>(tag: 'ft_${widget.id}');
-    });
+    WakelockManager.disable(_uniqueKey);
+    unawaited(() async {
+      try {
+        try {
+          await model.close(_sessionId);
+        } catch (error, stackTrace) {
+          debugPrint('Failed to close file model session $_sessionId: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+        await _ffi.close(expectedSessionId: _sessionId);
+      } catch (error, stackTrace) {
+        debugPrint('Failed to finish file session $_sessionId cleanup: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      } finally {
+        if (_ffi.sessionId == _sessionId) {
+          _ffi.dialogManager.dismissAll();
+        }
+        Get.delete<FFI>(tag: 'ft_${widget.id}');
+      }
+    }());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -144,7 +161,7 @@ class _FileManagerPageState extends State<FileManagerPage>
     if (isWeb) {
       return WillPopScope(
         onWillPop: () async {
-          clientClose(_ffi.sessionId, _ffi);
+          clientClose(_sessionId, _ffi);
           return false;
         },
         child: child,
@@ -167,11 +184,17 @@ class _FileManagerPageState extends State<FileManagerPage>
                 Flexible(
                     flex: 3,
                     child: dropArea(FileManagerView(
-                        model.localController, _ffi, _mouseFocusScope))),
+                        model.localController,
+                        _ffi,
+                        _mouseFocusScope,
+                        _sessionId))),
               Flexible(
                   flex: 3,
                   child: dropArea(FileManagerView(
-                      model.remoteController, _ffi, _mouseFocusScope))),
+                      model.remoteController,
+                      _ffi,
+                      _mouseFocusScope,
+                      _sessionId))),
               Flexible(flex: 2, child: statusList())
             ],
           ),
@@ -294,7 +317,8 @@ class _FileManagerPageState extends State<FileManagerPage>
                               child: MenuButton(
                                 tooltip: translate("Resume"),
                                 onPressed: () async {
-                                  await jobController.resumeJob(item.id);
+                                  await jobController.resumeJob(item.id,
+                                      expectedSessionId: _sessionId);
                                 },
                                 child: SvgPicture.asset(
                                   "assets/refresh.svg",
@@ -311,8 +335,14 @@ class _FileManagerPageState extends State<FileManagerPage>
                                 colorFilter: svgColor(Colors.white),
                               ),
                               onPressed: () async {
-                                await jobController.cancelJob(item.id);
-                                jobController.jobTable.removeAt(index);
+                                final expectedSessionId = _sessionId;
+                                final canceled = await jobController.cancelJob(
+                                    item.id,
+                                    expectedSessionId: expectedSessionId);
+                                if (canceled) {
+                                  jobController.removeJob(
+                                      expectedSessionId, item.id);
+                                }
                               },
                               color: MyTheme.accent,
                               hoverColor: MyTheme.accent80,
@@ -365,6 +395,8 @@ class _FileManagerPageState extends State<FileManagerPage>
   }
 
   Future<void> handleDragDone(DropDoneDetails details, bool isLocal) async {
+    final expectedSessionId = _sessionId;
+    if (!_ffi.isCurrentSession(expectedSessionId)) return;
     if (isLocal) {
       // ignore local
       return;
@@ -378,7 +410,8 @@ class _FileManagerPageState extends State<FileManagerPage>
         ..size = FileSystemEntity.isDirectorySync(f.path) ? 0 : f.lengthSync());
     }
     final otherSideData = model.localController.directoryData();
-    await model.remoteController.sendFiles(items, otherSideData);
+    await model.remoteController.sendFiles(items, otherSideData,
+        expectedSessionId: expectedSessionId);
   }
 }
 
@@ -386,8 +419,10 @@ class FileManagerView extends StatefulWidget {
   final FileController controller;
   final FFI _ffi;
   final Rx<MouseFocusScope> _mouseFocusScope;
+  final SessionID expectedSessionId;
 
-  FileManagerView(this.controller, this._ffi, this._mouseFocusScope);
+  FileManagerView(this.controller, this._ffi, this._mouseFocusScope,
+      this.expectedSessionId);
 
   @override
   State<StatefulWidget> createState() => _FileManagerViewState();
@@ -406,6 +441,8 @@ class _FileManagerViewState extends State<FileManagerView> {
   final _sizeColWidth = 0.0.obs;
   final _fileListScrollController = ScrollController();
   final _globalHeaderKey = GlobalKey();
+  late final StreamSubscription<FileDirectory> _directorySubscription;
+  Timer? _breadCrumbTimer;
 
   /// [_lastClickTime], [_lastClickEntry] help to handle double click
   var _lastClickTime =
@@ -418,6 +455,8 @@ class _FileManagerViewState extends State<FileManagerView> {
   FileController get controller => widget.controller;
   bool get isLocal => widget.controller.isLocal;
   FFI get _ffi => widget._ffi;
+  SessionID get expectedSessionId => widget.expectedSessionId;
+  bool get isCurrentSession => _ffi.isCurrentSession(expectedSessionId);
   SelectedItems get selectedItems => controller.selectedItems;
 
   @override
@@ -425,12 +464,15 @@ class _FileManagerViewState extends State<FileManagerView> {
     super.initState();
     // register location listener
     _locationNode.addListener(onLocationFocusChanged);
-    controller.directory.listen((e) => breadCrumbScrollToEnd());
+    _directorySubscription =
+        controller.directory.listen((e) => breadCrumbScrollToEnd());
   }
 
   @override
   void dispose() {
     _locationNode.removeListener(onLocationFocusChanged);
+    unawaited(_directorySubscription.cancel());
+    _breadCrumbTimer?.cancel();
     _locationNode.dispose();
     _keyboardNode.dispose();
     _breadCrumbScroller.dispose();
@@ -453,17 +495,22 @@ class _FileManagerViewState extends State<FileManagerView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                    child: MouseRegion(
-                  onEnter: (evt) {
-                    widget._mouseFocusScope.value = isLocal
-                        ? MouseFocusScope.local
-                        : MouseFocusScope.remote;
-                    _keyboardNode.requestFocus();
-                  },
-                  onExit: (evt) =>
-                      widget._mouseFocusScope.value = MouseFocusScope.none,
-                  child: _buildFileList(context, _fileListScrollController),
-                ))
+                  child: MouseRegion(
+                    onEnter: (evt) {
+                      if (!isCurrentSession) return;
+                      widget._mouseFocusScope.value = isLocal
+                          ? MouseFocusScope.local
+                          : MouseFocusScope.remote;
+                      _keyboardNode.requestFocus();
+                    },
+                    onExit: (evt) {
+                      if (isCurrentSession) {
+                        widget._mouseFocusScope.value = MouseFocusScope.none;
+                      }
+                    },
+                    child: _buildFileList(context, _fileListScrollController),
+                  ),
+                )
               ],
             ),
           ),
@@ -527,7 +574,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                           padding: EdgeInsets.all(8.0),
                           child: FutureBuilder<String>(
                               future: bind.sessionGetPlatform(
-                                  sessionId: _ffi.sessionId,
+                                  sessionId: expectedSessionId,
                                   isRemote: !isLocal),
                               builder: (context, snapshot) {
                                 if (snapshot.hasData &&
@@ -570,8 +617,10 @@ class _FileManagerViewState extends State<FileManagerView> {
                     color: Theme.of(context).cardColor,
                     hoverColor: Theme.of(context).hoverColor,
                     onPressed: () {
+                      if (!isCurrentSession) return;
                       selectedItems.clear();
-                      controller.goBack();
+                      controller.goBack(
+                          expectedSessionId: expectedSessionId);
                     },
                   ),
                   MenuButton(
@@ -587,8 +636,10 @@ class _FileManagerViewState extends State<FileManagerView> {
                     color: Theme.of(context).cardColor,
                     hoverColor: Theme.of(context).hoverColor,
                     onPressed: () {
+                      if (!isCurrentSession) return;
                       selectedItems.clear();
-                      controller.goToParentDirectory();
+                      controller.goToParentDirectory(
+                          expectedSessionId: expectedSessionId);
                     },
                   ),
                 ],
@@ -607,11 +658,13 @@ class _FileManagerViewState extends State<FileManagerView> {
                       padding: EdgeInsets.symmetric(vertical: 2.5),
                       child: GestureDetector(
                         onTap: () {
+                          if (!isCurrentSession) return;
                           _locationStatus.value =
                               _locationStatus.value == LocationStatus.bread
                                   ? LocationStatus.pathLocation
                                   : LocationStatus.bread;
                           Future.delayed(Duration.zero, () {
+                            if (!mounted || !isCurrentSession) return;
                             if (_locationStatus.value ==
                                 LocationStatus.pathLocation) {
                               _locationNode.requestFocus();
@@ -642,9 +695,14 @@ class _FileManagerViewState extends State<FileManagerView> {
                     return MenuButton(
                       tooltip: translate('Search'),
                       onPressed: () {
+                        if (!isCurrentSession) return;
                         _locationStatus.value = LocationStatus.fileSearchBar;
                         Future.delayed(
-                            Duration.zero, () => _locationNode.requestFocus());
+                            Duration.zero, () {
+                          if (mounted && isCurrentSession) {
+                            _locationNode.requestFocus();
+                          }
+                        });
                       },
                       child: SvgPicture.asset(
                         "assets/search.svg",
@@ -669,6 +727,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                     return MenuButton(
                       tooltip: translate('Clear'),
                       onPressed: () {
+                        if (!isCurrentSession) return;
                         onSearchText("", isLocal);
                         _locationStatus.value = LocationStatus.bread;
                       },
@@ -688,7 +747,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                   left: 3,
                 ),
                 onPressed: () {
-                  controller.refresh();
+                  controller.refresh(expectedSessionId: expectedSessionId);
                 },
                 child: SvgPicture.asset(
                   "assets/refresh.svg",
@@ -714,7 +773,8 @@ class _FileManagerViewState extends State<FileManagerView> {
                         right: 3,
                       ),
                       onPressed: () {
-                        controller.goToHomeDirectory();
+                        controller.goToHomeDirectory(
+                            expectedSessionId: expectedSessionId);
                       },
                       child: SvgPicture.asset(
                         "assets/home.svg",
@@ -727,17 +787,13 @@ class _FileManagerViewState extends State<FileManagerView> {
                     MenuButton(
                       tooltip: translate('Create Folder'),
                       onPressed: () {
+                        if (!isCurrentSession) return;
                         final name = TextEditingController();
                         String? errorText;
-                        _ffi.dialogManager.show((setState, close, context) {
-                          name.addListener(() {
-                            if (errorText != null) {
-                              setState(() {
-                                errorText = null;
-                              });
-                            }
-                          });
+                        final dialog =
+                            _ffi.dialogManager.show((setState, close, context) {
                           submit() async {
+                            if (!isCurrentSession) return;
                             if (name.value.text.isNotEmpty) {
                               if (!PathUtil.validName(name.value.text,
                                   controller.options.value.isWindows)) {
@@ -746,18 +802,26 @@ class _FileManagerViewState extends State<FileManagerView> {
                                 });
                                 return;
                               }
+                              late final bool created;
                               try {
-                                await controller.createDir(PathUtil.join(
+                                created = await controller.createDir(PathUtil.join(
                                   controller.directory.value.path,
                                   name.value.text,
                                   controller.options.value.isWindows,
-                                ));
+                                ), expectedSessionId: expectedSessionId);
                               } catch (e) {
+                                if (!mounted ||
+                                    !_ffi.isCurrentSession(
+                                        expectedSessionId)) return;
                                 setState(() {
                                   errorText = e.toString();
                                 });
                                 return;
                               }
+                              if (!created ||
+                                  !mounted ||
+                                  !_ffi.isCurrentSession(
+                                      expectedSessionId)) return;
                               close();
                             }
                           }
@@ -788,6 +852,15 @@ class _FileManagerViewState extends State<FileManagerView> {
                                   ),
                                   controller: name,
                                   autofocus: true,
+                                  onChanged: (_) {
+                                    if (errorText != null &&
+                                        mounted &&
+                                        isCurrentSession) {
+                                      setState(() {
+                                        errorText = null;
+                                      });
+                                    }
+                                  },
                                 ),
                               ],
                             ),
@@ -808,6 +881,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                             onCancel: cancel,
                           );
                         });
+                        unawaited(dialog.whenComplete(name.dispose));
                       },
                       child: SvgPicture.asset(
                         "assets/folder_new.svg",
@@ -821,8 +895,14 @@ class _FileManagerViewState extends State<FileManagerView> {
                           tooltip: translate('Delete'),
                           onPressed: SelectedItems.valid(selectedItems.items)
                               ? () async {
+                                  if (!isCurrentSession) return;
                                   await (controller
-                                      .removeAction(selectedItems));
+                                      .removeAction(selectedItems,
+                                          expectedSessionId:
+                                              expectedSessionId));
+                                  if (!mounted ||
+                                      !_ffi.isCurrentSession(
+                                          expectedSessionId)) return;
                                   selectedItems.clear();
                                 }
                               : null,
@@ -851,20 +931,26 @@ class _FileManagerViewState extends State<FileManagerView> {
                               : MyTheme.accent,
                         ),
                       ),
-                      onPressed: () =>
-                          {webselectFiles(is_folder: isUploadFolder.value)},
+                      onPressed: () async {
+                        if (!isCurrentSession) return;
+                        await webselectFiles(
+                            is_folder: isUploadFolder.value);
+                        if (!isCurrentSession) return;
+                      },
                       label: InkWell(
                         hoverColor: Colors.transparent,
                         splashColor: Colors.transparent,
                         highlightColor: Colors.transparent,
                         focusColor: Colors.transparent,
                         onTapDown: (e) {
+                          if (!isCurrentSession) return;
                           final x = e.globalPosition.dx;
                           final y = e.globalPosition.dy;
                           uploadButtonTapPosition =
                               RelativeRect.fromLTRB(x, y, x, y);
                         },
                         onTap: () async {
+                          if (!isCurrentSession) return;
                           final value = await showMenu<bool>(
                               context: context,
                               position: uploadButtonTapPosition,
@@ -878,12 +964,15 @@ class _FileManagerViewState extends State<FileManagerView> {
                                   child: Text(translate('Upload folder')),
                                 ),
                               ]);
-                          if (value != null) {
+                          if (value != null &&
+                              mounted &&
+                              isCurrentSession) {
                             isUploadFolder.value = value;
                             bind.mainSetLocalOption(
                                 key: 'upload-folder-button',
                                 value: value ? 'Y' : '');
-                            webselectFiles(is_folder: value);
+                            await webselectFiles(is_folder: value);
+                            if (!isCurrentSession) return;
                           }
                         },
                         child: Icon(Icons.arrow_drop_down),
@@ -912,10 +1001,16 @@ class _FileManagerViewState extends State<FileManagerView> {
                     ),
                     onPressed: SelectedItems.valid(selectedItems.items)
                         ? () async {
+                            if (!isCurrentSession) return;
                             final otherSideData =
                                 controller.getOtherSideDirectoryData();
                             await controller.sendFiles(
-                                selectedItems, otherSideData);
+                                selectedItems, otherSideData,
+                                expectedSessionId: expectedSessionId);
+                            if (!mounted ||
+                                !_ffi.isCurrentSession(expectedSessionId)) {
+                              return;
+                            }
                             selectedItems.clear();
                           }
                         : null,
@@ -988,21 +1083,27 @@ class _FileManagerViewState extends State<FileManagerView> {
           return controller.options.value.showHidden;
         },
         setter: (bool v) async {
-          controller.toggleShowHidden();
+          controller.toggleShowHidden(
+              expectedSessionId: expectedSessionId);
         },
         padding: kDesktopMenuPadding,
         dismissOnClicked: true,
       ),
       MenuEntryButton(
           childBuilder: (style) => Text(translate("Select All"), style: style),
-          proc: () => setState(() =>
-              selectedItems.selectAll(controller.directory.value.entries)),
+          proc: () {
+            if (!isCurrentSession) return;
+            setState(() => selectedItems
+                .selectAll(controller.directory.value.entries));
+          },
           padding: kDesktopMenuPadding,
           dismissOnClicked: true),
       MenuEntryButton(
           childBuilder: (style) =>
               Text(translate("Unselect All"), style: style),
-          proc: () => selectedItems.clear(),
+          proc: () {
+            if (isCurrentSession) selectedItems.clear();
+          },
           padding: kDesktopMenuPadding,
           dismissOnClicked: true)
     ];
@@ -1052,6 +1153,7 @@ class _FileManagerViewState extends State<FileManagerView> {
       node: _keyboardNode,
       buffer: _listSearchBuffer,
       onNext: (buffer) {
+        if (!isCurrentSession) return;
         debugPrint("searching next for $buffer");
         assert(buffer.length == 1);
         assert(selectedItems.items.length <= 1);
@@ -1080,6 +1182,7 @@ class _FileManagerViewState extends State<FileManagerView> {
             kDesktopFileTransferRowHeight);
       },
       onSearch: (buffer) {
+        if (!isCurrentSession) return;
         debugPrint("searching for $buffer");
         final selectedEntries = selectedItems;
         final searchResult = entries
@@ -1107,10 +1210,12 @@ class _FileManagerViewState extends State<FileManagerView> {
               : "${entry.lastModified().toString().replaceAll(".000", "")}   ";
           var secondaryPosition = RelativeRect.fromLTRB(0, 0, 0, 0);
           onTap() {
+            if (!isCurrentSession) return;
             final items = selectedItems;
             // handle double click
             if (_checkDoubleClick(entry)) {
-              controller.openDirectory(entry.path);
+              controller.openDirectory(entry.path,
+                  expectedSessionId: expectedSessionId);
               items.clear();
               return;
             }
@@ -1118,6 +1223,7 @@ class _FileManagerViewState extends State<FileManagerView> {
           }
 
           onSecondaryTap() {
+            if (!isCurrentSession) return;
             final items = [
               if (!entry.isDrive &&
                   versionCmp(_ffi.ffiModel.pi.version, "1.3.0") >= 0)
@@ -1125,7 +1231,8 @@ class _FileManagerViewState extends State<FileManagerView> {
                   child: Text(translate("Rename")),
                   height: CustomPopupMenuTheme.height,
                   onTap: () async {
-                    await controller.renameAction(entry, isLocal);
+                    await controller.renameAction(entry, isLocal,
+                        expectedSessionId: expectedSessionId);
                   },
                 )
             ];
@@ -1146,6 +1253,7 @@ class _FileManagerViewState extends State<FileManagerView> {
           }
 
           onSecondaryTapDown(details) {
+            if (!isCurrentSession) return;
             secondaryPosition = RelativeRect.fromLTRB(
                 details.globalPosition.dx,
                 details.globalPosition.dy,
@@ -1309,12 +1417,14 @@ class _FileManagerViewState extends State<FileManagerView> {
   }
 
   onSearchText(String searchText, bool isLocal) {
+    if (!isCurrentSession) return;
     selectedItems.clear();
     _searchText.value = searchText;
   }
 
   void _jumpToEntry(bool isLocal, Entry entry,
       ScrollController scrollController, double rowHeight) {
+    if (!isCurrentSession) return;
     final entries = controller.directory.value.entries;
     final index = entries.indexOf(entry);
     if (index == -1) {
@@ -1337,6 +1447,7 @@ class _FileManagerViewState extends State<FileManagerView> {
 
   void _onSelectedChanged(SelectedItems selectedItems, List<Entry> entries,
       Entry entry, bool isLocal) {
+    if (!isCurrentSession) return;
     final isCtrlDown = RawKeyboard.instance.keysPressed
             .contains(LogicalKeyboardKey.controlLeft) ||
         RawKeyboard.instance.keysPressed
@@ -1436,13 +1547,16 @@ class _FileManagerViewState extends State<FileManagerView> {
     return ObxValue<Rx<bool?>>(
         (ascending) => InkWell(
               onTap: () {
+                if (!isCurrentSession) return;
                 if (ascending.value == null) {
                   ascending.value = true;
                 } else {
                   ascending.value = !ascending.value!;
                 }
                 controller.changeSortStyle(sortBy,
-                    isLocal: isLocal, ascending: ascending.value!);
+                    isLocal: isLocal,
+                    ascending: ascending.value!,
+                    expectedSessionId: expectedSessionId);
               },
               child: SizedBox(
                 width: width,
@@ -1477,11 +1591,13 @@ class _FileManagerViewState extends State<FileManagerView> {
 
   Widget buildBread() {
     final items = getPathBreadCrumbItems(isLocal, (list) {
+      if (!isCurrentSession) return;
       var path = "";
       for (var item in list) {
         path = PathUtil.join(path, item, controller.options.value.isWindows);
       }
-      controller.openDirectory(path);
+      controller.openDirectory(path,
+          expectedSessionId: expectedSessionId);
     });
 
     return items.isEmpty
@@ -1513,6 +1629,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                   message: "",
                   icon: Icons.keyboard_arrow_down_rounded,
                   onTap: () async {
+                    if (!isCurrentSession) return;
                     final renderBox = _locationBarKey.currentContext
                         ?.findRenderObject() as RenderBox;
                     _locationBarKey.currentContext?.size;
@@ -1533,7 +1650,8 @@ class _FileManagerViewState extends State<FileManagerView> {
                                   style: style,
                                 ),
                           proc: () {
-                            controller.openDirectory('/');
+                            controller.openDirectory('/',
+                                expectedSessionId: expectedSessionId);
                           },
                           dismissOnClicked: true),
                       MenuEntryDivider()
@@ -1544,10 +1662,14 @@ class _FileManagerViewState extends State<FileManagerView> {
                         loadingTag = _ffi.dialogManager.showLoading("Waiting");
                       }
                       try {
-                        final showHidden = controller.options.value.showHidden;
-                        final fd = await controller.fileFetcher
-                            .fetchDirectory("/", isLocal, showHidden);
-                        for (var entry in fd.entries) {
+                        final drives = await controller.listWindowsDrives(
+                            expectedSessionId: expectedSessionId);
+                        if (drives == null ||
+                            !mounted ||
+                            !_ffi.isCurrentSession(expectedSessionId)) {
+                          return;
+                        }
+                        for (var entry in drives) {
                           menuItems.add(MenuEntryButton(
                               childBuilder: (TextStyle? style) =>
                                   Row(children: [
@@ -1563,9 +1685,10 @@ class _FileManagerViewState extends State<FileManagerView> {
                                       entry.name,
                                       style: style,
                                     )
-                                  ]),
+                              ]),
                               proc: () {
-                                controller.openDirectory('${entry.name}\\');
+                                controller.openDirectory('${entry.name}\\',
+                                    expectedSessionId: expectedSessionId);
                               },
                               dismissOnClicked: true));
                         }
@@ -1573,11 +1696,13 @@ class _FileManagerViewState extends State<FileManagerView> {
                       } catch (e) {
                         debugPrint("buildBread fetchDirectory err=$e");
                       } finally {
-                        if (!isLocal) {
+                        if (!isLocal &&
+                            _ffi.isCurrentSession(expectedSessionId)) {
                           _ffi.dialogManager.dismissByTag(loadingTag);
                         }
                       }
                     }
+                    if (!mounted || !isCurrentSession) return;
                     mod_menu.showMenu(
                         context: context,
                         position: RelativeRect.fromLTRB(x, y, x, y),
@@ -1637,7 +1762,9 @@ class _FileManagerViewState extends State<FileManagerView> {
   }
 
   breadCrumbScrollToEnd() {
-    Future.delayed(Duration(milliseconds: 200), () {
+    _breadCrumbTimer?.cancel();
+    _breadCrumbTimer = Timer(Duration(milliseconds: 200), () {
+      if (!mounted || !isCurrentSession) return;
       if (_breadCrumbScroller.hasClients) {
         _breadCrumbScroller.animateTo(
             _breadCrumbScroller.position.maxScrollExtent,
@@ -1673,7 +1800,8 @@ class _FileManagerViewState extends State<FileManagerView> {
             ),
             controller: textController,
             onSubmitted: (path) {
-              controller.openDirectory(path);
+              controller.openDirectory(path,
+                  expectedSessionId: expectedSessionId);
             },
             onChanged: _locationStatus.value == LocationStatus.fileSearchBar
                 ? (searchText) => onSearchText(searchText, isLocal)

@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5ae5b80ba3b1280ed3a0235241f63b60ca5fd8a2555ce561bb31427009d0aa0c  requirements.html
+f6ab321984fc25139504676bf13a7fb5bc46264b2eca6d5bb63c1780856893ca  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26860,3 +26860,133 @@ The same identity additionally binds R-S11hi and Appendix C #369.
 The same identity additionally binds R-S11hj and Appendix C #370.
 The same identity additionally binds R-S11hk and Appendix C #371.
 The same identity additionally binds R-S11hl and Appendix C #372.
+The same identity additionally binds R-S11hm and Appendix C #373.
+
+### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
+
+**Status:** SOURCE IMPLEMENTED / FOCUSED DART TESTS AUTHORED / EXACT
+DART-FLUTTER-NATIVE AND DEPLOYED LIFECYCLE EVIDENCE OPEN.
+
+This continuation selected one file-transfer lifetime slice under the binding
+R-S11b/R-S11c loop. The old shared Flutter model had corrected directory
+response ownership, but higher-level commands still borrowed the mutable
+process-lifetime current session. `sendFiles` iterated live `SelectedItems`,
+added a job, awaited a native request using whatever `sessionId` the reused
+model exposed at that instant, then repeated. It later reread live source and
+destination directory state while discovering empty directories. Recursive
+delete, remove/create/rename helpers, job cancel/resume/load, web
+file-picker/empty-directory creation, and the desktop Windows-drive menu
+carried the same class of borrowed authority across asynchronous boundaries.
+On mobile, a new
+connection deliberately reuses the Flutter model and persistent service. Its
+session replacement clears the old tables, but an already-running old
+continuation could resume afterward, resolve the replacement UUID, repopulate
+the replacement job table, dismiss a replacement dialog, refresh replacement
+directories, or send an old action/path to the new peer.
+
+Delete completion had an independent correlation defect. The controller first
+awaited `sessionRemoveFile` and only afterward installed one global anonymous
+`JobResultListener`. A fast `job_done`/`job_error` could arrive before the
+listener existed. Once installed, any delete job's result could complete it:
+the listener carried no session generation, action ID, or file number. A
+persisted `load_last_job` event was also launched without awaiting its Future;
+after its add-job request settled, it reread current session state and could
+auto-resume across replacement. These were shared Flutter source defects, not
+Android-only behavior and not proof about the unidentified operational builds
+or the separately reported display-only latency.
+
+The corrected authority model has three parts:
+
+1. `FileControllerRequests` and `JobControllerRequests` are closed typed
+   dependencies over only the existing generated send/remove/remove-empty,
+   create/rename, cancel/add/resume operations. Production constructs them
+   solely from those native bindings. `FileController` no longer retains a
+   broad `WeakReference<FFI>`; it receives exact current-session, dialog,
+   peer-platform, and peer-version capabilities. Every file action captures
+   one session before its first await and snapshots selected entry fields,
+   source/destination roots, path styles, direction, hidden-file policy, and
+   compatibility version. Every native request receives that exact ID. Every
+   post-await job, directory, history, dialog, and refresh mutation first
+   proves the same generation. Rename owns and disposes its text controller;
+   delete-checkbox memory is operation-local. Desktop drive discovery routes
+   through an exact-session controller method instead of calling `FileFetcher`
+   directly. The web file-picker command dispatches immediately instead of
+   being deferred onto an unowned Future, and its desktop callback proves the
+   captured session before and after awaiting it. Mobile and desktop
+   file-manager widgets retain the session that created the page and pass it
+   through navigation, selection, sort, drive,
+   transfer, and job controls instead of resolving a replacement session when
+   a late callback runs. Both file pages release their page-owned wakelock
+   synchronously before starting unawaited native cleanup, so a stalled close
+   cannot preserve that already-retired UI resource. The mobile Local and
+   Remote views have distinct stable keys, so switching sides disposes the old
+   controller-bound directory subscription, timer, and scroll controllers
+   instead of reusing that State against the other controller.
+2. `JobResultListener` is now a bounded map of exact
+   `(SessionID, action ID, file number)` owners. At most 64 active,
+   dispatch-draining, or timed-out results exist. Ownership is published and
+   its five-second deadline starts before native remove dispatch. Wrong,
+   malformed, anonymous, unsolicited, or stale results cannot complete it.
+   A matching result is retained but cannot complete caller-visible success or
+   cancel the deadline until dispatch also settles; therefore a later dispatch
+   failure wins over an early response. A timeout retains a bounded exact-key
+   tombstone so a late response cannot complete same-key replacement work. If
+   that response arrives before dispatch settles, it records the response edge
+   but the owner remains capacity-accounted and refuses same-key replacement
+   until the dispatch edge also settles; exact session retirement is the other
+   terminal cleanup. All job events now receive the stream session explicitly.
+   Load-last-job is awaited, and add/resume plus cancel/resume UI continuations
+   prove their captured session before observable mutation.
+3. `FileModel` owns an explicit session generation. Begin and close clear that
+   owner, close confirmation admission, cancel directory and job-result
+   waiters, clear job state, dismiss dialogs, and reset per-session state
+   synchronously before any cleanup await. `FFI.close` centrally awaits
+   idempotent file-model cleanup while the captured native handler still
+   exists. A replacement may reopen the same Android process and intentionally
+   persistent foreground service, but an old continuation cannot authorize or
+   clear it. No service/activity kill, retry, reconnect, poller, isolate,
+   worker, thread, runtime, listener, port, privilege, dependency, alternate
+   transport, or network behavior was added.
+
+Eight focused Dart regressions suspend command dispatch and bind the critical
+edges: an old two-file send cannot issue its second command to a replacement
+session; caller mutation cannot alter the admitted second source/destination;
+job completion requires the exact session/action/file tuple and a draining
+owner cannot be reused or report success before dispatch settles; dispatch
+failure wins over an early matching response; a timed-out late response cannot
+release its same-key owner before dispatch settles; retirement visibly
+completes a pending result with an error; an exact peer job error is
+caller-visible rather than successful completion; and a suspended persisted-job
+add cannot auto-resume after replacement.
+`dart-verify.sh` owns that test. The focused
+`scripts/verify-file-command-session-ownership.py` validator parses the closed
+request surfaces, absence of broad/dynamic authority, command snapshots,
+bounded result state machine including late-response dispatch retention,
+synchronous lifecycle and page-wakelock retirement, controller-keyed mobile
+view resources, immediate web-picker dispatch, event/UI
+routing, tests, requirements/Appendix/ledger identity, shared and Apple wiring,
+and independent workspace binding. Its self-test deliberately mutates each
+boundary. The workspace verifier independently derives the same product
+contract and carries separate product, test, focused-verifier, wiring, and
+ledger mutations.
+
+The sole authorized verifier image has Python and a shell but no Dart/Flutter,
+Rust/Cargo, or native platform toolchain. Consequently the authored Dart
+regressions, Flutter analyzer/formatter, generated bridge, native compilation,
+and platform execution remain explicitly unexecuted rather than being run on
+the host or substituted with an unapproved image. This slice does not inspect,
+stop, restart, modify, or connect to a host RustDesk process/service; inspect or
+change host firewall/network/listener state; touch an Android device, VM,
+Haggai/Desktop_Haggai_computer workload, or unrelated container/image; or
+request/acquire root.
+
+Exact Dart/Flutter/native execution, physical Android
+task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
+Linux/macOS/iOS/web and cross-version transfer behavior,
+capture-through-compositor timing and explicit end-to-end
+latency/queue/CPU/memory budgets, sustained
+connection/reconnect/focus/background/file/control/resource/performance soak,
+clean committed cold R-B2/R-B10 equality, installed artifacts/service
+behavior, fresh independent reproduction, R-V3 external review, causation, and
+proof that the complete connection flow is correct and performant remain
+explicit release obligations and explicit user requests.

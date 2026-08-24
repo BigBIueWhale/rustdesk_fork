@@ -370,8 +370,10 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         begin,
         (
-            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "if (parent.target?.isCurrentSession(expectedSessionId) != true) return;",
+            "_ownedSessionId = null;",
             "fileFetcher.cancelPending();",
+            "_ownedSessionId = expectedSessionId;",
         ),
         "replacement retirement",
     )
@@ -379,10 +381,11 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         close,
         (
-            "if (parent.target?.sessionId != expectedSessionId) return;",
-            "await evtLoop.close();",
-            "if (parent.target?.sessionId != expectedSessionId) return;",
+            "if (_ownedSessionId != expectedSessionId ||",
+            "_ownedSessionId = null;",
+            "final eventLoopClose = evtLoop.close();",
             "fileFetcher.cancelPending();",
+            "await eventLoopClose;",
         ),
         "exact-session close retirement",
     )
@@ -540,8 +543,12 @@ Mutation = Tuple[str, str, str, str]
 MUTATIONS: Tuple[Mutation, ...] = (
     (
         "file_model",
-        "this.maxPending = 64,",
-        "this.maxPending = 6400,",
+        "FileFetcher(this.getSessionID,\n"
+        "      {FileFetcherRequests? requests,\n"
+        "      this.maxPending = 64,",
+        "FileFetcher(this.getSessionID,\n"
+        "      {FileFetcherRequests? requests,\n"
+        "      this.maxPending = 6400,",
         "total capacity",
     ),
     (
@@ -588,8 +595,17 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "file_model",
-        "_responseReceived = true;\n    _timer?.cancel();\n    _timer = null;\n    _done.complete(value);",
-        "_responseReceived = true;\n    _timer = null;\n    _done.complete(value);",
+        "void complete(T value) {\n"
+        "    if (_done.isCompleted) return;\n"
+        "    _responseReceived = true;\n"
+        "    _timer?.cancel();\n"
+        "    _timer = null;\n"
+        "    _done.complete(value);",
+        "void complete(T value) {\n"
+        "    if (_done.isCompleted) return;\n"
+        "    _responseReceived = true;\n"
+        "    _timer = null;\n"
+        "    _done.complete(value);",
         "success timer cancellation",
     ),
     (
@@ -600,8 +616,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "file_model",
-        "unawaited(dispatchResult.then<void>",
-        "Future<void>.value().then<void>",
+        "if (identical(tasks[key], pending)) {\n"
+        "        tasks.remove(key);\n"
+        "      }\n"
+        "      pending.completeError(error, stackTrace);\n"
+        "      return pending.future;\n"
+        "    }\n\n"
+        "    unawaited(dispatchResult.then<void>",
+        "if (identical(tasks[key], pending)) {\n"
+        "        tasks.remove(key);\n"
+        "      }\n"
+        "      pending.completeError(error, stackTrace);\n"
+        "      return pending.future;\n"
+        "    }\n\n"
+        "    Future<void>.value().then<void>",
         "nonblocking dispatch observation",
     ),
     (
@@ -651,8 +679,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "file_model",
-        "fileFetcher.cancelPending();\n    parent.target?.dialogManager.dismissAll();",
-        "parent.target?.dialogManager.dismissAll();",
+        "final eventLoopClose = evtLoop.close();\n    fileFetcher.cancelPending();",
+        "final eventLoopClose = evtLoop.close();",
         "close retirement",
     ),
     (

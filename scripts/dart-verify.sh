@@ -264,6 +264,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/global_event_dispatcher_test.dart
     echo "  == R-S11eb/R-S11hl flutter test: file responses are reserve-first, bounded, and exact-session-owned =="
     flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
+    echo "  == R-S11hm flutter test: file commands and job results remain exact-session-owned =="
+    flutter test --no-pub test/file_command_session_ownership_test.dart
     echo "  == R-S11hk flutter test: file confirmations are bounded and exact-session-owned =="
     flutter test --no-pub test/file_dialog_event_loop_test.dart
     echo "  == R-S11eo flutter test: mobile session preparation is bounded and latest-wins =="

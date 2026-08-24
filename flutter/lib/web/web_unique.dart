@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'dart:js' as js;
 
 Future<void> webselectFiles({required bool is_folder}) async {
-  return Future(
-      () => js.context.callMethod('setByName', ['select_files', is_folder]));
+  js.context.callMethod('setByName', ['select_files', is_folder]);
 }
 
 Future<void> webSendLocalFiles(
@@ -14,8 +13,8 @@ Future<void> webSendLocalFiles(
     required String to,
     required int fileNum,
     required bool includeHidden,
-    required bool isRemote}) {
-  return Future(() => js.context.callMethod('setByName', [
+    required bool isRemote}) async {
+  js.context.callMethod('setByName', [
         'send_local_files',
         jsonEncode({
           'id': actId,
@@ -26,5 +25,5 @@ Future<void> webSendLocalFiles(
           'include_hidden': includeHidden,
           'is_remote': isRemote,
         })
-      ]));
+      ]);
 }

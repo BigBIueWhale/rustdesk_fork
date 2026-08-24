@@ -45667,14 +45667,16 @@ def validate_file_dialog_event_ownership_contract(sources):
             "FileOverrideConfirmation confirmation",
             "if (!_isCurrentSession(expectedSessionId)) return;",
             "final id = confirmation.jobId;",
-            "final jobIndex = jobController.getJob(id);",
-            "if (jobIndex == -1)",
+            "if (jobController.getJob(id) == -1)",
             "throw StateError('File confirmation has no matching job');",
             "confirmation.readPath",
             "confirmation.isIdentical",
             "if (!_isCurrentSession(expectedSessionId)) return;",
-            "await jobController.cancelJob(id);",
+            "await jobController.cancelJob(id,",
+            "expectedSessionId: expectedSessionId);",
             "if (!_isCurrentSession(expectedSessionId)) return;",
+            "final currentJobIndex = jobController.getJob(id);",
+            "if (currentJobIndex == -1) return;",
             "fileNum: confirmation.fileNum,",
             "isUpload: confirmation.isUpload",
         ),
@@ -45860,7 +45862,7 @@ def validate_file_response_ownership_contract(sources):
     ):
         require_text(validation, text, label)
     for text, label in (
-        ('"this.maxPending = 64,"', "focused capacity mutation"),
+        ('"total capacity"', "focused capacity mutation"),
         ('"pending.expectedSessionId != expectedSessionId ||"', "focused session mutation"),
         ('"pending.isLocal != isLocal"', "focused response-side mutation"),
         ('"timeout tombstone retention"', "focused timeout-tombstone mutation"),
@@ -46076,27 +46078,30 @@ def validate_file_response_ownership_contract(sources):
     require_order(
         begin,
         (
-            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "if (parent.target?.isCurrentSession(expectedSessionId) != true) return;",
+            "_ownedSessionId = null;",
             "fileFetcher.cancelPending();",
             "jobController.clear();",
             "localController.resetForSession();",
             "remoteController.resetForSession();",
+            "_ownedSessionId = expectedSessionId;",
         ),
         "independent begin-owned request retirement",
     )
     close = extract_between(
         file_model,
         "Future<void> close(SessionID expectedSessionId)",
-        "\n  Future<void> refreshAll()",
+        "\n  Future<void> refreshAll(SessionID expectedSessionId)",
         "independent file-model close",
     )
     require_order(
         close,
         (
-            "if (parent.target?.sessionId != expectedSessionId) return;",
-            "await evtLoop.close();",
-            "if (parent.target?.sessionId != expectedSessionId) return;",
+            "if (_ownedSessionId != expectedSessionId ||",
+            "_ownedSessionId = null;",
+            "final eventLoopClose = evtLoop.close();",
             "fileFetcher.cancelPending();",
+            "await eventLoopClose;",
         ),
         "independent close-owned request retirement",
     )
@@ -46190,6 +46195,575 @@ def validate_file_response_ownership_contract(sources):
         f"Requirements hash: {digest}",
         "independent file-response native-watch hash",
     )
+
+
+def validate_file_command_session_ownership_contract(sources):
+    focused = sources["file_command_session_ownership_verifier"]
+    focused_validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "file-command focused validation",
+    )
+    for text, label in (
+        ('"class FileControllerRequests"', "focused command surface"),
+        ('"rootState"', "focused broad-authority refusal"),
+        ('"jobController.dispatchAndWaitForResult("', "focused reserve-before-dispatch proof"),
+        ('"class JobResultListener {"', "focused job-result owner"),
+        ('"this.maxPending = 64,"', "focused result capacity"),
+        ('"final key = _JobResultKey(expectedSessionId, actionId, fileNum);"', "focused result identity"),
+        ('"response-and-dispatch terminal join"', "focused dispatch/result terminal join"),
+        ('"late response retained through dispatch settlement"', "focused late-result dispatch retention"),
+        ('"SessionID? _ownedSessionId;"', "focused file owner"),
+        ('"await fileModel.close(closingSessionId);"', "focused central retirement"),
+        ('"retired send continuation cannot target replacement session"', "focused retired-send regression"),
+        ('"dispatch failure wins over an early matching success response"', "focused dispatch-failure regression"),
+        ('"timed-out late result remains owned until dispatch settles"', "focused timed-out dispatch-drain regression"),
+        ('"flutter test --no-pub test/file_command_session_ownership_test.dart"', "focused Dart gate"),
+    ):
+        require_text(focused_validation, text, label)
+    focused_success_validation = extract_between(
+        focused_validation,
+        "    job_success = extract_braced_item(",
+        "\n    job_error = extract_braced_item(",
+        "focused job-result success validation",
+    )
+    focused_error_validation = extract_between(
+        focused_validation,
+        "    job_error = extract_braced_item(",
+        "\n    pending_result = extract_braced_item(",
+        "focused job-result error validation",
+    )
+    for validation in (focused_success_validation, focused_error_validation):
+        require_text(
+            validation,
+            '            "final key = _JobResultKey(expectedSessionId, actionId, fileNum);",',
+            "focused job-result identity validation",
+        )
+    focused_mutations = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "file-command focused mutation inventory",
+    )
+    for text, label in (
+        ('"entry snapshot"', "focused immutable-entry mutation"),
+        ('"reserve-before-dispatch result"', "focused response-order mutation"),
+        ('"result session identity"', "focused response-session mutation"),
+        ('"result file identity"', "focused response-file mutation"),
+        ('"response waits for dispatch"', "focused dispatch/result mutation"),
+        ('"late response dispatch-drain retention"', "focused late-result retention mutation"),
+        ('"synchronous retirement"', "focused retirement mutation"),
+        ('"central close ordering"', "focused central-close mutation"),
+        ('"stale-resume assertion"', "focused stale-resume mutation"),
+        ('"dispatch-failure regression"', "focused dispatch-failure test mutation"),
+        ('"independent dispatch"', "focused independent-dispatch mutation"),
+    ):
+        require_text(focused_mutations, text, label)
+    require_text(focused, "run_self_test(sources)", "focused mutation dispatch")
+
+    file_model = sources["file_model_dart"]
+    command_surface = extract_between(
+        file_model,
+        "class FileControllerRequests {",
+        "\n}\n\nclass JobControllerRequests",
+        "independent file-command surface",
+    )
+    require_order(
+        command_surface,
+        (
+            "final SendFilesRequest sendFiles;",
+            "final RemoveFileRequest removeFile;",
+            "final RemoveEmptyDirectoriesRequest removeEmptyDirectories;",
+            "final CreateDirectoryRequest createDirectory;",
+            "final RenameFileRequest renameFile;",
+            "static final native = FileControllerRequests(",
+            "bind.sessionSendFiles(",
+            "bind.sessionRemoveFile(",
+            "bind.sessionRemoveAllEmptyDirs(",
+            "bind.sessionCreateDir(",
+            "bind.sessionRenameFile(",
+        ),
+        "independent closed native file-command surface",
+    )
+    for forbidden, label in (
+        ("Timer", "independent command timer"),
+        ("retry", "independent command retry"),
+        ("StreamController", "independent command transport"),
+        ("Isolate", "independent command isolate"),
+    ):
+        require_absent(command_surface, forbidden, label)
+
+    controller = extract_between(
+        file_model,
+        "class FileController {",
+        "\n}\n\nconst _kOneWayFileTransferError",
+        "independent file controller",
+    )
+    for forbidden, label in (
+        ("rootState", "independent broad FFI authority"),
+        ("bind.sessionSendFiles", "independent direct dynamic send"),
+        ("bind.sessionRemoveFile", "independent direct dynamic remove"),
+        ("bind.sessionRemoveAllEmptyDirs", "independent direct dynamic remove-dir"),
+        ("bind.sessionCreateDir", "independent direct dynamic create"),
+        ("bind.sessionRenameFile", "independent direct dynamic rename"),
+    ):
+        require_absent(controller, forbidden, label)
+    require_order(
+        extract_between(
+            controller,
+            "Future<void> sendFiles(",
+            "\n  Future<void> removeAction(",
+            "independent send operation",
+        ),
+        (
+            "final selectedSessionId = expectedSessionId ?? sessionId;",
+            "if (!_isCurrentSession(selectedSessionId)) return;",
+            ".map(_FileOperationEntry.fromEntry)",
+            "final toPath = otherSideData.directory.path;",
+            "final sourceRootPath = directory.value.path;",
+            "await _requests.sendFiles(selectedSessionId,",
+            "if (!_isCurrentSession(selectedSessionId)) return;",
+            "expectedSessionId: selectedSessionId",
+        ),
+        "independent immutable exact-session send continuation",
+    )
+    remove = extract_between(
+        controller,
+        "Future<void> removeAction(",
+        "\n  Future<bool?> _showRemoveDialog(",
+        "independent remove operation",
+    )
+    require_order(
+        remove,
+        (
+            "final selectedSessionId = expectedSessionId ?? sessionId;",
+            ".map(_FileOperationEntry.fromEntry)",
+            "final confirmationState = _RemoveConfirmationState();",
+            "expectedSessionId: selectedSessionId",
+            "final res = await _removeFileAndWait(selectedSessionId,",
+            "if (!_isCurrentSession(selectedSessionId)) return;",
+        ),
+        "independent exact-session remove continuation",
+    )
+    require_order(
+        extract_between(
+            controller,
+            "Future<Map<String, dynamic>> _removeFileAndWait(",
+            "\n  Future<bool> _sendRemoveEmptyDir(",
+            "independent remove response dispatch",
+        ),
+        (
+            "jobController.dispatchAndWaitForResult(",
+            "expectedSessionId: expectedSessionId,",
+            "actionId: actionId,",
+            "fileNum: fileNum,",
+            "dispatch: () => _requests.removeFile(",
+            "expectedSessionId, actionId, path, !isLocal, fileNum",
+        ),
+        "independent reserve-before-dispatch delete result",
+    )
+    require_text(controller, "textEditingController.dispose();", "independent rename controller finality")
+    require_text(
+        controller,
+        "Future<List<Entry>?> listWindowsDrives(\n"
+        "      {SessionID? expectedSessionId}) async {",
+        "independent explicit drive lookup owner",
+    )
+
+    job_controller = extract_between(
+        file_model,
+        "class JobController {",
+        "\n}\n\nclass JobResultListener",
+        "independent job controller",
+    )
+    require_order(
+        job_controller,
+        (
+            "required this.isCurrentSession,",
+            "int? allocateJobId(SessionID expectedSessionId)",
+            "Future<bool> jobDone(",
+            "void jobError(",
+            "Future<Map<String, dynamic>> dispatchAndWaitForResult(",
+            "if (!isCurrentSession(expectedSessionId))",
+            "Future<void> loadLastJob(",
+            "await _requests.addJob(expectedSessionId,",
+            "if (!isCurrentSession(expectedSessionId)) return;",
+            "await _requests.resumeJob(expectedSessionId, currJobId, isRemote);",
+            "await _requests.resumeJob(selectedSessionId, actionId, isRemote);",
+            "if (!isCurrentSession(selectedSessionId)) return false;",
+        ),
+        "independent job continuation ownership",
+    )
+    job_done = extract_between(
+        job_controller,
+        "Future<bool> jobDone(",
+        "\n  void jobError(",
+        "independent job-done completion route",
+    )
+    require_order(
+        job_done,
+        (
+            "if (!isCurrentSession(expectedSessionId)) return false;",
+            "final id = _eventInt(evt['id'], positive: true);",
+            "final eventFileNum = _eventInt(evt['file_num']);",
+            "if (id == null || eventFileNum == null) return false;",
+            "jobResultListener.tryComplete(expectedSessionId, evt);",
+        ),
+        "independent file-job success finality",
+    )
+    job_error_route = extract_between(
+        job_controller,
+        "void jobError(",
+        "\n  void updateJobStatus(",
+        "independent job-error completion route",
+    )
+    require_order(
+        job_error_route,
+        (
+            "if (!isCurrentSession(expectedSessionId)) return;",
+            "final id = _eventInt(evt['id'], positive: true);",
+            "final errValue = evt['err'];",
+            "if (id == null || errValue is! String) return;",
+            "jobResultListener.tryCompleteError(expectedSessionId, evt);",
+        ),
+        "independent file-job error finality",
+    )
+
+    listener = extract_between(
+        file_model,
+        "class JobResultListener {",
+        "\n}\n\n@immutable\nclass _JobResultKey",
+        "independent job-result listener",
+    )
+    require_order(
+        listener,
+        (
+            "this.maxPending = 64,",
+            "this.requestTimeout = const Duration(seconds: 5)",
+            "final Map<_JobResultKey, _PendingJobResult> _pending = {};",
+            "if (_pending.containsKey(key))",
+            "if (_pending.length >= maxPending)",
+            "_pending[key] = pending;",
+            "pending.startTimeout(requestTimeout,",
+            "dispatchResult = dispatch();",
+            "bool tryComplete(",
+            "bool tryCompleteError(",
+        ),
+        "independent bounded exact job-result state machine",
+    )
+    dispatch_wait = extract_between(
+        listener,
+        "Future<Map<String, dynamic>> dispatchAndWait(",
+        "\n  bool tryComplete(",
+        "independent job-result dispatch transaction",
+    )
+    require_order(
+        dispatch_wait,
+        (
+            "dispatchResult = dispatch();",
+            "unawaited(dispatchResult.then<void>",
+            "pending.markDispatchSettled();",
+            "if (pending.responseReceived && identical(_pending[key], pending))",
+            "_pending.remove(key);",
+        ),
+        "independent job-result dispatch settlement",
+    )
+    job_success = extract_between(
+        listener,
+        "bool tryComplete(\n",
+        "\n  bool tryCompleteError(",
+        "independent job-result success completion",
+    )
+    require_order(
+        job_success,
+        (
+            "final actionId = JobController._eventInt(event['id'], positive: true);",
+            "final fileNum = JobController._eventInt(event['file_num']);",
+            "if (actionId == null || fileNum == null) return false;",
+        ),
+        "independent file-job result file identity",
+    )
+    require_text(
+        job_success,
+        "final key = _JobResultKey(expectedSessionId, actionId, fileNum);",
+        "independent file-job result session identity",
+    )
+    require_order(
+        job_success,
+        (
+            "final key = _JobResultKey(expectedSessionId, actionId, fileNum);",
+            "final pending = _pending[key];",
+            "if (pending == null) return false;",
+            "_retainLateResponseUntilDispatchSettles(key, pending);",
+            "pending.complete(Map<String, dynamic>.unmodifiable(event));",
+        ),
+        "independent exact job-result success owner",
+    )
+    job_error = extract_between(
+        listener,
+        "bool tryCompleteError(",
+        "\n  void clear()",
+        "independent job-result error completion",
+    )
+    require_order(
+        job_error,
+        (
+            "final actionId = JobController._eventInt(event['id'], positive: true);",
+            "final fileNum = JobController._eventInt(event['file_num']);",
+            "final error = event['err'];",
+            "if (actionId == null || fileNum == null || error is! String) return false;",
+        ),
+        "independent file-job result file identity",
+    )
+    require_order(
+        job_error,
+        (
+            "final key = _JobResultKey(expectedSessionId, actionId, fileNum);",
+            "final pending = _pending[key];",
+            "if (pending == null) return false;",
+            "pending.completeResponseError(StateError(error));",
+        ),
+        "independent exact job-result error owner",
+    )
+    require_text(
+        job_error,
+        "_retainLateResponseUntilDispatchSettles(key, pending);",
+        "independent late-error dispatch-drain path",
+    )
+    pending_result = extract_between(
+        file_model,
+        "class _PendingJobResult {",
+        "\n}\n\nclass FileFetcher",
+        "independent pending job result",
+    )
+    require_order(
+        pending_result,
+        (
+            "bool _dispatchSettled = false;",
+            "bool _responseReceived = false;",
+            "Map<String, dynamic>? _responseValue;",
+            "Object? _responseError;",
+            "_responseValue = value;",
+            "_completeResponseIfDispatchSettled();",
+            "_responseError = error;",
+            "void markDispatchSettled()",
+            "_dispatchSettled = true;",
+            "void _completeResponseIfDispatchSettled()",
+            "if (!_dispatchSettled || !_responseReceived || _done.isCompleted) return;",
+            "_timer?.cancel();",
+            "_done.completeError(error);",
+            "_done.complete(value);",
+        ),
+        "independent response-and-dispatch terminal join",
+    )
+    require_absent(
+        extract_between(
+            pending_result,
+            "void complete(Map<String, dynamic> value)",
+            "\n  void completeError(",
+            "independent pending success response",
+        ),
+        "_done.complete(value);",
+        "independent success before dispatch settlement",
+    )
+    terminal_error = extract_between(
+        pending_result,
+        "void completeError(Object error, [StackTrace? stackTrace])",
+        "\n  void completeResponseError(",
+        "independent pending terminal error",
+    )
+    require_text(
+        terminal_error,
+        "_timer?.cancel();",
+        "independent terminal-error timer finality",
+    )
+    late_response = extract_between(
+        pending_result,
+        "bool markLateResponseReceived()",
+        "\n  void _completeResponseIfDispatchSettled()",
+        "independent timed-out late response ownership",
+    )
+    require_order(
+        late_response,
+        (
+            "if (!_done.isCompleted || _responseReceived) return false;",
+            "_responseReceived = true;",
+            "return true;",
+        ),
+        "independent late response retained through dispatch settlement",
+    )
+    retention = extract_between(
+        listener,
+        "void _retainLateResponseUntilDispatchSettles(",
+        "\n  void clear()",
+        "independent timed-out owner dispatch-drain retention",
+    )
+    require_order(
+        retention,
+        (
+            "if (!pending.markLateResponseReceived()) return;",
+            "if (pending.dispatchSettled && identical(_pending[key], pending))",
+            "_pending.remove(key);",
+        ),
+        "independent timed-out owner dispatch-drain retention",
+    )
+    if listener.count("_retainLateResponseUntilDispatchSettles(key, pending);") != 2:
+        raise VerificationError(
+            "independent success and error late-result paths must share dispatch retention"
+        )
+    require_absent(listener, "Completer<T>? _completer", "independent anonymous result owner")
+
+    file_owner = extract_between(
+        file_model,
+        "class FileModel {",
+        "\n}\n\nclass DirectoryData",
+        "independent file-model owner",
+    )
+    require_order(
+        file_owner,
+        (
+            "SessionID? _ownedSessionId;",
+            "_ownedSessionId = getSessionID();",
+            "_ownedSessionId == expectedSessionId &&",
+            "void beginSession(SessionID expectedSessionId)",
+            "_ownedSessionId = null;",
+            "fileFetcher.cancelPending();",
+            "jobController.clear();",
+            "_ownedSessionId = expectedSessionId;",
+            "Future<void> close(SessionID expectedSessionId)",
+            "_ownedSessionId = null;",
+            "final eventLoopClose = evtLoop.close();",
+            "fileFetcher.cancelPending();",
+            "jobController.clear();",
+        ),
+        "independent synchronous file-owner retirement",
+    )
+
+    handler = extract_between(
+        sources["model_dart"],
+        "Future<void> _handleSessionEvent(",
+        "\n  _handleScreenshot(",
+        "independent file-event routing",
+    )
+    for text, label in (
+        (".jobDone(evt, sessionId)", "independent job-done session identity"),
+        (".loadLastJob(evt, sessionId)", "independent awaited load-job identity"),
+        (".updateFolderFiles(evt, sessionId)", "independent folder-update identity"),
+        ("await parent.target?.fileModel.onSelectedFiles(evt, sessionId);", "independent awaited web-file command"),
+    ):
+        require_text(handler, text, label)
+    web_send = extract_between(
+        sources["web_file_unique_dart"],
+        "Future<void> webSendLocalFiles(",
+        "\n}",
+        "independent web-file dispatch",
+    )
+    require_text(web_send, "required bool isRemote}) async {", "independent immediate web dispatch")
+    require_text(web_send, "js.context.callMethod('setByName'", "independent web bridge command")
+    require_absent(web_send, "return Future(", "independent detached web dispatch")
+    web_picker = extract_between(
+        sources["web_file_unique_dart"],
+        "Future<void> webselectFiles(",
+        "\n}",
+        "independent web-file picker",
+    )
+    require_text(web_picker, "required bool is_folder}) async {", "independent immediate web picker")
+    require_text(web_picker, "js.context.callMethod('setByName'", "independent web-picker bridge command")
+    require_absent(web_picker, "return Future(", "independent detached web picker")
+    require_text(
+        sources["desktop_file_page_dart"],
+        "if (!isCurrentSession) return;\n"
+        "                        await webselectFiles(\n"
+        "                            is_folder: isUploadFolder.value);\n"
+        "                        if (!isCurrentSession) return;",
+        "independent desktop awaited exact-session web picker",
+    )
+    require_text(sources["model_dart"], "await fileModel.close(closingSessionId);", "independent central file retirement")
+    require_text(
+        sources["desktop_file_page_dart"],
+        "final drives = await controller.listWindowsDrives(\n"
+        "                            expectedSessionId: expectedSessionId);",
+        "independent desktop drive owner",
+    )
+    require_text(sources["desktop_file_page_dart"], "jobController.removeJob(\n                                      expectedSessionId, item.id);", "independent desktop exact job removal")
+    require_text(sources["mobile_file_page_dart"], "model.jobController.clearForSession(expectedSessionId);", "independent mobile exact cleanup")
+    require_text(sources["mobile_file_page_dart"], "final SessionID expectedSessionId;", "independent mobile file-view owner")
+    require_text(
+        sources["desktop_file_page_dart"],
+        "if (!mounted ||\n"
+        "                                !_ffi.isCurrentSession(expectedSessionId)) {\n"
+        "                              return;\n"
+        "                            }\n"
+        "                            selectedItems.clear();",
+        "independent desktop send post-await owner check",
+    )
+    for source_key, label in (
+        ("mobile_file_page_dart", "independent mobile file-page wakelock finality"),
+        ("desktop_file_page_dart", "independent desktop file-page wakelock finality"),
+    ):
+        page_state = extract_braced_item(
+            sources[source_key],
+            "class _FileManagerPageState",
+            f"{label} state",
+        )
+        page_dispose = extract_braced_item(
+            page_state,
+            "void dispose()",
+            f"{label} dispose",
+        )
+        require_order(
+            page_dispose,
+            (
+                "WakelockManager.disable(_uniqueKey);",
+                "unawaited(() async {",
+            ),
+            label,
+        )
+    for text, label in (
+        ("key: const ValueKey('local-file-manager'),", "independent mobile local-controller view owner"),
+        ("key: const ValueKey('remote-file-manager'),", "independent mobile remote-controller view owner"),
+        ("{super.key,", "independent mobile keyed file-view constructor"),
+    ):
+        require_text(sources["mobile_file_page_dart"], text, label)
+
+    test = sources["file_command_session_ownership_test"]
+    for text, label in (
+        ("retired send continuation cannot target replacement session", "independent retired-send regression"),
+        ("send operation snapshots entries and directory arguments at admission", "independent immutable-command regression"),
+        ("job result requires exact session action and file before completion", "independent correlation regression"),
+        ("retirement completes an exact pending job result with an error", "independent result-retirement regression"),
+        ("exact job error is caller-visible instead of successful completion", "independent job-error terminal regression"),
+        ("dispatch failure wins over an early matching success response", "independent dispatch-versus-response regression"),
+        ("timed-out late result remains owned until dispatch settles", "independent timed-out dispatch-drain regression"),
+        ("load-last-job cannot resume after its session is replaced", "independent load-job regression"),
+        ("expect(calls, hasLength(1));", "independent no-retarget assertion"),
+        ("expect(resumeCalls, 0);", "independent no-stale-resume assertion"),
+        ("expect(resultCompleted, isFalse);", "independent dispatch-drain assertion"),
+    ):
+        require_text(test, text, label)
+    for source, text, label in (
+        (sources["dart_verify"], "flutter test --no-pub test/file_command_session_ownership_test.dart", "independent Dart gate"),
+        (sources["verify"], "python3 scripts/verify-file-command-session-ownership.py --repo . --self-test", "independent shared gate"),
+        (sources["apple"], "python3 scripts/verify-file-command-session-ownership.py --repo . --self-test", "independent Apple gate"),
+        (sources["requirements"], '<div class="req"><span class="id">R-S11hm</span>', "independent R-S11hm requirement"),
+        (sources["requirements"], "complete its owner with a caller-visible error, never as successful deletion", "independent job-error requirement"),
+        (sources["requirements"], "transaction deadline remains live until both bridge dispatch and the exact response settle", "independent dispatch-and-response requirement"),
+        (sources["requirements"], "<tr><td>373</td>", "independent Appendix C #373"),
+        (sources["hardening"], "### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership", "independent hardening ledger"),
+        (
+            sources["workspace_verifier"],
+            '            "file_command_session_ownership_verifier": (\n'
+            '                repo / "scripts/verify-file-command-session-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent focused-verifier source binding",
+        ),
+        (sources["workspace_verifier"], "    validate_file_command_session_ownership_contract(sources)\n", "independent validator dispatch"),
+    ):
+        require_text(source, text, label)
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(sources["hardening"], f"{digest}  requirements.html", "independent file-command requirements hash")
+    require_text(sources["native_watch"], f"Requirements hash: {digest}", "independent file-command native-watch hash")
 
 
 def validate_password_confirmation_comparison_contract(sources):
@@ -51246,6 +51820,7 @@ def validate_sources(sources):
     validate_account_storage_excision_contract(sources)
     validate_file_dialog_event_ownership_contract(sources)
     validate_file_response_ownership_contract(sources)
+    validate_file_command_session_ownership_contract(sources)
     validate_password_confirmation_comparison_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_permanent_password_salt_reader_excision_contract(sources)
@@ -76401,12 +76976,12 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "if (parent.target?.sessionId != expectedSessionId) return;\n"
+            "final eventLoopClose = evtLoop.close();\n"
             "    fileFetcher.cancelPending();\n"
-            "    parent.target?.dialogManager.dismissAll();",
-            "if (parent.target?.sessionId != expectedSessionId) return;\n"
+            "    jobController.clear();",
+            "final eventLoopClose = evtLoop.close();\n"
             "    // stale file tasks retained\n"
-            "    parent.target?.dialogManager.dismissAll();",
+            "    jobController.clear();",
             "independent close-owned request retirement",
         ),
         (
@@ -86111,8 +86686,12 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "this.maxPending = 64,",
-            "this.maxPending = 6400,",
+            "FileFetcher(this.getSessionID,\n"
+            "      {FileFetcherRequests? requests,\n"
+            "      this.maxPending = 64,",
+            "FileFetcher(this.getSessionID,\n"
+            "      {FileFetcherRequests? requests,\n"
+            "      this.maxPending = 6400,",
             "independent bounded exact-response state machine",
         ),
         (
@@ -86135,8 +86714,12 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "unawaited(dispatchResult.then<void>",
-            "Future<void>.value().then<void>",
+            "unawaited(dispatchResult.then<void>((_) {\n"
+            "      pending.markDispatchSettled();\n"
+            "      if (pending.responseReceived && identical(tasks[key], pending)) {",
+            "Future<void>.value().then<void>((_) {\n"
+            "      pending.markDispatchSettled();\n"
+            "      if (pending.responseReceived && identical(tasks[key], pending)) {",
             "independent bounded exact-response state machine",
         ),
         (
@@ -86177,10 +86760,24 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "void completeError(Object error, [StackTrace? stackTrace]) {\n"
+            "void complete(T value) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    _timer?.cancel();\n"
+            "    _timer = null;\n"
+            "    _done.complete(value);\n"
+            "  }\n\n"
+            "  void completeError(Object error, [StackTrace? stackTrace]) {\n"
             "    if (_done.isCompleted) return;\n"
             "    _timer?.cancel();",
-            "void completeError(Object error, [StackTrace? stackTrace]) {\n"
+            "void complete(T value) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    _timer?.cancel();\n"
+            "    _timer = null;\n"
+            "    _done.complete(value);\n"
+            "  }\n\n"
+            "  void completeError(Object error, [StackTrace? stackTrace]) {\n"
             "    if (_done.isCompleted) return;\n"
             "    // timer retained",
             "independent exact timer finality",
@@ -86308,6 +86905,312 @@ def run_source_mutations(sources):
             "    validate_file_response_ownership_contract(sources)\n",
             "    validate_file_response_ownership_contract_disabled(sources)\n",
             "independent file-response validator dispatch",
+        ),
+        (
+            "file_model_dart",
+            "final fileNum = JobController._eventInt(event['file_num']);\n"
+            "    if (actionId == null || fileNum == null) return false;\n"
+            "    final key = _JobResultKey(expectedSessionId, actionId, fileNum);",
+            "final fileNum = JobController._eventInt(event['file_num']);\n"
+            "    if (actionId == null || fileNum == null) return false;\n"
+            "    final key = _JobResultKey(sessionId, actionId, fileNum);",
+            "independent file-job result session identity",
+        ),
+        (
+            "file_model_dart",
+            "final fileNum = JobController._eventInt(event['file_num']);",
+            "final fileNum = 0;",
+            "independent file-job result file identity",
+        ),
+        (
+            "file_model_dart",
+            "jobResultListener.tryCompleteError(expectedSessionId, evt);",
+            "jobResultListener.tryComplete(expectedSessionId, evt);",
+            "independent file-job error finality",
+        ),
+        (
+            "file_model_dart",
+            "jobController.dispatchAndWaitForResult(",
+            "jobController.jobResultListener.dispatchAndWait(",
+            "independent reserve-before-dispatch delete result",
+        ),
+        (
+            "file_model_dart",
+            "_ownedSessionId = null;\n    final eventLoopClose = evtLoop.close();",
+            "final eventLoopClose = evtLoop.close();",
+            "independent close-owned request retirement",
+        ),
+        (
+            "model_dart",
+            "await fileModel.close(closingSessionId);",
+            "unawaited(fileModel.close(closingSessionId));",
+            "independent central file retirement",
+        ),
+        (
+            "model_dart",
+            "await parent.target?.fileModel.onSelectedFiles(evt, sessionId);",
+            "parent.target?.fileModel.onSelectedFiles(evt, sessionId);",
+            "independent awaited web-file command",
+        ),
+        (
+            "web_file_unique_dart",
+            "required bool isRemote}) async {",
+            "required bool isRemote}) {",
+            "independent immediate web dispatch",
+        ),
+        (
+            "web_file_unique_dart",
+            "Future<void> webselectFiles({required bool is_folder}) async {\n"
+            "  js.context.callMethod('setByName', ['select_files', is_folder]);\n"
+            "}",
+            "Future<void> webselectFiles({required bool is_folder}) {\n"
+            "  return Future(() =>\n"
+            "      js.context.callMethod('setByName', ['select_files', is_folder]));\n"
+            "}",
+            "independent immediate web picker",
+        ),
+        (
+            "file_model_dart",
+            "_responseValue = value;",
+            "_done.complete(value);",
+            "independent response-and-dispatch terminal join",
+        ),
+        (
+            "file_model_dart",
+            "void complete(Map<String, dynamic> value) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    _responseValue = value;\n"
+            "    _completeResponseIfDispatchSettled();\n"
+            "  }\n\n"
+            "  void completeError(Object error, [StackTrace? stackTrace]) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _timer?.cancel();",
+            "void complete(Map<String, dynamic> value) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    _responseReceived = true;\n"
+            "    _responseValue = value;\n"
+            "    _completeResponseIfDispatchSettled();\n"
+            "  }\n\n"
+            "  void completeError(Object error, [StackTrace? stackTrace]) {\n"
+            "    if (_done.isCompleted) return;\n"
+            "    // timer retained",
+            "independent terminal-error timer finality",
+        ),
+        (
+            "file_model_dart",
+            "bool markLateResponseReceived() {\n"
+            "    if (!_done.isCompleted || _responseReceived) return false;\n"
+            "    _responseReceived = true;\n"
+            "    return true;\n"
+            "  }",
+            "bool markLateResponseReceived() {\n"
+            "    if (!_done.isCompleted || _responseReceived) return false;\n"
+            "    return true;\n"
+            "  }",
+            "independent late response retained through dispatch settlement",
+        ),
+        (
+            "file_model_dart",
+            "final error = event['err'];\n"
+            "    if (actionId == null || fileNum == null || error is! String) return false;\n"
+            "    final key = _JobResultKey(expectedSessionId, actionId, fileNum);\n"
+            "    final pending = _pending[key];\n"
+            "    if (pending == null) return false;\n"
+            "    if (pending.isCompleted) {\n"
+            "      _retainLateResponseUntilDispatchSettles(key, pending);",
+            "final error = event['err'];\n"
+            "    if (actionId == null || fileNum == null || error is! String) return false;\n"
+            "    final key = _JobResultKey(expectedSessionId, actionId, fileNum);\n"
+            "    final pending = _pending[key];\n"
+            "    if (pending == null) return false;\n"
+            "    if (pending.isCompleted) {\n"
+            "      pending.markLateResponseReceived();",
+            "independent late-error dispatch-drain path",
+        ),
+        (
+            "file_model_dart",
+            "class JobResultListener {\n"
+            "  JobResultListener(\n"
+            "      {this.maxPending = 64,",
+            "class JobResultListener {\n"
+            "  JobResultListener(\n"
+            "      {this.maxPending = 6400,",
+            "independent bounded exact job-result state machine",
+        ),
+        (
+            "file_model_dart",
+            "unawaited(dispatchResult.then<void>((_) {\n"
+            "      pending.markDispatchSettled();\n"
+            "      if (pending.responseReceived && identical(_pending[key], pending)) {",
+            "Future<void>.value().then<void>((_) {\n"
+            "      pending.markDispatchSettled();\n"
+            "      if (pending.responseReceived && identical(_pending[key], pending)) {",
+            "independent job-result dispatch settlement",
+        ),
+        (
+            "desktop_file_page_dart",
+            "final drives = await controller.listWindowsDrives(\n"
+            "                            expectedSessionId: expectedSessionId);",
+            "final drives = controller.directory.value.entries;",
+            "independent desktop drive owner",
+        ),
+        (
+            "desktop_file_page_dart",
+            "if (!isCurrentSession) return;\n"
+            "                        await webselectFiles(\n"
+            "                            is_folder: isUploadFolder.value);\n"
+            "                        if (!isCurrentSession) return;",
+            "if (!isCurrentSession) return;\n"
+            "                        webselectFiles(\n"
+            "                            is_folder: isUploadFolder.value);",
+            "independent desktop awaited exact-session web picker",
+        ),
+        (
+            "mobile_file_page_dart",
+            "void dispose() {\n"
+            "    WakelockManager.disable(_uniqueKey);\n"
+            "    unawaited(() async {",
+            "void dispose() {\n"
+            "    unawaited(() async {",
+            "independent mobile file-page wakelock finality",
+        ),
+        (
+            "mobile_file_page_dart",
+            "key: const ValueKey('local-file-manager'),",
+            "key: const ValueKey('shared-file-manager'),",
+            "independent mobile local-controller view owner",
+        ),
+        (
+            "desktop_file_page_dart",
+            "void dispose() {\n"
+            "    WakelockManager.disable(_uniqueKey);\n"
+            "    unawaited(() async {",
+            "void dispose() {\n"
+            "    unawaited(() async {",
+            "independent desktop file-page wakelock finality",
+        ),
+        (
+            "mobile_file_page_dart",
+            "final SessionID expectedSessionId;",
+            "",
+            "independent mobile file-view owner",
+        ),
+        (
+            "desktop_file_page_dart",
+            "if (!mounted ||\n"
+            "                                !_ffi.isCurrentSession(expectedSessionId)) {\n"
+            "                              return;\n"
+            "                            }\n"
+            "                            selectedItems.clear();",
+            "selectedItems.clear();",
+            "independent desktop send post-await owner check",
+        ),
+        (
+            "file_command_session_ownership_test",
+            "retired send continuation cannot target replacement session",
+            "retired send continuation targets replacement session",
+            "independent retired-send regression",
+        ),
+        (
+            "file_command_session_ownership_test",
+            "expect(resumeCalls, 0);",
+            "expect(resumeCalls, 1);",
+            "independent no-stale-resume assertion",
+        ),
+        (
+            "file_command_session_ownership_test",
+            "exact job error is caller-visible instead of successful completion",
+            "job error is successful completion",
+            "independent job-error terminal regression",
+        ),
+        (
+            "file_command_session_ownership_test",
+            "dispatch failure wins over an early matching success response",
+            "early response hides dispatch failure",
+            "independent dispatch-versus-response regression",
+        ),
+        (
+            "file_command_session_ownership_test",
+            "timed-out late result remains owned until dispatch settles",
+            "timed-out late result releases dispatch owner",
+            "independent timed-out dispatch-drain regression",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/file_command_session_ownership_test.dart",
+            "true # file-command session ownership test disabled",
+            "independent Dart gate",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-file-command-session-ownership.py --repo . --self-test",
+            "true # file-command focused gate disabled",
+            "independent shared gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-file-command-session-ownership.py --repo . --self-test",
+            "true # file-command Apple gate disabled",
+            "independent Apple gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hm</span>',
+            '<div class="req"><span class="id">R-S11hm-disabled</span>',
+            "independent R-S11hm requirement",
+        ),
+        (
+            "requirements",
+            "complete its owner with a caller-visible error, never as successful deletion",
+            "may complete as success",
+            "independent job-error requirement",
+        ),
+        (
+            "requirements",
+            "transaction deadline remains live until both bridge dispatch and the exact response settle",
+            "response may finish before dispatch",
+            "independent dispatch-and-response requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>373</td>",
+            "<tr><td>373-disabled</td>",
+            "independent Appendix C #373",
+        ),
+        (
+            "hardening",
+            "### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership",
+            "### R-S11hm-disabled/R-S11e-250 — exact-session file-command and job-result ownership",
+            "independent hardening ledger",
+        ),
+        (
+            "file_command_session_ownership_verifier",
+            '            "final key = _JobResultKey(expectedSessionId, actionId, fileNum);",',
+            '            "final key = _JobResultKey_disabled(expectedSessionId, actionId, fileNum);",',
+            "focused job-result identity validation",
+        ),
+        (
+            "file_command_session_ownership_verifier",
+            '        "late response retained through dispatch settlement",',
+            '        "late response retention disabled",',
+            "focused late-result dispatch retention",
+        ),
+        (
+            "workspace_verifier",
+            '            "file_command_session_ownership_verifier": (\n'
+            '                repo / "scripts/verify-file-command-session-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "file_command_session_ownership_verifier_disabled": (\n'
+            '                repo / "scripts/verify-file-command-session-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_file_command_session_ownership_contract(sources)\n",
+            "    validate_file_command_session_ownership_contract_disabled(sources)\n",
+            "independent validator dispatch",
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
@@ -87071,8 +87974,17 @@ def main():
             "mobile_file_page_dart": (
                 repo / "flutter/lib/mobile/pages/file_manager_page.dart"
             ).read_text(encoding="utf-8"),
+            "desktop_file_page_dart": (
+                repo / "flutter/lib/desktop/pages/file_manager_page.dart"
+            ).read_text(encoding="utf-8"),
             "mobile_file_lifecycle_test": (
                 repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
+            ).read_text(encoding="utf-8"),
+            "file_command_session_ownership_test": (
+                repo / "flutter/test/file_command_session_ownership_test.dart"
+            ).read_text(encoding="utf-8"),
+            "web_file_unique_dart": (
+                repo / "flutter/lib/web/web_unique.dart"
             ).read_text(encoding="utf-8"),
             "file_dialog_event_loop_test": (
                 repo / "flutter/test/file_dialog_event_loop_test.dart"
@@ -87328,6 +88240,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "file_response_ownership_verifier": (
                 repo / "scripts/verify-file-response-ownership.py"
+            ).read_text(encoding="utf-8"),
+            "file_command_session_ownership_verifier": (
+                repo / "scripts/verify-file-command-session-ownership.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

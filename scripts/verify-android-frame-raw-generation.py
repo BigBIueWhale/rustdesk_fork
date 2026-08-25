@@ -418,41 +418,50 @@ def validate(sources: Dict[str, str]) -> None:
     init = extract(
         rust_ffi,
         'pub extern "system" fn Java_ffi_FFI_init(',
-        "\npub fn bind_main_service_generation(",
+        "\npub fn bind_main_service_generation<Begin, Rollback>(",
         "MainService callback-context installation",
     )
     require_order(
         init,
         (
+            ") -> jboolean",
+            "env.new_global_ref(&service)",
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
-            "current.as_ref().and_then(|context| context.generation)",
-            "VIDEO_RAW.lock().unwrap().retire_generation(generation)",
-            "SCREEN_SIZE.lock().unwrap().retire_generation(generation)",
+            "env.is_same_object(context.owner.as_obj(), &service)",
+            "Ok(true) => return jboolean::from(true)",
+            "Ok(false) if context.generation.is_some()",
+            "return jboolean::from(false)",
             "*current = Some(MainServiceContext {",
             "generation: None",
-            "owner: service",
+            "owner: retained_service",
+            "jboolean::from(true)",
         ),
-        "replacement retires predecessor raw-video generation",
+        "active callback owner refuses ambient raw-video replacement",
     )
+    forbid(init, "retire_generation(generation)", "ambient raw-video replacement retirement")
     bind = extract(
         rust_ffi,
-        "pub fn bind_main_service_generation(",
-        "\n#[no_mangle]\npub extern \"system\" fn Java_ffi_FFI_releaseService(",
+        "pub fn bind_main_service_generation<Begin, Rollback>(",
+        "\npub fn claim_main_service_listener_start(",
         "exact-object service-generation binding",
     )
     require_order(
         bind,
         (
-            "generation == 0 || service.is_null()",
+            "service.is_null()",
             "MAIN_SERVICE_CTX.write().unwrap()",
             "env.is_same_object(current.owner.as_obj(), service)",
             "if current.generation.is_some()",
+            "let generation = begin_generation()",
+            "if generation == 0",
             "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
+            "rollback_generation(generation)",
             "SCREEN_SIZE.lock().unwrap().begin_generation(generation)",
+            "rollback_generation(generation)",
             "current.generation = Some(generation)",
-            "true",
+            "Some(generation)",
         ),
-        "raw-video begin before callback generation publication",
+        "object-authorized raw-video begin before callback generation publication",
     )
     release = extract(
         rust_ffi,
@@ -558,7 +567,7 @@ def validate(sources: Dict[str, str]) -> None:
             "positive screen publisher generation",
         ),
         (
-            "} else if (!publishScreenInfo()) {",
+            "if (!publishScreenInfo()) {",
             "screen publication before controlled admission",
         ),
         (
@@ -1069,11 +1078,9 @@ MUTATIONS = (
     ),
     Mutation(
         "rust_ffi",
-        "if let Some(generation) = current.as_ref().and_then(|context| context.generation) {\n"
-        "        if !VIDEO_RAW.lock().unwrap().retire_generation(generation)",
-        "if let Some(generation) = current.as_ref().and_then(|context| context.generation) {\n"
-        "        if !VIDEO_RAW.lock().unwrap().set_enable(generation, false)",
-        "replacement raw-video retirement",
+        "Ok(false) if context.generation.is_some()",
+        "Ok(false)",
+        "active callback-owner replacement refusal",
     ),
     Mutation(
         "rust_ffi",

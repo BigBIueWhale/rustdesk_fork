@@ -2328,6 +2328,14 @@ pub mod server_side {
 
     use crate::start_server;
 
+    struct AndroidDirectServerWorkerGuard(u64);
+
+    impl Drop for AndroidDirectServerWorkerGuard {
+        fn drop(&mut self) {
+            let _ = crate::direct_service::android_note_worker_exit(self.0);
+        }
+    }
+
     #[no_mangle]
     pub unsafe extern "system" fn Java_ffi_FFI_setMobileAtRestStorageKey(
         env: JNIEnv,
@@ -2370,50 +2378,134 @@ pub mod server_side {
                 crate::read_custom_client(&custom_client_config);
             }
         }
-        // R-D7a (N1/F1 fix): establish a fresh service-owned-listener generation and CAPTURE it,
-        // then hand it BY VALUE to the spawned server thread. The server runs under exactly this
-        // generation — not a late listener-lifecycle state read inside the thread, which a
-        // concurrent stopServer/startServer could have replaced before the thread read it (the
-        // orphaned-listener race where a stopped service's listener survived). A newer begin changes
-        // the generation; an exact stop leaves the number unchanged but marks its ownership
-        // inactive. Either transition makes the exact lifecycle snapshot unavailable, so
-        // MainService.onDestroy -> stopServer deterministically tears this listener down. The direct
-        // listener is owned by this MainService instance.
-        let generation = crate::direct_service::android_begin_generation();
-        if generation == 0 {
+        // R-D7a/R-S11hq: reserve and bind a fresh exact Service generation, but do not spawn the
+        // direct listener yet. Kotlin must first complete its screen/status/voice transaction and
+        // open controlled-callback admission; activateServer then proves this same object and
+        // generation before the listener thread can exist. This removes the pre-admission accept
+        // window while retaining the exact captured generation used by the server thread.
+        let Some(generation) = scrap::android::bind_main_service_generation(
+            &env,
+            &service,
+            crate::direct_service::android_begin_generation,
+            |generation| {
+                let _ = crate::direct_service::android_request_stop(generation);
+            },
+        ) else {
+            log::error!("startServer could not reserve an exact MainService generation");
             return 0;
-        }
-        if !scrap::android::bind_main_service_generation(&env, &service, generation) {
-            log::error!(
-                "startServer could not bind generation {generation} to its exact MainService"
-            );
-            let _ = crate::direct_service::android_request_stop(generation);
-            return 0;
-        }
-        std::thread::spawn(move || start_server(true, generation));
+        };
         generation as jlong
     }
 
     #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_stopServer(
-        _env: JNIEnv,
+    pub unsafe extern "system" fn Java_ffi_FFI_activateServer(
+        env: JNIEnv,
         _class: JClass,
+        service: JObject,
         generation: jlong,
     ) -> jboolean {
-        // R-D7a: MainService.onDestroy drives the service-owned-listener teardown. Supersede the
-        // current server generation; the `direct_server` accept loop + `start_direct_only`
-        // keep-alive observe it and unwind, dropping the `TcpListener` so the listening socket
-        // closes. This is the graceful twin of process-death fd close (an OS/OEM/battery kill
-        // closes it via the START_NOT_STICKY exit). No config write — the stop is the OS
-        // foreground-service lifecycle, not an option (the listener reads no `stop-service`, R-D4).
+        if generation <= 0 || service.is_null() {
+            log::error!("activateServer rejected invalid generation {generation}");
+            return jboolean::from(false);
+        }
+        let generation = generation as u64;
+        if !scrap::android::claim_main_service_listener_start(&env, &service, generation) {
+            log::error!(
+                "activateServer rejected an unowned or already-started generation {generation}"
+            );
+            return jboolean::from(false);
+        }
+        if !crate::direct_service::android_activate_generation(generation) {
+            log::error!(
+                "activateServer could not activate reserved listener generation {generation}"
+            );
+            let _ = scrap::android::retire_main_service_generation(
+                &env,
+                &service,
+                generation,
+            );
+            let _ = crate::direct_service::android_request_stop(generation);
+            return jboolean::from(false);
+        }
+        match std::thread::Builder::new()
+            .name("android-direct-service".to_owned())
+            .spawn(move || {
+                let _worker_guard = AndroidDirectServerWorkerGuard(generation);
+                start_server(true, generation);
+            })
+        {
+            Ok(_) => jboolean::from(true),
+            Err(error) => {
+                log::error!(
+                    "activateServer could not spawn listener generation {generation}: {error}"
+                );
+                let _ = scrap::android::retire_main_service_generation(
+                    &env,
+                    &service,
+                    generation,
+                );
+                let _ = crate::direct_service::android_request_stop(generation);
+                jboolean::from(false)
+            }
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_isServerGenerationActive(
+        env: JNIEnv,
+        _class: JClass,
+        service: JObject,
+        generation: jlong,
+    ) -> jboolean {
+        if generation <= 0 || service.is_null() {
+            return jboolean::from(false);
+        }
+        let generation = generation as u64;
+        jboolean::from(
+            scrap::android::owns_main_service_generation(&env, &service, generation)
+                && crate::direct_service::android_generation_is_active(generation),
+        )
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_stopServer(
+        env: JNIEnv,
+        _class: JClass,
+        service: JObject,
+        generation: jlong,
+    ) -> jboolean {
+        // R-D7a/R-S11hq: retire one exact MainService startup transaction. Listener deactivation
+        // is generation-bound, while raw-video/screen state retirement is bound to both that
+        // generation and the exact retained Service object. Keeping the callback object with a
+        // cleared generation lets a later explicit Android start retry without process death.
         log::debug!("stopServer from jvm");
-        if generation <= 0 {
+        if generation <= 0 || service.is_null() {
             log::error!("stopServer rejected invalid generation {generation}");
             return jboolean::from(false);
         }
-        jboolean::from(crate::direct_service::android_request_stop(
-            generation as u64,
-        ))
+        let generation = generation as u64;
+        let Some(retirement) = scrap::android::retire_main_service_generation(
+            &env,
+            &service,
+            generation,
+        ) else {
+            log::warn!(
+                "stopServer rejected an unowned MainService object or generation {generation}"
+            );
+            return jboolean::from(false);
+        };
+        let listener_retired =
+            crate::direct_service::android_request_stop_or_confirm_inactive(generation);
+        if !listener_retired {
+            log::warn!(
+                "stopServer found no reserved or active exact Android listener generation {generation}"
+            );
+        }
+        jboolean::from(
+            listener_retired
+                && retirement.raw_video_retired
+                && retirement.screen_size_retired,
+        )
     }
 
     fn parse_client_session_owner(env: &mut JNIEnv, value: &JString) -> Option<SessionID> {

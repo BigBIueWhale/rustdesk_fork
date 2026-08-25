@@ -12,13 +12,15 @@ object FFI {
         System.loadLibrary("rustdesk")
     }
 
-    external fun init(service: Context, applicationContext: Context)
+    external fun init(service: Context, applicationContext: Context): Boolean
     external fun releaseService(service: Context): Boolean
     external fun setMobileAtRestStorageKey(key: ByteArray): Boolean
     external fun onAppStart(ctx: Context)
     external fun setClipboardManager(clipboardManager: RdClipboardManager)
     external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long
-    external fun stopServer(generation: Long): Boolean
+    external fun activateServer(service: Context, generation: Long): Boolean
+    external fun isServerGenerationActive(service: Context, generation: Long): Boolean
+    external fun stopServer(service: Context, generation: Long): Boolean
     external fun beginClientSessionOwner(): Long
     external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean
     external fun resumeClientSessionOwner(generation: Long, sessionId: String): Long

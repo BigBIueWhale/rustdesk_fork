@@ -20,6 +20,8 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 cd "$REPO_ROOT"
 
+python3 scripts/verify-android-service-startup-transaction.py --repo . --self-test
+
 readonly BUILD_UID="$(/usr/bin/id -u)"
 readonly BUILD_GID="$(/usr/bin/id -g)"
 WORKSPACE=""

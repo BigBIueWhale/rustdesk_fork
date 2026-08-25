@@ -214,11 +214,59 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         on_create,
         (
-            'nativeServerGeneration = FFI.startServer(this, configPath, "")',
-            "if (nativeServerGeneration <= 0L)",
-            "else if (!statusOwner.begin(nativeServerGeneration))",
-            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(",
+            "nativeCallbackContextReady = FFI.init(this, applicationContext)",
+            "initNotification()",
+        ),
+        "inert bound-service creation",
+    )
+    for token, label in (
+        ("initializeControlledServiceGeneration()", "creation generation transaction"),
+        ("createForegroundNotification()", "bound-only foreground publication"),
+        ("acquireNetworkKeepaliveWakeLock()", "bound-only keepalive acquisition"),
+        ("registerNetworkCallback()", "bound-only network callback"),
+    ):
+        forbid(on_create, token, label)
+    on_start = extract(
+        service,
+        "    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {",
+        "\n    override fun onConfigurationChanged",
+        "MainService explicit start",
+    )
+    require_order(
+        on_start,
+        (
+            "createForegroundNotification()",
+            "if (!initializeControlledServiceGeneration())",
+            "return START_NOT_STICKY",
+            "acquireNetworkKeepaliveWakeLock()",
+            "registerNetworkCallback()",
+        ),
+        "foreground deadline before committed persistent Service resources",
+    )
+    initialize_generation = extract(
+        service,
+        "    private fun initializeControlledServiceGenerationLocked(): Boolean {",
+        "\n    private fun retireControlledServiceGeneration(generation: Long, reason: String): Boolean =",
+        "MainService generation initialization",
+    )
+    require_order(
+        initialize_generation,
+        (
+            "if (!nativeCallbackContextReady)",
+            "serviceGenerationOwner.isCommitted(currentGeneration)",
+            "FFI.isServerGenerationActive(this, currentGeneration)",
+            'val generation = FFI.startServer(this, configPath, "")',
+            "nativeServerGeneration = generation",
+            "serviceGenerationOwner.beginReservation(generation)",
+            "publishScreenInfo()",
+            "serviceGenerationOwner.noteStatusAttempt(generation)",
+            "statusOwner.begin(generation)",
+            "serviceGenerationOwner.noteVoiceAttempt(generation)",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)",
+            "serviceGenerationOwner.noteActivationAttempt(generation)",
+            "serviceGenerationOwner.commit(generation)",
             "acceptingControlledConnections = true",
+            "FFI.activateServer(this, generation)",
         ),
         "native generation before status and controlled admission",
     )
@@ -232,12 +280,28 @@ def validate(sources: Dict[str, str]) -> None:
         on_destroy,
         (
             "releaseControlledConnectionResources()",
-            "statusOwner.retire(nativeServerGeneration)",
-            "FFI.stopServer(nativeServerGeneration)",
+            'retireControlledServiceGeneration(generation, "MainService destruction")',
             "FFI.releaseService(this)",
             "super.onDestroy()",
         ),
         "resource and status retirement before exact native release",
+    )
+    generation_retirement = extract(
+        service,
+        "    private fun retireControlledServiceGenerationLocked(\n",
+        "\n    override fun onCreate()",
+        "MainService generation retirement",
+    )
+    require_order(
+        generation_retirement,
+        (
+            "serviceGenerationOwner.retire(generation)",
+            "FFI.stopServer(this, retirement.generation)",
+            "retirement.retireStatus",
+            "statusOwner.retire(retirement.generation)",
+            "nativeServerGeneration = 0L",
+        ),
+        "attempt-aware exact status retirement",
     )
     release_projection = extract(
         service,
@@ -598,13 +662,20 @@ MUTATIONS = (
     ),
     Mutation(
         "service",
-        "else if (!statusOwner.begin(nativeServerGeneration))",
-        "else if (!statusOwner.begin(1L))",
+        "if (!statusOwner.begin(generation))",
+        "if (!statusOwner.begin(1L))",
         "exact status generation begin",
     ),
     Mutation(
         "service",
-        "statusOwner.retire(nativeServerGeneration)",
+        "serviceGenerationOwner.isCommitted(currentGeneration) &&\n"
+        "                FFI.isServerGenerationActive(this, currentGeneration)",
+        "serviceGenerationOwner.isCommitted(currentGeneration)",
+        "committed generation requires active native listener health",
+    ),
+    Mutation(
+        "service",
+        "statusOwner.retire(retirement.generation)",
         "statusOwner.retire(1L)",
         "exact status generation retirement",
     ),

@@ -86,6 +86,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "generation: u64",
             "rebuild_epoch: u64",
+            "reserved: bool",
             "active: bool",
         ),
         "single listener lifecycle state",
@@ -106,21 +107,49 @@ def validate(sources: Dict[str, str]) -> None:
     begin = extract(
         direct,
         "    fn begin_generation(&mut self) -> Option<u64> {",
-        "\n    fn stop_generation(",
+        "\n    fn activate_generation(",
         "generation begin transition",
     )
     require_order(
         begin,
         (
+            "if self.reserved || self.active",
+            "return None",
             "let Some(next) = self.generation.checked_add(1) else",
+            "self.reserved = false",
+            "self.active = false",
+            "return None",
+            "if next > i64::MAX as u64",
+            "self.reserved = false",
             "self.active = false",
             "return None",
             "self.generation = next",
             "self.rebuild_epoch = 0",
-            "self.active = true",
+            "self.reserved = true",
+            "self.active = false",
             "Some(next)",
         ),
-        "checked fail-closed generation begin",
+        "checked inactive generation reservation",
+    )
+
+    activate = extract(
+        direct,
+        "    fn activate_generation(&mut self, expected_generation: u64) -> bool {",
+        "\n    fn stop_generation(",
+        "generation activation transition",
+    )
+    require_order(
+        activate,
+        (
+            "!self.reserved",
+            "self.active",
+            "self.generation != expected_generation",
+            "return false",
+            "self.reserved = false",
+            "self.active = true",
+            "true",
+        ),
+        "exact reserved-to-active generation transition",
     )
 
     stop = extract(
@@ -132,10 +161,11 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         stop,
         (
-            "!self.active",
+            "(!self.reserved && !self.active)",
             "expected_generation == 0",
             "self.generation != expected_generation",
             "return false",
+            "self.reserved = false",
             "self.active = false",
             "true",
         ),
@@ -167,7 +197,7 @@ def validate(sources: Dict[str, str]) -> None:
     snapshot = extract(
         direct,
         "    fn snapshot(&self, expected_generation: u64) -> Option<u64> {",
-        "\n}\n\n#[cfg(target_os = \"android\")]",
+        "\n    fn is_exact_inactive(",
         "generation and epoch snapshot",
     )
     require_order(
@@ -180,18 +210,58 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "atomic lifecycle snapshot",
     )
+    exact_inactive = extract(
+        direct,
+        "    fn is_exact_inactive(&self, expected_generation: u64) -> bool {",
+        "\n}\n\n#[cfg(target_os = \"android\")]",
+        "exact inactive generation state",
+    )
+    require_order(
+        exact_inactive,
+        (
+            "expected_generation != 0",
+            "self.generation == expected_generation",
+            "!self.reserved",
+            "!self.active",
+        ),
+        "exact stopped-generation convergence state",
+    )
 
     begin_api = extract(
         direct,
         "pub fn android_begin_generation() -> u64 {",
-        "\n}\n\n/// R-D7a: deactivate",
+        "\n}\n\n/// R-S11hq: activate",
         "generation begin API",
+    )
+    activate_api = extract(
+        direct,
+        "pub fn android_activate_generation(expected_generation: u64) -> bool {",
+        "\n}\n\n/// R-D7a: deactivate",
+        "generation activation API",
     )
     stop_api = extract(
         direct,
         "pub fn android_request_stop(expected_generation: u64) -> bool {",
-        "\n}\n\n/// R-T13/R-D7a:",
+        "\n}\n\n/// Exact retirement used",
         "generation stop API",
+    )
+    converged_stop_api = extract(
+        direct,
+        "pub fn android_request_stop_or_confirm_inactive(expected_generation: u64) -> bool {",
+        "\n}\n\n/// Read-only exact-generation health",
+        "converged generation stop API",
+    )
+    health_api = extract(
+        direct,
+        "pub fn android_generation_is_active(expected_generation: u64) -> bool {",
+        "\n}\n\n/// RAII worker-exit convergence",
+        "generation health API",
+    )
+    worker_exit_api = extract(
+        direct,
+        "pub fn android_note_worker_exit(expected_generation: u64) -> bool {",
+        "\n}\n\n/// R-T13/R-D7a:",
+        "worker-exit convergence API",
     )
     rebuild_api = extract(
         direct,
@@ -208,9 +278,19 @@ def validate(sources: Dict[str, str]) -> None:
     for body, transition, label in (
         (begin_api, "lifecycle.begin_generation()", "serialized begin"),
         (
+            activate_api,
+            "lifecycle.activate_generation(expected_generation)",
+            "serialized activation",
+        ),
+        (
             stop_api,
             "lifecycle.stop_generation(expected_generation)",
             "serialized stop",
+        ),
+        (
+            worker_exit_api,
+            "lifecycle.stop_generation(expected_generation)",
+            "serialized worker-exit convergence",
         ),
         (
             rebuild_api,
@@ -227,6 +307,28 @@ def validate(sources: Dict[str, str]) -> None:
             label,
         )
     require_order(
+        converged_stop_api,
+        (
+            "ANDROID_LISTENER_LIFECYCLE.lock().unwrap()",
+            "lifecycle.stop_generation(expected_generation)",
+            "lifecycle.is_exact_inactive(expected_generation)",
+            "true",
+            "false",
+        ),
+        "serialized exact stop or already-inactive convergence",
+    )
+    require_order(
+        health_api,
+        (
+            "ANDROID_LISTENER_LIFECYCLE",
+            ".lock()",
+            ".unwrap()",
+            ".snapshot(expected_generation)",
+            ".is_some()",
+        ),
+        "serialized active-generation health",
+    )
+    require_order(
         lifecycle_snapshot,
         (
             "ANDROID_LISTENER_LIFECYCLE",
@@ -235,6 +337,31 @@ def validate(sources: Dict[str, str]) -> None:
             ".snapshot(expected_generation)",
         ),
         "serialized generation and epoch snapshot",
+    )
+
+    start_direct = extract(
+        direct,
+        "pub async fn start_direct_only(",
+        "\n#[cfg_attr(not(target_os = \"android\"), allow(unused_variables))]",
+        "Android direct listener worker",
+    )
+    require_order(
+        start_direct,
+        (
+            "let direct_listener = tokio::spawn(async move",
+            "let mut direct_listener = direct_listener",
+            "tokio::select!",
+            "outcome = &mut direct_listener",
+            "if android_listener_lifecycle_snapshot(my_generation.get()).is_none()",
+            "Android direct-listener task returned after exact generation deactivation",
+            "Android direct-listener task failed after exact generation deactivation",
+            "Android direct-listener task returned while its service worker was active",
+            "Android direct-listener task failed while its service worker was active",
+            "return",
+            "_ = sleep(1.)",
+            "android_listener_lifecycle_snapshot(my_generation.get()).is_none()",
+        ),
+        "terminal listener task observation and exact lifecycle poll",
     )
 
     server_loop = extract(
@@ -322,7 +449,7 @@ def validate(sources: Dict[str, str]) -> None:
         destroy,
         (
             "releaseControlledConnectionResources()",
-            "FFI.stopServer(nativeServerGeneration)",
+            'retireControlledServiceGeneration(generation, "MainService destruction")',
             "serviceLooper?.quitSafely()",
             "unregisterNetworkCallback()",
             "FFI.releaseService(this)",
@@ -330,9 +457,25 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "stop-before-callback-drain teardown",
     )
+    retirement = extract(
+        main_service,
+        "    private fun retireControlledServiceGenerationLocked(\n",
+        "\n    override fun onCreate()",
+        "MainService generation retirement",
+    )
+    require_order(
+        retirement,
+        (
+            "acceptingControlledConnections = false",
+            "serviceGenerationOwner.retire(generation)",
+            "FFI.stopServer(this, retirement.generation)",
+            "nativeServerGeneration = 0L",
+        ),
+        "exact listener retirement before local generation release",
+    )
     require_count(
-        destroy,
-        "FFI.stopServer(nativeServerGeneration)",
+        retirement,
+        "FFI.stopServer(this, retirement.generation)",
         1,
         "single exact listener stop",
     )
@@ -381,18 +524,31 @@ def validate(sources: Dict[str, str]) -> None:
             "stale rebuild refusal and replacement preservation assertion",
         ),
         (
-            "assert!(lifecycle.stop_generation(u64::MAX));\n"
-            "        assert_eq!(lifecycle.snapshot(u64::MAX), None);\n\n"
-            "        lifecycle.active = true;",
+            "assert!(lifecycle.stop_generation(i64::MAX as u64));\n"
+            "        assert_eq!(lifecycle.snapshot(i64::MAX as u64), None);\n\n"
+            "        assert_eq!(lifecycle.begin_generation(), None);",
             "maximum-generation exact-stop assertion",
         ),
         (
             "assert_eq!(lifecycle.begin_generation(), None);\n"
-            "        assert!(!lifecycle.stop_generation(u64::MAX));\n"
-            "        assert_eq!(lifecycle.generation, u64::MAX);\n"
+            "        assert_eq!(lifecycle.snapshot(first), Some(1));",
+            "active generation reservation refusal assertion",
+        ),
+        (
+            "assert_eq!(lifecycle.begin_generation(), None);\n"
+            "        assert!(!lifecycle.stop_generation(i64::MAX as u64));\n"
+            "        assert_eq!(lifecycle.generation, i64::MAX as u64);\n"
+            "        assert!(!lifecycle.reserved);\n"
             "        assert!(!lifecycle.active);\n"
-            "        assert_eq!(lifecycle.snapshot(u64::MAX), None);",
+            "        assert_eq!(lifecycle.snapshot(i64::MAX as u64), None);",
             "generation exhaustion deactivation assertion",
+        ),
+        (
+            "assert_eq!(lifecycle.snapshot(reserved), None);\n"
+            "        assert!(!lifecycle.activate_generation(reserved + 1));\n"
+            "        assert!(lifecycle.stop_generation(reserved));\n"
+            "        assert!(!lifecycle.activate_generation(reserved));",
+            "reserved generation exact stop assertion",
         ),
         (
             "assert_eq!(lifecycle.request_rebuild(7), None);\n"
@@ -473,8 +629,8 @@ MUTATIONS = (
     ),
     Mutation(
         "main_service",
-        "FFI.stopServer(nativeServerGeneration)",
-        "FFI.stopServer(0L)",
+        "FFI.stopServer(this, retirement.generation)",
+        "FFI.stopServer(this, 0L)",
         "exact teardown generation",
     ),
     Mutation(
@@ -546,13 +702,26 @@ MUTATIONS = (
     Mutation(
         "direct",
         "    fn begin_generation(&mut self) -> Option<u64> {\n"
+        "        if self.reserved || self.active {\n"
+        "            return None;\n"
+        "        }\n"
         "        let Some(next) = self.generation.checked_add(1) else {",
         "    fn begin_generation(&mut self) -> Option<u64> {\n"
+        "        if self.reserved || self.active {\n"
+        "            return None;\n"
+        "        }\n"
         "        let Some(next) = Some(self.generation.wrapping_add(1)) else {",
         "checked service-generation begin",
     ),
     Mutation(
         "direct",
+        "if self.reserved || self.active",
+        "if false",
+        "single reserved or active listener generation",
+    ),
+    Mutation(
+        "direct",
+        "        self.reserved = false;\n"
         "        self.active = false;\n"
         "        true\n"
         "    }\n\n"
@@ -571,8 +740,8 @@ MUTATIONS = (
     Mutation(
         "direct",
         "        self.rebuild_epoch = 0;\n"
-        "        self.active = true;",
-        "        self.active = true;",
+        "        self.reserved = true;",
+        "        self.reserved = true;",
         "per-generation rebuild epoch reset",
     ),
     Mutation(
@@ -586,10 +755,30 @@ MUTATIONS = (
     Mutation(
         "direct",
         "let Some(next) = self.generation.checked_add(1) else {\n"
+        "            self.reserved = false;\n"
         "            self.active = false;",
         "let Some(next) = self.generation.checked_add(1) else {\n"
+        "            self.reserved = false;\n"
         "            return None;",
         "generation exhaustion deactivation",
+    ),
+    Mutation(
+        "direct",
+        "        self.reserved = true;\n        self.active = false;",
+        "        self.reserved = false;\n        self.active = true;",
+        "inactive listener reservation",
+    ),
+    Mutation(
+        "direct",
+        "    fn activate_generation(&mut self, expected_generation: u64) -> bool {",
+        "    fn activate_generation_disabled(&mut self, expected_generation: u64) -> bool {",
+        "exact reserved listener activation",
+    ),
+    Mutation(
+        "direct",
+        "if next > i64::MAX as u64",
+        "if next > u64::MAX",
+        "Kotlin Long generation range",
     ),
     Mutation(
         "direct",
@@ -605,9 +794,55 @@ MUTATIONS = (
     ),
     Mutation(
         "direct",
-        ".snapshot(expected_generation)",
-        ".snapshot(1)",
+        "fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64> {\n"
+        "    ANDROID_LISTENER_LIFECYCLE\n"
+        "        .lock()\n"
+        "        .unwrap()\n"
+        "        .snapshot(expected_generation)",
+        "fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64> {\n"
+        "    ANDROID_LISTENER_LIFECYCLE\n"
+        "        .lock()\n"
+        "        .unwrap()\n"
+        "        .snapshot(1)",
         "snapshot API forwarding",
+    ),
+    Mutation(
+        "direct",
+        "    fn is_exact_inactive(&self, expected_generation: u64) -> bool {",
+        "    fn is_exact_inactive_disabled(&self, expected_generation: u64) -> bool {",
+        "exact inactive-generation convergence",
+    ),
+    Mutation(
+        "direct",
+        "pub fn android_request_stop_or_confirm_inactive(expected_generation: u64) -> bool {",
+        "pub fn android_request_stop_or_confirm_inactive_disabled(expected_generation: u64) -> bool {",
+        "stop-after-worker-exit convergence API",
+    ),
+    Mutation(
+        "direct",
+        "pub fn android_generation_is_active(expected_generation: u64) -> bool {",
+        "pub fn android_generation_is_active_disabled(expected_generation: u64) -> bool {",
+        "active generation health API",
+    ),
+    Mutation(
+        "direct",
+        "pub fn android_note_worker_exit(expected_generation: u64) -> bool {",
+        "pub fn android_note_worker_exit_disabled(expected_generation: u64) -> bool {",
+        "terminal worker-exit convergence API",
+    ),
+    Mutation(
+        "direct",
+        "outcome = &mut direct_listener",
+        "_outcome = std::future::pending::<()>()",
+        "terminal listener task observation",
+    ),
+    Mutation(
+        "direct",
+        "outcome = &mut direct_listener => {\n"
+        "                        if android_listener_lifecycle_snapshot(my_generation.get()).is_none()",
+        "outcome = &mut direct_listener => {\n"
+        "                        if false",
+        "normal-stop versus active-worker terminal classification",
     ),
     Mutation(
         "direct",
@@ -679,10 +914,10 @@ MUTATIONS = (
     ),
     Mutation(
         "direct",
-        "assert!(lifecycle.stop_generation(u64::MAX));\n"
-        "        assert_eq!(lifecycle.snapshot(u64::MAX), None);",
-        "assert!(!lifecycle.stop_generation(u64::MAX));\n"
-        "        assert_eq!(lifecycle.snapshot(u64::MAX), None);",
+        "assert!(lifecycle.stop_generation(i64::MAX as u64));\n"
+        "        assert_eq!(lifecycle.snapshot(i64::MAX as u64), None);",
+        "assert!(!lifecycle.stop_generation(i64::MAX as u64));\n"
+        "        assert_eq!(lifecycle.snapshot(i64::MAX as u64), None);",
         "maximum-generation exact-stop regression",
     ),
     Mutation(

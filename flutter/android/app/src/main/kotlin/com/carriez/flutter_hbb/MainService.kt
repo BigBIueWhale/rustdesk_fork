@@ -280,7 +280,15 @@ class MainService : Service() {
     private var captureRequested = false
     @Volatile
     private var captureActive = false
+    @Volatile
     private var acceptingControlledConnections = false
+    @Volatile
+    private var nativeCallbackContextReady = false
+    // JNI callbacks synchronize on this Service while native code holds a read lease on its
+    // callback owner. Startup/retirement therefore use a distinct lock before taking native write
+    // ownership; sharing the Service monitor would invert those locks during teardown.
+    private val controlledServiceGenerationLock = Any()
+    private val serviceGenerationOwner = MainServiceGenerationOwner()
     private val controlledCaptureOwners = ControlledCaptureOwnerState()
     private var surface: Surface? = null
     private var imageReader: ImageReader? = null
@@ -350,13 +358,153 @@ class MainService : Service() {
         }
     }
 
+    private fun initializeControlledServiceGeneration(): Boolean =
+        synchronized(controlledServiceGenerationLock) {
+            initializeControlledServiceGenerationLocked()
+        }
+
+    private fun initializeControlledServiceGenerationLocked(): Boolean {
+        if (!nativeCallbackContextReady) {
+            Log.e(logTag, "Cannot start MainService without its exact native callback context")
+            return false
+        }
+        val currentGeneration = nativeServerGeneration
+        if (currentGeneration > 0L) {
+            if (serviceGenerationOwner.isCommitted(currentGeneration) &&
+                FFI.isServerGenerationActive(this, currentGeneration)
+            ) {
+                return true
+            }
+            Log.e(
+                logTag,
+                "Retiring an incomplete or inactive MainService generation before explicit retry",
+            )
+            if (!retireControlledServiceGeneration(
+                    currentGeneration,
+                    "incomplete generation before retry",
+                )
+            ) {
+                return false
+            }
+        }
+
+        acceptingControlledConnections = false
+        val prefs = applicationContext.getSharedPreferences(
+            KEY_SHARED_PREFERENCES,
+            FlutterActivity.MODE_PRIVATE,
+        )
+        val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
+        val generation = FFI.startServer(this, configPath, "")
+        if (generation <= 0L) {
+            Log.e(logTag, "Failed to bind the native server to this MainService generation")
+            return false
+        }
+        nativeServerGeneration = generation
+        if (!serviceGenerationOwner.beginReservation(generation)) {
+            Log.e(logTag, "Failed to own the new MainService native generation reservation")
+            if (!FFI.stopServer(this, generation)) {
+                Log.e(logTag, "Failed to retire the unowned MainService listener generation")
+            }
+            if (nativeServerGeneration == generation) {
+                nativeServerGeneration = 0L
+            }
+            return false
+        }
+        if (!publishScreenInfo()) {
+            Log.e(logTag, "Failed to publish screen information for this MainService generation")
+            retireControlledServiceGeneration(generation, "screen publication failure")
+            return false
+        }
+        if (!serviceGenerationOwner.noteStatusAttempt(generation)) {
+            Log.e(logTag, "Failed to record MainService status publication ownership")
+            retireControlledServiceGeneration(generation, "status ownership failure")
+            return false
+        }
+        if (!statusOwner.begin(generation)) {
+            Log.e(logTag, "Failed to bind process-wide status to this MainService generation")
+            retireControlledServiceGeneration(generation, "status publication failure")
+            return false
+        }
+        if (!serviceGenerationOwner.noteVoiceAttempt(generation)) {
+            Log.e(logTag, "Failed to record MainService audio publication ownership")
+            retireControlledServiceGeneration(generation, "audio ownership failure")
+            return false
+        }
+        if (!VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)) {
+            Log.e(logTag, "Failed to bind process-wide audio ownership to this MainService generation")
+            retireControlledServiceGeneration(generation, "audio publication failure")
+            return false
+        }
+        if (!serviceGenerationOwner.noteActivationAttempt(generation)) {
+            Log.e(logTag, "Failed to record MainService listener activation ownership")
+            retireControlledServiceGeneration(generation, "listener activation ownership failure")
+            return false
+        }
+        if (!serviceGenerationOwner.commit(generation)) {
+            Log.e(logTag, "Failed to commit the complete MainService generation")
+            retireControlledServiceGeneration(generation, "generation commit failure")
+            return false
+        }
+        acceptingControlledConnections = true
+        if (!FFI.activateServer(this, generation)) {
+            acceptingControlledConnections = false
+            Log.e(logTag, "Failed to activate the exact MainService listener generation")
+            retireControlledServiceGeneration(generation, "listener activation failure")
+            return false
+        }
+        return true
+    }
+
+    private fun retireControlledServiceGeneration(generation: Long, reason: String): Boolean =
+        synchronized(controlledServiceGenerationLock) {
+            retireControlledServiceGenerationLocked(generation, reason)
+        }
+
+    private fun retireControlledServiceGenerationLocked(
+        generation: Long,
+        reason: String,
+    ): Boolean {
+        acceptingControlledConnections = false
+        val retirement = serviceGenerationOwner.retire(generation)
+        if (retirement == null) {
+            Log.e(logTag, "Rejected unknown MainService generation retirement: $generation ($reason)")
+            val retiredNative = FFI.stopServer(this, generation)
+            if (nativeServerGeneration == generation) {
+                nativeServerGeneration = 0L
+            }
+            return retiredNative
+        }
+
+        var retired = FFI.stopServer(this, retirement.generation)
+        if (!retired) {
+            Log.e(logTag, "Failed to retire the exact native MainService generation ($reason)")
+        }
+        if (retirement.retireVoice &&
+            !VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)
+        ) {
+            Log.e(logTag, "Failed to retire exact controlled audio ownership ($reason)")
+            retired = false
+        }
+        if (retirement.retireStatus && !statusOwner.retire(retirement.generation)) {
+            Log.e(logTag, "Failed to retire exact MainService status ownership ($reason)")
+            retired = false
+        }
+        if (nativeServerGeneration == retirement.generation) {
+            nativeServerGeneration = 0L
+        }
+        return retired
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d(logTag,"MainService onCreate, sdk int:${Build.VERSION.SDK_INT} reuseVirtualDisplay:$reuseVirtualDisplay")
         if (!VoiceCallAudioCoordinator.initialize(applicationContext)) {
             Log.e(logTag, "Failed to initialize process-wide audio capture ownership")
         }
-        FFI.init(this, applicationContext)
+        nativeCallbackContextReady = FFI.init(this, applicationContext)
+        if (!nativeCallbackContextReady) {
+            Log.e(logTag, "Failed to install the exact MainService native callback context")
+        }
         HandlerThread("Service", Process.THREAD_PRIORITY_BACKGROUND).apply {
             start()
             serviceLooper = looper
@@ -364,41 +512,15 @@ class MainService : Service() {
         }
         updateScreenInfo(resources.configuration.orientation)
         initNotification()
-
-        // keep the config dir same with flutter
-        val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
-        val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
-        nativeServerGeneration = FFI.startServer(this, configPath, "")
-        if (nativeServerGeneration <= 0L) {
-            Log.e(logTag, "Failed to bind the native server to this MainService generation")
-        } else if (!publishScreenInfo()) {
-            Log.e(logTag, "Failed to publish screen information for this MainService generation")
-        } else if (!statusOwner.begin(nativeServerGeneration)) {
-            Log.e(logTag, "Failed to bind process-wide status to this MainService generation")
-        } else if (!VoiceCallAudioCoordinator.beginControlledServiceGeneration(
-                nativeServerGeneration
-            )
-        ) {
-            Log.e(logTag, "Failed to bind process-wide audio ownership to this MainService generation")
-        } else {
-            acceptingControlledConnections = true
-        }
-
-        createForegroundNotification()
-        acquireNetworkKeepaliveWakeLock()
-        registerNetworkCallback()
     }
 
     override fun onDestroy() {
+        val generation = nativeServerGeneration
         releaseControlledConnectionResources()
-        if (!statusOwner.retire(nativeServerGeneration)) {
-            Log.d(logTag, "MainService status generation was already retired or replaced")
-        }
-        // Deactivate this exact listener generation before draining Android callbacks. A network
-        // callback already queued for this Service is then rejected in Rust and cannot rebuild a
-        // replacement Service's listener.
-        if (!FFI.stopServer(nativeServerGeneration)) {
-            Log.d(logTag, "Native server generation was already stopped or replaced")
+        if (generation > 0L &&
+            !retireControlledServiceGeneration(generation, "MainService destruction")
+        ) {
+            Log.d(logTag, "MainService generation was already retired or replaced")
         }
         serviceLooper?.quitSafely()
         serviceHandler = null
@@ -406,13 +528,9 @@ class MainService : Service() {
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
-        // R-D7a: the direct listener is OWNED by this foreground service (started by FFI.startServer
-        // in onCreate). Tear it down as the service is destroyed — stopServer deactivates the exact
-        // Rust service-owned-listener generation, so the accept loop drops the TcpListener and the
-        // socket closes. The user "Stop service" path reaches here via MainActivity.stop_service ->
-        // Context.stopService followed by unbinding the Activity's BIND_AUTO_CREATE client; an
-        // OS/OEM/battery kill closes the socket by process death instead (START_NOT_STICKY means no
-        // zombie auto-restart rebinds it).
+        // R-D7a: the direct listener is owned by this foreground service. Exact generation
+        // retirement above makes the accept loop drop its TcpListener; releaseService now drops
+        // only the exact callback object retained for this Service instance.
         if (!FFI.releaseService(this)) {
             Log.d(logTag, "MainService callback owner was already replaced or released")
         }
@@ -526,10 +644,20 @@ class MainService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("whichService", "this service: ${Thread.currentThread()}")
         super.onStartCommand(intent, flags, startId)
+        // A foreground-service start must publish its notification promptly. If the generation
+        // transaction cannot commit, exact startId retirement below removes only this started
+        // request; a bound Service remains inert and a later explicit start may retry once.
+        createForegroundNotification()
+        if (!initializeControlledServiceGeneration()) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            if (!stopSelfResult(startId)) {
+                Log.d(logTag, "A newer MainService start request retained the started state")
+            }
+            return START_NOT_STICKY
+        }
+        acquireNetworkKeepaliveWakeLock()
+        registerNetworkCallback()
         if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
-            createForegroundNotification()
-            acquireNetworkKeepaliveWakeLock()
-
             Log.d(logTag, "service starting: ${startId}:${Thread.currentThread()}")
             val mediaProjectionManager =
                 getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -803,9 +931,6 @@ class MainService : Service() {
         controlledCaptureOwners.clear()
         InputService.ctx?.retireServiceGeneration(nativeServerGeneration)
         releaseCaptureResources()
-        if (!VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)) {
-            Log.e(logTag, "Failed to release controlled voice-call owners during service teardown")
-        }
     }
 
     fun checkMediaPermission(): Boolean {

@@ -794,7 +794,7 @@ def validate(sources: Dict[str, str]) -> None:
         service_destroy,
         (
             "releaseControlledConnectionResources()",
-            "FFI.stopServer(nativeServerGeneration)",
+            'retireControlledServiceGeneration(generation, "MainService destruction")',
             "FFI.releaseService(this)",
             "super.onDestroy()",
         ),
@@ -804,14 +804,55 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         service_create,
         (
-            "FFI.init(this, applicationContext)",
-            'nativeServerGeneration = FFI.startServer(this, configPath, "")',
-            "if (nativeServerGeneration <= 0L)",
-            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(",
-            "nativeServerGeneration",
-            "acceptingControlledConnections = true",
+            "nativeCallbackContextReady = FFI.init(this, applicationContext)",
+            "initNotification()",
         ),
-        "closed-until-bound exact MainService generation ownership",
+        "inert bound-only MainService creation",
+    )
+    forbid(
+        service_create,
+        "initializeControlledServiceGeneration()",
+        "pre-deadline MainService generation transaction",
+    )
+    forbid(
+        service_create,
+        "createForegroundNotification()",
+        "bound-only foreground publication",
+    )
+    service_start = extract_item(
+        service,
+        "override fun onStartCommand",
+        "explicit MainService start transaction",
+    )
+    require_order(
+        service_start,
+        (
+            "createForegroundNotification()",
+            "if (!initializeControlledServiceGeneration())",
+            "return START_NOT_STICKY",
+            "acquireNetworkKeepaliveWakeLock()",
+            "registerNetworkCallback()",
+        ),
+        "foreground deadline before exact MainService generation ownership",
+    )
+    generation_start = extract_item(
+        service,
+        "private fun initializeControlledServiceGenerationLocked",
+        "service generation startup transaction",
+    )
+    require_order(
+        generation_start,
+        (
+            "if (!nativeCallbackContextReady)",
+            'val generation = FFI.startServer(this, configPath, "")',
+            "serviceGenerationOwner.beginReservation(generation)",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)",
+            "serviceGenerationOwner.noteActivationAttempt(generation)",
+            "serviceGenerationOwner.commit(generation)",
+            "acceptingControlledConnections = true",
+            "FFI.activateServer(this, generation)",
+        ),
+        "closed-until-committed exact MainService generation ownership",
     )
     require(
         service,
@@ -835,9 +876,23 @@ def validate(sources: Dict[str, str]) -> None:
             "acceptingControlledConnections = false",
             "controlledCaptureOwners.clear()",
             "releaseCaptureResources()",
-            "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)",
         ),
-        "closed-admission exact-generation controlled resource teardown",
+        "closed-admission controlled capture teardown",
+    )
+    generation_retirement = extract_item(
+        service,
+        "private fun retireControlledServiceGenerationLocked",
+        "controlled generation retirement",
+    )
+    require_order(
+        generation_retirement,
+        (
+            "serviceGenerationOwner.retire(generation)",
+            "FFI.stopServer(this, retirement.generation)",
+            "VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)",
+            "statusOwner.retire(retirement.generation)",
+        ),
+        "exact attempted-owner retirement after admission closes",
     )
     forbid(service, '"stop_capture"', "detached global capture-stop dispatch")
     task_removed = extract_item(service, "override fun onTaskRemoved", "task-removal teardown")
@@ -2309,7 +2364,7 @@ def validate(sources: Dict[str, str]) -> None:
     ffi_kt = sources["ffi_kt"]
     require(
         ffi_kt,
-        "external fun init(service: Context, applicationContext: Context)",
+        "external fun init(service: Context, applicationContext: Context): Boolean",
         "separate service/application JNI initialization",
     )
     require(
@@ -2324,8 +2379,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         ffi_kt,
-        "external fun stopServer(generation: Long): Boolean",
-        "exact native server generation stop",
+        "external fun stopServer(service: Context, generation: Long): Boolean",
+        "exact native server object-and-generation stop",
     )
     android_ffi = sources["android_ffi"]
     service_init = extract_item(
@@ -2336,12 +2391,15 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "service: JObject",
             "application_context: JObject",
-            "env.new_global_ref(service)",
+            "env.new_global_ref(&service)",
             "env.new_global_ref(application_context)",
             "install_application_context_once(java_vm, application_context)",
+            "env.is_same_object(context.owner.as_obj(), &service)",
+            "Ok(false) if context.generation.is_some()",
             "Some(MainServiceContext",
             "generation: None",
-            "owner: service",
+            "owner: retained_service",
+            "jboolean::from(true)",
         ),
         "service callback versus application-context ownership",
     )
@@ -2381,13 +2439,16 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         generation_binding,
         (
-            "if generation == 0 || service.is_null()",
+            "if service.is_null()",
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
             "env.is_same_object(current.owner.as_obj(), service)",
             "if current.generation.is_some()",
+            "let generation = begin_generation()",
+            "if generation == 0",
             "current.generation = Some(generation)",
+            "Some(generation)",
         ),
-        "single exact-object MainService generation binding",
+        "single exact-object-authorized MainService generation reservation",
     )
     generation_dispatch = extract_item(
         android_ffi,
@@ -2455,6 +2516,21 @@ def validate(sources: Dict[str, str]) -> None:
         "generation-bound connection-manager channel start",
     )
     direct_service = sources["direct_service"]
+    require_order(
+        direct_service,
+        (
+            "reserved: bool",
+            "active: bool",
+            "fn begin_generation(&mut self) -> Option<u64>",
+            "if self.reserved || self.active",
+            "self.reserved = true",
+            "self.active = false",
+            "fn activate_generation(&mut self, expected_generation: u64) -> bool",
+            "self.reserved = false",
+            "self.active = true",
+        ),
+        "inactive reservation before exact Android listener activation",
+    )
     exact_stop = extract_item(
         direct_service, "pub fn android_request_stop", "exact Android server stop"
     )
@@ -2478,12 +2554,60 @@ def validate(sources: Dict[str, str]) -> None:
         start_server,
         (
             "service: JObject",
-            "android_begin_generation()",
-            "bind_main_service_generation(&env, &service, generation)",
-            "start_server(true, generation)",
+            "bind_main_service_generation(",
+            "&env",
+            "&service",
+            "android_begin_generation",
+            "android_request_stop(generation)",
             "generation as jlong",
         ),
-        "listener and callback generation binding",
+        "object-authorized listener and callback generation reservation",
+    )
+    forbid(start_server, "start_server(true, generation)", "pre-admission listener spawn")
+    activate_server = extract_item(
+        flutter_ffi, "Java_ffi_FFI_activateServer", "MainService exact generation activation"
+    )
+    require_order(
+        activate_server,
+        (
+            "service: JObject",
+            "claim_main_service_listener_start(&env, &service, generation)",
+            "android_activate_generation(generation)",
+            "std::thread::Builder::new()",
+            ".spawn(move || {",
+            "let _worker_guard = AndroidDirectServerWorkerGuard(generation)",
+            "start_server(true, generation)",
+        ),
+        "post-admission listener activation with terminal worker ownership",
+    )
+    generation_health = extract_item(
+        flutter_ffi,
+        "Java_ffi_FFI_isServerGenerationActive",
+        "MainService exact generation health",
+    )
+    require_order(
+        generation_health,
+        (
+            "service: JObject",
+            "generation: jlong",
+            "owns_main_service_generation(&env, &service, generation)",
+            "android_generation_is_active(generation)",
+        ),
+        "exact object-and-active-listener generation health",
+    )
+    native_generation_health = extract_item(
+        android_ffi,
+        "pub fn owns_main_service_generation",
+        "native MainService generation health owner",
+    )
+    require_order(
+        native_generation_health,
+        (
+            "current.generation != Some(generation)",
+            "if !current.listener_started",
+            "env.is_same_object(current.owner.as_obj(), service)",
+        ),
+        "native exact object, generation, and listener-start health",
     )
     stop_server = extract_item(
         flutter_ffi, "Java_ffi_FFI_stopServer", "MainService exact generation stop"
@@ -2493,10 +2617,13 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "generation: jlong",
             "if generation <= 0",
-            "android_request_stop(",
             "generation as u64",
+            "let Some(retirement) = scrap::android::retire_main_service_generation(",
+            "android_request_stop_or_confirm_inactive(generation)",
+            "retirement.raw_video_retired",
+            "retirement.screen_size_retired",
         ),
-        "positive exact native server generation stop",
+        "positive exact-object proof before native stop or worker-exit convergence",
     )
 
     io_loop = sources["io_loop"]
@@ -5424,16 +5551,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("service", '"remove_connection" ->', '"remove_connection_disabled" ->', "controlled removal dispatch"),
     ("service", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                            nativeServerGeneration,\n                            id,", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                            1,\n                            id,", "controlled retirement generation"),
     ("service", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n                            nativeServerGeneration,\n                            id,", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n                            1,\n                            id,", "controlled update generation"),
-    ("service", "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)", "true", "service generation owner teardown"),
-    ("service", "nativeServerGeneration = FFI.startServer(this, configPath, \"\")", "FFI.startServer(configPath, \"\")", "exact-object service generation ownership"),
-    ("service", "VoiceCallAudioCoordinator.beginControlledServiceGeneration(\n                nativeServerGeneration", "VoiceCallAudioCoordinator.beginControlledServiceGeneration(\n                1", "audio coordinator generation binding"),
+    ("service", "VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)", "true", "service generation owner teardown"),
+    ("service", "val generation = FFI.startServer(this, configPath, \"\")", "val generation = FFI.startServer(configPath, \"\")", "exact-object service generation ownership"),
+    ("service", "VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)", "VoiceCallAudioCoordinator.beginControlledServiceGeneration(1)", "audio coordinator generation binding"),
     ("service", "private var acceptingControlledConnections = false", "private var acceptingControlledConnections = true", "closed-by-default controlled admission"),
     ("service", "acceptingControlledConnections = true", "// controlled admission retained closed", "post-generation controlled admission"),
     ("service", "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n                        nativeServerGeneration,\n                        projection,", "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n                        1,\n                        projection,", "playback-start generation"),
     ("service", "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n                nativeServerGeneration,\n                null,", "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n                1,\n                null,", "playback-stop generation"),
     ("test", "controlled-service replacement cleared the outgoing owner", "controlled-service replacement passed", "controlled replacement preserves outgoing ownership"),
     ("test", "superseded controlled generation was reactivated", "superseded controlled generation passed", "superseded controlled generation behavior proof"),
-    ("service", "FFI.stopServer(nativeServerGeneration)", "FFI.stopServer(0)", "exact service generation stop"),
+    ("service", "FFI.stopServer(this, retirement.generation)", "FFI.stopServer(this, 0)", "exact service generation stop"),
     ("service", "FFI.releaseService(this)", "true", "exact service callback-owner release"),
     ("service", "VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "true", "task-removal owner teardown"),
     ("activity", "VoiceCallAudioCoordinator.invalidateOutgoingOwner()", "true", "new-isolate invalidation"),
@@ -5449,21 +5576,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", 'call_main_service_set_by_name_for_generation(\n                    self.service_generation,\n                    "remove_connection"', 'call_main_service_set_by_name(\n                    "remove_connection"', "generation-bound controlled callback"),
     ("flutter", "service_generation: u64", "service_generation: i64", "connection-manager callback generation"),
     ("ui_cm", "        self.ui_handler.remove_connection(id, close);", '        let _ = scrap::android::call_main_service_set_by_name("stop_capture", None, None);\n        self.ui_handler.remove_connection(id, close);', "detached global capture-stop edge"),
-    ("ffi_kt", "external fun init(service: Context, applicationContext: Context)", "external fun init(service: Context)", "separate service/application JNI initialization"),
+    ("ffi_kt", "external fun init(service: Context, applicationContext: Context): Boolean", "external fun init(service: Context): Boolean", "separate service/application JNI initialization"),
     ("ffi_kt", "external fun releaseService(service: Context): Boolean", "external fun releaseService(service: Context)", "service callback-owner release result"),
     ("ffi_kt", "external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long", "external fun startServer(app_dir: String, custom_client_config: String): Long", "native server exact-object generation return"),
-    ("ffi_kt", "external fun stopServer(generation: Long): Boolean", "external fun stopServer(): Unit", "exact native server generation stop"),
+    ("ffi_kt", "external fun stopServer(service: Context, generation: Long): Boolean", "external fun stopServer(generation: Long): Boolean", "exact native server object-and-generation stop"),
     ("android_ffi", "env.is_same_object(owner.owner.as_obj(), &service)", "true", "exact service callback-owner identity"),
     ("android_ffi", "env.new_global_ref(application_context)", "env.new_global_ref(service)", "application-context global retention"),
     ("android_ffi", "init_ndk_context(java_vm, context_jobject)", "init_ndk_context(java_vm, service.as_obj().as_raw() as *mut c_void)", "application-context native lifetime"),
     ("android_ffi", "env.is_same_object(current.owner.as_obj(), service)", "true", "exact service generation-owner identity"),
+    ("android_ffi", "Ok(false) if context.generation.is_some()", "Ok(false)", "active foreign callback-owner replacement refusal"),
     ("android_ffi", "if current.generation.is_some()", "if false", "single service generation binding"),
     ("android_ffi", "if generation == 0 || context.generation != Some(generation)", "if false", "controlled callback generation comparison"),
     ("server_connection", "android_server_generation: u64", "android_server_generation: i64", "connection service-generation ownership"),
     ("server_connection", "call_main_service_pointer_input_for_generation", "call_main_service_pointer_input", "generation-bound controlled pointer dispatch"),
     ("server_connection", "call_main_service_key_event_for_generation", "call_main_service_key_event", "generation-bound controlled key dispatch"),
     ("direct_service", "lifecycle.stop_generation(expected_generation)", "lifecycle.stop_generation(lifecycle.generation)", "exact serialized server-generation stop"),
-    ("flutter_ffi", "bind_main_service_generation(&env, &service, generation)", "true", "exact-object listener/callback generation binding"),
+    ("flutter_ffi", "crate::direct_service::android_begin_generation,", "|| 1,", "object-authorized listener/callback generation binding"),
+    ("flutter_ffi", "if !crate::direct_service::android_activate_generation(generation)", "if false", "reserved listener generation activation"),
+    ("flutter_ffi", "let _worker_guard = AndroidDirectServerWorkerGuard(generation);", "// terminal worker exit retained active ownership", "terminal listener-worker generation retirement"),
+    ("flutter_ffi", "scrap::android::owns_main_service_generation(&env, &service, generation)", "true", "exact object-bound generation health"),
+    ("android_ffi", "if !current.listener_started {\n        return false;", "if false {\n        return false;", "started-listener native health claim"),
+    ("flutter_ffi", "crate::direct_service::android_request_stop_or_confirm_inactive(generation)", "crate::direct_service::android_request_stop(generation)", "worker-exit-aware exact stop convergence"),
+    ("flutter_ffi", "let Some(retirement) = scrap::android::retire_main_service_generation(", "let retirement = scrap::android::retire_main_service_generation(", "object proof before direct listener stop"),
+    ("direct_service", "self.reserved = true;\n        self.active = false;", "self.reserved = false;\n        self.active = true;", "inactive listener generation reservation"),
+    ("direct_service", "if self.reserved || self.active", "if false", "single reserved or active listener generation"),
     ("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),
     ("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),
     ("flutter", "acquire_android_client_owner(&client_owner_id)?", "acquire_android_client_owner(&session_id)?", "existing-session owner admission"),

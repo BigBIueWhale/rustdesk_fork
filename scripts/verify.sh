@@ -11759,6 +11759,13 @@ else
   echo "  FAIL R-S11en/R-S11e-175: Android service status or explicit-stop authority regressed"
   rc=1
 fi
+echo "== Android exact-generation MainService startup transaction (R-S11hq/R-S11e-254) =="
+if /usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo . --self-test; then
+  echo "  ok  R-S11hq/R-S11e-254 Android exact-generation MainService startup transaction"
+else
+  echo "  FAIL R-S11hq/R-S11e-254: Android MainService startup or rollback transaction regressed"
+  rc=1
+fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
 # None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground
@@ -11812,6 +11819,11 @@ destroy = between(
     "    override fun onDestroy() {",
     "\n    override fun onTaskRemoved(",
 )
+retirement = between(
+    main_service,
+    "    private fun retireControlledServiceGeneration(generation: Long, reason: String): Boolean {",
+    "\n    override fun onCreate()",
+)
 jni = between(
     rust_ffi,
     "    pub unsafe extern \"system\" fn Java_ffi_FFI_rebuildDirectServerListener(",
@@ -11836,9 +11848,11 @@ ok = (
         < request.index("generation <= 0L")
         < request.index("FFI.rebuildDirectServerListener(generation)")
     and destroy.index("releaseControlledConnectionResources()")
-        < destroy.index("FFI.stopServer(nativeServerGeneration)")
+        < destroy.index('retireControlledServiceGeneration(generation, "MainService destruction")')
         < destroy.index("unregisterNetworkCallback()")
         < destroy.index("FFI.releaseService(this)")
+    and retirement.index("FFI.stopServer(this, retirement.generation)")
+        < retirement.index("nativeServerGeneration = 0L")
     and "generation: jlong" in jni
     and jni.index("u64::try_from(generation)")
         < jni.index("android_request_listener_rebuild(")
@@ -14380,12 +14394,14 @@ virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private
 add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {/p' "$r_s14_kt")
 remove_connection_kt_block=$(sed -n '/"remove_connection" -> {/,/"update_voice_call_state" -> {/p' "$r_s14_kt")
 resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun checkMediaPermission()/p' "$r_s14_kt")
+generation_start_block=$(sed -n '/private fun initializeControlledServiceGeneration()/,/private fun retireControlledServiceGeneration/p' "$r_s14_kt")
+generation_retirement_block=$(sed -n '/private fun retireControlledServiceGeneration/,/override fun onCreate()/p' "$r_s14_kt")
 on_create_block=$(sed -n '/override fun onCreate()/,/override fun onDestroy()/p' "$r_s14_kt")
 update_voice_block=$(sed -n '/"update_voice_call_state" -> {/,/            else -> {/p' "$r_s14_kt")
 activity_destroy_block=$(sed -n '/override fun onDestroy()/,/private fun bindMainService/p' "$r_s14_activity_kt")
 activity_stop_block=$(sed -n '/"stop_service" -> {/,/"check_permission" -> {/p' "$r_s14_activity_kt")
 printf '%s\n' "$on_destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing onDestroy-no-exact-owner-teardown"
-printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.stopServer(nativeServerGeneration)' || r_s14_missing="$r_s14_missing onDestroy-stop-not-generation-bound"
+printf '%s\n' "$on_destroy_block" | grep -qF 'retireControlledServiceGeneration(generation, "MainService destruction")' || r_s14_missing="$r_s14_missing onDestroy-stop-not-generation-bound"
 printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.releaseService(this)' || r_s14_missing="$r_s14_missing onDestroy-retains-stale-service-callback-owner"
 grep -qF 'fun destroy()' "$r_s14_kt" && r_s14_missing="$r_s14_missing duplicate-service-destroy-path"
 grep -qF 'stopSelf(' "$r_s14_kt" && r_s14_missing="$r_s14_missing bound-service-stopSelf-path"
@@ -14396,10 +14412,10 @@ printf '%s\n' "$resource_release_block" | grep -qF 'acceptingControlledConnectio
 printf '%s\n' "$resource_release_block" | grep -qF 'controlledCaptureOwners.clear()' || r_s14_missing="$r_s14_missing teardown-retains-capture-owners"
 printf '%s\n' "$resource_release_block" | grep -qF 'InputService.ctx?.retireServiceGeneration(nativeServerGeneration)' || r_s14_missing="$r_s14_missing teardown-retains-input-generation"
 printf '%s\n' "$resource_release_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing teardown-does-not-release-capture"
-printf '%s\n' "$resource_release_block" | grep -qF 'VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)' || r_s14_missing="$r_s14_missing teardown-voice-playback-not-generation-bound"
+printf '%s\n' "$generation_retirement_block" | grep -qF 'VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)' || r_s14_missing="$r_s14_missing teardown-voice-playback-not-generation-bound"
 grep -qF 'private var acceptingControlledConnections = false' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-admission-not-closed-by-default"
-printf '%s\n' "$on_create_block" | grep -qF 'VoiceCallAudioCoordinator.beginControlledServiceGeneration(' || r_s14_missing="$r_s14_missing audio-coordinator-generation-not-bound"
-printf '%s\n' "$on_create_block" | grep -qF 'acceptingControlledConnections = true' || r_s14_missing="$r_s14_missing controlled-admission-not-opened-after-generation-bind"
+printf '%s\n' "$generation_start_block" | grep -qF 'VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)' || r_s14_missing="$r_s14_missing audio-coordinator-generation-not-bound"
+printf '%s\n' "$generation_start_block" | grep -qF 'acceptingControlledConnections = true' || r_s14_missing="$r_s14_missing controlled-admission-not-opened-after-generation-bind"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' || r_s14_missing="$r_s14_missing exact-owner-demand-not-recorded"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'if (captureRequested)' || r_s14_missing="$r_s14_missing exact-owner-demand-not-applied"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'startCapture()' || r_s14_missing="$r_s14_missing live-owner-demand-not-started"
@@ -14469,11 +14485,15 @@ grep -qF 'pub conn_type: ipc::CmAuthConnType' src/ui_cm_interface.rs || r_s14_mi
 if grep -qF '"stop_capture"' src/ui_cm_interface.rs "$r_s14_kt"; then
   r_s14_missing="$r_s14_missing detached-global-stop-edge-retained"
 fi
-grep -qF 'external fun init(service: Context, applicationContext: Context)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-and-application-contexts-not-separated"
+grep -qF 'external fun init(service: Context, applicationContext: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-and-application-contexts-not-separated"
+grep -qF 'nativeCallbackContextReady = FFI.init(this, applicationContext)' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-callback-context-admission-result-ignored"
+grep -qF 'Ok(false) if context.generation.is_some()' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing active-service-callback-owner-replacement-not-refused"
 grep -qF 'external fun releaseService(service: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-release-jni-declaration-missing"
 grep -qF 'external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
-grep -qF 'nativeServerGeneration = FFI.startServer(this, configPath, "")' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
-grep -qF 'external fun stopServer(generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-stop-not-exact-generation"
+grep -qF 'val generation = FFI.startServer(this, configPath, "")' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
+grep -qF 'external fun stopServer(service: Context, generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-stop-not-exact-object-generation"
+grep -qF 'pub fn retire_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-retirement-missing"
+grep -qF 'current.generation != Some(generation)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-retirement-not-generation-bound"
 grep -qF 'external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing video-frame-not-generation-bound"
 grep -qF 'external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing raw-video-enable-not-generation-bound"
 grep -qF 'external fun setAudioFrameRawEnable(value: Boolean)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing typed-raw-audio-enable-missing"
@@ -14494,7 +14514,7 @@ grep -qF 'env.is_same_object(owner.owner.as_obj(), &service)' "$r_s14_ffi_rs" ||
 grep -qF 'current.take();' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-global-ref-not-released"
 grep -qF 'env.new_global_ref(application_context)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing application-context-global-ref-missing"
 grep -qF 'init_ndk_context(java_vm, context_jobject)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing ndk-context-not-application-global-bound"
-grep -qF 'pub fn bind_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
+grep -qF 'pub fn bind_main_service_generation<Begin, Rollback>(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
 grep -qF 'env.is_same_object(current.owner.as_obj(), service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
 [ "$(grep -cF 'if generation == 0 || context.generation != Some(generation)' "$r_s14_ffi_rs")" -eq 2 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
 grep -qF 'bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
@@ -14533,11 +14553,18 @@ grep -qF 'R-S11en/R-S11e-175' HARDENING_STATUS.md || r_s14_missing="$r_s14_missi
 grep -qF 'internal class MainServiceStatusOwner' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-owner"
 grep -qF 'fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-readiness-operation"
 grep -qF 'stale generation retired its replacement' "$r_s14_status_test" || r_s14_missing="$r_s14_missing service-status-stale-retirement-regression"
-grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
-grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
+grep -qF 'let Some(generation) = scrap::android::bind_main_service_generation(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
+grep -qF 'crate::direct_service::android_begin_generation,' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-generation-not-object-authorized-before-allocation"
+grep -qF 'android_activate_generation(generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing reserved-listener-generation-not-explicitly-activated"
+grep -qF 'let _worker_guard = AndroidDirectServerWorkerGuard(generation);' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing terminal-listener-worker-generation-not-retired"
+grep -qF 'Java_ffi_FFI_isServerGenerationActive' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-listener-generation-health-jni-missing"
+grep -qF 'android_request_stop_or_confirm_inactive(generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-convergence-jni-missing"
+grep -qF 'pub fn owns_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing exact-main-service-generation-health-owner"
 grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-serialized-service-listener-lifecycle"
 grep -qF 'fn stop_generation(&mut self, expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-exact-generation-deactivation-transition"
 grep -qF 'lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
+grep -qF 'pub fn android_note_worker_exit(expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing terminal-listener-worker-exit-convergence"
+grep -qF 'outcome = &mut direct_listener' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing terminal-listener-task-not-observed"
 if [ -n "$r_s14_missing" ]; then
   echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4: Android capture/input/audio/status/video-worker owner invariant is incomplete:$r_s14_missing"; rc=1
 else

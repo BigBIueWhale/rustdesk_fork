@@ -47,7 +47,13 @@ const MAX_ANDROID_CLIPBOARD_UPDATE_BYTES: usize =
 
 struct MainServiceContext {
     generation: Option<u64>,
+    listener_started: bool,
     owner: GlobalRef,
+}
+
+pub struct MainServiceGenerationRetirement {
+    pub raw_video_retired: bool,
+    pub screen_size_retired: bool,
 }
 
 pub fn get_video_raw(generation: u64, dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
@@ -220,31 +226,31 @@ pub extern "system" fn Java_ffi_FFI_init(
     _class: JClass,
     service: JObject,
     application_context: JObject,
-) {
+) -> jboolean {
     log::debug!("MainService init from java");
     if service.is_null() || application_context.is_null() {
         log::error!("MainService or application context is null");
-        return;
+        return jboolean::from(false);
     }
     let jvm = match env.get_java_vm() {
         Ok(jvm) => jvm,
         Err(error) => {
             log::error!("failed to obtain JVM while initializing MainService: {error}");
-            return;
+            return jboolean::from(false);
         }
     };
-    let service = match env.new_global_ref(service) {
+    let retained_service = match env.new_global_ref(&service) {
         Ok(service) => service,
         Err(error) => {
             log::error!("failed to retain MainService callback owner: {error}");
-            return;
+            return jboolean::from(false);
         }
     };
     let application_context = match env.new_global_ref(application_context) {
         Ok(application_context) => application_context,
         Err(error) => {
             log::error!("failed to retain process application context: {error}");
-            return;
+            return jboolean::from(false);
         }
     };
     let java_vm = jvm.get_java_vm_pointer() as *mut c_void;
@@ -257,46 +263,69 @@ pub extern "system" fn Java_ffi_FFI_init(
         try_init_rustls_platform_verifier(&mut env, context_jobject);
     }
     let mut current = MAIN_SERVICE_CTX.write().unwrap();
-    if let Some(generation) = current.as_ref().and_then(|context| context.generation) {
-        if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
-            log::warn!(
-                "failed to retire Android raw-video generation {generation} during MainService replacement"
-            );
-        }
-        if !SCREEN_SIZE.lock().unwrap().retire_generation(generation) {
-            log::warn!(
-                "failed to retire Android screen-size generation {generation} during MainService replacement"
-            );
+    if let Some(context) = current.as_ref() {
+        match env.is_same_object(context.owner.as_obj(), &service) {
+            Ok(true) => return jboolean::from(true),
+            Ok(false) if context.generation.is_some() => {
+                log::error!(
+                    "refusing to replace an active MainService callback owner without exact retirement"
+                );
+                return jboolean::from(false);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                log::error!("failed to compare MainService callback owner during init: {error}");
+                return jboolean::from(false);
+            }
         }
     }
     *current = Some(MainServiceContext {
         generation: None,
-        owner: service,
+        listener_started: false,
+        owner: retained_service,
     });
+    jboolean::from(true)
 }
 
-pub fn bind_main_service_generation(env: &JNIEnv, service: &JObject, generation: u64) -> bool {
-    if generation == 0 || service.is_null() {
-        return false;
+pub fn bind_main_service_generation<Begin, Rollback>(
+    env: &JNIEnv,
+    service: &JObject,
+    begin_generation: Begin,
+    rollback_generation: Rollback,
+) -> Option<u64>
+where
+    Begin: FnOnce() -> u64,
+    Rollback: FnOnce(u64),
+{
+    if service.is_null() {
+        return None;
     }
     let mut current = MAIN_SERVICE_CTX.write().unwrap();
     let Some(current) = current.as_mut() else {
-        return false;
+        return None;
     };
     match env.is_same_object(current.owner.as_obj(), service) {
         Ok(true) => {}
-        Ok(false) => return false,
+        Ok(false) => return None,
         Err(error) => {
             log::error!("failed to compare MainService generation owner: {error}");
-            return false;
+            return None;
         }
     }
     if current.generation.is_some() {
-        return false;
+        return None;
+    }
+    // The direct-listener reservation is allocated only after the retained Service object has
+    // been proved under the same lock that excludes callback-owner replacement. A stale Service
+    // therefore cannot advance/supersede the listener lifecycle merely by calling startServer.
+    let generation = begin_generation();
+    if generation == 0 {
+        return None;
     }
     if !VIDEO_RAW.lock().unwrap().begin_generation(generation) {
         log::error!("failed to begin Android raw-video generation {generation}");
-        return false;
+        rollback_generation(generation);
+        return None;
     }
     if !SCREEN_SIZE.lock().unwrap().begin_generation(generation) {
         log::error!("failed to begin Android screen-size generation {generation}");
@@ -305,10 +334,111 @@ pub fn bind_main_service_generation(env: &JNIEnv, service: &JObject, generation:
                 "failed to roll back Android raw-video generation {generation} after screen-size admission failure"
             );
         }
-        return false;
+        rollback_generation(generation);
+        return None;
     }
     current.generation = Some(generation);
-    true
+    current.listener_started = false;
+    Some(generation)
+}
+
+pub fn claim_main_service_listener_start(
+    env: &JNIEnv,
+    service: &JObject,
+    generation: u64,
+) -> bool {
+    if generation == 0 || service.is_null() {
+        return false;
+    }
+    let mut current = MAIN_SERVICE_CTX.write().unwrap();
+    let Some(current) = current.as_mut() else {
+        return false;
+    };
+    if current.generation != Some(generation) || current.listener_started {
+        return false;
+    }
+    match env.is_same_object(current.owner.as_obj(), service) {
+        Ok(true) => {
+            current.listener_started = true;
+            true
+        }
+        Ok(false) => false,
+        Err(error) => {
+            log::error!("failed to compare MainService listener owner: {error}");
+            false
+        }
+    }
+}
+
+pub fn owns_main_service_generation(
+    env: &JNIEnv,
+    service: &JObject,
+    generation: u64,
+) -> bool {
+    if generation == 0 || service.is_null() {
+        return false;
+    }
+    let current = MAIN_SERVICE_CTX.read().unwrap();
+    let Some(current) = current.as_ref() else {
+        return false;
+    };
+    if current.generation != Some(generation) {
+        return false;
+    }
+    if !current.listener_started {
+        return false;
+    }
+    match env.is_same_object(current.owner.as_obj(), service) {
+        Ok(is_owner) => is_owner,
+        Err(error) => {
+            log::error!("failed to compare MainService health owner: {error}");
+            false
+        }
+    }
+}
+
+pub fn retire_main_service_generation(
+    env: &JNIEnv,
+    service: &JObject,
+    generation: u64,
+) -> Option<MainServiceGenerationRetirement> {
+    if generation == 0 || service.is_null() {
+        return None;
+    }
+    let mut current = MAIN_SERVICE_CTX.write().unwrap();
+    let Some(current) = current.as_mut() else {
+        return None;
+    };
+    if current.generation != Some(generation) {
+        return None;
+    }
+    match env.is_same_object(current.owner.as_obj(), service) {
+        Ok(true) => {}
+        Ok(false) => return None,
+        Err(error) => {
+            log::error!("failed to compare MainService generation owner: {error}");
+            return None;
+        }
+    }
+
+    let video_retired = VIDEO_RAW.lock().unwrap().retire_generation(generation);
+    if !video_retired {
+        log::warn!(
+            "failed to retire Android raw-video generation {generation} during exact generation retirement"
+        );
+    }
+    let screen_retired = SCREEN_SIZE.lock().unwrap().retire_generation(generation);
+    if !screen_retired {
+        log::warn!(
+            "failed to retire Android screen-size generation {generation} during exact generation retirement"
+        );
+    }
+    current.generation = None;
+    current.listener_started = false;
+    Some(MainServiceGenerationRetirement {
+        raw_video_retired: video_retired,
+        screen_size_retired: screen_retired,
+    })
 }
 
 #[no_mangle]

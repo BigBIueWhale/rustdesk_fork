@@ -1809,10 +1809,10 @@ pub(crate) enum WhiteboardIpcCommand {
         conn_id: i32,
         token: String,
     },
-    Event {
+    Cursor {
         conn_id: i32,
         token: String,
-        event: crate::whiteboard::CustomEvent,
+        cursor: crate::whiteboard::Cursor,
     },
     Close {
         conn_id: i32,
@@ -9631,6 +9631,35 @@ mod test {
             _ => panic!("unexpected whiteboard command"),
         }
 
+        let cursor_command = WhiteboardIpcCommand::Cursor {
+            conn_id: 7,
+            token: "token".to_owned(),
+            cursor: crate::whiteboard::Cursor {
+                x: 1.0,
+                y: 2.0,
+                argb: 3,
+                btns: 0,
+                text: "owner".to_owned(),
+            },
+        };
+        let encoded_cursor = serde_json::to_vec(&cursor_command).unwrap();
+        match serde_json::from_slice::<WhiteboardIpcCommand>(&encoded_cursor).unwrap() {
+            WhiteboardIpcCommand::Cursor {
+                conn_id,
+                token,
+                cursor,
+            } => {
+                assert_eq!(conn_id, 7);
+                assert_eq!(token, "token");
+                assert_eq!(cursor.text, "owner");
+            }
+            _ => panic!("unexpected whiteboard cursor command"),
+        }
+        assert!(serde_json::from_slice::<WhiteboardIpcCommand>(
+            br#"{"t":"Event","conn_id":7,"token":"token","event":{"t":"Clear"}}"#,
+        )
+        .is_err());
+
         assert!(helper
             .next_whiteboard_command_timeout(1)
             .await
@@ -9647,16 +9676,16 @@ mod test {
         let (oversize_end, _oversize_peer) =
             tokio::io::duplex(WHITEBOARD_IPC_MAX_FRAME_BYTES * 2);
         let mut oversize = ConnectionTmpl::new_whiteboard(oversize_end);
-        let oversize_command = WhiteboardIpcCommand::Event {
+        let oversize_command = WhiteboardIpcCommand::Cursor {
             conn_id: 7,
             token: "token".to_owned(),
-            event: crate::whiteboard::CustomEvent::Cursor(crate::whiteboard::Cursor {
+            cursor: crate::whiteboard::Cursor {
                 x: 0.0,
                 y: 0.0,
                 argb: 0,
                 btns: 0,
                 text: "x".repeat(WHITEBOARD_IPC_MAX_FRAME_BYTES),
-            }),
+            },
         };
         assert!(
             oversize

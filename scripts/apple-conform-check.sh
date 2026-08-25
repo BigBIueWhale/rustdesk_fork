@@ -2095,7 +2095,7 @@ grep -q 'const WHITEBOARD_PROCESS_ROLE: &str = "--whiteboard";' "$REPO/src/ipc.r
 grep -q 'fn whiteboard_role_bound_challenge' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 whiteboard-role-bound-proof-missing"
 grep -q 'let role = current_whiteboard_process_role()?' "$REPO/src/ipc.rs" || r_s11c8="$r_s11c8 whiteboard-proof-does-not-use-exact-current-role"
 grep -q 'WhiteboardIpcState' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-state-machine-missing"
-grep -q 'super::client::get_key_cursor(conn_id)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
+grep -q 'WhiteboardIpcAction::Cursor(conn_id, cursor)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-does-not-preserve-numeric-render-owner"
 grep -q 'Connection::new_whiteboard(stream)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 accepted-stream-not-frame-capped"
 grep -q 'handle_new_stream(stream, &mut stop_requested).await' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 accepted-stream-not-owned"
 grep -q 'next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 helper-command-read-not-bounded"
@@ -2105,6 +2105,7 @@ grep -q 'let _terminal = WhiteboardIpcTerminalGuard;' "$REPO/src/whiteboard/serv
 grep -q 'terminate_whiteboard_ipc_generation();' "$REPO/src/whiteboard/server.rs" || r_s11c8="$r_s11c8 terminal-finalizer-does-not-exit-overlay"
 grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-command-channel-unbounded"
 grep -q 'sender.try_send(command)' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
+grep -q 'TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 cursor-overflow-policy-missing"
 grep -q 'static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState>' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-lifecycle-owner-not-unified"
 grep -q 'worker: Option<(u64, tokio::task::JoinHandle<()>)>' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-task-handle-not-retained"
 grep -q 'runtime.spawn(run_whiteboard_worker(generation))' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 client-worker-does-not-use-existing-runtime"
@@ -2135,6 +2136,9 @@ if grep -q 'tokio::spawn(handle_new_stream' "$REPO/src/whiteboard/server.rs"; th
 fi
 if grep -Eq 'std::thread::spawn|#\[tokio::main|STARTING_WHITEBOARD|TX_WHITEBOARD|static ref CONNS' "$REPO/src/whiteboard/client.rs"; then
   r_s11c8="$r_s11c8 detached-nested-or-split-client-lifecycle-present"
+fi
+if grep -RIn 'get_key_cursor' "$REPO/src/server" "$REPO/src/whiteboard" 2>/dev/null >"$APPLE_CHECK_TMP/rd_apple_whiteboard_keys"; then
+  r_s11c8="$r_s11c8 formatted-whiteboard-owner-key-present"
 fi
 data_protocol=$(awk '/^pub enum Data \{/{capture=1} capture{print} capture && /^}/{exit}' "$REPO/src/ipc.rs")
 if echo "$data_protocol" | grep -Eq 'Whiteboard(EndpointChallenge|EndpointProof|ServerChallenge|ServerProof|Bind|Event|Close|Shutdown)'; then
@@ -3739,6 +3743,14 @@ if python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test; t
   note "ok  R-S11ho Apple/shared whiteboard client demand, task, sender, and shutdown use one exact-generation lifecycle owner"
 else
   echo "  FAIL R-S11ho Apple/shared whiteboard client lifecycle regained duplicate launch, nested runtime, lost stop-window demand, automatic failure retry, or stale finalization"
+  rc=1
+fi
+
+echo "== (2g-c2adaaaa) R-S11hp exact-owner whiteboard presentation and redraw lifecycle =="
+if python3 scripts/verify-whiteboard-presentation-lifecycle.py --repo . --self-test; then
+  note "ok  R-S11hp Apple/shared whiteboard presentation resources are bounded, exact-owner final, and demand-redrawn"
+else
+  echo "  FAIL R-S11hp Apple/shared whiteboard presentation regained generic event authority, stale owner resources, unbounded ripples, or continuous idle redraw"
   rc=1
 fi
 

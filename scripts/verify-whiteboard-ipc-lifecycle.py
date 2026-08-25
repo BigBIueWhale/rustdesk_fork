@@ -142,7 +142,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "EVENT_LIFECYCLE.write().unwrap().install(proxy)",
             "if let Some(proxy) = terminal_proxy",
-            "proxy.send_event((String::new(), CustomEvent::Exit))",
+            "proxy.send_event((0, CustomEvent::Exit))",
             "WhiteboardEventProxyGuard",
         ),
         "latched terminal delivery at proxy installation",
@@ -158,7 +158,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "EVENT_LIFECYCLE.write().unwrap().terminate()",
             "if let Some(proxy) = terminal_proxy",
-            "proxy.send_event((String::new(), CustomEvent::Exit))",
+            "proxy.send_event((0, CustomEvent::Exit))",
         ),
         "exact installed-proxy terminal delivery",
     )
@@ -398,7 +398,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "fn clear_proxy(&mut self) {\n        self.proxy = None;", "fn clear_proxy(&mut self) {\n        self.ipc_terminated = false;", "proxy-only retirement"),
     ("server", "EVENT_LIFECYCLE.write().unwrap().install(proxy)", "WhiteboardEventLifecycle::default().install(proxy)", "serialized proxy install"),
     ("server", "EVENT_LIFECYCLE.write().unwrap().terminate()", "WhiteboardEventLifecycle::default().terminate()", "serialized terminal publication"),
-    ("server", "proxy.send_event((String::new(), CustomEvent::Exit))", "proxy.send_event((String::new(), CustomEvent::Clear))", "latched exit delivery"),
+    ("server", "proxy.send_event((0, CustomEvent::Exit))", "proxy.send_event((0, CustomEvent::Clear))", "latched exit delivery"),
     ("server", "EVENT_LIFECYCLE.write().unwrap().clear_proxy();", "// proxy retirement removed", "guarded proxy retirement"),
     ("server", "terminate_whiteboard_ipc_generation();", "// terminal finalization removed", "terminal guard"),
     ("server", "let (stop, stop_requested) = oneshot::channel();", "let (stop, stop_requested) = tokio::sync::mpsc::unbounded_channel();", "one-shot stop edge"),

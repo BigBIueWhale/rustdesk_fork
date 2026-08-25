@@ -1,12 +1,14 @@
 use super::{
-    server::{install_whiteboard_event_proxy, Ripple, WhiteboardIpcWorker},
+    server::{
+        install_whiteboard_event_proxy, Ripple, WhiteboardIpcWorker,
+        WhiteboardPresentationState, RIPPLE_FRAME_INTERVAL,
+    },
     win_linux::{create_font_face, draw_text},
     Cursor, CustomEvent,
 };
 use hbb_common::{bail, log, ResultType};
 use softbuffer::{Context, Surface};
 use std::{
-    collections::HashMap,
     ffi::{c_int, c_short, c_ulong, c_ushort},
     num::NonZeroU32,
     sync::Arc,
@@ -20,8 +22,8 @@ use winit::raw_window_handle::{
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, EventLoop},
+    event::{StartCause, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     platform::x11::{WindowAttributesExtX11, WindowType},
     window::{Window, WindowId, WindowLevel},
 };
@@ -131,8 +133,7 @@ struct WindowState {
     window: Arc<Window>,
     // NOTE: This surface must be dropped before the `Window`.
     surface: Surface<DisplayHandle<'static>, Arc<Window>>,
-    ripples: Vec<Ripple>,
-    last_cursors: HashMap<String, Cursor>,
+    presentation: WhiteboardPresentationState<Cursor, Ripple>,
 }
 
 struct WhiteboardApplication {
@@ -175,26 +176,51 @@ impl WhiteboardApplication {
     }
 }
 
-impl ApplicationHandler<(String, CustomEvent)> for WhiteboardApplication {
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, (k, evt): (String, CustomEvent)) {
+impl ApplicationHandler<(i32, CustomEvent)> for WhiteboardApplication {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+        if matches!(cause, StartCause::ResumeTimeReached { .. }) {
+            for state in self.windows.iter_mut() {
+                let had_ripples = state.presentation.has_ripples();
+                state.presentation.retain_ripples(Ripple::is_active);
+                if had_ripples {
+                    state.window.request_redraw();
+                }
+            }
+        }
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, (conn_id, evt): (i32, CustomEvent)) {
         match evt {
             CustomEvent::Cursor(cursor) => {
                 if let Some(state) = self.windows.first_mut() {
-                    if cursor.btns != 0 {
-                        state.ripples.push(Ripple {
+                    let ripple = if cursor.btns != 0 {
+                        Some(Ripple {
                             x: cursor.x,
                             y: cursor.y,
                             start_time: Instant::now(),
-                        });
+                        })
+                    } else {
+                        None
+                    };
+                    if !state.presentation.update(conn_id, cursor, ripple) {
+                        log::error!(
+                            "Whiteboard presentation rejected invalid or excess owner {conn_id}"
+                        );
+                        self.close_requested = true;
+                    } else {
+                        state.window.request_redraw();
                     }
-                    state.last_cursors.insert(k, cursor);
+                }
+            }
+            CustomEvent::Clear => {
+                if let Some(state) = self.windows.first_mut() {
+                    state.presentation.clear(conn_id);
                     state.window.request_redraw();
                 }
             }
             CustomEvent::Exit => {
                 self.close_requested = true;
             }
-            _ => {}
         }
     }
 
@@ -299,10 +325,10 @@ impl ApplicationHandler<(String, CustomEvent)> for WhiteboardApplication {
         let state = WindowState {
             window,
             surface,
-            ripples: Vec::new(),
-            last_cursors: HashMap::new(),
+            presentation: WhiteboardPresentationState::default(),
         };
 
+        state.window.request_redraw();
         self.windows.push(state);
     }
 
@@ -331,12 +357,18 @@ impl ApplicationHandler<(String, CustomEvent)> for WhiteboardApplication {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if !self.close_requested {
-            for state in self.windows.iter() {
-                state.window.request_redraw();
-            }
-        } else {
+        if self.close_requested {
             event_loop.exit();
+        } else if self
+            .windows
+            .iter()
+            .any(|state| state.presentation.has_ripples())
+        {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                Instant::now() + RIPPLE_FRAME_INTERVAL,
+            ));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
     }
 
@@ -376,8 +408,8 @@ impl WindowState {
         };
         pixmap.fill(Color::TRANSPARENT);
 
-        Ripple::retain_active(&mut self.ripples);
-        for ripple in &self.ripples {
+        self.presentation.retain_ripples(Ripple::is_active);
+        for ripple in self.presentation.ripple_values() {
             let (radius, alpha) = ripple.get_radius_alpha();
 
             let mut ripple_paint = Paint::default();
@@ -398,7 +430,7 @@ impl WindowState {
             }
         }
 
-        for cursor in self.last_cursors.values() {
+        for cursor in self.presentation.cursor_values() {
             let (x, y) = (cursor.x, cursor.y);
             let size = 1.5f32;
 

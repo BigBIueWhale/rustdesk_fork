@@ -17260,7 +17260,7 @@ def validate_whiteboard_ipc_protocol_contract(sources):
     expected_variants = (
         ("WhiteboardOwnerHandshake", ("ServerProof", "EndpointChallenge")),
         ("WhiteboardHelperHandshake", ("ServerChallenge", "EndpointProof")),
-        ("WhiteboardIpcCommand", ("Bind", "Event", "Close", "Shutdown")),
+        ("WhiteboardIpcCommand", ("Bind", "Cursor", "Close", "Shutdown")),
     )
     for enum_name, expected in expected_variants:
         variants = extract_rust_enum_variants(
@@ -17295,8 +17295,8 @@ def validate_whiteboard_ipc_protocol_contract(sources):
         (
             "pub(crate) enum WhiteboardIpcCommand {\n"
             "    Bind {\n        conn_id: i32,\n        token: String,\n    },\n"
-            "    Event {\n        conn_id: i32,\n        token: String,\n"
-            "        event: crate::whiteboard::CustomEvent,\n    },\n"
+            "    Cursor {\n        conn_id: i32,\n        token: String,\n"
+            "        cursor: crate::whiteboard::Cursor,\n    },\n"
             "    Close {\n        conn_id: i32,\n        token: String,\n    },\n"
             "    Shutdown,\n}",
             "whiteboard command field schema",
@@ -17508,8 +17508,7 @@ def validate_whiteboard_ipc_protocol_contract(sources):
             "WhiteboardIpcCommand::Bind",
             "whiteboard_connection_token_is_valid(&token)",
             "self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
-            "WhiteboardIpcCommand::Event",
-            "matches!(event, CustomEvent::Exit)",
+            "WhiteboardIpcCommand::Cursor",
             "WhiteboardIpcCommand::Close",
             "WhiteboardIpcCommand::Shutdown",
             "self.active.is_empty()",
@@ -17568,7 +17567,7 @@ def validate_whiteboard_ipc_protocol_contract(sources):
         queue,
         (
             "sender.try_send(command)",
-            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
+            "TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })",
             "TrySendError::Full(_)",
             "self.sender.take()",
             "self.lifecycle.sender_failed(generation)",
@@ -17803,9 +17802,9 @@ def validate_whiteboard_ipc_lifecycle_contract(sources):
         (
             "EVENT_LIFECYCLE.write().unwrap().clear_proxy();",
             "EVENT_LIFECYCLE.write().unwrap().install(proxy)",
-            "proxy.send_event((String::new(), CustomEvent::Exit))",
+            "proxy.send_event((0, CustomEvent::Exit))",
             "EVENT_LIFECYCLE.write().unwrap().terminate()",
-            "proxy.send_event((String::new(), CustomEvent::Exit))",
+            "proxy.send_event((0, CustomEvent::Exit))",
             "terminate_whiteboard_ipc_generation();",
         ),
         "independent serialized exact-once lifecycle publication",
@@ -18100,7 +18099,7 @@ def validate_whiteboard_client_lifecycle_contract(sources):
             "self.lifecycle.running_generation()",
             "self.lifecycle.sender_failed(generation)",
             "sender.try_send(command)",
-            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
+            "TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })",
             "TrySendError::Full(_)",
             "self.sender.take()",
             "self.lifecycle.sender_failed(generation)",
@@ -18268,6 +18267,377 @@ def validate_whiteboard_client_lifecycle_contract(sources):
         sources["native_watch"],
         f"Requirements hash: {digest}",
         "independent whiteboard client lifecycle native-watch hash",
+    )
+
+
+def validate_whiteboard_presentation_lifecycle_contract(sources):
+    focused = sources["whiteboard_presentation_lifecycle_verifier"]
+    focused_validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "whiteboard presentation lifecycle focused validation",
+    )
+    for text, label in (
+        ("closed cursor-only whiteboard command vocabulary", "focused wire vocabulary check"),
+        ("cursor update and close-owned clear derivation", "focused authority check"),
+        ("bounded exact-owner cursor/ripple state and final clear", "focused presentation check"),
+        ("Windows demand-driven redraw and exact retirement", "focused Windows check"),
+        ("macOS owner-bound cursor/ripple/layout lifecycle", "focused macOS check"),
+        ("Linux demand-driven redraw and exact retirement", "focused Linux check"),
+        ("independent presentation lifecycle dispatch must occur exactly once", "focused dispatch check"),
+        ("exact hardening requirements digest", "focused hardening digest check"),
+        ("exact native-watch requirements digest", "focused native-watch digest check"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("WhiteboardIpcCommand::Event", "focused generic-event prohibition"),
+        ("ControlFlow::Poll", "focused continuous-redraw prohibition"),
+        ("setNeedsDisplay:true", "focused self-redraw prohibition"),
+        ("get_key_cursor", "focused formatted-owner prohibition"),
+    ):
+        require_text(focused_validation, text, label)
+
+    command = extract_braced_item(
+        sources["ipc_source"],
+        "pub(crate) enum WhiteboardIpcCommand",
+        "independent whiteboard command protocol",
+    )
+    require_order(
+        command,
+        (
+            "Bind",
+            "Cursor",
+            "cursor: crate::whiteboard::Cursor",
+            "Close",
+            "Shutdown",
+        ),
+        "independent cursor-only whiteboard command vocabulary",
+    )
+    for text, label in (
+        ("Event {", "independent generic whiteboard command"),
+        ("event:", "independent generic whiteboard event payload"),
+        ("CustomEvent", "independent helper-internal event on wire"),
+    ):
+        require_absent(command, text, label)
+    require_text(
+        sources["ipc_source"],
+        'br#"{"t":"Event","conn_id":7,"token":"token","event":{"t":"Clear"}}"#',
+        "independent generic event/clear wire rejection regression",
+    )
+
+    option = extract_braced_item(
+        sources["connection_source"],
+        "if let Ok(q) = o.show_my_cursor.enum_value()",
+        "independent whiteboard option transition",
+    )
+    require_order(
+        option,
+        (
+            "if q == BoolOption::Yes",
+            "crate::whiteboard::is_supported()",
+            "if self.is_authed_remote_conn()",
+            "self.show_my_cursor = true;",
+            "whiteboard::register_whiteboard(self.inner.id);",
+            "self.show_my_cursor = false;",
+            "whiteboard::unregister_whiteboard(self.inner.id);",
+            "self.send(msg_out).await;",
+            "self.show_my_cursor = false;",
+            "whiteboard::unregister_whiteboard(self.inner.id);",
+        ),
+        "independent enable-only probe and all retirement transitions",
+    )
+    require_exact_count(
+        option,
+        "whiteboard::register_whiteboard(self.inner.id);",
+        1,
+        "independent registration edge",
+    )
+    require_exact_count(
+        option,
+        "whiteboard::unregister_whiteboard(self.inner.id);",
+        3,
+        "independent retirement edges",
+    )
+
+    client = sources["whiteboard_client"]
+    update = extract_braced_item(
+        client,
+        "pub fn update_whiteboard_cursor(conn_id: i32, cursor: Cursor)",
+        "independent typed whiteboard cursor publication",
+    )
+    require_order(
+        update,
+        (
+            "let mut commands = [None, None];",
+            "conn.last_cursor_evt.cursor",
+            "whiteboard_cursor_command(conn, conn_id, cursor)",
+            "commands.into_iter().flatten().enumerate()",
+            "state.send_command(command)",
+        ),
+        "independent fixed-storage typed cursor publication",
+    )
+    require_text(
+        client,
+        "TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })",
+        "independent cursor-only lossy overflow",
+    )
+    require_text(
+        client,
+        "let mut pending: [Option<(i32, String, Cursor)>;",
+        "independent fixed pending cursor flush",
+    )
+    for text, label in (
+        ("WhiteboardIpcCommand::Event", "independent generic client event command"),
+        ("get_key_cursor", "independent formatted cursor owner"),
+        ("let mut pending = Vec::new()", "independent periodic heap vector"),
+    ):
+        require_absent(client, text, label)
+    require_exact_count(
+        sources["desktop_input_source"],
+        "whiteboard::update_whiteboard_cursor(",
+        2,
+        "independent typed desktop cursor producers",
+    )
+
+    server = sources["whiteboard_server"]
+    require_text(
+        server,
+        "WhiteboardEventLifecycle<EventLoopProxy<(i32, CustomEvent)>>",
+        "independent numeric event-loop owner identity",
+    )
+    action = extract_braced_item(
+        server,
+        "enum WhiteboardIpcAction",
+        "independent typed whiteboard helper action",
+    )
+    require_order(
+        action,
+        ("Cursor(i32, Cursor)", "Clear(i32)", "Shutdown"),
+        "independent internal action vocabulary",
+    )
+    authority = extract_braced_item(
+        server,
+        "impl WhiteboardIpcState",
+        "independent whiteboard IPC authority",
+    )
+    require_order(
+        authority,
+        (
+            "WhiteboardIpcCommand::Cursor",
+            "Some(WhiteboardIpcAction::Cursor(conn_id, cursor))",
+            "WhiteboardIpcCommand::Close",
+            "self.active.remove(&conn_id);",
+            "Some(WhiteboardIpcAction::Clear(conn_id))",
+            "WhiteboardIpcCommand::Shutdown",
+        ),
+        "independent authorized cursor and close-owned clear derivation",
+    )
+    presentation_owner = extract_braced_item(
+        server,
+        "pub(super) struct WhiteboardPresentationState<C, R>",
+        "independent shared whiteboard presentation storage",
+    )
+    require_order(
+        presentation_owner,
+        ("cursors: HashMap<i32, C>", "ripples: HashMap<i32, VecDeque<R>>"),
+        "independent numeric per-owner presentation storage",
+    )
+    presentation = extract_braced_item(
+        server,
+        "impl<C, R> WhiteboardPresentationState<C, R>",
+        "independent shared whiteboard presentation owner",
+    )
+    require_order(
+        presentation,
+        (
+            "if conn_id <= 0",
+            "self.cursors.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "self.ripples.entry(conn_id).or_default()",
+            "ripples.len() == WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER",
+            "ripples.pop_front();",
+            "ripples.push_back(ripple);",
+            "self.cursors.insert(conn_id, cursor);",
+            "self.cursors.remove(&conn_id);",
+            "self.ripples.remove(&conn_id);",
+            "self.cursors.get(&conn_id)",
+        ),
+        "independent bounded exact-owner presentation lifecycle",
+    )
+    require_text(
+        server,
+        "WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER: usize = 64",
+        "independent per-owner ripple ceiling",
+    )
+    require_text(
+        server,
+        "RIPPLE_FRAME_INTERVAL: Duration = Duration::from_millis(16)",
+        "independent active-ripple frame deadline",
+    )
+    for test in (
+        "r_s11hp_whiteboard_presentation_clear_is_exact_owner_final",
+        "r_s11hp_whiteboard_presentation_owners_and_ripples_are_bounded",
+    ):
+        require_text(server, test, f"independent {test} regression")
+    for text, label in (
+        ("get_key_cursor", "independent formatted helper owner identity"),
+        ("WhiteboardIpcCommand::Event", "independent generic helper event command"),
+        ("EventLoopProxy<(String, CustomEvent)>", "independent string event owner"),
+    ):
+        require_absent(server, text, label)
+
+    for key, name, clear in (
+        ("whiteboard_windows", "Windows", "presentation.clear(conn_id);"),
+        ("whiteboard_macos", "macOS", "presentation.clear(conn_id);"),
+        ("whiteboard_linux", "Linux", "state.presentation.clear(conn_id);"),
+    ):
+        platform = sources[key]
+        for text, label in (
+            ("WhiteboardPresentationState", "shared presentation state"),
+            ("CustomEvent::Clear", "exact clear event"),
+            (clear, "owner retirement"),
+            ("ControlFlow::WaitUntil", "active-ripple deadline"),
+            ("ControlFlow::Wait", "idle wait"),
+            ("RIPPLE_FRAME_INTERVAL", "shared frame interval"),
+        ):
+            require_text(platform, text, f"independent {name} {label}")
+        for text, label in (
+            ("ControlFlow::Poll", "continuous idle redraw"),
+            ("last_cursors", "parallel cursor map"),
+            ("get_key_cursor", "formatted owner identity"),
+        ):
+            require_absent(platform, text, f"independent {name} {label}")
+    require_text(
+        sources["whiteboard_macos"],
+        "cursor_text_layouts.remove(&conn_id);",
+        "independent macOS owner-bound layout retirement",
+    )
+    require_absent(
+        sources["whiteboard_macos"],
+        "setNeedsDisplay:true",
+        "independent macOS self-perpetuating redraw",
+    )
+    require_exact_count(
+        sources["whiteboard_macos"],
+        "cursor_text_layouts.remove(&conn_id);",
+        2,
+        "independent macOS layout retirement edges",
+    )
+    windows_deadline = extract_braced_item(
+        sources["whiteboard_windows"],
+        "Event::NewEvents(StartCause::ResumeTimeReached { .. }) =>",
+        "independent Windows deadline branch",
+    )
+    require_order(
+        windows_deadline,
+        (
+            "let had_ripples = presentation.has_ripples();",
+            "presentation.retain_ripples(Ripple::is_active);",
+            "if had_ripples",
+            "window.request_redraw();",
+            "*control_flow = if presentation.has_ripples()",
+            "ControlFlow::WaitUntil",
+            "ControlFlow::Wait",
+        ),
+        "independent Windows deadline-owned ripple expiry",
+    )
+    macos_deadline = extract_braced_item(
+        sources["whiteboard_macos"],
+        "StartCause::ResumeTimeReached { .. } =>",
+        "independent macOS deadline branch",
+    )
+    require_order(
+        macos_deadline,
+        (
+            "let had_ripples = presentation.has_ripples();",
+            "presentation.retain_ripples(|(_, ripple)| ripple.is_active());",
+            "if had_ripples",
+            "window.window.request_redraw();",
+            "*control_flow = if presentation.has_ripples()",
+            "ControlFlow::WaitUntil",
+            "ControlFlow::Wait",
+        ),
+        "independent macOS deadline-owned ripple expiry",
+    )
+    linux_deadline = extract_braced_item(
+        sources["whiteboard_linux"],
+        "if matches!(cause, StartCause::ResumeTimeReached { .. })",
+        "independent Linux deadline branch",
+    )
+    require_order(
+        linux_deadline,
+        (
+            "let had_ripples = state.presentation.has_ripples();",
+            "state.presentation.retain_ripples(Ripple::is_active);",
+            "if had_ripples",
+            "state.window.request_redraw();",
+        ),
+        "independent Linux deadline-owned ripple expiry",
+    )
+    require_order(
+        sources["whiteboard_macos"],
+        (
+            "let previous_window_id =",
+            "presentation.cursor(conn_id).map(|info| info.window_id);",
+            "let mut matched = false;",
+            "(cursor.x as f64) >= r",
+            "(cursor.y as f64) >= b",
+            "matched = true;",
+            "presentation.update(",
+            "if previous_window_id != Some(window.window.id())",
+            "previous.window.request_redraw();",
+            "if !matched",
+            "presentation.clear(conn_id);",
+            "cursor_text_layouts.remove(&conn_id);",
+        ),
+        "independent macOS cross-monitor and unmapped-coordinate retirement",
+    )
+
+    gate = "python3 scripts/verify-whiteboard-presentation-lifecycle.py --repo . --self-test"
+    for source, text, label in (
+        (sources["verify"], gate, "independent shared presentation gate"),
+        (
+            sources["verify"],
+            "cargo test --lib --features linux-pkg-config,flutter r_s11hp_ --color never",
+            "independent shared presentation behavior gate",
+        ),
+        (sources["apple"], gate, "independent Apple presentation gate"),
+        (
+            sources["requirements"],
+            '<div class="req"><span class="id">R-S11hp</span>',
+            "independent R-S11hp requirement",
+        ),
+        (sources["requirements"], "<tr><td>376</td>", "independent Appendix C #376"),
+        (
+            sources["hardening"],
+            "### R-S11hp/R-S11e-253 — exact-owner whiteboard presentation and redraw lifecycle",
+            "independent presentation lifecycle ledger",
+        ),
+        (
+            sources["workspace_verifier"],
+            '            "whiteboard_presentation_lifecycle_verifier": (\n'
+            '                repo / "scripts/verify-whiteboard-presentation-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent presentation focused-verifier source binding",
+        ),
+        (
+            sources["workspace_verifier"],
+            "    validate_whiteboard_presentation_lifecycle_contract(sources)\n",
+            "independent presentation lifecycle validator dispatch",
+        ),
+    ):
+        require_text(source, text, label)
+
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(
+        sources["hardening"],
+        f"{digest}  requirements.html",
+        "independent whiteboard presentation requirements hash",
+    )
+    require_text(
+        sources["native_watch"],
+        f"Requirements hash: {digest}",
+        "independent whiteboard presentation native-watch hash",
     )
 
 
@@ -52345,6 +52715,7 @@ def validate_sources(sources):
     validate_whiteboard_ipc_protocol_contract(sources)
     validate_whiteboard_ipc_lifecycle_contract(sources)
     validate_whiteboard_client_lifecycle_contract(sources)
+    validate_whiteboard_presentation_lifecycle_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_x11_capture_shared_memory_contract(sources)
@@ -69323,7 +69694,7 @@ def run_source_mutations(sources):
         ),
         (
             "whiteboard_client",
-            "Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))",
+            "Err(TrySendError::Full(WhiteboardIpcCommand::Cursor { .. }))",
             "Err(TrySendError::Full(_))",
             "whiteboard bounded nonblocking overflow policy",
         ),
@@ -88178,6 +88549,278 @@ def run_source_mutations(sources):
             "    validate_whiteboard_client_lifecycle_contract_disabled(sources)\n",
             "independent client-lifecycle validator dispatch",
         ),
+        (
+            "ipc_source",
+            "    Cursor {\n",
+            "    Event {\n",
+            "WhiteboardIpcCommand protocol",
+        ),
+        (
+            "ipc_source",
+            "        cursor: crate::whiteboard::Cursor,\n    },\n    Close {",
+            "        event: crate::whiteboard::CustomEvent,\n    },\n    Close {",
+            "whiteboard command field schema",
+        ),
+        (
+            "connection_source",
+            "use crate::whiteboard;\n                if q == BoolOption::Yes {",
+            "use crate::whiteboard;\n                if q != BoolOption::Yes {",
+            "independent enable-only probe and all retirement transitions",
+        ),
+        (
+            "connection_source",
+            "whiteboard::register_whiteboard(self.inner.id);",
+            "whiteboard::unregister_whiteboard(self.inner.id);",
+            "independent enable-only probe and all retirement transitions",
+        ),
+        (
+            "whiteboard_client",
+            "pub fn update_whiteboard_cursor",
+            "pub fn update_whiteboard",
+            "independent typed whiteboard cursor publication",
+        ),
+        (
+            "whiteboard_client",
+            "TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })",
+            "TrySendError::Full(_)",
+            "whiteboard bounded nonblocking overflow policy",
+        ),
+        (
+            "whiteboard_client",
+            "let mut pending: [Option<(i32, String, Cursor)>;",
+            "let mut pending = Vec::new(); //",
+            "independent fixed pending cursor flush",
+        ),
+        (
+            "desktop_input_source",
+            "whiteboard::update_whiteboard_cursor(",
+            "whiteboard::update_whiteboard(",
+            "independent typed desktop cursor producers",
+        ),
+        (
+            "whiteboard_server",
+            "WhiteboardEventLifecycle<EventLoopProxy<(i32, CustomEvent)>>",
+            "WhiteboardEventLifecycle<EventLoopProxy<(String, CustomEvent)>>",
+            "independent numeric event-loop owner identity",
+        ),
+        (
+            "whiteboard_server",
+            "    Cursor(i32, Cursor),",
+            "    Event(String, CustomEvent),",
+            "independent internal action vocabulary",
+        ),
+        (
+            "whiteboard_server",
+            "                    Some(WhiteboardIpcAction::Cursor(conn_id, cursor))\n"
+            "                } else {",
+            "                    None // cursor forwarding omitted\n"
+            "                } else {",
+            "independent authorized cursor and close-owned clear derivation",
+        ),
+        (
+            "whiteboard_server",
+            "                    Some(WhiteboardIpcAction::Clear(conn_id))\n"
+            "                } else {",
+            "                    None // owner clear omitted\n"
+            "                } else {",
+            "independent authorized cursor and close-owned clear derivation",
+        ),
+        (
+            "whiteboard_server",
+            "cursors: HashMap<i32, C>",
+            "cursors: HashMap<String, C>",
+            "independent numeric per-owner presentation storage",
+        ),
+        (
+            "whiteboard_server",
+            "ripples: HashMap<i32, VecDeque<R>>",
+            "ripples: Vec<R>",
+            "independent numeric per-owner presentation storage",
+        ),
+        (
+            "whiteboard_server",
+            "self.cursors.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "false",
+            "independent bounded exact-owner presentation lifecycle",
+        ),
+        (
+            "whiteboard_server",
+            "WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER: usize = 64",
+            "WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER: usize = usize::MAX",
+            "independent per-owner ripple ceiling",
+        ),
+        (
+            "whiteboard_server",
+            "ripples.pop_front();",
+            "ripples.clear();",
+            "independent bounded exact-owner presentation lifecycle",
+        ),
+        (
+            "whiteboard_server",
+            "self.cursors.remove(&conn_id);",
+            "// cursor retained",
+            "independent bounded exact-owner presentation lifecycle",
+        ),
+        (
+            "whiteboard_server",
+            "self.ripples.remove(&conn_id);",
+            "// ripples retained",
+            "independent bounded exact-owner presentation lifecycle",
+        ),
+        (
+            "whiteboard_server",
+            "self.cursors.get(&conn_id)",
+            "None // owner lookup omitted",
+            "independent bounded exact-owner presentation lifecycle",
+        ),
+        (
+            "whiteboard_server",
+            "fn r_s11hp_whiteboard_presentation_clear_is_exact_owner_final",
+            "fn whiteboard_presentation_clear_is_advisory",
+            "independent r_s11hp_whiteboard_presentation_clear_is_exact_owner_final regression",
+        ),
+        (
+            "whiteboard_server",
+            "fn r_s11hp_whiteboard_presentation_owners_and_ripples_are_bounded",
+            "fn whiteboard_presentation_is_unbounded",
+            "independent r_s11hp_whiteboard_presentation_owners_and_ripples_are_bounded regression",
+        ),
+        (
+            "whiteboard_windows",
+            "ControlFlow::WaitUntil",
+            "ControlFlow::Poll",
+            "independent Windows continuous idle redraw",
+        ),
+        (
+            "whiteboard_windows",
+            "presentation.retain_ripples(Ripple::is_active);\n                if had_ripples",
+            "// deadline expiry omitted\n                if had_ripples",
+            "independent Windows deadline-owned ripple expiry",
+        ),
+        (
+            "whiteboard_windows",
+            "presentation.clear(conn_id);",
+            "// Windows owner retained",
+            "independent Windows owner retirement",
+        ),
+        (
+            "whiteboard_macos",
+            "cursor_text_layouts.remove(&conn_id);",
+            "// macOS layout retained",
+            "independent macOS layout retirement edges",
+        ),
+        (
+            "whiteboard_macos",
+            "previous.window.request_redraw();",
+            "// previous monitor retained",
+            "independent macOS cross-monitor and unmapped-coordinate retirement",
+        ),
+        (
+            "whiteboard_macos",
+            "(cursor.x as f64) >= r",
+            "(cursor.x as f64) > r",
+            "independent macOS cross-monitor and unmapped-coordinate retirement",
+        ),
+        (
+            "whiteboard_macos",
+            "(cursor.y as f64) >= b",
+            "(cursor.y as f64) > b",
+            "independent macOS cross-monitor and unmapped-coordinate retirement",
+        ),
+        (
+            "whiteboard_macos",
+            "if !matched {",
+            "if false {",
+            "independent macOS cross-monitor and unmapped-coordinate retirement",
+        ),
+        (
+            "whiteboard_macos",
+            "ControlFlow::WaitUntil",
+            "ControlFlow::Poll",
+            "independent macOS continuous idle redraw",
+        ),
+        (
+            "whiteboard_macos",
+            "presentation.retain_ripples(|(_, ripple)| ripple.is_active());\n                    if had_ripples",
+            "// deadline expiry omitted\n                    if had_ripples",
+            "independent macOS deadline-owned ripple expiry",
+        ),
+        (
+            "whiteboard_linux",
+            "state.presentation.clear(conn_id);",
+            "// Linux owner retained",
+            "independent Linux owner retirement",
+        ),
+        (
+            "whiteboard_linux",
+            "ControlFlow::WaitUntil",
+            "ControlFlow::Poll",
+            "independent Linux active-ripple deadline",
+        ),
+        (
+            "whiteboard_linux",
+            "state.presentation.retain_ripples(Ripple::is_active);",
+            "// deadline expiry omitted",
+            "independent Linux deadline-owned ripple expiry",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-whiteboard-presentation-lifecycle.py --repo . --self-test",
+            "true # whiteboard presentation lifecycle gate disabled",
+            "independent shared presentation gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11hp_ --color never",
+            "true # whiteboard presentation behavior tests disabled",
+            "independent shared presentation behavior gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-whiteboard-presentation-lifecycle.py --repo . --self-test",
+            "true # whiteboard presentation Apple gate disabled",
+            "independent Apple presentation gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hp</span>',
+            '<div class="req"><span class="id">R-S11hp-disabled</span>',
+            "independent R-S11hp requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>376</td>",
+            "<tr><td>376-disabled</td>",
+            "independent Appendix C #376",
+        ),
+        (
+            "hardening",
+            "### R-S11hp/R-S11e-253 — exact-owner whiteboard presentation and redraw lifecycle",
+            "### R-S11hp-disabled/R-S11e-253 — exact-owner whiteboard presentation and redraw lifecycle",
+            "independent presentation lifecycle ledger",
+        ),
+        (
+            "whiteboard_presentation_lifecycle_verifier",
+            '"bounded exact-owner cursor/ripple state and final clear"',
+            '"bounded exact-owner presentation check disabled"',
+            "focused presentation check",
+        ),
+        (
+            "workspace_verifier",
+            '            "whiteboard_presentation_lifecycle_verifier": (\n'
+            '                repo / "scripts/verify-whiteboard-presentation-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "whiteboard_presentation_lifecycle_verifier_disabled": (\n'
+            '                repo / "scripts/verify-whiteboard-presentation-lifecycle.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent presentation focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_whiteboard_presentation_lifecycle_contract(sources)\n",
+            "    validate_whiteboard_presentation_lifecycle_contract_disabled(sources)\n",
+            "independent presentation lifecycle validator dispatch",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -89215,6 +89858,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "whiteboard_client_lifecycle_verifier": (
                 repo / "scripts/verify-whiteboard-client-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "whiteboard_presentation_lifecycle_verifier": (
+                repo / "scripts/verify-whiteboard-presentation-lifecycle.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

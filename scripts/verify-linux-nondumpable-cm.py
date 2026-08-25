@@ -691,7 +691,7 @@ def validate(sources: Dict[str, str]) -> None:
             "WhiteboardIpcCommand",
             "pub(crate)enumWhiteboardIpcCommand{"
             "Bind{conn_id:i32,token:String,},"
-            "Event{conn_id:i32,token:String,event:crate::whiteboard::CustomEvent,},"
+            "Cursor{conn_id:i32,token:String,cursor:crate::whiteboard::Cursor,},"
             "Close{conn_id:i32,token:String,},"
             "Shutdown,}",
         ),
@@ -843,8 +843,7 @@ def validate(sources: Dict[str, str]) -> None:
             "WhiteboardIpcCommand::Bind",
             "whiteboard_connection_token_is_valid(&token)",
             "self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
-            "WhiteboardIpcCommand::Event",
-            "matches!(event, CustomEvent::Exit)",
+            "WhiteboardIpcCommand::Cursor",
             "WhiteboardIpcCommand::Close",
             "WhiteboardIpcCommand::Shutdown",
             "self.active.is_empty()",
@@ -894,7 +893,7 @@ def validate(sources: Dict[str, str]) -> None:
         whiteboard_queue,
         (
             "sender.try_send(command)",
-            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
+            "TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })",
             "TrySendError::Full(_)",
             "self.sender.take()",
             "self.lifecycle.sender_failed(generation)",
@@ -1366,7 +1365,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "whiteboard_client",
-        "Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))",
+        "Err(TrySendError::Full(WhiteboardIpcCommand::Cursor { .. }))",
         "Err(TrySendError::Full(_))",
         "whiteboard event overflow policy",
     ),

@@ -7212,7 +7212,7 @@ grep -q 'const WHITEBOARD_PROCESS_ROLE: &str = "--whiteboard";' src/ipc.rs || r_
 grep -q 'fn whiteboard_role_bound_challenge' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-role-bound-proof-missing"
 grep -q 'let role = current_whiteboard_process_role()?' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-proof-does-not-use-exact-current-role"
 grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-state-machine-missing"
-grep -q 'super::client::get_key_cursor(conn_id)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
+grep -q 'WhiteboardIpcAction::Cursor(conn_id, cursor)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-preserve-numeric-render-owner"
 grep -q 'Connection::new_whiteboard(stream)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-frame-capped"
 grep -q 'handle_new_stream(stream, &mut stop_requested).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-owned"
 grep -q 'next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-command-read-not-bounded"
@@ -7222,7 +7222,7 @@ grep -q 'let _terminal = WhiteboardIpcTerminalGuard;' src/whiteboard/server.rs |
 grep -q 'terminate_whiteboard_ipc_generation();' src/whiteboard/server.rs || r_s11c8="$r_s11c8 terminal-finalizer-does-not-exit-overlay"
 grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-channel-unbounded"
 grep -q 'sender.try_send(command)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
-grep -q 'TrySendError::Full(WhiteboardIpcCommand::Event { .. })' src/whiteboard/client.rs || r_s11c8="$r_s11c8 event-overflow-policy-missing"
+grep -q 'TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })' src/whiteboard/client.rs || r_s11c8="$r_s11c8 cursor-overflow-policy-missing"
 grep -q 'static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState>' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-lifecycle-owner-not-unified"
 grep -q 'worker: Option<(u64, tokio::task::JoinHandle<()>)>' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-task-handle-not-retained"
 grep -q 'runtime.spawn(run_whiteboard_worker(generation))' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-worker-does-not-use-existing-runtime"
@@ -7273,8 +7273,8 @@ fi
 if grep -Eq 'std::thread::spawn|#\[tokio::main|STARTING_WHITEBOARD|TX_WHITEBOARD|static ref CONNS' src/whiteboard/client.rs; then
   r_s11c8="$r_s11c8 detached-nested-or-split-client-lifecycle-present"
 fi
-if grep -RIn 'get_key_cursor(conn)' src/server src/whiteboard/client.rs 2>/dev/null >"$VERIFY_TMP/rd_verify_whiteboard_keys"; then
-  r_s11c8="$r_s11c8 caller-derived-whiteboard-key-present"
+if grep -RIn 'get_key_cursor' src/server src/whiteboard 2>/dev/null >"$VERIFY_TMP/rd_verify_whiteboard_keys"; then
+  r_s11c8="$r_s11c8 formatted-whiteboard-owner-key-present"
 fi
 whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' src/server/connection.rs || true)
 echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
@@ -9534,6 +9534,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hp_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
@@ -9596,6 +9597,12 @@ if python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test; t
   echo "  ok  R-S11ho/R-S11e-252 whiteboard client demand, task, sender, and shutdown use one exact-generation lifecycle owner"
 else
   echo "  FAIL R-S11ho/R-S11e-252: whiteboard client lifecycle regained duplicate launch, nested runtime, lost stop-window demand, automatic failure retry, or stale finalization"
+  rc=1
+fi
+if python3 scripts/verify-whiteboard-presentation-lifecycle.py --repo . --self-test; then
+  echo "  ok  R-S11hp/R-S11e-253 whiteboard presentation resources are bounded, exact-owner final, and demand-redrawn"
+else
+  echo "  FAIL R-S11hp/R-S11e-253: whiteboard presentation regained generic event authority, stale owner resources, unbounded ripples, or continuous idle redraw"
   rc=1
 fi
 if python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test; then

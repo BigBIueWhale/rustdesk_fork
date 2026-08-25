@@ -1,14 +1,17 @@
 use super::{
-    server::{install_whiteboard_event_proxy, Ripple},
+    server::{
+        install_whiteboard_event_proxy, Ripple, WhiteboardPresentationState,
+        RIPPLE_FRAME_INTERVAL,
+    },
     win_linux::{create_font_face, draw_text},
     Cursor, CustomEvent,
 };
 use hbb_common::{anyhow::anyhow, log, ResultType};
 use softbuffer::{Context, Surface};
-use std::{collections::HashMap, num::NonZeroU32, sync::Arc, time::Instant};
+use std::{num::NonZeroU32, sync::Arc, time::Instant};
 use tao::{
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{Event, WindowEvent},
+    event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder},
     platform::windows::WindowBuilderExtWindows,
     window::WindowBuilder,
@@ -63,14 +66,30 @@ pub(super) fn create_event_loop() -> ResultType<()> {
     let proxy = event_loop.create_proxy();
     let _event_proxy = install_whiteboard_event_proxy(proxy);
 
-    let mut ripples: Vec<Ripple> = Vec::new();
-    let mut last_cursors: HashMap<String, Cursor> = HashMap::new();
+    let mut presentation = WhiteboardPresentationState::<Cursor, Ripple>::default();
     let mut resized = final_size.is_none();
+    window.request_redraw();
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
+        *control_flow = if presentation.has_ripples() {
+            ControlFlow::WaitUntil(Instant::now() + RIPPLE_FRAME_INTERVAL)
+        } else {
+            ControlFlow::Wait
+        };
 
         match event {
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                let had_ripples = presentation.has_ripples();
+                presentation.retain_ripples(Ripple::is_active);
+                if had_ripples {
+                    window.request_redraw();
+                }
+                *control_flow = if presentation.has_ripples() {
+                    ControlFlow::WaitUntil(Instant::now() + RIPPLE_FRAME_INTERVAL)
+                } else {
+                    ControlFlow::Wait
+                };
+            }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
@@ -83,6 +102,7 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                         window.set_inner_size(size);
                     }
                     resized = true;
+                    window.request_redraw();
                     return;
                 }
 
@@ -117,8 +137,8 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                 };
                 pixmap.fill(Color::TRANSPARENT);
 
-                Ripple::retain_active(&mut ripples);
-                for ripple in &ripples {
+                presentation.retain_ripples(Ripple::is_active);
+                for ripple in presentation.ripple_values() {
                     let (radius, alpha) = ripple.get_radius_alpha();
 
                     let mut ripple_paint = Paint::default();
@@ -139,7 +159,7 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                     }
                 }
 
-                for cursor in last_cursors.values() {
+                for cursor in presentation.cursor_values() {
                     let (x, y) = (cursor.x, cursor.y);
                     let size = 1.5f32;
 
@@ -198,25 +218,39 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                     log::error!("Failed to present surface: {}", e);
                     return;
                 }
+                *control_flow = if presentation.has_ripples() {
+                    ControlFlow::WaitUntil(Instant::now() + RIPPLE_FRAME_INTERVAL)
+                } else {
+                    ControlFlow::Wait
+                };
             }
-            Event::MainEventsCleared => {
-                window.request_redraw();
-            }
-            Event::UserEvent((k, evt)) => match evt {
+            Event::UserEvent((conn_id, evt)) => match evt {
                 CustomEvent::Cursor(cursor) => {
-                    if cursor.btns != 0 {
-                        ripples.push(Ripple {
+                    let ripple = if cursor.btns != 0 {
+                        Some(Ripple {
                             x: cursor.x,
                             y: cursor.y,
                             start_time: Instant::now(),
-                        });
+                        })
+                    } else {
+                        None
+                    };
+                    if !presentation.update(conn_id, cursor, ripple) {
+                        log::error!(
+                            "Whiteboard presentation rejected invalid or excess owner {conn_id}"
+                        );
+                        *control_flow = ControlFlow::Exit;
+                    } else {
+                        window.request_redraw();
                     }
-                    last_cursors.insert(k, cursor);
+                }
+                CustomEvent::Clear => {
+                    presentation.clear(conn_id);
+                    window.request_redraw();
                 }
                 CustomEvent::Exit => {
                     *control_flow = ControlFlow::Exit;
                 }
-                _ => {}
             },
             _ => (),
         }

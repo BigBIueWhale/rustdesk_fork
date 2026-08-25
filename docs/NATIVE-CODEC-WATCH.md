@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: b4f938bc62433a314a186dacde7db9c1f20addc6e05cebf340b384ae2b7959b5
+Requirements hash: d975b722abbcd1987e348890f334c4a33fa9ae4dc66468561bbfbe77be77da44
 The same identity additionally binds R-S11gv and Appendix C #357.
 The same identity additionally binds R-S11gw and Appendix C #358.
 The same identity additionally binds R-S11hb and Appendix C #363.

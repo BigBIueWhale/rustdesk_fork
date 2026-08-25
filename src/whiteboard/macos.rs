@@ -1,4 +1,10 @@
-use super::{server::install_whiteboard_event_proxy, Cursor, CustomEvent, Ripple};
+use super::{
+    server::{
+        install_whiteboard_event_proxy, Ripple, WhiteboardPresentationState,
+        RIPPLE_FRAME_INTERVAL,
+    },
+    Cursor, CustomEvent,
+};
 use core_graphics::context::CGContextRef;
 use foreign_types::ForeignTypeRef;
 use hbb_common::{bail, log, ResultType};
@@ -32,8 +38,13 @@ struct WindowState {
 
 struct CursorInfo {
     window_id: WindowId,
-    text_key: (String, u32),
     cursor: Cursor,
+}
+
+struct CursorTextLayout {
+    text: String,
+    argb: u32,
+    layout: CoreGraphicsTextLayout,
 }
 
 fn set_window_properties(window: &Arc<Window>) -> ResultType<()> {
@@ -62,7 +73,7 @@ fn set_window_properties(window: &Arc<Window>) -> ResultType<()> {
     Ok(())
 }
 
-fn create_windows(event_loop: &EventLoop<(String, CustomEvent)>) -> ResultType<Vec<WindowState>> {
+fn create_windows(event_loop: &EventLoop<(i32, CustomEvent)>) -> ResultType<Vec<WindowState>> {
     let mut windows = Vec::new();
     let map_display_origins: HashMap<_, _> = crate::server::display_service::try_get_displays()?
         .into_iter()
@@ -88,7 +99,7 @@ fn create_windows(event_loop: &EventLoop<(String, CustomEvent)>) -> ResultType<V
             .with_position(monitor.position())
             .with_inner_size(monitor.size());
 
-        let window = Arc::new(window_builder.build::<(String, CustomEvent)>(event_loop)?);
+        let window = Arc::new(window_builder.build::<(i32, CustomEvent)>(event_loop)?);
         set_window_properties(&window)?;
 
         let mut scale_factor = window.scale_factor();
@@ -112,10 +123,10 @@ fn create_windows(event_loop: &EventLoop<(String, CustomEvent)>) -> ResultType<V
 fn draw_cursors(
     windows: &Vec<WindowState>,
     window_id: WindowId,
-    window_ripples: &mut HashMap<WindowId, Vec<Ripple>>,
-    last_cursors: &HashMap<String, CursorInfo>,
-    map_cursor_text: &mut HashMap<(String, u32), CoreGraphicsTextLayout>,
+    presentation: &mut WhiteboardPresentationState<CursorInfo, (WindowId, Ripple)>,
+    cursor_text_layouts: &mut HashMap<i32, CursorTextLayout>,
 ) {
+    presentation.retain_ripples(|(_, ripple)| ripple.is_active());
     for window in windows.iter() {
         if window.window.id() != window_id {
             continue;
@@ -140,9 +151,8 @@ fn draw_cursors(
                             );
                             context.clear(None, piet::Color::TRANSPARENT);
 
-                            if let Some(ripples) = window_ripples.get_mut(&window_id) {
-                                Ripple::retain_active(ripples);
-                                for ripple in ripples.iter() {
+                            for (ripple_window_id, ripple) in presentation.ripple_values() {
+                                if *ripple_window_id == window_id {
                                     let (radius, alpha) = ripple.get_radius_alpha();
                                     let color = piet::Color::rgba(1.0, 0.25, 0.25, alpha * 0.5);
                                     let circle =
@@ -151,7 +161,7 @@ fn draw_cursors(
                                 }
                             }
 
-                            for info in last_cursors.values() {
+                            for (conn_id, info) in presentation.cursor_entries() {
                                 if info.window_id != window.window.id() {
                                     continue;
                                 }
@@ -183,10 +193,13 @@ fn draw_cursors(
                                     padded_bounds.to_rounded_rect(5.0)
                                 };
 
-                                if let Some(layout) = map_cursor_text.get(&info.text_key) {
-                                    context.fill(get_rounded_rect(layout), &piet::Color::WHITE);
-                                    context.draw_text(layout, pos);
-                                } else {
+                                let layout_is_current = cursor_text_layouts
+                                    .get(conn_id)
+                                    .is_some_and(|cached| {
+                                        cached.text == cursor.text && cached.argb == cursor.argb
+                                    });
+                                if !layout_is_current {
+                                    cursor_text_layouts.remove(conn_id);
                                     let text = context.text();
                                     let color = piet::Color::rgba8(0, 0, 0, 255);
                                     if let Ok(layout) = text
@@ -195,11 +208,22 @@ fn draw_cursors(
                                         .text_color(color)
                                         .build()
                                     {
-                                        context
-                                            .fill(get_rounded_rect(&layout), &piet::Color::WHITE);
-                                        context.draw_text(&layout, pos);
-                                        map_cursor_text.insert(info.text_key.clone(), layout);
+                                        cursor_text_layouts.insert(
+                                            *conn_id,
+                                            CursorTextLayout {
+                                                text: cursor.text.clone(),
+                                                argb: cursor.argb,
+                                                layout,
+                                            },
+                                        );
                                     }
+                                }
+                                if let Some(cached) = cursor_text_layouts.get(conn_id) {
+                                    context.fill(
+                                        get_rounded_rect(&cached.layout),
+                                        &piet::Color::WHITE,
+                                    );
+                                    context.draw_text(&cached.layout, pos);
                                 }
                             }
                             if let Err(e) = context.finish() {
@@ -209,7 +233,6 @@ fn draw_cursors(
                             log::warn!("CGContext is null");
                         }
                     }
-                    let _: () = msg_send![ns_view, setNeedsDisplay:true];
                 }
             }
         }
@@ -218,28 +241,49 @@ fn draw_cursors(
 
 pub(super) fn create_event_loop() -> ResultType<()> {
     crate::platform::hide_dock();
-    let event_loop = EventLoopBuilder::<(String, CustomEvent)>::with_user_event().build();
+    let event_loop = EventLoopBuilder::<(i32, CustomEvent)>::with_user_event().build();
 
     let windows = create_windows(&event_loop)?;
 
     let proxy = event_loop.create_proxy();
     let _event_proxy = install_whiteboard_event_proxy(proxy);
 
-    let mut window_ripples: HashMap<WindowId, Vec<Ripple>> = HashMap::new();
-    let mut last_cursors: HashMap<String, CursorInfo> = HashMap::new();
-    let mut map_cursor_text: HashMap<(String, u32), CoreGraphicsTextLayout> = HashMap::new();
+    let mut presentation =
+        WhiteboardPresentationState::<CursorInfo, (WindowId, Ripple)>::default();
+    let mut cursor_text_layouts: HashMap<i32, CursorTextLayout> = HashMap::new();
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
+        *control_flow = if presentation.has_ripples() {
+            ControlFlow::WaitUntil(Instant::now() + RIPPLE_FRAME_INTERVAL)
+        } else {
+            ControlFlow::Wait
+        };
 
         match event {
-            Event::NewEvents(StartCause::Init) => {
-                for window in windows.iter() {
-                    window.window.set_outer_position(window.outer_position);
-                    window.window.request_redraw();
+            Event::NewEvents(cause) => match cause {
+                StartCause::Init => {
+                    for window in windows.iter() {
+                        window.window.set_outer_position(window.outer_position);
+                        window.window.request_redraw();
+                    }
+                    crate::platform::hide_dock();
                 }
-                crate::platform::hide_dock();
-            }
+                StartCause::ResumeTimeReached { .. } => {
+                    let had_ripples = presentation.has_ripples();
+                    presentation.retain_ripples(|(_, ripple)| ripple.is_active());
+                    if had_ripples {
+                        for window in windows.iter() {
+                            window.window.request_redraw();
+                        }
+                    }
+                    *control_flow = if presentation.has_ripples() {
+                        ControlFlow::WaitUntil(Instant::now() + RIPPLE_FRAME_INTERVAL)
+                    } else {
+                        ControlFlow::Wait
+                    };
+                }
+                _ => {}
+            },
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
@@ -250,18 +294,20 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                 draw_cursors(
                     &windows,
                     window_id,
-                    &mut window_ripples,
-                    &last_cursors,
-                    &mut map_cursor_text,
+                    &mut presentation,
+                    &mut cursor_text_layouts,
                 );
+                *control_flow = if presentation.has_ripples() {
+                    ControlFlow::WaitUntil(Instant::now() + RIPPLE_FRAME_INTERVAL)
+                } else {
+                    ControlFlow::Wait
+                };
             }
-            Event::MainEventsCleared => {
-                for window in windows.iter() {
-                    window.window.request_redraw();
-                }
-            }
-            Event::UserEvent((k, evt)) => match evt {
+            Event::UserEvent((conn_id, evt)) => match evt {
                 CustomEvent::Cursor(cursor) => {
+                    let previous_window_id =
+                        presentation.cursor(conn_id).map(|info| info.window_id);
+                    let mut matched = false;
                     for window in windows.iter() {
                         let (l, t, r, b) = (
                             window.display_origin.0,
@@ -270,46 +316,79 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                             window.display_origin.1 + window.logical_size.height,
                         );
                         if (cursor.x as f64) < l
-                            || (cursor.x as f64) > r
+                            || (cursor.x as f64) >= r
                             || (cursor.y as f64) < t
-                            || (cursor.y as f64) > b
+                            || (cursor.y as f64) >= b
                         {
                             continue;
                         }
+                        matched = true;
 
-                        if cursor.btns != 0 {
+                        let ripple = if cursor.btns != 0 {
                             let window_id = window.window.id();
-                            let ripple = Ripple {
-                                x: (cursor.x as f64 - window.display_origin.0),
-                                y: (cursor.y as f64 - window.display_origin.1),
-                                start_time: Instant::now(),
-                            };
-                            if let Some(ripples) = window_ripples.get_mut(&window_id) {
-                                ripples.push(ripple);
-                            } else {
-                                window_ripples.insert(window_id, vec![ripple]);
-                            }
-                        }
-                        last_cursors.insert(
-                            k,
+                            Some((
+                                window_id,
+                                Ripple {
+                                    x: (cursor.x as f64 - window.display_origin.0),
+                                    y: (cursor.y as f64 - window.display_origin.1),
+                                    start_time: Instant::now(),
+                                },
+                            ))
+                        } else {
+                            None
+                        };
+                        let accepted = presentation.update(
+                            conn_id,
                             CursorInfo {
                                 window_id: window.window.id(),
-                                text_key: (cursor.text.clone(), cursor.argb),
                                 cursor: Cursor {
                                     x: (cursor.x - window.display_origin.0 as f32),
                                     y: (cursor.y - window.display_origin.1 as f32),
                                     ..cursor
                                 },
                             },
+                            ripple,
                         );
-                        window.window.request_redraw();
+                        if accepted {
+                            window.window.request_redraw();
+                            if previous_window_id != Some(window.window.id()) {
+                                if let Some(previous) = previous_window_id.and_then(|window_id| {
+                                    windows
+                                        .iter()
+                                        .find(|previous| previous.window.id() == window_id)
+                                }) {
+                                    previous.window.request_redraw();
+                                }
+                            }
+                        } else {
+                            log::error!(
+                                "Whiteboard presentation rejected invalid or excess owner {conn_id}"
+                            );
+                            *control_flow = ControlFlow::Exit;
+                        }
                         break;
+                    }
+                    if !matched {
+                        let had_owner = presentation.cursor(conn_id).is_some();
+                        presentation.clear(conn_id);
+                        cursor_text_layouts.remove(&conn_id);
+                        if had_owner {
+                            for window in windows.iter() {
+                                window.window.request_redraw();
+                            }
+                        }
+                    }
+                }
+                CustomEvent::Clear => {
+                    presentation.clear(conn_id);
+                    cursor_text_layouts.remove(&conn_id);
+                    for window in windows.iter() {
+                        window.window.request_redraw();
                     }
                 }
                 CustomEvent::Exit => {
                     *control_flow = ControlFlow::Exit;
                 }
-                _ => {}
             },
             _ => (),
         }

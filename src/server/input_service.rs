@@ -1880,15 +1880,15 @@ pub fn handle_mouse_show_cursor_(evt: &MouseEvent, conn: i32, username: String, 
     let evt_type = evt.mask & MOUSE_TYPE_MASK;
     match evt_type {
         MOUSE_TYPE_MOVE => {
-            whiteboard::update_whiteboard(
+            whiteboard::update_whiteboard_cursor(
                 conn,
-                whiteboard::CustomEvent::Cursor(whiteboard::Cursor {
+                whiteboard::Cursor {
                     x: evt.x as _,
                     y: evt.y as _,
                     argb,
                     btns: 0,
                     text: username,
-                }),
+                },
             );
         }
         MOUSE_TYPE_UP => {
@@ -1904,15 +1904,15 @@ pub fn handle_mouse_show_cursor_(evt: &MouseEvent, conn: i32, username: String, 
                 } else {
                     (evt.x, evt.y)
                 };
-                whiteboard::update_whiteboard(
+                whiteboard::update_whiteboard_cursor(
                     conn,
-                    whiteboard::CustomEvent::Cursor(whiteboard::Cursor {
+                    whiteboard::Cursor {
                         x: x as _,
                         y: y as _,
                         argb,
                         btns: buttons,
                         text: username,
-                    }),
+                    },
                 );
             }
         }

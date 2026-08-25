@@ -9549,30 +9549,36 @@ impl Connection {
         if let Ok(q) = o.show_my_cursor.enum_value() {
             if q != BoolOption::NotSet {
                 use crate::whiteboard;
-                self.show_my_cursor = q == BoolOption::Yes;
-                #[cfg(target_os = "windows")]
-                let is_lower_win10 = !crate::platform::windows::is_win_10_or_greater();
-                #[cfg(not(target_os = "windows"))]
-                let is_lower_win10 = false;
-                #[cfg(target_os = "linux")]
-                let is_linux_supported = crate::whiteboard::is_supported();
-                #[cfg(not(target_os = "linux"))]
-                let is_linux_supported = false;
-                let not_support_msg = if is_lower_win10 {
-                    "Windows 10 or greater is required."
-                } else if cfg!(target_os = "linux") && !is_linux_supported {
-                    "This feature is not supported on native Wayland, please install XWayland or switch to X11."
-                } else {
-                    ""
-                };
                 if q == BoolOption::Yes {
+                    #[cfg(target_os = "windows")]
+                    let is_lower_win10 =
+                        !crate::platform::windows::is_win_10_or_greater();
+                    #[cfg(not(target_os = "windows"))]
+                    let is_lower_win10 = false;
+                    #[cfg(target_os = "linux")]
+                    let is_linux_supported = crate::whiteboard::is_supported();
+                    #[cfg(not(target_os = "linux"))]
+                    let is_linux_supported = false;
+                    let not_support_msg = if is_lower_win10 {
+                        "Windows 10 or greater is required."
+                    } else if cfg!(target_os = "linux") && !is_linux_supported {
+                        "This feature is not supported on native Wayland, please install XWayland or switch to X11."
+                    } else {
+                        ""
+                    };
                     if not_support_msg.is_empty() {
                         // R-S19: the whiteboard cursor overlay is a Remote-only screen-interaction
                         // feature; do not spawn the --whiteboard overlay process for other types.
                         if self.is_authed_remote_conn() {
+                            self.show_my_cursor = true;
                             whiteboard::register_whiteboard(self.inner.id);
+                        } else {
+                            self.show_my_cursor = false;
+                            whiteboard::unregister_whiteboard(self.inner.id);
                         }
                     } else {
+                        self.show_my_cursor = false;
+                        whiteboard::unregister_whiteboard(self.inner.id);
                         let mut msg_out = Message::new();
                         let res = MessageBox {
                             msgtype: "nook-nocancel-hasclose".to_owned(),
@@ -9585,9 +9591,8 @@ impl Connection {
                         self.send(msg_out).await;
                     }
                 } else {
-                    if not_support_msg.is_empty() {
-                        whiteboard::unregister_whiteboard(self.inner.id);
-                    }
+                    self.show_my_cursor = false;
+                    whiteboard::unregister_whiteboard(self.inner.id);
                 }
             }
         }

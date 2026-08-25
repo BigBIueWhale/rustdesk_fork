@@ -1,4 +1,4 @@
-use super::{Cursor, CustomEvent};
+use super::Cursor;
 use crate::{
     ipc::{self, WhiteboardIpcCommand},
     CHILD_PROCESS,
@@ -161,7 +161,7 @@ impl WhiteboardWorkerLifecycle {
 enum WhiteboardCommandAdmission {
     Accepted,
     NoWorker,
-    EventDropped,
+    CursorDropped,
     WorkerRetiredAfterSaturation,
     WorkerRetiredAfterClosure,
 }
@@ -197,8 +197,8 @@ impl WhiteboardClientState {
         };
         match result {
             Ok(()) => WhiteboardCommandAdmission::Accepted,
-            Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. })) => {
-                WhiteboardCommandAdmission::EventDropped
+            Err(TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })) => {
+                WhiteboardCommandAdmission::CursorDropped
             }
             Err(TrySendError::Full(_)) => {
                 self.sender.take();
@@ -221,14 +221,9 @@ struct Conn {
 }
 
 struct LastCursorEvent {
-    evt: Option<CustomEvent>,
+    cursor: Option<Cursor>,
     tm: Instant,
     c: usize,
-}
-
-#[inline]
-pub fn get_key_cursor(conn_id: i32) -> String {
-    format!("{}-cursor", conn_id)
 }
 
 fn install_reserved_whiteboard_worker(
@@ -324,8 +319,8 @@ async fn run_whiteboard_worker(generation: u64) {
 fn log_whiteboard_command_admission(admission: WhiteboardCommandAdmission) {
     match admission {
         WhiteboardCommandAdmission::Accepted | WhiteboardCommandAdmission::NoWorker => {}
-        WhiteboardCommandAdmission::EventDropped => {
-            log::debug!("Dropping a whiteboard event because the bounded queue is full");
+        WhiteboardCommandAdmission::CursorDropped => {
+            log::debug!("Dropping a whiteboard cursor because the bounded queue is full");
         }
         WhiteboardCommandAdmission::WorkerRetiredAfterSaturation => {
             log::warn!("Retiring a saturated whiteboard command owner");
@@ -362,7 +357,7 @@ pub fn register_whiteboard(conn_id: i32) {
                     token: token.clone(),
                     last_cursor_pos: (0.0, 0.0),
                     last_cursor_evt: LastCursorEvent {
-                        evt: None,
+                        cursor: None,
                         tm: Instant::now(),
                         c: 0,
                     },
@@ -424,7 +419,7 @@ pub fn unregister_whiteboard(conn_id: i32) {
         .for_each(log_whiteboard_command_admission);
 }
 
-pub fn update_whiteboard(conn_id: i32, e: CustomEvent) {
+pub fn update_whiteboard_cursor(conn_id: i32, cursor: Cursor) {
     let admissions = {
         let mut state = WHITEBOARD_CLIENT.lock().unwrap();
         let commands = {
@@ -433,42 +428,34 @@ pub fn update_whiteboard(conn_id: i32, e: CustomEvent) {
             };
             let mut commands = [None, None];
             let mut command_count = 0;
-            match &e {
-                CustomEvent::Cursor(cursor) => {
-                    conn.last_cursor_evt.c += 1;
-                    conn.last_cursor_evt.tm = Instant::now();
-                    if cursor.btns == 0 {
-                        // Send one movement event every 4.
-                        if conn.last_cursor_evt.c > 3 {
-                            conn.last_cursor_evt.c = 0;
-                            conn.last_cursor_evt.evt = None;
-                            commands[command_count] =
-                                Some(whiteboard_event_command(conn, conn_id, e));
-                        } else {
-                            conn.last_cursor_evt.evt = Some(e);
-                        }
-                    } else {
-                        if let Some(evt) = conn.last_cursor_evt.evt.take() {
-                            commands[command_count] =
-                                Some(whiteboard_event_command(conn, conn_id, evt));
-                            command_count += 1;
-                            conn.last_cursor_evt.c = 0;
-                        }
-                        let click_evt = CustomEvent::Cursor(Cursor {
-                            x: conn.last_cursor_pos.0,
-                            y: conn.last_cursor_pos.1,
-                            argb: cursor.argb,
-                            btns: cursor.btns,
-                            text: cursor.text.clone(),
-                        });
-                        commands[command_count] =
-                            Some(whiteboard_event_command(conn, conn_id, click_evt));
-                    }
-                }
-                _ => {
+            conn.last_cursor_evt.c += 1;
+            conn.last_cursor_evt.tm = Instant::now();
+            if cursor.btns == 0 {
+                // Send one movement event every 4.
+                if conn.last_cursor_evt.c > 3 {
+                    conn.last_cursor_evt.c = 0;
+                    conn.last_cursor_evt.cursor = None;
                     commands[command_count] =
-                        Some(whiteboard_event_command(conn, conn_id, e));
+                        Some(whiteboard_cursor_command(conn, conn_id, cursor));
+                } else {
+                    conn.last_cursor_evt.cursor = Some(cursor);
                 }
+            } else {
+                if let Some(pending_cursor) = conn.last_cursor_evt.cursor.take() {
+                    commands[command_count] =
+                        Some(whiteboard_cursor_command(conn, conn_id, pending_cursor));
+                    command_count += 1;
+                }
+                conn.last_cursor_evt.c = 0;
+                let click_cursor = Cursor {
+                    x: conn.last_cursor_pos.0,
+                    y: conn.last_cursor_pos.1,
+                    argb: cursor.argb,
+                    btns: cursor.btns,
+                    text: cursor.text,
+                };
+                commands[command_count] =
+                    Some(whiteboard_cursor_command(conn, conn_id, click_cursor));
             }
             commands
         };
@@ -485,21 +472,19 @@ pub fn update_whiteboard(conn_id: i32, e: CustomEvent) {
 }
 
 #[inline]
-fn whiteboard_event_command(
+fn whiteboard_cursor_command(
     conn: &mut Conn,
     conn_id: i32,
-    event: CustomEvent,
+    cursor: Cursor,
 ) -> WhiteboardIpcCommand {
-    if let CustomEvent::Cursor(cursor) = &event {
-        if cursor.btns == 0 {
-            conn.last_cursor_pos = (cursor.x, cursor.y);
-        }
+    if cursor.btns == 0 {
+        conn.last_cursor_pos = (cursor.x, cursor.y);
     }
 
-    WhiteboardIpcCommand::Event {
+    WhiteboardIpcCommand::Cursor {
         conn_id,
         token: conn.token.clone(),
-        event,
+        cursor,
     }
 }
 
@@ -648,7 +633,7 @@ async fn start_whiteboard_(generation: u64) -> ResultType<()> {
                             .await?;
                         timer.reset();
                     }
-                    Some(command @ WhiteboardIpcCommand::Event { .. }) => {
+                    Some(command @ WhiteboardIpcCommand::Cursor { .. }) => {
                         stream
                             .send_whiteboard_command_timeout(
                                 &command,
@@ -679,24 +664,29 @@ async fn start_whiteboard_(generation: u64) -> ResultType<()> {
             _ = timer.tick() => {
                 let pending = {
                     let mut state = WHITEBOARD_CLIENT.lock().unwrap();
-                    let mut pending = Vec::new();
+                    let mut pending: [Option<(i32, String, Cursor)>;
+                        ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS] =
+                        std::array::from_fn(|_| None);
+                    let mut pending_count = 0;
                     for (k, conn) in state.conns.iter_mut() {
                         if conn.last_cursor_evt.tm.elapsed().as_millis() > 300 {
-                            if let Some(evt) = conn.last_cursor_evt.evt.take() {
-                                pending.push((*k, conn.token.clone(), evt));
+                            if let Some(cursor) = conn.last_cursor_evt.cursor.take() {
+                                pending[pending_count] =
+                                    Some((*k, conn.token.clone(), cursor));
+                                pending_count += 1;
                                 conn.last_cursor_evt.c = 0;
                             }
                         }
                     }
                     pending
                 };
-                for (conn_id, token, event) in pending {
+                for (conn_id, token, cursor) in pending.into_iter().flatten() {
                     stream
                         .send_whiteboard_command_timeout(
-                            &WhiteboardIpcCommand::Event {
+                            &WhiteboardIpcCommand::Cursor {
                                 conn_id,
                                 token,
-                                event,
+                                cursor,
                             },
                             ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS,
                         )

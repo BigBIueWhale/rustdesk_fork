@@ -1,4 +1,4 @@
-use super::CustomEvent;
+use super::{Cursor, CustomEvent};
 use crate::ipc::{self, new_listener, Connection, WhiteboardIpcCommand};
 use hbb_common::{
     allow_err, anyhow::anyhow, log,
@@ -7,7 +7,10 @@ use hbb_common::{
 };
 use lazy_static::lazy_static;
 use std::time::{Duration, Instant};
-use std::{collections::HashMap, sync::RwLock};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::RwLock,
+};
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use tao::event_loop::EventLoopProxy;
@@ -53,7 +56,7 @@ impl<Proxy> WhiteboardEventLifecycle<Proxy> {
 
 lazy_static! {
     static ref EVENT_LIFECYCLE: RwLock<
-        WhiteboardEventLifecycle<EventLoopProxy<(String, CustomEvent)>>,
+        WhiteboardEventLifecycle<EventLoopProxy<(i32, CustomEvent)>>,
     > = RwLock::new(WhiteboardEventLifecycle::default());
 }
 
@@ -66,11 +69,11 @@ impl Drop for WhiteboardEventProxyGuard {
 }
 
 pub(super) fn install_whiteboard_event_proxy(
-    proxy: EventLoopProxy<(String, CustomEvent)>,
+    proxy: EventLoopProxy<(i32, CustomEvent)>,
 ) -> WhiteboardEventProxyGuard {
     let terminal_proxy = EVENT_LIFECYCLE.write().unwrap().install(proxy);
     if let Some(proxy) = terminal_proxy {
-        allow_err!(proxy.send_event((String::new(), CustomEvent::Exit)));
+        allow_err!(proxy.send_event((0, CustomEvent::Exit)));
     }
     WhiteboardEventProxyGuard
 }
@@ -78,7 +81,7 @@ pub(super) fn install_whiteboard_event_proxy(
 fn terminate_whiteboard_ipc_generation() {
     let terminal_proxy = EVENT_LIFECYCLE.write().unwrap().terminate();
     if let Some(proxy) = terminal_proxy {
-        allow_err!(proxy.send_event((String::new(), CustomEvent::Exit)));
+        allow_err!(proxy.send_event((0, CustomEvent::Exit)));
     }
 }
 
@@ -121,6 +124,8 @@ fn run_whiteboard_ipc_worker(stop_requested: oneshot::Receiver<()>) {
 }
 
 const RIPPLE_DURATION: Duration = Duration::from_millis(500);
+pub(super) const RIPPLE_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+pub(super) const WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER: usize = 64;
 #[cfg(target_os = "macos")]
 type RippleFloat = f64;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -208,7 +213,8 @@ async fn start_ipc(mut stop_requested: oneshot::Receiver<()>) {
 }
 
 enum WhiteboardIpcAction {
-    Event(String, CustomEvent),
+    Cursor(i32, Cursor),
+    Clear(i32),
     Shutdown,
 }
 
@@ -230,23 +236,17 @@ impl WhiteboardIpcState {
                 }
                 None
             }
-            WhiteboardIpcCommand::Event {
+            WhiteboardIpcCommand::Cursor {
                 conn_id,
                 token,
-                event,
+                cursor,
             } => {
-                if matches!(event, CustomEvent::Exit) {
-                    return None;
-                }
                 if self
                     .active
                     .get(&conn_id)
                     .is_some_and(|expected| expected == &token)
                 {
-                    Some(WhiteboardIpcAction::Event(
-                        super::client::get_key_cursor(conn_id),
-                        event,
-                    ))
+                    Some(WhiteboardIpcAction::Cursor(conn_id, cursor))
                 } else {
                     None
                 }
@@ -258,10 +258,7 @@ impl WhiteboardIpcState {
                     .is_some_and(|expected| expected == &token);
                 if authorized {
                     self.active.remove(&conn_id);
-                    Some(WhiteboardIpcAction::Event(
-                        super::client::get_key_cursor(conn_id),
-                        CustomEvent::Clear,
-                    ))
+                    Some(WhiteboardIpcAction::Clear(conn_id))
                 } else {
                     None
                 }
@@ -283,9 +280,9 @@ fn whiteboard_connection_token_is_valid(token: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn send_whiteboard_event(k: String, evt: CustomEvent) {
+fn send_whiteboard_event(conn_id: i32, evt: CustomEvent) {
     if let Some(ep) = EVENT_LIFECYCLE.read().unwrap().proxy.as_ref() {
-        allow_err!(ep.send_event((k, evt)));
+        allow_err!(ep.send_event((conn_id, evt)));
     }
 }
 
@@ -308,7 +305,12 @@ async fn handle_new_stream(
                 break;
             }
             Ok(Some(command)) => match state.apply(command) {
-                Some(WhiteboardIpcAction::Event(k, evt)) => send_whiteboard_event(k, evt),
+                Some(WhiteboardIpcAction::Cursor(conn_id, cursor)) => {
+                    send_whiteboard_event(conn_id, CustomEvent::Cursor(cursor))
+                }
+                Some(WhiteboardIpcAction::Clear(conn_id)) => {
+                    send_whiteboard_event(conn_id, CustomEvent::Clear)
+                }
                 Some(WhiteboardIpcAction::Shutdown) => break,
                 None => {}
             },
@@ -316,6 +318,77 @@ async fn handle_new_stream(
                 // The read deadline is a cancellation wake for the event-loop exit channel.
             }
         }
+    }
+}
+
+pub(super) struct WhiteboardPresentationState<C, R> {
+    cursors: HashMap<i32, C>,
+    ripples: HashMap<i32, VecDeque<R>>,
+}
+
+impl<C, R> Default for WhiteboardPresentationState<C, R> {
+    fn default() -> Self {
+        Self {
+            cursors: HashMap::new(),
+            ripples: HashMap::new(),
+        }
+    }
+}
+
+impl<C, R> WhiteboardPresentationState<C, R> {
+    pub(super) fn update(&mut self, conn_id: i32, cursor: C, ripple: Option<R>) -> bool {
+        if conn_id <= 0
+            || (!self.cursors.contains_key(&conn_id)
+                && self.cursors.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS)
+        {
+            return false;
+        }
+        if let Some(ripple) = ripple {
+            let ripples = self.ripples.entry(conn_id).or_default();
+            if ripples.len() == WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER {
+                ripples.pop_front();
+            }
+            ripples.push_back(ripple);
+        }
+        self.cursors.insert(conn_id, cursor);
+        true
+    }
+
+    pub(super) fn clear(&mut self, conn_id: i32) {
+        self.cursors.remove(&conn_id);
+        self.ripples.remove(&conn_id);
+    }
+
+    pub(super) fn cursor_values(&self) -> impl Iterator<Item = &C> {
+        self.cursors.values()
+    }
+
+    pub(super) fn cursor(&self, conn_id: i32) -> Option<&C> {
+        self.cursors.get(&conn_id)
+    }
+
+    pub(super) fn cursor_entries(&self) -> impl Iterator<Item = (&i32, &C)> {
+        self.cursors.iter()
+    }
+
+    pub(super) fn ripple_values(&self) -> impl Iterator<Item = &R> {
+        self.ripples.values().flat_map(|ripples| ripples.iter())
+    }
+
+    pub(super) fn retain_ripples(&mut self, mut keep: impl FnMut(&R) -> bool) {
+        for ripples in self.ripples.values_mut() {
+            ripples.retain(|ripple| keep(ripple));
+        }
+        self.ripples.retain(|_, ripples| !ripples.is_empty());
+    }
+
+    pub(super) fn has_ripples(&self) -> bool {
+        !self.ripples.is_empty()
+    }
+
+    #[cfg(test)]
+    fn ripple_count(&self) -> usize {
+        self.ripples.values().map(VecDeque::len).sum()
     }
 }
 
@@ -356,14 +429,20 @@ mod tests {
     }
 
     #[test]
-    fn whiteboard_authority_rejects_unbound_events_and_exit() {
+    fn whiteboard_authority_rejects_unbound_cursor() {
         let mut state = WhiteboardIpcState::default();
         let token = token(7);
         assert!(state
-            .apply(WhiteboardIpcCommand::Event {
+            .apply(WhiteboardIpcCommand::Cursor {
                 conn_id: 7,
                 token: token.clone(),
-                event: CustomEvent::Clear,
+                cursor: Cursor {
+                    x: 1.0,
+                    y: 2.0,
+                    argb: 3,
+                    btns: 0,
+                    text: "owner".to_owned(),
+                },
             })
             .is_none());
         assert!(state
@@ -376,13 +455,6 @@ mod tests {
             .apply(WhiteboardIpcCommand::Bind {
                 conn_id: 7,
                 token: token.clone(),
-            })
-            .is_none());
-        assert!(state
-            .apply(WhiteboardIpcCommand::Event {
-                conn_id: 7,
-                token,
-                event: CustomEvent::Exit,
             })
             .is_none());
     }
@@ -401,15 +473,22 @@ mod tests {
             token: beta.clone(),
         });
 
-        match state.apply(WhiteboardIpcCommand::Event {
+        match state.apply(WhiteboardIpcCommand::Cursor {
             conn_id: 7,
             token: alpha.clone(),
-            event: CustomEvent::Clear,
+            cursor: Cursor {
+                x: 1.0,
+                y: 2.0,
+                argb: 3,
+                btns: 0,
+                text: "owner".to_owned(),
+            },
         }) {
-            Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
-                assert_eq!(k, super::super::client::get_key_cursor(7));
+            Some(WhiteboardIpcAction::Cursor(conn_id, cursor)) => {
+                assert_eq!(conn_id, 7);
+                assert_eq!(cursor.text, "owner");
             }
-            _ => panic!("authorized whiteboard event was not forwarded"),
+            _ => panic!("authorized whiteboard cursor was not forwarded"),
         }
 
         assert!(state
@@ -424,9 +503,7 @@ mod tests {
             conn_id: 7,
             token: alpha,
         }) {
-            Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
-                assert_eq!(k, super::super::client::get_key_cursor(7));
-            }
+            Some(WhiteboardIpcAction::Clear(conn_id)) => assert_eq!(conn_id, 7),
             _ => panic!("authorized whiteboard close was not forwarded"),
         }
         assert!(state.apply(WhiteboardIpcCommand::Shutdown).is_none());
@@ -435,9 +512,7 @@ mod tests {
             conn_id: 8,
             token: beta,
         }) {
-            Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
-                assert_eq!(k, super::super::client::get_key_cursor(8));
-            }
+            Some(WhiteboardIpcAction::Clear(conn_id)) => assert_eq!(conn_id, 8),
             _ => panic!("second whiteboard close was not forwarded"),
         }
         assert!(matches!(
@@ -489,6 +564,41 @@ mod tests {
         );
         assert_eq!(state.active.get(&1), Some(&replacement));
     }
+
+    #[test]
+    fn r_s11hp_whiteboard_presentation_clear_is_exact_owner_final() {
+        let mut state = WhiteboardPresentationState::<&str, u8>::default();
+        assert!(state.update(7, "alpha", Some(1)));
+        assert!(state.update(8, "beta", Some(2)));
+        assert_eq!(state.cursor_values().copied().collect::<Vec<_>>().len(), 2);
+        assert_eq!(state.ripple_count(), 2);
+
+        state.clear(7);
+        assert_eq!(state.cursor_values().copied().collect::<Vec<_>>(), vec!["beta"]);
+        assert_eq!(state.ripple_values().copied().collect::<Vec<_>>(), vec![2]);
+    }
+
+    #[test]
+    fn r_s11hp_whiteboard_presentation_owners_and_ripples_are_bounded() {
+        let mut state = WhiteboardPresentationState::<i32, usize>::default();
+        for conn_id in 1..=ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 {
+            assert!(state.update(conn_id, conn_id, None));
+        }
+        assert!(!state.update(
+            ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 + 1,
+            99,
+            None,
+        ));
+
+        for ripple in 0..WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER + 5 {
+            assert!(state.update(1, 1, Some(ripple)));
+        }
+        assert_eq!(
+            state.ripple_count(),
+            WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER
+        );
+        assert_eq!(state.ripple_values().next(), Some(&5));
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -530,8 +640,8 @@ pub(super) struct Ripple {
 
 impl Ripple {
     #[inline]
-    pub fn retain_active(ripples: &mut Vec<Ripple>) {
-        ripples.retain(|r| r.start_time.elapsed() < RIPPLE_DURATION);
+    pub fn is_active(&self) -> bool {
+        self.start_time.elapsed() < RIPPLE_DURATION
     }
 
     pub fn get_radius_alpha(&self) -> (RippleFloat, RippleFloat) {

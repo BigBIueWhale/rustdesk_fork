@@ -245,8 +245,8 @@ def validate(sources: Dict[str, str]) -> None:
             "self.lifecycle.running_generation()",
             "self.lifecycle.sender_failed(generation)",
             "sender.try_send(command)",
-            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
-            "WhiteboardCommandAdmission::EventDropped",
+            "TrySendError::Full(WhiteboardIpcCommand::Cursor { .. })",
+            "WhiteboardCommandAdmission::CursorDropped",
             "TrySendError::Full(_)",
             "self.sender.take()",
             "self.lifecycle.sender_failed(generation)",
@@ -366,7 +366,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     update = extract_braced_item(
-        client, "pub fn update_whiteboard", "whiteboard event publication"
+        client, "pub fn update_whiteboard_cursor", "whiteboard cursor publication"
     )
     require_order(
         update,
@@ -527,7 +527,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "worker: Option<(u64, tokio::task::JoinHandle<()>)>", "worker: Option<tokio::task::JoinHandle<()>>", "generation-bound task handle"),
     ("client", "static ref WHITEBOARD_CLIENT: Mutex<WhiteboardClientState>", "static ref WHITEBOARD_CLIENT: RwLock<WhiteboardClientState>", "single serialized lifecycle"),
     ("client", "(*generation, sender.try_send(command))", "(*generation, sender.blocking_send(command))", "nonblocking command admission"),
-    ("client", "Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))", "Err(TrySendError::Full(_))", "lossy event-only overflow"),
+    ("client", "Err(TrySendError::Full(WhiteboardIpcCommand::Cursor { .. }))", "Err(TrySendError::Full(_))", "lossy cursor-only overflow"),
     ("client", "self.sender.take();\n                self.lifecycle.sender_failed(generation);", "self.sender.take();\n                self.lifecycle.request_worker()?;", "critical failure no retry"),
     ("client", "tokio::runtime::Handle::try_current()", "tokio::runtime::Builder::new_current_thread()", "existing runtime ownership"),
     ("client", "runtime.spawn(run_whiteboard_worker(generation))", "std::thread::spawn(move || start_whiteboard_(generation))", "runtime-owned task"),

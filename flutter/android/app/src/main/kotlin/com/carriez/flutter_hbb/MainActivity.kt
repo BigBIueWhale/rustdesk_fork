@@ -200,6 +200,28 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun requestMainServiceHealthCheck(): Boolean {
+        val intent = Intent(this, MainService::class.java).apply {
+            action = ACT_ENSURE_CONTROLLED_SERVICE
+        }
+        return try {
+            val component = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            if (component == null) {
+                Log.e(logTag, "Android refused the explicit MainService health-check start")
+                false
+            } else {
+                true
+            }
+        } catch (e: RuntimeException) {
+            Log.e(logTag, "Failed to request the explicit MainService health check", e)
+            false
+        }
+    }
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             Log.d(logTag, "onServiceConnected")
@@ -255,6 +277,14 @@ class MainActivity : FlutterActivity() {
                 }
                 "init_service" -> {
                     val status = MainService.currentStatus()
+                    if (status != null && !requestMainServiceHealthCheck()) {
+                        result.error(
+                            "MAIN_SERVICE_START_FAILED",
+                            "Failed to request the MainService health check",
+                            null,
+                        )
+                        return@setMethodCallHandler
+                    }
                     bindMainService(createIfNeeded = status == null)
                     if (status?.mediaProjectionReady == true) {
                         result.success(false)

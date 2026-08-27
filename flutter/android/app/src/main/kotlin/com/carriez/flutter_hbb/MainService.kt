@@ -379,6 +379,9 @@ class MainService : Service() {
                 logTag,
                 "Retiring an incomplete or inactive MainService generation before explicit retry",
             )
+            if (!retireControlledConnectionResourcesForRetry(currentGeneration)) {
+                return false
+            }
             if (!retireControlledServiceGeneration(
                     currentGeneration,
                     "incomplete generation before retry",
@@ -423,6 +426,11 @@ class MainService : Service() {
         if (!statusOwner.begin(generation)) {
             Log.e(logTag, "Failed to bind process-wide status to this MainService generation")
             retireControlledServiceGeneration(generation, "status publication failure")
+            return false
+        }
+        if (!publishRetainedMediaProjectionStatus(generation)) {
+            Log.e(logTag, "Failed to transfer retained MediaProjection status to this MainService generation")
+            retireControlledServiceGeneration(generation, "MediaProjection status transfer failure")
             return false
         }
         if (!serviceGenerationOwner.noteVoiceAttempt(generation)) {
@@ -495,6 +503,35 @@ class MainService : Service() {
         return retired
     }
 
+    @Synchronized
+    private fun retireControlledConnectionResourcesForRetry(generation: Long): Boolean {
+        if (generation <= 0L || nativeServerGeneration != generation) {
+            Log.e(logTag, "Rejected controlled resource retirement for stale generation $generation")
+            return false
+        }
+        acceptingControlledConnections = false
+        controlledCaptureOwners.clear()
+        InputService.ctx?.retireServiceGeneration(generation)
+        captureRequested = false
+        if (!stopCapturePipeline(keepReusableDisplay = reuseVirtualDisplay)) {
+            Log.e(logTag, "Failed to retire the old generation capture pipeline")
+            return false
+        }
+        return true
+    }
+
+    @Synchronized
+    private fun publishRetainedMediaProjectionStatus(generation: Long): Boolean {
+        val projectionPresent = mediaProjection != null
+        val callbackPresent = mediaProjectionCallback != null
+        if (projectionPresent != callbackPresent) {
+            Log.e(logTag, "Discarding an incomplete retained MediaProjection owner")
+            releaseMediaProjection()
+            return true
+        }
+        return !projectionPresent || statusOwner.setMediaProjectionReady(generation, true)
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d(logTag,"MainService onCreate, sdk int:${Build.VERSION.SDK_INT} reuseVirtualDisplay:$reuseVirtualDisplay")
@@ -516,6 +553,7 @@ class MainService : Service() {
 
     override fun onDestroy() {
         val generation = nativeServerGeneration
+        publishControlledServiceStatus(false)
         releaseControlledConnectionResources()
         if (generation > 0L &&
             !retireControlledServiceGeneration(generation, "MainService destruction")
@@ -648,7 +686,9 @@ class MainService : Service() {
         // transaction cannot commit, exact startId retirement below removes only this started
         // request; a bound Service remains inert and a later explicit start may retry once.
         createForegroundNotification()
-        if (!initializeControlledServiceGeneration()) {
+        val generationReady = initializeControlledServiceGeneration()
+        publishControlledServiceStatus(generationReady)
+        if (!generationReady) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             if (!stopSelfResult(startId)) {
                 Log.d(logTag, "A newer MainService start request retained the started state")
@@ -657,7 +697,9 @@ class MainService : Service() {
         }
         acquireNetworkKeepaliveWakeLock()
         registerNetworkCallback()
-        if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
+        if (intent?.action == ACT_ENSURE_CONTROLLED_SERVICE) {
+            checkMediaPermission()
+        } else if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
             Log.d(logTag, "service starting: ${startId}:${Thread.currentThread()}")
             val mediaProjectionManager =
                 getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -678,8 +720,8 @@ class MainService : Service() {
             } ?: let {
                 // BR-17 / R-D7a: honor the boot/start split that was plumbed (EXT_INIT_FROM_BOOT,
                 // set by BootReceiver) but never read. On BOOT, start the foreground service + the
-                // password-gated direct listener ONLY (both already up from onCreate: FFI.startServer
-                // + createForegroundNotification) — do NOT request MediaProjection. Requesting it here
+                // password-gated direct listener ONLY (both committed above by this explicit
+                // onStartCommand transaction) — do NOT request MediaProjection. Requesting it here
                 // popped the unprompted "Share your screen?" system dialog on unlock; capture consent
                 // must be a per-session, human-tapped action (Android is attended-only, R-S14). A
                 // deliberate foreground "Start screen sharing" tap arrives with the result extra
@@ -694,6 +736,15 @@ class MainService : Service() {
             }
         }
         return START_NOT_STICKY // don't use sticky (auto restart), the new service (from auto restart) will lose control
+    }
+
+    private fun publishControlledServiceStatus(running: Boolean) {
+        Handler(Looper.getMainLooper()).post {
+            MainActivity.flutterMethodChannel?.invokeMethod(
+                "on_state_changed",
+                mapOf("name" to "service", "value" to running.toString()),
+            )
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -798,10 +849,12 @@ class MainService : Service() {
     }
 
     @Synchronized
-    private fun stopCapturePipeline(keepReusableDisplay: Boolean = reuseVirtualDisplay) {
+    private fun stopCapturePipeline(keepReusableDisplay: Boolean = reuseVirtualDisplay): Boolean {
         Log.d(logTag, "Stop Capture")
+        var retired = true
         if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, false)) {
             Log.d(logTag, "Ignored raw-video stop from stale MainService generation")
+            retired = false
         }
         captureActive = false
         if (keepReusableDisplay) {
@@ -829,7 +882,9 @@ class MainService : Service() {
             )
         ) {
             Log.e(logTag, "Failed to reconcile audio after screen-capture stop")
+            retired = false
         }
+        return retired
     }
 
     @Synchronized

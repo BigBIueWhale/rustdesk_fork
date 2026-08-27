@@ -11759,11 +11759,11 @@ else
   echo "  FAIL R-S11en/R-S11e-175: Android service status or explicit-stop authority regressed"
   rc=1
 fi
-echo "== Android exact-generation MainService startup transaction (R-S11hq/R-S11e-254) =="
+echo "== Android app-open exact-generation MainService startup transaction (R-S11hq/R-S11hr/R-S11e-254/R-S11e-255) =="
 if /usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo . --self-test; then
-  echo "  ok  R-S11hq/R-S11e-254 Android exact-generation MainService startup transaction"
+  echo "  ok  R-S11hq/R-S11hr/R-S11e-254/R-S11e-255 Android app-open exact-generation MainService startup and resource transfer"
 else
-  echo "  FAIL R-S11hq/R-S11e-254: Android MainService startup or rollback transaction regressed"
+  echo "  FAIL R-S11hq/R-S11hr/R-S11e-254/R-S11e-255: Android MainService startup, recovery, or resource transfer regressed"
   rc=1
 fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must

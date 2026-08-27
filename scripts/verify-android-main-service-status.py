@@ -65,6 +65,8 @@ def validate(sources: Dict[str, str]) -> None:
     behavior_test = sources["behavior_test"]
     service = sources["service"]
     activity = sources["activity"]
+    common = sources["common"]
+    server_model = sources["server_model"]
     clipboard = sources["clipboard"]
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -172,6 +174,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("idempotent begin cleared current readiness", "idempotent preservation"),
         ("replacement generation inherited predecessor readiness", "replacement reset"),
         ("stale generation retired its replacement", "stale retirement refusal"),
+        (
+            "retained projection readiness was not republished to the replacement generation",
+            "retained projection readiness transfer",
+        ),
         ("retired generation was reactivated", "retired reactivation refusal"),
     ):
         require(behavior_test, token, "status owner {}".format(label))
@@ -236,12 +242,44 @@ def validate(sources: Dict[str, str]) -> None:
         on_start,
         (
             "createForegroundNotification()",
-            "if (!initializeControlledServiceGeneration())",
+            "val generationReady = initializeControlledServiceGeneration()",
+            "publishControlledServiceStatus(generationReady)",
+            "if (!generationReady)",
             "return START_NOT_STICKY",
             "acquireNetworkKeepaliveWakeLock()",
             "registerNetworkCallback()",
         ),
         "foreground deadline before committed persistent Service resources",
+    )
+    service_status = extract(
+        service,
+        "    private fun publishControlledServiceStatus(running: Boolean) {",
+        "\n    override fun onConfigurationChanged",
+        "exact service status publication",
+    )
+    require_order(
+        service_status,
+        (
+            '"on_state_changed"',
+            'mapOf("name" to "service", "value" to running.toString())',
+        ),
+        "exact startup outcome status publication",
+    )
+    health_start = extract(
+        on_start,
+        "if (intent?.action == ACT_ENSURE_CONTROLLED_SERVICE) {",
+        "} else if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE)",
+        "explicit app-open health action",
+    )
+    require(
+        health_start,
+        "checkMediaPermission()",
+        "health action exact status reconciliation",
+    )
+    forbid(
+        health_start,
+        "requestMediaProjection",
+        "health action capture-consent request",
     )
     initialize_generation = extract(
         service,
@@ -255,12 +293,14 @@ def validate(sources: Dict[str, str]) -> None:
             "if (!nativeCallbackContextReady)",
             "serviceGenerationOwner.isCommitted(currentGeneration)",
             "FFI.isServerGenerationActive(this, currentGeneration)",
+            "retireControlledConnectionResourcesForRetry(currentGeneration)",
             'val generation = FFI.startServer(this, configPath, "")',
             "nativeServerGeneration = generation",
             "serviceGenerationOwner.beginReservation(generation)",
             "publishScreenInfo()",
             "serviceGenerationOwner.noteStatusAttempt(generation)",
             "statusOwner.begin(generation)",
+            "publishRetainedMediaProjectionStatus(generation)",
             "serviceGenerationOwner.noteVoiceAttempt(generation)",
             "VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)",
             "serviceGenerationOwner.noteActivationAttempt(generation)",
@@ -269,6 +309,24 @@ def validate(sources: Dict[str, str]) -> None:
             "FFI.activateServer(this, generation)",
         ),
         "native generation before status and controlled admission",
+    )
+    retained_projection = extract(
+        service,
+        "    private fun publishRetainedMediaProjectionStatus(generation: Long): Boolean {",
+        "\n    override fun onCreate()",
+        "retained MediaProjection status transfer",
+    )
+    require_order(
+        retained_projection,
+        (
+            "val projectionPresent = mediaProjection != null",
+            "val callbackPresent = mediaProjectionCallback != null",
+            "if (projectionPresent != callbackPresent)",
+            "releaseMediaProjection()",
+            "return true",
+            "statusOwner.setMediaProjectionReady(generation, true)",
+        ),
+        "coherent retained projection exact-generation status transfer",
     )
     on_destroy = extract(
         service,
@@ -279,6 +337,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         on_destroy,
         (
+            "publishControlledServiceStatus(false)",
             "releaseControlledConnectionResources()",
             'retireControlledServiceGeneration(generation, "MainService destruction")',
             "FFI.releaseService(this)",
@@ -417,6 +476,32 @@ def validate(sources: Dict[str, str]) -> None:
         1,
         "MainActivity auto-create binding authority",
     )
+    require_exact_count(
+        common,
+        'const val ACT_ENSURE_CONTROLLED_SERVICE = "ENSURE_CONTROLLED_SERVICE"',
+        1,
+        "single app-open health action vocabulary",
+    )
+    health_request = extract(
+        activity,
+        "    private fun requestMainServiceHealthCheck(): Boolean {",
+        "\n    private val serviceConnection",
+        "MainActivity explicit service health request",
+    )
+    require_order(
+        health_request,
+        (
+            "Intent(this, MainService::class.java)",
+            "action = ACT_ENSURE_CONTROLLED_SERVICE",
+            "Build.VERSION.SDK_INT >= Build.VERSION_CODES.O",
+            "startForegroundService(intent)",
+            "startService(intent)",
+            "if (component == null)",
+            "catch (e: RuntimeException)",
+            "false",
+        ),
+        "fail-closed foreground-compatible service health request",
+    )
     unbind = extract(
         activity,
         "    private fun unbindMainService(): Boolean {",
@@ -459,6 +544,9 @@ def validate(sources: Dict[str, str]) -> None:
         init_service,
         (
             "val status = MainService.currentStatus()",
+            "if (status != null && !requestMainServiceHealthCheck())",
+            '"MAIN_SERVICE_START_FAILED"',
+            "return@setMethodCallHandler",
             "bindMainService(createIfNeeded = status == null)",
             "if (status?.mediaProjectionReady == true)",
             "result.success(false)",
@@ -466,6 +554,14 @@ def validate(sources: Dict[str, str]) -> None:
             "result.success(true)",
         ),
         "status-aware explicit initialization",
+    )
+    require_order(
+        server_model,
+        (
+            'case "service":',
+            "_isStart = value",
+        ),
+        "Flutter exact MainService status reconciliation",
     )
     stop_service = extract(
         activity,
@@ -655,6 +751,12 @@ MUTATIONS = (
         "stale retirement behavior regression",
     ),
     Mutation(
+        "behavior_test",
+        "retained projection readiness was not republished to the replacement generation",
+        "replacement readiness passed",
+        "retained projection readiness behavior regression",
+    ),
+    Mutation(
         "service",
         "private val statusOwner = MainServiceStatusOwner()",
         "internal val statusOwner = MainServiceStatusOwner()",
@@ -672,6 +774,36 @@ MUTATIONS = (
         "                FFI.isServerGenerationActive(this, currentGeneration)",
         "serviceGenerationOwner.isCommitted(currentGeneration)",
         "committed generation requires active native listener health",
+    ),
+    Mutation(
+        "service",
+        "if (!retireControlledConnectionResourcesForRetry(currentGeneration))",
+        "if (false)",
+        "old-generation resource retirement before replacement status",
+    ),
+    Mutation(
+        "service",
+        "if (!publishRetainedMediaProjectionStatus(generation))",
+        "if (false)",
+        "retained projection status transfer",
+    ),
+    Mutation(
+        "service",
+        "return !projectionPresent || statusOwner.setMediaProjectionReady(generation, true)",
+        "return true",
+        "exact retained projection readiness publication",
+    ),
+    Mutation(
+        "service",
+        "publishControlledServiceStatus(generationReady)\n        if (!generationReady)",
+        "if (!generationReady)",
+        "exact startup outcome status publication",
+    ),
+    Mutation(
+        "service",
+        "publishControlledServiceStatus(false)\n        releaseControlledConnectionResources()",
+        "publishControlledServiceStatus(true)\n        releaseControlledConnectionResources()",
+        "destruction publishes stopped service outcome",
     ),
     Mutation(
         "service",
@@ -721,6 +853,48 @@ MUTATIONS = (
         "bindMainService(createIfNeeded = status == null)",
         "bindMainService(createIfNeeded = true)",
         "status-aware explicit bind",
+    ),
+    Mutation(
+        "common",
+        'const val ACT_ENSURE_CONTROLLED_SERVICE = "ENSURE_CONTROLLED_SERVICE"',
+        'const val ACT_ENSURE_CONTROLLED_SERVICE = "INIT_MEDIA_PROJECTION_AND_SERVICE"',
+        "distinct app-open health action vocabulary",
+    ),
+    Mutation(
+        "activity",
+        "action = ACT_ENSURE_CONTROLLED_SERVICE",
+        "action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE",
+        "exact Activity health action",
+    ),
+    Mutation(
+        "activity",
+        "if (component == null) {",
+        "if (false) {",
+        "null health-start refusal",
+    ),
+    Mutation(
+        "activity",
+        "} catch (e: RuntimeException) {",
+        "} catch (e: AssertionError) {",
+        "exceptional health-start refusal",
+    ),
+    Mutation(
+        "activity",
+        "if (status != null && !requestMainServiceHealthCheck())",
+        "if (false)",
+        "existing-service app-open health reachability",
+    ),
+    Mutation(
+        "server_model",
+        'case "service":',
+        'case "service_disabled":',
+        "Flutter exact MainService status reconciliation",
+    ),
+    Mutation(
+        "server_model",
+        "_isStart = value;\n        break;\n      case \"input\":",
+        "_isStart = true;\n        break;\n      case \"input\":",
+        "Flutter exact MainService status value",
     ),
     Mutation(
         "activity",
@@ -793,6 +967,8 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         ).read_text(encoding="utf-8"),
         "service": (package / "MainService.kt").read_text(encoding="utf-8"),
         "activity": (package / "MainActivity.kt").read_text(encoding="utf-8"),
+        "common": (package / "common.kt").read_text(encoding="utf-8"),
+        "server_model": (repo / "flutter/lib/models/server_model.dart").read_text(encoding="utf-8"),
         "clipboard": (package / "RdClipboardManager.kt").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),

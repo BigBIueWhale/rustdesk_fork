@@ -17,10 +17,10 @@ import 'home_page.dart';
 
 // R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL reachability of the direct listener, read
 // synchronously from the Rust `direct-listener-bound` signal (the actual bound-TcpListener state) —
-// NOT the optimistic Dart `serverModel.isStart`, which is set before init_service and never synced
-// from the native service (so it is false after a boot listener-only start even though the listener
-// is UP, and stale otherwise). On Android the listener is FGS-owned (R-D7a): bound iff the service
-// runs AND a permanent password is set (R-S9 park), and Stop closes it.
+// NOT Dart `serverModel.isStart`, whose optimistic start value is later reconciled from the exact
+// MainService startup transaction but remains a UI-lifecycle signal rather than socket state. On
+// Android the listener is FGS-owned (R-D7a): bound iff the service runs AND a permanent password is
+// set (R-S9 park), and Stop closes it.
 bool _directListenerBound() =>
     bind.mainGetCommonSync(key: 'direct-listener-bound') == 'true';
 bool _permanentPasswordSet() =>

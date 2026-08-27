@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-6a3d09bc5d1e3ac855fe5c956e9902e72ab90008d5e941002458025a7129438f  requirements.html
+b65752b291b2887a1f0909fd8b09b0d49359850a1ec08d99fcd858314120970b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -27571,7 +27571,7 @@ parsing covered all 134 `scripts/*.py` modules; Bash syntax parsing passed for
 `scripts/verify.sh`, `scripts/dart-verify.sh`, and
 `scripts/native-codec-watch.sh`; `requirements.html` parsed and its synchronized
 SHA-256 remained
-`6a3d09bc5d1e3ac855fe5c956e9902e72ab90008d5e941002458025a7129438f`;
+`b65752b291b2887a1f0909fd8b09b0d49359850a1ec08d99fcd858314120970b`;
 and native-codec-watch normal and self-test modes passed. These are source and
 deliberate-mutation results only: the approved verifier image has no applicable
 Kotlin/Rust/JNI compiler/runtime execution evidence, and no device, installed
@@ -27595,3 +27595,132 @@ clean committed cold R-B2/R-B10 equality, installed artifacts/service
 behavior, fresh independent reproduction, R-V3 external review, causation,
 and proof that the complete connection flow is correct and performant remain
 explicit release obligations and explicit user requests.
+
+### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
+
+**Status:** SOURCE IMPLEMENTED / FOCUSED AND COMPLETE INDEPENDENT
+DELIBERATE-MUTATION VERIFICATION GREEN / EXACT KOTLIN/RUST/JNI,
+PHYSICAL-DEVICE, CROSS-VERSION, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE
+OPEN.
+
+Continuation review of the R-S11hq correction found that its only repair edge
+was not reachable from the lifecycle reported by the user. A dead committed
+native listener is detected and replaced only inside
+`MainService.onStartCommand`, but recreating Flutter after task removal called
+`init_service`, observed the still-published `MainService` status, and merely
+bound to the persistent Service. That bind is deliberately inert. If the old
+status still reported a coherent projection grant, the Activity also skipped
+fresh consent and returned. Thus the Service could preserve status, capture
+authority, and file-transfer-capable process state while no explicit callback
+ever executed the bounded native-listener health transaction. Force Stop made
+the symptom disappear by destroying the whole process, not by exercising a
+correct recovery edge.
+
+The retry transaction also crossed two different lifetime domains without a
+defined transfer. Native listener, raw-video, status, and voice ownership were
+generation-scoped, while `MediaProjection` and—on Android 14+—its reusable
+`VirtualDisplay` were deliberately Service-scoped so unattended connections do
+not attempt an illegal second capture session. Exact native retirement alone
+left old controlled capture owners, input authority, capture demand, reader,
+surface, raw delivery, and playback-audio state behind. Conversely, fully
+releasing the projection/display during retry would destroy valid persistent
+Service authority and make a later display start require new consent or fail
+under the one-session platform rule.
+
+`MainActivity.init_service` now distinguishes observation from recovery. When
+an exact `MainService` status exists it first issues one dedicated
+`ACT_ENSURE_CONTROLLED_SERVICE` start, using `startForegroundService` on
+Android O+ and the pre-O start API otherwise. A refused or exceptional enqueue
+completes the MethodChannel call with `MAIN_SERVICE_START_FAILED`. Only then
+does the Activity passively bind and decide from the preexisting projection
+status whether user consent is needed. The status-absent path remains the
+existing inert `BIND_AUTO_CREATE` plus human-consent flow. The dedicated
+health action reaches `onStartCommand` but cannot request MediaProjection or
+consume a consent result; it performs exactly the existing one-attempt,
+non-sticky R-S11hq transaction and publishes current permission state.
+
+Before replacing an inactive positive generation, `MainService` now closes
+controlled admission, clears the exact capture-owner set, retires that exact
+input-service generation, clears capture demand, and stops raw video,
+reader/surface, and playback-audio state while the old generation is still the
+current callback authority. The stop explicitly follows the existing
+`reuseVirtualDisplay` policy: Android 14+ detaches and preserves the reusable
+display owned by the coherent Service projection; older versions release it.
+The projection and its registered callback remain paired. After a fresh
+status generation begins, that retained readiness is published only to the new
+exact generation. A projection/callback mismatch is discarded instead of
+being adopted. Only then may voice publication, generation commit, callback
+admission, and listener activation continue.
+
+The Android service-start API reports request enqueue, not eventual
+`onStartCommand` success. To keep Flutter status honest without blocking the
+main looper or introducing polling, every explicit transaction now posts one
+`service` state derived from its exact Boolean outcome through the existing
+main-looper state channel; normal Service destruction posts false. Dart's
+optimistic `_isStart` remains only the anti-reentrancy latch needed while the
+permission callback is in flight and now converges on that exact outcome. The
+listener display in the UI continues to use the Rust
+`direct-listener-bound` ground truth rather than treating this lifecycle flag
+as socket authority.
+
+The focused startup and MainService-status verifiers now derive the dedicated
+action vocabulary, foreground-compatible and fail-closed Activity request,
+app-open ordering, health-action separation from consent, pre-retirement
+capture/input cleanup, reusable-display preservation, coherent retained
+projection publication, exact asynchronous outcome reconciliation, normative
+R-S11hr text, Appendix C #378, and this ledger. The independent workspace
+validator derives the same product properties rather than trusting the focused
+gate and carries deliberate mutations for each material edge.
+
+The frozen pre-receipt candidate was exercised offline in immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+as UID/GID 1000 with a read-only repository mount, read-only container root,
+no network, all capabilities dropped, `no-new-privileges`, one process, a
+2-GiB memory/swap cap, two-CPU cap, and a private bounded `/tmp`. Focused
+self-tests rejected 98 startup, 49 MainService-status, 49 listener-generation,
+68 frame/raw-generation, and 545 voice-call mutations. The independent
+workspace baseline passed. A mechanically derived `HEAD`-to-candidate catalog
+delta preflight covered all 28 added tuples and the one replaced tuple. The
+complete unsliced independent workspace catalog then traversed all 5,145
+mutations from its first entry through its terminal result and printed
+`verify-verifier-workspace: ok`; the detached container's independent wait
+returned numeric exit 0 after 8,938 seconds. Its launch and terminal
+`git diff --binary` digest both equalled
+`e423cf27ba49c6dd37a19baccab9c242b95e2755ece321d43bbff3d9a70f3ff9`,
+and its launch and terminal porcelain-status digest both equalled
+`5705b588de97ac51f916b2d3c17f39f0ac2d956abb8dd4b6d3ee519e1d459a10`.
+All 134 Python verifier scripts parsed, `requirements.html` parsed, the three
+selected shell gates passed syntax checks, the native-codec watch and its
+self-test passed, `git diff --check` passed, and the synchronized requirements
+SHA-256 was
+`b65752b291b2887a1f0909fd8b09b0d49359850a1ec08d99fcd858314120970b`.
+
+Two earlier full attempts are deliberately uncredited. The first attached
+observer was terminated with exit 137 after 4,229 seconds by its client-session
+lifetime, with no Docker OOM event. A later detached traversal reached a stale
+workspace-catalog expected diagnostic for the new exact startup edge and
+exited nonzero; it did not expose an accepted product mutation. The catalog
+label was corrected, every current-slice catalog delta was mechanically
+preflighted, and only the subsequent complete terminal-zero traversal above is
+credited. The exact-generation Kotlin regression was updated as source but the
+approved image has no Kotlin compiler/runtime, so no Kotlin, Rust, JNI, APK, or
+device execution is claimed by this receipt.
+
+This source slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change host firewall/network/listener
+state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
+unrelated container/image; or request/acquire root. It adds no retry timer,
+poller, reconnect loop, sticky restart, worker/thread/runtime, listener, port,
+transport, dependency, privilege transition, or host/network behavior.
+
+Exact Kotlin/Rust/JNI compilation and execution, injected failure at every
+startup and transfer stage, physical Android task-swipe/reopen/Force-Stop
+behavior, Android cross-version projection/display behavior, exact installed
+artifacts, Windows focus/minimize/reconnect reproduction, Linux/macOS/iOS
+behavior, capture-through-compositor timestamps, explicit end-to-end
+latency/queue/CPU/memory budgets, sustained
+connection/reconnect/focus/background/file/control/resource/performance soak,
+clean committed cold R-B2/R-B10 equality, fresh independent reproduction,
+R-V3 external review, causation, and proof that the complete connection flow
+is correct and performant remain explicit release obligations and explicit
+user requests.

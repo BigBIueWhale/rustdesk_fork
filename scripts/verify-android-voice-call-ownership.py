@@ -828,7 +828,9 @@ def validate(sources: Dict[str, str]) -> None:
         service_start,
         (
             "createForegroundNotification()",
-            "if (!initializeControlledServiceGeneration())",
+            "val generationReady = initializeControlledServiceGeneration()",
+            "publishControlledServiceStatus(generationReady)",
+            "if (!generationReady)",
             "return START_NOT_STICKY",
             "acquireNetworkKeepaliveWakeLock()",
             "registerNetworkCallback()",

@@ -35542,6 +35542,14 @@ def validate_android_main_service_status_contract(sources):
             "platform stop before Activity binding retirement",
             "focused explicit-stop ordering",
         ),
+        (
+            "fail-closed foreground-compatible service health request",
+            "focused app-open health reachability",
+        ),
+        (
+            "coherent retained projection exact-generation status transfer",
+            "focused persistent status transfer",
+        ),
         ("run_mutations(sources)", "focused mutation dispatch"),
     ):
         require_text(focused, text, f"Android MainService status {label}")
@@ -35594,6 +35602,10 @@ def validate_android_main_service_status_contract(sources):
             "replacement reset behavior",
         ),
         (
+            "retained projection readiness was not republished to the replacement generation",
+            "retained projection readiness transfer behavior",
+        ),
+        (
             "stale generation retired its replacement",
             "stale retirement behavior",
         ),
@@ -35630,6 +35642,18 @@ def validate_android_main_service_status_contract(sources):
             "it.generation == nativeServerGeneration && it.mediaProjectionReady",
             "exact service status query",
         ),
+        (
+            "retireControlledConnectionResourcesForRetry(currentGeneration)",
+            "old-generation resource retirement",
+        ),
+        (
+            "publishRetainedMediaProjectionStatus(generation)",
+            "retained projection status transfer",
+        ),
+        (
+            "publishControlledServiceStatus(generationReady)",
+            "exact startup outcome publication",
+        ),
     ):
         require_text(service, text, f"independent MainService status {label}")
     for text, label in (
@@ -35659,6 +35683,7 @@ def validate_android_main_service_status_contract(sources):
     require_order(
         on_destroy,
         (
+            "publishControlledServiceStatus(false)",
             "releaseControlledConnectionResources()",
             'retireControlledServiceGeneration(generation, "MainService destruction")',
             "FFI.releaseService(this)",
@@ -35667,6 +35692,12 @@ def validate_android_main_service_status_contract(sources):
     )
 
     activity = sources["android_main_activity"]
+    require_exact_count(
+        sources["android_common"],
+        'const val ACT_ENSURE_CONTROLLED_SERVICE = "ENSURE_CONTROLLED_SERVICE"',
+        1,
+        "independent MainService single health action vocabulary",
+    )
     require_exact_count(
         activity,
         "Context.BIND_AUTO_CREATE",
@@ -35685,6 +35716,18 @@ def validate_android_main_service_status_contract(sources):
         (
             "if (status?.mediaProjectionReady == true)",
             "readiness-specific consent skip",
+        ),
+        (
+            "action = ACT_ENSURE_CONTROLLED_SERVICE",
+            "exact service health action",
+        ),
+        (
+            "if (status != null && !requestMainServiceHealthCheck())",
+            "existing-service app-open health request",
+        ),
+        (
+            '"MAIN_SERVICE_START_FAILED"',
+            "caller-visible health-start failure",
         ),
     ):
         require_text(activity, text, f"independent MainService {label}")
@@ -35713,6 +35756,14 @@ def validate_android_main_service_status_contract(sources):
         activity_destroy,
         ("unbindMainService()", "super.onDestroy()"),
         "independent Activity destruction unbind",
+    )
+    require_order(
+        sources["server_model_dart"],
+        (
+            'case "service":',
+            "_isStart = value",
+        ),
+        "independent Flutter exact MainService status reconciliation",
     )
 
     for source, text, label in (
@@ -35752,6 +35803,14 @@ def validate_android_service_startup_transaction_contract(sources):
         ("closed-until-complete startup and rollback", "focused startup transaction"),
         ("listener-first attempt-aware exact rollback", "focused exact rollback"),
         ("one transaction attempt per explicit start callback", "focused explicit retry"),
+        (
+            "app-open health start before bind and capture-consent decision",
+            "focused app-open health reachability",
+        ),
+        (
+            "exact old-generation controlled resource retirement",
+            "focused retry resource transfer",
+        ),
         ("run_mutations(sources)", "focused mutation dispatch"),
     ):
         require_text(focused, text, f"independent Android startup {label}")
@@ -35895,6 +35954,7 @@ def validate_android_service_startup_transaction_contract(sources):
             "serviceGenerationOwner.isCommitted(currentGeneration)",
             "FFI.isServerGenerationActive(this, currentGeneration)",
             "return true",
+            "retireControlledConnectionResourcesForRetry(currentGeneration)",
             '"incomplete generation before retry"',
             "acceptingControlledConnections = false",
             'val generation = FFI.startServer(this, configPath, "")',
@@ -35903,6 +35963,7 @@ def validate_android_service_startup_transaction_contract(sources):
             "publishScreenInfo()",
             "serviceGenerationOwner.noteStatusAttempt(generation)",
             "statusOwner.begin(generation)",
+            "publishRetainedMediaProjectionStatus(generation)",
             "serviceGenerationOwner.noteVoiceAttempt(generation)",
             "VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)",
             "serviceGenerationOwner.noteActivationAttempt(generation)",
@@ -35911,6 +35972,77 @@ def validate_android_service_startup_transaction_contract(sources):
             "FFI.activateServer(this, generation)",
         ),
         "independent closed-until-complete startup",
+    )
+    retry_resources = extract_between(
+        service,
+        "private fun retireControlledConnectionResourcesForRetry(generation: Long): Boolean",
+        "private fun publishRetainedMediaProjectionStatus(generation: Long): Boolean",
+        "independent controlled resource retirement before retry",
+    )
+    require_order(
+        retry_resources,
+        (
+            "generation <= 0L || nativeServerGeneration != generation",
+            "return false",
+            "acceptingControlledConnections = false",
+            "controlledCaptureOwners.clear()",
+            "InputService.ctx?.retireServiceGeneration(generation)",
+            "captureRequested = false",
+            "if (!stopCapturePipeline(keepReusableDisplay = reuseVirtualDisplay))",
+            '"Failed to retire the old generation capture pipeline"',
+            "return false",
+            "return true",
+        ),
+        "independent exact old-generation controlled resource retirement",
+    )
+    require_absent(
+        retry_resources,
+        "releaseMediaProjection",
+        "independent valid projection retirement during generation retry",
+    )
+    capture_pipeline = extract_between(
+        service,
+        "private fun stopCapturePipeline(keepReusableDisplay: Boolean = reuseVirtualDisplay): Boolean",
+        "private fun releaseCaptureResources",
+        "independent fallible capture pipeline retirement",
+    )
+    require_order(
+        capture_pipeline,
+        (
+            "var retired = true",
+            "if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, false))",
+            "retired = false",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(",
+            "nativeServerGeneration",
+            "null",
+            "retired = false",
+            "return retired",
+        ),
+        "independent raw-video and playback-audio retirement result propagation",
+    )
+    require_exact_count(
+        capture_pipeline,
+        "retired = false",
+        2,
+        "independent two fallible capture-pipeline retirement edges",
+    )
+    retained_projection = extract_between(
+        service,
+        "private fun publishRetainedMediaProjectionStatus(generation: Long): Boolean",
+        "override fun onCreate()",
+        "independent retained MediaProjection status transfer",
+    )
+    require_order(
+        retained_projection,
+        (
+            "val projectionPresent = mediaProjection != null",
+            "val callbackPresent = mediaProjectionCallback != null",
+            "if (projectionPresent != callbackPresent)",
+            "releaseMediaProjection()",
+            "return true",
+            "return !projectionPresent || statusOwner.setMediaProjectionReady(generation, true)",
+        ),
+        "independent coherent retained projection generation transfer",
     )
     require_exact_count(
         service,
@@ -35985,7 +36117,9 @@ def validate_android_service_startup_transaction_contract(sources):
         on_start,
         (
             "createForegroundNotification()",
-            "if (!initializeControlledServiceGeneration())",
+            "val generationReady = initializeControlledServiceGeneration()",
+            "publishControlledServiceStatus(generationReady)",
+            "if (!generationReady)",
             "stopForeground(STOP_FOREGROUND_REMOVE)",
             "stopSelfResult(startId)",
             "return START_NOT_STICKY",
@@ -36000,11 +36134,102 @@ def validate_android_service_startup_transaction_contract(sources):
         1,
         "independent one transaction attempt per explicit start",
     )
+    service_status = extract_between(
+        service,
+        "private fun publishControlledServiceStatus(running: Boolean)",
+        "override fun onConfigurationChanged",
+        "independent exact startup outcome publication",
+    )
+    require_order(
+        service_status,
+        (
+            "Handler(Looper.getMainLooper()).post",
+            '"on_state_changed"',
+            'mapOf("name" to "service", "value" to running.toString())',
+        ),
+        "independent main-thread exact service outcome publication",
+    )
     for text, label in (
         ("postDelayed", "startup retry timer"),
         ("START_REDELIVER_INTENT", "automatic intent redelivery"),
     ):
         require_absent(on_start, text, f"independent {label}")
+    health_start = extract_between(
+        on_start,
+        "if (intent?.action == ACT_ENSURE_CONTROLLED_SERVICE)",
+        "else if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE)",
+        "independent explicit app-open health action",
+    )
+    require_text(
+        health_start,
+        "checkMediaPermission()",
+        "independent health action status reconciliation",
+    )
+    require_absent(
+        health_start,
+        "requestMediaProjection",
+        "independent health action capture-consent request",
+    )
+
+    require_exact_count(
+        sources["android_common"],
+        'const val ACT_ENSURE_CONTROLLED_SERVICE = "ENSURE_CONTROLLED_SERVICE"',
+        1,
+        "independent single health action vocabulary",
+    )
+    activity = sources["android_main_activity"]
+    health_request = extract_between(
+        activity,
+        "private fun requestMainServiceHealthCheck(): Boolean",
+        "private val serviceConnection",
+        "independent MainActivity service health request",
+    )
+    require_order(
+        health_request,
+        (
+            "Intent(this, MainService::class.java)",
+            "action = ACT_ENSURE_CONTROLLED_SERVICE",
+            "Build.VERSION.SDK_INT >= Build.VERSION_CODES.O",
+            "startForegroundService(intent)",
+            "startService(intent)",
+            "if (component == null)",
+            "catch (e: RuntimeException)",
+            "false",
+        ),
+        "independent fail-closed foreground-compatible health request",
+    )
+    init_service = extract_between(
+        activity,
+        '                "init_service" -> {',
+        '                "stop_service" -> {',
+        "independent MainActivity service initialization",
+    )
+    require_order(
+        init_service,
+        (
+            "val status = MainService.currentStatus()",
+            "if (status != null && !requestMainServiceHealthCheck())",
+            '"MAIN_SERVICE_START_FAILED"',
+            "return@setMethodCallHandler",
+            "bindMainService(createIfNeeded = status == null)",
+            "if (status?.mediaProjectionReady == true)",
+            "requestMediaProjection()",
+        ),
+        "independent app-open health start before bind and consent decision",
+    )
+    require_text(
+        sources["server_model_dart"],
+        'await parent.target?.invokeMethod("init_service");',
+        "independent Flutter app-open service initialization edge",
+    )
+    require_order(
+        sources["server_model_dart"],
+        (
+            'case "service":',
+            "_isStart = value",
+        ),
+        "independent Flutter exact service outcome reconciliation",
+    )
 
     ffi_kt = sources["android_ffi_kt"]
     require_text(
@@ -36269,11 +36494,22 @@ def validate_android_service_startup_transaction_contract(sources):
             '<span class="id">R-S11hq</span>',
             "R-S11hq requirement",
         ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11hr</span>',
+            "R-S11hr requirement",
+        ),
         (sources["requirements"], "<tr><td>377</td>", "Appendix C #377"),
+        (sources["requirements"], "<tr><td>378</td>", "Appendix C #378"),
         (
             sources["hardening"],
             "### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction",
             "hardening ledger",
+        ),
+        (
+            sources["hardening"],
+            "### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer",
+            "health-start hardening ledger",
         ),
         (
             sources["workspace_verifier"],
@@ -45269,7 +45505,9 @@ def validate_android_media_projection_finality_contract(sources):
         on_start,
         (
             "createForegroundNotification()",
-            "if (!initializeControlledServiceGeneration())",
+            "val generationReady = initializeControlledServiceGeneration()",
+            "publishControlledServiceStatus(generationReady)",
+            "if (!generationReady)",
             "return START_NOT_STICKY",
             "acquireNetworkKeepaliveWakeLock()",
             "registerNetworkCallback()",
@@ -85946,9 +86184,11 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "acceptingControlledConnections = false\n"
+            "private fun releaseControlledConnectionResources() {\n"
+            "        acceptingControlledConnections = false\n"
             "        controlledCaptureOwners.clear()",
-            "acceptingControlledConnections = true\n"
+            "private fun releaseControlledConnectionResources() {\n"
+            "        acceptingControlledConnections = true\n"
             "        controlledCaptureOwners.clear()",
             "Android closed-admission controlled capture-resource teardown",
         ),
@@ -86885,6 +87125,12 @@ def run_source_mutations(sources):
             "generation <= 0L || activeGeneration != generation",
             "generation <= 0L",
             "independent stale status generation retirement",
+        ),
+        (
+            "android_main_service_status_test",
+            "retained projection readiness was not republished to the replacement generation",
+            "replacement readiness passed",
+            "independent MainService status retained projection readiness transfer behavior",
         ),
         (
             "android_main_service",
@@ -89656,6 +89902,42 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
+            "if (!retireControlledConnectionResourcesForRetry(currentGeneration))",
+            "if (false)",
+            "independent MainService status old-generation resource retirement",
+        ),
+        (
+            "android_main_service",
+            "controlledCaptureOwners.clear()\n        InputService.ctx?.retireServiceGeneration(generation)",
+            "InputService.ctx?.retireServiceGeneration(generation)",
+            "independent exact old-generation controlled resource retirement",
+        ),
+        (
+            "android_main_service",
+            "InputService.ctx?.retireServiceGeneration(generation)\n        captureRequested = false",
+            "captureRequested = false",
+            "independent exact old-generation controlled resource retirement",
+        ),
+        (
+            "android_main_service",
+            "captureRequested = false\n        if (!stopCapturePipeline(keepReusableDisplay = reuseVirtualDisplay))",
+            "captureRequested = false\n        if (false)",
+            "independent exact old-generation controlled resource retirement",
+        ),
+        (
+            "android_main_service",
+            "stopCapturePipeline(keepReusableDisplay = reuseVirtualDisplay)",
+            "stopCapturePipeline(keepReusableDisplay = false)",
+            "independent exact old-generation controlled resource retirement",
+        ),
+        (
+            "android_main_service",
+            "return retired\n    }\n\n    @Synchronized\n    private fun releaseCaptureResources",
+            "return true\n    }\n\n    @Synchronized\n    private fun releaseCaptureResources",
+            "independent raw-video and playback-audio retirement result propagation",
+        ),
+        (
+            "android_main_service",
             'val generation = FFI.startServer(this, configPath, "")',
             'val generation = FFI.startServer(configPath, "")',
             "Android closed-until-committed native/audio service generation ownership",
@@ -89665,6 +89947,24 @@ def run_source_mutations(sources):
             "serviceGenerationOwner.noteStatusAttempt(generation)",
             "true",
             "independent closed-until-complete startup",
+        ),
+        (
+            "android_main_service",
+            "if (!publishRetainedMediaProjectionStatus(generation))",
+            "if (false)",
+            "independent MainService status retained projection status transfer",
+        ),
+        (
+            "android_main_service",
+            "if (projectionPresent != callbackPresent)",
+            "if (false)",
+            "independent coherent retained projection generation transfer",
+        ),
+        (
+            "android_main_service",
+            "return !projectionPresent || statusOwner.setMediaProjectionReady(generation, true)",
+            "return true",
+            "independent coherent retained projection generation transfer",
         ),
         (
             "android_main_service",
@@ -89704,9 +90004,93 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
+            "val generationReady = initializeControlledServiceGeneration()",
+            "val generationReady = true",
+            "Android foreground deadline before committed persistent resources",
+        ),
+        (
+            "android_main_service",
+            "publishControlledServiceStatus(generationReady)\n        if (!generationReady)",
+            "if (!generationReady)",
+            "Android foreground deadline before committed persistent resources",
+        ),
+        (
+            "android_main_service",
+            "publishControlledServiceStatus(false)\n        releaseControlledConnectionResources()",
+            "publishControlledServiceStatus(true)\n        releaseControlledConnectionResources()",
+            "independent status-before-native MainService teardown",
+        ),
+        (
+            "android_main_service",
             "initNotification()\n    }",
             "initNotification()\n        initializeControlledServiceGeneration()\n    }",
             "Android pre-deadline creation transaction",
+        ),
+        (
+            "android_main_service",
+            "if (intent?.action == ACT_ENSURE_CONTROLLED_SERVICE) {\n            checkMediaPermission()",
+            "if (intent?.action == ACT_ENSURE_CONTROLLED_SERVICE) {\n            requestMediaProjection()",
+            "independent health action status reconciliation",
+        ),
+        (
+            "android_common",
+            'const val ACT_ENSURE_CONTROLLED_SERVICE = "ENSURE_CONTROLLED_SERVICE"',
+            'const val ACT_ENSURE_CONTROLLED_SERVICE = "INIT_MEDIA_PROJECTION_AND_SERVICE"',
+            "independent MainService single health action vocabulary",
+        ),
+        (
+            "android_main_activity",
+            "action = ACT_ENSURE_CONTROLLED_SERVICE",
+            "action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE",
+            "independent MainService exact service health action",
+        ),
+        (
+            "android_main_activity",
+            "if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n                startForegroundService(intent)\n            } else {\n                startService(intent)",
+            "if (false) {\n                startForegroundService(intent)\n            } else {\n                startService(intent)",
+            "independent fail-closed foreground-compatible health request",
+        ),
+        (
+            "android_main_activity",
+            "if (component == null) {",
+            "if (false) {",
+            "independent fail-closed foreground-compatible health request",
+        ),
+        (
+            "android_main_activity",
+            "} catch (e: RuntimeException) {",
+            "} catch (e: AssertionError) {",
+            "independent fail-closed foreground-compatible health request",
+        ),
+        (
+            "android_main_activity",
+            "if (status != null && !requestMainServiceHealthCheck())",
+            "if (false)",
+            "independent MainService existing-service app-open health request",
+        ),
+        (
+            "android_main_activity",
+            '"MAIN_SERVICE_START_FAILED"',
+            '"IGNORED_MAIN_SERVICE_START_FAILURE"',
+            "independent MainService caller-visible health-start failure",
+        ),
+        (
+            "server_model_dart",
+            'await parent.target?.invokeMethod("init_service");',
+            'await parent.target?.invokeMethod("check_service");',
+            "independent Flutter app-open service initialization edge",
+        ),
+        (
+            "server_model_dart",
+            'case "service":',
+            'case "service_disabled":',
+            "independent Flutter exact MainService status reconciliation",
+        ),
+        (
+            "server_model_dart",
+            "_isStart = value;\n        break;\n      case \"input\":",
+            "_isStart = true;\n        break;\n      case \"input\":",
+            "independent Flutter exact MainService status reconciliation",
         ),
         (
             "android_ffi_kt",
@@ -89880,15 +90264,33 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<div class="req"><span class="id">R-S11hr</span>',
+            '<div class="req"><span class="id">R-S11hr-disabled</span>',
+            "independent Android startup R-S11hr requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>377</td>",
             "<tr><td>377-disabled</td>",
             "independent Android startup Appendix C #377",
+        ),
+        (
+            "requirements",
+            "<tr><td>378</td>",
+            "<tr><td>378-disabled</td>",
+            "independent Android startup Appendix C #378",
         ),
         (
             "hardening",
             "### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction",
             "### R-S11hq-disabled/R-S11e-254 — exact-generation Android MainService startup transaction",
             "independent Android startup hardening ledger",
+        ),
+        (
+            "hardening",
+            "### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer",
+            "### R-S11hr-disabled/R-S11e-255 — app-open health start and persistent-resource generation transfer",
+            "independent Android startup health-start hardening ledger",
         ),
         (
             "android_service_startup_transaction_verifier",
@@ -91350,6 +91752,10 @@ def main():
             "android_main_service": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
+            ).read_text(encoding="utf-8"),
+            "android_common": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/common.kt"
             ).read_text(encoding="utf-8"),
             "android_main_service_status_owner": (
                 repo

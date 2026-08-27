@@ -52,7 +52,7 @@ fun main() {
     )
     requireStatus(
         owner.setMediaProjectionReady(8, true),
-        "replacement readiness was rejected",
+        "retained projection readiness was not republished to the replacement generation",
     )
     requireStatus(owner.retire(8), "exact service generation retirement failed")
     requireStatus(owner.snapshot() == null, "retired service status remained published")

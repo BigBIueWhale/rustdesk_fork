@@ -378,8 +378,10 @@ class ServerModel with ChangeNotifier {
     notifyListeners();
     try {
       parent.target?.ffiModel.updateEventListener(parent.target!.sessionId, "");
-      // R-D7a: the direct listener is service-owned — MainService.onCreate (bound by init_service)
-      // starts it via JNI startServer; there is no separate service-enable config write.
+      // R-D7a/R-S11hr: the direct listener is service-owned. init_service either creates an
+      // inert bound Service before capture consent or issues one explicit app-open health start;
+      // MainService.onStartCommand owns the exact JNI startup/recovery transaction. There is no
+      // separate service-enable config write.
       await parent.target?.invokeMethod("init_service");
     } catch (e) {
       // Honest status (§19/R-G7): the "service running / reachable on :21118" surface is driven
@@ -430,6 +432,11 @@ class ServerModel with ChangeNotifier {
         if (value && !_isStart) {
           startService();
         }
+        break;
+      case "service":
+        // The optimistic value prevents a MediaProjection callback from re-entering startService;
+        // every explicit Android start converges it to the exact MainService transaction outcome.
+        _isStart = value;
         break;
       case "input":
         // M2 / R-S16: no enable-keyboard write — the key is policy-pinned Y (R-S16), so the write was

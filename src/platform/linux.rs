@@ -21,7 +21,8 @@ use std::{
     os::{
         fd::{AsRawFd as _, FromRawFd as _},
         unix::{
-            fs::{MetadataExt, OpenOptionsExt},
+            ffi::OsStrExt,
+            fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
             process::CommandExt,
         },
     },
@@ -66,8 +67,15 @@ const PROC_SNAPSHOT_MAX_ENVIRONMENT_CANDIDATES: usize = 64;
 const PROC_SNAPSHOT_MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 const PROC_CMDLINE_MAX_BYTES: usize = 16 * 1024;
 const PROC_CMDLINE_MAX_ARGS: usize = 256;
+const PROC_CGROUP_MAX_BYTES: usize = 16 * 1024;
 const PROC_ENVIRON_MAX_BYTES: usize = 64 * 1024;
 const PROC_ENV_VALUE_MAX_BYTES: usize = 4 * 1024;
+const X11_SOCKET_DIRECTORY: &str = "/tmp/.X11-unix";
+const X11_SOCKET_MAX_CANDIDATES: usize = 64;
+const X11_SOCKET_CONNECT_TIMEOUT_MS: c_int = 25;
+const X11_SOCKET_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(500);
+// Linux UAPI asm-generic/socket.h. Kernels before SO_PEERPIDFD fail closed here.
+const LINUX_SO_PEERPIDFD: c_int = 77;
 
 static SERVICE_RUNTIME_GENERATION: OnceLock<String> = OnceLock::new();
 static SERVICE_CHILD_EXECUTABLE_IDENTITY: OnceLock<std::sync::RwLock<Option<(u64, u64)>>> =
@@ -3127,6 +3135,7 @@ enum BoundedProcFile {
 
 #[derive(Clone, Copy)]
 enum ProcMember {
+    Cgroup,
     Cmdline,
     Environ,
 }
@@ -3134,6 +3143,7 @@ enum ProcMember {
 impl ProcMember {
     fn nul_terminated_name(self) -> &'static [u8] {
         match self {
+            Self::Cgroup => b"cgroup\0",
             Self::Cmdline => b"cmdline\0",
             Self::Environ => b"environ\0",
         }
@@ -5035,6 +5045,313 @@ pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> Re
     Ok(())
 }
 
+fn canonical_x11_socket_display_number(name: &OsStr) -> Option<u32> {
+    let bytes = name.as_bytes();
+    let digits = bytes.strip_prefix(b"X")?;
+    if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let digits = std::str::from_utf8(digits).ok()?;
+    let display = digits.parse::<u32>().ok()?;
+    (display.to_string() == digits).then_some(display)
+}
+
+fn cgroup_v2_path_has_exact_session_scope(bytes: &[u8], scope: &str) -> bool {
+    if bytes.is_empty() || bytes.last() != Some(&b'\n') {
+        return false;
+    }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let mut unified_path = None;
+    for line in text.lines() {
+        let mut fields = line.splitn(3, ':');
+        let (Some(hierarchy), Some(controllers), Some(path), None) =
+            (fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            return false;
+        };
+        if path.is_empty()
+            || !path.starts_with('/')
+            || path.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return false;
+        }
+        if hierarchy == "0" {
+            if !controllers.is_empty() || unified_path.replace(path).is_some() {
+                return false;
+            }
+        }
+    }
+    let Some(path) = unified_path else {
+        return false;
+    };
+    !path.ends_with(" (deleted)") && path.rsplit('/').next() == Some(scope)
+}
+
+fn poll_descriptor_is_live(fd: c_int) -> bool {
+    let mut pollfd = hbb_common::libc::pollfd {
+        fd,
+        events: hbb_common::libc::POLLIN,
+        revents: 0,
+    };
+    (unsafe { hbb_common::libc::poll(&mut pollfd, 1, 0) }) == 0
+}
+
+fn x11_socket_peer_pidfd(socket: &File) -> Option<File> {
+    let mut pidfd = -1;
+    let mut len = std::mem::size_of::<c_int>() as hbb_common::libc::socklen_t;
+    let rc = unsafe {
+        hbb_common::libc::getsockopt(
+            socket.as_raw_fd(),
+            hbb_common::libc::SOL_SOCKET,
+            LINUX_SO_PEERPIDFD,
+            (&mut pidfd as *mut c_int).cast::<c_void>(),
+            &mut len,
+        )
+    };
+    if rc != 0 || len as usize != std::mem::size_of::<c_int>() || pidfd < 0 {
+        return None;
+    }
+    Some(unsafe { File::from_raw_fd(pidfd) })
+}
+
+fn x11_socket_peer_cred(socket: &File) -> Option<hbb_common::libc::ucred> {
+    let mut cred: hbb_common::libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<hbb_common::libc::ucred>() as hbb_common::libc::socklen_t;
+    let rc = unsafe {
+        hbb_common::libc::getsockopt(
+            socket.as_raw_fd(),
+            hbb_common::libc::SOL_SOCKET,
+            hbb_common::libc::SO_PEERCRED,
+            (&mut cred as *mut hbb_common::libc::ucred).cast::<c_void>(),
+            &mut len,
+        )
+    };
+    if rc == 0 && len as usize == std::mem::size_of::<hbb_common::libc::ucred>() {
+        Some(cred)
+    } else {
+        None
+    }
+}
+
+fn connect_x11_socket(path: &Path, deadline: Instant) -> Option<File> {
+    if Instant::now() >= deadline {
+        return None;
+    }
+    let path = path.as_os_str().as_bytes();
+    let mut address: hbb_common::libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    if path.is_empty() || path.contains(&0) || path.len() >= address.sun_path.len() {
+        return None;
+    }
+    let fd = unsafe {
+        hbb_common::libc::socket(
+            hbb_common::libc::AF_UNIX,
+            hbb_common::libc::SOCK_STREAM
+                | hbb_common::libc::SOCK_CLOEXEC
+                | hbb_common::libc::SOCK_NONBLOCK,
+            0,
+        )
+    };
+    if fd < 0 {
+        return None;
+    }
+    let socket = unsafe { File::from_raw_fd(fd) };
+    address.sun_family = hbb_common::libc::AF_UNIX as hbb_common::libc::sa_family_t;
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            path.as_ptr(),
+            address.sun_path.as_mut_ptr().cast::<u8>(),
+            path.len(),
+        );
+    }
+    let address_len = std::mem::size_of::<hbb_common::libc::sa_family_t>()
+        .checked_add(path.len())?
+        .checked_add(1)?;
+    let address_len = hbb_common::libc::socklen_t::try_from(address_len).ok()?;
+    let rc = unsafe {
+        hbb_common::libc::connect(
+            socket.as_raw_fd(),
+            (&address as *const hbb_common::libc::sockaddr_un).cast::<hbb_common::libc::sockaddr>(),
+            address_len,
+        )
+    };
+    if rc == 0 {
+        return (Instant::now() < deadline).then_some(socket);
+    }
+    let err = std::io::Error::last_os_error().raw_os_error();
+    if !matches!(
+        err,
+        Some(hbb_common::libc::EINPROGRESS) | Some(hbb_common::libc::EAGAIN)
+    ) {
+        return None;
+    }
+    let remaining = deadline.checked_duration_since(Instant::now())?;
+    let timeout_ms = remaining
+        .as_millis()
+        .min(X11_SOCKET_CONNECT_TIMEOUT_MS as u128)
+        .max(1) as c_int;
+    let mut pollfd = hbb_common::libc::pollfd {
+        fd: socket.as_raw_fd(),
+        events: hbb_common::libc::POLLOUT,
+        revents: 0,
+    };
+    if unsafe { hbb_common::libc::poll(&mut pollfd, 1, timeout_ms) } != 1
+        || pollfd.revents & hbb_common::libc::POLLOUT == 0
+        || pollfd.revents
+            & (hbb_common::libc::POLLERR | hbb_common::libc::POLLHUP | hbb_common::libc::POLLNVAL)
+            != 0
+    {
+        return None;
+    }
+    let mut socket_error = 0;
+    let mut socket_error_len = std::mem::size_of::<c_int>() as hbb_common::libc::socklen_t;
+    let rc = unsafe {
+        hbb_common::libc::getsockopt(
+            socket.as_raw_fd(),
+            hbb_common::libc::SOL_SOCKET,
+            hbb_common::libc::SO_ERROR,
+            (&mut socket_error as *mut c_int).cast::<c_void>(),
+            &mut socket_error_len,
+        )
+    };
+    (rc == 0
+        && socket_error_len as usize == std::mem::size_of::<c_int>()
+        && socket_error == 0
+        && Instant::now() < deadline)
+        .then_some(socket)
+}
+
+fn x11_socket_peer_is_in_session(socket: &File, uid: u32, scope: &str) -> bool {
+    let Some(cred) = x11_socket_peer_cred(socket) else {
+        return false;
+    };
+    if cred.pid <= 0 || cred.uid != uid {
+        return false;
+    }
+    let Some(pidfd) = x11_socket_peer_pidfd(socket) else {
+        return false;
+    };
+    if !poll_descriptor_is_live(pidfd.as_raw_fd()) {
+        return false;
+    }
+    let process_dir = PathBuf::from("/proc").join(cred.pid.to_string());
+    let Ok(process_dir) = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(
+            hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_DIRECTORY
+                | hbb_common::libc::O_NOFOLLOW,
+        )
+        .open(process_dir)
+    else {
+        return false;
+    };
+    let Ok(metadata) = process_dir.metadata() else {
+        return false;
+    };
+    if !metadata.is_dir() || metadata.uid() != uid {
+        return false;
+    }
+    let mut budget = ProcSnapshotBudget::default();
+    let Ok(BoundedProcFile::Value(first)) = read_bounded_proc_member(
+        &process_dir,
+        ProcMember::Cgroup,
+        PROC_CGROUP_MAX_BYTES,
+        &mut budget,
+    ) else {
+        return false;
+    };
+    if !cgroup_v2_path_has_exact_session_scope(&first, scope) {
+        return false;
+    }
+    let Ok(BoundedProcFile::Value(second)) = read_bounded_proc_member(
+        &process_dir,
+        ProcMember::Cgroup,
+        PROC_CGROUP_MAX_BYTES,
+        &mut budget,
+    ) else {
+        return false;
+    };
+    first == second && poll_descriptor_is_live(pidfd.as_raw_fd())
+}
+
+fn unique_x11_socket_display(displays: impl IntoIterator<Item = u32>) -> Option<String> {
+    let mut selected = None;
+    for display in displays {
+        if selected.replace(display).is_some() {
+            return None;
+        }
+    }
+    selected.map(|display| format!(":{display}"))
+}
+
+fn selected_session_x11_socket_display(uid: &str, scope: &str) -> Option<String> {
+    let uid = uid
+        .parse::<u32>()
+        .ok()
+        .filter(|parsed| parsed.to_string() == uid)?;
+    let tmp_metadata = fs::symlink_metadata("/tmp").ok()?;
+    let directory_metadata = fs::symlink_metadata(X11_SOCKET_DIRECTORY).ok()?;
+    if !tmp_metadata.is_dir()
+        || tmp_metadata.uid() != 0
+        || tmp_metadata.mode() & 0o1000 == 0
+        || !directory_metadata.is_dir()
+        || directory_metadata.uid() != 0
+        || directory_metadata.mode() & 0o1000 == 0
+    {
+        return None;
+    }
+
+    let deadline = Instant::now().checked_add(X11_SOCKET_DISCOVERY_TIMEOUT)?;
+    let mut candidates = Vec::new();
+    let entries = fs::read_dir(X11_SOCKET_DIRECTORY).ok()?;
+    for entry in entries {
+        if Instant::now() >= deadline {
+            return None;
+        }
+        let entry = entry.ok()?;
+        let Some(display) = canonical_x11_socket_display_number(&entry.file_name()) else {
+            continue;
+        };
+        let metadata = fs::symlink_metadata(entry.path()).ok()?;
+        if !metadata.file_type().is_socket() || metadata.uid() != uid {
+            continue;
+        }
+        if candidates.len() == X11_SOCKET_MAX_CANDIDATES {
+            return None;
+        }
+        candidates.push((display, entry.path(), metadata.dev(), metadata.ino()));
+    }
+    candidates.sort_by_key(|candidate| candidate.0);
+
+    let mut validated = Vec::new();
+    for (display, path, device, inode) in candidates {
+        if Instant::now() >= deadline {
+            return None;
+        }
+        let Some(socket) = connect_x11_socket(&path, deadline) else {
+            continue;
+        };
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !metadata.file_type().is_socket()
+            || metadata.uid() != uid
+            || metadata.dev() != device
+            || metadata.ino() != inode
+            || !x11_socket_peer_is_in_session(&socket, uid, scope)
+        {
+            continue;
+        }
+        validated.push(display);
+    }
+    if Instant::now() >= deadline {
+        return None;
+    }
+    unique_x11_socket_display(validated)
+}
+
 mod desktop {
     use super::*;
 
@@ -5134,7 +5451,13 @@ mod desktop {
         }
 
         fn get_display_x11(&mut self) {
-            self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();
+            self.display = get_x11_session_authority(&self.sid)
+                .and_then(|authority| {
+                    authority.display.or_else(|| {
+                        selected_session_x11_socket_display(&self.uid, &authority.scope)
+                    })
+                })
+                .unwrap_or_default();
             self.wl_display.clear();
             self.dbus.clear();
         }
@@ -5229,6 +5552,54 @@ mod desktop {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed() {
+            assert_eq!(
+                canonical_x11_socket_display_number(OsStr::new("X0")),
+                Some(0)
+            );
+            assert_eq!(
+                canonical_x11_socket_display_number(OsStr::new("X17")),
+                Some(17)
+            );
+            for invalid in ["", "X", "X00", "X+1", "X-1", "X1.0", "x1", "Xone"] {
+                assert_eq!(
+                    canonical_x11_socket_display_number(OsStr::new(invalid)),
+                    None,
+                    "accepted {invalid:?}"
+                );
+            }
+            assert_eq!(unique_x11_socket_display([7]).as_deref(), Some(":7"));
+            assert_eq!(unique_x11_socket_display([]), None);
+            assert_eq!(unique_x11_socket_display([0, 7]), None);
+        }
+
+        #[test]
+        fn r_s11hs_x11_socket_peer_cgroup_is_the_exact_session_scope() {
+            assert!(cgroup_v2_path_has_exact_session_scope(
+                b"0::/user.slice/user-1000.slice/session-2.scope\n",
+                "session-2.scope"
+            ));
+            assert!(cgroup_v2_path_has_exact_session_scope(
+                b"7:cpu:/legacy\n0::/user.slice/user-1000.slice/session-c7.scope\n",
+                "session-c7.scope"
+            ));
+            for invalid in [
+                b"0::/system.slice/docker.scope\n".as_slice(),
+                b"0::/user.slice/user-1000.slice/session-3.scope\n".as_slice(),
+                b"0::/user.slice/user-1000.slice/session-2.scope/child\n".as_slice(),
+                b"0::/user.slice/user-1000.slice/session-2.scope (deleted)\n".as_slice(),
+                b"0::/user.slice/user-1000.slice/session-2.scope".as_slice(),
+                b"0:cpu:/user.slice/user-1000.slice/session-2.scope\n".as_slice(),
+                b"0::/user.slice/user-1000.slice/session-2.scope\n0::/other\n".as_slice(),
+            ] {
+                assert!(
+                    !cgroup_v2_path_has_exact_session_scope(invalid, "session-2.scope"),
+                    "accepted {invalid:?}"
+                );
+            }
+        }
 
         #[test]
         fn r_s11e43_headless_state_is_derived_from_the_selected_session() {

@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b65752b291b2887a1f0909fd8b09b0d49359850a1ec08d99fcd858314120970b  requirements.html
+8975a0842e67cd2501ae203f701bd4dd99d8e4d9f79aba6f314e0f934d644c33  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -27724,3 +27724,157 @@ clean committed cold R-B2/R-B10 equality, fresh independent reproduction,
 R-V3 external review, causation, and proof that the complete connection flow
 is correct and performant remain explicit release obligations and explicit
 user requests.
+
+### R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak, and the empty-`Display` gap in its replacement
+
+**Status:** SOURCE REPAIR AUTHORED AND SOURCE-GATED / ONE CONFIRMED FIELD
+EXPLOITATION OF THE OLD PATH AND ONE CONFIRMED AVAILABILITY GAP IN ITS FIRST
+REPLACEMENT / NATIVE COMPILE, EXACT ARTIFACT EXECUTION, INDEPENDENT FIELD
+REPRODUCTION, AND EXTERNAL REVIEW OPEN.
+
+Observed 2026-08-27 on the reference host `cte` (Ubuntu 24.04.4, kernel
+`7.0.0-30-generic`). The user reported that RustDesk **file transfer succeeds
+while remote desktop refuses to connect** — the clean split that isolates the
+fault to display acquisition, since file transfer requires no X connection.
+
+**The deployed artifact predates both relevant fixes.** `dpkg` records
+`rustdesk 1.4.7` installed `2026-07-09 09:13:34` with no later upgrade. String
+markers in the deployed `/usr/share/rustdesk/lib/librustdesk.so` confirm it
+carries the old discovery path — `kded[0-9]+`, `xfce4-panel`, `sddm-greeter`
+and `/tmp/.X11-unix` are all present, while `ProcSnapshotError` and
+`xauthority_from_environ_for_display` are absent. Every finding below is
+therefore about what R-S11e-42 replaced, not about what it produced, except
+where stated.
+
+**Confirmed exploitation of the old path — the first real-world instance.**
+R-S11e-42 records that the old `Desktop::get_display_x11` "searched loosely
+name-matched same-UID process environments" before any other source. That is
+exactly what happened. A container, `haggai_computer` (created 2026-07-12,
+image built 2026-07-13, `RestartCount: 0`), runs a full Plasma desktop as
+**uid 1000** against its own `Xvfb :99`. Its process tree
+`startplasma-x11 → plasma_session → ksmserver → kded6` matches
+`PLASMA_KDED = "kded[0-9]+"` on uid alone, `matching_process_cmdlines` applies
+**no namespace check**, and the container's `kded6` environ yields
+`DISPLAY=:99`. That wins on the first iteration, before the `w` fallback, the
+`/tmp/.X11-unix` scan, or the `:0` default are ever reached.
+
+The container holds its **own** PID namespace (`PidMode` empty), which hides the
+host from the container and never the container from the host: the same Xvfb is
+in-container pid 17 and host pid 3411, with full argv visible. Its X socket is
+not similarly exposed — the container's only mount is
+`/home/user/Desktop/haggai_computer/home → /home/user`, with no
+`/tmp/.X11-unix` bind — so the host's socket directory contains only `X0` and
+`DISPLAY=:99` is unreachable from the host. **Visible enough to be selected,
+isolated enough to be unusable.** The observed `--server` environment carried
+the resulting incoherent pair `DISPLAY=:99` with
+`XAUTHORITY=/run/user/1000/gdm/Xauthority`, the two having been decided by
+different resolvers exactly as R-S11e-42 describes.
+
+First occurrence `2026-07-20T19:02:46`, eight days after the container was
+created and one day after R-S11e-42 landed unbuilt. Journal coverage begins
+`2026-07-15`, so the date is not a truncation artifact. Selection is
+re-evaluated on every supervisor respawn, so the host has flipped between `:0`
+and `:99` across boots and session events rather than failing consistently.
+
+**⚠️ Identified gap in the R-S11e-42 replacement — it would not restore capture
+on this host.** `Desktop::get_display_x11` at HEAD is
+`get_x11_display_of_session(&self.sid).unwrap_or_default()`, and
+`get_x11_display_of_session` consults `LoginctlProperty::Display` and nothing
+else. On this deployment target **every logind session reports `Display` empty**,
+including session 2 (`seat0`, `tty2`, `Type=x11`, `Active=yes`) which
+`seat0_values[0]` selects. Ubuntu 24.04's GDM starts Xorg with `-displayfd`, so
+the server chooses its display number after session registration and
+`pam_systemd` never receives a `PAM_XDISPLAY` to store. The chain therefore
+resolves `"" → normalize_local_x_display_name("") → None →
+unwrap_or_default() → ""`, and no `:0` default or socket-directory scan remains
+anywhere at HEAD outside unit-test assertions.
+
+The empty-`DISPLAY` failure mode is not hypothetical: the deployed build already
+reaches it on an adjacent path, logging `Error: Can't open display: (null)`
+alongside the `:99` failures.
+
+**The deleted socket-directory helper was namespace-safe, and that property is
+separable from the owner-selection flaw already recorded against it.** R-S11e-42
+correctly faults `display_from_x11_socket_dir_for_user` for returning another
+owner's socket when no selected-user socket matched, and for proving only file
+type and owner rather than association with the selected logind session. Those
+are real defects. But a container's X socket cannot appear in the host's
+`/tmp/.X11-unix` at all without an explicit bind mount, so that helper could
+never have produced `:99`; on this host it resolves to the correctly-owned `X0`
+and yields `:0`. **The old ordering was the vulnerability, not the existence of
+a fallback.** Deleting the environ scan while retaining a session-bound fallback
+would have closed the leak and preserved acquisition; deleting all three leaves
+no source when logind is silent.
+
+**Source correction.** The typed query now obtains `Display` and `Scope`
+together for the exact already-selected logind session and requires `Scope` to
+equal that session's exact `session-<id>.scope` unit. A non-empty canonical
+local `Display` remains final. A non-empty malformed, remote, or otherwise
+inadmissible value fails closed and cannot activate compatibility discovery.
+Only an explicitly empty `Display` admits the following bounded recovery:
+
+1. `/tmp` and `/tmp/.X11-unix` must remain root-owned sticky directories. Only
+   canonical `X<decimal>` sockets owned by the selected UID can proceed as
+   candidates, and more than 64 such candidates fails closed. Unrelated owners
+   cannot exhaust that count; the total deadline separately bounds enumeration.
+2. Discovery has one 500 ms deadline, and each candidate receives at most a
+   25 ms nonblocking local-connect interval within that remaining total budget.
+   Error, hangup, invalid-descriptor, and non-writable poll outcomes are refused.
+   The pathname device/inode/type/owner must remain the inspected endpoint, its
+   kernel `SO_PEERCRED` UID must equal the selected UID, and Linux
+   `SO_PEERPIDFD` must return a live pinned peer. Unsupported kernels therefore
+   fail closed rather than reverting to PID text as identity.
+3. The pinned peer's no-follow `/proc/<pid>` directory must have the selected
+   UID, and two bounded reads of its cgroup membership must agree and contain a
+   cgroup-v2 path whose terminal component is the exact typed logind `Scope`.
+   Exit, PID reuse, malformed/truncated/changing cgroup data, a descendant
+   cgroup, or another session is rejected.
+4. Exactly one validated display is required. Zero or multiple matches return
+   no display; the implementation never invents `:0` and never consults process
+   names/environments, `w`, Xorg argv, hostname rewriting, cross-owner sockets,
+   or pathname ownership alone as endpoint authority.
+
+The focused pure tests cover exact typed scope retention when `Display` is
+empty, canonical socket names, ambiguity, the exact terminal-scope rule,
+deleted scopes, descendants, and malformed/hybrid cgroup input. Both service
+fixtures now model the same typed `Display` + `Scope` query. The source verifier
+and its independent implementation bind the primary/non-empty rule, the
+empty-only branch, every kernel/session proof above, unique finality, tests,
+fixtures, requirements, and this ledger. On 2026-08-28 the final confined
+independent baseline and the complete in-memory source-mutation catalog both
+returned `verify-verifier-workspace: ok` against the final product,
+requirements, fixture, and verifier bytes; this result sentence was appended
+afterward and receives the final baseline/hash checks below. The
+adversarial run first exposed and forced correction of coarse initial/final
+pidfd-liveness matching plus delimiter, label, multi-target, fixture, and reused
+canonical-UID mutation-fixture interactions; none was waived, and the complete
+catalog was rerun to terminal success after the corrections. Native compilation
+has **no verdict**:
+the confined offline Rust image accepted the immutable git checkouts and a
+container-only union of both local crates.io cache identities, but neither
+local cache contains locked `crossbeam-epoch 0.9.20`; Cargo therefore stopped
+during dependency resolution before compiling this source. No network was
+enabled and no persistent target or cache output was created.
+
+**Related field confirmation — the shipped unit is already correct and the
+deployed one is not.** The deployed `/usr/lib/systemd/system/rustdesk.service`
+(not owned by any package) still carries
+`ExecStop=/usr/bin/pkill -f "rustdesk --"`. That pattern is namespace-blind and
+matches the container's `rustdesk --server`, `--tray` and `--cm`, whose cmdlines
+are visible from the host; the observed
+`pkill: killing pid 3782054 failed: Operation not permitted` is it attempting
+processes it has no authority over, and the failed kills leave duplicate and
+defunct `--server` processes behind. This is the same class the R-S11c-27a
+narrative closes in source — "another installation, smoke process, portable
+server, or container is not selected by visible path text or argv" — and
+`res/rustdesk.service` in this repository already ships `ExecStart` with **no**
+`ExecStop` sweep. The defect exists only in the stale deployed artifact.
+
+**Disposition.** The field incident remains a confirmed real-world instance of
+the old vulnerability R-S11e-42 was written to close. The empty-`Display` gap in
+that first replacement is now repaired in source without restoring any old
+heuristic or cross-namespace authority. It is **not** yet an installed-artifact
+or field-reproduction claim: native compilation, an exact Debian artifact, and
+execution on a matching GDM `-displayfd` session remain under
+R-B2/R-S11c-27. **This entry authorizes and performed no change to the running
+host service**, which remains on the older release.

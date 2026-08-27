@@ -4262,7 +4262,7 @@ for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-lo
     '"3:--no-pager --no-legend list-sessions")' \
     '"5:--no-pager --property=State show-session -- 1")' \
     '"5:--no-pager --property=Type show-session -- 1")' \
-    '"5:--no-pager --property=Display show-session -- 1")' \
+    '"6:--no-pager --property=Display --property=Scope show-session -- 1")' \
     '"6:--no-pager --property=State --property=Seat show-session -- 1")'; do
     grep -qF "$fixture_query" "$fixture" || r_s11e40="$r_s11e40 ${fixture##*/}:strict-query-missing"
   done
@@ -4274,36 +4274,95 @@ grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS
 if [ -n "$r_s11e40" ]; then echo "  FAIL R-S11e-40 Linux loginctl session-query authority:$r_s11e40"; rc=1; else
   echo "  ok  R-S11e-40 Linux session discovery uses typed local loginctl queries, stable authority-field parsing across systemd list versions, an empty helper environment, and no ambient XDG session substitution"; fi
 
-# (3b-iii-d9c) R-S11ab/R-S11e-42: the exact active logind
-# session remains the sole authority for the local X11 endpoint, and a
-# process-derived credential hint must describe that same endpoint.
-echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S11e-42) =="
+# (3b-iii-d9c) R-S11ab/R-S11e-42/R-S11hs: logind Display remains primary.
+# Explicit emptiness may recover only through a kernel-pinned X-socket peer
+# in that exact session Scope; a process credential hint must still describe
+# the selected endpoint.
+echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S11e-42/R-S11hs) =="
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11e42_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib r_s11hs_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e42_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11hs_ --color never
 r_s11e42=
 x11_logind_authority=$(awk '/fn parse_local_x_display_name/,/pub fn get_values_of_seat0/' libs/hbb_common/src/platform/linux.rs)
 x11_loginctl_vocabulary=$(awk '/enum LoginctlProperty/,/enum LoginctlQuery/' libs/hbb_common/src/platform/linux.rs)
+x11_socket_authority=$(awk '/fn canonical_x11_socket_display_number/,/mod desktop/' src/platform/linux.rs)
 x11_environment_authority=$(awk '/fn xauthority_from_environ_for_display/,/impl DesktopProcessSnapshot/' src/platform/linux.rs)
 x11_snapshot_authority=$(awk '/impl DesktopProcessSnapshot/,/#\[link\(name = "gtk-3"\)\]/' src/platform/linux.rs)
 x11_desktop_authority=$(awk '/fn get_display_x11/,/pub fn refresh/' src/platform/linux.rs)
 x11_refresh_authority=$(awk '/fn refresh_selected_environment/,/    #\[cfg\(test\)\]/' src/platform/linux.rs)
 x11_shared_tests=$(awk '/fn r_s11e42_x11_display_names_are_local_and_canonical/,/fn r_s11e40_session_display_fallback_is_binary_owned/' libs/hbb_common/src/platform/linux.rs)
+x11_socket_tests=$(awk '/fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed/,/fn test_desktop_env/' src/platform/linux.rs)
 x11_root_tests=$(awk '/fn r_s11e42_xauthority_is_bound_to_the_selected_display/,/^}/' src/platform/linux.rs)
 for binding in \
   'Display,' \
   'Self::Display => "Display"' \
-  'Self::Display => "--property=Display"'; do
+  'Self::Display => "--property=Display"' \
+  'Scope,' \
+  'Self::Scope => "Scope"' \
+  'Self::Scope => "--property=Scope"'; do
   grep -qF "$binding" <<<"$x11_loginctl_vocabulary" || r_s11e42="$r_s11e42 typed-display-property-missing"
 done
+[ "$(grep -cF 'if Instant::now() >= deadline {' <<<"$x11_socket_authority")" -eq 4 ] \
+  || r_s11e42="$r_s11e42 total-discovery-deadline-enforcement-missing"
 for binding in \
   "display.strip_prefix(':')" \
   "components.next()?.parse::<u32>().ok()?" \
   'format!(":{display_number}.{screen_number}")' \
   'pub fn local_x_display_names_share_server' \
   '(Some((left, _)), Some((right, _))) if left == right' \
-  'loginctl_session_properties(session, &[LoginctlProperty::Display])' \
-  '.and_then(|display| normalize_local_x_display_name(&display))'; do
+  'pub struct X11SessionAuthority' \
+  'fn exact_loginctl_session_scope(session: &str, scope: &str)' \
+  'let expected = format!("session-{session}.scope");' \
+  '&[LoginctlProperty::Display, LoginctlProperty::Scope]' \
+  'let [display, scope]: [String; 2] = values.try_into().ok()?;' \
+  'let display = if display.is_empty() {' \
+  'Some(normalize_local_x_display_name(&display)?)' \
+  'scope: exact_loginctl_session_scope(session, &scope)?'; do
   grep -qF "$binding" <<<"$x11_logind_authority" || r_s11e42="$r_s11e42 exact-session-display-binding-missing"
+done
+for binding in \
+  '.filter(|parsed| parsed.to_string() == uid)' \
+  'fn canonical_x11_socket_display_number(name: &OsStr) -> Option<u32>' \
+  'fn cgroup_v2_path_has_exact_session_scope(bytes: &[u8], scope: &str) -> bool' \
+  '!path.ends_with(" (deleted)") && path.rsplit('\''/'\'').next() == Some(scope)' \
+  'hbb_common::libc::SO_PEERCRED' \
+  '            LINUX_SO_PEERPIDFD,' \
+  'if rc != 0 || len as usize != std::mem::size_of::<c_int>() || pidfd < 0 {' \
+  'if rc == 0 && len as usize == std::mem::size_of::<hbb_common::libc::ucred>() {' \
+  'if cred.pid <= 0 || cred.uid != uid {' \
+  'if !poll_descriptor_is_live(pidfd.as_raw_fd()) {' \
+  'let process_dir = PathBuf::from("/proc").join(cred.pid.to_string());' \
+  'hbb_common::libc::O_NOFOLLOW' \
+  'if !metadata.is_dir() || metadata.uid() != uid {' \
+  'let deadline = Instant::now().checked_add(X11_SOCKET_DISCOVERY_TIMEOUT)?;' \
+  'if Instant::now() >= deadline {' \
+  'if candidates.len() == X11_SOCKET_MAX_CANDIDATES {' \
+  'let Some(socket) = connect_x11_socket(&path, deadline) else {' \
+  'pollfd.revents & hbb_common::libc::POLLOUT == 0' \
+  'hbb_common::libc::POLLHUP' \
+  'hbb_common::libc::SOCK_CLOEXEC' \
+  'hbb_common::libc::SOCK_NONBLOCK' \
+  'hbb_common::libc::SO_ERROR' \
+  'tmp_metadata.uid() != 0' \
+  'tmp_metadata.mode() & 0o1000 == 0' \
+  'directory_metadata.uid() != 0' \
+  'directory_metadata.mode() & 0o1000 == 0' \
+  'if !metadata.file_type().is_socket() || metadata.uid() != uid {' \
+  '|| !x11_socket_peer_is_in_session(&socket, uid, scope)' \
+  'metadata.uid() != uid' \
+  'metadata.dev() != device' \
+  'metadata.ino() != inode' \
+  'first == second && poll_descriptor_is_live(pidfd.as_raw_fd())' \
+  'unique_x11_socket_display(validated)'; do
+  grep -qF "$binding" <<<"$x11_socket_authority" || r_s11e42="$r_s11e42 exact-session-socket-fallback-missing"
+done
+for binding in \
+  'const X11_SOCKET_MAX_CANDIDATES: usize = 64;' \
+  'const X11_SOCKET_CONNECT_TIMEOUT_MS: c_int = 25;' \
+  'const X11_SOCKET_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(500);' \
+  'const LINUX_SO_PEERPIDFD: c_int = 77;'; do
+  grep -qF "$binding" src/platform/linux.rs || r_s11e42="$r_s11e42 bounded-socket-authority-constant-missing"
 done
 for binding in \
   'let observed_display = proc_environ_value(environ, "DISPLAY")?;' \
@@ -4319,7 +4378,9 @@ for binding in \
   grep -qF "$binding" <<<"$x11_snapshot_authority" || r_s11e42="$r_s11e42 snapshot-bound-xauthority-missing"
 done
 for binding in \
-  'self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();' \
+  'self.display = get_x11_session_authority(&self.sid)' \
+  'authority.display.or_else(|| {' \
+  'selected_session_x11_socket_display(&self.uid, &authority.scope)' \
   'self.xauth.clear();' \
   'if self.display.is_empty() {' \
   'snapshot.xauthority_for_display(kind, &self.display)' \
@@ -4337,33 +4398,45 @@ done
 if grep -Eq 'get_env\(ENV_KEY_DISPLAY|get_display_by_user|display_from_x11_socket|self\.display = ":0"|\.replace\("localhost"|get_xauth_from_xorg|matching_process_cmdlines\(&self\.uid, "Xorg"\)' <<<"$x11_desktop_authority"; then
   r_s11e42="$r_s11e42 heuristic-display-or-xorg-authority-present"
 fi
-if grep -Eq 'const W_PATHS|fn w_path\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\.X11-unix' src/platform/linux.rs; then
+if grep -Eq 'const W_PATHS|fn w_path\(|get_display_by_user|display_from_x11_socket_dir_for_user|x11_socket_owner_matches_user|get_xauth_from_xorg' src/platform/linux.rs; then
   r_s11e42="$r_s11e42 legacy-display-fallback-present"
 fi
 for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-loginctl.sh; do
-  grep -qF '"5:--no-pager --property=Display show-session -- 1")' "$fixture" \
+  grep -qF '"6:--no-pager --property=Display --property=Scope show-session -- 1")' "$fixture" \
     || r_s11e42="$r_s11e42 ${fixture##*/}:display-query-missing"
   grep -qF "'Display=:0'" "$fixture" \
     || r_s11e42="$r_s11e42 ${fixture##*/}:display-result-missing"
+  grep -qF "'Scope=session-1.scope'" "$fixture" \
+    || r_s11e42="$r_s11e42 ${fixture##*/}:scope-result-missing"
 done
 for test_binding in \
   'fn r_s11e42_x11_display_names_are_local_and_canonical()' \
   'normalize_local_x_display_name(":0007.02")' \
   'local_x_display_names_share_server(":7", ":0007.02")' \
   '"localhost:0"' \
+  'fn r_s11hs_empty_logind_display_retains_exact_session_scope()' \
+  'b"Scope=session-2.scope\nDisplay=\n"' \
+  'fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed()' \
+  'fn r_s11hs_x11_socket_peer_cgroup_is_the_exact_session_scope()' \
+  'b"0::/system.slice/docker.scope\n"' \
+  'unique_x11_socket_display([0, 7])' \
   'fn r_s11e42_xauthority_is_bound_to_the_selected_display()' \
   'xauthority_from_environ_for_display(selected, ":8")' \
   'b"DISPLAY=host:7\0XAUTHORITY=/tmp/remote.auth\0"'; do
-  grep -qF "$test_binding" <<<"$x11_shared_tests$x11_root_tests" || r_s11e42="$r_s11e42 focused-regression-missing"
+  grep -qF "$test_binding" <<<"$x11_shared_tests$x11_socket_tests$x11_root_tests" || r_s11e42="$r_s11e42 focused-regression-missing"
 done
 grep -qF '<span class="id">R-S11ab</span>' requirements.html || r_s11e42="$r_s11e42 normative-requirement-missing"
 grep -qF 'Linux X11 endpoint selection remains bound to the exact active logind session' requirements.html \
   || r_s11e42="$r_s11e42 normative-authority-clause-missing"
+grep -qF 'obtain the peer'"'"'s kernel-pinned pidfd through <code>SO_PEERPIDFD</code>' requirements.html \
+  || r_s11e42="$r_s11e42 normative-empty-display-recovery-missing"
 grep -qF '<tr><td>150</td>' requirements.html || r_s11e42="$r_s11e42 appendix-row-missing"
 grep -qF 'Linux selected X11 session lost endpoint authority' requirements.html || r_s11e42="$r_s11e42 appendix-disposition-missing"
 grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md || r_s11e42="$r_s11e42 hardening-ledger-missing"
+grep -qF 'R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak' HARDENING_STATUS.md \
+  || r_s11e42="$r_s11e42 empty-display-ledger-missing"
 if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session display authority:$r_s11e42"; rc=1; else
-  echo "  ok  R-S11e-42 X11 DISPLAY comes only from the exact selected logind session and process Xauthority hints must describe that endpoint"; fi
+  echo "  ok  R-S11e-42/R-S11hs X11 DISPLAY is either the exact selected logind value or one unique kernel-pinned selected-UID X peer in that session Scope, and process Xauthority hints describe only that endpoint"; fi
 
 # (3b-iii-d9c2) R-S11ac/R-S11e-43: RustDesk no longer owns an
 # Xorg child, so process-table text cannot mint root signal authority or
@@ -8224,12 +8297,13 @@ for token in \
   '"3:--no-pager --no-legend list-sessions")' \
   '"5:--no-pager --property=State show-session -- 1")' \
   '"5:--no-pager --property=Type show-session -- 1")' \
-  '"5:--no-pager --property=Display show-session -- 1")' \
+  '"6:--no-pager --property=Display --property=Scope show-session -- 1")' \
   '"6:--no-pager --property=State --property=Seat show-session -- 1")' \
   '1 4001 rdseat seat0' \
   'State=active' \
   'Type=x11' \
   'Display=:0' \
+  'Scope=session-1.scope' \
   'exit 64'; do
   grep -qF -- "$token" "$systemd_loginctl" \
     || r_s11c27m="$r_s11c27m loginctl:${token%% *}"

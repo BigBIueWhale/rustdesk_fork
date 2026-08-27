@@ -427,11 +427,40 @@ pub fn local_x_display_names_share_server(left: &str, right: &str) -> bool {
     )
 }
 
-pub fn get_x11_display_of_session(session: &str) -> Option<String> {
-    loginctl_session_properties(session, &[LoginctlProperty::Display])
-        .ok()
-        .and_then(|mut values| values.pop())
-        .and_then(|display| normalize_local_x_display_name(&display))
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct X11SessionAuthority {
+    pub display: Option<String>,
+    pub scope: String,
+}
+
+fn exact_loginctl_session_scope(session: &str, scope: &str) -> Option<String> {
+    if session.is_empty()
+        || !session
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return None;
+    }
+    let expected = format!("session-{session}.scope");
+    (scope == expected).then_some(expected)
+}
+
+pub fn get_x11_session_authority(session: &str) -> Option<X11SessionAuthority> {
+    let values = loginctl_session_properties(
+        session,
+        &[LoginctlProperty::Display, LoginctlProperty::Scope],
+    )
+    .ok()?;
+    let [display, scope]: [String; 2] = values.try_into().ok()?;
+    let display = if display.is_empty() {
+        None
+    } else {
+        Some(normalize_local_x_display_name(&display)?)
+    };
+    Some(X11SessionAuthority {
+        display,
+        scope: exact_loginctl_session_scope(session, &scope)?,
+    })
 }
 
 #[inline]
@@ -528,6 +557,7 @@ pub fn is_session_locked(sid: &str) -> bool {
 enum LoginctlProperty {
     Display,
     LockedHint,
+    Scope,
     Seat,
     State,
     Type,
@@ -538,6 +568,7 @@ impl LoginctlProperty {
         match self {
             Self::Display => "Display",
             Self::LockedHint => "LockedHint",
+            Self::Scope => "Scope",
             Self::Seat => "Seat",
             Self::State => "State",
             Self::Type => "Type",
@@ -548,6 +579,7 @@ impl LoginctlProperty {
         match self {
             Self::Display => "--property=Display",
             Self::LockedHint => "--property=LockedHint",
+            Self::Scope => "--property=Scope",
             Self::Seat => "--property=Seat",
             Self::State => "--property=State",
             Self::Type => "--property=Type",
@@ -895,12 +927,13 @@ mod tests {
         assert_eq!(
             LoginctlQuery::SessionProperties {
                 session: "c7",
-                properties: &[LoginctlProperty::Display],
+                properties: &[LoginctlProperty::Display, LoginctlProperty::Scope],
             }
             .arguments(),
             [
                 "--no-pager",
                 "--property=Display",
+                "--property=Scope",
                 "show-session",
                 "--",
                 "c7",
@@ -1013,6 +1046,37 @@ mod tests {
             parse_loginctl_session_properties(b"Display=:17.0\n", &[LoginctlProperty::Display])
                 .unwrap(),
             [":17.0"]
+        );
+        assert_eq!(
+            exact_loginctl_session_scope("2", "session-2.scope").as_deref(),
+            Some("session-2.scope")
+        );
+        assert_eq!(
+            exact_loginctl_session_scope("c7", "session-c7.scope").as_deref(),
+            Some("session-c7.scope")
+        );
+        for (session, scope) in [
+            ("", "session-.scope"),
+            ("2/other", "session-2/other.scope"),
+            ("2", "session-3.scope"),
+            ("2", "user-2.scope"),
+            ("2", "session-2.scope/child"),
+        ] {
+            assert_eq!(
+                exact_loginctl_session_scope(session, scope),
+                None,
+                "accepted session={session:?}, scope={scope:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn r_s11hs_empty_logind_display_retains_exact_session_scope() {
+        let properties = [LoginctlProperty::Display, LoginctlProperty::Scope];
+        assert_eq!(
+            parse_loginctl_session_properties(b"Scope=session-2.scope\nDisplay=\n", &properties,)
+                .unwrap(),
+            ["", "session-2.scope"]
         );
     }
 

@@ -3674,11 +3674,12 @@ def validate_systemd_smoke_contract(
         ('"3:--no-pager --no-legend list-sessions")', "systemd VM loginctl session listing"),
         ('"5:--no-pager --property=State show-session -- 1")', "systemd VM loginctl state query"),
         ('"5:--no-pager --property=Type show-session -- 1")', "systemd VM loginctl type query"),
-        ('"5:--no-pager --property=Display show-session -- 1")', "systemd VM loginctl display query"),
+        ('"6:--no-pager --property=Display --property=Scope show-session -- 1")', "systemd VM loginctl display/Scope query"),
         ('1 4001 rdseat seat0', "systemd VM loginctl non-root seat"),
         ('State=active', "systemd VM loginctl active seat"),
         ('Type=x11', "systemd VM loginctl X11 seat"),
         ('Display=:0', "systemd VM loginctl X11 display"),
+        ('Scope=session-1.scope', "systemd VM loginctl session Scope"),
         ('exit 64', "systemd VM loginctl unexpected-argv rejection"),
     ):
         require_text(loginctl, text, label)
@@ -4223,9 +4224,10 @@ def validate_smoke_contract(
         ('Linux loginctl session-query authority (R-S11z/R-S11e-40)', "loginctl session authority source gate"),
         ('if grep -qF \'XDG_SESSION_TYPE\' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then', "loginctl ambient session source gate"),
         ("grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md", "loginctl session hardening ledger gate"),
-        ('Linux selected X11 session display authority (R-S11ab/R-S11e-42)', "selected X11 display authority source gate"),
-        ("if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\\.X11-unix' src/platform/linux.rs; then", "legacy X11 display fallback absence gate"),
+        ('Linux selected X11 session display authority (R-S11ab/R-S11e-42/R-S11hs)', "selected X11 display authority source gate"),
+        ("if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket_dir_for_user|x11_socket_owner_matches_user|get_xauth_from_xorg' src/platform/linux.rs; then", "legacy X11 display fallback absence gate"),
         ("grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md", "selected X11 display hardening ledger gate"),
+        ("grep -qF 'R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak' HARDENING_STATUS.md", "empty Display recovery hardening ledger gate"),
         ('Linux obsolete Xorg process authority (R-S11ac/R-S11e-43)', "obsolete Xorg process authority source gate"),
         ("grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md", "obsolete Xorg process hardening ledger gate"),
         ('Linux headless CM parent authority (R-S11ad/R-S11e-44)', "headless CM parent authority source gate"),
@@ -4743,9 +4745,10 @@ def validate_smoke_contract(
         ('printf \'1 %s %s seat0\\n\' "$uid" "$username"', "loginctl exact selected seat"),
         ('"5:--no-pager --property=State show-session -- 1")', "loginctl state query"),
         ('"5:--no-pager --property=Type show-session -- 1")', "loginctl type query"),
-        ('"5:--no-pager --property=Display show-session -- 1")', "loginctl display query"),
+        ('"6:--no-pager --property=Display --property=Scope show-session -- 1")', "loginctl display and Scope query"),
         ('"6:--no-pager --property=State --property=Seat show-session -- 1")', "loginctl session query"),
         ('Display=:0', "loginctl selected X11 display"),
+        ('Scope=session-1.scope', "loginctl selected session Scope"),
         ('exit 64', "loginctl unexpected-argv rejection"),
     ):
         require_text(loginctl_fixture, text, label)
@@ -5432,6 +5435,12 @@ def validate_smoke_contract(
         "\nenum LoginctlQuery",
         "Linux X11 loginctl property vocabulary",
     )
+    x11_socket_authority = extract_between(
+        linux_source,
+        "fn canonical_x11_socket_display_number",
+        "\nmod desktop",
+        "Linux selected-session X11 socket recovery authority",
+    )
     x11_environment_authority = extract_between(
         linux_source,
         "fn xauthority_from_environ_for_display",
@@ -5456,10 +5465,19 @@ def validate_smoke_contract(
         "\n    #[cfg(test)]",
         "Linux retained-session X11 refresh authority",
     )
+    x11_socket_tests = extract_between(
+        linux_source,
+        "fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed",
+        "\n        #[test]\n        fn test_desktop_env",
+        "Linux selected-session X11 socket recovery regressions",
+    )
     for text, label in (
         ("Display,", "typed loginctl Display property"),
         ('Self::Display => "Display"', "typed loginctl Display row"),
         ('Self::Display => "--property=Display"', "typed loginctl Display argument"),
+        ("Scope,", "typed loginctl Scope property"),
+        ('Self::Scope => "Scope"', "typed loginctl Scope row"),
+        ('Self::Scope => "--property=Scope"', "typed loginctl Scope argument"),
     ):
         require_text(x11_loginctl_vocabulary, text, label)
     for text, label in (
@@ -5474,16 +5492,166 @@ def validate_smoke_contract(
             "(Some((left, _)), Some((right, _))) if left == right",
             "screen-independent display-server identity",
         ),
+        ("pub struct X11SessionAuthority", "typed X11 session authority"),
         (
-            "loginctl_session_properties(session, &[LoginctlProperty::Display])",
-            "exact-session Display query",
+            "fn exact_loginctl_session_scope(session: &str, scope: &str)",
+            "exact logind session Scope parser",
+        ),
+        ('let expected = format!("session-{session}.scope");', "canonical session Scope"),
+        (
+            "&[LoginctlProperty::Display, LoginctlProperty::Scope]",
+            "exact-session Display and Scope query",
         ),
         (
-            ".and_then(|display| normalize_local_x_display_name(&display))",
-            "queried display normalization",
+            "let [display, scope]: [String; 2] = values.try_into().ok()?;",
+            "closed Display and Scope result shape",
+        ),
+        ("let display = if display.is_empty() {", "explicit empty Display branch"),
+        (
+            "Some(normalize_local_x_display_name(&display)?)",
+            "malformed nonempty logind Display fails closed",
+        ),
+        (
+            "scope: exact_loginctl_session_scope(session, &scope)?",
+            "selected session Scope binding",
         ),
     ):
         require_text(x11_logind_authority, text, label)
+    for text, label in (
+        (
+            ".filter(|parsed| parsed.to_string() == uid)",
+            "independent UID-checked selected process transaction",
+        ),
+        (
+            "fn canonical_x11_socket_display_number(name: &OsStr) -> Option<u32>",
+            "canonical X socket name parser",
+        ),
+        (
+            "fn cgroup_v2_path_has_exact_session_scope(bytes: &[u8], scope: &str) -> bool",
+            "exact session cgroup parser",
+        ),
+        (
+            '!path.ends_with(" (deleted)") && path.rsplit(\'/\').next() == Some(scope)',
+            "exact non-deleted terminal session Scope",
+        ),
+        ("hbb_common::libc::SO_PEERCRED", "X11 socket peer UID authority"),
+        (
+            "hbb_common::libc::SOL_SOCKET,\n            LINUX_SO_PEERPIDFD,",
+            "X11 socket peer pidfd authority",
+        ),
+        (
+            "if rc != 0 || len as usize != std::mem::size_of::<c_int>() || pidfd < 0 {",
+            "complete X11 peer pidfd result validation",
+        ),
+        (
+            "if rc == 0 && len as usize == std::mem::size_of::<hbb_common::libc::ucred>() {",
+            "complete X11 peer credential result validation",
+        ),
+        (
+            "if cred.pid <= 0 || cred.uid != uid {",
+            "selected X11 peer credential UID authority",
+        ),
+        (
+            "if !poll_descriptor_is_live(pidfd.as_raw_fd()) {",
+            "pinned peer liveness",
+        ),
+        (
+            'let process_dir = PathBuf::from("/proc").join(cred.pid.to_string());',
+            "credential-bound proc lookup",
+        ),
+        (
+            "hbb_common::libc::O_CLOEXEC\n                | hbb_common::libc::O_DIRECTORY\n                | hbb_common::libc::O_NOFOLLOW",
+            "no-follow peer proc directory",
+        ),
+        (
+            "if !metadata.is_dir() || metadata.uid() != uid {",
+            "selected-UID peer proc directory",
+        ),
+        (
+            "let deadline = Instant::now().checked_add(X11_SOCKET_DISCOVERY_TIMEOUT)?;",
+            "single X11 socket discovery deadline",
+        ),
+        (
+            "if Instant::now() >= deadline {",
+            "total X11 socket discovery deadline enforcement",
+        ),
+        (
+            "if candidates.len() == X11_SOCKET_MAX_CANDIDATES {",
+            "selected-UID X11 socket candidate bound",
+        ),
+        (
+            "let Some(socket) = connect_x11_socket(&path, deadline) else {",
+            "per-candidate use of the total deadline",
+        ),
+        (
+            "pollfd.revents & hbb_common::libc::POLLOUT == 0",
+            "completed nonblocking connection requirement",
+        ),
+        ("hbb_common::libc::POLLHUP", "closed socket rejection"),
+        ("metadata.uid() != uid", "selected UID checks"),
+        ("metadata.dev() != device", "stable socket device"),
+        ("metadata.ino() != inode", "stable socket inode"),
+        (
+            "first == second && poll_descriptor_is_live(pidfd.as_raw_fd())",
+            "stable peer cgroup and final liveness",
+        ),
+        (
+            "unique_x11_socket_display(validated)",
+            "ambiguous X11 socket recovery fails closed",
+        ),
+        (
+            "tmp_metadata.uid() != 0",
+            "root-owned sticky temporary directory",
+        ),
+        (
+            "tmp_metadata.mode() & 0o1000 == 0",
+            "sticky temporary directory",
+        ),
+        (
+            "directory_metadata.uid() != 0",
+            "root-owned X11 socket directory",
+        ),
+        (
+            "directory_metadata.mode() & 0o1000 == 0",
+            "sticky X11 socket directory",
+        ),
+        (
+            "if !metadata.file_type().is_socket() || metadata.uid() != uid {",
+            "canonical selected-UID socket candidate",
+        ),
+        (
+            "if !metadata.file_type().is_socket()\n            || metadata.uid() != uid",
+            "stable selected-UID socket pathname",
+        ),
+        (
+            "|| !x11_socket_peer_is_in_session(&socket, uid, scope)",
+            "connected socket peer and session proof",
+        ),
+        (
+            "hbb_common::libc::SOCK_CLOEXEC\n                | hbb_common::libc::SOCK_NONBLOCK",
+            "close-on-exec nonblocking X11 probe socket",
+        ),
+        ("hbb_common::libc::SO_ERROR", "completed socket error validation"),
+    ):
+        require_text(x11_socket_authority, text, label)
+    if x11_socket_authority.count("if Instant::now() >= deadline {") != 4:
+        raise VerificationError("total X11 socket discovery deadline enforcement")
+    for text, label in (
+        (
+            "const X11_SOCKET_MAX_CANDIDATES: usize = 64;",
+            "bounded selected-UID socket candidates",
+        ),
+        (
+            "const X11_SOCKET_CONNECT_TIMEOUT_MS: c_int = 25;",
+            "bounded per-candidate connection interval",
+        ),
+        (
+            "const X11_SOCKET_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(500);",
+            "bounded total socket discovery interval",
+        ),
+        ("const LINUX_SO_PEERPIDFD: c_int = 77;", "Linux SO_PEERPIDFD UAPI"),
+    ):
+        require_text(linux_source, text, label)
     for text, label in (
         (
             'let observed_display = proc_environ_value(environ, "DISPLAY")?;',
@@ -5517,8 +5685,13 @@ def validate_smoke_contract(
         require_text(x11_snapshot_authority, text, label)
     for text, label in (
         (
-            "self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();",
+            "self.display = get_x11_session_authority(&self.sid)",
             "exact selected-session display assignment",
+        ),
+        ("authority.display.or_else(|| {", "empty-only fallback branch"),
+        (
+            "selected_session_x11_socket_display(&self.uid, &authority.scope)",
+            "selected UID and Scope socket recovery",
         ),
         ("self.xauth.clear();", "stale Xauthority clearing"),
         ("if self.display.is_empty() {", "missing-display credential denial"),
@@ -5560,8 +5733,26 @@ def validate_smoke_contract(
             "screen-independent server comparison regression",
         ),
         ('"localhost:0"', "remote display rejection regression"),
+        (
+            "fn r_s11hs_empty_logind_display_retains_exact_session_scope()",
+            "empty Display Scope regression",
+        ),
+        ('b"Scope=session-2.scope\\nDisplay=\\n"', "empty Display property fixture"),
     ):
         require_text(loginctl_tests, text, label)
+    for text, label in (
+        (
+            "fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed()",
+            "socket name and ambiguity regression",
+        ),
+        (
+            "fn r_s11hs_x11_socket_peer_cgroup_is_the_exact_session_scope()",
+            "selected-session socket cgroup regression",
+        ),
+        ('b"0::/system.slice/docker.scope\\n"', "container cgroup rejection"),
+        ("unique_x11_socket_display([0, 7])", "ambiguous display rejection"),
+    ):
+        require_text(x11_socket_tests, text, label)
     for text, label in (
         (
             "fn r_s11e42_xauthority_is_bound_to_the_selected_display()",
@@ -5595,15 +5786,23 @@ def validate_smoke_contract(
         "R-S11e-42 — Linux selected X11 session display authority",
         "selected X11 display hardening ledger",
     )
+    require_text(
+        requirements,
+        "obtain the peer's kernel-pinned pidfd through <code>SO_PEERPIDFD</code>",
+        "empty Display recovery normative authority",
+    )
+    require_text(
+        hardening,
+        "R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak",
+        "empty Display recovery hardening ledger",
+    )
     for forbidden in (
         "const W_PATHS",
         "fn w_path(",
         "get_display_by_user",
-        "display_from_x11_socket",
-        "x11_socket_display_name",
+        "display_from_x11_socket_dir_for_user",
         "x11_socket_owner_matches_user",
         "get_xauth_from_xorg",
-        "/tmp/.X11-unix",
     ):
         if forbidden in linux_source:
             raise VerificationError(
@@ -61076,13 +61275,13 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S11e-42) =="',
-            'echo "== (3b-iii-d9c) Linux selected X11 session display compatibility (R-S11ab/R-S11e-42) =="',
+            'echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S11e-42/R-S11hs) =="',
+            'echo "== (3b-iii-d9c) Linux selected X11 session display compatibility (R-S11ab/R-S11e-42/R-S11hs) =="',
             "selected X11 display authority source gate",
         ),
         (
             "verify",
-            "if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\\.X11-unix' src/platform/linux.rs; then",
+            "if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket_dir_for_user|x11_socket_owner_matches_user|get_xauth_from_xorg' src/platform/linux.rs; then",
             "if false; then",
             "legacy X11 display fallback absence gate",
         ),
@@ -61115,6 +61314,18 @@ def run_source_mutations(sources):
             "R-S11e-42 — Linux selected X11 session display authority",
             "R-S11e-42 — Linux selected X11 session display compatibility",
             "selected X11 display hardening ledger",
+        ),
+        (
+            "requirements",
+            "obtain the peer's kernel-pinned pidfd through <code>SO_PEERPIDFD</code>",
+            "trust the socket pathname without a pinned peer",
+            "empty Display recovery normative authority",
+        ),
+        (
+            "hardening",
+            "R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak",
+            "R-S11hs/R-S11e-256 — display compatibility",
+            "empty Display recovery hardening ledger",
         ),
         (
             "verify",
@@ -63887,9 +64098,9 @@ def run_source_mutations(sources):
         ),
         (
             "hbb_common_linux",
-            "    loginctl_session_properties(session, &[LoginctlProperty::Display])",
-            "    loginctl_session_properties(session, &[LoginctlProperty::Type])",
-            "exact-session Display query",
+            "        &[LoginctlProperty::Display, LoginctlProperty::Scope],",
+            "        &[LoginctlProperty::Display, LoginctlProperty::Type],",
+            "exact-session Display and Scope query",
         ),
         (
             "linux_source",
@@ -63899,9 +64110,237 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "            self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();",
+            "            self.display = get_x11_session_authority(&self.sid)",
             "            self.display = \":0\".to_owned();",
             "exact selected-session display assignment",
+        ),
+        (
+            "hbb_common_linux",
+            "        Some(normalize_local_x_display_name(&display)?)",
+            "        None",
+            "malformed nonempty logind Display fails closed",
+        ),
+        (
+            "linux_source",
+            "            hbb_common::libc::SO_PEERCRED,",
+            "            hbb_common::libc::SO_ERROR,",
+            "X11 socket peer UID authority",
+        ),
+        (
+            "linux_source",
+            "            LINUX_SO_PEERPIDFD,",
+            "            hbb_common::libc::SO_PEERCRED,",
+            "X11 socket peer pidfd authority",
+        ),
+        (
+            "linux_source",
+            "const LINUX_SO_PEERPIDFD: c_int = 77;",
+            "const LINUX_SO_PEERPIDFD: c_int = 76;",
+            "Linux SO_PEERPIDFD UAPI",
+        ),
+        (
+            "linux_source",
+            "    if rc != 0 || len as usize != std::mem::size_of::<c_int>() || pidfd < 0 {",
+            "    if rc != 0 {",
+            "complete X11 peer pidfd result validation",
+        ),
+        (
+            "linux_source",
+            "    if rc == 0 && len as usize == std::mem::size_of::<hbb_common::libc::ucred>() {",
+            "    if rc == 0 {",
+            "complete X11 peer credential result validation",
+        ),
+        (
+            "linux_source",
+            "    if cred.pid <= 0 || cred.uid != uid {",
+            "    if cred.pid <= 0 {",
+            "selected X11 peer credential UID authority",
+        ),
+        (
+            "linux_source",
+            "    if !poll_descriptor_is_live(pidfd.as_raw_fd()) {",
+            "    if false {",
+            "pinned peer liveness",
+        ),
+        (
+            "linux_source",
+            "    let process_dir = PathBuf::from(\"/proc\").join(cred.pid.to_string());",
+            "    let process_dir = PathBuf::from(\"/proc\").join(std::process::id().to_string());",
+            "credential-bound proc lookup",
+        ),
+        (
+            "linux_source",
+            "    let Ok(process_dir) = fs::OpenOptions::new()\n        .read(true)\n        .custom_flags(\n            hbb_common::libc::O_CLOEXEC\n                | hbb_common::libc::O_DIRECTORY\n                | hbb_common::libc::O_NOFOLLOW,",
+            "    let Ok(process_dir) = fs::OpenOptions::new()\n        .read(true)\n        .custom_flags(\n            hbb_common::libc::O_CLOEXEC | hbb_common::libc::O_DIRECTORY,",
+            "no-follow peer proc directory",
+        ),
+        (
+            "linux_source",
+            "    if !metadata.is_dir() || metadata.uid() != uid {",
+            "    if !metadata.is_dir() {",
+            "selected-UID peer proc directory",
+        ),
+        (
+            "linux_source",
+            "const X11_SOCKET_MAX_CANDIDATES: usize = 64;",
+            "const X11_SOCKET_MAX_CANDIDATES: usize = 4096;",
+            "bounded selected-UID socket candidates",
+        ),
+        (
+            "linux_source",
+            "const X11_SOCKET_CONNECT_TIMEOUT_MS: c_int = 25;",
+            "const X11_SOCKET_CONNECT_TIMEOUT_MS: c_int = 5000;",
+            "bounded per-candidate connection interval",
+        ),
+        (
+            "linux_source",
+            "const X11_SOCKET_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(500);",
+            "const X11_SOCKET_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(60);",
+            "bounded total socket discovery interval",
+        ),
+        (
+            "linux_source",
+            "fn connect_x11_socket(path: &Path, deadline: Instant) -> Option<File> {\n    if Instant::now() >= deadline {",
+            "fn connect_x11_socket(path: &Path, deadline: Instant) -> Option<File> {\n    if false {",
+            "total X11 socket discovery deadline enforcement",
+        ),
+        (
+            "linux_source",
+            "    for entry in entries {\n        if Instant::now() >= deadline {",
+            "    for entry in entries {\n        if false {",
+            "total X11 socket discovery deadline enforcement",
+        ),
+        (
+            "linux_source",
+            "    for (display, path, device, inode) in candidates {\n        if Instant::now() >= deadline {",
+            "    for (display, path, device, inode) in candidates {\n        if false {",
+            "total X11 socket discovery deadline enforcement",
+        ),
+        (
+            "linux_source",
+            "        validated.push(display);\n    }\n    if Instant::now() >= deadline {",
+            "        validated.push(display);\n    }\n    if false {",
+            "total X11 socket discovery deadline enforcement",
+        ),
+        (
+            "linux_source",
+            "        if candidates.len() == X11_SOCKET_MAX_CANDIDATES {",
+            "        if false {",
+            "selected-UID X11 socket candidate bound",
+        ),
+        (
+            "linux_source",
+            "        let Some(socket) = connect_x11_socket(&path, deadline) else {",
+            "        let Some(socket) = connect_x11_socket(&path, Instant::now() + Duration::from_secs(60)) else {",
+            "per-candidate use of the total deadline",
+        ),
+        (
+            "linux_source",
+            "        || pollfd.revents & hbb_common::libc::POLLOUT == 0",
+            "        || false",
+            "completed nonblocking connection requirement",
+        ),
+        (
+            "linux_source",
+            "            & (hbb_common::libc::POLLERR | hbb_common::libc::POLLHUP | hbb_common::libc::POLLNVAL)",
+            "            & (hbb_common::libc::POLLERR | hbb_common::libc::POLLNVAL)",
+            "closed socket rejection",
+        ),
+        (
+            "linux_source",
+            "                | hbb_common::libc::SOCK_CLOEXEC\n                | hbb_common::libc::SOCK_NONBLOCK,",
+            "                | hbb_common::libc::SOCK_NONBLOCK,",
+            "close-on-exec nonblocking X11 probe socket",
+        ),
+        (
+            "linux_source",
+            "                | hbb_common::libc::SOCK_CLOEXEC\n                | hbb_common::libc::SOCK_NONBLOCK,",
+            "                | hbb_common::libc::SOCK_CLOEXEC,",
+            "close-on-exec nonblocking X11 probe socket",
+        ),
+        (
+            "linux_source",
+            "            hbb_common::libc::SOL_SOCKET,\n            hbb_common::libc::SO_ERROR,",
+            "            hbb_common::libc::SOL_SOCKET,\n            hbb_common::libc::SO_TYPE,",
+            "completed socket error validation",
+        ),
+        (
+            "linux_source",
+            "        || tmp_metadata.uid() != 0",
+            "        || false",
+            "root-owned sticky temporary directory",
+        ),
+        (
+            "linux_source",
+            "        || tmp_metadata.mode() & 0o1000 == 0",
+            "        || false",
+            "sticky temporary directory",
+        ),
+        (
+            "linux_source",
+            "        || directory_metadata.uid() != 0",
+            "        || false",
+            "root-owned X11 socket directory",
+        ),
+        (
+            "linux_source",
+            "        || directory_metadata.mode() & 0o1000 == 0",
+            "        || false",
+            "sticky X11 socket directory",
+        ),
+        (
+            "linux_source",
+            "        if !metadata.file_type().is_socket() || metadata.uid() != uid {",
+            "        if false {",
+            "canonical selected-UID socket candidate",
+        ),
+        (
+            "linux_source",
+            "        if !metadata.file_type().is_socket()\n            || metadata.uid() != uid",
+            "        if false",
+            "stable selected-UID socket pathname",
+        ),
+        (
+            "linux_source",
+            "            || metadata.dev() != device",
+            "            || false",
+            "stable socket device",
+        ),
+        (
+            "linux_source",
+            "            || metadata.ino() != inode",
+            "            || false",
+            "stable socket inode",
+        ),
+        (
+            "linux_source",
+            "            || !x11_socket_peer_is_in_session(&socket, uid, scope)",
+            "            || false",
+            "connected socket peer and session proof",
+        ),
+        (
+            "linux_source",
+            "    first == second && poll_descriptor_is_live(pidfd.as_raw_fd())",
+            "    true",
+            "stable peer cgroup and final liveness",
+        ),
+        (
+            "linux_source",
+            "    !path.ends_with(\" (deleted)\") && path.rsplit('/').next() == Some(scope)",
+            "    path.contains(scope)",
+            "exact non-deleted terminal session Scope",
+        ),
+        (
+            "linux_source",
+            "    unique_x11_socket_display(validated)",
+            "    validated.first().map(|display| format!(\":{display}\"))",
+            "ambiguous X11 socket recovery fails closed",
+        ),
+        (
+            "linux_source",
+            "fn r_s11hs_x11_socket_peer_cgroup_is_the_exact_session_scope()",
+            "fn r_s11hs_x11_socket_peer_cgroup_may_be_any_scope()",
+            "selected-session socket cgroup regression",
         ),
         (
             "linux_source",
@@ -63917,9 +64356,9 @@ def run_source_mutations(sources):
         ),
         (
             "loginctl_fixture",
-            '  "5:--no-pager --property=Display show-session -- 1")\n    printf \'%s\\n\' \'Display=:0\'\n    ;;\n',
+            '  "6:--no-pager --property=Display --property=Scope show-session -- 1")\n    printf \'%s\\n\' \'Display=:0\' \'Scope=session-1.scope\'\n    ;;\n',
             "",
-            "loginctl display query",
+            "loginctl display and Scope query",
         ),
         (
             "verify",

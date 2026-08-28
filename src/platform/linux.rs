@@ -3127,6 +3127,119 @@ fn open_proc_process_dir(entry: &std::fs::DirEntry) -> Option<File> {
         .ok()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProcNamespaceIdentity {
+    device: u64,
+    inode: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProcSelectorNamespaceIdentity {
+    mount: ProcNamespaceIdentity,
+    network: ProcNamespaceIdentity,
+}
+
+struct ProcSelectorNamespaceAuthority {
+    identity: ProcSelectorNamespaceIdentity,
+    _mount_handle: File,
+    _network_handle: File,
+}
+
+#[derive(Clone, Copy)]
+enum SelectorNamespace {
+    Mount,
+    Network,
+}
+
+impl SelectorNamespace {
+    fn current_path(self) -> &'static str {
+        match self {
+            Self::Mount => "/proc/self/ns/mnt",
+            Self::Network => "/proc/self/ns/net",
+        }
+    }
+
+    fn process_member(self) -> &'static [u8] {
+        match self {
+            Self::Mount => b"ns/mnt\0",
+            Self::Network => b"ns/net\0",
+        }
+    }
+}
+
+fn proc_namespace_identity(namespace: &File) -> Option<ProcNamespaceIdentity> {
+    let metadata = namespace.metadata().ok()?;
+    metadata.is_file().then_some(ProcNamespaceIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
+}
+
+fn open_current_proc_namespace(namespace: SelectorNamespace) -> Result<File, ProcSnapshotError> {
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(hbb_common::libc::O_CLOEXEC)
+        .open(namespace.current_path())
+        .map_err(ProcSnapshotError::ProcUnavailable)
+}
+
+fn current_selector_namespace_authority(
+) -> Result<ProcSelectorNamespaceAuthority, ProcSnapshotError> {
+    let mount = open_current_proc_namespace(SelectorNamespace::Mount)?;
+    let network = open_current_proc_namespace(SelectorNamespace::Network)?;
+    let invalid = || {
+        ProcSnapshotError::ProcUnavailable(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "current selector namespace has no stable file identity",
+        ))
+    };
+    let identity = ProcSelectorNamespaceIdentity {
+        mount: proc_namespace_identity(&mount).ok_or_else(invalid)?,
+        network: proc_namespace_identity(&network).ok_or_else(invalid)?,
+    };
+    Ok(ProcSelectorNamespaceAuthority {
+        identity,
+        _mount_handle: mount,
+        _network_handle: network,
+    })
+}
+
+fn process_namespace_identity(
+    process_dir: &File,
+    namespace: SelectorNamespace,
+) -> Option<ProcNamespaceIdentity> {
+    // proc namespace entries are kernel-owned magic links. Following this fixed member is
+    // intentional: the opened namespace object, not the procfs link inode, carries identity.
+    let fd = unsafe {
+        hbb_common::libc::openat(
+            process_dir.as_raw_fd(),
+            namespace.process_member().as_ptr().cast::<c_char>(),
+            hbb_common::libc::O_RDONLY | hbb_common::libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return None;
+    }
+    let namespace = unsafe { File::from_raw_fd(fd) };
+    proc_namespace_identity(&namespace)
+}
+
+fn process_selector_namespace_identity(
+    process_dir: &File,
+) -> Option<ProcSelectorNamespaceIdentity> {
+    Some(ProcSelectorNamespaceIdentity {
+        mount: process_namespace_identity(process_dir, SelectorNamespace::Mount)?,
+        network: process_namespace_identity(process_dir, SelectorNamespace::Network)?,
+    })
+}
+
+fn process_shares_selector_namespaces(
+    process_dir: &File,
+    expected: ProcSelectorNamespaceIdentity,
+) -> bool {
+    process_selector_namespace_identity(process_dir) == Some(expected)
+}
+
 enum BoundedProcFile {
     Value(Vec<u8>),
     Unavailable,
@@ -3322,6 +3435,7 @@ fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSn
         .ok()
         .filter(|parsed| parsed.to_string() == uid)
         .ok_or(ProcSnapshotError::InvalidUid)?;
+    let current_selector_namespaces = current_selector_namespace_authority()?;
     let entries = std::fs::read_dir("/proc").map_err(ProcSnapshotError::ProcUnavailable)?;
     let app_name = crate::get_app_name();
     let mut budget = ProcSnapshotBudget::default();
@@ -3339,7 +3453,13 @@ fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSn
         let Ok(metadata) = process_dir.metadata() else {
             continue;
         };
-        if !metadata.is_dir() || metadata.uid() != uid_num {
+        if !metadata.is_dir()
+            || metadata.uid() != uid_num
+            || !process_shares_selector_namespaces(
+                &process_dir,
+                current_selector_namespaces.identity,
+            )
+        {
             continue;
         }
         budget.charge_selected_process()?;
@@ -3349,9 +3469,6 @@ fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSn
         let Some(kind) = classify_desktop_process(&args, &app_name) else {
             continue;
         };
-        if kind == DesktopProcessKind::Xwayland {
-            snapshot.xwayland_running = true;
-        }
         budget.charge_environment_candidate()?;
         let BoundedProcFile::Value(environ) = read_bounded_proc_member(
             &process_dir,
@@ -3365,8 +3482,17 @@ fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSn
         let Ok(metadata) = process_dir.metadata() else {
             continue;
         };
-        if !metadata.is_dir() || metadata.uid() != uid_num {
+        if !metadata.is_dir()
+            || metadata.uid() != uid_num
+            || !process_shares_selector_namespaces(
+                &process_dir,
+                current_selector_namespaces.identity,
+            )
+        {
             continue;
+        }
+        if kind == DesktopProcessKind::Xwayland {
+            snapshot.xwayland_running = true;
         }
         snapshot
             .environments
@@ -4809,6 +4935,46 @@ mod process_cleanup_tests {
             snapshot.xauthority_for_display(DesktopProcessKind::Portal, ":7"),
             None
         );
+    }
+
+    #[test]
+    fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces() {
+        let current_authority = current_selector_namespace_authority().unwrap();
+        let current = current_authority.identity;
+        let process_dir = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(
+                hbb_common::libc::O_CLOEXEC
+                    | hbb_common::libc::O_DIRECTORY
+                    | hbb_common::libc::O_NOFOLLOW,
+            )
+            .open("/proc/self")
+            .unwrap();
+        assert!(process_shares_selector_namespaces(&process_dir, current));
+
+        let foreign_mount = ProcSelectorNamespaceIdentity {
+            mount: ProcNamespaceIdentity {
+                device: current.mount.device,
+                inode: current.mount.inode.wrapping_add(1),
+            },
+            network: current.network,
+        };
+        assert!(!process_shares_selector_namespaces(
+            &process_dir,
+            foreign_mount
+        ));
+
+        let foreign_network = ProcSelectorNamespaceIdentity {
+            mount: current.mount,
+            network: ProcNamespaceIdentity {
+                device: current.network.device,
+                inode: current.network.inode.wrapping_add(1),
+            },
+        };
+        assert!(!process_shares_selector_namespaces(
+            &process_dir,
+            foreign_network
+        ));
     }
 
     #[test]

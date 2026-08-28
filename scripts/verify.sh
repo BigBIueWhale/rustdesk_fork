@@ -3930,8 +3930,9 @@ grep -qF 'R-S11fq/R-S11e-204 Linux service-child terminal authority' HARDENING_S
 if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
   echo "  ok  R-S11e-26/R-S11e-204 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio/terminal variables and active-user TERM processes cannot re-enter after env_clear"; fi
 
-echo "== (3b-iii-d5a) Linux service selected-session observation authority (R-S11ft/R-S11e-207) =="
+echo "== (3b-iii-d5a) Linux service selected-session observation authority (R-S11ft/R-S11ht/R-S11e-207/R-S11e-257) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e207_ --color never
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e257_ --color never
 python3 scripts/verify-linux-service-session-observation.py --repo . --self-test
 
 # (3b-iii-d6) R-S11m/R-S11e-27: Linux service-owned roles do not inherit pathname

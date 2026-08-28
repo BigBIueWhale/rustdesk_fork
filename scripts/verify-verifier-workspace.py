@@ -15515,6 +15515,79 @@ def validate_linux_service_session_observation_contract(sources):
     ):
         require_text(linux, text, label)
 
+    selector_namespaces = extract_between(
+        linux,
+        "struct ProcNamespaceIdentity",
+        "\nenum BoundedProcFile",
+        "independent selector-namespace identity boundary",
+    )
+    selector_namespace = extract_between(
+        linux,
+        "enum SelectorNamespace {",
+        "\n}\n\nimpl SelectorNamespace",
+        "independent closed selector namespace vocabulary",
+    )
+    for text, label in (
+        ("Mount,", "independent mount selector namespace"),
+        ("Network,", "independent network selector namespace"),
+    ):
+        require_text(selector_namespace, text, label)
+    if selector_namespace.count(",") != 2:
+        raise VerificationError(
+            "independent selector namespace vocabulary is not the exact two-member set"
+        )
+    for text, label in (
+        ("device: u64", "independent namespace device identity"),
+        ("inode: u64", "independent namespace inode identity"),
+        ("mount: ProcNamespaceIdentity", "independent mount namespace identity"),
+        ("network: ProcNamespaceIdentity", "independent network namespace identity"),
+        (
+            "struct ProcSelectorNamespaceAuthority",
+            "independent retained current namespace authority",
+        ),
+        (
+            "identity: ProcSelectorNamespaceIdentity",
+            "independent retained current namespace identity",
+        ),
+        (
+            "_mount_handle: File",
+            "independent retained current mount namespace handle",
+        ),
+        (
+            "_network_handle: File",
+            "independent retained current network namespace handle",
+        ),
+        ("enum SelectorNamespace", "independent closed selector namespace vocabulary"),
+        ('Self::Mount => "/proc/self/ns/mnt"', "independent current mount namespace"),
+        ('Self::Network => "/proc/self/ns/net"', "independent current network namespace"),
+        ('Self::Mount => b"ns/mnt\\0"', "independent process mount namespace"),
+        ('Self::Network => b"ns/net\\0"', "independent process network namespace"),
+        ("metadata.is_file().then_some", "independent namespace object type proof"),
+        ("process_dir.as_raw_fd()", "independent namespace process-directory descriptor"),
+        ("hbb_common::libc::O_RDONLY", "independent read-only namespace open"),
+        ("hbb_common::libc::O_CLOEXEC", "independent close-on-exec namespace open"),
+        ("File::from_raw_fd(fd)", "independent owned namespace descriptor"),
+        (
+            "_mount_handle: mount",
+            "independent retained opened current mount namespace",
+        ),
+        (
+            "_network_handle: network",
+            "independent retained opened current network namespace",
+        ),
+        (
+            "process_selector_namespace_identity(process_dir) == Some(expected)",
+            "independent exact selector namespace equality",
+        ),
+    ):
+        require_text(selector_namespaces, text, label)
+    for text in ("read_link", "read_to_string", "PathBuf"):
+        require_absent(
+            selector_namespaces,
+            text,
+            "independent text/path-derived namespace identity",
+        )
+
     reader = extract_between(
         linux,
         "fn read_bounded_proc_reader(",
@@ -15591,11 +15664,13 @@ def validate_linux_service_session_observation_contract(sources):
         observer,
         (
             '.filter(|parsed| parsed.to_string() == uid)',
+            "current_selector_namespace_authority()?",
             'std::fs::read_dir("/proc")',
             "budget.charge_numeric_entry()?;",
             "open_proc_process_dir(&entry)",
             "process_dir.metadata()",
             "metadata.uid() != uid_num",
+            "current_selector_namespaces.identity",
             "budget.charge_selected_process()?;",
             "read_proc_cmdline_args(&process_dir, &mut budget)?",
             "classify_desktop_process(&args, &app_name)",
@@ -15603,12 +15678,25 @@ def validate_linux_service_session_observation_contract(sources):
             "ProcMember::Environ",
             "process_dir.metadata()",
             "metadata.uid() != uid_num",
+            "current_selector_namespaces.identity",
+            "if kind == DesktopProcessKind::Xwayland",
             ".push(DesktopProcessEnvironment { pid, kind, environ });",
         ),
-        "independent UID-checked selected process transaction",
+        "independent UID-and-selector-namespace-checked selected process transaction",
     )
     if observer.count('std::fs::read_dir("/proc")') != 1:
         raise VerificationError("independent selected desktop observation is not one proc walk")
+    if observer.count(
+        "current_selector_namespaces.identity"
+    ) != 2:
+        raise VerificationError(
+            "independent selected desktop observer lacks exact pre/post namespace proof"
+        )
+    require_absent(
+        observer,
+        "drop(current_selector_namespaces)",
+        "independent premature current namespace handle release",
+    )
 
     environment_parser = extract_between(
         linux,
@@ -15720,9 +15808,33 @@ def validate_linux_service_session_observation_contract(sources):
         ),
         ("run_mutations(sources)", "focused session observation mutation dispatch"),
         ("limit-plus-one read", "focused bounded-read rejection"),
-        ("UID-checked handle-relative", "focused UID/descriptor rejection"),
+        (
+            "UID-and-selector-namespace-checked",
+            "focused UID/namespace/descriptor rejection",
+        ),
+        (
+            "fixed process network namespace",
+            "focused process network-namespace rejection",
+        ),
+        ("fixed current network namespace", "focused network-namespace rejection"),
+        ("exact namespace equality", "focused namespace-equality rejection"),
         ("actual tray role argument", "focused tray-argv rejection"),
         ("root-child identity refresh", "focused child-identity rejection"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        (
+            "'Self::Network => b\"ns/net\\\\0\"',\n"
+            "        'Self::Network => b\"ns/mnt\\\\0\"',\n"
+            '        "fixed process network namespace",',
+            "focused process network-namespace mutation",
+        ),
+        (
+            '"process_selector_namespace_identity(process_dir) == Some(expected)",\n'
+            '        "process_selector_namespace_identity(process_dir).is_some()",\n'
+            '        "exact namespace equality",',
+            "focused exact namespace-equality mutation",
+        ),
     ):
         require_text(focused, text, label)
     require_text(
@@ -15735,11 +15847,17 @@ def validate_linux_service_session_observation_contract(sources):
         "cargo test --offline --locked --lib --features linux-pkg-config r_s11e207_",
         "Linux session observation compiled regression wiring",
     )
+    require_text(
+        sources["verify"],
+        "cargo test --offline --locked --lib --features linux-pkg-config r_s11e257_",
+        "Linux selector-namespace compiled regression wiring",
+    )
     for test_name in (
         "fn r_s11e207_desktop_process_classification_is_exact()",
         "fn r_s11e207_proc_observation_rejects_oversized_or_partial_values()",
         "fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop()",
         "fn r_s11e207_desktop_snapshot_keeps_one_validated_process_environment()",
+        "fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces()",
     ):
         require_text(linux, test_name, f"independent session observation regression {test_name}")
     require_text(
@@ -15756,6 +15874,21 @@ def validate_linux_service_session_observation_contract(sources):
         sources["hardening"],
         "R-S11ft/R-S11e-207 Linux selected-session observation authority",
         "Linux selected-session observation hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ht</span>',
+        "Linux selector-namespace observation requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>379</td>",
+        "Linux selector-namespace observation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ht/R-S11e-257 Linux desktop-selector namespace authority",
+        "Linux selector-namespace observation hardening ledger",
     )
 
 
@@ -69992,15 +70125,93 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            '.filter(|parsed| parsed.to_string() == uid)',
-            ".filter(|_| true)",
-            "independent UID-checked selected process transaction",
+            '.filter(|parsed| parsed.to_string() == uid)\n        .ok_or(ProcSnapshotError::InvalidUid)?;',
+            ".filter(|_| true)\n        .ok_or(ProcSnapshotError::InvalidUid)?;",
+            "independent UID-and-selector-namespace-checked selected process transaction",
         ),
         (
             "linux_source",
             "budget.charge_environment_candidate()?;",
             "let _ = kind;",
-            "independent UID-checked selected process transaction",
+            "independent UID-and-selector-namespace-checked selected process transaction",
+        ),
+        (
+            "linux_source",
+            'Self::Mount => "/proc/self/ns/mnt"',
+            'Self::Mount => "/proc/1/ns/mnt"',
+            "independent current mount namespace",
+        ),
+        (
+            "linux_source",
+            "enum SelectorNamespace {\n    Mount,\n    Network,\n}",
+            "enum SelectorNamespace {\n    Mount,\n    Network,\n    Foreign,\n}",
+            "independent selector namespace vocabulary is not the exact two-member set",
+        ),
+        (
+            "linux_source",
+            "_mount_handle: File,",
+            "_mount_handle: (),",
+            "independent retained current mount namespace handle",
+        ),
+        (
+            "linux_source",
+            "_network_handle: File,",
+            "_network_handle: (),",
+            "independent retained current network namespace handle",
+        ),
+        (
+            "linux_source",
+            "_mount_handle: mount,",
+            "_mount_handle: network,",
+            "independent retained opened current mount namespace",
+        ),
+        (
+            "linux_source",
+            "_network_handle: network,",
+            "_network_handle: mount,",
+            "independent retained opened current network namespace",
+        ),
+        (
+            "linux_source",
+            "let current_selector_namespaces = current_selector_namespace_authority()?;\n    let entries =",
+            "let current_selector_namespaces = current_selector_namespace_authority()?;\n    drop(current_selector_namespaces);\n    let entries =",
+            "independent premature current namespace handle release",
+        ),
+        (
+            "linux_source",
+            'Self::Network => "/proc/self/ns/net"',
+            'Self::Network => "/proc/1/ns/net"',
+            "independent current network namespace",
+        ),
+        (
+            "linux_source",
+            'Self::Network => b"ns/net\\0"',
+            'Self::Network => b"ns/mnt\\0"',
+            "independent process network namespace",
+        ),
+        (
+            "linux_source",
+            "process_selector_namespace_identity(process_dir) == Some(expected)",
+            "process_selector_namespace_identity(process_dir).is_some()",
+            "independent exact selector namespace equality",
+        ),
+        (
+            "linux_source",
+            "|| !process_shares_selector_namespaces(\n                &process_dir,\n                current_selector_namespaces.identity,\n            )\n        {\n            continue;\n        }\n        budget.charge_selected_process()?;",
+            "{\n            continue;\n        }\n        budget.charge_selected_process()?;",
+            "independent UID-and-selector-namespace-checked selected process transaction",
+        ),
+        (
+            "linux_source",
+            "|| !process_shares_selector_namespaces(\n                &process_dir,\n                current_selector_namespaces.identity,\n            )\n        {\n            continue;\n        }\n        if kind == DesktopProcessKind::Xwayland",
+            "{\n            continue;\n        }\n        if kind == DesktopProcessKind::Xwayland",
+            "independent UID-and-selector-namespace-checked selected process transaction",
+        ),
+        (
+            "linux_source",
+            "if kind == DesktopProcessKind::Xwayland {",
+            "if true {",
+            "independent UID-and-selector-namespace-checked selected process transaction",
         ),
         (
             "linux_source",
@@ -70045,10 +70256,42 @@ def run_source_mutations(sources):
             "independent session observation regression",
         ),
         (
+            "linux_source",
+            "fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces()",
+            "fn disabled_257_desktop_selector_process_requires_the_same_interpretation_namespaces()",
+            "independent session observation regression",
+        ),
+        (
             "verify",
             "python3 scripts/verify-linux-service-session-observation.py --repo . --self-test",
             "true # selected-session observation verifier removed",
             "Linux session observation shared focused-verifier wiring",
+        ),
+        (
+            "verify",
+            "cargo test --offline --locked --lib --features linux-pkg-config r_s11e257_",
+            "true # selector-namespace regression removed",
+            "Linux selector-namespace compiled regression wiring",
+        ),
+        (
+            "linux_service_session_observation_verifier",
+            "'Self::Network => b\"ns/net\\\\0\"',\n"
+            "        'Self::Network => b\"ns/mnt\\\\0\"',\n"
+            '        "fixed process network namespace",',
+            "'Self::Network => b\"ns/net\\\\0\"',\n"
+            "        'Self::Network => b\"ns/mnt-disabled\\\\0\"',\n"
+            '        "fixed process network namespace",',
+            "focused process network-namespace mutation",
+        ),
+        (
+            "linux_service_session_observation_verifier",
+            '"process_selector_namespace_identity(process_dir) == Some(expected)",\n'
+            '        "process_selector_namespace_identity(process_dir).is_some()",\n'
+            '        "exact namespace equality",',
+            '"process_selector_namespace_identity(process_dir) == Some(expected)",\n'
+            '        "process_selector_namespace_identity(process_dir).is_some()",\n'
+            '        "loose namespace equality",',
+            "focused exact namespace-equality mutation",
         ),
         (
             "requirements",
@@ -70067,6 +70310,24 @@ def run_source_mutations(sources):
             "R-S11ft/R-S11e-207 Linux selected-session observation authority",
             "R-S11ft-disabled/R-S11e-207 Linux selected-session observation authority",
             "Linux selected-session observation hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ht</span>',
+            '<span class="id">R-S11ht-disabled</span>',
+            "Linux selector-namespace observation requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>379</td>",
+            "<tr><td>379-disabled</td>",
+            "Linux selector-namespace observation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ht/R-S11e-257 Linux desktop-selector namespace authority",
+            "R-S11ht-disabled/R-S11e-257 Linux desktop-selector namespace authority",
+            "Linux selector-namespace observation hardening ledger",
         ),
         (
             "linux_nondumpable_cm_verifier",

@@ -121,17 +121,72 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     member = rust_block(linux, "enum ProcMember", "closed proc member vocabulary")
+    require(member, "Cgroup,", "cgroup member")
     require(member, "Cmdline,", "cmdline member")
     require(member, "Environ,", "environ member")
-    if member.count(",") != 2:
-        raise VerificationError("proc member vocabulary is not the exact two-member set")
+    if member.count(",") != 3:
+        raise VerificationError("proc member vocabulary is not the exact three-member set")
     member_names = rust_block(
         linux,
         "impl ProcMember",
         "closed proc member name selection",
     )
-    for needle in ('Self::Cmdline => b"cmdline\\0"', 'Self::Environ => b"environ\\0"'):
+    for needle in (
+        'Self::Cgroup => b"cgroup\\0"',
+        'Self::Cmdline => b"cmdline\\0"',
+        'Self::Environ => b"environ\\0"',
+    ):
         require(member_names, needle, "fixed proc member name")
+
+    namespace = region(
+        linux,
+        "struct ProcNamespaceIdentity",
+        "enum BoundedProcFile",
+        "selector-namespace identity boundary",
+    )
+    selector_namespace = rust_block(
+        linux,
+        "enum SelectorNamespace",
+        "closed selector namespace vocabulary",
+    )
+    require(selector_namespace, "Mount,", "mount selector namespace")
+    require(selector_namespace, "Network,", "network selector namespace")
+    if selector_namespace.count(",") != 2:
+        raise VerificationError(
+            "selector namespace vocabulary is not the exact two-member set"
+        )
+    for needle, label in (
+        ("device: u64", "namespace device identity"),
+        ("inode: u64", "namespace inode identity"),
+        ("mount: ProcNamespaceIdentity", "mount namespace identity"),
+        ("network: ProcNamespaceIdentity", "network namespace identity"),
+        (
+            "struct ProcSelectorNamespaceAuthority",
+            "retained current namespace authority",
+        ),
+        (
+            "identity: ProcSelectorNamespaceIdentity",
+            "retained current namespace identity",
+        ),
+        ("_mount_handle: File", "retained current mount namespace handle"),
+        ("_network_handle: File", "retained current network namespace handle"),
+        ("enum SelectorNamespace", "closed selector namespace vocabulary"),
+        ('Self::Mount => "/proc/self/ns/mnt"', "fixed current mount namespace"),
+        ('Self::Network => "/proc/self/ns/net"', "fixed current network namespace"),
+        ('Self::Mount => b"ns/mnt\\0"', "fixed process mount namespace"),
+        ('Self::Network => b"ns/net\\0"', "fixed process network namespace"),
+        ("metadata.is_file().then_some", "namespace object type proof"),
+        ("process_dir.as_raw_fd()", "opened process-directory handle for namespace"),
+        ("hbb_common::libc::O_RDONLY", "read-only namespace open"),
+        ("hbb_common::libc::O_CLOEXEC", "close-on-exec namespace open"),
+        ("File::from_raw_fd(fd)", "owned namespace descriptor"),
+        ("_mount_handle: mount", "retained opened current mount namespace"),
+        ("_network_handle: network", "retained opened current network namespace"),
+        ("process_selector_namespace_identity(process_dir) == Some(expected)", "exact namespace equality"),
+    ):
+        require(namespace, needle, label)
+    for forbidden in ("read_link", "read_to_string", "PathBuf"):
+        absent(namespace, forbidden, "text/path-derived namespace identity")
 
     reader = rust_block(
         linux,
@@ -213,11 +268,13 @@ def validate(sources: Dict[str, str]) -> None:
         observer,
         (
             '.filter(|parsed| parsed.to_string() == uid)',
+            "current_selector_namespace_authority()?",
             'std::fs::read_dir("/proc")',
             "budget.charge_numeric_entry()?;",
             "open_proc_process_dir(&entry)",
             "process_dir.metadata()",
             "metadata.uid() != uid_num",
+            "current_selector_namespaces.identity",
             "budget.charge_selected_process()?;",
             "read_proc_cmdline_args(&process_dir, &mut budget)?",
             "classify_desktop_process(&args, &app_name)",
@@ -226,9 +283,18 @@ def validate(sources: Dict[str, str]) -> None:
             "PROC_ENVIRON_MAX_BYTES",
             "process_dir.metadata()",
             "metadata.uid() != uid_num",
+            "current_selector_namespaces.identity",
+            "if kind == DesktopProcessKind::Xwayland",
             ".push(DesktopProcessEnvironment { pid, kind, environ });",
         ),
-        "UID-checked handle-relative selected process observation",
+        "UID-and-selector-namespace-checked handle-relative selected process observation",
+    )
+    if observer.count("current_selector_namespaces.identity") != 2:
+        raise VerificationError("selected desktop observer lacks exact pre/post namespace proof")
+    absent(
+        observer,
+        "drop(current_selector_namespaces)",
+        "premature current namespace handle release",
     )
     if observer.count('std::fs::read_dir("/proc")') != 1:
         raise VerificationError("selected desktop observer has more than one proc walk")
@@ -363,6 +429,7 @@ def validate(sources: Dict[str, str]) -> None:
         "fn r_s11e207_proc_observation_rejects_oversized_or_partial_values()",
         "fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop()",
         "fn r_s11e207_desktop_snapshot_keeps_one_validated_process_environment()",
+        "fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces()",
     ):
         require(linux, test_name, f"compiled regression {test_name}")
 
@@ -378,6 +445,11 @@ def validate(sources: Dict[str, str]) -> None:
             "compiled regression wiring",
         ),
         (
+            "verify",
+            "cargo test --offline --locked --lib --features linux-pkg-config r_s11e257_",
+            "selector-namespace regression wiring",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11ft</span>',
             "selected-session observation requirement",
@@ -387,6 +459,17 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "R-S11ft/R-S11e-207 Linux selected-session observation authority",
             "selected-session observation hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ht</span>',
+            "selector-namespace requirement",
+        ),
+        ("requirements", "<tr><td>379</td>", "Appendix C #379"),
+        (
+            "hardening",
+            "R-S11ht/R-S11e-257 Linux desktop-selector namespace authority",
+            "selector-namespace hardening ledger",
         ),
     ):
         require(sources[source_key], needle, label)
@@ -427,8 +510,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "linux",
-        "process_dir.as_raw_fd(),",
-        "hbb_common::libc::AT_FDCWD,",
+        "process_dir.as_raw_fd(),\n            member,",
+        "hbb_common::libc::AT_FDCWD,\n            member,",
         "opened process-directory handle",
     ),
     (
@@ -439,15 +522,93 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "linux",
-        '.filter(|parsed| parsed.to_string() == uid)',
-        ".filter(|_| true)",
-        "UID-checked handle-relative",
+        'Self::Mount => "/proc/self/ns/mnt"',
+        'Self::Mount => "/proc/1/ns/mnt"',
+        "fixed current mount namespace",
+    ),
+    (
+        "linux",
+        "enum SelectorNamespace {\n    Mount,\n    Network,\n}",
+        "enum SelectorNamespace {\n    Mount,\n    Network,\n    Foreign,\n}",
+        "exact two-member set",
+    ),
+    (
+        "linux",
+        "_mount_handle: File,",
+        "_mount_handle: (),",
+        "retained current mount namespace handle",
+    ),
+    (
+        "linux",
+        "_network_handle: File,",
+        "_network_handle: (),",
+        "retained current network namespace handle",
+    ),
+    (
+        "linux",
+        "_mount_handle: mount,",
+        "_mount_handle: network,",
+        "retained opened current mount namespace",
+    ),
+    (
+        "linux",
+        "_network_handle: network,",
+        "_network_handle: mount,",
+        "retained opened current network namespace",
+    ),
+    (
+        "linux",
+        "let current_selector_namespaces = current_selector_namespace_authority()?;\n    let entries =",
+        "let current_selector_namespaces = current_selector_namespace_authority()?;\n    drop(current_selector_namespaces);\n    let entries =",
+        "premature current namespace handle release",
+    ),
+    (
+        "linux",
+        'Self::Network => "/proc/self/ns/net"',
+        'Self::Network => "/proc/1/ns/net"',
+        "fixed current network namespace",
+    ),
+    (
+        "linux",
+        'Self::Network => b"ns/net\\0"',
+        'Self::Network => b"ns/mnt\\0"',
+        "fixed process network namespace",
+    ),
+    (
+        "linux",
+        "process_selector_namespace_identity(process_dir) == Some(expected)",
+        "process_selector_namespace_identity(process_dir).is_some()",
+        "exact namespace equality",
+    ),
+    (
+        "linux",
+        "|| !process_shares_selector_namespaces(\n                &process_dir,\n                current_selector_namespaces.identity,\n            )\n        {\n            continue;\n        }\n        budget.charge_selected_process()?;",
+        "{\n            continue;\n        }\n        budget.charge_selected_process()?;",
+        "UID-and-selector-namespace-checked",
+    ),
+    (
+        "linux",
+        "|| !process_shares_selector_namespaces(\n                &process_dir,\n                current_selector_namespaces.identity,\n            )\n        {\n            continue;\n        }\n        if kind == DesktopProcessKind::Xwayland",
+        "{\n            continue;\n        }\n        if kind == DesktopProcessKind::Xwayland",
+        "UID-and-selector-namespace-checked",
+    ),
+    (
+        "linux",
+        "if kind == DesktopProcessKind::Xwayland {",
+        "if true {",
+        "UID-and-selector-namespace-checked",
+    ),
+    (
+        "linux",
+        '.filter(|parsed| parsed.to_string() == uid)\n        .ok_or(ProcSnapshotError::InvalidUid)?;',
+        ".filter(|_| true)\n        .ok_or(ProcSnapshotError::InvalidUid)?;",
+        "UID-and-selector-namespace-checked",
     ),
     (
         "linux",
         "budget.charge_environment_candidate()?;",
         "let _ = kind;",
-        "UID-checked handle-relative",
+        "UID-and-selector-namespace-checked",
     ),
     (
         "linux",
@@ -487,6 +648,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "linux",
+        "fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces()",
+        "fn disabled_257_desktop_selector_process_requires_the_same_interpretation_namespaces()",
+        "compiled regression",
+    ),
+    (
+        "linux",
         "fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop()",
         "fn disabled_207_service_child_replacement_tracks_complete_selected_desktop()",
         "compiled regression",
@@ -496,6 +663,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "python3 scripts/verify-linux-service-session-observation.py --repo . --self-test",
         "true # selected-session observation verifier removed",
         "shared focused-verifier wiring",
+    ),
+    (
+        "verify",
+        "cargo test --offline --locked --lib --features linux-pkg-config r_s11e257_",
+        "true # selector-namespace regression removed",
+        "selector-namespace regression wiring",
     ),
     (
         "requirements",
@@ -514,6 +687,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11ft/R-S11e-207 Linux selected-session observation authority",
         "R-S11ft-disabled/R-S11e-207 Linux selected-session observation authority",
         "selected-session observation hardening ledger",
+    ),
+    (
+        "requirements",
+        '<span class="id">R-S11ht</span>',
+        '<span class="id">R-S11ht-disabled</span>',
+        "selector-namespace requirement",
+    ),
+    (
+        "requirements",
+        "<tr><td>379</td>",
+        "<tr><td>379-disabled</td>",
+        "Appendix C #379",
+    ),
+    (
+        "hardening",
+        "R-S11ht/R-S11e-257 Linux desktop-selector namespace authority",
+        "R-S11ht-disabled/R-S11e-257 Linux desktop-selector namespace authority",
+        "selector-namespace hardening ledger",
     ),
 )
 

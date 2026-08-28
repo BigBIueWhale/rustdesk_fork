@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8975a0842e67cd2501ae203f701bd4dd99d8e4d9f79aba6f314e0f934d644c33  requirements.html
+2a2a79a9f1ea7762067001537ce39a3d98a3b5058112f76dde2391c31f2caadb  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -27878,3 +27878,88 @@ or field-reproduction claim: native compilation, an exact Debian artifact, and
 execution on a matching GDM `-displayfd` session remain under
 R-B2/R-S11c-27. **This entry authorizes and performed no change to the running
 host service**, which remains on the older release.
+
+### R-S11ht/R-S11e-257 Linux desktop-selector namespace authority
+
+**Status:** SOURCE REPAIR AUTHORED AND SOURCE-GATED / EXACT NATIVE,
+INSTALLED-DESKTOP, CONTAINER-COEXISTENCE, PERFORMANCE, ARTIFACT, INDEPENDENT
+REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+
+Continuation review of R-S11hs found that its display correction closed only
+the first consumer of the field-confirmed foreign process environment. The
+bounded `DesktopProcessSnapshot` still selected environment candidates by the
+opened `/proc/PID` directory's numeric UID plus a closed but presentation-only
+basename/argv classifier. It imported `XAUTHORITY`, `WAYLAND_DISPLAY`, and
+`DBUS_SESSION_BUS_ADDRESS` without proving that the process which supplied
+those strings saw the same resources as the host supervisor and its service
+child. For X11, a foreign process could name the selected display and thereby
+supply an absolute credential path whose meaning was private to its mount
+namespace. The Wayland/D-Bus branch could import the foreign endpoints
+directly. It also marked `xwayland_running` immediately after basename
+classification, before environment availability or the final UID proof.
+
+This is the unclosed sibling of the observed `haggai_computer` `kded6` event,
+not a hypothetical process topology: host procfs exposed that same-UID
+container process while the container's X socket did not exist in the host's
+mount namespace. R-S11hs correctly prevents its `DISPLAY=:99` from selecting
+the X endpoint, but a matching-display Xauthority value or a Wayland/D-Bus
+selector still crossed the same boundary. The old snapshot path was introduced
+by `ed76d7ce`; it bounded bytes and made records coherent but did not bind the
+namespace in which their resource names were meaningful.
+
+Linux `namespaces(7)` defines an opened `/proc/PID/ns/*` object's device and
+inode pair as the equality test between processes. `mount_namespaces(7)` makes
+the mount namespace the filesystem view, while `network_namespaces(7)` states
+that network namespaces isolate the abstract Unix-domain socket namespace.
+Both are required: Xauthority, X11, Wayland, and pathname D-Bus selectors are
+filesystem-relative, while an admissible D-Bus address may name an abstract
+Unix socket or another network transport. PID, cgroup, user, and IPC namespace
+equality are not substituted. In particular, exact session-scope cgroup
+membership would reject legitimate user-service desktop components without
+proving the interpretation context these strings actually require.
+
+The replacement pins the supervisor's current mount and network namespace
+objects once per selected-desktop snapshot. It derives identity only through
+the opened objects' `st_dev` and `st_ino`. Each candidate's fixed `ns/mnt` and
+`ns/net` members are opened relative to the already-opened no-follow process
+directory; following those two kernel-owned proc magic links is intentional so
+the namespace object, not the link inode or text, is compared. Both namespace
+identities and the process-directory UID must match before command-line
+classification and again after the complete environment read. Missing,
+inaccessible, foreign, malformed, or changing namespace state discards that
+record. `xwayland_running` is committed only after the final proof and
+successful full environment observation. There is no name, PID, path,
+readlink-text, cgroup, one-namespace, or compatibility fallback.
+
+The focused Rust regression proves the current process is admitted and that
+changing either the mount or network identity is refused. The existing bounded
+observation verifier is extended rather than creating a parallel authority:
+it binds the closed two-namespace vocabulary, opened-object identity,
+pre/post checks, Xwayland publication order, compiled-test/shared-gate wiring,
+R-S11ht, Appendix C #379, and this row with deliberate mutations. The
+independent workspace verifier derives the same properties and mutates them
+separately. On 2026-08-28 its final confined baseline and complete in-memory
+workspace mutation catalog, plus the focused verifier's own complete mutation
+set, all returned their terminal `ok` result against the final source,
+requirements, verifier, shared-gate, and ledger bytes. No mutation was waived.
+
+Exact native compilation has no verdict. The Rust 1.75 offline test command was
+run with the source and both host registry-cache identities read-only, with
+Cargo source expansion and target output confined to disposable container
+tmpfs. The union still lacks the locked `crossbeam-epoch 0.9.20` archive, so
+Cargo stopped during offline dependency resolution before compiling this
+source. No network was enabled and no persistent cache or target output was
+created. Rustfmt 1.75 did parse the complete Linux source; its whole-file
+`--check` is not recorded as green because it also reports existing formatting
+differences outside this slice.
+
+This correction does not enter a namespace, inspect or signal the selected
+process, add a retry/cache/timer/task/thread/runtime, change a listener/port or
+transport, add a dependency, change privilege, or broaden a supported mode. It
+does not inspect, stop, restart, modify, or connect to the host RustDesk
+service; inspect or change host firewall/network/listener state; touch an
+Android device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated
+container/image; or request root. Exact native compilation and test execution,
+installed X11/Wayland/Xwayland desktop and container-coexistence behavior,
+observation CPU/memory/latency budgets, clean cold R-B2/R-B10 artifacts,
+independent reproduction, and external review remain open.

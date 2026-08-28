@@ -93,9 +93,23 @@ def validate(sources: Dict[str, str]) -> None:
         ("remove_session_by_session_id", "identity-only normal retirement"),
         ("remove_failed_start_by_exact_ui_owner", "failed-start-only duplicate retirement"),
         ("would_remove_peer_by_session_id", "identity-only close prediction"),
+        (
+            "would_remove_peer_by_exact_ui_owner",
+            "dead separate close prediction",
+        ),
         ("close_event_stream", "post-removal event-stream lookup"),
     ):
         forbid(flutter, retired, label)
+    forbid(
+        ffi,
+        "will_session_close_close_session",
+        "dead separate close prediction",
+    )
+    forbid(
+        web,
+        "willSessionCloseCloseSession",
+        "dead separate close prediction",
+    )
 
     session_add = extract_braced_item(flutter, "pub fn session_add(", "viewer admission")
     require_order(
@@ -209,22 +223,6 @@ def validate(sources: Dict[str, str]) -> None:
         "single registry retirement transaction",
     )
 
-    prediction = extract_braced_item(
-        flutter,
-        "pub fn would_remove_peer_by_exact_ui_owner(",
-        "exact-owner close prediction",
-    )
-    require_order(
-        prediction,
-        (
-            "client_owner_id: &SessionID",
-            "read_lock.get(id)",
-            "handler.client_owner_id.as_ref() == Some(client_owner_id)",
-            "&& read_lock.len() == 1",
-        ),
-        "close prediction uses the same dual identity",
-    )
-
     rollback = extract_braced_item(
         flutter, "fn rollback_failed_session_start(", "failed-start retirement"
     )
@@ -238,22 +236,6 @@ def validate(sources: Dict[str, str]) -> None:
         "failed-start and normal close share exact retirement semantics",
     )
 
-    close_prediction = extract_braced_item(
-        ffi,
-        "pub fn will_session_close_close_session(",
-        "exact-owner close-prediction FFI",
-    )
-    require_order(
-        close_prediction,
-        (
-            "session_id: SessionID",
-            "client_owner_id: SessionID",
-            "would_remove_peer_by_exact_ui_owner(",
-            "&session_id",
-            "&client_owner_id",
-        ),
-        "exact-owner close-prediction bridge",
-    )
     close = extract_braced_item(ffi, "pub fn session_close(", "exact-owner close FFI")
     require_order(
         close,
@@ -274,16 +256,12 @@ def validate(sources: Dict[str, str]) -> None:
         3,
         "all authored dual-identity close calls",
     )
-    for signature, label in (
-        ("Future<void> sessionClose(", "web close signature"),
-        ("bool willSessionCloseCloseSession(", "web close-prediction signature"),
-    ):
-        item = extract_braced_item(web, signature, label)
-        require_order(
-            item,
-            ("required UuidValue sessionId", "required UuidValue clientOwnerId"),
-            f"{label} dual identity",
-        )
+    web_close = extract_braced_item(web, "Future<void> sessionClose(", "web close signature")
+    require_order(
+        web_close,
+        ("required UuidValue sessionId", "required UuidValue clientOwnerId"),
+        "web close signature dual identity",
+    )
 
     for name in (
         "r_s11hu_registry_admission_returns_the_installed_peer_and_refuses_duplicate_identity",
@@ -308,6 +286,22 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry",
             "hardening ledger",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hv</span>',
+            "close-prediction excision requirement",
+        ),
+        ("requirements", "<tr><td>381</td>", "close-prediction Appendix C row"),
+        (
+            "hardening",
+            "### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision",
+            "close-prediction excision hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11hv and Appendix C #381.",
+            "close-prediction native-watch identity binding",
         ),
         (
             "workspace",
@@ -397,8 +391,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn remove_session_by_session_id(", "identity-only normal retirement"),
     ("flutter", "let Some(handler) = handlers.get(id) else {\n                continue;\n            };\n            if handler.client_owner_id.as_ref() != Some(client_owner_id)", "let Some(handler) = handlers.get(id) else {\n                continue;\n            };\n            if false", "exact handler retirement and last peer removal under one registry lock"),
     ("flutter", "sessions.remove(&remove_peer_key?)", "SESSIONS.write().unwrap().remove(&remove_peer_key?)", "exact handler retirement and last peer removal under one registry lock"),
-    ("flutter", "pub fn would_remove_peer_by_exact_ui_owner(", "pub fn would_remove_peer_by_session_id(", "identity-only close prediction"),
-    ("ffi", "would_remove_peer_by_exact_ui_owner(", "would_remove_peer_by_session_id(", "exact-owner close-prediction bridge"),
+    ("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn would_remove_peer_by_exact_ui_owner() -> bool { true }\n\n    pub fn remove_session_by_exact_ui_owner(", "dead separate close prediction"),
+    ("ffi", "pub fn session_close(", "pub fn will_session_close_close_session() -> SyncReturn<bool> { SyncReturn(true) }\n\npub fn session_close(", "dead separate close prediction"),
+    ("web", "  Future<void> sessionClose(\n", "  bool willSessionCloseCloseSession() => true;\n\n  Future<void> sessionClose(\n", "dead separate close prediction"),
     ("ffi", "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)", "remove_session_by_exact_ui_owner(&session_id, &session_id)", "exact-owner close and complete last-peer finality"),
     ("model", "Future<void> _closeNativeSession(SessionID closingSessionId) async {\n    try {\n      await bind.sessionClose(\n          sessionId: closingSessionId, clientOwnerId: clientOwnerId);", "Future<void> _closeNativeSession(SessionID closingSessionId) async {\n    try {\n      await bind.sessionClose(\n          sessionId: closingSessionId, clientOwnerId: closingSessionId);", "all authored dual-identity close calls"),
     ("web", "Future<void> sessionClose(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId,", "Future<void> sessionClose(\n      {required UuidValue sessionId,\n      UuidValue? clientOwnerId,", "web close signature dual identity"),
@@ -410,6 +405,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11hu</span>', '<div class="req"><span class="id">R-S11hu-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>380</td>", "<tr><td>380-disabled</td>", "Appendix C row"),
     ("hardening", "### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry", "### R-S11hu-disabled/R-S11e-258 — atomic exact-owner outgoing viewer-session registry", "hardening ledger"),
+    ("requirements", '<div class="req"><span class="id">R-S11hv</span>', '<div class="req"><span class="id">R-S11hv-disabled</span>', "close-prediction excision requirement"),
+    ("requirements", "<tr><td>381</td>", "<tr><td>381-disabled</td>", "close-prediction Appendix C row"),
+    ("hardening", "### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision", "### R-S11hv-disabled/R-S11e-259 — orphaned viewer close-prediction surface excision", "close-prediction excision hardening ledger"),
+    ("native_watch", "The same identity additionally binds R-S11hv and Appendix C #381.", "The same identity no longer binds R-S11hv and Appendix C #381.", "close-prediction native-watch identity binding"),
     ("workspace", "\n\ndef validate_viewer_session_registry_contract(sources):\n    focused =", "\n\ndef validate_viewer_session_registry_contract_disabled(sources):\n    focused =", "independent workspace contract"),
 )
 

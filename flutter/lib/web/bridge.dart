@@ -1613,13 +1613,6 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['conn_session_id']);
   }
 
-  bool willSessionCloseCloseSession(
-      {required UuidValue sessionId,
-      required UuidValue clientOwnerId,
-      dynamic hint}) {
-    return true;
-  }
-
   bool mainSetCursorPosition({required int x, required int y, dynamic hint}) {
     return false;
   }

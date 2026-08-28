@@ -11453,7 +11453,7 @@ failed_start_rollback = rust[
 ]
 failed_start_removal = rust[
     rust.index("pub fn remove_session_by_exact_ui_owner("):
-    rust.index("/// Check if retiring the exact UI owner")
+    rust.index("pub(super) fn remaining_displays(")
 ]
 ffi_add_existed = flutter_ffi[
     flutter_ffi.index("pub fn session_add_existed_sync("):

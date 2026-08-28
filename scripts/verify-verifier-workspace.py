@@ -21248,7 +21248,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
     failed_start_removal = extract_between(
         sources["flutter_source"],
         "pub fn remove_session_by_exact_ui_owner(",
-        "\n    /// Check if retiring the exact UI owner",
+        "\n    pub(super) fn remaining_displays(",
         "independent exact-owner failed-start removal",
     )
     require_text(
@@ -21670,7 +21670,7 @@ def validate_viewer_session_registry_contract(sources):
         ),
         ('"single registry retirement transaction"', "focused atomic retirement proof"),
         ('"all authored dual-identity close calls"', "focused Dart dual-identity proof"),
-        ('"web close-prediction signature"', "focused web parity proof"),
+        ('"dead separate close prediction"', "focused close-prediction excision proof"),
         ('"independent viewer-registry dispatch must occur exactly once"', "focused independent dispatch proof"),
     ):
         require_text(focused_validation, text, label)
@@ -21684,6 +21684,18 @@ def validate_viewer_session_registry_contract(sources):
         (
             '("ffi", "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",',
             "focused exact-owner close mutation",
+        ),
+        (
+            '("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn would_remove_peer_by_exact_ui_owner()',
+            "focused Rust close-prediction reintroduction mutation",
+        ),
+        (
+            '("ffi", "pub fn session_close(", "pub fn will_session_close_close_session()',
+            "focused FFI close-prediction reintroduction mutation",
+        ),
+        (
+            '("web", "  Future<void> sessionClose(\\n", "  bool willSessionCloseCloseSession()',
+            "focused web close-prediction reintroduction mutation",
         ),
         ('"all authored dual-identity close calls"', "focused Dart owner mutation"),
         ('"independent workspace contract"', "focused workspace-contract mutation"),
@@ -21729,7 +21741,7 @@ def validate_viewer_session_registry_contract(sources):
     retirement = extract_between(
         flutter,
         "pub fn remove_session_by_exact_ui_owner(",
-        "\n    /// Check if retiring the exact UI owner",
+        "\n    pub(super) fn remaining_displays(",
         "independent exact-owner viewer-session retirement",
     )
     require_exact_count(
@@ -21755,27 +21767,30 @@ def validate_viewer_session_registry_contract(sources):
         "remove_session_by_session_id",
         "remove_failed_start_by_exact_ui_owner",
         "would_remove_peer_by_session_id",
+        "would_remove_peer_by_exact_ui_owner",
         "close_event_stream",
     ):
         require_absent(flutter, retired, "independent retired viewer-registry surface")
 
     ffi_close = extract_between(
         sources["flutter_ffi_source"],
-        "pub fn will_session_close_close_session(",
+        "pub fn session_close(",
         "\npub fn session_refresh(",
-        "independent exact-owner viewer-session close bridges",
+        "independent exact-owner viewer-session close bridge",
     )
     require_order(
         ffi_close,
         (
             "client_owner_id: SessionID",
-            "would_remove_peer_by_exact_ui_owner(",
-            "pub fn session_close(",
-            "client_owner_id: SessionID",
             "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",
             "session.close_and_join();",
         ),
-        "independent dual-identity prediction and retirement bridges",
+        "independent dual-identity retirement bridge",
+    )
+    require_absent(
+        sources["flutter_ffi_source"],
+        "will_session_close_close_session",
+        "independent dead separate close prediction",
     )
     require_exact_count(
         sources["model_dart"],
@@ -21783,15 +21798,21 @@ def validate_viewer_session_registry_contract(sources):
         3,
         "independent authored dual-identity close calls",
     )
-    for signature in ("Future<void> sessionClose(", "bool willSessionCloseCloseSession("):
-        web_item = extract_braced_item(
-            sources["web_bridge_source"], signature, "independent web close parity"
-        )
-        require_order(
-            web_item,
-            ("required UuidValue sessionId", "required UuidValue clientOwnerId"),
-            "independent web dual-identity close parity",
-        )
+    web_close = extract_braced_item(
+        sources["web_bridge_source"],
+        "Future<void> sessionClose(",
+        "independent web close parity",
+    )
+    require_order(
+        web_close,
+        ("required UuidValue sessionId", "required UuidValue clientOwnerId"),
+        "independent web dual-identity close parity",
+    )
+    require_absent(
+        sources["web_bridge_source"],
+        "willSessionCloseCloseSession",
+        "independent dead separate close prediction",
+    )
 
     for test_name in (
         "r_s11hu_registry_admission_returns_the_installed_peer_and_refuses_duplicate_identity",
@@ -21812,6 +21833,22 @@ def validate_viewer_session_registry_contract(sources):
         sources["hardening"],
         "### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry",
         "R-S11hu hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11hv</span>',
+        "R-S11hv requirement",
+    )
+    require_text(sources["requirements"], "<tr><td>381</td>", "Appendix C #381")
+    require_text(
+        sources["hardening"],
+        "### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision",
+        "R-S11hv hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11hv and Appendix C #381.",
+        "R-S11hv native-watch identity binding",
     )
     require_text(
         sources["workspace_verifier"],
@@ -31216,7 +31253,7 @@ def validate_android_voice_call_ownership_contract(sources):
     failed_start_removal = extract_between(
         sources["flutter_source"],
         "pub fn remove_session_by_exact_ui_owner(",
-        "\n    /// Check if retiring the exact UI owner",
+        "\n    pub(super) fn remaining_displays(",
         "Android exact-owner failed-start removal source",
     )
     require_order(
@@ -73436,10 +73473,28 @@ def run_source_mutations(sources):
             "independent single registry retirement transaction",
         ),
         (
+            "flutter_source",
+            "pub fn remove_session_by_exact_ui_owner(",
+            "pub fn would_remove_peer_by_exact_ui_owner() -> bool { true }\n\n    pub fn remove_session_by_exact_ui_owner(",
+            "independent retired viewer-registry surface",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_close(",
+            "pub fn will_session_close_close_session() -> SyncReturn<bool> { SyncReturn(true) }\n\npub fn session_close(",
+            "independent dead separate close prediction",
+        ),
+        (
+            "web_bridge_source",
+            "  Future<void> sessionClose(\n",
+            "  bool willSessionCloseCloseSession() => true;\n\n  Future<void> sessionClose(\n",
+            "independent dead separate close prediction",
+        ),
+        (
             "flutter_ffi_source",
             "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",
             "remove_session_by_exact_ui_owner(&session_id, &session_id)",
-            "independent dual-identity prediction and retirement bridges",
+            "independent dual-identity retirement bridge",
         ),
         (
             "model_dart",
@@ -73464,6 +73519,48 @@ def run_source_mutations(sources):
             '    ("ffi", "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",',
             '    ("ffi", "remove_session_by_exact_ui_owner(&session_id, &session_id)",',
             "focused exact-owner close mutation",
+        ),
+        (
+            "viewer_session_registry_verifier",
+            '("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn would_remove_peer_by_exact_ui_owner()',
+            '("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn retained_close_prediction()',
+            "focused Rust close-prediction reintroduction mutation",
+        ),
+        (
+            "viewer_session_registry_verifier",
+            '("ffi", "pub fn session_close(", "pub fn will_session_close_close_session()',
+            '("ffi", "pub fn session_close(", "pub fn retained_close_prediction()',
+            "focused FFI close-prediction reintroduction mutation",
+        ),
+        (
+            "viewer_session_registry_verifier",
+            '("web", "  Future<void> sessionClose(\\n", "  bool willSessionCloseCloseSession()',
+            '("web", "  Future<void> sessionClose(\\n", "  bool retainedClosePrediction()',
+            "focused web close-prediction reintroduction mutation",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hv</span>',
+            '<div class="req"><span class="id">R-S11hv-disabled</span>',
+            "R-S11hv requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>381</td>",
+            "<tr><td>381-disabled</td>",
+            "Appendix C #381",
+        ),
+        (
+            "hardening",
+            "### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision",
+            "### R-S11hv-disabled/R-S11e-259 — orphaned viewer close-prediction surface excision",
+            "R-S11hv hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11hv and Appendix C #381.",
+            "The same identity no longer binds R-S11hv and Appendix C #381.",
+            "R-S11hv native-watch identity binding",
         ),
         (
             "workspace_verifier",

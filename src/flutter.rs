@@ -3680,30 +3680,6 @@ pub mod sessions {
         sessions.remove(&remove_peer_key?)
     }
 
-    /// Check if retiring the exact UI owner would result in removing the entire peer.
-    ///
-    /// Returns:
-    /// - `true`: The session exists and removing it would leave the peer with no other sessions,
-    ///           so the entire peer would be removed.
-    /// - `false`: The session doesn't exist, or it exists but the peer has other sessions,
-    ///            or the caller does not own that exact UI session.
-    #[inline]
-    pub fn would_remove_peer_by_exact_ui_owner(
-        id: &SessionID,
-        client_owner_id: &SessionID,
-    ) -> bool {
-        for (_peer_key, s) in SESSIONS.read().unwrap().iter() {
-            let read_lock = s.ui_handler.session_handlers.read().unwrap();
-            if let Some(handler) = read_lock.get(id) {
-                // Found the session, check if it's the only one for this peer
-                return handler.client_owner_id.as_ref() == Some(client_owner_id)
-                    && read_lock.len() == 1;
-            }
-        }
-        // Session not found
-        false
-    }
-
     pub(super) fn remaining_displays(
         excluded: Option<&SessionID>,
         handlers: &HashMap<SessionID, SessionHandler>,
@@ -5977,10 +5953,6 @@ mod mobile_session_lifecycle_tests {
         )
         .expect("second UI session admission");
 
-        assert!(!sessions::would_remove_peer_by_exact_ui_owner(
-            &first_session_id,
-            &SessionID::new_v4(),
-        ));
         assert!(sessions::remove_session_by_exact_ui_owner(
             &first_session_id,
             &SessionID::new_v4(),
@@ -5991,10 +5963,6 @@ mod mobile_session_lifecycle_tests {
             &first_owner_id,
         ));
 
-        assert!(!sessions::would_remove_peer_by_exact_ui_owner(
-            &first_session_id,
-            &first_owner_id,
-        ));
         assert!(sessions::remove_session_by_exact_ui_owner(
             &first_session_id,
             &first_owner_id,
@@ -6009,10 +5977,6 @@ mod mobile_session_lifecycle_tests {
             ConnType::DEFAULT_CONN,
         ));
 
-        assert!(sessions::would_remove_peer_by_exact_ui_owner(
-            &second_session_id,
-            &second_owner_id,
-        ));
         let retired = sessions::remove_session_by_exact_ui_owner(
             &second_session_id,
             &second_owner_id,

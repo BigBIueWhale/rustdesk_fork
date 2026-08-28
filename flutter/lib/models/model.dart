@@ -4294,7 +4294,8 @@ class FFI {
 
   Future<void> _closeNativeSession(SessionID closingSessionId) async {
     try {
-      await bind.sessionClose(sessionId: closingSessionId);
+      await bind.sessionClose(
+          sessionId: closingSessionId, clientOwnerId: clientOwnerId);
     } catch (error) {
       debugPrint(
           'Exact native session retirement failed: ${error.runtimeType}');
@@ -5003,7 +5004,8 @@ class FFI {
         if (isMobile) {
           await _awaitMobileSessionStart(closingSessionId);
         }
-        await bind.sessionClose(sessionId: closingSessionId);
+        await bind.sessionClose(
+            sessionId: closingSessionId, clientOwnerId: clientOwnerId);
       }
       return;
     }
@@ -5034,7 +5036,8 @@ class FFI {
         if (isMobile) {
           await _awaitMobileSessionStart(closingSessionId);
         }
-        await bind.sessionClose(sessionId: closingSessionId);
+        await bind.sessionClose(
+            sessionId: closingSessionId, clientOwnerId: clientOwnerId);
       }
     }
     if (sessionId != closingSessionId) {

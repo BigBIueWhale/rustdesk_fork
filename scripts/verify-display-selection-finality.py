@@ -679,8 +679,9 @@ def validate(sources: Dict[str, str]) -> None:
             "let mut handlers = s.ui_handler.session_handlers.write().unwrap();",
             "remaining_displays(Some(&session_id), &handlers)?",
             "h.displays = validated_displays;",
+            "Entry::Vacant(entry)",
             "s.try_select_displays(None, capture_set, refresh, || {",
-            "handlers.insert(session_id, h);",
+            "entry.insert(h);",
             ".retire_rgba_displays_except(&session_id, &displays);",
         ),
         "reserve before replacing the old UI owner and publishing startup capture",
@@ -689,7 +690,7 @@ def validate(sources: Dict[str, str]) -> None:
         "pub fn insert_peer_session_id(",
         "pub fn session_capture_displays(",
         "pub fn ensure_display_selection_committed(",
-        "sessions::remove_session_by_session_id(&session_id)",
+        "pub fn remove_session_by_session_id(",
     ):
         forbid(flutter, retired, "staged/rollback startup surface")
     require(
@@ -1964,7 +1965,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_verify", "display selection is not a normal worker-pool bridge call", "display selection worker mode is unchecked", "generated display-selection worker-mode gate"),
     ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "Apple gate"),
     ("workspace", '"display_selection_finality_verifier": (', '"display_selection_finality_verifier_disabled": (', "independent source binding"),
-    ("workspace", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract_disabled(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "independent verifier dispatch"),
+    ("workspace", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)\n    validate_viewer_session_registry_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract_disabled(sources)\n    validate_viewer_session_registry_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "independent verifier dispatch"),
 )
 
 

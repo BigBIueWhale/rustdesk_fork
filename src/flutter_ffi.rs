@@ -282,17 +282,24 @@ pub fn session_login(session_id: SessionID, password: String, remember: bool) {
     }
 }
 
-pub fn will_session_close_close_session(session_id: SessionID) -> SyncReturn<bool> {
-    SyncReturn(sessions::would_remove_peer_by_session_id(&session_id))
+pub fn will_session_close_close_session(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+) -> SyncReturn<bool> {
+    SyncReturn(sessions::would_remove_peer_by_exact_ui_owner(
+        &session_id,
+        &client_owner_id,
+    ))
 }
 
-pub fn session_close(session_id: SessionID) {
-    if let Some(session) = sessions::remove_session_by_session_id(&session_id) {
+pub fn session_close(session_id: SessionID, client_owner_id: SessionID) {
+    if let Some(session) =
+        sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner_id)
+    {
         // `release_remote_keys` is not required for mobile platforms in common cases.
         // But we still call it to make the code more stable.
         #[cfg(any(target_os = "android", target_os = "ios"))]
         crate::keyboard::release_remote_keys("map");
-        session.close_event_stream(session_id);
         session.close_and_join();
     }
 }

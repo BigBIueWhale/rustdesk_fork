@@ -26780,7 +26780,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2a2a79a9f1ea7762067001537ce39a3d98a3b5058112f76dde2391c31f2caadb  requirements.html
+08964d6c7d644965742c91a47c5d7894bc6c84875494c8c717f09b802c03912c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -27963,3 +27963,96 @@ container/image; or request root. Exact native compilation and test execution,
 installed X11/Wayland/Xwayland desktop and container-coexistence behavior,
 observation CPU/memory/latency budgets, clean cold R-B2/R-B10 artifacts,
 independent reproduction, and external review remain open.
+
+### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry
+
+**Status:** SOURCE REPAIR AUTHORED / FOCUSED RUST REGRESSIONS AND COMPLETE
+SOURCE/MUTATION GATES AUTHORED / EXACT GENERATED-BRIDGE, NATIVE,
+CROSS-PLATFORM, INSTALLED-ARTIFACT, PERFORMANCE, INDEPENDENT-REPRODUCTION, AND
+EXTERNAL-REVIEW EVIDENCE OPEN.
+
+The continuing connection-flow audit found a shared viewer defect beneath the
+Android symptom, not an Android persistent-service defect. `SESSIONS` is the
+process-wide outgoing peer registry on every Flutter client platform. Most of
+its accessors search every peer by one connection UUID, but `session_add`
+checked that UUID before the insertion lock and `insert_session` later used a
+replacing handler-map insertion. When the peer key was already installed, the
+function retained the existing peer in the registry but returned the newly
+constructed candidate `Arc`; its caller could therefore start and mutate an
+owner that was not the registry owner.
+
+Retirement had a separate linearization gap. Normal close removed a handler
+under one temporary `SESSIONS.write()` guard, dropped that guard after observing
+the map empty, then acquired a second guard to remove the peer. Failed-start
+rollback checked the exact client owner but used the same split removal. A new
+same-peer attachment could enter between the empty observation and peer-map
+removal and then be destroyed by the older close. Normal close and its
+prediction bridge also carried only the connection UUID, even though Dart
+already retains a separate exact `clientOwnerId`. The later
+`close_event_stream` call could not repair finality: it ran only after the
+handler had been removed, so the lookup was necessarily empty.
+
+The source now gives admission and retirement one top-level linearization
+point. New-peer and existing-peer attachment take the global registry write
+guard before the global UUID uniqueness test and retain it through a vacant
+handler-entry commit; replacing insertion is gone. `insert_session` returns a
+fallible result containing the actual peer `Arc` selected by the registry, so
+same-peer reuse cannot start the discarded candidate. `LocalConfig`'s ambient
+last-peer publication occurs only after admission succeeds. Existing-window
+display attachment keeps the same registry transaction through its already
+ordered display-selection command reservation and vacant-entry commit.
+
+One `remove_session_by_exact_ui_owner` primitive now serves ordinary close and
+failed-start rollback. It checks `(connection UUID, client-owner UUID)` before
+mutation and retains one global write guard through exact-handler retirement
+and possible last-handler peer removal. A non-last close removes only its
+handler and reconciles the remaining display owners; a last close returns the
+exact installed peer so `close_and_join` can run without holding the registry
+lock. Wrong-owner and stale UUID callbacks are no-ops. Close prediction uses the
+same dual identity. Rust FFI, all three authored Dart close paths, and the web
+bridge parity signatures now carry both UUIDs. The obsolete post-removal event
+stream lookup is deleted rather than replaced by a retry, timer, or second
+close protocol.
+
+The focused Rust regressions exercise installed-versus-candidate `Arc`
+identity, same-peer reuse, global duplicate-UUID refusal without peer
+replacement, wrong-owner refusal, non-last handler retirement, and last-owner
+peer return. `scripts/verify-viewer-session-registry.py` binds both registry
+transactions, exact FFI/Dart/web propagation, regressions, requirement and
+ledger rows, shared gates, the independent validator, and synchronized
+requirement hashes with deliberate self-mutations. The repository-wide
+workspace verifier derives the source properties independently and adds them
+to its complete in-memory mutation catalog. On the source and contract bytes
+immediately preceding this evidence-only receipt,
+`verify-viewer-session-registry.py --self-test` rejected all 22 deliberate
+mutations; the adjacent display-selection, viewer-RGBA, and Android ownership
+self-tests rejected 186, 115, and 545 mutations respectively; the independent
+workspace baseline returned `verify-verifier-workspace: ok`; and a fresh,
+direct, unfiltered `--source-mutations-only` run completed from mutation one
+through terminal `verify-verifier-workspace: ok` with numeric exit zero. An
+earlier full run correctly rejected all three corrupted Dart close sites but
+stopped because an older catalog tuple expected the later Android validator's
+diagnostic instead of the newly earlier independent registry diagnostic. The
+fixture label was corrected without weakening either validator, an isolated
+run reached the verifier's `ok` result, and only the subsequent fresh
+unfiltered exit-zero run is counted as the complete catalog receipt. Shared
+shell entrypoints also passed `bash -n`. Post-receipt focused and independent
+baseline results are recorded in the true-EOF audit; this paragraph does not
+substitute source gates for native or deployed execution.
+
+This source slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change host firewall/network/listener
+state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
+unrelated container/image; or request/acquire root. It creates no service,
+listener, port, network request, reconnect loop, retry, timer, task, thread,
+runtime, worker, dependency, or privilege transition. Exact Rust/generated
+bridge compilation and regression execution, Android/iOS/Linux/macOS/Windows
+and web behavior, concurrent attach/close stress, current physical Android
+task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
+capture-through-compositor timestamps, explicit end-to-end
+latency/queue/CPU/memory budgets, sustained connection/reconnect/focus/
+background/file/control/resource/performance soak, clean committed cold
+R-B2/R-B10 equality, installed artifacts/service behavior, fresh independent
+reproduction, R-V3 external review, causation, and proof that the complete
+connection flow is correct and performant remain explicit release obligations
+and explicit user requests.

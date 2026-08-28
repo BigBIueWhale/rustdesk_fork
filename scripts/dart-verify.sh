@@ -395,6 +395,7 @@ PY
     python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test
     python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test
     python3 scripts/verify-display-selection-finality.py --repo . --self-test
+    python3 scripts/verify-viewer-session-registry.py --repo . --self-test
     rustfmt --edition 2021 --check \
       src/client.rs \
       src/client/io_loop.rs \
@@ -412,6 +413,9 @@ PY
     echo "  == R-S11gt generated-bridge explicit initial display-owner regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11gt_ -- --test-threads=1
+    echo "  == R-S11hu generated-bridge atomic exact-owner viewer-session registry regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::mobile_session_lifecycle_tests::r_s11hu_ -- --test-threads=1
     echo "  == R-S11gu generated-bridge bounded exact-owner cursor publication regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11gu_ -- --test-threads=1

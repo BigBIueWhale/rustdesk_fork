@@ -257,7 +257,10 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<void> sessionClose({required UuidValue sessionId, dynamic hint}) {
+  Future<void> sessionClose(
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['session_close']));
   }
 
@@ -1611,7 +1614,9 @@ class RustdeskImpl {
   }
 
   bool willSessionCloseCloseSession(
-      {required UuidValue sessionId, dynamic hint}) {
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      dynamic hint}) {
     return true;
   }
 

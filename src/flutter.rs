@@ -22,7 +22,7 @@ use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 #[cfg(any(target_os = "android", test))]
 use std::sync::{mpsc, Condvar, Mutex};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     ffi::CString,
     os::raw::{c_char, c_int, c_void},
     str::FromStr,
@@ -1778,14 +1778,6 @@ impl FlutterHandler {
         drop(current_cursor);
     }
 
-    pub(crate) fn close_event_stream(&self, session_id: SessionID) {
-        // to-do: Make sure the following logic is correct.
-        // No need to remove the display handler, because it will be removed when the connection is closed.
-        if let Some(session) = self.session_handlers.write().unwrap().get_mut(&session_id) {
-            try_send_close_event(&session.event_stream);
-        }
-    }
-
     pub(crate) fn begin_screenshot_request(&self, session_id: &SessionID) -> bool {
         let mut handlers = self.session_handlers.write().unwrap();
         let Some(handler) = handlers.get_mut(session_id) else {
@@ -2752,17 +2744,6 @@ pub fn session_add(
     #[cfg(target_os = "android")]
     let owner_admission = acquire_android_client_owner(client_owner_id)?;
 
-    // to-do: check the same id session.
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        if session.lc.read().unwrap().conn_type != conn_type {
-            bail!("same session id is found with different conn type?");
-        }
-        // The same session is added before?
-        bail!("same session id is found");
-    }
-
-    LocalConfig::set_remote_id(&id);
-
     let mut preset_password = password.clone();
     let shared_password = if is_shared_password {
         // To achieve a flexible password application order, we don't treat shared password as a preset password.
@@ -2787,13 +2768,14 @@ pub fn session_add(
         .unwrap()
         .initialize(id.to_owned(), conn_type, shared_password, conn_token);
 
-    let session = Arc::new(session.clone());
-    sessions::insert_session(
+    let candidate = Arc::new(session.clone());
+    let session = sessions::insert_session(
         session_id.to_owned(),
         *client_owner_id,
         conn_type,
-        session.clone(),
-    );
+        candidate,
+    )?;
+    LocalConfig::set_remote_id(&id);
 
     #[cfg(target_os = "android")]
     drop(owner_admission);
@@ -2981,7 +2963,7 @@ pub fn session_start_(
 
 fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {
     if let Some(session) =
-        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)
+        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)
     {
         session.close_and_join();
     }
@@ -3667,34 +3649,16 @@ pub mod sessions {
     }
 
     #[inline]
-    pub fn remove_session_by_session_id(id: &SessionID) -> Option<FlutterSession> {
-        let mut remove_peer_key = None;
-        for (peer_key, s) in SESSIONS.write().unwrap().iter_mut() {
-            let mut write_lock = s.ui_handler.session_handlers.write().unwrap();
-            let remove_ret = write_lock.remove(id);
-            match remove_ret {
-                Some(_) => {
-                    s.ui_handler.retire_rgba_session(id);
-                    if write_lock.is_empty() {
-                        remove_peer_key = Some(peer_key.clone());
-                    } else {
-                        check_remove_unused_displays(None, s, &write_lock);
-                    }
-                    break;
-                }
-                None => {}
-            }
-        }
-        let s = SESSIONS.write().unwrap().remove(&remove_peer_key?);
-        s
-    }
-
-    pub(super) fn remove_failed_start_by_exact_ui_owner(
+    pub fn remove_session_by_exact_ui_owner(
         id: &SessionID,
         client_owner_id: &SessionID,
     ) -> Option<FlutterSession> {
+        // Handler retirement and last-handler peer retirement are one registry transaction.
+        // Keeping this guard through `sessions.remove` prevents a same-peer attachment from
+        // entering after emptiness was observed and then being removed as part of the old round.
+        let mut sessions = SESSIONS.write().unwrap();
         let mut remove_peer_key = None;
-        for (peer_key, session) in SESSIONS.write().unwrap().iter_mut() {
+        for (peer_key, session) in sessions.iter_mut() {
             let mut handlers = session.ui_handler.session_handlers.write().unwrap();
             let Some(handler) = handlers.get(id) else {
                 continue;
@@ -3713,23 +3677,27 @@ pub mod sessions {
             }
             break;
         }
-        SESSIONS.write().unwrap().remove(&remove_peer_key?)
+        sessions.remove(&remove_peer_key?)
     }
 
-    /// Check if removing a session by session_id would result in removing the entire peer.
+    /// Check if retiring the exact UI owner would result in removing the entire peer.
     ///
     /// Returns:
     /// - `true`: The session exists and removing it would leave the peer with no other sessions,
-    ///           so the entire peer would be removed (equivalent to `remove_session_by_session_id` returning `Some`)
+    ///           so the entire peer would be removed.
     /// - `false`: The session doesn't exist, or it exists but the peer has other sessions,
-    ///            so the peer would not be removed (equivalent to `remove_session_by_session_id` returning `None`)
+    ///            or the caller does not own that exact UI session.
     #[inline]
-    pub fn would_remove_peer_by_session_id(id: &SessionID) -> bool {
+    pub fn would_remove_peer_by_exact_ui_owner(
+        id: &SessionID,
+        client_owner_id: &SessionID,
+    ) -> bool {
         for (_peer_key, s) in SESSIONS.read().unwrap().iter() {
             let read_lock = s.ui_handler.session_handlers.read().unwrap();
-            if read_lock.contains_key(id) {
+            if let Some(handler) = read_lock.get(id) {
                 // Found the session, check if it's the only one for this peer
-                return read_lock.len() == 1;
+                return handler.client_owner_id.as_ref() == Some(client_owner_id)
+                    && read_lock.len() == 1;
             }
         }
         // Session not found
@@ -3874,8 +3842,17 @@ pub mod sessions {
         client_owner_id: SessionID,
         conn_type: ConnType,
         session: FlutterSession,
-    ) {
+    ) -> ResultType<FlutterSession> {
         let mut sessions = SESSIONS.write().unwrap();
+        if sessions.values().any(|peer| {
+            peer.ui_handler
+                .session_handlers
+                .read()
+                .unwrap()
+                .contains_key(&session_id)
+        }) {
+            bail!("viewer UI session identity is already active");
+        }
         let peer_session = sessions
             .entry((session.get_id(), conn_type))
             .or_insert(session);
@@ -3884,12 +3861,17 @@ pub mod sessions {
             client_owner_id,
             &current_cursor,
         );
-        peer_session
-            .session_handlers
-            .write()
-            .unwrap()
-            .insert(session_id, handler);
+        let mut handlers = peer_session.session_handlers.write().unwrap();
+        match handlers.entry(session_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(handler);
+            }
+            Entry::Occupied(_) => bail!("viewer UI session identity became active twice"),
+        }
+        let peer_session = peer_session.clone();
+        drop(handlers);
         drop(current_cursor);
+        Ok(peer_session)
     }
 
     #[inline]
@@ -3900,7 +3882,17 @@ pub mod sessions {
         client_owner_id: SessionID,
         displays: Vec<i32>,
     ) -> ResultType<()> {
-        if let Some(s) = SESSIONS.read().unwrap().get(&(peer_id, conn_type)) {
+        let sessions = SESSIONS.write().unwrap();
+        if sessions.values().any(|peer| {
+            peer.ui_handler
+                .session_handlers
+                .read()
+                .unwrap()
+                .contains_key(&session_id)
+        }) {
+            bail!("viewer UI session identity is already active");
+        }
+        if let Some(s) = sessions.get(&(peer_id, conn_type)) {
             let validated_displays = validate_display_selection(s, &displays)?;
             let current_cursor = s.ui_handler.current_cursor.read().unwrap();
             let mut h = FlutterHandler::session_handler_for_cursor_state(
@@ -3914,8 +3906,12 @@ pub mod sessions {
             capture_set.dedup();
             let refresh = ordered_display_selection_refresh(s, &validated_displays);
             h.displays = validated_displays;
+            let entry = match handlers.entry(session_id) {
+                Entry::Vacant(entry) => entry,
+                Entry::Occupied(_) => bail!("viewer UI session identity became active twice"),
+            };
             s.try_select_displays(None, capture_set, refresh, || {
-                handlers.insert(session_id, h);
+                entry.insert(h);
                 s.ui_handler
                     .retire_rgba_displays_except(&session_id, &displays);
             })?;
@@ -4424,6 +4420,16 @@ mod mobile_session_lifecycle_tests {
     use std::time::Duration;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn initialized_test_session(peer_id: &str, conn_type: ConnType) -> FlutterSession {
+        let session: FlutterSession = Arc::new(Session::default());
+        session
+            .lc
+            .write()
+            .unwrap()
+            .initialize(peer_id.to_owned(), conn_type, None, None);
+        session
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn r_s11go_display_selection_is_exact_owned_ordered_and_commit_after_admission() {
@@ -5874,13 +5880,150 @@ mod mobile_session_lifecycle_tests {
             "same-host",
             ConnType::DEFAULT_CONN,
         );
-        assert!(sessions::remove_session_by_session_id(&stale_session_id).is_none());
+        assert!(sessions::remove_session_by_exact_ui_owner(
+            &stale_session_id,
+            &client_owner_id,
+        )
+        .is_none());
         assert!(sessions::contains_peer("same-host", ConnType::DEFAULT_CONN));
         assert!(!replacement.close_requested.load(Ordering::Acquire));
         assert!(sessions::session_has_client_owner(
             &replacement_session_id,
             &client_owner_id
         ));
+
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn r_s11hu_registry_admission_returns_the_installed_peer_and_refuses_duplicate_identity() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let first_session_id = SessionID::new_v4();
+        let first_owner_id = SessionID::new_v4();
+        let first_candidate =
+            initialized_test_session("registry-host", ConnType::DEFAULT_CONN);
+        let installed = sessions::insert_session(
+            first_session_id,
+            first_owner_id,
+            ConnType::DEFAULT_CONN,
+            first_candidate.clone(),
+        )
+        .expect("first UI session admission");
+        assert!(Arc::ptr_eq(&installed, &first_candidate));
+
+        let second_session_id = SessionID::new_v4();
+        let second_owner_id = SessionID::new_v4();
+        let unused_candidate =
+            initialized_test_session("registry-host", ConnType::DEFAULT_CONN);
+        let reused = sessions::insert_session(
+            second_session_id,
+            second_owner_id,
+            ConnType::DEFAULT_CONN,
+            unused_candidate.clone(),
+        )
+        .expect("same-peer UI session admission");
+        assert!(Arc::ptr_eq(&reused, &installed));
+        assert!(!Arc::ptr_eq(&reused, &unused_candidate));
+
+        let duplicate_candidate =
+            initialized_test_session("different-registry-host", ConnType::FILE_TRANSFER);
+        assert!(sessions::insert_session(
+            first_session_id,
+            SessionID::new_v4(),
+            ConnType::FILE_TRANSFER,
+            duplicate_candidate,
+        )
+        .is_err());
+        assert!(!sessions::contains_peer(
+            "different-registry-host",
+            ConnType::FILE_TRANSFER,
+        ));
+        assert!(sessions::session_has_client_owner(
+            &first_session_id,
+            &first_owner_id,
+        ));
+        assert!(sessions::session_has_client_owner(
+            &second_session_id,
+            &second_owner_id,
+        ));
+
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn r_s11hu_registry_retirement_requires_exact_owner_and_removes_last_peer_atomically() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let first_session_id = SessionID::new_v4();
+        let first_owner_id = SessionID::new_v4();
+        let peer = initialized_test_session("retirement-host", ConnType::DEFAULT_CONN);
+        let installed = sessions::insert_session(
+            first_session_id,
+            first_owner_id,
+            ConnType::DEFAULT_CONN,
+            peer,
+        )
+        .expect("first UI session admission");
+        let second_session_id = SessionID::new_v4();
+        let second_owner_id = SessionID::new_v4();
+        sessions::insert_session(
+            second_session_id,
+            second_owner_id,
+            ConnType::DEFAULT_CONN,
+            initialized_test_session("retirement-host", ConnType::DEFAULT_CONN),
+        )
+        .expect("second UI session admission");
+
+        assert!(!sessions::would_remove_peer_by_exact_ui_owner(
+            &first_session_id,
+            &SessionID::new_v4(),
+        ));
+        assert!(sessions::remove_session_by_exact_ui_owner(
+            &first_session_id,
+            &SessionID::new_v4(),
+        )
+        .is_none());
+        assert!(sessions::session_has_client_owner(
+            &first_session_id,
+            &first_owner_id,
+        ));
+
+        assert!(!sessions::would_remove_peer_by_exact_ui_owner(
+            &first_session_id,
+            &first_owner_id,
+        ));
+        assert!(sessions::remove_session_by_exact_ui_owner(
+            &first_session_id,
+            &first_owner_id,
+        )
+        .is_none());
+        assert!(!sessions::session_has_client_owner(
+            &first_session_id,
+            &first_owner_id,
+        ));
+        assert!(sessions::contains_peer(
+            "retirement-host",
+            ConnType::DEFAULT_CONN,
+        ));
+
+        assert!(sessions::would_remove_peer_by_exact_ui_owner(
+            &second_session_id,
+            &second_owner_id,
+        ));
+        let retired = sessions::remove_session_by_exact_ui_owner(
+            &second_session_id,
+            &second_owner_id,
+        )
+        .expect("last exact UI owner retires the peer");
+        assert!(Arc::ptr_eq(&retired, &installed));
+        assert!(!sessions::contains_peer(
+            "retirement-host",
+            ConnType::DEFAULT_CONN,
+        ));
+        retired.close_and_join();
 
         sessions::clear_for_test();
     }

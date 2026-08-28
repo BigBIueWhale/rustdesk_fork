@@ -452,14 +452,14 @@ def validate(sources: Dict[str, str]) -> None:
         rollback,
         (
             "client_owner_id: &SessionID",
-            "remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)",
+            "remove_session_by_exact_ui_owner(session_id, client_owner_id)",
             "session.close_and_join();",
         ),
         "failed-start rollback preserves replacement owners",
     )
     exact_removal = extract_braced_item(
         flutter,
-        "pub(super) fn remove_failed_start_by_exact_ui_owner(",
+        "pub fn remove_session_by_exact_ui_owner(",
         "exact-owner failed-start removal",
     )
     require_order(

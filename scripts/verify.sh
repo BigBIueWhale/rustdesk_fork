@@ -9710,12 +9710,19 @@ else
   echo "  FAIL R-S11go: display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
   rc=1
 fi
+if python3 scripts/verify-viewer-session-registry.py --repo . --self-test; then
+  echo "  ok  R-S11hu outgoing viewer-session admission and retirement are atomic and exact-owner"
+else
+  echo "  FAIL R-S11hu: viewer-session registry regained detached duplicate checks, replacing admission, stale-owner close, or split last-peer retirement"
+  rc=1
+fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11go_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hu_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fg_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::controlled_file_write_tests::r_s11fh_ --color never
@@ -11445,8 +11452,8 @@ failed_start_rollback = rust[
     rust.index("fn try_send_close_event(")
 ]
 failed_start_removal = rust[
-    rust.index("pub(super) fn remove_failed_start_by_exact_ui_owner("):
-    rust.index("/// Check if removing a session by session_id")
+    rust.index("pub fn remove_session_by_exact_ui_owner("):
+    rust.index("/// Check if retiring the exact UI owner")
 ]
 ffi_add_existed = flutter_ffi[
     flutter_ffi.index("pub fn session_add_existed_sync("):
@@ -11515,7 +11522,7 @@ ok = (
     and registration_failure.index("SystemNavigator.pop()")
         < registration_failure.index("return;")
     and session_add_existed.index("acquire_android_client_owner(&client_owner_id)")
-        < session_add_existed.index("sessions::insert_peer_session_id")
+        < session_add_existed.index("sessions::replace_peer_session_display_owner")
         < session_add_existed.index("drop(owner_admission)")
     and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")
         < session_add.index("close_client_owner_drain(previous_mobile_client_sessions)")
@@ -11541,12 +11548,12 @@ ok = (
         < session_start.index("drop(owner_admission)")
     and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2
     and failed_start_rollback.index("client_owner_id: &SessionID")
-        < failed_start_rollback.index("remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)")
+        < failed_start_rollback.index("remove_session_by_exact_ui_owner(session_id, client_owner_id)")
         < failed_start_rollback.index("session.close_and_join();")
     and failed_start_removal.index("handlers.get(id)")
         < failed_start_removal.index("handler.client_owner_id.as_ref() != Some(client_owner_id)")
         < failed_start_removal.index("if handlers.remove(id).is_none()")
-    and "close_event_stream" not in failed_start_rollback
+    and "try_send_close_event" not in failed_start_rollback
     and "failed_session_start_rolls_back_and_joins_only_the_exact_session" in rust
     and ffi_add_existed.index('if cfg!(any(target_os = "android", target_os = "ios"))')
         < ffi_add_existed.index("session_add_existed(")
@@ -11582,7 +11589,7 @@ ok = (
         < dart_start.index("_scheduleMobileSessionStart(")
         < dart_start.index("sessionAddSync(")
     and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") == 2
-    and dart_close.count("await bind.sessionClose(sessionId: closingSessionId);") == 2
+    and dart_close.count("sessionId: closingSessionId, clientOwnerId: clientOwnerId") == 2
     and start_queue.count("_MobileSessionStartEntry<T>? _running;") == 1
     and start_queue.count("_MobileSessionStartEntry<T>? _pending;") == 1
     and start_queue.index("while (true)")

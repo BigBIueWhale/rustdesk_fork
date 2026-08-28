@@ -1207,14 +1207,14 @@ def validate(sources: Dict[str, str]) -> None:
         failed_start_rollback,
         (
             "client_owner_id: &SessionID",
-            "remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)",
+            "remove_session_by_exact_ui_owner(session_id, client_owner_id)",
             "session.close_and_join();",
         ),
         "exact-owner handler removal and worker join after start failure",
     )
     exact_failed_start_removal = extract_item(
         flutter,
-        "pub(super) fn remove_failed_start_by_exact_ui_owner(",
+        "pub fn remove_session_by_exact_ui_owner(",
         "exact-owner failed-session-start removal",
     )
     require_order(
@@ -1229,7 +1229,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     forbid(
         failed_start_rollback,
-        "close_event_stream",
+        "try_send_close_event",
         "normal-close marker that would hide failed-start stream error",
     )
     require(
@@ -1297,7 +1297,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         flutter_ffi,
         "client_owner_id: SessionID,",
-        9,
+        10,
         "all authored Rust dual-identity bridge entries",
     )
     require(
@@ -1553,7 +1553,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         close_native_session,
-        "await bind.sessionClose(sessionId: closingSessionId);",
+        "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
         "exact captured native close",
     )
     mobile_start_finality = extract_item(
@@ -1668,7 +1668,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "final closingSessionId = expectedSessionId ?? sessionId;",
             "await setCanvasConfig(",
-            "await bind.sessionClose(sessionId: closingSessionId);",
+            "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
             "if (sessionId != closingSessionId)",
             "await imageModel.update(null,",
             "expectedSessionId: closingSessionId",
@@ -1677,7 +1677,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_count(
         dart_close,
-        "await bind.sessionClose(sessionId: closingSessionId);",
+        "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
         2,
         "both stale-entry and persisted-current exact native closes",
     )
@@ -1691,9 +1691,9 @@ def validate(sources: Dict[str, str]) -> None:
         dart_close,
         (
             "await _awaitMobileSessionStart(closingSessionId);",
-            "await bind.sessionClose(sessionId: closingSessionId);",
+            "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
             "await _awaitMobileSessionStart(closingSessionId);",
-            "await bind.sessionClose(sessionId: closingSessionId);",
+            "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
         ),
         "preparation finality precedes both exact native closes",
     )
@@ -5616,7 +5616,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "_worker: std::thread::JoinHandle<()>", "_worker: std::thread::Thread", "retained Android client lifecycle drain worker"),
     ("flutter", "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()", "fn android_lifecycle_retirement_may_block_and_replacement_skips_exact_drain()", "nonblocking lifecycle exact-barrier behavior proof"),
     ("flutter", "drop(owner_admission);\n    Ok(drain)", "Ok(drain)", "owner guard release before prior-mobile finality"),
-    ("flutter", "let owner_admission = acquire_android_client_owner(client_owner_id)?;\n\n    // to-do: check the same id session.", "// post-drain owner revalidation omitted\n\n    // to-do: check the same id session.", "post-drain exact-owner revalidation"),
+    ("flutter", "let owner_admission = acquire_android_client_owner(client_owner_id)?;\n\n    let mut preset_password", "// post-drain owner revalidation omitted\n\n    let mut preset_password", "post-drain exact-owner revalidation"),
     ("flutter", "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()", "fn android_lifecycle_transition_waits_for_mobile_replacement_drain()", "nonblocking lifecycle during mobile replacement-drain behavior proof"),
     ("flutter_ffi", "client_owner_id: SessionID,", "client_owner_id: String,", "authored dual-identity bridge"),
     ("dart_main", "'register_client_session_owner', gFFI.clientOwnerId.toString())", "'register_client_session_owner', gFFI.sessionId.toString())", "Activity owner registration identity"),
@@ -5635,7 +5635,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_model", "_edgeScrollFallbackState = null;", "// edge-scroll fallback retained", "canvas fallback retirement"),
     ("dart_model", "if (closed || sessionId != activeSessionId) return;", "if (closed) return;", "stale event-stream refusal"),
     ("dart_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed long-lived model identity"),
-    ("dart_model", "await bind.sessionClose(sessionId: closingSessionId);", "await bind.sessionClose(sessionId: sessionId);", "exact captured native close"),
+    ("dart_model", "sessionId: closingSessionId, clientOwnerId: clientOwnerId", "sessionId: sessionId, clientOwnerId: clientOwnerId", "exact captured native close"),
     ("mobile_files", "await model.close(sessionId);", "await Future<void>.delayed(Duration.zero);", "file-page state persistence before native close"),
     ("dart_input_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed input identity"),
     ("dart_input_model", "_relativeMouse.resetForSession(expectedSessionId);", "_relativeMouse.dispose();", "reusable input-model session reset"),
@@ -6040,7 +6040,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "match s.start_io_thread_with_lock(&mut thread_lock)", "match s.start_io_thread()", "failed-start transactional match"),
     ("flutter", "let mut thread_lock = s.thread.lock().unwrap();\n        let mut handlers = s.session_handlers.write().unwrap();", "let mut handlers = s.session_handlers.write().unwrap();\n        let mut thread_lock = s.thread.lock().unwrap();", "worker-slot before handler-owner lock order"),
     ("flutter", "rollback_failed_session_start(session_id, client_owner_id);", "// failed-start rollback omitted", "false failed-start rollback"),
-    ("flutter", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) =\n        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n        session.close_event_stream(*session_id);\n    }\n    if let Some(session) =\n        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)", "failed-start normal-close marker refusal"),
+    ("flutter", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) =\n        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n        try_send_close_event(&None);\n    }\n    if let Some(session) =\n        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)", "failed-start normal-close marker refusal"),
     ("flutter", "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "failed-start replacement-owner preservation"),
     ("flutter", "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()", "fn failed_session_start_rollback_is_unchecked()", "failed-start exact rollback behavior proof"),
     ("flutter", "let result = sessions::replace_peer_session_display_owner(", "sessions::insert_peer_session_id(", "atomic existing-session display-owner replacement"),

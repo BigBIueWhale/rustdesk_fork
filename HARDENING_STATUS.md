@@ -6105,15 +6105,18 @@ network configuration was inspected or changed.
   selects which Windows session the service-owned host serves. Attack surface closed: the UI/FFI path no
   longer commits HKLM state directly or shells out to `cmd.exe`/`reg.exe`; it sends the typed
   `ServiceIpcRequest::SetShareRdp { enabled }` request to the protected Windows `_service` pipe. The service
-  validates the connected pipe client's elevated token at the receiver, writes the current MSI product's exact
-  64-bit install-registry value directly as LocalSystem, and returns
+  retains the connected pipe client's process generation and requires exact equality between its complete pipe
+  impersonation and process-handle token proofs, elevation, current executable, exact no-argument interactive-UI
+  role, liveness, and stable pipe PID at the receiver; it then writes the current MSI product's exact 64-bit
+  install-registry value directly as LocalSystem and returns
   `ServiceIpcResponse::ShareRdpSet { accepted }`.
   R-S11e-23 deletes the retired Inno/WOW64 selector that could previously redirect that policy to stale package
   metadata. The cross-purpose main IPC protocol cannot deserialize that service request, and the settings toggle is
-  writable only from an elevated
-  RustDesk process. Verification closure: `scripts/verify.sh` asserts the typed request/result, main-channel
-  protocol separation, `_service` dispatch, receiver-side elevated-token gate, direct registry commit, absence of the
-  direct shell writer, UI service request, and UI elevation gate.
+  writable only from that exact elevated interactive RustDesk UI role. Verification closure:
+  `scripts/verify.sh` asserts the typed request/result, main-channel protocol separation, `_service` dispatch,
+  receiver-side generation-bound exact-requester gate, direct registry commit, absence of the direct shell writer,
+  UI service request, and UI elevation gate. R-S11hw/R-S11e-260 and Appendix C #382 supersede the original
+  elevation-only receiver proof without changing which component owns the machine-policy write.
 - **R-S11b-3e — service identity/salt reads are side-effect-free — CLOSED 2026-07-09.** Platforms: all
   desktop installed-service paths. Endpoint/action: `Config::get_id()`, `Data::ConfigRequest("id")`,
   `Data::ConfigRequest("salt")`, `ipc::get_id()`, login username validation, local recording metadata, and
@@ -26780,7 +26783,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-78fa60eaef70a1c7520ac695ad6de2f4206fd290bd7fac80e750d5708c4f0650  requirements.html
+3f92c3b5caad13514c031d9d68b66391ea794b8d2d679042592232369191bf53  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -28139,3 +28142,98 @@ R-B2/R-B10 equality, installed artifacts/service behavior, fresh independent
 reproduction, R-V3 external review, causation, and proof that the complete
 connection flow is correct and performant remain explicit release obligations
 and explicit user requests.
+
+### R-S11hw/R-S11e-260 — exact Windows service-owned RDP-policy requester role
+
+**Status:** SOURCE REPAIR AUTHORED / COMPLETE FOCUSED AND INDEPENDENT
+STRUCTURAL/MUTATION GATES EXECUTED / EXACT-CURRENT WINDOWS NATIVE,
+INSTALLED-SERVICE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE
+OPEN.
+
+The continuing service-owned IPC authority review found a narrower defect in
+R-S11b-3d's Windows `SetShareRdp` receiver. Moving the HKLM policy write into
+the LocalSystem service and returning a typed acknowledgement was correct, but
+the action-specific authorization immediately before that write called
+`windows_pipe_client_token_is_elevated()` and accepted its Boolean result. The
+listener had separately admitted an active-session/current-executable peer,
+but the action did not prove an exact requester role, retain the process
+generation whose image and command line were inspected, or bind that process's
+live token identity to the pipe impersonation token. Any elevated RustDesk
+role admitted by the listener therefore inherited an interactive settings-page
+machine-policy authority it did not own. Independently sampled PID, pipe-token,
+and process-image facts also did not form one generation-bound proof.
+
+`authorize_windows_service_owned_share_rdp_requester` now owns one fail-closed
+conjunction before the registry writer can run. It obtains the named-pipe client
+PID and opens one retained `WindowsPeerProcess`; captures complete user, logon,
+session, LocalSystem, and elevation facts through named-pipe impersonation and
+again from that retained process handle; and requires the two
+`WindowsLiveTokenProof` values to be exactly equal. The common proof must be
+elevated. The retained immutable identity must resolve to the receiver's
+current canonical executable and the exact no-argument interactive-UI role.
+The retained generation must still be running and the pipe must still report
+the original PID before the service calls `set_service_owned_share_rdp`.
+Missing, inconsistent, changed, non-elevated, wrong-image, wrong-role, or dead
+evidence returns `ShareRdpSet { accepted: false }` and does not invoke the
+machine-policy writer.
+
+The detached elevation-only helper and its two action wrappers are removed.
+The focused Windows service-channel verifier independently extracts the action,
+complete pipe-token proof, generation-bound authorization, exact role helper,
+and role regression, rejects the old helper names, and mutation-tests every
+authority element. The repository-wide workspace verifier derives the same
+contract separately, verifies the focused mutation inventory, and adds direct
+product-source, focused-verifier, requirement, Appendix, ledger, and
+identity-binding mutations. The shared shell gate now checks the complete
+requester proof rather than preserving the superseded elevation-only symbol.
+R-S11hw, Appendix C #382, and the synchronized requirements digest make these
+properties normative rather than comments on one implementation.
+
+This is source and contract closure, not a claim of current Windows runtime
+evidence. Exact-current Windows compilation and unit execution, adversarial
+named-pipe PID/process-generation and token-identity race tests, behavior
+against an installed SCM LocalSystem service and the real settings page, clean
+committed R-B2/R-B10 artifact equality, independent reproduction, sustained
+resource/performance testing, and R-V3 external review remain open. In
+particular, no source gate proves that a deployed artifact contained or
+exercised the old defect.
+
+On the source and contract bytes immediately preceding this evidence-only
+receipt, the confined focused verifier parsed the relevant Rust, shell,
+requirements, ledger, native-watch, and independent-verifier sources and
+rejected all 46 deliberate mutations. The independent workspace baseline
+returned `verify-verifier-workspace: ok`, and both modified shell entrypoints
+passed `bash -n`. The approved immutable verifier image contains neither Cargo
+nor `rustc`; therefore no native compile or unit-test verdict was available,
+and no toolchain, dependency, image, or network input was acquired.
+
+The first fresh unfiltered workspace-catalog run failed safely when the first
+new product mutation removed the action authorization. The independent
+validator correctly rejected that mutation because the ordered requester proof
+was missing, but the fixture expected the shorter phrase “before mutation”
+while the validator reported “before machine-policy mutation”; the catalog
+therefore refused to count the real rejection. The expected diagnostic label
+was aligned without changing product code or weakening validation. A
+supplementary in-memory run restricted only to the newly added tuples then
+terminated with `verify-verifier-workspace: ok` and numeric exit zero, proving
+every new corruption mapped to its actual independent rejection diagnostic.
+That restricted preflight is not counted as the complete catalog receipt.
+
+A subsequent fresh, direct, unfiltered `--source-mutations-only` run restarted
+from mutation one, traversed the complete repository catalog, and terminated
+with `verify-verifier-workspace: ok` and numeric exit zero. No mutation was
+sampled, filtered, waived, or converted into a weaker expected diagnostic in
+that authoritative run. The post-receipt focused and independent baseline
+results are recorded in the true-EOF audit. These structural and mutation
+receipts do not substitute for the explicitly open native, installed-service,
+race, artifact, performance, independent-reproduction, or external-review
+evidence.
+
+This slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change host firewall/network/listener
+state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
+unrelated container/image; or request/acquire root. It creates no listener,
+service, port, network request, retry, timer, task, thread, runtime, dependency,
+or privilege transition. Verification receipts, including confined
+structural/mutation results and their exact limits, were produced without
+running repository code on the host or requesting privilege.

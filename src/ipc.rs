@@ -75,7 +75,8 @@ pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_
 use ipc_auth::{authorize_windows_main_ipc_connection, authorize_windows_url_ipc_connection};
 #[cfg(windows)]
 pub(crate) use ipc_auth::{
-    authorize_windows_service_owned_sas_requester, WindowsProcessIdentityKey,
+    authorize_windows_service_owned_sas_requester,
+    authorize_windows_service_owned_share_rdp_requester, WindowsProcessIdentityKey,
 };
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::{
@@ -5860,7 +5861,7 @@ pub(crate) async fn handle_windows_service_owned_share_rdp_request(
     enable: bool,
     stream: &mut Connection,
 ) {
-    let accepted = windows_peer_is_authorized_for_service_owned_share_rdp_change(stream)
+    let accepted = authorize_windows_service_owned_share_rdp_requester(stream)
         && match crate::platform::windows::set_service_owned_share_rdp(enable) {
             Ok(()) => true,
             Err(err) => {
@@ -5917,29 +5918,6 @@ async fn handle_service_request(request: ServiceIpcRequest, stream: &mut Connect
             {
                 log::warn!("Failed to send macOS password-right readiness result: {err}");
             }
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn windows_peer_is_authorized_for_service_owned_share_rdp_change(stream: &Connection) -> bool {
-    windows_peer_is_authorized_for_service_owned_request(
-        stream,
-        "Windows service-owned RDP session-sharing change",
-    )
-}
-
-#[cfg(target_os = "windows")]
-fn windows_peer_is_authorized_for_service_owned_request(stream: &Connection, action: &str) -> bool {
-    match stream.windows_pipe_client_token_is_elevated() {
-        Ok(true) => true,
-        Ok(false) => {
-            log::warn!("Rejected {action}: caller token is not elevated");
-            false
-        }
-        Err(err) => {
-            log::warn!("Rejected {action}: failed to verify caller token elevation: {err}");
-            false
         }
     }
 }

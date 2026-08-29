@@ -17116,6 +17116,7 @@ def validate_service_ipc_protocol_authority_contract(sources):
 
 def validate_windows_service_channel_protocol_contract(sources):
     ipc = sources["ipc_source"]
+    auth = sources["ipc_auth_source"]
     focused = sources["windows_service_channel_protocol_verifier"]
     expected = (
         (
@@ -17168,6 +17169,94 @@ def validate_windows_service_channel_protocol_contract(sources):
         "try_acquire_windows_service_main_transaction_slot",
     ):
         require_absent(ipc, retired, "shared Windows service-main protocol authority")
+    share_rdp_handler = extract_braced_item(
+        ipc,
+        "pub(crate) async fn handle_windows_service_owned_share_rdp_request(",
+        "Windows service-owned RDP policy receiver",
+    )
+    require_order(
+        share_rdp_handler,
+        (
+            "authorize_windows_service_owned_share_rdp_requester(stream)",
+            "crate::platform::windows::set_service_owned_share_rdp(enable)",
+            "ServiceIpcResponse::ShareRdpSet { accepted }",
+        ),
+        "exact Windows RDP-policy requester proof before machine-policy mutation",
+    )
+    for retired in (
+        "windows_peer_is_authorized_for_service_owned_share_rdp_change",
+        "windows_peer_is_authorized_for_service_owned_request",
+    ):
+        require_absent(ipc, retired, "token-only Windows RDP-policy authorization")
+    require_absent(
+        auth,
+        "windows_pipe_client_token_is_elevated",
+        "detached Boolean Windows pipe-elevation authority",
+    )
+    pipe_token_proof = extract_braced_item(
+        auth,
+        "fn windows_pipe_client_token_proof(",
+        "Windows named-pipe client token proof",
+    )
+    require_text(
+        pipe_token_proof,
+        "windows_live_token_proof(token)",
+        "complete Windows named-pipe token identity proof",
+    )
+
+    share_rdp_authority = extract_braced_item(
+        auth,
+        "pub(crate) fn authorize_windows_service_owned_share_rdp_requester(",
+        "Windows service-owned RDP policy requester authority",
+    )
+    require_order(
+        share_rdp_authority,
+        (
+            "let Some(peer_pid) = stream.peer_pid()",
+            "WindowsPeerProcess::open(peer_pid)",
+            "stream.windows_pipe_client_token_proof()",
+            "process.live_token_proof()",
+            "if pipe_token != process_token",
+            "if !pipe_token.authority.is_elevated",
+            "process.immutable_identity()",
+            "ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)",
+            "windows_identity_is_service_owned_share_rdp_client(&identity)",
+            'process.require_running("Windows service-owned RDP policy requester")',
+            "if stream.peer_pid() != Some(peer_pid)",
+            "true",
+        ),
+        "same-generation exact-role Windows RDP-policy requester authority",
+    )
+    require_text(
+        share_rdp_authority,
+        "let identity = match process.immutable_identity() {",
+        "identity inspection through the retained Windows requester generation",
+    )
+    share_rdp_role = extract_braced_item(
+        auth,
+        "fn windows_identity_is_service_owned_share_rdp_client(",
+        "Windows service-owned RDP policy requester role",
+    )
+    require_text(
+        share_rdp_role,
+        "windows_identity_has_exact_role(identity, &[])",
+        "exact no-argument interactive UI role",
+    )
+    share_rdp_regression = extract_braced_item(
+        auth,
+        "fn windows_service_owned_share_rdp_client_role_is_exact_interactive_ui()",
+        "Windows service-owned RDP policy role regression",
+    )
+    for text, label in (
+        ("windows_identity_for_test(1, 10, &[])", "interactive UI admission"),
+        ('&["--server"][..]', "server-role refusal"),
+        ('&["--service"][..]', "service-role refusal"),
+        ('&["--tray"][..]', "tray-role refusal"),
+        ('&["--cm"][..]', "CM-role refusal"),
+        ('&["--password"][..]', "password-role refusal"),
+        ('&["--unexpected"][..]', "arbitrary-role refusal"),
+    ):
+        require_text(share_rdp_regression, text, label)
     require_text(
         ipc,
         "#[serde(deny_unknown_fields)]\n"
@@ -17274,6 +17363,34 @@ def validate_windows_service_channel_protocol_contract(sources):
         ),
         ("MUTATIONS: Tuple[Mutation, ...]", "focused mutation inventory"),
         ("run_mutations(sources)", "focused mutation dispatch"),
+        (
+            '"complete named-pipe token identity proof"',
+            "focused complete pipe-token mutation",
+        ),
+        (
+            '"detached Boolean pipe-elevation helper absence"',
+            "focused detached elevation-helper absence mutation",
+        ),
+        (
+            '"named-pipe requester token proof"',
+            "focused named-pipe token-proof mutation",
+        ),
+        (
+            '"same-generation process token proof"',
+            "focused process-token mutation",
+        ),
+        (
+            '"pipe/process token identity equality"',
+            "focused token-identity mutation",
+        ),
+        (
+            '"exact interactive UI role"',
+            "focused exact-role mutation",
+        ),
+        (
+            '"live requester generation at commit"',
+            "focused liveness mutation",
+        ),
     ):
         require_text(
             ipc if text.startswith(("fn ", "serde_json")) else focused,
@@ -17297,6 +17414,26 @@ def validate_windows_service_channel_protocol_contract(sources):
         sources["hardening"],
         "R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols",
         "Windows service endpoint protocol hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11hw</span>',
+        "exact Windows service RDP-policy requester requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>382</td>",
+        "exact Windows service RDP-policy requester Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11hw/R-S11e-260 — exact Windows service-owned RDP-policy requester role",
+        "exact Windows service RDP-policy requester hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11hw and Appendix C #382.",
+        "exact Windows service RDP-policy requester identity binding",
     )
     require_text(
         sources["workspace_verifier"],
@@ -71184,6 +71321,136 @@ def run_source_mutations(sources):
             "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
             "R-S11fe/R-S11e-192 unbounded macOS launchd proof-child resources",
             "bounded macOS launchd proof-child hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "authorize_windows_service_owned_share_rdp_requester(stream)",
+            "true",
+            "exact Windows RDP-policy requester proof before machine-policy mutation",
+        ),
+        (
+            "ipc_auth_source",
+            "let _token_guard = WindowsHandle(token);\n"
+            "            windows_live_token_proof(token)\n"
+            "        })\n"
+            "    }\n\n"
+            "    fn windows_pipe_client_authority",
+            "let _token_guard = WindowsHandle(token);\n"
+            "            windows_token_authority(token)\n"
+            "        })\n"
+            "    }\n\n"
+            "    fn windows_pipe_client_authority",
+            "complete Windows named-pipe token identity proof",
+        ),
+        (
+            "ipc_auth_source",
+            "let pipe_token = match stream.windows_pipe_client_token_proof() {",
+            "let pipe_token = match process.live_token_proof() {",
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "let process_token = match process.live_token_proof() {",
+            "let process_token = match stream.windows_pipe_client_token_proof() {",
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "if pipe_token != process_token {",
+            "if pipe_token == process_token {",
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "if !pipe_token.authority.is_elevated {",
+            "if pipe_token.authority.is_elevated {",
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "let identity = match process.immutable_identity() {\n"
+            "        Ok(identity) => identity,\n"
+            "        Err(err) => {\n"
+            "            log::warn!(\n"
+            '                "Rejected Windows service-owned RDP policy requester identity',
+            "let identity = match WindowsPeerProcess::open(peer_pid)\n"
+            "        .and_then(|process| process.immutable_identity())\n"
+            "    {\n"
+            "        Ok(identity) => identity,\n"
+            "        Err(err) => {\n"
+            "            log::warn!(\n"
+            '                "Rejected Windows service-owned RDP policy requester identity',
+            "identity inspection through the retained Windows requester generation",
+        ),
+        (
+            "ipc_auth_source",
+            "ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)",
+            "Ok(())",
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "windows_identity_has_exact_role(identity, &[])",
+            'windows_identity_has_exact_role(identity, &["--server"])',
+            "exact no-argument interactive UI role",
+        ),
+        (
+            "ipc_auth_source",
+            'process.require_running("Windows service-owned RDP policy requester")',
+            "Ok(())",
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "if stream.peer_pid() != Some(peer_pid) {\n"
+            "        log::warn!(\n"
+            '            "Rejected Windows service-owned RDP policy requester after named-pipe peer pid changed',
+            "if stream.peer_pid() == Some(peer_pid) {\n"
+            "        log::warn!(\n"
+            '            "Rejected Windows service-owned RDP policy requester after named-pipe peer pid changed',
+            "same-generation exact-role Windows RDP-policy requester authority",
+        ),
+        (
+            "ipc_auth_source",
+            "fn windows_service_owned_share_rdp_client_role_is_exact_interactive_ui()",
+            "fn windows_service_owned_share_rdp_client_role_is_broad()",
+            "Windows service-owned RDP policy role regression",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"pipe/process token identity equality"',
+            '"pipe/process token identity unchecked"',
+            "focused token-identity mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"detached Boolean pipe-elevation helper absence"',
+            '"detached Boolean pipe-elevation helper allowed"',
+            "focused detached elevation-helper absence mutation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11hw</span>',
+            '<span class="id">R-S11hw-disabled</span>',
+            "exact Windows service RDP-policy requester requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>382</td>",
+            "<tr><td>382-disabled</td>",
+            "exact Windows service RDP-policy requester Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11hw/R-S11e-260 — exact Windows service-owned RDP-policy requester role",
+            "R-S11hw-disabled/R-S11e-260 — exact Windows service-owned RDP-policy requester role",
+            "exact Windows service RDP-policy requester hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11hw and Appendix C #382.",
+            "The same identity no longer binds R-S11hw and Appendix C #382.",
+            "exact Windows service RDP-policy requester identity binding",
         ),
         (
             "ipc_source",

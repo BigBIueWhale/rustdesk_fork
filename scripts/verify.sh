@@ -3675,7 +3675,13 @@ main_request_enum=$(awk '/pub enum MainIpcRequest {/,/^}/' src/ipc.rs)
 if echo "$main_request_enum" | grep -q 'SetShareRdp'; then
   r_s11b3="$r_s11b3 windows-share-rdp-present-on-main-protocol"
 fi
-grep -q 'windows_peer_is_authorized_for_service_owned_share_rdp_change' src/ipc.rs     || r_s11b3="$r_s11b3 windows-share-rdp-elevated-peer-gate-missing"
+grep -q 'authorize_windows_service_owned_share_rdp_requester(stream)' src/ipc.rs      || r_s11b3="$r_s11b3 windows-share-rdp-exact-requester-gate-missing"
+grep -q 'stream.windows_pipe_client_token_proof()' src/ipc/auth.rs                    || r_s11b3="$r_s11b3 windows-share-rdp-pipe-token-proof-missing"
+grep -q 'process.live_token_proof()' src/ipc/auth.rs                                  || r_s11b3="$r_s11b3 windows-share-rdp-process-token-proof-missing"
+grep -q 'if pipe_token != process_token' src/ipc/auth.rs                              || r_s11b3="$r_s11b3 windows-share-rdp-token-identity-match-missing"
+grep -q 'if !pipe_token.authority.is_elevated' src/ipc/auth.rs                        || r_s11b3="$r_s11b3 windows-share-rdp-elevation-gate-missing"
+grep -q 'windows_identity_has_exact_role(identity, &\[\])' src/ipc/auth.rs             || r_s11b3="$r_s11b3 windows-share-rdp-exact-ui-role-missing"
+grep -q 'process.require_running("Windows service-owned RDP policy requester")' src/ipc/auth.rs || r_s11b3="$r_s11b3 windows-share-rdp-live-generation-missing"
 grep -q 'Some(ServiceIpcResponse::ShareRdpSet { accepted })' src/ipc.rs                || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
 grep -q 'ServiceIpcRequest::SetShareRdp { enabled }' src/platform/windows.rs           || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
 grep -q 'handle_windows_service_owned_share_rdp_request' src/platform/windows.rs       || r_s11b3="$r_s11b3 windows-service-share-rdp-handler-missing"

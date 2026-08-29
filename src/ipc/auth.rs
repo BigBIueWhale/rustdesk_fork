@@ -983,7 +983,6 @@ impl Drop for WindowsLocalMemory {
 #[cfg(windows)]
 #[derive(Clone, Copy)]
 enum WindowsPipeClientTokenRequirement {
-    Elevated,
     LocalSystem,
 }
 
@@ -991,14 +990,12 @@ enum WindowsPipeClientTokenRequirement {
 impl WindowsPipeClientTokenRequirement {
     fn context(self) -> &'static str {
         match self {
-            Self::Elevated => "Windows service-owned request caller",
             Self::LocalSystem => "Windows service-owned main IPC peer",
         }
     }
 
     fn is_satisfied(self, authority: WindowsLiveTokenAuthority) -> bool {
         match self {
-            Self::Elevated => authority.is_elevated,
             Self::LocalSystem => authority.is_local_system,
         }
     }
@@ -3991,6 +3988,89 @@ pub(crate) fn authorize_windows_service_owned_sas_requester(
 }
 
 #[cfg(windows)]
+pub(crate) fn authorize_windows_service_owned_share_rdp_requester(
+    stream: &Connection,
+) -> bool {
+    let Some(peer_pid) = stream.peer_pid() else {
+        log::warn!("Rejected Windows service-owned RDP policy requester without a peer pid");
+        return false;
+    };
+    let process = match WindowsPeerProcess::open(peer_pid) {
+        Ok(process) => process,
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned RDP policy requester identity: peer_pid={peer_pid}, err={err}"
+            );
+            return false;
+        }
+    };
+    let pipe_token = match stream.windows_pipe_client_token_proof() {
+        Ok(proof) => proof,
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned RDP policy requester token: peer_pid={peer_pid}, err={err}"
+            );
+            return false;
+        }
+    };
+    let process_token = match process.live_token_proof() {
+        Ok(proof) => proof,
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned RDP policy requester process token: peer_pid={peer_pid}, err={err}"
+            );
+            return false;
+        }
+    };
+    if pipe_token != process_token {
+        log::warn!(
+            "Rejected Windows service-owned RDP policy requester whose pipe and process token identities differ: peer_pid={peer_pid}"
+        );
+        return false;
+    }
+    if !pipe_token.authority.is_elevated {
+        log::warn!(
+            "Rejected Windows service-owned RDP policy requester with a non-elevated token: peer_pid={peer_pid}"
+        );
+        return false;
+    }
+    let identity = match process.immutable_identity() {
+        Ok(identity) => identity,
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned RDP policy requester identity: peer_pid={peer_pid}, err={err}"
+            );
+            return false;
+        }
+    };
+    if let Err(err) = ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE) {
+        log::warn!(
+            "Rejected Windows service-owned RDP policy requester executable: peer_pid={peer_pid}, err={err}"
+        );
+        return false;
+    }
+    if !windows_identity_is_service_owned_share_rdp_client(&identity) {
+        log::warn!(
+            "Rejected Windows service-owned RDP policy requester with the wrong process role: peer_pid={peer_pid}"
+        );
+        return false;
+    }
+    if let Err(err) = process.require_running("Windows service-owned RDP policy requester") {
+        log::warn!(
+            "Rejected Windows service-owned RDP policy requester liveness: peer_pid={peer_pid}, err={err}"
+        );
+        return false;
+    }
+    if stream.peer_pid() != Some(peer_pid) {
+        log::warn!(
+            "Rejected Windows service-owned RDP policy requester after named-pipe peer pid changed: peer_pid={peer_pid}"
+        );
+        return false;
+    }
+    true
+}
+
+#[cfg(windows)]
 pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix: &str) -> bool {
     authorize_windows_session_current_exe_ipc_connection(
         stream,
@@ -4049,6 +4129,13 @@ fn windows_identity_is_sensitive_password_client(
     windows_process_argv_is_exact(&identity.argv, &[])
         || windows_identity_has_exact_role(identity, &["--password"])
         || windows_identity_has_exact_role(identity, &["--password-stdin"])
+}
+
+#[cfg(target_os = "windows")]
+fn windows_identity_is_service_owned_share_rdp_client(
+    identity: &WindowsProcessImmutableIdentity,
+) -> bool {
+    windows_identity_has_exact_role(identity, &[])
 }
 
 #[cfg(target_os = "windows")]
@@ -4475,7 +4562,7 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         Ok(requirement.is_satisfied(authority))
     }
 
-    fn windows_pipe_client_authority(&self) -> ResultType<WindowsLiveTokenAuthority> {
+    fn windows_pipe_client_token_proof(&self) -> ResultType<WindowsLiveTokenProof> {
         let context = "Windows named-pipe client";
         let pipe_handle = self.inner.get_ref().as_raw_handle();
         if pipe_handle.is_null() {
@@ -4494,12 +4581,12 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
                 )?;
             }
             let _token_guard = WindowsHandle(token);
-            windows_token_authority(token)
+            windows_live_token_proof(token)
         })
     }
 
-    pub(crate) fn windows_pipe_client_token_is_elevated(&self) -> ResultType<bool> {
-        self.windows_pipe_client_token_satisfies(WindowsPipeClientTokenRequirement::Elevated)
+    fn windows_pipe_client_authority(&self) -> ResultType<WindowsLiveTokenAuthority> {
+        Ok(self.windows_pipe_client_token_proof()?.authority)
     }
 
     pub(crate) fn windows_pipe_client_token_is_local_system(&self) -> ResultType<bool> {
@@ -4708,6 +4795,29 @@ mod tests {
             assert!(!super::windows_identity_is_sensitive_password_client(
                 &identity
             ));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_service_owned_share_rdp_client_role_is_exact_interactive_ui() {
+        let interactive_ui = windows_identity_for_test(1, 10, &[]);
+        assert!(super::windows_identity_is_service_owned_share_rdp_client(
+            &interactive_ui
+        ));
+        for args in [
+            &["--server"][..],
+            &["--service"][..],
+            &["--tray"][..],
+            &["--cm"][..],
+            &["--password"][..],
+            &["--unexpected"][..],
+        ] {
+            let identity = windows_identity_for_test(2, 20, args);
+            assert!(
+                !super::windows_identity_is_service_owned_share_rdp_client(&identity),
+                "role {args:?} unexpectedly received service-owned RDP policy authority"
+            );
         }
     }
 

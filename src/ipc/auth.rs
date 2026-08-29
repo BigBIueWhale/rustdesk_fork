@@ -2462,7 +2462,7 @@ pub struct PeerProcessIdentity {
     pid: u32,
     uid: u32,
     start_time: String,
-    first_arg: String,
+    argv: Vec<String>,
     cm_launch_token: String,
     cm_launch_parent: u32,
 }
@@ -2474,7 +2474,7 @@ impl fmt::Debug for PeerProcessIdentity {
             .field("pid", &self.pid)
             .field("uid", &self.uid)
             .field("start_time", &self.start_time)
-            .field("first_arg", &self.first_arg)
+            .field("argv_len", &self.argv.len())
             .field("cm_launch_token", &"<redacted>")
             .field("cm_launch_parent", &self.cm_launch_parent)
             .finish()
@@ -2496,12 +2496,12 @@ impl PeerProcessIdentity {
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(pid: u32, uid: u32, start_time: String, first_arg: String) -> Self {
+    pub(crate) fn for_test(pid: u32, uid: u32, start_time: String, argv: Vec<String>) -> Self {
         Self {
             pid,
             uid,
             start_time,
-            first_arg,
+            argv,
             cm_launch_token: String::new(),
             cm_launch_parent: 0,
         }
@@ -3003,7 +3003,7 @@ fn linux_process_identity_fields_by_pid(pid: u32) -> ResultType<PeerProcessIdent
         pid,
         uid: linux_proc_uid(pid)?,
         start_time: linux_proc_start_time(pid)?,
-        first_arg: args.get(1).cloned().unwrap_or_default(),
+        argv: args,
         cm_launch_token: linux_proc_environ_value(pid, crate::common::CM_LAUNCH_TOKEN_ENV)?,
         cm_launch_parent: linux_proc_u32_env(pid, crate::common::CM_LAUNCH_PARENT_ENV)?,
     })
@@ -3077,6 +3077,30 @@ where
             peer_pid,
             peer_uid,
             identity.uid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_linux_service_owned_password_requester<T>(
+    stream: &T,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let postfix = super::password::SERVICE_PASSWORD_IPC_POSTFIX;
+    let identity = peer_process_identity_from_stream(stream, postfix)?;
+    if !linux_service_owned_password_client_argv_is_expected(&identity.argv) {
+        bail!(
+            "Linux service-owned password requester has an unauthorized process role: pid={}",
+            identity.pid
+        );
+    }
+    if !linux_service_owned_password_requester_is_live(&identity) {
+        bail!(
+            "Linux service-owned password requester identity changed during admission: pid={}",
+            identity.pid
         );
     }
     Ok(identity)
@@ -3284,6 +3308,14 @@ pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, post
                     || linux_process_has_ancestor(identity.pid, identity.cm_launch_parent))
         })
         .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_service_owned_password_requester_is_live(
+    identity: &PeerProcessIdentity,
+) -> bool {
+    linux_service_owned_password_client_argv_is_expected(&identity.argv)
+        && peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4086,6 +4118,13 @@ fn process_argv_is_exact(args: &[String], expected_args: &[&str]) -> bool {
             .iter()
             .enumerate()
             .all(|(index, expected)| args[index + 1] == *expected)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {
+    process_argv_is_exact(args, &[])
+        || process_argv_is_exact(args, &["--password"])
+        || process_argv_is_exact(args, &["--password-stdin"])
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -4975,15 +5014,53 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn test_peer_process_identity_debug_redacts_launch_token() {
-        let mut identity =
-            super::PeerProcessIdentity::for_test(10, 20, "30".to_owned(), "--cm".to_owned());
+        let mut identity = super::PeerProcessIdentity::for_test(
+            10,
+            20,
+            "30".to_owned(),
+            vec!["/usr/bin/rustdesk".to_owned(), "--cm".to_owned()],
+        );
         identity.cm_launch_token = "secret-token".to_owned();
         identity.cm_launch_parent = 40;
 
         let formatted = format!("{identity:?}");
         assert!(!formatted.contains("secret-token"));
+        assert!(!formatted.contains("--cm"));
         assert!(formatted.contains("<redacted>"));
+        assert!(formatted.contains("argv_len"));
         assert!(formatted.contains("cm_launch_parent"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn r_s11e261_linux_service_owned_password_client_roles_are_finite() {
+        let argv = |args: &[&str]| {
+            std::iter::once("/usr/bin/rustdesk".to_owned())
+                .chain(args.iter().map(|arg| (*arg).to_owned()))
+                .collect::<Vec<_>>()
+        };
+        for args in [&[][..], &["--password"][..], &["--password-stdin"][..]] {
+            assert!(super::linux_service_owned_password_client_argv_is_expected(
+                &argv(args)
+            ));
+        }
+        for args in [
+            &["--server"][..],
+            &["--server", crate::common::SERVICE_OWNED_SERVER_ARG][..],
+            &["--service"][..],
+            &["--tray"][..],
+            &["--cm"][..],
+            &["--password", "extra"][..],
+            &["--unexpected"][..],
+        ] {
+            assert!(
+                !super::linux_service_owned_password_client_argv_is_expected(&argv(args)),
+                "role {args:?} unexpectedly received service-owned password authority"
+            );
+        }
+        assert!(!super::linux_service_owned_password_client_argv_is_expected(
+            &[]
+        ));
     }
 
     #[test]

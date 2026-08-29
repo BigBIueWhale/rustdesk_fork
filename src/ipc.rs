@@ -54,11 +54,12 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(target_os = "linux")]
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
+    authenticate_linux_service_owned_password_requester,
     authenticate_linux_service_owned_password_replica_server, current_linux_process_identity,
     ensure_linux_process_identity_matches, ensure_linux_root_service_connection,
     ensure_linux_root_service_stream, linux_cm_child_identity_is_live,
-    linux_process_identity_is_live, peer_process_identity_from_stream,
-    peer_process_identity_is_live, LinuxProcessIdentity, PeerProcessIdentity,
+    linux_process_identity_is_live, linux_service_owned_password_requester_is_live,
+    LinuxProcessIdentity, PeerProcessIdentity,
 };
 #[cfg(windows)]
 pub(crate) use ipc_auth::{
@@ -3209,26 +3210,15 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     continue;
                 };
                 #[cfg(target_os = "linux")]
-                if !ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(
-                    ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
-                        &stream,
-                        password::SERVICE_PASSWORD_IPC_POSTFIX,
-                    ),
-                ) {
-                    continue;
-                }
-                #[cfg(target_os = "linux")]
                 {
-                    let identity = match peer_process_identity_from_stream(
-                        &stream,
-                        password::SERVICE_PASSWORD_IPC_POSTFIX,
-                    ) {
-                        Ok(identity) => identity,
-                        Err(err) => {
-                            log::warn!("Rejected Linux service password IPC peer: {err}");
-                            continue;
-                        }
-                    };
+                    let identity =
+                        match authenticate_linux_service_owned_password_requester(&stream) {
+                            Ok(identity) => identity,
+                            Err(err) => {
+                                log::warn!("Rejected Linux service password IPC peer: {err}");
+                                continue;
+                            }
+                        };
                     transactions.spawn(handle_sensitive_linux_service_ipc_transaction(
                         stream,
                         identity,
@@ -4971,7 +4961,7 @@ async fn linux_peer_is_authorized_for_service_owned_password_change(
     {
         Ok(authorized) => {
             authorized
-                && peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)
+                && linux_service_owned_password_requester_is_live(identity)
         }
         Err(err) => {
             log::warn!(

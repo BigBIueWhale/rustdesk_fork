@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: 3f92c3b5caad13514c031d9d68b66391ea794b8d2d679042592232369191bf53
+Requirements hash: 3c8fa62140404106084d80f43a69426b7d9100b08061577f7e72b4dc4d289c85
 The same identity additionally binds R-S11gv and Appendix C #357.
 The same identity additionally binds R-S11gw and Appendix C #358.
 The same identity additionally binds R-S11hb and Appendix C #363.
@@ -12,6 +12,7 @@ The same identity additionally binds R-S11hl and Appendix C #372.
 The same identity additionally binds R-S11hu and Appendix C #380.
 The same identity additionally binds R-S11hv and Appendix C #381.
 The same identity additionally binds R-S11hw and Appendix C #382.
+The same identity additionally binds R-S11hx and Appendix C #383.
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++

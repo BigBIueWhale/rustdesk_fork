@@ -5944,7 +5944,10 @@ network configuration was inspected or changed.
   `SensitiveAuthorization` wipe on drop/error. Android/iOS remain app-owned in-process paths.
 - **R-S11b-2c/R-S11c-1d — Linux service-owned unattended password provisioning — SOURCE IMPLEMENTED.** The
   caller authenticates the root `--service` receiver before writing raw `_service_password`. The root listener
-  snapshots and proves the caller from `SO_PEERCRED` before reading the secret body. The polkit subject is the
+  proves the caller from `SO_PEERCRED` before reading the secret body and admits only the complete no-argument UI,
+  `--password`, or `--password-stdin` argv shape. PID, UID, start time, complete argv, current executable,
+  root-or-fresh-active-user UID authority, and applicable launch ancestry are retained and re-read before handler dispatch and again
+  after successful polkit authorization; all other RustDesk roles and extra arguments fail closed. The polkit subject is the
   socket-derived PID, UID, and `/proc/<pid>/stat` start time; only the exact trusted absolute `/usr/bin/pkcheck`
   and `com.carriez.RustDesk.set-unattended-password` action are admitted. `pkcheck` is polled under a 120-second
   bound and is killed and reaped on timeout, shutdown, or status failure. A 64-entry no-eviction admission ledger,
@@ -26783,7 +26786,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3f92c3b5caad13514c031d9d68b66391ea794b8d2d679042592232369191bf53  requirements.html
+3c8fa62140404106084d80f43a69426b7d9100b08061577f7e72b4dc4d289c85  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -28237,3 +28240,101 @@ service, port, network request, retry, timer, task, thread, runtime, dependency,
 or privilege transition. Verification receipts, including confined
 structural/mutation results and their exact limits, were produced without
 running repository code on the host or requesting privilege.
+
+### R-S11hx/R-S11e-261 — exact Linux service-owned password requester role
+
+**Status:** SOURCE REPAIR AUTHORED / COMPLETE FOCUSED STRUCTURAL/MUTATION GATE
+EXECUTED / INDEPENDENT STRUCTURAL VALIDATOR AND COMPLETE UNFILTERED MUTATION
+CATALOG EXECUTED / EXACT-CURRENT LINUX NATIVE, INSTALLED-SERVICE,
+INDEPENDENT-REPRODUCTION, PERFORMANCE, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+
+The continuing service-owned IPC review found that the Linux root
+`_service_password` branch used generic protected-service admission as though
+it were action authority. It proved root or a fresh active UID and current RustDesk
+executable, then retained PID, UID, start time, launch metadata, and only the
+first argument. Bounded fixed-action polkit authorization remained mandatory
+before persistence, so the defect was not an unauthenticated credential-write
+primitive. It nevertheless allowed every active-user RustDesk role to submit a
+credential proposal and enter the privileged prompt path, while the final
+liveness replay could not prove a complete process role. That was unnecessary
+ambient-bus and social-engineering surface for server, service, tray,
+connection-manager, helper, unknown, and extra-argument processes.
+
+`PeerProcessIdentity` now retains the complete argv along with its existing
+socket/process generation facts. Its custom `Debug` output reports only argv
+cardinality and never argv contents. The action-specific
+`authenticate_linux_service_owned_password_requester` derives the peer from
+`SO_PEERCRED`, requires the current canonical executable and
+root-or-fresh-active-user UID authority,
+and accepts exactly one complete argv shape: no-argument interactive UI,
+`--password`, or `--password-stdin`. It re-reads the same full identity before
+the listener can transfer the stream to the handler that reads the password
+body. Missing executable argv, extra arguments, every other role, changed PID
+generation, changed UID/argv/executable, lost root-or-active-user UID authority, or
+uninspectable evidence fails closed.
+
+The existing polkit action, trusted helper path, bounded child ownership,
+PID/start-time/UID subject, admission ledger, durable root sink, and runtime PRS
+replication remain unchanged. A successful polkit result is now conjoined with
+`linux_service_owned_password_requester_is_live`, which rechecks the finite
+role and re-reads equality of the complete process identity immediately before
+acceptance. The generic same-executable liveness helper is no longer the final
+action authority. No wire shape, listener, task, thread, runtime, retry,
+dependency, or privilege transition was added.
+
+The focused Linux password verifier now independently lexes the retained
+identity, exact role expression, pre-body action authenticator, listener
+ordering, final post-polkit conjunction, and finite-role Rust regression. Its
+adversarial self-test rejects deliberate full-argv truncation, removal of each
+legitimate role, broad server-role admission, action-role bypass, pre-body
+generation-finality bypass, final role-recheck bypass, listener fallback,
+post-polkit liveness removal, and regression removal in addition to its prior
+password-protocol mutations. The separately implemented workspace validator
+and its direct source/focused-verifier/requirement/Appendix/ledger/digest/
+dispatch mutation catalog derive the same conjunction without delegating the
+product verdict back to the focused verifier. R-S11hx and Appendix C #383 make
+the action boundary normative.
+
+On the implementation and contract bytes immediately preceding this
+evidence-only receipt, the confined focused verifier rejected its complete 51
+deliberate mutations and returned `verify-linux-service-password-ipc: ok`; the
+independent workspace baseline returned `verify-verifier-workspace: ok`; and a
+fresh ordinary `--source-mutations-only` invocation traversed the complete
+unfiltered repository catalog and terminated with
+`verify-verifier-workspace: ok` and numeric exit zero. No mutation was sampled,
+waived, filtered, or substituted in that authoritative run.
+
+The fail-closed history is retained rather than erased. An initial full-catalog
+preflight rejected a proposed self-definition mutation because validator
+function bodies are intentionally outside the executable mutation target set;
+that unreachable fixture was removed without changing product authority. A
+subsequent full run correctly rejected the first new listener-bypass product
+mutation, but the older admission validator reported its broader diagnostic
+before the new action validator's narrower phrase, so the catalog refused to
+count the real rejection. The fixture expectation was aligned to that actual
+first fail-closed owner. Restricted in-memory selector attempts used only as
+diagnostic preflights were interrupted or otherwise non-authoritative and are
+not counted. The final receipt above comes only from a new, direct, ordinary,
+unfiltered invocation from mutation one through terminal success.
+
+This remains source closure, not runtime or release evidence. Exact-current
+Linux compilation and unit execution, real polkit allow/deny and PID/argv race
+tests, installed root-service behavior with all three legitimate callers,
+sustained authorization/retry/latency/CPU/memory/resource testing, clean
+committed cold R-B2/R-B10 artifact equality, independent reproduction, and
+R-V3 external review remain open. Nothing in this slice proves that a deployed
+artifact contained or exercised the former defect, and it does not establish
+causation for the reported Android persistent-service or Windows display-delay
+symptoms.
+
+This slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change host firewall/network/listener
+state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
+unrelated container/image; or request/acquire root. Verification uses only the
+approved immutable, unprivileged, network-disabled, read-only-bound verifier
+image and does not run repository code on the host. One ancillary mutation-count
+measurement mistakenly invoked host `python3` to parse the verifier text as an
+AST. It imported and executed no repository module, made no write, network,
+listener, service, device, or privilege operation, and was disclosed
+immediately; it is not counted as gate evidence and no further host-side Python
+execution is permitted for this slice.

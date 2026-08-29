@@ -2907,6 +2907,10 @@ grep -Fq 'R-S11fd/R-S11e-191 exact macOS launchd service-record authority' HARDE
 grep -Fq '<span class="id">R-S11fe</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-resource-requirement-missing"
 grep -Fq '<tr><td>313</td>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-resource-appendix-missing"
 grep -Fq 'R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-launchctl-resource-ledger-missing"
+grep -Fq '<span class="id">R-S11hx</span>' requirements.html || r_s11b2="$r_s11b2 linux-password-requester-role-requirement-missing"
+grep -Fq '<tr><td>383</td>' requirements.html || r_s11b2="$r_s11b2 linux-password-requester-role-appendix-missing"
+grep -Fq 'R-S11hx/R-S11e-261 — exact Linux service-owned password requester role' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-password-requester-role-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11hx and Appendix C #383.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 linux-password-requester-role-digest-binding-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"

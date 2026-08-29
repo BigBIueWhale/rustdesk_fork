@@ -11843,8 +11843,7 @@ def validate_linux_service_admission_contract(sources):
         password,
         (
             "try_acquire_service_password_ipc_transaction_slot()",
-            "service_scoped_ipc_authorization_snapshot_from_stream(",
-            "peer_process_identity_from_stream(",
+            "authenticate_linux_service_owned_password_requester(&stream)",
             "handle_sensitive_linux_service_ipc_transaction(\n                        stream,\n                        identity,\n                        permit,",
         ),
         "password permit before identity work and retained dispatch",
@@ -11892,6 +11891,339 @@ def validate_linux_service_admission_contract(sources):
         hardening,
         "R-S11e-60 — Linux protected-service admission owns active-session identity work",
         "Linux protected-service admission hardening ledger",
+    )
+
+
+def validate_linux_service_owned_password_requester_contract(sources):
+    ipc = sources["ipc_source"]
+    auth = sources["ipc_auth_source"]
+    focused = sources["linux_password_ipc_validator"]
+
+    identity = extract_braced_item(
+        auth,
+        "pub struct PeerProcessIdentity",
+        "Linux password requester retained process identity",
+    )
+    require_text(identity, "argv: Vec<String>,", "complete retained Linux requester argv")
+    require_absent(identity, "first_arg", "first-argument-only Linux requester identity")
+
+    debug = extract_braced_item(
+        auth,
+        "impl fmt::Debug for PeerProcessIdentity",
+        "Linux password requester identity debug representation",
+    )
+    require_text(
+        debug,
+        '.field("argv_len", &self.argv.len())',
+        "non-secret Linux requester argv diagnostic",
+    )
+    require_absent(debug, '.field("argv",', "complete Linux requester argv debug disclosure")
+
+    capture = extract_braced_item(
+        auth,
+        "fn linux_process_identity_fields_by_pid(",
+        "Linux password requester complete identity capture",
+    )
+    require_order(
+        capture,
+        (
+            "let args = linux_proc_cmdline_args(pid)?;",
+            "uid: linux_proc_uid(pid)?",
+            "start_time: linux_proc_start_time(pid)?",
+            "argv: args,",
+            "cm_launch_token: linux_proc_environ_value",
+            "cm_launch_parent: linux_proc_u32_env",
+        ),
+        "complete Linux requester PID generation and argv capture",
+    )
+
+    process_identity = extract_braced_item(
+        auth,
+        "fn linux_process_identity_by_pid(",
+        "Linux password requester current-executable identity",
+    )
+    require_order(
+        process_identity,
+        (
+            "if pid == 0",
+            "ensure_peer_executable_matches_current_by_pid(pid, postfix)?;",
+            "linux_process_identity_fields_by_pid(pid)",
+        ),
+        "Linux requester positive PID and current executable proof",
+    )
+    socket_identity = extract_braced_item(
+        auth,
+        "pub(crate) fn peer_process_identity_from_stream<T>(",
+        "Linux password requester socket/process identity binding",
+    )
+    require_order(
+        socket_identity,
+        (
+            "let fd = stream.as_raw_fd();",
+            "peer_pid_from_fd(fd)",
+            "peer_uid_from_fd(fd)",
+            "linux_process_identity_by_pid(peer_pid, postfix)?",
+            "if identity.uid != peer_uid",
+            "Ok(identity)",
+        ),
+        "SO_PEERCRED PID/UID and current process-generation binding",
+    )
+
+    exact_argv = extract_braced_item(
+        auth,
+        "fn process_argv_is_exact(",
+        "complete Linux requester argv equality",
+    )
+    exact_argv_body = re.sub(
+        r"\s+", " ", exact_argv[exact_argv.find("{") + 1 : -1]
+    ).strip()
+    expected_exact_argv = (
+        "args.len() == expected_args.len() + 1 "
+        "&& expected_args .iter() .enumerate() "
+        ".all(|(index, expected)| args[index + 1] == *expected)"
+    )
+    if exact_argv_body != expected_exact_argv:
+        raise VerificationError(
+            "complete Linux requester argv equality: expected one executable plus every and only expected argument"
+        )
+
+    role = extract_braced_item(
+        auth,
+        "fn linux_service_owned_password_client_argv_is_expected(",
+        "finite Linux service-owned password requester roles",
+    )
+    role_body = role[role.find("{") + 1 : -1]
+    normalized_role = re.sub(r"\s+", " ", role_body).strip()
+    expected_role = (
+        'process_argv_is_exact(args, &[]) '
+        '|| process_argv_is_exact(args, &["--password"]) '
+        '|| process_argv_is_exact(args, &["--password-stdin"])'
+    )
+    if normalized_role != expected_role:
+        raise VerificationError(
+            "finite Linux service-owned password requester roles: expected exactly interactive UI, --password, and --password-stdin"
+        )
+
+    requester = extract_braced_item(
+        auth,
+        "pub(crate) fn authenticate_linux_service_owned_password_requester<T>(",
+        "exact Linux service-owned password requester admission",
+    )
+    require_order(
+        requester,
+        (
+            "let postfix = super::password::SERVICE_PASSWORD_IPC_POSTFIX;",
+            "peer_process_identity_from_stream(stream, postfix)?",
+            "if !linux_service_owned_password_client_argv_is_expected(&identity.argv)",
+            "if !linux_service_owned_password_requester_is_live(&identity)",
+            "Ok(identity)",
+        ),
+        "exact Linux password requester role and same-generation admission",
+    )
+
+    requester_live = extract_braced_item(
+        auth,
+        "pub(crate) fn linux_service_owned_password_requester_is_live(",
+        "final Linux service-owned password requester identity",
+    )
+    require_text(
+        requester_live,
+        "linux_service_owned_password_client_argv_is_expected(&identity.argv)\n"
+        "        && peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX)",
+        "final Linux requester exact-role and complete-liveness conjunction",
+    )
+    require_absent(
+        requester_live,
+        "|| peer_process_identity_is_live",
+        "disjunctive Linux requester liveness authority",
+    )
+    generic_live = extract_braced_item(
+        auth,
+        "pub(crate) fn peer_process_identity_is_live(",
+        "complete Linux requester identity re-read",
+    )
+    require_order(
+        generic_live,
+        (
+            "is_allowed_service_peer_uid(identity.uid, active_uid_fresh())",
+            "linux_process_identity_by_pid(identity.pid, postfix)",
+            "live == *identity",
+            "linux_process_has_ancestor(identity.pid, identity.cm_launch_parent)",
+        ),
+        "root-or-fresh-active-user UID, executable, PID generation, full argv, and ancestry equality",
+    )
+
+    worker = extract_between(
+        ipc,
+        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc)",
+        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+        "Linux service-owned password listener",
+    )
+    password_branch = extract_between(
+        worker,
+        "result = password_incoming.next() => {",
+        "\n            result = incoming.next() => {",
+        "Linux service-owned password pre-body admission branch",
+    )
+    require_order(
+        password_branch,
+        (
+            "try_acquire_service_password_ipc_transaction_slot()",
+            "authenticate_linux_service_owned_password_requester(&stream)",
+            "handle_sensitive_linux_service_ipc_transaction(\n                        stream,\n                        identity,\n                        permit,",
+        ),
+        "permit-owned exact Linux password requester proof before secret handler dispatch",
+    )
+    for forbidden in (
+        "receive_request_unix",
+        "into_password",
+        "peer_process_identity_from_stream(&stream",
+        "authorize_service_scoped_ipc_authorization_snapshot(",
+    ):
+        require_absent(
+            password_branch,
+            forbidden,
+            "generic or secret-reading Linux password listener authority",
+        )
+
+    authority = extract_braced_item(
+        ipc,
+        "async fn linux_peer_is_authorized_for_service_owned_password_change(",
+        "post-polkit Linux service-owned password requester authority",
+    )
+    require_order(
+        authority,
+        (
+            "linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown)",
+            "Ok(authorized)",
+            "authorized\n                && linux_service_owned_password_requester_is_live(identity)",
+        ),
+        "successful polkit plus final exact Linux requester generation",
+    )
+    require_absent(
+        authority,
+        "peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)",
+        "generic final Linux password action authority",
+    )
+
+    regression = extract_braced_item(
+        auth,
+        "fn r_s11e261_linux_service_owned_password_client_roles_are_finite()",
+        "finite Linux service-owned password requester regression",
+    )
+    for text, label in (
+        ('for args in [&[][..], &["--password"][..], &["--password-stdin"][..]]', "three exact admitted roles"),
+        ('&["--server"][..]', "server-role refusal"),
+        ("crate::common::SERVICE_OWNED_SERVER_ARG", "service-owned server-role refusal"),
+        ('&["--service"][..]', "service-role refusal"),
+        ('&["--tray"][..]', "tray-role refusal"),
+        ('&["--cm"][..]', "connection-manager-role refusal"),
+        ('&["--password", "extra"][..]', "extra-argument refusal"),
+        ('&["--unexpected"][..]', "unknown-role refusal"),
+        ("&[]\n        ));", "missing executable argv refusal"),
+    ):
+        require_text(regression, text, label)
+
+    for text, label in (
+        (
+            '(("argv", ":", "args", ",", "cm_launch_token"), "complete process role capture")',
+            "focused complete-argv retention enforcement",
+        ),
+        (
+            'expected_password_role = [',
+            "focused finite-role semantic enforcement",
+        ),
+        (
+            '"exact Linux password-requester generation and role proof"',
+            "focused pre-body action authenticator enforcement",
+        ),
+        (
+            '"final exact-role live identity proof"',
+            "focused post-polkit exact-role enforcement",
+        ),
+        (
+            '"Linux process identity retains only a truncated argv"',
+            "focused complete-argv truncation mutation",
+        ),
+        (
+            '"Linux exact requester role admits extra arguments"',
+            "focused extra-argument mutation",
+        ),
+        (
+            '"Linux password requester admits the server role"',
+            "focused broad-role mutation",
+        ),
+        (
+            '"Linux password requester finality loses its role recheck"',
+            "focused final role-recheck mutation",
+        ),
+        (
+            '"Linux password exact-role regression is removed"',
+            "focused finite-role regression mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test",
+        "shared Linux password requester mutation gate",
+    )
+    for text, label in (
+        (
+            'grep -Fq \'<span class="id">R-S11hx</span>\' requirements.html',
+            "shared Linux password requester requirement binding",
+        ),
+        (
+            "grep -Fq '<tr><td>383</td>' requirements.html",
+            "shared Linux password requester Appendix binding",
+        ),
+        (
+            "grep -Fq 'R-S11hx/R-S11e-261 — exact Linux service-owned password requester role' HARDENING_STATUS.md",
+            "shared Linux password requester hardening binding",
+        ),
+        (
+            "grep -Fq 'The same identity additionally binds R-S11hx and Appendix C #383.' docs/NATIVE-CODEC-WATCH.md",
+            "shared Linux password requester digest binding",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11hx</span>',
+        "exact Linux service-owned password requester requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>383</td>",
+        "exact Linux service-owned password requester Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11hx/R-S11e-261 — exact Linux service-owned password requester role",
+        "exact Linux service-owned password requester hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11hx and Appendix C #383.",
+        "exact Linux service-owned password requester identity binding",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        '            "linux_password_ipc_validator": (\n'
+        '                repo / "scripts/verify-linux-service-password-ipc.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "Linux password requester focused-verifier source binding",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "def validate_linux_service_owned_password_requester_contract(sources):\n",
+        "Linux password requester independent validator definition",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_linux_service_owned_password_requester_contract(sources)\n",
+        "Linux password requester independent validator dispatch",
     )
 
 
@@ -51896,7 +52228,7 @@ def validate_ipc_lifecycle_checker_contract(sources):
         (
             '(("password_incoming", ".", "next", "(", ")"), "raw service accept lane")',
             '(("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission")',
-            '(("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate")',
+            '(("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ")"), "exact Linux password-requester generation and role proof")',
         ),
         "Linux service-password permit-before-identity checker",
     )
@@ -54309,6 +54641,7 @@ def validate_sources(sources):
     validate_protected_service_outcome_ownership_contract(sources)
     validate_desktop_ipc_retained_owner_contract(sources)
     validate_linux_service_admission_contract(sources)
+    validate_linux_service_owned_password_requester_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
     validate_macos_variadic_open_mode_contract(sources)
     validate_windows_ipc_dacl_coverage_contract(sources)
@@ -63483,6 +63816,196 @@ def run_source_mutations(sources):
             "Linux protected-service admission hardening ledger",
         ),
         (
+            "ipc_auth_source",
+            "pub struct PeerProcessIdentity {\n    pid: u32,\n    uid: u32,\n    start_time: String,\n    argv: Vec<String>,",
+            "pub struct PeerProcessIdentity {\n    pid: u32,\n    uid: u32,\n    start_time: String,\n    first_arg: String,",
+            "complete retained Linux requester argv",
+        ),
+        (
+            "ipc_auth_source",
+            '.field("argv_len", &self.argv.len())',
+            '.field("argv", &self.argv)',
+            "non-secret Linux requester argv diagnostic",
+        ),
+        (
+            "ipc_auth_source",
+            "        argv: args,",
+            "        argv: args.into_iter().take(2).collect(),",
+            "complete Linux requester PID generation and argv capture",
+        ),
+        (
+            "ipc_auth_source",
+            "    args.len() == expected_args.len() + 1",
+            "    args.len() >= expected_args.len() + 1",
+            "complete Linux requester argv equality",
+        ),
+        (
+            "ipc_auth_source",
+            "    process_argv_is_exact(args, &[])",
+            "    false /* interactive UI role removed */",
+            "finite Linux service-owned password requester roles",
+        ),
+        (
+            "ipc_auth_source",
+            '        || process_argv_is_exact(args, &["--password"])',
+            "        || false /* terminal password role removed */",
+            "finite Linux service-owned password requester roles",
+        ),
+        (
+            "ipc_auth_source",
+            '        || process_argv_is_exact(args, &["--password-stdin"])',
+            "        || false /* stdin password role removed */",
+            "finite Linux service-owned password requester roles",
+        ),
+        (
+            "ipc_auth_source",
+            '        || process_argv_is_exact(args, &["--password-stdin"])',
+            '        || process_argv_is_exact(args, &["--password-stdin"])\n        || process_argv_is_exact(args, &["--server"])',
+            "finite Linux service-owned password requester roles",
+        ),
+        (
+            "ipc_auth_source",
+            "    ensure_peer_executable_matches_current_by_pid(pid, postfix)?;\n    linux_process_identity_fields_by_pid(pid)",
+            "    linux_process_identity_fields_by_pid(pid)",
+            "Linux requester positive PID and current executable proof",
+        ),
+        (
+            "ipc_auth_source",
+            "pub(crate) fn peer_process_identity_from_stream<T>(",
+            "pub(crate) fn peer_process_identity_from_untrusted_stream<T>(",
+            "Linux password requester socket/process identity binding",
+        ),
+        (
+            "ipc_auth_source",
+            "    if !linux_service_owned_password_client_argv_is_expected(&identity.argv) {",
+            "    if false && !linux_service_owned_password_client_argv_is_expected(&identity.argv) {",
+            "exact Linux password requester role and same-generation admission",
+        ),
+        (
+            "ipc_auth_source",
+            "    if !linux_service_owned_password_requester_is_live(&identity) {",
+            "    if false && !linux_service_owned_password_requester_is_live(&identity) {",
+            "exact Linux password requester role and same-generation admission",
+        ),
+        (
+            "ipc_auth_source",
+            "    linux_service_owned_password_client_argv_is_expected(&identity.argv)\n        && peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX)",
+            "    peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX)",
+            "final Linux requester exact-role and complete-liveness conjunction",
+        ),
+        (
+            "ipc_auth_source",
+            "    linux_process_identity_by_pid(identity.pid, postfix)\n        .map(|live| {\n            live == *identity",
+            "    linux_process_identity_by_pid(identity.pid, postfix)\n        .map(|live| {\n            live.pid == identity.pid",
+            "root-or-fresh-active-user UID, executable, PID generation, full argv, and ancestry equality",
+        ),
+        (
+            "ipc_source",
+            "authenticate_linux_service_owned_password_requester(&stream)",
+            "peer_process_identity_from_stream(&stream, password::SERVICE_PASSWORD_IPC_POSTFIX)",
+            "password permit before identity work and retained dispatch",
+        ),
+        (
+            "ipc_source",
+            "                && linux_service_owned_password_requester_is_live(identity)",
+            "                && peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)",
+            "successful polkit plus final exact Linux requester generation",
+        ),
+        (
+            "ipc_auth_source",
+            "fn r_s11e261_linux_service_owned_password_client_roles_are_finite()",
+            "fn linux_service_owned_password_client_roles_are_broad()",
+            "finite Linux service-owned password requester regression",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'expected_password_role = [',
+            'expected_password_role_disabled = [',
+            "focused finite-role semantic enforcement",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux exact requester role admits extra arguments"',
+            '"Linux exact requester role accepts extra arguments"',
+            "focused extra-argument mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux password requester finality loses its role recheck"',
+            '"Linux password requester finality keeps its role recheck"',
+            "focused final role-recheck mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test",
+            "python3 scripts/verify-linux-service-password-ipc.py --repo .",
+            "shared Linux password requester mutation gate",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11hx</span>\' requirements.html',
+            'true # Linux password requester requirement binding disabled',
+            "shared Linux password requester requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>383</td>' requirements.html",
+            "true # Linux password requester Appendix binding disabled",
+            "shared Linux password requester Appendix binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'R-S11hx/R-S11e-261 — exact Linux service-owned password requester role' HARDENING_STATUS.md",
+            "true # Linux password requester hardening binding disabled",
+            "shared Linux password requester hardening binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'The same identity additionally binds R-S11hx and Appendix C #383.' docs/NATIVE-CODEC-WATCH.md",
+            "true # Linux password requester digest binding disabled",
+            "shared Linux password requester digest binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11hx</span>',
+            '<span class="id">R-S11hx-disabled</span>',
+            "exact Linux service-owned password requester requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>383</td>",
+            "<tr><td>383-disabled</td>",
+            "exact Linux service-owned password requester Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11hx/R-S11e-261 — exact Linux service-owned password requester role",
+            "R-S11hx-disabled/R-S11e-261 — exact Linux service-owned password requester role",
+            "exact Linux service-owned password requester hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11hx and Appendix C #383.",
+            "The same identity no longer binds R-S11hx and Appendix C #383.",
+            "exact Linux service-owned password requester identity binding",
+        ),
+        (
+            "workspace_verifier",
+            '            "linux_password_ipc_validator": (\n'
+            '                repo / "scripts/verify-linux-service-password-ipc.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "linux_password_ipc_validator_disabled": (\n'
+            '                repo / "scripts/verify-linux-service-password-ipc.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "Linux password requester focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_linux_service_owned_password_requester_contract(sources)\n",
+            "    validate_linux_service_owned_password_requester_contract_disabled(sources)\n",
+            "Linux password requester independent validator dispatch",
+        ),
+        (
             "verify",
             'echo "== (3b-iii-d9ck) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="',
             'echo "== (3b-iii-d9ck) macOS stale helper acceptance (R-S11au/R-S11e-61) =="',
@@ -68389,8 +68912,8 @@ def run_source_mutations(sources):
         ),
         (
             "linux_password_ipc_validator",
-            '(("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),\n            (("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate"),',
-            '(("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate"),\n            (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),',
+            '(("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),\n            (("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ")"), "exact Linux password-requester generation and role proof"),',
+            '(("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ")"), "exact Linux password-requester generation and role proof"),\n            (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),',
             "Linux service-password permit-before-identity checker",
         ),
         (

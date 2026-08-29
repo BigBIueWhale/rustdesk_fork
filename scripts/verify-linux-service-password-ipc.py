@@ -893,9 +893,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
         (
             (("password_incoming", ".", "next", "(", ")"), "raw service accept lane"),
             (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),
-            (("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate"),
-            (("service_scoped_ipc_authorization_snapshot_from_stream", "(", "&", "stream"), "socket authorization snapshot supplied to gate"),
-            (("peer_process_identity_from_stream", "(", "&", "stream"), "full caller identity capture"),
+            (("authenticate_linux_service_owned_password_requester", "(", "&", "stream", ")"), "exact Linux password-requester generation and role proof"),
             (("transactions", ".", "spawn", "(", "handle_sensitive_linux_service_ipc_transaction"), "raw Linux handler spawn"),
             (("Connection", "::", "new_protected_service", "(", "stream", ")"), "ordinary framed service lane"),
         )
@@ -947,6 +945,27 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
 
 def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     auth = rust["src/ipc/auth.rs"]
+    peer_identity_record = auth.item("struct", "PeerProcessIdentity")
+    peer_identity_record.require(
+        ("argv", ":", "Vec", "<", "String", ">"),
+        "complete retained process argv",
+        unique=True,
+    )
+    peer_identity_record.forbid(("first_arg",), "first-argument-only process role identity")
+    peer_identity_debug = auth.method(
+        ("impl", "fmt", "::", "Debug", "for", "PeerProcessIdentity"),
+        "fmt",
+        "impl Debug for PeerProcessIdentity",
+    )
+    peer_identity_debug.require(
+        ("field", "(", '"argv_len"', ",", "&", "self", ".", "argv", ".", "len", "(", ")", ")"),
+        "non-secret argv cardinality diagnostic",
+        unique=True,
+    )
+    peer_identity_debug.forbid(
+        ("field", "(", '"argv"'),
+        "untrusted complete argv disclosure in Debug",
+    )
     allowed_uid = auth.function("is_allowed_service_peer_uid")
     allowed_uid.require(
         ("peer_uid", "==", "0", "||", "active_uid", ".", "is_some_and", "(", "|", "uid", "|", "uid", "==", "peer_uid", ")"),
@@ -999,7 +1018,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
             (("linux_proc_cmdline_args", "(", "pid", ")"), "live argv capture"),
             (("uid", ":", "linux_proc_uid", "(", "pid", ")"), "proc UID capture"),
             (("start_time", ":", "linux_proc_start_time", "(", "pid", ")"), "PID generation capture"),
-            (("first_arg", ":", "args", ".", "get", "(", "1", ")"), "process role capture"),
+            (("argv", ":", "args", ",", "cm_launch_token"), "complete process role capture"),
         )
     )
     service_child_identity = auth.function("linux_service_child_process_identity_by_pid")
@@ -1054,10 +1073,71 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     live_identity.require_order(
         (
             (("linux_process_identity_by_pid", "(", "identity", ".", "pid", ",", "postfix", ")"), "fresh full identity"),
-            (("live", "==", "*", "identity"), "PID/UID/start-time/role equality"),
+            (("live", "==", "*", "identity"), "PID/UID/start-time/full-argv equality"),
             (("linux_process_has_ancestor", "(", "identity", ".", "pid", ",", "identity", ".", "cm_launch_parent", ")"), "live launch ancestry"),
         )
     )
+
+    exact_argv = auth.function("process_argv_is_exact")
+    expected_exact_argv = [
+        "args", ".", "len", "(", ")", "==", "expected_args", ".", "len", "(", ")", "+", "1",
+        "&&", "expected_args", ".", "iter", "(", ")", ".", "enumerate", "(", ")", ".", "all", "(",
+        "|", "(", "index", ",", "expected", ")", "|", "args", "[", "index", "+", "1", "]", "==", "*", "expected", ")",
+    ]
+    if exact_argv.values != expected_exact_argv:
+        raise VerificationError(
+            f"{exact_argv.label}: argv equality must require one executable plus every and only expected argument"
+        )
+
+    password_role = auth.function("linux_service_owned_password_client_argv_is_expected")
+    expected_password_role = [
+        "process_argv_is_exact", "(", "args", ",", "&", "[", "]", ")",
+        "||", "process_argv_is_exact", "(", "args", ",", "&", "[", '"--password"', "]", ")",
+        "||", "process_argv_is_exact", "(", "args", ",", "&", "[", '"--password-stdin"', "]", ")",
+    ]
+    if password_role.values != expected_password_role:
+        raise VerificationError(
+            f"{password_role.label}: requester roles must be exactly interactive UI, --password, or --password-stdin"
+        )
+
+    password_requester = auth.function("authenticate_linux_service_owned_password_requester")
+    password_requester.require_order(
+        (
+            (("let", "postfix", "=", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "fixed privileged endpoint"),
+            (("peer_process_identity_from_stream", "(", "stream", ",", "postfix", ")"), "SO_PEERCRED/current-executable/full-identity capture"),
+            (("if", "!", "linux_service_owned_password_client_argv_is_expected", "(", "&", "identity", ".", "argv", ")"), "finite exact requester role"),
+            (("linux_service_owned_password_requester_is_live", "(", "&", "identity", ")"), "same-generation pre-body finality"),
+            (("Ok", "(", "identity", ")"), "admitted exact identity"),
+        )
+    )
+    password_requester_live = auth.function(
+        "linux_service_owned_password_requester_is_live"
+    )
+    password_requester_live.require_order(
+        (
+            (("linux_service_owned_password_client_argv_is_expected", "(", "&", "identity", ".", "argv", ")"), "exact role recheck"),
+            (("&&", "peer_process_identity_is_live", "(", "identity", ",", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "full live identity re-read"),
+        ),
+        unique=True,
+    )
+
+    auth_tests = auth.item("mod", "tests")
+    password_role_regression = auth.function(
+        "r_s11e261_linux_service_owned_password_client_roles_are_finite",
+        parent=auth_tests.start - 1,
+    )
+    for admitted in ('"--password"', '"--password-stdin"'):
+        password_role_regression.require((admitted,), f"admitted {admitted} role")
+    for rejected in (
+        '"--server"',
+        "SERVICE_OWNED_SERVER_ARG",
+        '"--service"',
+        '"--tray"',
+        '"--cm"',
+        '"extra"',
+        '"--unexpected"',
+    ):
+        password_role_regression.require((rejected,), f"rejected {rejected} role")
 
     user_server_argv = auth.function("user_owned_main_server_argv_is_expected")
     user_server_argv.require(("args", ".", "len", "(", ")", "==", "2"), "exact user server argv length", unique=True)
@@ -1231,17 +1311,12 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     proof = authority.require(("linux_pkcheck_authorizes_service_owned_password_change", "(", "subject", ",", "shutdown", ")"), "polkit proof", unique=True)
     live = authority.require(
         (
-            "peer_process_identity_is_live",
+            "linux_service_owned_password_requester_is_live",
             "(",
             "identity",
-            ",",
-            "password",
-            "::",
-            "SERVICE_PASSWORD_IPC_POSTFIX",
-            OPTIONAL_COMMA,
             ")",
         ),
-        "final full live identity proof",
+        "final exact-role live identity proof",
         unique=True,
     )
     if live <= proof:
@@ -1250,13 +1325,11 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         )
     braced_conjunctive_gate = (
         "Ok", "(", "authorized", ")", "=>", "{", "authorized", "&&",
-        "peer_process_identity_is_live", "(", "identity", ",",
-        "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")", "}",
+        "linux_service_owned_password_requester_is_live", "(", "identity", ")", "}",
     )
     direct_gate = (
         "Ok", "(", "authorized", ")", "=>", "authorized", "&&",
-        "peer_process_identity_is_live", "(", "identity", ",",
-        "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")",
+        "linux_service_owned_password_requester_is_live", "(", "identity", ")",
     )
     if not (
         authority.positions(braced_conjunctive_gate)
@@ -2266,10 +2339,70 @@ def self_test(sources: Mapping[str, str]) -> None:
             "let authority = PasswordMutationKind::UserOwned; /* sensitive_main_ipc_authority(&stream) */",
         ),
         Mutation(
-            "service listener reads identity without fresh session authorization",
+            "service password listener bypasses exact requester-role authentication",
             "src/ipc.rs",
-            "if !ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(",
-            "if false && !ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(",
+            "authenticate_linux_service_owned_password_requester(&stream)",
+            "peer_process_identity_from_stream(&stream, password::SERVICE_PASSWORD_IPC_POSTFIX) /* authenticate_linux_service_owned_password_requester */",
+        ),
+        Mutation(
+            "Linux process identity retains only a truncated argv",
+            "src/ipc/auth.rs",
+            "        argv: args,",
+            "        argv: args.into_iter().take(2).collect(),",
+        ),
+        Mutation(
+            "Linux exact requester role admits extra arguments",
+            "src/ipc/auth.rs",
+            "    args.len() == expected_args.len() + 1",
+            "    args.len() >= expected_args.len() + 1",
+        ),
+        Mutation(
+            "Linux password requester drops the interactive-UI role",
+            "src/ipc/auth.rs",
+            "    process_argv_is_exact(args, &[])",
+            "    false /* process_argv_is_exact(args, &[]) */",
+        ),
+        Mutation(
+            "Linux password requester drops the terminal password role",
+            "src/ipc/auth.rs",
+            "        || process_argv_is_exact(args, &[\"--password\"])",
+            "        || false /* process_argv_is_exact(args, &[\"--password\"]) */",
+        ),
+        Mutation(
+            "Linux password requester drops the stdin password role",
+            "src/ipc/auth.rs",
+            "        || process_argv_is_exact(args, &[\"--password-stdin\"])",
+            "        || false /* process_argv_is_exact(args, &[\"--password-stdin\"]) */",
+        ),
+        Mutation(
+            "Linux password requester admits the server role",
+            "src/ipc/auth.rs",
+            "        || process_argv_is_exact(args, &[\"--password-stdin\"])",
+            "        || process_argv_is_exact(args, &[\"--password-stdin\"])\n        || process_argv_is_exact(args, &[\"--server\"])",
+        ),
+        Mutation(
+            "Linux password requester admission skips its exact role",
+            "src/ipc/auth.rs",
+            "    if !linux_service_owned_password_client_argv_is_expected(&identity.argv) {",
+            "    if false && !linux_service_owned_password_client_argv_is_expected(&identity.argv) {",
+        ),
+        Mutation(
+            "Linux password requester admission skips same-generation pre-body finality",
+            "src/ipc/auth.rs",
+            "    if !linux_service_owned_password_requester_is_live(&identity) {",
+            "    if false && !linux_service_owned_password_requester_is_live(&identity) {",
+        ),
+        Mutation(
+            "Linux password requester finality loses its role recheck",
+            "src/ipc/auth.rs",
+            "    linux_service_owned_password_client_argv_is_expected(&identity.argv)\n        && peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX)",
+            "    peer_process_identity_is_live(identity, super::password::SERVICE_PASSWORD_IPC_POSTFIX) /* linux_service_owned_password_client_argv_is_expected */",
+        ),
+        Mutation(
+            "Linux password exact-role regression is removed",
+            "src/ipc/auth.rs",
+            "fn r_s11e261_linux_service_owned_password_client_roles_are_finite()",
+            "fn linux_service_owned_password_client_roles_are_unchecked()",
         ),
         Mutation(
             "Linux replay no longer binds the password digest",
@@ -2280,8 +2413,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "interactive authority loses final live identity proof",
             "src/ipc.rs",
-            "peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)",
-            "peer_process_identity_was_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX) /* peer_process_identity_is_live */",
+            "linux_service_owned_password_requester_is_live(identity)",
+            "linux_service_owned_password_requester_was_live(identity) /* linux_service_owned_password_requester_is_live */",
         ),
         Mutation(
             "polkit denial is accepted as authorization",
@@ -2328,8 +2461,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "final live identity proof no longer gates successful authority",
             "src/ipc.rs",
-            "            authorized\n                && peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)",
-            "            authorized\n                || peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX) /* authorized && */",
+            "            authorized\n                && linux_service_owned_password_requester_is_live(identity)",
+            "            authorized\n                || linux_service_owned_password_requester_is_live(identity) /* authorized && */",
         ),
         Mutation(
             "final live identity proof uses a stale session authority",

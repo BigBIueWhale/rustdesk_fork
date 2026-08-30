@@ -1449,6 +1449,22 @@ def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         )
     )
 
+    right_requester_auth = auth.function(
+        "authenticate_macos_service_owned_password_right_requester"
+    )
+    right_requester_auth.require_order(
+        (
+            (("authorization", ".", "postfix", "!=", "crate", "::", "POSTFIX_SERVICE"), "fixed generic service endpoint"),
+            (("if", "!", "authorization", ".", "uid_authorized"), "snapshot UID authority"),
+            (("macos_peer_identity", ".", "ok_or_else"), "retained accepted-socket audit-token identity"),
+            (("macos_service_owned_password_requester_identity_is_live", "(", "&", "identity", ")"), "fresh complete installed-app proof"),
+            (("macos_process_cmdline_args", "(", "identity", ".", "pid", ")"), "complete readiness requester argv capture"),
+            (("macos_service_owned_password_client_argv_is_expected", "(", "&", "requester_argv", ")"), "finite exact readiness requester role"),
+            (("macos_service_owned_password_requester_generation_is_live", "(", "&", "identity", ")"), "post-argv audit-token generation and fresh-UID finality"),
+            (("Ok", "(", "MacosServiceOwnedPasswordRequester", "{", "identity", ",", "argv", ":", "requester_argv", ",", "}", ")"), "retained exact readiness requester"),
+        )
+    )
+
     requester_live = auth.function("macos_service_owned_password_requester_is_live")
     requester_live.require_order(
         (
@@ -1483,6 +1499,23 @@ def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     if post_request_last_owner.values != expected_post_request_last_owner:
         raise VerificationError(
             f"{post_request_last_owner.label}: post-request socket last owner must exactly replay UID, PID, and full audit token"
+        )
+
+    right_post_request = auth.function(
+        "macos_service_owned_password_right_requester_matches_post_request_authorization"
+    )
+    expected_right_post_request = [
+        "if", "authorization", ".", "postfix", "!=", "crate", "::", "POSTFIX_SERVICE",
+        "||", "!", "authorization", ".", "uid_authorized", "{", "return", "false", ";", "}",
+        "let", "Some", "(", "post_request_identity", ")", "=", "authorization", ".", "macos_peer_identity",
+        "else", "{", "return", "false", ";", "}", ";",
+        "post_request_identity", ".", "uid", "==", "requester", ".", "identity", ".", "uid",
+        "&&", "post_request_identity", ".", "pid", "==", "requester", ".", "identity", ".", "pid",
+        "&&", "post_request_identity", ".", "audit_token", "==", "requester", ".", "identity", ".", "audit_token",
+    ]
+    if right_post_request.values != expected_right_post_request:
+        raise VerificationError(
+            f"{right_post_request.label}: post-request readiness authority must exactly replay endpoint, UID authority, PID, and full audit token"
         )
 
     proof_task = ipc.function("authenticate_macos_service_owned_password_requester_for_task")
@@ -1528,6 +1561,69 @@ def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         "generic macOS password admission fallback",
     )
     password_branch.forbid(("receive_request_unix", "("), "secret read before action proof")
+
+    service_proof = ipc.function("authorize_macos_service_scoped_ipc_connection_for_task")
+    service_proof.require_order(
+        (
+            (("authorization", ".", "clone", "(", ")"), "retained pre-task authorization snapshot"),
+            (("authorize_service_scoped_ipc_authorization_snapshot", "(", "authorization", ")"), "generic installed-app/helper proof"),
+            (("Ok", "(", "(", "retained_authorization", ",", "authorized", ")", ")"), "proof and retained identity result"),
+            (("Ok", "(", "(", "authorization", ",", "true", ")", ")", "=>", "Some", "(", "authorization", ")"), "authorized retained identity"),
+            (("Ok", "(", "(", "_authorization", ",", "false", ")", ")", "=>", "None"), "generic denial"),
+        )
+    )
+
+    run_service.require_order(
+        (
+            (("result", "=", "incoming", ".", "next", "(", ")"), "generic service-control branch"),
+            (("try_acquire_service_ipc_transaction_slot", "(", ")"), "fixed service transaction permit"),
+            (("try_acquire_macos_service_ipc_authorization_slot", "(", ")"), "fixed generic proof permit"),
+            (("service_scoped_ipc_authorization_snapshot", "(", "&", "stream", ",", "postfix"), "pre-task socket identity snapshot"),
+            (("transactions", ".", "spawn", "(", "async", "move"), "owned transaction"),
+            (("authorize_macos_service_scoped_ipc_connection_for_task", "(", "authorization"), "retained generic proof"),
+            (("handle_service_ipc_transaction", "(", "stream", ",", "&", "postfix", ",", "authorization", ")"), "retained identity dispatch"),
+        )
+    )
+
+    service_transaction = ipc.function("handle_service_ipc_transaction")
+    service_transaction.require_order(
+        (
+            (("next_service_request_timeout", "(", "SERVICE_IPC_REQUEST_TIMEOUT_MS", ")"), "bounded closed request read"),
+            (("handle_service_request", "(", "request", ",", "&", "mut", "stream", ",", "authorization", ")"), "retained identity request dispatch"),
+        )
+    )
+
+    service_handler = ipc.function("handle_service_request")
+    service_handler.require_order(
+        (
+            (("ServiceIpcRequest", "::", "EnsurePasswordRightReady"), "password-right readiness operation"),
+            (("macos_service_owned_password_authorization_right_is_ready", "(", "_authorization", ",", "stream", ",", "deadline"), "retained identity readiness dispatch"),
+            (("ServiceIpcResponse", "::", "PasswordRightReady", "{", "ready", "}"), "typed readiness result"),
+        )
+    )
+
+    readiness = ipc.function("macos_service_owned_password_authorization_right_is_ready")
+    readiness.require_order(
+        (
+            (("try_acquire_macos_service_password_ipc_authorization_slot", "(", ")"), "fixed password proof permit"),
+            (("service_scoped_ipc_authorization_snapshot", "(", "stream", ",", "crate", "::", "POSTFIX_SERVICE", ")"), "post-request socket identity snapshot"),
+            (("run_bounded_macos_security_proof", "(", "deadline", ",", '"macos-password-right-proof"'), "bounded action proof"),
+            (("authenticate_macos_service_owned_password_right_requester", "(", "authorization", ")"), "exact readiness requester admission"),
+            (("macos_service_owned_password_right_requester_matches_post_request_authorization", "(", "&", "requester", ",", "post_request_authorization"), "post-request full-identity replay"),
+            (("macos_service_owned_password_requester_is_live", "(", "&", "requester", ")"), "final complete role/generation replay"),
+            (("ensure_service_owned_unattended_password_authorization_right", "(", ")"), "authorization policy write"),
+        )
+    )
+    readiness.require(
+        (
+            "macos_service_owned_password_right_requester_matches_post_request_authorization", "(",
+            "&", "requester", ",", "post_request_authorization", OPTIONAL_COMMA, ")",
+            "&&", "macos_service_owned_password_requester_is_live", "(", "&", "requester", ")",
+            "&&", "crate", "::", "platform", "::", "ensure_service_owned_unattended_password_authorization_right", "(", ")",
+        ),
+        "conjunctive post-request identity, final requester replay, and policy write",
+        unique=True,
+    )
 
     sensitive = ipc.function("handle_sensitive_macos_service_ipc_transaction")
     sensitive.require_order(
@@ -2878,6 +2974,120 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc/auth.rs",
             "fn r_s11e262_macos_audit_token_must_match_socket_identity()",
             "fn macos_audit_token_socket_identity_is_unchecked()",
+        ),
+        Mutation(
+            "macOS generic service listener delays its identity snapshot until task execution",
+            "src/ipc.rs",
+            "let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n                    &stream,\n                    postfix,\n                );\n                #[cfg(target_os = \"linux\")]",
+            "let authorization = (); /* service_scoped_ipc_authorization_snapshot(&stream, postfix) delayed */\n                #[cfg(target_os = \"linux\")]",
+        ),
+        Mutation(
+            "macOS generic service proof discards the retained accepted identity",
+            "src/ipc.rs",
+            "Ok((authorization, true)) => Some(authorization),",
+            "Ok((_authorization, true)) => None, /* retained identity discarded */",
+        ),
+        Mutation(
+            "macOS generic service dispatch drops the retained identity",
+            "src/ipc.rs",
+            "handle_service_ipc_transaction(stream, &postfix, authorization).await;",
+            "handle_service_ipc_transaction(stream, &postfix, ()).await; /* retained identity dropped */",
+        ),
+        Mutation(
+            "macOS password-right requester bypasses its fixed service endpoint",
+            "src/ipc/auth.rs",
+            "if authorization.postfix != crate::POSTFIX_SERVICE {\n        bail!(\"macOS service-owned password-right requester used the wrong endpoint\");",
+            "if false && authorization.postfix != crate::POSTFIX_SERVICE {\n        bail!(\"macOS service-owned password-right requester used the wrong endpoint\");",
+        ),
+        Mutation(
+            "macOS password-right requester bypasses snapshot UID authority",
+            "src/ipc/auth.rs",
+            "if !authorization.uid_authorized {\n        bail!(\n            \"macOS service-owned password-right requester is not root or the active console user\"",
+            "if false && !authorization.uid_authorized {\n        bail!(\n            \"macOS service-owned password-right requester is not root or the active console user\"",
+        ),
+        Mutation(
+            "macOS password-right requester bypasses the installed-app proof",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_requester_identity_is_live(&identity) {\n        bail!(\"macOS service-owned password-right requester is not the live trusted installed app\");",
+            "if false && !macos_service_owned_password_requester_identity_is_live(&identity) {\n        bail!(\"macOS service-owned password-right requester is not the live trusted installed app\");",
+        ),
+        Mutation(
+            "macOS password-right requester fabricates argv",
+            "src/ipc/auth.rs",
+            "let requester_argv = macos_process_cmdline_args(identity.pid)?;",
+            "let requester_argv = vec![String::new()]; /* live argv bypassed */",
+        ),
+        Mutation(
+            "macOS password-right requester bypasses its finite role",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_client_argv_is_expected(&requester_argv) {",
+            "if false && !macos_service_owned_password_client_argv_is_expected(&requester_argv) {",
+        ),
+        Mutation(
+            "macOS password-right requester skips post-argv generation proof",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_requester_generation_is_live(&identity) {\n        bail!(\"macOS service-owned password-right requester changed while its role was inspected\");",
+            "if false && !macos_service_owned_password_requester_generation_is_live(&identity) {\n        bail!(\"macOS service-owned password-right requester changed while its role was inspected\");",
+        ),
+        Mutation(
+            "macOS password-right requester retains truncated argv",
+            "src/ipc/auth.rs",
+            "argv: requester_argv,",
+            "argv: requester_argv.into_iter().take(1).collect(),",
+        ),
+        Mutation(
+            "macOS password-right post-request replay bypasses endpoint authority",
+            "src/ipc/auth.rs",
+            "if authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {",
+            "if false && authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {",
+        ),
+        Mutation(
+            "macOS password-right post-request replay bypasses fresh UID authority",
+            "src/ipc/auth.rs",
+            "if authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {",
+            "if authorization.postfix != crate::POSTFIX_SERVICE || false && !authorization.uid_authorized {",
+        ),
+        Mutation(
+            "macOS password-right post-request replay loses PID equality",
+            "src/ipc/auth.rs",
+            "&& post_request_identity.pid == requester.identity.pid",
+            "&& true /* post-request PID equality bypassed */",
+        ),
+        Mutation(
+            "macOS password-right post-request replay loses full audit-token equality",
+            "src/ipc/auth.rs",
+            "&& post_request_identity.audit_token == requester.identity.audit_token",
+            "&& true /* post-request audit-token equality bypassed */",
+        ),
+        Mutation(
+            "macOS password-right readiness uses generic authorization",
+            "src/ipc.rs",
+            "let requester = authenticate_macos_service_owned_password_right_requester(authorization)?;",
+            "let requester = authenticate_macos_service_owned_password_requester(authorization)?; /* wrong endpoint */",
+        ),
+        Mutation(
+            "macOS password-right readiness omits its post-request socket snapshot",
+            "src/ipc.rs",
+            "ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE);",
+            "authorization.clone(); /* post-request socket snapshot omitted */",
+        ),
+        Mutation(
+            "macOS password-right readiness disjoins final requester replay",
+            "src/ipc.rs",
+            ") && macos_service_owned_password_requester_is_live(&requester)\n                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            ") || macos_service_owned_password_requester_is_live(&requester)\n                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+        ),
+        Mutation(
+            "macOS password-right readiness disjoins the policy write",
+            "src/ipc.rs",
+            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            "|| crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+        ),
+        Mutation(
+            "macOS password-right handler drops retained requester authority",
+            "src/ipc.rs",
+            "macos_service_owned_password_authorization_right_is_ready(\n                _authorization,\n                stream,",
+            "macos_service_owned_password_authorization_right_is_ready(\n                (), /* retained authority dropped */\n                stream,",
         ),
         Mutation(
             "Linux replay no longer binds the password digest",

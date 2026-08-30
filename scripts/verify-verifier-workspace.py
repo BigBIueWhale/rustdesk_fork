@@ -11862,7 +11862,7 @@ def validate_linux_service_admission_contract(sources):
             "authorize_service_scoped_ipc_connection(&stream, postfix)",
             "transactions.spawn(async move",
             "let _permit = permit;",
-            "handle_service_ipc_transaction(stream, &postfix).await;",
+            "handle_service_ipc_transaction(stream, &postfix, authorization).await;",
         ),
         "generic permit before identity work and retained dispatch",
     )
@@ -12232,6 +12232,12 @@ def validate_macos_service_owned_password_requester_contract(sources):
     auth = sources["ipc_auth_source"]
     focused = sources["linux_password_ipc_validator"]
 
+    require_text(
+        auth,
+        '#[derive(Clone)]\npub(crate) struct ServiceScopedIpcAuthorization {',
+        "cloneable retained service-scoped accepted-socket authorization snapshot",
+    )
+
     retained = extract_braced_item(
         auth,
         "pub(crate) struct MacosServiceOwnedPasswordRequester",
@@ -12401,6 +12407,34 @@ def validate_macos_service_owned_password_requester_contract(sources):
         "generic macOS service authorization as password action authority",
     )
 
+    right_requester = extract_braced_item(
+        auth,
+        "pub(crate) fn authenticate_macos_service_owned_password_right_requester(",
+        "exact macOS password-right readiness requester admission",
+    )
+    require_order(
+        right_requester,
+        (
+            "if authorization.postfix != crate::POSTFIX_SERVICE",
+            "if !authorization.uid_authorized",
+            "authorization.macos_peer_identity",
+            "if !macos_service_owned_password_requester_identity_is_live(&identity)",
+            "let requester_argv = macos_process_cmdline_args(identity.pid)?;",
+            "if !macos_service_owned_password_client_argv_is_expected(&requester_argv)",
+            "if !macos_service_owned_password_requester_generation_is_live(&identity)",
+            "MacosServiceOwnedPasswordRequester {\n"
+            "        identity,\n"
+            "        argv: requester_argv,\n"
+            "    }",
+        ),
+        "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+    )
+    require_absent(
+        right_requester,
+        "authorize_service_scoped_ipc_authorization_snapshot(",
+        "generic macOS service authorization as password-right action authority",
+    )
+
     requester_live = extract_braced_item(
         auth,
         "pub(crate) fn macos_service_owned_password_requester_is_live(",
@@ -12424,6 +12458,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
         "        && macos_service_owned_password_requester_generation_is_live(&requester.identity)",
         "conjunctive macOS requester role and generation replay",
     )
+
+    right_post_request = extract_braced_item(
+        auth,
+        "pub(crate) fn macos_service_owned_password_right_requester_matches_post_request_authorization(",
+        "post-request macOS password-right requester socket replay",
+    )
+    right_post_request_body = re.sub(
+        r"\s+", " ", right_post_request[right_post_request.find("{") + 1 : -1]
+    ).strip()
+    expected_right_post_request = (
+        "if authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized { "
+        "return false; } let Some(post_request_identity) = authorization.macos_peer_identity else { "
+        "return false; }; post_request_identity.uid == requester.identity.uid "
+        "&& post_request_identity.pid == requester.identity.pid "
+        "&& post_request_identity.audit_token == requester.identity.audit_token"
+    )
+    if right_post_request_body != expected_right_post_request:
+        raise VerificationError(
+            "post-request macOS password-right requester socket replay: expected exact endpoint, UID authority, UID, PID, and full audit-token equality"
+        )
 
     post_request_last_owner = extract_braced_item(
         auth,
@@ -12498,6 +12552,109 @@ def validate_macos_service_owned_password_requester_contract(sources):
             forbidden,
             "generic or secret-reading macOS password listener authority",
         )
+
+    service_branch = extract_between(
+        worker,
+        "result = incoming.next() => {",
+        "\n    #[cfg(target_os = \"macos\")]\n    password_mutations().begin_shutdown();",
+        "macOS generic service-control retained requester branch",
+    )
+    require_order(
+        service_branch,
+        (
+            "try_acquire_service_ipc_transaction_slot()",
+            "try_acquire_macos_service_ipc_authorization_slot()",
+            "let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n"
+            "                    &stream,\n"
+            "                    postfix,\n"
+            "                );",
+            "transactions.spawn(async move",
+            "authorize_macos_service_scoped_ipc_connection_for_task(\n"
+            "                            authorization,",
+            "handle_service_ipc_transaction(stream, &postfix, authorization).await;",
+        ),
+        "pre-task service socket snapshot, retained generic proof, and retained request dispatch",
+    )
+
+    service_proof = extract_braced_item(
+        ipc,
+        "async fn authorize_macos_service_scoped_ipc_connection_for_task(",
+        "bounded retained macOS generic service proof",
+    )
+    require_order(
+        service_proof,
+        (
+            'run_bounded_macos_security_proof(deadline, "macos-service-ipc-proof"',
+            "let retained_authorization = authorization.clone();",
+            "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
+            "Ok((retained_authorization, authorized))",
+            "Ok((authorization, true)) => Some(authorization)",
+            "Ok((_authorization, false)) => None",
+        ),
+        "generic proof plus exact retained accepted-socket authorization snapshot",
+    )
+
+    service_transaction = extract_braced_item(
+        ipc,
+        "async fn handle_service_ipc_transaction(",
+        "retained macOS service requester transaction",
+    )
+    require_order(
+        service_transaction,
+        (
+            "next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            "handle_service_request(request, &mut stream, authorization).await",
+        ),
+        "bounded typed request before retained requester dispatch",
+    )
+
+    service_handler = extract_braced_item(
+        ipc,
+        "async fn handle_service_request(",
+        "macOS service action dispatch with retained requester",
+    )
+    require_order(
+        service_handler,
+        (
+            "ServiceIpcRequest::EnsurePasswordRightReady {}",
+            "macos_service_owned_password_authorization_right_is_ready(\n"
+            "                _authorization,\n"
+            "                stream,\n"
+            "                deadline,",
+            "ServiceIpcResponse::PasswordRightReady { ready }",
+        ),
+        "password-right operation dispatch with retained accepted identity",
+    )
+
+    readiness = extract_braced_item(
+        ipc,
+        "async fn macos_service_owned_password_authorization_right_is_ready(",
+        "exact macOS password-right policy-write requester authority",
+    )
+    require_order(
+        readiness,
+        (
+            "try_acquire_macos_service_password_ipc_authorization_slot()",
+            "ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE)",
+            'run_bounded_macos_security_proof(deadline, "macos-password-right-proof"',
+            "authenticate_macos_service_owned_password_right_requester(authorization)",
+            "macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
+            "                &requester,\n"
+            "                post_request_authorization,",
+            ") && macos_service_owned_password_requester_is_live(&requester)",
+            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+        ),
+        "post-request full identity and final exact requester replay before AuthorizationRightSet",
+    )
+    require_text(
+        readiness,
+        "macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
+        "                &requester,\n"
+        "                post_request_authorization,\n"
+        "            ) && macos_service_owned_password_requester_is_live(&requester)\n"
+        "                && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+        "conjunctive post-request identity, live exact requester, and policy write",
+    )
 
     sensitive = extract_braced_item(
         ipc,
@@ -12587,6 +12744,18 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "focused macOS finite-role expression enforcement",
         ),
         (
+            'right_requester_auth = auth.function(',
+            "focused macOS password-right requester authority enforcement",
+        ),
+        (
+            'right_post_request = auth.function(',
+            "focused macOS password-right post-request replay enforcement",
+        ),
+        (
+            'readiness = ipc.function("macos_service_owned_password_authorization_right_is_ready")',
+            "focused macOS password-right policy-write conjunction",
+        ),
+        (
             '"conjunctive retained-argv, finite-role, and audit-token-generation replay"',
             "focused macOS requester replay conjunction",
         ),
@@ -12645,6 +12814,22 @@ def validate_macos_service_owned_password_requester_contract(sources):
         (
             '"macOS socket audit-token identity regression is removed"',
             "focused macOS socket identity regression mutation",
+        ),
+        (
+            '"macOS generic service listener delays its identity snapshot until task execution"',
+            "focused macOS password-right pre-task snapshot mutation",
+        ),
+        (
+            '"macOS password-right requester bypasses its finite role"',
+            "focused macOS password-right finite-role mutation",
+        ),
+        (
+            '"macOS password-right post-request replay loses full audit-token equality"',
+            "focused macOS password-right post-request audit-token mutation",
+        ),
+        (
+            '"macOS password-right readiness disjoins the policy write"',
+            "focused macOS password-right policy conjunction mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -12717,6 +12902,30 @@ def validate_macos_service_owned_password_requester_contract(sources):
             '"macos-password-requester-post-request-last-owner-replay-invalid"',
             "shared macOS post-request socket last-owner replay",
         ),
+        (
+            '"macos-password-right-retained-service-requester-invalid"',
+            "shared macOS password-right retained requester proof",
+        ),
+        (
+            '"macos-password-right-exact-requester-before-policy-write-invalid"',
+            "shared macOS password-right policy-write authority proof",
+        ),
+        (
+            'grep -Fq \'<span class="id">R-S11hz</span>\' requirements.html',
+            "shared macOS password-right requester requirement binding",
+        ),
+        (
+            "grep -Fq '<tr><td>385</td>' requirements.html",
+            "shared macOS password-right requester Appendix binding",
+        ),
+        (
+            "grep -Fq 'R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority' HARDENING_STATUS.md",
+            "shared macOS password-right requester hardening binding",
+        ),
+        (
+            "grep -Fq 'The same identity additionally binds R-S11hz and Appendix C #385.' docs/NATIVE-CODEC-WATCH.md",
+            "shared macOS password-right requester digest binding",
+        ),
     ):
         require_text(verify, text, label)
 
@@ -12770,6 +12979,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
             'scoped_mutation("macos-password-post-request-last-owner-token"',
             "Apple macOS post-request full-token mutation",
         ),
+        (
+            'mac_password_right_requester_auth = item(auth, "pub(crate) fn authenticate_macos_service_owned_password_right_requester")',
+            "Apple macOS password-right requester proof",
+        ),
+        (
+            '"macos-password-right-requester-role-or-generation-not-exact"',
+            "Apple macOS password-right role/generation verdict",
+        ),
+        (
+            '"macos-password-right-policy-write-requester-authority-not-exact"',
+            "Apple macOS password-right policy-write authority verdict",
+        ),
+        (
+            'scoped_mutation("macos-password-right-post-token"',
+            "Apple macOS password-right post-request token mutation",
+        ),
+        (
+            'scoped_mutation("macos-password-right-policy-disjunction"',
+            "Apple macOS password-right policy disjunction mutation",
+        ),
     ):
         require_text(apple, text, label)
 
@@ -12788,6 +13017,16 @@ def validate_macos_service_owned_password_requester_contract(sources):
             '"macos-password-requester-post-request-last-owner-not-exact"',
             3,
             "Apple macOS post-request socket last-owner replay verdict",
+        ),
+        (
+            '"macos-password-right-requester-role-or-generation-not-exact"',
+            9,
+            "Apple macOS password-right requester generation/role verdict",
+        ),
+        (
+            '"macos-password-right-policy-write-requester-authority-not-exact"',
+            6,
+            "Apple macOS password-right policy-write authority verdict",
         ),
     ):
         require_exact_count(apple, text, expected, label)
@@ -12823,6 +13062,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "The same identity additionally binds R-S11hy and Appendix C #384.",
             "exact macOS service-owned password requester identity binding",
         ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11hz</span>',
+            "exact macOS password-right requester requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>385</td>",
+            "exact macOS password-right requester Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority",
+            "exact macOS password-right requester hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11hz and Appendix C #385.",
+            "exact macOS password-right requester identity binding",
+        ),
     ):
         require_text(source, text, label)
 
@@ -12831,6 +13090,21 @@ def validate_macos_service_owned_password_requester_contract(sources):
         "def validate_macos_service_owned_password_requester_contract(sources):\n",
         "macOS password requester independent validator definition",
     )
+    for text, label in (
+        (
+            'right_requester = extract_braced_item(\n        auth,\n        "pub(crate) fn authenticate_macos_service_owned_password_right_requester("',
+            "independent macOS password-right requester admission validator",
+        ),
+        (
+            'right_post_request = extract_braced_item(\n        auth,\n        "pub(crate) fn macos_service_owned_password_right_requester_matches_post_request_authorization("',
+            "independent macOS password-right post-request replay validator",
+        ),
+        (
+            'readiness = extract_braced_item(\n        ipc,\n        "async fn macos_service_owned_password_authorization_right_is_ready("',
+            "independent macOS password-right policy-write validator",
+        ),
+    ):
+        require_text(sources["workspace_verifier"], text, label)
     require_text(
         sources["workspace_verifier"],
         "    validate_macos_service_owned_password_requester_contract(sources)\n",
@@ -17201,7 +17475,7 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "typed Windows SAS response reader",
         ),
         (
-            "async fn handle_service_request(request: ServiceIpcRequest",
+            "async fn handle_service_request(",
             "typed Unix service dispatch",
         ),
         (
@@ -64934,6 +65208,145 @@ def run_source_mutations(sources):
             "macOS socket audit-token consistency regression",
         ),
         (
+            "ipc_auth_source",
+            '#[derive(Clone)]\npub(crate) struct ServiceScopedIpcAuthorization {',
+            'pub(crate) struct ServiceScopedIpcAuthorization {',
+            "cloneable retained service-scoped accepted-socket authorization snapshot",
+        ),
+        (
+            "ipc_auth_source",
+            "if authorization.postfix != crate::POSTFIX_SERVICE {\n"
+            "        bail!(\"macOS service-owned password-right requester used the wrong endpoint\");",
+            "if false && authorization.postfix != crate::POSTFIX_SERVICE {\n"
+            "        bail!(\"macOS service-owned password-right requester used the wrong endpoint\");",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "if !authorization.uid_authorized {\n"
+            "        bail!(\n"
+            "            \"macOS service-owned password-right requester is not root or the active console user\"",
+            "if false && !authorization.uid_authorized {\n"
+            "        bail!(\n"
+            "            \"macOS service-owned password-right requester is not root or the active console user\"",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "if !macos_service_owned_password_requester_identity_is_live(&identity) {\n"
+            "        bail!(\"macOS service-owned password-right requester is not the live trusted installed app\");",
+            "if false && !macos_service_owned_password_requester_identity_is_live(&identity) {\n"
+            "        bail!(\"macOS service-owned password-right requester is not the live trusted installed app\");",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "let requester_argv = macos_process_cmdline_args(identity.pid)?;",
+            "let requester_argv = vec![String::new()];",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "if !macos_service_owned_password_client_argv_is_expected(&requester_argv) {",
+            "if false && !macos_service_owned_password_client_argv_is_expected(&requester_argv) {",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "if !macos_service_owned_password_requester_generation_is_live(&identity) {\n"
+            "        bail!(\"macOS service-owned password-right requester changed while its role was inspected\");",
+            "if false && !macos_service_owned_password_requester_generation_is_live(&identity) {\n"
+            "        bail!(\"macOS service-owned password-right requester changed while its role was inspected\");",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "        argv: requester_argv,",
+            "        argv: requester_argv.into_iter().take(1).collect(),",
+            "fixed service endpoint, retained audit token, exact administrative role, and post-capture generation proof",
+        ),
+        (
+            "ipc_auth_source",
+            "if authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {",
+            "if false && authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {",
+            "post-request macOS password-right requester socket replay",
+        ),
+        (
+            "ipc_auth_source",
+            "if authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {",
+            "if authorization.postfix != crate::POSTFIX_SERVICE || false && !authorization.uid_authorized {",
+            "post-request macOS password-right requester socket replay",
+        ),
+        (
+            "ipc_auth_source",
+            "&& post_request_identity.pid == requester.identity.pid",
+            "&& true /* password-right post-request PID bypass */",
+            "post-request macOS password-right requester socket replay",
+        ),
+        (
+            "ipc_auth_source",
+            "&& post_request_identity.audit_token == requester.identity.audit_token",
+            "&& true /* password-right post-request token bypass */",
+            "post-request macOS password-right requester socket replay",
+        ),
+        (
+            "ipc_source",
+            "let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n"
+            "                    &stream,\n"
+            "                    postfix,\n"
+            "                );",
+            "let authorization = (); /* accepted-socket snapshot delayed */",
+            "pre-task service socket snapshot, retained generic proof, and retained request dispatch",
+        ),
+        (
+            "ipc_source",
+            "Ok((authorization, true)) => Some(authorization),",
+            "Ok((_authorization, true)) => None,",
+            "generic proof plus exact retained accepted-socket authorization snapshot",
+        ),
+        (
+            "ipc_source",
+            "handle_service_ipc_transaction(stream, &postfix, authorization).await;",
+            "handle_service_ipc_transaction(stream, &postfix, ()).await;",
+            "generic permit before identity work and retained dispatch",
+        ),
+        (
+            "ipc_source",
+            "macos_service_owned_password_authorization_right_is_ready(\n"
+            "                _authorization,\n"
+            "                stream,",
+            "macos_service_owned_password_authorization_right_is_ready(\n"
+            "                (),\n"
+            "                stream,",
+            "password-right operation dispatch with retained accepted identity",
+        ),
+        (
+            "ipc_source",
+            "let requester = authenticate_macos_service_owned_password_right_requester(authorization)?;",
+            "let requester = authenticate_macos_service_owned_password_requester(authorization)?;",
+            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+        ),
+        (
+            "ipc_source",
+            "ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE);",
+            "authorization.clone(); /* post-request snapshot omitted */",
+            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+        ),
+        (
+            "ipc_source",
+            ") && macos_service_owned_password_requester_is_live(&requester)\n"
+            "                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            ") || macos_service_owned_password_requester_is_live(&requester)\n"
+            "                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+        ),
+        (
+            "ipc_source",
+            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            "|| crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+        ),
+        (
             "linux_password_ipc_validator",
             "def verify_macos_identity_and_authority",
             "def verify_macos_identity_and_authority_disabled",
@@ -64999,6 +65412,48 @@ def run_source_mutations(sources):
             "focused macOS service-snapshot constructor mutation",
         ),
         (
+            "linux_password_ipc_validator",
+            'right_requester_auth = auth.function(',
+            'right_requester_auth_disabled = auth.function(',
+            "focused macOS password-right requester authority enforcement",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'right_post_request = auth.function(',
+            'right_post_request_disabled = auth.function(',
+            "focused macOS password-right post-request replay enforcement",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'readiness = ipc.function("macos_service_owned_password_authorization_right_is_ready")',
+            'readiness_disabled = ipc.function("macos_service_owned_password_authorization_right_is_ready")',
+            "focused macOS password-right policy-write conjunction",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS generic service listener delays its identity snapshot until task execution"',
+            '"macOS generic service listener retains its identity snapshot"',
+            "focused macOS password-right pre-task snapshot mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password-right requester bypasses its finite role"',
+            '"macOS password-right requester retains its finite role"',
+            "focused macOS password-right finite-role mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password-right post-request replay loses full audit-token equality"',
+            '"macOS password-right post-request replay retains full audit-token equality"',
+            "focused macOS password-right post-request audit-token mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password-right readiness disjoins the policy write"',
+            '"macOS password-right readiness conjoins the policy write"',
+            "focused macOS password-right policy conjunction mutation",
+        ),
+        (
             "verify",
             '"macos-password-requester-generation-finality-invalid"',
             '"macos-password-requester-generation-finality-unchecked"',
@@ -65015,6 +65470,18 @@ def run_source_mutations(sources):
             '"macos-password-requester-post-request-last-owner-replay-invalid"',
             '"macos-password-requester-post-request-last-owner-replay-unchecked"',
             "shared macOS post-request socket last-owner replay",
+        ),
+        (
+            "verify",
+            '"macos-password-right-retained-service-requester-invalid"',
+            '"macos-password-right-retained-service-requester-unchecked"',
+            "shared macOS password-right retained requester proof",
+        ),
+        (
+            "verify",
+            '"macos-password-right-exact-requester-before-policy-write-invalid"',
+            '"macos-password-right-exact-requester-before-policy-write-unchecked"',
+            "shared macOS password-right policy-write authority proof",
         ),
         (
             "verify",
@@ -65101,6 +65568,30 @@ def run_source_mutations(sources):
             "Apple macOS post-request full-token mutation",
         ),
         (
+            "apple",
+            '"macos-password-right-requester-role-or-generation-not-exact"',
+            '"macos-password-right-requester-role-or-generation-unchecked"',
+            "Apple macOS password-right requester generation/role verdict",
+        ),
+        (
+            "apple",
+            '"macos-password-right-policy-write-requester-authority-not-exact"',
+            '"macos-password-right-policy-write-requester-authority-unchecked"',
+            "Apple macOS password-right policy-write authority verdict",
+        ),
+        (
+            "apple",
+            'scoped_mutation("macos-password-right-post-token"',
+            'scoped_mutation("macos-password-right-post-token-disabled"',
+            "Apple macOS password-right post-request token mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("macos-password-right-policy-disjunction"',
+            'scoped_mutation("macos-password-right-policy-disjunction-disabled"',
+            "Apple macOS password-right policy disjunction mutation",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11hy</span>',
             '<span class="id">R-S11hy-disabled</span>',
@@ -65135,6 +65626,54 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11hy and Appendix C #384.",
             "The same identity no longer binds R-S11hy and Appendix C #384.",
             "exact macOS service-owned password requester identity binding",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11hz</span>\' requirements.html',
+            "true # macOS password-right requester requirement binding disabled",
+            "shared macOS password-right requester requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>385</td>' requirements.html",
+            "true # macOS password-right requester Appendix binding disabled",
+            "shared macOS password-right requester Appendix binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority' HARDENING_STATUS.md",
+            "true # macOS password-right requester hardening binding disabled",
+            "shared macOS password-right requester hardening binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'The same identity additionally binds R-S11hz and Appendix C #385.' docs/NATIVE-CODEC-WATCH.md",
+            "true # macOS password-right requester digest binding disabled",
+            "shared macOS password-right requester digest binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11hz</span>',
+            '<span class="id">R-S11hz-disabled</span>',
+            "exact macOS password-right requester requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>385</td>",
+            "<tr><td>385-disabled</td>",
+            "exact macOS password-right requester Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority",
+            "R-S11hz-disabled/R-S11e-263 — exact macOS password-right readiness requester authority",
+            "exact macOS password-right requester hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11hz and Appendix C #385.",
+            "The same identity no longer binds R-S11hz and Appendix C #385.",
+            "exact macOS password-right requester identity binding",
         ),
         (
             "workspace_verifier",
@@ -72627,7 +73166,7 @@ def run_source_mutations(sources):
             "ipc_source",
             ".next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
             ".next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
-            "Unix typed protected service reader",
+            "bounded typed request before retained requester dispatch",
         ),
         (
             "windows_source",

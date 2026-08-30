@@ -3733,6 +3733,7 @@ pub(crate) fn log_rejected_windows_ipc_connection(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+#[derive(Clone)]
 pub(crate) struct ServiceScopedIpcAuthorization {
     postfix: String,
     #[cfg(target_os = "linux")]
@@ -3885,6 +3886,37 @@ pub(crate) fn authenticate_macos_service_owned_password_requester(
 }
 
 #[cfg(target_os = "macos")]
+pub(crate) fn authenticate_macos_service_owned_password_right_requester(
+    authorization: ServiceScopedIpcAuthorization,
+) -> ResultType<MacosServiceOwnedPasswordRequester> {
+    if authorization.postfix != crate::POSTFIX_SERVICE {
+        bail!("macOS service-owned password-right requester used the wrong endpoint");
+    }
+    if !authorization.uid_authorized {
+        bail!(
+            "macOS service-owned password-right requester is not root or the active console user"
+        );
+    }
+    let identity = authorization.macos_peer_identity.ok_or_else(|| {
+        anyhow::anyhow!("macOS service-owned password-right requester identity is unavailable")
+    })?;
+    if !macos_service_owned_password_requester_identity_is_live(&identity) {
+        bail!("macOS service-owned password-right requester is not the live trusted installed app");
+    }
+    let requester_argv = macos_process_cmdline_args(identity.pid)?;
+    if !macos_service_owned_password_client_argv_is_expected(&requester_argv) {
+        bail!("macOS service-owned password-right requester has an unauthorized process role");
+    }
+    if !macos_service_owned_password_requester_generation_is_live(&identity) {
+        bail!("macOS service-owned password-right requester changed while its role was inspected");
+    }
+    Ok(MacosServiceOwnedPasswordRequester {
+        identity,
+        argv: requester_argv,
+    })
+}
+
+#[cfg(target_os = "macos")]
 pub(crate) fn macos_service_owned_password_requester_is_live(
     requester: &MacosServiceOwnedPasswordRequester,
 ) -> bool {
@@ -3897,6 +3929,22 @@ pub(crate) fn macos_service_owned_password_requester_is_live(
     argv == requester.argv
         && macos_service_owned_password_client_argv_is_expected(&argv)
         && macos_service_owned_password_requester_generation_is_live(&requester.identity)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_service_owned_password_right_requester_matches_post_request_authorization(
+    requester: &MacosServiceOwnedPasswordRequester,
+    authorization: ServiceScopedIpcAuthorization,
+) -> bool {
+    if authorization.postfix != crate::POSTFIX_SERVICE || !authorization.uid_authorized {
+        return false;
+    }
+    let Some(post_request_identity) = authorization.macos_peer_identity else {
+        return false;
+    };
+    post_request_identity.uid == requester.identity.uid
+        && post_request_identity.pid == requester.identity.pid
+        && post_request_identity.audit_token == requester.identity.audit_token
 }
 
 #[cfg(target_os = "macos")]

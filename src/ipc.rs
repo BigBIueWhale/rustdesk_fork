@@ -31,13 +31,6 @@ use hbb_common::{
 use ipc_auth::authenticate_linux_service_owned_password_parent;
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
-#[cfg(target_os = "macos")]
-use ipc_auth::{
-    authenticate_macos_service_owned_password_requester,
-    macos_service_owned_password_requester_is_live,
-    macos_service_owned_password_requester_matches_post_request_last_owner,
-    MacosServiceOwnedPasswordRequester,
-};
 #[cfg(target_os = "windows")]
 pub(crate) use ipc_auth::authenticate_windows_cm_endpoint;
 #[cfg(windows)]
@@ -67,6 +60,15 @@ pub(crate) use ipc_auth::{
     ensure_linux_root_service_stream, linux_cm_child_identity_is_live,
     linux_process_identity_is_live, linux_service_owned_password_requester_is_live,
     LinuxProcessIdentity, PeerProcessIdentity,
+};
+#[cfg(target_os = "macos")]
+use ipc_auth::{
+    authenticate_macos_service_owned_password_requester,
+    authenticate_macos_service_owned_password_right_requester,
+    macos_service_owned_password_requester_is_live,
+    macos_service_owned_password_requester_matches_post_request_last_owner,
+    macos_service_owned_password_right_requester_matches_post_request_authorization,
+    MacosServiceOwnedPasswordRequester,
 };
 #[cfg(windows)]
 pub(crate) use ipc_auth::{
@@ -111,6 +113,10 @@ use hbb_common::tokio::{
     sync::{oneshot, Notify, OwnedSemaphorePermit, Semaphore},
     task::JoinSet,
 };
+#[cfg(target_os = "macos")]
+type ServiceIpcRequesterAuthorization = ipc_auth::ServiceScopedIpcAuthorization;
+#[cfg(target_os = "linux")]
+type ServiceIpcRequesterAuthorization = ();
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1297,21 +1303,23 @@ fn password_mutation_status(state: PasswordMutationState) -> PasswordMutationSta
 
 #[cfg(target_os = "macos")]
 async fn authorize_macos_service_scoped_ipc_connection_for_task(
-    stream: &Connection,
-    postfix: &str,
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
     _authorization_slot: OwnedSemaphorePermit,
     deadline: tokio::time::Instant,
-) -> bool {
-    let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(stream, postfix);
+) -> Option<ipc_auth::ServiceScopedIpcAuthorization> {
     match run_bounded_macos_security_proof(deadline, "macos-service-ipc-proof", move || {
-        Ok(ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization))
+        let retained_authorization = authorization.clone();
+        let authorized =
+            ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization);
+        Ok((retained_authorization, authorized))
     })
     .await
     {
-        Ok(authorized) => authorized,
+        Ok((authorization, true)) => Some(authorization),
+        Ok((_authorization, false)) => None,
         Err(err) => {
             log::error!("macOS _service IPC authorization task failed: {err}");
-            false
+            None
         }
     }
 }
@@ -3279,25 +3287,32 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                 }
                 #[cfg(target_os = "macos")]
                 let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
+                #[cfg(target_os = "macos")]
+                let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
+                    &stream,
+                    postfix,
+                );
+                #[cfg(target_os = "linux")]
+                let authorization = ();
                 let postfix = postfix.to_owned();
                 transactions.spawn(async move {
                     let _permit = permit;
                     #[cfg(target_os = "macos")]
-                    {
+                    let authorization = {
                         let deadline = tokio::time::Instant::now()
                             + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                        if !authorize_macos_service_scoped_ipc_connection_for_task(
-                            &stream,
-                            &postfix,
+                        let Some(authorization) = authorize_macos_service_scoped_ipc_connection_for_task(
+                            authorization,
                             authorization_permit,
                             deadline,
                         )
                         .await
                         {
                             return;
-                        }
-                    }
-                    handle_service_ipc_transaction(stream, &postfix).await;
+                        };
+                        authorization
+                    };
+                    handle_service_ipc_transaction(stream, &postfix, authorization).await;
                 });
             }
         }
@@ -3787,7 +3802,11 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-async fn handle_service_ipc_transaction(mut stream: Connection, postfix: &str) {
+async fn handle_service_ipc_transaction(
+    mut stream: Connection,
+    postfix: &str,
+    authorization: ServiceIpcRequesterAuthorization,
+) {
     match stream
         .next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
         .await
@@ -3795,7 +3814,7 @@ async fn handle_service_ipc_transaction(mut stream: Connection, postfix: &str) {
         Err(err) => log::trace!(
             "protected _service IPC request closed before a bounded request frame: {err}"
         ),
-        Ok(Some(request)) => handle_service_request(request, &mut stream).await,
+        Ok(Some(request)) => handle_service_request(request, &mut stream, authorization).await,
         Ok(None) => log::warn!(
             "Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}",
             postfix,
@@ -5192,14 +5211,25 @@ fn macos_peer_is_authorized_for_service_owned_password_change(authorization: &[u
 
 #[cfg(target_os = "macos")]
 async fn macos_service_owned_password_authorization_right_is_ready(
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
+    stream: &Connection,
     deadline: tokio::time::Instant,
 ) -> bool {
     let Some(_authorization_slot) = try_acquire_macos_service_password_ipc_authorization_slot()
     else {
         return false;
     };
-    match run_bounded_macos_security_proof(deadline, "macos-password-right-proof", || {
-        Ok(crate::platform::ensure_service_owned_unattended_password_authorization_right())
+    let post_request_authorization =
+        ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE);
+    match run_bounded_macos_security_proof(deadline, "macos-password-right-proof", move || {
+        let requester = authenticate_macos_service_owned_password_right_requester(authorization)?;
+        Ok(
+            macos_service_owned_password_right_requester_matches_post_request_authorization(
+                &requester,
+                post_request_authorization,
+            ) && macos_service_owned_password_requester_is_live(&requester)
+                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),
+        )
     })
     .await
     {
@@ -5888,7 +5918,11 @@ pub(crate) async fn handle_windows_service_owned_share_rdp_request(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-async fn handle_service_request(request: ServiceIpcRequest, stream: &mut Connection) {
+async fn handle_service_request(
+    request: ServiceIpcRequest,
+    stream: &mut Connection,
+    _authorization: ServiceIpcRequesterAuthorization,
+) {
     match request {
         ServiceIpcRequest::LivenessProbe {} => {
             if let Err(err) = stream
@@ -5905,7 +5939,12 @@ async fn handle_service_request(request: ServiceIpcRequest, stream: &mut Connect
         ServiceIpcRequest::EnsurePasswordRightReady {} => {
             let deadline = tokio::time::Instant::now()
                 + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-            let ready = macos_service_owned_password_authorization_right_is_ready(deadline).await;
+            let ready = macos_service_owned_password_authorization_right_is_ready(
+                _authorization,
+                stream,
+                deadline,
+            )
+            .await;
             let response_timeout = match password::remaining_millis(deadline) {
                 Ok(timeout) => timeout,
                 Err(err) => {

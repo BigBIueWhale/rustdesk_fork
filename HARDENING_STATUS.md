@@ -26786,7 +26786,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b17bd020762ea77e711388b6a9688380014137daf2dc7e6dd4ad4d46629d6e95  requirements.html
+requirements.html: b17bd020762ea77e711388b6a9688380014137daf2dc7e6dd4ad4d46629d6e95
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -28558,3 +28558,146 @@ state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
 unrelated container/image; or request/acquire root. Verification uses only the
 approved immutable, unprivileged, network-disabled, read-only-bound verifier
 image and does not run repository code on the host.
+
+### R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority
+
+**Status:** SOURCE REPAIR AUTHORED / FOCUSED, INDEPENDENT, COMPLETE
+5,384-TUPLE DELIBERATE-MUTATION, SHARED-EMBEDDED, APPLE-EMBEDDED, AND
+NATIVE-WATCH SOURCE GATES GREEN / NATIVE MACOS, INSTALLED-SERVICE,
+PERFORMANCE, RELEASE-ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
+EVIDENCE OPEN.
+
+The continuing privileged-action review found that the root macOS LaunchDaemon
+treated `ServiceIpcRequest::EnsurePasswordRightReady` as a generic `_service`
+operation even though its implementation calls `AuthorizationRightSet`. The
+request carries no password and the right definition is a fixed, hardened
+admin-only dictionary, but the operation still writes machine Authorization
+Services policy. Generic `_service` admission proved root or the active console
+UID plus a trusted installed RustDesk executable, then discarded the accepted
+audit-token record before the typed request was read. It did not retain one
+requester generation or distinguish interactive UI, `--password`, and
+`--password-stdin` from server, service, tray, connection-manager, helper,
+unknown, or extra-argument roles. The later raw password operation still
+required a separate administrator capability before persistence, so this was
+source-proven policy-write/action-authority debt rather than an unauthenticated
+password-write primitive, proof of exploitation, deployed-artifact causation,
+or a cause established for the reported display-delay symptoms.
+
+The generic macOS `_service` accept branch now captures its service-scoped
+authorization snapshot before transferring the transaction into the spawned
+task. That snapshot contains the separately obtained socket UID, effective
+PID, and full `LOCAL_PEERTOKEN`; the existing constructor refuses to create a
+process identity unless the token's embedded effective UID and PID exactly
+match the socket values and the PID is nonzero. The bounded generic proof
+clones and returns that exact retained record only when the existing
+root/current-console and trusted installed-app/helper proof succeeds. Linux
+keeps the same immediate generic authorization and passes a zero-sized unit
+through the shared typed dispatcher. Generic liveness semantics remain
+unchanged.
+
+Only the macOS readiness variant consumes the retained record as action
+authority. Its bounded password-authorization worker requires the fixed
+`_service` endpoint, retained UID admission, a live exact signed installed-app
+audit-token generation and trusted layout, and a complete current argv equal
+to precisely interactive UI, `--password`, or `--password-stdin`. It brackets
+argv capture with the existing audit-token dynamic-code generation proofs. A
+fresh service-scoped snapshot taken after the typed readiness frame must still
+have the exact endpoint and fresh root/current-console UID authority, and its
+UID, effective PID, and full audit token must equal the retained requester.
+The same worker then re-proves live installed identity, byte-for-byte complete
+argv equality, finite role, and audit-token generation. Post-request identity
+equality, final requester replay, and
+`ensure_service_owned_unattended_password_authorization_right()` are one
+short-circuiting conjunction with the native `AuthorizationRightSet` operation
+last. Missing, helper-only, stale, changed, mixed, wrong-endpoint, broadened-
+role, fabricated/truncated-argv, or disjunctive evidence fails closed and
+returns `ready: false` without writing the right.
+
+The post-request socket snapshot has the same deliberately limited meaning as
+R-S11hy: it is current last-owner consistency evidence, not proof that one
+process authored every request byte or that every descriptor handoff is
+detectable. XNU may rewrite the local socket's mutable owner state during
+ordinary socket activity. The fixed right definition, closed no-secret wire,
+one-second proof and response deadline, proof/transaction capacity budgets,
+user-paced administrator prompt, raw password transport, external capability,
+password sink, replay ledger, runtime credential replication, dependencies,
+and privilege model are otherwise unchanged.
+
+The focused password-IPC verifier independently lexes and orders the retained
+generic snapshot, readiness-specific endpoint/UID/installed-app/argv/generation
+admission, post-request endpoint/UID/PID/full-token equality, handler
+propagation, final requester replay, and policy-write-last conjunction. Its
+self-test adds deliberate mutations for delayed snapshotting, discarded
+retained authority, wrong endpoint, UID bypass, installed-app bypass,
+fabricated/truncated argv, broadened role, lost generation proof, post-request
+PID/token bypasses, generic fallback, omitted post-request snapshot, and both
+final disjunctions. The shared embedded gate, Apple structural checker, and
+separately implemented workspace validator bind the same outcome using
+independent extraction logic. The complete workspace catalog and final gate
+receipts are recorded below.
+
+Exact-current signed macOS compilation and execution, native
+AuthorizationRightSet/AuthorizationRightGet allow-deny behavior, audit-token,
+PID-reuse, argv, descriptor-sharing, and last-owner-restoration races,
+installed LaunchDaemon behavior for all three legitimate callers and every
+refused role, sustained latency/CPU/memory/resource testing, clean committed
+cold R-B2/R-B10 artifact equality, independent reproduction, and R-V3 external
+review remain open. No native macOS execution or release-artifact claim is made
+by these Linux source gates.
+
+Current normative identity for this slice:
+
+```text
+5c4b18879ac370f7c5256abafc0dc24bf7b81f855556c45403b34ff1fb8dea58  requirements.html
+```
+
+Evidence receipt for the source snapshot preceding this receipt:
+
+- `git diff --check` and shell syntax checks for the changed verifier scripts
+  passed. The independent workspace baseline printed
+  `verify-verifier-workspace: ok`.
+- The focused service-password IPC baseline and its 19 deliberate mutations
+  printed `verify-linux-service-password-ipc: ok`. A separately filtered,
+  isolated workspace-catalog run covering every R-S11hz password-right entry
+  plus the retained-snapshot support entries printed
+  `verify-verifier-workspace: ok`.
+- The shared `verify.sh` embedded source checker exited zero. The Apple
+  embedded structural/deliberate-mutation checker exited zero with empty
+  `r_s11e16`, `r_s11b2`, and `r_s11b` verdict files. This is embedded checker
+  evidence, not a claim that the outer Apple toolchain/build conformance
+  workflow ran.
+- `native-codec-watch.sh` and its self-test passed. The approved verifier image
+  has neither `cargo` nor `rustc`, so no exact-current native Rust/macOS
+  compile or execution claim is made.
+- Pinned Rust 1.75 `rustfmt` still reports known whole-file drift elsewhere in
+  `src/ipc.rs` and `src/ipc/auth.rs`; an exact current-line comparison found
+  zero overlap between rustfmt's 303 touched lines and this slice's 114 changed
+  Rust lines (`src/ipc.rs`: 66 changed / 279 rustfmt-touched / zero overlap;
+  `src/ipc/auth.rs`: 48 changed / 24 rustfmt-touched / zero overlap).
+- The complete unmodified source-mutation catalog contains 5,384 tuples. Its
+  first frozen attempt correctly exposed a stale expected verdict after 4,004
+  seconds: removing the bounded Unix typed service read was now rejected first
+  by the stricter retained-requester ordering guard. The catalog expectation
+  was corrected, its exact diagnostic family passed a targeted isolated run,
+  and the complete catalog was restarted from zero rather than combining
+  snapshots.
+- The restarted complete catalog printed `verify-verifier-workspace: ok` and
+  exited zero after 11,586 seconds (3h13m06s) in the approved immutable image,
+  with `--network=none`, UID/GID 1000, read-only repository bind and root
+  filesystem, all capabilities dropped, `no-new-privileges`, one 256 MiB
+  no-exec tmpfs, and explicit PID/memory/CPU caps. All nine frozen file hashes
+  were identical immediately after completion. The task-created stopped
+  container was then removed by exact name.
+- Adding R-S11hz initially repeated R-S11hy's exact normative last-owner
+  limitation sentence. The complete catalog correctly showed that this made
+  the historical one-occurrence mutation ambiguous. R-S11hz now states the
+  same limitation in requirement-specific wording; it does not weaken the
+  prohibition. The resulting normative identity is the digest above.
+
+This evidence does not inspect or change a host RustDesk process, service,
+listener, firewall, network namespace, Android device, VM, Haggai workload, or
+unrelated Docker object, and it does not use root or privileged containers.
+Exact-current signed macOS compilation/execution, real Authorization Services
+allow/deny and race behavior, installed LaunchDaemon behavior, sustained
+performance/resource testing, cold release-artifact equality, independent
+reproduction, and external review remain open.

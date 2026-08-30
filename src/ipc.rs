@@ -31,6 +31,13 @@ use hbb_common::{
 use ipc_auth::authenticate_linux_service_owned_password_parent;
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
+#[cfg(target_os = "macos")]
+use ipc_auth::{
+    authenticate_macos_service_owned_password_requester,
+    macos_service_owned_password_requester_is_live,
+    macos_service_owned_password_requester_matches_post_request_last_owner,
+    MacosServiceOwnedPasswordRequester,
+};
 #[cfg(target_os = "windows")]
 pub(crate) use ipc_auth::authenticate_windows_cm_endpoint;
 #[cfg(windows)]
@@ -1310,23 +1317,20 @@ async fn authorize_macos_service_scoped_ipc_connection_for_task(
 }
 
 #[cfg(target_os = "macos")]
-async fn authorize_macos_service_scoped_password_stream_for_task(
-    stream: &Conn,
-    postfix: &str,
+async fn authenticate_macos_service_owned_password_requester_for_task(
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
     _authorization_slot: OwnedSemaphorePermit,
     deadline: tokio::time::Instant,
-) -> bool {
-    let authorization =
-        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(stream, postfix);
+) -> Option<MacosServiceOwnedPasswordRequester> {
     match run_bounded_macos_security_proof(deadline, "macos-password-ipc-proof", move || {
-        Ok(ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization))
+        authenticate_macos_service_owned_password_requester(authorization)
     })
     .await
     {
-        Ok(authorized) => authorized,
+        Ok(requester) => Some(requester),
         Err(err) => {
             log::error!("macOS service password IPC authorization task failed: {err}");
-            false
+            None
         }
     }
 }
@@ -3228,24 +3232,27 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                 #[cfg(target_os = "macos")]
                 {
                     let Some(authorization_permit) = try_acquire_macos_service_password_ipc_authorization_slot() else { continue; };
+                    let authorization =
+                        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
+                            &stream,
+                            password::SERVICE_PASSWORD_IPC_POSTFIX,
+                        );
                     transactions.spawn(async move {
                         let deadline = tokio::time::Instant::now()
                             + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                        let authorized = authorize_macos_service_scoped_password_stream_for_task(
-                            &stream,
-                            password::SERVICE_PASSWORD_IPC_POSTFIX,
+                        let Some(requester) = authenticate_macos_service_owned_password_requester_for_task(
+                            authorization,
                             authorization_permit,
                             deadline,
                         )
+                        .await else { return; };
+                        handle_sensitive_macos_service_ipc_transaction(
+                            stream,
+                            requester,
+                            permit,
+                            deadline,
+                        )
                         .await;
-                        if authorized {
-                            handle_sensitive_macos_service_ipc_transaction(
-                                stream,
-                                permit,
-                                deadline,
-                            )
-                            .await;
-                        }
                     });
                 }
             }
@@ -3436,6 +3443,7 @@ async fn handle_macos_service_credential_snapshot_transaction(
 #[cfg(target_os = "macos")]
 async fn handle_sensitive_macos_service_ipc_transaction(
     mut stream: Conn,
+    requester: MacosServiceOwnedPasswordRequester,
     _permit: OwnedSemaphorePermit,
     deadline: tokio::time::Instant,
 ) {
@@ -3457,26 +3465,32 @@ async fn handle_sensitive_macos_service_ipc_transaction(
     else {
         return;
     };
-    let (request, authority_allowed) = match run_bounded_macos_security_proof(
-        deadline,
-        "macos-password-capability-proof",
-        move || {
-            let authority_allowed =
-                crate::platform::ensure_service_owned_unattended_password_authorization_right()
-                    && macos_peer_is_authorized_for_service_owned_password_change(
-                        request.authorization(),
-                    );
-            Ok((request, authority_allowed))
-        },
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(err) => {
-            log::warn!("macOS password authorization capability proof failed: {err}");
-            return;
-        }
-    };
+    let (request, requester, capability_and_requester_are_live) =
+        match run_bounded_macos_security_proof(
+            deadline,
+            "macos-password-capability-proof",
+            move || {
+                let capability_and_requester_are_live =
+                    crate::platform::ensure_service_owned_unattended_password_authorization_right()
+                        && macos_peer_is_authorized_for_service_owned_password_change(
+                            request.authorization(),
+                        )
+                        && macos_service_owned_password_requester_is_live(&requester);
+                Ok((request, requester, capability_and_requester_are_live))
+            },
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(err) => {
+                log::warn!("macOS password authorization capability proof failed: {err}");
+                return;
+            }
+        };
+    let authority_allowed = capability_and_requester_are_live
+        && macos_service_owned_password_requester_matches_post_request_last_owner(
+            &requester, &stream,
+        );
     let value = match request.into_password() {
         Ok(value) => value,
         Err(err) => {

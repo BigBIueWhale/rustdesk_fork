@@ -1147,8 +1147,18 @@ def analyze(sources):
         mac_sensitive = item(ipc, "async fn handle_sensitive_macos_service_ipc_transaction")
         mac_password_mutation = item(ipc, "async fn handle_macos_service_owned_unattended_password_request")
         mac_service_auth = item(ipc, "async fn authorize_macos_service_scoped_ipc_connection_for_task")
-        mac_password_auth = item(ipc, "async fn authorize_macos_service_scoped_password_stream_for_task")
+        mac_password_auth = item(ipc, "async fn authenticate_macos_service_owned_password_requester_for_task")
         mac_credential_auth = item(ipc, "async fn authorize_macos_service_scoped_credential_stream_for_task")
+        mac_password_requester_auth = item(auth, "pub(crate) fn authenticate_macos_service_owned_password_requester")
+        mac_password_requester_live = item(auth, "pub(crate) fn macos_service_owned_password_requester_is_live")
+        mac_password_post_request_last_owner = item(auth, "pub(crate) fn macos_service_owned_password_requester_matches_post_request_last_owner")
+        mac_password_requester_role = item(auth, "fn macos_service_owned_password_client_argv_is_expected")
+        mac_password_requester_generation = item(auth, "fn macos_service_owned_password_requester_generation_is_live")
+        mac_socket_token_match = item(auth, "fn macos_audit_token_matches_socket_identity")
+        mac_socket_identity_constructor = item(auth, "fn macos_peer_process_identity_from_socket_components")
+        mac_direct_socket_identity = item(auth, "pub(crate) fn macos_peer_process_identity_from_stream")
+        mac_service_snapshot = item(auth, "pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream")
+        mac_socket_identity_regression = item(auth, "fn r_s11e262_macos_audit_token_must_match_socket_identity")
         bounded_proof = item(ipc, "async fn run_bounded_macos_security_proof")
         proof_finish = item(ipc, "impl MacosSecurityProofWorker")
         proof_drop = item(ipc, "impl Drop for MacosSecurityProofWorker")
@@ -1231,14 +1241,87 @@ def analyze(sources):
         password_accept = run_service[run_service.find("result = password_incoming.next()") : run_service.find("result = incoming.next()")]
         need("b2", "macos-peer-auth-not-before-secret-read", ordered(password_accept, [
             "try_acquire_service_password_ipc_transaction_slot()", "try_acquire_macos_service_password_ipc_authorization_slot()",
-            "transactions.spawn(async move", "let deadline = tokio::time::Instant::now()",
-            "authorize_macos_service_scoped_password_stream_for_task(", "if authorized",
+            "service_scoped_ipc_authorization_snapshot_from_stream(", "transactions.spawn(async move",
+            "let deadline = tokio::time::Instant::now()",
+            "authenticate_macos_service_owned_password_requester_for_task(",
             "handle_sensitive_macos_service_ipc_transaction(",
         ]) and "receive_request_unix" not in password_accept and ordered(mac_sensitive, [
             "SensitivePayloadKind::PasswordWithAuthorization", "try_acquire_macos_service_password_ipc_authorization_slot()",
-            "run_bounded_macos_security_proof(", "request.into_password()", "handle_macos_service_owned_unattended_password_request(",
+            "run_bounded_macos_security_proof(", "ensure_service_owned_unattended_password_authorization_right()",
+            "macos_peer_is_authorized_for_service_owned_password_change(",
+            "macos_service_owned_password_requester_is_live(&requester)",
+            "Ok((request, requester, capability_and_requester_are_live))",
+            "macos_service_owned_password_requester_matches_post_request_last_owner(",
+            "request.into_password()", "handle_macos_service_owned_unattended_password_request(",
             "send_status_unix",
-        ]))
+        ]) and "&& macos_service_owned_password_requester_is_live(&requester)" in mac_sensitive
+            and "let authority_allowed = capability_and_requester_are_live\n        && macos_service_owned_password_requester_matches_post_request_last_owner(" in mac_sensitive)
+        mac_password_role_body = re.sub(
+            r"\s+", " ",
+            mac_password_requester_role[mac_password_requester_role.find("{") + 1:-1],
+        ).strip()
+        mac_socket_token_match_body = re.sub(
+            r"\s+", " ",
+            mac_socket_token_match[mac_socket_token_match.find("{") + 1:-1],
+        ).strip()
+        mac_socket_identity_constructor_body = re.sub(
+            r"\s+", " ",
+            mac_socket_identity_constructor[mac_socket_identity_constructor.find("{") + 1:-1],
+        ).strip()
+        mac_password_post_request_last_owner_body = re.sub(
+            r"\s+", " ",
+            mac_password_post_request_last_owner[mac_password_post_request_last_owner.find("{") + 1:-1],
+        ).strip()
+        need("b2", "macos-password-requester-socket-audit-token-not-exact",
+             mac_socket_token_match_body == "pid != 0 && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_EUID_WORD) == uid && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_PID_WORD) == pid"
+             and mac_socket_identity_constructor_body == "if !macos_audit_token_matches_socket_identity(&audit_token, uid, pid) { return None; } Some(MacosPeerProcessIdentity { uid, pid, audit_token, })"
+             and ordered(mac_direct_socket_identity, [
+                 "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)",
+                 "peer_audit_token_from_fd(fd)",
+                 "macos_peer_process_identity_from_socket_components(uid, pid, audit_token)",
+             ])
+             and "(Some(uid), Some(pid), Some(audit_token)) =>" in mac_service_snapshot
+             and "macos_peer_process_identity_from_socket_components(uid, pid, audit_token)" in mac_service_snapshot
+             and ordered(mac_socket_identity_regression, [
+                 "macos_audit_token_matches_socket_identity(",
+                 "&token, uid, pid", "uid + 1", "pid + 1", "&token, uid, 0",
+             ]))
+        need("b2", "macos-password-requester-post-request-last-owner-not-exact",
+             mac_password_post_request_last_owner_body == 'let Ok(identity) = macos_peer_process_identity_from_stream( stream, "post-request macOS service-owned password requester last owner", ) else { return false; }; identity.uid == requester.identity.uid && identity.pid == requester.identity.pid && identity.audit_token == requester.identity.audit_token'
+             and ordered(mac_sensitive, [
+                 "password::receive_request_unix(",
+                 "macos_peer_is_authorized_for_service_owned_password_change(",
+                 "macos_service_owned_password_requester_is_live(&requester)",
+                 "Ok((request, requester, capability_and_requester_are_live))",
+                 "let authority_allowed = capability_and_requester_are_live",
+                 "&& macos_service_owned_password_requester_matches_post_request_last_owner(",
+                 "&requester, &stream",
+                 "request.into_password()",
+             ]))
+        need("b2", "macos-password-requester-role-or-generation-not-exact",
+             all(token in mac_password_requester_auth for token in [
+                 "authorization.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX",
+                 "if !authorization.uid_authorized", ".macos_peer_identity",
+                 "macos_service_owned_password_requester_identity_is_live(&identity)",
+                 "macos_process_cmdline_args(identity.pid)",
+                 "macos_service_owned_password_client_argv_is_expected(&argv)",
+                 "if !macos_service_owned_password_requester_generation_is_live(&identity)",
+                 "MacosServiceOwnedPasswordRequester { identity, argv }",
+             ]) and ordered(mac_password_requester_live, [
+                 "macos_service_owned_password_requester_identity_is_live(&requester.identity)",
+                 "macos_process_cmdline_args(requester.identity.pid)",
+                 "argv == requester.argv",
+                 "&& macos_service_owned_password_client_argv_is_expected(&argv)",
+                 "&& macos_service_owned_password_requester_generation_is_live(&requester.identity)",
+             ]) and "argv == requester.argv\n        && macos_service_owned_password_client_argv_is_expected(&argv)\n        && macos_service_owned_password_requester_generation_is_live(&requester.identity)" in mac_password_requester_live
+             and ordered(mac_password_requester_generation, [
+                 'macos_peer_code(identity, "installed app generation")',
+                 "macos_peer_code_satisfies_requirement(",
+                 'macos_peer_code_path(&code, "installed app generation")',
+                 "macos_executable_matches_expected_path(&path, &macos_installed_app_executable_path())",
+                 "&& is_allowed_service_peer_uid(identity.uid, active_uid_fresh())",
+             ])
+             and mac_password_role_body == 'process_argv_is_exact(args, &[]) || process_argv_is_exact(args, &["--password"]) || process_argv_is_exact(args, &["--password-stdin"])')
         credential_accept = run_service[
             run_service.find("result = credential_incoming.next()")
             : run_service.find("result = password_incoming.next()")
@@ -1258,9 +1341,11 @@ def analyze(sources):
                 "run_bounded_macos_security_proof(",
                 "authorize_service_scoped_ipc_authorization_snapshot(",
             ]))
-        need("b2", "macos-audit-snapshot-not-immediate", ordered(mac_password_auth, [
-            "service_scoped_ipc_authorization_snapshot_from_stream(stream, postfix)",
-            "run_bounded_macos_security_proof(deadline", "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
+        need("b2", "macos-audit-snapshot-not-immediate", ordered(password_accept, [
+            "service_scoped_ipc_authorization_snapshot_from_stream(",
+            "transactions.spawn(async move",
+        ]) and ordered(mac_password_auth, [
+            "run_bounded_macos_security_proof(deadline", "authenticate_macos_service_owned_password_requester(authorization)",
         ]) and ordered(mac_service_auth, [
             "service_scoped_ipc_authorization_snapshot(stream, postfix)",
             "run_bounded_macos_security_proof(deadline", "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
@@ -1310,7 +1395,8 @@ def analyze(sources):
         identity_pair = item(auth, "fn macos_service_ipc_allows_installed_app_and_privileged_helper")
         identity_match = item(auth, "fn ensure_peer_executable_matches_current_macos_identity")
         need("b2", "macos-peer-identity-not-audit-token-snapshot", all(token in scoped_snapshot for token in [
-            "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)", "peer_audit_token_from_fd(fd)", "MacosPeerProcessIdentity",
+            "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)", "peer_audit_token_from_fd(fd)",
+            "macos_peer_process_identity_from_socket_components(uid, pid, audit_token)",
         ]) and "ensure_peer_executable_matches_current_macos_identity(&identity" in scoped_verify and all(token in auth for token in [
             "libc::LOCAL_PEEREPID", "libc::LOCAL_PEERTOKEN", "attributes.set_audit_token(audit_token.as_concrete_TypeRef())",
             "MacosSecCode::copy_guest_with_attribues", "MacosCodeSigningFlags::STRICT_VALIDATE",
@@ -1443,12 +1529,17 @@ def analyze(sources):
             "RequestMacosServiceOwnedUnattendedPasswordChange", "BeginMacosServiceOwnedUnattendedPasswordChange",
             "MacosServiceOwnedUnattendedPasswordChallenge", "FinishMacosServiceOwnedUnattendedPasswordChange",
             "MACOS_SERVICE_OWNED_PASSWORD_PENDING", "MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING",
-            "MacosServiceOwnedPasswordRequest", "macos_store_service_owned_password_request",
+            "macos_store_service_owned_password_request",
             "macos_take_service_owned_password_request", "macos_schedule_service_owned_password_request_expiry",
             "MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL", "password_digest", "request_digest",
             "authorization: Vec::new()", "RootUnixPeer",
         ]
-        need("b2", "obsolete-json-password-protocol-present", not any(token in ipc + macos_rs for token in obsolete))
+        need(
+            "b2",
+            "obsolete-json-password-protocol-present",
+            not any(token in ipc + macos_rs for token in obsolete)
+            and not re.search(r"\bMacosServiceOwnedPasswordRequest\b", ipc + macos_rs),
+        )
     except ValueError as error:
         findings["b2"].append(f"structural-parse:{error}")
 
@@ -1567,7 +1658,19 @@ mutation("windows-share-rdp-response-wire-regression", "ipc", 'br#"{"t":"ShareRd
 mutation("service-data-residue", "ipc", "    ClickTime(i64),\n    Close,", "    ClickTime(i64),\n    Test,\n    Close,", "b1", "service-variant-remains-in-data-union")
 mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
 mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
-scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authorize_macos_service_scoped_password_stream_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
+scoped_mutation("macos-password-role", "auth", "fn macos_service_owned_password_client_argv_is_expected", '        || process_argv_is_exact(args, &["--password-stdin"])', '        || process_argv_is_exact(args, &["--password-stdin"])\n        || process_argv_is_exact(args, &["--server"])', "b2", "macos-password-requester-role-or-generation-not-exact")
+scoped_mutation("macos-password-token-euid", "auth", "fn macos_audit_token_matches_socket_identity", "&& macos_audit_token_word(token, MACOS_AUDIT_TOKEN_EUID_WORD) == uid", "&& true", "b2", "macos-password-requester-socket-audit-token-not-exact")
+scoped_mutation("macos-password-token-pid", "auth", "fn macos_audit_token_matches_socket_identity", "&& macos_audit_token_word(token, MACOS_AUDIT_TOKEN_PID_WORD) == pid", "&& true", "b2", "macos-password-requester-socket-audit-token-not-exact")
+scoped_mutation("macos-password-token-constructor", "auth", "fn macos_peer_process_identity_from_socket_components", "macos_audit_token_matches_socket_identity(&audit_token, uid, pid)", "true", "b2", "macos-password-requester-socket-audit-token-not-exact")
+scoped_mutation("macos-password-token-eager-constructor", "auth", "fn macos_peer_process_identity_from_socket_components", "if !macos_audit_token_matches_socket_identity(&audit_token, uid, pid) {\n        return None;\n    }\n    Some(MacosPeerProcessIdentity {\n        uid,\n        pid,\n        audit_token,\n    })", "macos_audit_token_matches_socket_identity(&audit_token, uid, pid).then_some(\n        MacosPeerProcessIdentity {\n            uid,\n            pid,\n            audit_token,\n        },\n    )", "b2", "macos-password-requester-socket-audit-token-not-exact")
+scoped_mutation("macos-password-token-service-snapshot", "auth", "pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream", "macos_peer_process_identity_from_socket_components(uid, pid, audit_token)", "Some(MacosPeerProcessIdentity { uid, pid, audit_token })", "b2", "macos-password-requester-socket-audit-token-not-exact")
+scoped_mutation("macos-password-generation-admission", "auth", "pub(crate) fn authenticate_macos_service_owned_password_requester", "if !macos_service_owned_password_requester_generation_is_live(&identity)", "if false && !macos_service_owned_password_requester_generation_is_live(&identity)", "b2", "macos-password-requester-role-or-generation-not-exact")
+scoped_mutation("macos-password-generation-final-uid", "auth", "fn macos_service_owned_password_requester_generation_is_live", "&& is_allowed_service_peer_uid(identity.uid, active_uid_fresh())", "&& true", "b2", "macos-password-requester-role-or-generation-not-exact")
+scoped_mutation("macos-password-generation-replay", "auth", "pub(crate) fn macos_service_owned_password_requester_is_live", "&& macos_service_owned_password_requester_generation_is_live(&requester.identity)", "&& true", "b2", "macos-password-requester-role-or-generation-not-exact")
+scoped_mutation("macos-password-final-requester-replay", "ipc", "async fn handle_sensitive_macos_service_ipc_transaction", "&& macos_service_owned_password_requester_is_live(&requester)", "|| macos_service_owned_password_requester_is_live(&requester)", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-post-request-last-owner-token", "auth", "pub(crate) fn macos_service_owned_password_requester_matches_post_request_last_owner", "&& identity.audit_token == requester.identity.audit_token", "&& true", "b2", "macos-password-requester-post-request-last-owner-not-exact")
+scoped_mutation("macos-password-post-request-last-owner-final-grant", "ipc", "async fn handle_sensitive_macos_service_ipc_transaction", "let authority_allowed = capability_and_requester_are_live\n        && macos_service_owned_password_requester_matches_post_request_last_owner(", "let authority_allowed = capability_and_requester_are_live\n        || macos_service_owned_password_requester_matches_post_request_last_owner(", "b2", "macos-password-requester-post-request-last-owner-not-exact")
+scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authenticate_macos_service_owned_password_requester_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
 scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")

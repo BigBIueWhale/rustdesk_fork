@@ -26786,7 +26786,7 @@ obligations and explicit user requests.
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3c8fa62140404106084d80f43a69426b7d9100b08061577f7e72b4dc4d289c85  requirements.html
+b17bd020762ea77e711388b6a9688380014137daf2dc7e6dd4ad4d46629d6e95  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -28338,3 +28338,223 @@ AST. It imported and executed no repository module, made no write, network,
 listener, service, device, or privilege operation, and was disclosed
 immediately; it is not counted as gate evidence and no further host-side Python
 execution is permitted for this slice.
+
+### R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role
+
+**Status:** SOURCE REPAIR AUTHORED / FOCUSED STRUCTURAL AND DELIBERATE-MUTATION
+GATE EXECUTED / SHARED, APPLE, INDEPENDENT, NATIVE, INSTALLED-SERVICE,
+PERFORMANCE, RELEASE-ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
+EVIDENCE OPEN.
+
+The continuing action-authority review found that the macOS LaunchDaemon's raw
+`_service_password` branch still used generic protected-service admission. Its
+accepted-socket UID, effective PID, and `LOCAL_PEERTOKEN` audit token could
+prove root or the current console user and a trusted signed RustDesk installed
+app or helper, but the password listener did not preserve an action-specific
+requester role or one exact requester generation across the user-paced
+Authorization Services round trip. In particular, it snapshotted generic
+identity inside the spawned proof owner and admitted any otherwise trusted
+RustDesk process role. The exact admin-only Authorization Services capability
+remained mandatory before the durable root write, so this was not an
+unauthenticated credential-write primitive. It was unnecessary credential
+proposal, privileged-prompt, and social-engineering surface for server,
+service, tray, connection-manager, helper, unknown, and extra-argument roles.
+
+The raw listener now snapshots its accepted socket identity before transferring
+the transaction to its task. The bounded, exactly joined macOS proof owner
+performs action-specific admission for the fixed endpoint: root or freshly
+resolved current-console UID, the exact signed installed-app dynamic code and
+trusted installed bundle/layout, and a complete argv equal to precisely no
+arguments, `--password`, or `--password-stdin`. The identity constructor decodes
+the audit token's effective UID and PID in native byte order and refuses to
+construct an identity unless they exactly equal the separately captured socket
+UID and effective PID; zero PID, delegated/mixed identity, and component
+mismatches fail closed. Complete argv is obtained by PID only between two
+audit-token dynamic-code generation proofs; Apple XNU binds the retained full
+token, including PID-version, to the process generation rather than a reusable
+bare PID. The accepted audit-token identity and complete argv are retained
+through dispatch. Every other role, missing evidence, changed generation,
+changed installed path/signature/layout, or changed UID authority fails closed
+before a request header or password body is read.
+
+Apple XNU retains both numeric `last_pid` and unique `last_upid` on a socket,
+but `LOCAL_PEERTOKEN` materializes a token by `proc_find(last_pid)` without
+checking `last_upid`. The initial snapshot therefore proves internally
+consistent evidence for one live generation; it is not by itself a complete
+PID-reuse or payload-writer proof. After the bounded raw request read and
+Authorization Services check, the final grant is one conjunction: the exact
+right remains correctly defined, the external capability authorizes that
+right, and the retained requester is still root or the fresh current-console
+user, the trusted installed-app audit-token generation, byte-for-byte equal
+complete argv, one finite permitted role, and the same live generation after
+that fresh argv capture. The receiver then re-snapshots the post-request
+stream's mutable last-owner evidence and requires its UID, effective PID, and
+full audit token to exactly equal the retained requester before password
+ownership is transferred to the existing mutation handler. This detects an
+uninspectable peer, visible numeric-PID reuse or component mismatch, and a
+handoff whose current last accessor differs. It is not exclusive frame-writer
+proof: XNU updates `last_pid`/`last_upid` for ordinary send, receive, poll, and
+kqueue activity, so the retained process can become the last accessor again
+after another process wrote. Generic service authorization, capability success
+alone, stale argv, a bare PID, pre-request socket evidence alone, last-owner
+evidence alone, or a disjunction cannot authorize persistence. The
+raw wire, right definition,
+prompt, replay ledger, root sink, runtime PRS replication, listener/task/thread
+budgets, deadlines, retries, dependencies, and privilege model are unchanged.
+
+The desktop password verifier now lexes and orders the retained audit-token and
+argv record, exact three-role expression, full installed-app proof, audit-token
+generation bracketing, pre-task socket snapshot, bounded action proof, retained
+dispatch, post-capability replay conjunction, and finite-role Rust regression.
+Its self-test rejects removal of each identity component and legitimate role,
+broad server-role admission, endpoint/UID/socket/full-identity/role/generation
+bypasses, fabricated or truncated argv, stale/disjunctive replay, delayed
+socket snapshot, generic authorization fallback, lost final requester proof,
+and regression removal. A deeper XNU review rejected the first candidate's
+tautological post-construction UID comparison: `LOCAL_PEEREPID` and
+`LOCAL_PEERTOKEN` are separate socket-option reads, and the token itself carries
+the effective UID, PID, and PID-version. The replacement focused, shared, Apple,
+and separately implemented workspace proofs therefore bind exact token/socket
+EUID and PID equality, fail-closed construction, both construction call sites,
+and matching/mismatched pure regressions in addition to the action-specific
+role/generation model. A subsequent read-only review also rejected the
+replacement constructor's use of `bool::then_some`: because its value argument
+is eager, it instantiated the identity record even on the rejected branch,
+although that record could not escape or grant authority. The final constructor
+uses an explicit mismatch branch that returns `None` before the identity struct
+expression, and each source gate now rejects the eager form itself. Both
+interrupted pre-final complete-catalog attempts are non-authoritative and
+uncounted. R-S11hy and Appendix C #384 make that action
+boundary normative; the updated requirements digest and a complete independent
+mutation catalog from mutation one remain pending until the final source bytes
+are fixed.
+
+The first complete-catalog attempt on the explicit-rejection constructor also
+failed closed and is uncounted. The focused verifier had reused the local name
+`expected_password_role` in its separate Linux and macOS semantic functions;
+the independent catalog's source mutation correctly required every textual
+target to be effective, while changing either definition alone left the other
+generic text occurrence satisfying the independent source-binding check. Both
+mutated targets were therefore accepted and the catalog exited nonzero rather
+than silently counting an unreachable fixture. The focused verifier and
+independent bindings now use distinct Linux/macOS expectation names, and the
+catalog carries a separate deliberate mutation for each platform.
+
+A fourth complete-catalog attempt was deliberately stopped after a later
+read-only primary-source review found the missing post-request last-owner replay
+above. It had produced no verdict and exited 137 only because the named,
+task-owned container was stopped after 15 minutes; it is non-authoritative and
+uncounted. The source and every verifier were changed afterward, so no result
+from that superseded run applies to the final bytes.
+
+A fifth complete-catalog attempt was likewise deliberately stopped after a
+deeper read-only XNU review disproved the candidate contract's exclusive
+payload-writer claim. The named task-owned container ran for 14 minutes 20
+seconds without output, restart, or OOM, then exited 137 solely because it was
+stopped; it produced no verdict and is non-authoritative and uncounted. The
+function, requirements, ledger, and every source gate were changed afterward
+to name and enforce last-owner consistency without claiming transcript-wide
+writer provenance.
+
+The sixth complete source-mutation catalog failed closed on an independent-
+validator defect and is uncounted. The exact frozen non-root/network-disabled
+container `5912c77c17d267aa27a0ab88d4fd1f426fb1aab3f804712f4bc0a7d955f23faf`
+ran from `2026-08-30T07:36:13.514243051Z` through
+`2026-08-30T07:56:54.345276038Z` (20 minutes 40.831 seconds), exited 1 without
+OOM or restart, and correctly reported that the fixed-endpoint bypass mutation
+had been accepted. The production condition was present, but the independent
+validator required only the interior
+`authorization.postfix != SERVICE_PASSWORD_IPC_POSTFIX` expression; prefixing
+that condition with `false &&` therefore left the required substring intact.
+The validator now requires the exact leading `if` condition, so that deliberate
+bypass must remove its only effective target. The stopped container was
+retained until its identity, timestamps, exit state, diagnostic, and unchanged
+input hashes were captured, then removed.
+
+The seventh complete source-mutation catalog also failed closed on a later
+independent-validator prefix blind spot and is uncounted. The exact frozen
+non-root/network-disabled container
+`626d6762a36d4b50d9cef3d5d679c83617001ffc8186157b84c13fdad6e73465`
+ran from `2026-08-30T08:02:06.596898411Z` through
+`2026-08-30T08:23:18.584040401Z` (21 minutes 11.987 seconds), exited 1 without
+OOM or restart, and reported that renaming the focused macOS semantic verifier
+had been accepted. R7 had advanced beyond R6's repaired mutation. Its next
+independent binding required only the
+`def verify_macos_identity_and_authority` name prefix, which remained present
+when the deliberate mutation appended `_disabled`. The binding now requires
+the complete typed function signature. The stopped container was retained
+until its identity, timestamps, exit state, diagnostic, and unchanged input
+hashes were captured, then removed.
+
+Before starting another complete catalog, a transient in-memory filter selected
+the exact contiguous 68-mutation R-S11hy slice, from retained requester identity
+through independent-validator dispatch, while leaving the repository read-only.
+Its first run found that the Apple structural analyzer intentionally repeated
+the generation/role verdict in five sites while the independent binding required
+only one surviving occurrence. The independent validator now requires the exact
+six socket-token, five generation/role, and three post-request last-owner verdict
+occurrences. A first rerun rejected every changed occurrence but correctly
+refused to count those rejections because the new exact-count diagnostics did
+not use the mutation catalog's expected verdict labels; those labels were then
+made identical. The final confined 68-case run exited 0 with the sole terminal
+verdict `verify-verifier-workspace: ok`.
+
+The eighth complete source-mutation catalog is the authoritative final run for
+these bytes. The exact frozen non-root/network-disabled container
+`6d7491e1d7f8ddb5161376d055c73ef0b6f53b7fb24a5324b6bd96c90808d59c`
+ran from `2026-08-30T08:36:18.409783228Z` through
+`2026-08-30T11:49:31.877370024Z` (3 hours 13 minutes 13.468 seconds), evaluated
+all 5,343 independent source mutations, exited 0 without OOM, restart, or
+runtime error, and emitted the sole terminal verdict
+`verify-verifier-workspace: ok`. Hashes recaptured after exit exactly matched
+the frozen pre-run inputs:
+
+```text
+cc917963d9065928130f6f7024f03543c08f5c4bf9eaa0c74eb4fba736cded6b  HARDENING_STATUS.md
+b54df110cab407375ba8fabfc0982f1c525b9411fb76721b73ab36281945ef6e  docs/NATIVE-CODEC-WATCH.md
+requirements.html: b17bd020762ea77e711388b6a9688380014137daf2dc7e6dd4ad4d46629d6e95
+e6e2bd64c2ab75ea18ba99b8fa5b028db753b8308398e247a504e27ade9e1edb  scripts/apple-conform-check.sh
+cb5e7ff339e1c3ea7d22cd48c932b4b3289fc8656a105eb3b563a1042a382654  scripts/verify-linux-service-password-ipc.py
+21fadc349739aecec9335dd45024a468b1eb05264cac3fe977f7009a7ce79c0d  scripts/verify-verifier-workspace.py
+7c70ab7dacb670a261a693b3a6e1f0040bb2d4e284dc5d38966facf66e41a891  scripts/verify.sh
+870cf5b6e83683cf055f8e3971134c25f2d51b40d396a603dadf1bc823aefa40  src/ipc.rs
+344a3cdd41fd081e8b607c03efa6a2c3381e823ecaed9f61b2beb61794a5891b  src/ipc/auth.rs
+```
+
+The stopped container was retained until its identity, confinement, timestamps,
+exit state, sole log line, and unchanged hashes were captured, then removed.
+
+Primary design evidence is Apple's XNU local-socket implementation
+(`bsd/kern/uipc_usrreq.c`), which obtains `LOCAL_PEEREPID` and
+`LOCAL_PEERTOKEN` separately and materializes the latter from the peer socket's
+numeric `last_pid`; XNU `bsd/kern/uipc_socket.c` and `bsd/sys/socketvar.h`,
+which show that the socket separately retains unique `last_upid` but the token
+option does not consume it and that send, receive, poll, and kqueue operations
+can replace the mutable last owner; XNU `bsd/kern/kern_proc.c`, which validates the token's PID-version
+when resolving a process; Apple's `SecCodeCopyGuestWithAttributes` audit-token
+guest interface; and the Apple-origin OpenBSM `libbsm/bsm_wrappers.c` ABI, which
+maps effective UID and PID to token words 1 and 5. The reviewed sources are:
+https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/uipc_usrreq.c,
+https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/uipc_socket.c,
+https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/socketvar.h,
+https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c,
+https://developer.apple.com/documentation/security/seccodecopyguestwithattributes%28_%3A_%3A_%3A_%3A%29,
+and https://github.com/openbsm/openbsm/blob/master/libbsm/bsm_wrappers.c.
+
+This remains source work, not a runtime or release claim. Exact-current signed
+macOS compilation and unit execution, audit-token/PID-reuse/argv and
+descriptor-sharing/last-owner-restoration races,
+Authorization Services allow/deny behavior, installed LaunchDaemon behavior
+with all three permitted clients and all refused roles, sustained
+authorization/retry/latency/CPU/memory/resource testing, clean committed cold
+R-B2/R-B10 artifact equality, independent reproduction, and R-V3 external
+review remain open. Nothing here proves that a deployed artifact contained or
+exercised the old defect, and it does not establish causation for the reported
+Android persistent-service or Windows display-only delay symptoms.
+
+This slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change host firewall/network/listener
+state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
+unrelated container/image; or request/acquire root. Verification uses only the
+approved immutable, unprivileged, network-disabled, read-only-bound verifier
+image and does not run repository code on the host.

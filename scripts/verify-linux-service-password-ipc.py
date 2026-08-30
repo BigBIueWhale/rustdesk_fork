@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Static structural verification for Linux sensitive-password IPC.
+"""Static structural verification for desktop sensitive-password IPC.
 
 This is deliberately narrower than a Rust parser and stronger than text grep.  It lexes executable
 Rust tokens (discarding comments and literal contents), extracts named item/function bodies, and
 proves the security-relevant call graph and ordering implemented across the password codec, IPC
-listeners, Linux peer authentication, mutation coordinators, and desktop callers.
+listeners, Linux/macOS peer authentication, mutation coordinators, and desktop callers.
 """
 
 import argparse
@@ -1090,12 +1090,12 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         )
 
     password_role = auth.function("linux_service_owned_password_client_argv_is_expected")
-    expected_password_role = [
+    expected_linux_password_role = [
         "process_argv_is_exact", "(", "args", ",", "&", "[", "]", ")",
         "||", "process_argv_is_exact", "(", "args", ",", "&", "[", '"--password"', "]", ")",
         "||", "process_argv_is_exact", "(", "args", ",", "&", "[", '"--password-stdin"', "]", ")",
     ]
-    if password_role.values != expected_password_role:
+    if password_role.values != expected_linux_password_role:
         raise VerificationError(
             f"{password_role.label}: requester roles must be exactly interactive UI, --password, or --password-stdin"
         )
@@ -1338,6 +1338,262 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         raise VerificationError(
             f"{authority.label}: successful polkit and final live identity must jointly gate authority"
         )
+
+
+def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
+    auth = rust["src/ipc/auth.rs"]
+    ipc = rust["src/ipc.rs"]
+
+    requester_record = auth.item("struct", "MacosServiceOwnedPasswordRequester")
+    requester_record.require(
+        ("identity", ":", "MacosPeerProcessIdentity"),
+        "retained macOS audit-token process generation",
+        unique=True,
+    )
+    requester_record.require(
+        ("argv", ":", "Vec", "<", "String", ">"),
+        "retained complete macOS requester argv",
+        unique=True,
+    )
+
+    audit_token_match = auth.function("macos_audit_token_matches_socket_identity")
+    expected_audit_token_match = [
+        "pid", "!=", "0",
+        "&&", "macos_audit_token_word", "(", "token", ",", "MACOS_AUDIT_TOKEN_EUID_WORD", ")", "==", "uid",
+        "&&", "macos_audit_token_word", "(", "token", ",", "MACOS_AUDIT_TOKEN_PID_WORD", ")", "==", "pid",
+    ]
+    if audit_token_match.values != expected_audit_token_match:
+        raise VerificationError(
+            f"{audit_token_match.label}: audit-token EUID and PID must exactly match the socket identity"
+        )
+
+    identity_constructor = auth.function(
+        "macos_peer_process_identity_from_socket_components"
+    )
+    expected_identity_constructor = [
+        "if", "!", "macos_audit_token_matches_socket_identity", "(", "&", "audit_token", ",", "uid", ",", "pid", ")", "{",
+        "return", "None", ";", "}",
+        "Some", "(", "MacosPeerProcessIdentity", "{", "uid", ",", "pid", ",", "audit_token", ",", "}", ")",
+    ]
+    if identity_constructor.values != expected_identity_constructor:
+        raise VerificationError(
+            f"{identity_constructor.label}: identity must be constructed only after explicit audit-token/socket rejection"
+        )
+
+    stream_identity = auth.function("macos_peer_process_identity_from_stream")
+    stream_identity.require_order(
+        (
+            (("peer_uid_from_fd", "(", "fd", ")"), "socket UID"),
+            (("peer_pid_from_fd", "(", "fd", ")"), "socket effective PID"),
+            (("peer_audit_token_from_fd", "(", "fd", ")"), "socket audit token"),
+            (("macos_peer_process_identity_from_socket_components", "(", "uid", ",", "pid", ",", "audit_token", ")"), "consistent identity constructor"),
+        ),
+        unique=True,
+    )
+
+    service_snapshot = auth.function(
+        "service_scoped_ipc_authorization_snapshot_from_stream"
+    )
+    service_snapshot.require_order(
+        (
+            (("Some", "(", "uid", ")", ",", "Some", "(", "pid", ")", ",", "Some", "(", "audit_token", ")", ")", "=>", "{"), "complete socket components"),
+            (("macos_peer_process_identity_from_socket_components", "(", "uid", ",", "pid", ",", "audit_token", ")"), "consistent identity constructor"),
+        ),
+        unique=True,
+    )
+
+    password_role = auth.function("macos_service_owned_password_client_argv_is_expected")
+    expected_macos_password_role = [
+        "process_argv_is_exact", "(", "args", ",", "&", "[", "]", ")",
+        "||", "process_argv_is_exact", "(", "args", ",", "&", "[", '"--password"', "]", ")",
+        "||", "process_argv_is_exact", "(", "args", ",", "&", "[", '"--password-stdin"', "]", ")",
+    ]
+    if password_role.values != expected_macos_password_role:
+        raise VerificationError(
+            f"{password_role.label}: requester roles must be exactly interactive UI, --password, or --password-stdin"
+        )
+
+    generation_live = auth.function(
+        "macos_service_owned_password_requester_generation_is_live"
+    )
+    generation_live.require_order(
+        (
+            (("macos_peer_code", "(", "identity", ",", '"installed app generation"', ")"), "audit-token dynamic-code lookup"),
+            (("macos_peer_code_satisfies_requirement", "("), "live installed-app code requirement"),
+            (("macos_peer_code_path", "(", "&", "code", ",", '"installed app generation"', ")"), "live code path"),
+            (("macos_executable_matches_expected_path", "(", "&", "path", ",", "&", "macos_installed_app_executable_path", "(", ")", ")"), "exact installed executable"),
+            (("is_allowed_service_peer_uid", "(", "identity", ".", "uid", ",", "active_uid_fresh", "(", ")", ")"), "post-capture fresh root-or-console UID"),
+        )
+    )
+
+    identity_live = auth.function("macos_service_owned_password_requester_identity_is_live")
+    identity_live.require_order(
+        (
+            (("is_allowed_service_peer_uid", "(", "identity", ".", "uid", ",", "active_uid_fresh", "(", ")", ")"), "root-or-fresh-console UID"),
+            (("&&", "macos_peer_is_trusted_installed_app", "(", "identity", ")"), "audit-token and installed-layout proof"),
+        ),
+        unique=True,
+    )
+
+    requester_auth = auth.function("authenticate_macos_service_owned_password_requester")
+    requester_auth.require_order(
+        (
+            (("authorization", ".", "postfix", "!=", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "fixed raw password endpoint"),
+            (("if", "!", "authorization", ".", "uid_authorized"), "snapshot UID authority"),
+            (("macos_peer_identity", ".", "ok_or_else"), "accepted-socket audit-token identity"),
+            (("macos_service_owned_password_requester_identity_is_live", "(", "&", "identity", ")"), "fresh complete installed-app proof"),
+            (("macos_process_cmdline_args", "(", "identity", ".", "pid", ")"), "complete requester argv capture"),
+            (("macos_service_owned_password_client_argv_is_expected", "(", "&", "argv", ")"), "finite exact requester role"),
+            (("macos_service_owned_password_requester_generation_is_live", "(", "&", "identity", ")"), "post-argv audit-token generation and fresh-UID finality"),
+            (("Ok", "(", "MacosServiceOwnedPasswordRequester", "{", "identity", ",", "argv", "}", ")"), "retained exact requester"),
+        )
+    )
+
+    requester_live = auth.function("macos_service_owned_password_requester_is_live")
+    requester_live.require_order(
+        (
+            (("macos_service_owned_password_requester_identity_is_live", "(", "&", "requester", ".", "identity", ")"), "fresh complete installed-app replay"),
+            (("macos_process_cmdline_args", "(", "requester", ".", "identity", ".", "pid", ")"), "fresh complete argv"),
+            (("argv", "==", "requester", ".", "argv"), "retained/fresh argv equality"),
+            (("macos_service_owned_password_client_argv_is_expected", "(", "&", "argv", ")"), "finite role replay"),
+            (("macos_service_owned_password_requester_generation_is_live", "(", "&", "requester", ".", "identity", ")"), "post-argv audit-token and fresh-UID finality"),
+        )
+    )
+    requester_live.require(
+        (
+            "argv", "==", "requester", ".", "argv",
+            "&&", "macos_service_owned_password_client_argv_is_expected", "(", "&", "argv", ")",
+            "&&", "macos_service_owned_password_requester_generation_is_live", "(", "&", "requester", ".", "identity", ")",
+        ),
+        "conjunctive retained-argv, finite-role, and audit-token-generation replay",
+        unique=True,
+    )
+
+    post_request_last_owner = auth.function(
+        "macos_service_owned_password_requester_matches_post_request_last_owner"
+    )
+    expected_post_request_last_owner = [
+        "let", "Ok", "(", "identity", ")", "=", "macos_peer_process_identity_from_stream", "(",
+        "stream", ",", '"post-request macOS service-owned password requester last owner"', ",", ")",
+        "else", "{", "return", "false", ";", "}", ";",
+        "identity", ".", "uid", "==", "requester", ".", "identity", ".", "uid",
+        "&&", "identity", ".", "pid", "==", "requester", ".", "identity", ".", "pid",
+        "&&", "identity", ".", "audit_token", "==", "requester", ".", "identity", ".", "audit_token",
+    ]
+    if post_request_last_owner.values != expected_post_request_last_owner:
+        raise VerificationError(
+            f"{post_request_last_owner.label}: post-request socket last owner must exactly replay UID, PID, and full audit token"
+        )
+
+    proof_task = ipc.function("authenticate_macos_service_owned_password_requester_for_task")
+    proof_task.require_order(
+        (
+            (("run_bounded_macos_security_proof", "(", "deadline", ",", '"macos-password-ipc-proof"'), "exactly owned bounded proof"),
+            (("authenticate_macos_service_owned_password_requester", "(", "authorization", ")"), "action-specific admission"),
+            (("Ok", "(", "requester", ")", "=>", "Some", "(", "requester", ")"), "retained requester result"),
+            (("Err", "(", "err", ")"), "fail-closed proof error"),
+            (("None",), "rejected result"),
+        )
+    )
+
+    run_service = ipc.function("run_service_ipc")
+    password_branch_start = run_service.require(
+        ("result", "=", "password_incoming", ".", "next", "(", ")"),
+        "raw service-password branch",
+        unique=True,
+    )
+    ordinary_branch_start = run_service.require(
+        ("result", "=", "incoming", ".", "next", "(", ")"),
+        "ordinary service branch",
+        unique=True,
+    )
+    password_branch = Region(
+        run_service.rust,
+        password_branch_start,
+        ordinary_branch_start,
+        "macOS raw service-password admission branch",
+    )
+    password_branch.require_order(
+        (
+            (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "fixed transaction permit"),
+            (("try_acquire_macos_service_password_ipc_authorization_slot", "(", ")"), "fixed proof permit"),
+            (("service_scoped_ipc_authorization_snapshot_from_stream", "(", "&", "stream", ",", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "pre-task socket identity snapshot"),
+            (("transactions", ".", "spawn", "(", "async", "move"), "owned transaction"),
+            (("authenticate_macos_service_owned_password_requester_for_task", "("), "action-specific proof"),
+            (("handle_sensitive_macos_service_ipc_transaction", "(", "stream", ",", "requester", ",", "permit", ",", "deadline"), "retained requester dispatch"),
+        )
+    )
+    password_branch.forbid(
+        ("authorize_macos_service_scoped_password_stream_for_task", "("),
+        "generic macOS password admission fallback",
+    )
+    password_branch.forbid(("receive_request_unix", "("), "secret read before action proof")
+
+    sensitive = ipc.function("handle_sensitive_macos_service_ipc_transaction")
+    sensitive.require_order(
+        (
+            (("password", "::", "receive_request_unix", "("), "bounded secret request read"),
+            (("SensitivePayloadKind", "::", "PasswordWithAuthorization"), "password-plus-capability wire"),
+            (("run_bounded_macos_security_proof", "("), "owned capability and finality proof"),
+            (("ensure_service_owned_unattended_password_authorization_right", "(", ")"), "exact right definition"),
+            (("macos_peer_is_authorized_for_service_owned_password_change", "(", "request", ".", "authorization", "(", ")"), "Authorization Services capability"),
+            (("macos_service_owned_password_requester_is_live", "(", "&", "requester", ")"), "post-authorization exact requester replay"),
+            (("Ok", "(", "(", "request", ",", "requester", ",", "capability_and_requester_are_live", ")", ")"), "retained capability/requester result"),
+            (("macos_service_owned_password_requester_matches_post_request_last_owner", "(", "&", "requester", ",", "&", "stream"), "post-request socket last-owner replay"),
+            (("request", ".", "into_password", "(", ")"), "secret ownership transfer"),
+            (("handle_macos_service_owned_unattended_password_request", "("), "privileged mutation admission"),
+        )
+    )
+    sensitive.require(
+        (
+            "ensure_service_owned_unattended_password_authorization_right", "(", ")",
+            "&&", "macos_peer_is_authorized_for_service_owned_password_change", "(",
+            "request", ".", "authorization", "(", ")", OPTIONAL_COMMA, ")",
+            "&&", "macos_service_owned_password_requester_is_live", "(", "&", "requester", ")",
+        ),
+        "conjunctive right definition, Authorization Services capability, and exact requester replay",
+        unique=True,
+    )
+    sensitive.require(
+        (
+            "capability_and_requester_are_live",
+            "&&", "macos_service_owned_password_requester_matches_post_request_last_owner", "(",
+            "&", "requester", ",", "&", "stream", OPTIONAL_COMMA, ")",
+        ),
+        "conjunctive post-capability socket last-owner replay",
+        unique=True,
+    )
+
+    tests = auth.item("mod", "tests")
+    regression = auth.function(
+        "r_s11e262_macos_service_owned_password_client_roles_are_finite",
+        parent=tests.start - 1,
+    )
+    for admitted in ('"--password"', '"--password-stdin"'):
+        regression.require((admitted,), f"admitted macOS {admitted} role")
+    for rejected in (
+        '"--server"',
+        "SERVICE_OWNED_SERVER_ARG",
+        '"--service"',
+        '"--tray"',
+        '"--cm"',
+        '"extra"',
+        '"--unexpected"',
+    ):
+        regression.require((rejected,), f"rejected macOS {rejected} role")
+
+    identity_regression = auth.function(
+        "r_s11e262_macos_audit_token_must_match_socket_identity",
+        parent=tests.start - 1,
+    )
+    identity_regression.require_order(
+        (
+            (("macos_audit_token_matches_socket_identity", "(", "&", "token", ",", "uid", ",", "pid", ")"), "matching identity admitted"),
+            (("uid", "+", "1"), "mismatched EUID rejected"),
+            (("pid", "+", "1"), "mismatched PID rejected"),
+            (("&", "token", ",", "uid", ",", "0"), "zero PID rejected"),
+        )
+    )
 
 
 def verify_mutation_coordinators(rust: Mapping[str, RustSource]) -> None:
@@ -2252,6 +2508,7 @@ def validate_sources(sources: Mapping[str, str]) -> None:
     verify_endpoint_ownership(rust)
     verify_raw_endpoint_separation(rust)
     verify_linux_identity_and_authority(rust)
+    verify_macos_identity_and_authority(rust)
     verify_mutation_coordinators(rust)
     verify_flow_finality_and_shutdown(rust)
     verify_linux_credential_replica_bootstrap(rust)
@@ -2280,8 +2537,9 @@ def _mutate_once(sources: Mapping[str, str], mutation: Mutation) -> dict[str, st
 
 
 def expect_rejection(sources: Mapping[str, str], mutation: Mutation) -> None:
+    mutated = _mutate_once(sources, mutation)
     try:
-        validate_sources(_mutate_once(sources, mutation))
+        validate_sources(mutated)
     except VerificationError:
         return
     raise VerificationError(f"self-test accepted security regression: {mutation.label}")
@@ -2299,8 +2557,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "credential replica listener loses its exact accept lane",
             "src/ipc.rs",
-            "result = credential_incoming.next() => {",
-            "result = incoming.next() => { /* credential_incoming */",
+            "result = credential_incoming.next() => {\n                #[cfg(target_os = \"linux\")]",
+            "result = incoming.next() => { /* credential_incoming */\n                #[cfg(target_os = \"linux\")]",
         ),
         Mutation(
             "service authorization snapshot loses the Linux socket peer PID",
@@ -2359,26 +2617,26 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "Linux password requester drops the interactive-UI role",
             "src/ipc/auth.rs",
-            "    process_argv_is_exact(args, &[])",
-            "    false /* process_argv_is_exact(args, &[]) */",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    false /* process_argv_is_exact(args, &[]) */\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
         ),
         Mutation(
             "Linux password requester drops the terminal password role",
             "src/ipc/auth.rs",
-            "        || process_argv_is_exact(args, &[\"--password\"])",
-            "        || false /* process_argv_is_exact(args, &[\"--password\"]) */",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || false /* process_argv_is_exact(args, &[\"--password\"]) */\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
         ),
         Mutation(
             "Linux password requester drops the stdin password role",
             "src/ipc/auth.rs",
-            "        || process_argv_is_exact(args, &[\"--password-stdin\"])",
-            "        || false /* process_argv_is_exact(args, &[\"--password-stdin\"]) */",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || false /* process_argv_is_exact(args, &[\"--password-stdin\"]) */\n}",
         ),
         Mutation(
             "Linux password requester admits the server role",
             "src/ipc/auth.rs",
-            "        || process_argv_is_exact(args, &[\"--password-stdin\"])",
-            "        || process_argv_is_exact(args, &[\"--password-stdin\"])\n        || process_argv_is_exact(args, &[\"--server\"])",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn linux_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n        || process_argv_is_exact(args, &[\"--server\"])\n}",
         ),
         Mutation(
             "Linux password requester admission skips its exact role",
@@ -2403,6 +2661,223 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc/auth.rs",
             "fn r_s11e261_linux_service_owned_password_client_roles_are_finite()",
             "fn linux_service_owned_password_client_roles_are_unchecked()",
+        ),
+        Mutation(
+            "macOS password requester drops its accepted-socket audit-token identity",
+            "src/ipc/auth.rs",
+            "pub(crate) struct MacosServiceOwnedPasswordRequester {\n    identity: MacosPeerProcessIdentity,\n    argv: Vec<String>,\n}",
+            "pub(crate) struct MacosServiceOwnedPasswordRequester {\n    argv: Vec<String>,\n}",
+        ),
+        Mutation(
+            "macOS password requester drops its retained complete argv",
+            "src/ipc/auth.rs",
+            "pub(crate) struct MacosServiceOwnedPasswordRequester {\n    identity: MacosPeerProcessIdentity,\n    argv: Vec<String>,\n}",
+            "pub(crate) struct MacosServiceOwnedPasswordRequester {\n    identity: MacosPeerProcessIdentity,\n}",
+        ),
+        Mutation(
+            "macOS password requester drops the interactive-UI role",
+            "src/ipc/auth.rs",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    false\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+        ),
+        Mutation(
+            "macOS password requester drops the terminal password role",
+            "src/ipc/auth.rs",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || false\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+        ),
+        Mutation(
+            "macOS password requester drops the stdin password role",
+            "src/ipc/auth.rs",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || false\n}",
+        ),
+        Mutation(
+            "macOS password requester admits the server role",
+            "src/ipc/auth.rs",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n}",
+            "fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {\n    process_argv_is_exact(args, &[])\n        || process_argv_is_exact(args, &[\"--password\"])\n        || process_argv_is_exact(args, &[\"--password-stdin\"])\n        || process_argv_is_exact(args, &[\"--server\"])\n}",
+        ),
+        Mutation(
+            "macOS password requester bypasses its fixed raw endpoint",
+            "src/ipc/auth.rs",
+            "if authorization.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX {",
+            "if false && authorization.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX {",
+        ),
+        Mutation(
+            "macOS password requester bypasses snapshot UID authority",
+            "src/ipc/auth.rs",
+            "if !authorization.uid_authorized {\n        bail!(\"macOS service-owned password requester is not root or the active console user\");",
+            "if false && !authorization.uid_authorized {\n        bail!(\"macOS service-owned password requester is not root or the active console user\");",
+        ),
+        Mutation(
+            "macOS socket audit-token consistency admits a zero PID",
+            "src/ipc/auth.rs",
+            "    pid != 0\n        && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_EUID_WORD) == uid",
+            "    pid == 0\n        && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_EUID_WORD) == uid",
+        ),
+        Mutation(
+            "macOS socket identity stops matching the audit-token effective UID",
+            "src/ipc/auth.rs",
+            "        && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_EUID_WORD) == uid",
+            "        && true /* audit-token effective UID */",
+        ),
+        Mutation(
+            "macOS socket identity stops matching the audit-token PID",
+            "src/ipc/auth.rs",
+            "        && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_PID_WORD) == pid",
+            "        && true /* audit-token PID */",
+        ),
+        Mutation(
+            "macOS socket identity constructor bypasses audit-token consistency",
+            "src/ipc/auth.rs",
+            "    if !macos_audit_token_matches_socket_identity(&audit_token, uid, pid) {",
+            "    if !true { /* macos_audit_token_matches_socket_identity */",
+        ),
+        Mutation(
+            "macOS socket identity constructor eagerly constructs a rejected identity",
+            "src/ipc/auth.rs",
+            "    if !macos_audit_token_matches_socket_identity(&audit_token, uid, pid) {\n"
+            "        return None;\n"
+            "    }\n"
+            "    Some(MacosPeerProcessIdentity {\n"
+            "        uid,\n"
+            "        pid,\n"
+            "        audit_token,\n"
+            "    })",
+            "    macos_audit_token_matches_socket_identity(&audit_token, uid, pid).then_some(\n"
+            "        MacosPeerProcessIdentity {\n"
+            "            uid,\n"
+            "            pid,\n"
+            "            audit_token,\n"
+            "        },\n"
+            "    )",
+        ),
+        Mutation(
+            "macOS direct stream identity bypasses the consistent constructor",
+            "src/ipc/auth.rs",
+            "    macos_peer_process_identity_from_socket_components(uid, pid, audit_token).ok_or_else(|| {",
+            "    Some(MacosPeerProcessIdentity { uid, pid, audit_token }).ok_or_else(|| { /* consistent constructor */",
+        ),
+        Mutation(
+            "macOS service snapshot bypasses the consistent identity constructor",
+            "src/ipc/auth.rs",
+            "        (Some(uid), Some(pid), Some(audit_token)) => {\n            macos_peer_process_identity_from_socket_components(uid, pid, audit_token)\n        }",
+            "        (Some(uid), Some(pid), Some(audit_token)) => {\n            Some(MacosPeerProcessIdentity { uid, pid, audit_token })\n        }",
+        ),
+        Mutation(
+            "macOS password requester bypasses its complete installed-app proof",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_requester_identity_is_live(&identity) {\n        bail!(\"macOS service-owned password requester is not the live trusted installed app\");",
+            "if false && !macos_service_owned_password_requester_identity_is_live(&identity) {\n        bail!(\"macOS service-owned password requester is not the live trusted installed app\");",
+        ),
+        Mutation(
+            "macOS password requester uses fabricated argv instead of the live process",
+            "src/ipc/auth.rs",
+            "let argv = macos_process_cmdline_args(identity.pid)?;",
+            "let argv = vec![String::new()]; /* macos_process_cmdline_args(identity.pid)? */",
+        ),
+        Mutation(
+            "macOS password requester bypasses its finite exact role",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_client_argv_is_expected(&argv) {\n        bail!(\"macOS service-owned password requester has an unauthorized process role\");",
+            "if false && !macos_service_owned_password_client_argv_is_expected(&argv) {\n        bail!(\"macOS service-owned password requester has an unauthorized process role\");",
+        ),
+        Mutation(
+            "macOS password requester skips post-argv audit-token generation proof",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_requester_generation_is_live(&identity) {\n        bail!(\"macOS service-owned password requester changed while its role was inspected\");",
+            "if false && !macos_service_owned_password_requester_generation_is_live(&identity) {\n        bail!(\"macOS service-owned password requester changed while its role was inspected\");",
+        ),
+        Mutation(
+            "macOS password requester generation proof loses final fresh console UID",
+            "src/ipc/auth.rs",
+            "macos_executable_matches_expected_path(&path, &macos_installed_app_executable_path())\n        && is_allowed_service_peer_uid(identity.uid, active_uid_fresh())",
+            "macos_executable_matches_expected_path(&path, &macos_installed_app_executable_path())",
+        ),
+        Mutation(
+            "macOS password requester retains only truncated argv",
+            "src/ipc/auth.rs",
+            "Ok(MacosServiceOwnedPasswordRequester { identity, argv })",
+            "Ok(MacosServiceOwnedPasswordRequester { identity, argv: argv.into_iter().take(1).collect() })",
+        ),
+        Mutation(
+            "macOS password requester replay bypasses the installed-app identity",
+            "src/ipc/auth.rs",
+            "if !macos_service_owned_password_requester_identity_is_live(&requester.identity) {\n        return false;",
+            "if false && !macos_service_owned_password_requester_identity_is_live(&requester.identity) {\n        return false;",
+        ),
+        Mutation(
+            "macOS password requester replay reuses stale argv",
+            "src/ipc/auth.rs",
+            "let Ok(argv) = macos_process_cmdline_args(requester.identity.pid) else {",
+            "let Ok(argv) = Ok::<_, anyhow::Error>(requester.argv.clone()) else { /* macos_process_cmdline_args */",
+        ),
+        Mutation(
+            "macOS password requester replay accepts changed argv",
+            "src/ipc/auth.rs",
+            "argv == requester.argv\n        && macos_service_owned_password_client_argv_is_expected(&argv)",
+            "argv != requester.argv\n        && macos_service_owned_password_client_argv_is_expected(&argv)",
+        ),
+        Mutation(
+            "macOS password requester replay loses its finite role",
+            "src/ipc/auth.rs",
+            "&& macos_service_owned_password_client_argv_is_expected(&argv)\n        && macos_service_owned_password_requester_generation_is_live(&requester.identity)",
+            "&& true /* macos_service_owned_password_client_argv_is_expected */\n        && macos_service_owned_password_requester_generation_is_live(&requester.identity)",
+        ),
+        Mutation(
+            "macOS password requester replay loses audit-token generation finality",
+            "src/ipc/auth.rs",
+            "&& macos_service_owned_password_requester_generation_is_live(&requester.identity)",
+            "&& true /* macos_service_owned_password_requester_generation_is_live */",
+        ),
+        Mutation(
+            "macOS post-request last-owner replay loses full audit-token equality",
+            "src/ipc/auth.rs",
+            "        && identity.audit_token == requester.identity.audit_token",
+            "        && true /* post-request full audit token */",
+        ),
+        Mutation(
+            "macOS post-request last-owner replay accepts a different effective PID",
+            "src/ipc/auth.rs",
+            "        && identity.pid == requester.identity.pid",
+            "        && identity.pid != requester.identity.pid",
+        ),
+        Mutation(
+            "macOS password listener delays its socket identity snapshot until the proof task",
+            "src/ipc.rs",
+            "let authorization =\n                        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(\n                            &stream,\n                            password::SERVICE_PASSWORD_IPC_POSTFIX,\n                        );\n                    transactions.spawn(async move {",
+            "transactions.spawn(async move {\n                        let authorization =\n                            ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(\n                                &stream,\n                                password::SERVICE_PASSWORD_IPC_POSTFIX,\n                            );",
+        ),
+        Mutation(
+            "macOS password proof task falls back to generic service authorization",
+            "src/ipc.rs",
+            "authenticate_macos_service_owned_password_requester(authorization)",
+            "if ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization) { unreachable!() } else { unreachable!() } /* authenticate_macos_service_owned_password_requester */",
+        ),
+        Mutation(
+            "macOS password mutation authority loses exact requester replay",
+            "src/ipc.rs",
+            "&& macos_service_owned_password_requester_is_live(&requester);",
+            "|| macos_service_owned_password_requester_is_live(&requester);",
+        ),
+        Mutation(
+            "macOS password mutation authority disjoins post-request last-owner replay",
+            "src/ipc.rs",
+            "let authority_allowed = capability_and_requester_are_live\n        && macos_service_owned_password_requester_matches_post_request_last_owner(",
+            "let authority_allowed = capability_and_requester_are_live\n        || macos_service_owned_password_requester_matches_post_request_last_owner(",
+        ),
+        Mutation(
+            "macOS password exact-role regression is removed",
+            "src/ipc/auth.rs",
+            "fn r_s11e262_macos_service_owned_password_client_roles_are_finite()",
+            "fn macos_service_owned_password_client_roles_are_unchecked()",
+        ),
+        Mutation(
+            "macOS socket audit-token identity regression is removed",
+            "src/ipc/auth.rs",
+            "fn r_s11e262_macos_audit_token_must_match_socket_identity()",
+            "fn macos_audit_token_socket_identity_is_unchecked()",
         ),
         Mutation(
             "Linux replay no longer binds the password digest",
@@ -2467,8 +2942,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "final live identity proof uses a stale session authority",
             "src/ipc/auth.rs",
-            "is_allowed_service_peer_uid(identity.uid, active_uid_fresh())",
-            "is_allowed_service_peer_uid(identity.uid, None) /* active_uid_fresh() */",
+            "if !is_allowed_service_peer_uid(identity.uid, active_uid_fresh()) {",
+            "if !is_allowed_service_peer_uid(identity.uid, None) { /* active_uid_fresh() */",
         ),
         Mutation(
             "service IPC parent becomes attacker-writable",
@@ -2563,8 +3038,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "ordinary service-password client accepts a non-root peer",
             "src/ipc/auth.rs",
-            "    if peer_uid != 0 {\n",
-            "    if false && peer_uid != 0 {\n",
+            "    if peer_uid != 0 {\n        bail!(\n            \"Linux root service uid mismatch",
+            "    if false && peer_uid != 0 {\n        bail!(\n            \"Linux root service uid mismatch",
         ),
         Mutation(
             "ordinary service-password client regains a root procfs dependency",

@@ -131,8 +131,12 @@ const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";
 const MACOS_PRIVILEGED_HELPER_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and (identifier "service" or identifier "com.carriez.rustdesk_service")"#;
 #[cfg(target_os = "macos")]
 const MACOS_INSTALLED_APP_REQUIREMENT: &str = r#"=anchor apple generic and certificate leaf[subject.OU] = "HZF9JMC8YN" and identifier "com.carriez.rustdesk""#;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 const MACOS_AUDIT_TOKEN_BYTES: usize = 32;
+#[cfg(any(target_os = "macos", test))]
+const MACOS_AUDIT_TOKEN_EUID_WORD: usize = 1;
+#[cfg(any(target_os = "macos", test))]
+const MACOS_AUDIT_TOKEN_PID_WORD: usize = 5;
 #[cfg(target_os = "macos")]
 type MacosAcl = *mut c_void;
 #[cfg(target_os = "macos")]
@@ -186,6 +190,12 @@ impl MacosPeerProcessIdentity {
     pub(crate) fn pid(&self) -> u32 {
         self.pid
     }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) struct MacosServiceOwnedPasswordRequester {
+    identity: MacosPeerProcessIdentity,
+    argv: Vec<String>,
 }
 
 #[cfg(target_os = "macos")]
@@ -2169,6 +2179,35 @@ pub(crate) fn macos_peer_is_trusted_installed_app(identity: &MacosPeerProcessIde
 }
 
 #[cfg(target_os = "macos")]
+fn macos_service_owned_password_requester_generation_is_live(
+    identity: &MacosPeerProcessIdentity,
+) -> bool {
+    let code = match macos_peer_code(identity, "installed app generation") {
+        Ok(code) => code,
+        Err(err) => {
+            log::error!("{err}");
+            return false;
+        }
+    };
+    if !macos_peer_code_satisfies_requirement(
+        &code,
+        MACOS_INSTALLED_APP_REQUIREMENT,
+        "installed app generation",
+    ) {
+        return false;
+    }
+    let path = match macos_peer_code_path(&code, "installed app generation") {
+        Ok(path) => path,
+        Err(err) => {
+            log::error!("{err}");
+            return false;
+        }
+    };
+    macos_executable_matches_expected_path(&path, &macos_installed_app_executable_path())
+        && is_allowed_service_peer_uid(identity.uid, active_uid_fresh())
+}
+
+#[cfg(target_os = "macos")]
 fn macos_peer_is_trusted_privileged_helper(identity: &MacosPeerProcessIdentity) -> bool {
     macos_peer_code_path_satisfies(
         identity,
@@ -2205,13 +2244,16 @@ where
     T: std::os::unix::io::AsRawFd,
 {
     let fd = stream.as_raw_fd();
-    Ok(MacosPeerProcessIdentity {
-        uid: peer_uid_from_fd(fd)
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} uid"))?,
-        pid: peer_pid_from_fd(fd)
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} effective pid"))?,
-        audit_token: peer_audit_token_from_fd(fd)
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} audit token"))?,
+    let uid = peer_uid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} uid"))?;
+    let pid = peer_pid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} effective pid"))?;
+    let audit_token = peer_audit_token_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} audit token"))?;
+    macos_peer_process_identity_from_socket_components(uid, pid, audit_token).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to resolve one consistent {description} socket peer identity: uid={uid}, pid={pid}"
+        )
     })
 }
 
@@ -2433,6 +2475,46 @@ fn peer_audit_token_from_fd(fd: RawFd) -> Option<[u8; MACOS_AUDIT_TOKEN_BYTES]> 
     } else {
         None
     }
+}
+
+#[cfg(any(target_os = "macos", test))]
+#[inline]
+fn macos_audit_token_word(token: &[u8; MACOS_AUDIT_TOKEN_BYTES], index: usize) -> u32 {
+    let offset = index * std::mem::size_of::<u32>();
+    u32::from_ne_bytes([
+        token[offset],
+        token[offset + 1],
+        token[offset + 2],
+        token[offset + 3],
+    ])
+}
+
+#[cfg(any(target_os = "macos", test))]
+#[inline]
+fn macos_audit_token_matches_socket_identity(
+    token: &[u8; MACOS_AUDIT_TOKEN_BYTES],
+    uid: u32,
+    pid: u32,
+) -> bool {
+    pid != 0
+        && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_EUID_WORD) == uid
+        && macos_audit_token_word(token, MACOS_AUDIT_TOKEN_PID_WORD) == pid
+}
+
+#[cfg(target_os = "macos")]
+fn macos_peer_process_identity_from_socket_components(
+    uid: u32,
+    pid: u32,
+    audit_token: [u8; MACOS_AUDIT_TOKEN_BYTES],
+) -> Option<MacosPeerProcessIdentity> {
+    if !macos_audit_token_matches_socket_identity(&audit_token, uid, pid) {
+        return None;
+    }
+    Some(MacosPeerProcessIdentity {
+        uid,
+        pid,
+        audit_token,
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -3684,11 +3766,9 @@ where
     let peer_pid = peer_pid_from_fd(fd);
     #[cfg(target_os = "macos")]
     let macos_peer_identity = match (peer_uid, peer_pid_from_fd(fd), peer_audit_token_from_fd(fd)) {
-        (Some(uid), Some(pid), Some(audit_token)) => Some(MacosPeerProcessIdentity {
-            uid,
-            pid,
-            audit_token,
-        }),
+        (Some(uid), Some(pid), Some(audit_token)) => {
+            macos_peer_process_identity_from_socket_components(uid, pid, audit_token)
+        }
         _ => None,
     };
     #[cfg(target_os = "macos")]
@@ -3768,6 +3848,77 @@ pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot(
         return false;
     }
     true
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_password_requester_identity_is_live(
+    identity: &MacosPeerProcessIdentity,
+) -> bool {
+    is_allowed_service_peer_uid(identity.uid, active_uid_fresh())
+        && macos_peer_is_trusted_installed_app(identity)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn authenticate_macos_service_owned_password_requester(
+    authorization: ServiceScopedIpcAuthorization,
+) -> ResultType<MacosServiceOwnedPasswordRequester> {
+    if authorization.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX {
+        bail!("macOS service-owned password requester used the wrong endpoint");
+    }
+    if !authorization.uid_authorized {
+        bail!("macOS service-owned password requester is not root or the active console user");
+    }
+    let identity = authorization.macos_peer_identity.ok_or_else(|| {
+        anyhow::anyhow!("macOS service-owned password requester identity is unavailable")
+    })?;
+    if !macos_service_owned_password_requester_identity_is_live(&identity) {
+        bail!("macOS service-owned password requester is not the live trusted installed app");
+    }
+    let argv = macos_process_cmdline_args(identity.pid)?;
+    if !macos_service_owned_password_client_argv_is_expected(&argv) {
+        bail!("macOS service-owned password requester has an unauthorized process role");
+    }
+    if !macos_service_owned_password_requester_generation_is_live(&identity) {
+        bail!("macOS service-owned password requester changed while its role was inspected");
+    }
+    Ok(MacosServiceOwnedPasswordRequester { identity, argv })
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_service_owned_password_requester_is_live(
+    requester: &MacosServiceOwnedPasswordRequester,
+) -> bool {
+    if !macos_service_owned_password_requester_identity_is_live(&requester.identity) {
+        return false;
+    }
+    let Ok(argv) = macos_process_cmdline_args(requester.identity.pid) else {
+        return false;
+    };
+    argv == requester.argv
+        && macos_service_owned_password_client_argv_is_expected(&argv)
+        && macos_service_owned_password_requester_generation_is_live(&requester.identity)
+}
+
+#[cfg(target_os = "macos")]
+/// Replays XNU's mutable peer last-owner evidence after the request read. This
+/// detects a different current last accessor; it does not prove that one process
+/// authored every byte because later socket activity can replace that evidence.
+pub(crate) fn macos_service_owned_password_requester_matches_post_request_last_owner<T>(
+    requester: &MacosServiceOwnedPasswordRequester,
+    stream: &T,
+) -> bool
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let Ok(identity) = macos_peer_process_identity_from_stream(
+        stream,
+        "post-request macOS service-owned password requester last owner",
+    ) else {
+        return false;
+    };
+    identity.uid == requester.identity.uid
+        && identity.pid == requester.identity.pid
+        && identity.audit_token == requester.identity.audit_token
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -4111,13 +4262,20 @@ pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix:
     )
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
 fn process_argv_is_exact(args: &[String], expected_args: &[&str]) -> bool {
     args.len() == expected_args.len() + 1
         && expected_args
             .iter()
             .enumerate()
             .all(|(index, expected)| args[index + 1] == *expected)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_service_owned_password_client_argv_is_expected(args: &[String]) -> bool {
+    process_argv_is_exact(args, &[])
+        || process_argv_is_exact(args, &["--password"])
+        || process_argv_is_exact(args, &["--password-stdin"])
 }
 
 #[cfg(target_os = "linux")]
@@ -5061,6 +5219,65 @@ mod tests {
         assert!(!super::linux_service_owned_password_client_argv_is_expected(
             &[]
         ));
+    }
+
+    #[test]
+    fn r_s11e262_macos_audit_token_must_match_socket_identity() {
+        let mut token = [0u8; super::MACOS_AUDIT_TOKEN_BYTES];
+        let uid = 501u32;
+        let pid = 42u32;
+        let euid_offset = super::MACOS_AUDIT_TOKEN_EUID_WORD * std::mem::size_of::<u32>();
+        token[euid_offset..euid_offset + std::mem::size_of::<u32>()]
+            .copy_from_slice(&uid.to_ne_bytes());
+        let pid_offset = super::MACOS_AUDIT_TOKEN_PID_WORD * std::mem::size_of::<u32>();
+        token[pid_offset..pid_offset + std::mem::size_of::<u32>()]
+            .copy_from_slice(&pid.to_ne_bytes());
+
+        assert!(super::macos_audit_token_matches_socket_identity(
+            &token, uid, pid
+        ));
+        assert!(!super::macos_audit_token_matches_socket_identity(
+            &token,
+            uid + 1,
+            pid
+        ));
+        assert!(!super::macos_audit_token_matches_socket_identity(
+            &token,
+            uid,
+            pid + 1
+        ));
+        assert!(!super::macos_audit_token_matches_socket_identity(
+            &token, uid, 0
+        ));
+    }
+
+    #[test]
+    fn r_s11e262_macos_service_owned_password_client_roles_are_finite() {
+        let argv = |args: &[&str]| {
+            std::iter::once("/Applications/RustDesk.app/Contents/MacOS/RustDesk".to_owned())
+                .chain(args.iter().map(|arg| (*arg).to_owned()))
+                .collect::<Vec<_>>()
+        };
+        for args in [&[][..], &["--password"][..], &["--password-stdin"][..]] {
+            assert!(super::macos_service_owned_password_client_argv_is_expected(
+                &argv(args)
+            ));
+        }
+        for args in [
+            &["--server"][..],
+            &["--server", crate::common::SERVICE_OWNED_SERVER_ARG][..],
+            &["--service"][..],
+            &["--tray"][..],
+            &["--cm"][..],
+            &["--password", "extra"][..],
+            &["--unexpected"][..],
+        ] {
+            assert!(
+                !super::macos_service_owned_password_client_argv_is_expected(&argv(args)),
+                "role {args:?} unexpectedly received macOS service-owned password authority"
+            );
+        }
+        assert!(!super::macos_service_owned_password_client_argv_is_expected(&[]));
     }
 
     #[test]

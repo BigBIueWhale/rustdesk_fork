@@ -147,10 +147,15 @@ def validate(sources: Dict[str, str]) -> None:
         share_rdp_handler,
         (
             "authorize_windows_service_owned_share_rdp_requester(stream)",
-            "crate::platform::windows::set_service_owned_share_rdp(enable)",
+            "requester.commit_share_rdp_change(stream, enable)",
             "ServiceIpcResponse::ShareRdpSet { accepted }",
         ),
-        "exact requester proof before service-owned RDP policy mutation",
+        "retained exact requester capability before the RDP policy result",
+    )
+    forbid(
+        share_rdp_handler,
+        "crate::platform::windows::set_service_owned_share_rdp(enable)",
+        "RDP policy mutation outside the retained requester capability",
     )
     for retired in (
         "windows_peer_is_authorized_for_service_owned_share_rdp_change",
@@ -179,6 +184,11 @@ def validate(sources: Dict[str, str]) -> None:
         "pub(crate) fn authorize_windows_service_owned_share_rdp_requester(",
         "Windows service-owned RDP policy requester authority",
     )
+    require(
+        share_rdp_authority,
+        ") -> Option<WindowsServiceOwnedShareRdpRequester>",
+        "authority-bearing Windows RDP-policy requester result",
+    )
     require_order(
         share_rdp_authority,
         (
@@ -188,20 +198,82 @@ def validate(sources: Dict[str, str]) -> None:
             "process.live_token_proof()",
             "if pipe_token != process_token",
             "if !pipe_token.authority.is_elevated",
-            "process.immutable_identity()",
+            "process.fresh_identity()",
             "ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)",
             "windows_identity_is_service_owned_share_rdp_client(&identity)",
             'process.require_running("Windows service-owned RDP policy requester")',
             "if stream.peer_pid() != Some(peer_pid)",
-            "true",
+            "Some(WindowsServiceOwnedShareRdpRequester",
+            "process,",
+            "identity,",
+            "token: pipe_token,",
         ),
-        "elevated exact-role stable requester authority",
+        "elevated exact-role retained requester admission",
     )
     require(
         share_rdp_authority,
-        "let identity = match process.immutable_identity() {",
-        "identity inspection through the retained requester generation",
+        "let identity = match process.fresh_identity() {",
+        "fresh identity inspection through the retained requester generation",
     )
+    forbid(
+        share_rdp_authority,
+        "-> bool",
+        "detached Boolean Windows RDP-policy requester result",
+    )
+
+    share_rdp_requester = extract_braced(
+        auth,
+        "pub(crate) struct WindowsServiceOwnedShareRdpRequester",
+        "Windows service-owned RDP policy requester capability",
+    )
+    require_order(
+        share_rdp_requester,
+        (
+            "process: WindowsPeerProcess",
+            "identity: WindowsProcessImmutableIdentity",
+            "token: WindowsLiveTokenProof",
+        ),
+        "retained Windows RDP-policy requester capability state",
+    )
+
+    share_rdp_commit = extract_braced(
+        auth,
+        "pub(crate) fn commit_share_rdp_change(",
+        "Windows service-owned RDP policy capability commit",
+    )
+    require_order(
+        share_rdp_commit,
+        (
+            "let peer_pid = stream.peer_pid().ok_or_else",
+            "if peer_pid != self.process.key.pid",
+            'require_running("Windows service-owned RDP policy requester before commit")',
+            "windows_process_creation_time(self.process.handle.0)?",
+            "self.process.key.creation_time",
+            "self.process.fresh_identity()?",
+            "if identity != self.identity",
+            "ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)?",
+            "if !windows_identity_is_service_owned_share_rdp_client(&identity)",
+            "stream.windows_pipe_client_token_proof()?",
+            "self.process.live_token_proof()?",
+            "if pipe_token != self.token || process_token != self.token",
+            "if !pipe_token.authority.is_elevated",
+            "if stream.peer_pid() != Some(peer_pid)",
+            'require_running("Windows service-owned RDP policy requester at commit")',
+            "crate::platform::windows::set_service_owned_share_rdp(enable)",
+        ),
+        "final retained Windows RDP-policy requester proof and mutation",
+    )
+    require(
+        share_rdp_commit,
+        "if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {",
+        "final retained requester creation-time equality",
+    )
+    if not share_rdp_commit.rstrip().endswith(
+        "crate::platform::windows::set_service_owned_share_rdp(enable)\n    }"
+    ):
+        raise VerificationError(
+            "Windows service-owned RDP policy writer is not the capability commit's final action"
+        )
     share_rdp_role = extract_braced(
         auth,
         "fn windows_identity_is_service_owned_share_rdp_client(",
@@ -454,6 +526,26 @@ def validate(sources: Dict[str, str]) -> None:
             "exact requester hardening ledger",
         ),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ib</span>',
+            "retained Windows RDP-policy capability requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>387</td>",
+            "retained Windows RDP-policy capability Appendix C row",
+        ),
+        (
+            "hardening",
+            "### R-S11ib/R-S11e-265 — retained Windows RDP-policy requester through final mutation",
+            "retained Windows RDP-policy capability hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ib and Appendix C #387.",
+            "retained Windows RDP-policy capability identity binding",
+        ),
+        (
             "workspace",
             "def validate_windows_service_channel_protocol_contract(sources):",
             "independent workspace contract",
@@ -531,18 +623,38 @@ def validate(sources: Dict[str, str]) -> None:
 Mutation = Tuple[str, str, str, str]
 
 MUTATIONS: Tuple[Mutation, ...] = (
-    ("ipc", "authorize_windows_service_owned_share_rdp_requester(stream)", "true", "exact requester proof before RDP policy mutation"),
+    ("ipc", "requester.commit_share_rdp_change(stream, enable)", "crate::platform::windows::set_service_owned_share_rdp(enable)", "retained requester capability before RDP policy mutation"),
     ("auth", "let _token_guard = WindowsHandle(token);\n            windows_live_token_proof(token)\n        })\n    }\n\n    fn windows_pipe_client_authority", "let _token_guard = WindowsHandle(token);\n            windows_token_authority(token)\n        })\n    }\n\n    fn windows_pipe_client_authority", "complete named-pipe token identity proof"),
     ("auth", "fn windows_pipe_client_authority(&self)", "fn windows_pipe_client_token_is_elevated(&self)", "detached Boolean pipe-elevation helper absence"),
-    ("auth", "stream.windows_pipe_client_token_proof()", "process.live_token_proof()", "named-pipe requester token proof"),
+    ("auth", ") -> Option<WindowsServiceOwnedShareRdpRequester> {", ") -> bool {", "authority-bearing requester result"),
+    ("auth", "pub(crate) struct WindowsServiceOwnedShareRdpRequester", "struct DetachedWindowsServiceOwnedShareRdpRequester", "action-specific requester capability"),
+    ("auth", "    process: WindowsPeerProcess,\n    identity: WindowsProcessImmutableIdentity,\n    token: WindowsLiveTokenProof,", "    identity: WindowsProcessImmutableIdentity,\n    token: WindowsLiveTokenProof,", "retained requester process handle"),
+    ("auth", "    identity: WindowsProcessImmutableIdentity,\n    token: WindowsLiveTokenProof,", "    token: WindowsLiveTokenProof,", "retained requester identity"),
+    ("auth", "    token: WindowsLiveTokenProof,\n}", "}\n", "retained requester token"),
+    ("auth", "let pipe_token = match stream.windows_pipe_client_token_proof() {", "let pipe_token = match process.live_token_proof() {", "named-pipe requester token proof"),
     ("auth", "let process_token = match process.live_token_proof() {", "let process_token = match stream.windows_pipe_client_token_proof() {", "same-generation process token proof"),
     ("auth", "if pipe_token != process_token {", "if pipe_token == process_token {", "pipe/process token identity equality"),
-    ("auth", "if !pipe_token.authority.is_elevated {", "if pipe_token.authority.is_elevated {", "receiver-observed elevation proof"),
-    ("auth", "let identity = match process.immutable_identity() {\n        Ok(identity) => identity,\n        Err(err) => {\n            log::warn!(\n                \"Rejected Windows service-owned RDP policy requester identity", "let identity = match WindowsPeerProcess::open(peer_pid).and_then(|process| process.immutable_identity()) {\n        Ok(identity) => identity,\n        Err(err) => {\n            log::warn!(\n                \"Rejected Windows service-owned RDP policy requester identity", "retained requester process generation"),
-    ("auth", "ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)", "Ok(())", "current executable requester proof"),
+    ("auth", "if !pipe_token.authority.is_elevated {\n        log::warn!(", "if pipe_token.authority.is_elevated {\n        log::warn!(", "receiver-observed elevation proof"),
+    ("auth", "let identity = match process.fresh_identity() {\n        Ok(identity) => identity,\n        Err(err) => {\n            log::warn!(\n                \"Rejected Windows service-owned RDP policy requester identity", "let identity = match process.immutable_identity() {\n        Ok(identity) => identity.as_ref().clone(),\n        Err(err) => {\n            log::warn!(\n                \"Rejected Windows service-owned RDP policy requester identity", "fresh admitted requester identity"),
+    ("auth", "if let Err(err) = ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE) {", "if let Err(err) = Ok(()) {", "current executable requester proof"),
     ("auth", "windows_identity_has_exact_role(identity, &[])", "windows_identity_has_exact_role(identity, &[\"--server\"])", "exact interactive UI role"),
-    ("auth", "process.require_running(\"Windows service-owned RDP policy requester\")", "Ok(())", "live requester generation at commit"),
+    ("auth", "process.require_running(\"Windows service-owned RDP policy requester\")", "Ok(())", "live requester generation at admission"),
     ("auth", "if stream.peer_pid() != Some(peer_pid) {\n        log::warn!(\n            \"Rejected Windows service-owned RDP policy requester after named-pipe peer pid changed", "if stream.peer_pid() == Some(peer_pid) {\n        log::warn!(\n            \"Rejected Windows service-owned RDP policy requester after named-pipe peer pid changed", "stable named-pipe requester pid"),
+    ("auth", "Some(WindowsServiceOwnedShareRdpRequester {\n        process,\n        identity,\n        token: pipe_token,\n    })", "None", "retained requester construction"),
+    ("auth", "if peer_pid != self.process.key.pid {", "if peer_pid == self.process.key.pid {", "final requester pid equality"),
+    ("auth", "self.process\n            .require_running(\"Windows service-owned RDP policy requester before commit\")?;", "", "final requester pre-commit liveness"),
+    ("auth", "if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {\n            bail!(\"Windows service-owned RDP policy requester generation changed before commit\");", "if windows_process_creation_time(self.process.handle.0)? == self.process.key.creation_time {\n            bail!(\"Windows service-owned RDP policy requester generation changed before commit\");", "final requester generation equality"),
+    ("auth", "let identity = self.process.fresh_identity()?;", "let identity = self.identity.clone();", "final fresh requester identity"),
+    ("auth", "if identity != self.identity {", "if identity == self.identity {", "final requester identity equality"),
+    ("auth", "ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)?;", "", "final current executable requester proof"),
+    ("auth", "if !windows_identity_is_service_owned_share_rdp_client(&identity) {\n            bail!(\"Windows service-owned RDP policy requester role changed before commit\");", "if windows_identity_is_service_owned_share_rdp_client(&identity) {\n            bail!(\"Windows service-owned RDP policy requester role changed before commit\");", "final exact requester role"),
+    ("auth", "let pipe_token = stream.windows_pipe_client_token_proof()?;", "let pipe_token = self.token.clone();", "final named-pipe token proof"),
+    ("auth", "let process_token = self.process.live_token_proof()?;\n        if pipe_token != self.token || process_token != self.token {", "let process_token = self.token.clone();\n        if pipe_token != self.token || process_token != self.token {", "final process token proof"),
+    ("auth", "if pipe_token != self.token || process_token != self.token {", "if pipe_token == self.token || process_token == self.token {", "final accepted-token equality"),
+    ("auth", "if !pipe_token.authority.is_elevated {\n            bail!(\"Windows service-owned RDP policy requester is no longer elevated\");", "if pipe_token.authority.is_elevated {\n            bail!(\"Windows service-owned RDP policy requester is no longer elevated\");", "final requester elevation"),
+    ("auth", "if stream.peer_pid() != Some(peer_pid) {\n            bail!(\"Windows service-owned RDP policy requester pipe changed before commit\");", "if stream.peer_pid() == Some(peer_pid) {\n            bail!(\"Windows service-owned RDP policy requester pipe changed before commit\");", "final stable pipe requester"),
+    ("auth", "self.process\n            .require_running(\"Windows service-owned RDP policy requester at commit\")?;", "", "retained requester liveness at mutation"),
+    ("auth", "crate::platform::windows::set_service_owned_share_rdp(enable)\n    }", "Ok(())\n    }", "policy writer inside retained capability"),
     ("auth", "fn windows_service_owned_share_rdp_client_role_is_exact_interactive_ui()", "fn windows_service_owned_share_rdp_client_role_is_broad()", "exact requester role regression"),
     ("ipc", "enum WindowsServiceCredentialRequest", "enum WindowsServiceMainRequest", "credential request type identity"),
     ("ipc", "    ApplyCredentialReplica {", "    ApplyCredentialReplicaDisabled {", "credential request exact variants"),
@@ -571,10 +683,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("apple", "python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test", "true # Windows service protocol gate disabled", "Apple/shared focused gate"),
     ("requirements", '<div class="req"><span class="id">R-S11hg</span>', '<div class="req"><span class="id">R-S11hg-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11hw</span>', '<div class="req"><span class="id">R-S11hw-disabled</span>', "exact requester normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11ib</span>', '<div class="req"><span class="id">R-S11ib-disabled</span>', "retained requester normative requirement"),
     ("requirements", "<tr><td>368</td>", "<tr><td>368-disabled</td>", "Appendix C row"),
     ("requirements", "<tr><td>382</td>", "<tr><td>382-disabled</td>", "exact requester Appendix C row"),
+    ("requirements", "<tr><td>387</td>", "<tr><td>387-disabled</td>", "retained requester Appendix C row"),
     ("hardening", "### R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols", "### R-S11hg-disabled/R-S11e-245 — endpoint-specific Windows service credential/control protocols", "hardening ledger"),
     ("hardening", "### R-S11hw/R-S11e-260 — exact Windows service-owned RDP-policy requester role", "### R-S11hw-disabled/R-S11e-260 — exact Windows service-owned RDP-policy requester role", "exact requester hardening ledger"),
+    ("hardening", "### R-S11ib/R-S11e-265 — retained Windows RDP-policy requester through final mutation", "### R-S11ib-disabled/R-S11e-265 — retained Windows RDP-policy requester through final mutation", "retained requester hardening ledger"),
+    ("native_watch", "The same identity additionally binds R-S11ib and Appendix C #387.", "The same identity no longer binds R-S11ib and Appendix C #387.", "retained requester digest binding"),
     ("workspace", '            "windows_service_channel_protocol_verifier": (\n                repo / "scripts/verify-windows-service-channel-protocols.py"\n            ).read_text(encoding="utf-8"),', '            "windows_service_channel_protocol_verifier_disabled": (\n                repo / "scripts/verify-windows-service-channel-protocols.py"\n            ).read_text(encoding="utf-8"),', "independent focused-verifier source binding"),
     ("workspace", "    validate_windows_service_channel_protocol_contract(sources)\n", "    validate_windows_service_channel_protocol_contract_disabled(sources)\n", "independent protocol validation dispatch"),
 )

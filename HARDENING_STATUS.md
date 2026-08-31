@@ -6119,7 +6119,9 @@ network configuration was inspected or changed.
   `scripts/verify.sh` asserts the typed request/result, main-channel protocol separation, `_service` dispatch,
   receiver-side generation-bound exact-requester gate, direct registry commit, absence of the direct shell writer,
   UI service request, and UI elevation gate. R-S11hw/R-S11e-260 and Appendix C #382 supersede the original
-  elevation-only receiver proof without changing which component owns the machine-policy write.
+  elevation-only receiver proof without changing which component owns the machine-policy write. R-S11ib/
+  R-S11e-265 and Appendix C #387 subsequently replace the detached authorization Boolean with an exact
+  requester capability retained through the registry mutation itself.
 - **R-S11b-3e — service identity/salt reads are side-effect-free — CLOSED 2026-07-09.** Platforms: all
   desktop installed-service paths. Endpoint/action: `Config::get_id()`, `Data::ConfigRequest("id")`,
   `Data::ConfigRequest("salt")`, `ipc::get_id()`, login username validation, local recording metadata, and
@@ -28796,7 +28798,7 @@ socket inside a verifier.
 Current normative identity for this slice:
 
 ```text
-db278737c942297a357406d6ff2e944f900fce5fa266e902d995cd0068e9d7e7  requirements.html
+d275eae9f2c846b1c3d64306adce5a86450b2967cd79dd292bdddef66ddc9fb9  requirements.html
 ```
 
 Evidence receipt for the source snapshot preceding this receipt:
@@ -28874,3 +28876,150 @@ No host RustDesk service, listener, firewall, network namespace, Android
 device, VM, Haggai/Desktop_Haggai_computer workload, unrelated Docker object,
 root authority, privileged container, host network, published port, device, or
 Docker socket inside a verifier was inspected or used by this slice.
+
+### R-S11ib/R-S11e-265 — retained Windows RDP-policy requester through final mutation
+
+**Status:** SOURCE REPAIR IMPLEMENTED / COMPLETE SOURCE-VERIFICATION MATRIX
+GREEN / NATIVE WINDOWS, INSTALLED, PERFORMANCE, RELEASE, AND REVIEW EVIDENCE
+OPEN.
+
+The continuing action-by-action privileged IPC review found a narrower
+finality defect in the Windows installed-service `SetShareRdp` path. R-S11hw
+correctly replaced the old elevation-only check with a conjunction over the
+named-pipe client PID, an opened process generation, equal complete pipe and
+process live-token proofs, elevation, current executable, exact no-argument
+interactive-UI role, liveness, and stable PID. Its function nevertheless
+returned only `bool`. Returning destroyed the retained `WindowsPeerProcess`
+handle and reduced the accepted fresh identity and token to an ambient fact
+before `handle_windows_service_owned_share_rdp_request` called the LocalSystem
+HKLM writer. There was no `await` between those calls, which narrowed the
+window, but thread scheduling and process exit are not authority boundaries,
+and the API shape still allowed a later refactor to separate the privileged
+action arbitrarily far from the generation it had checked. The previous
+ledger wording that the process generation was retained through the receiver
+write was therefore stronger than the source.
+
+The repair replaces that Boolean with
+`WindowsServiceOwnedShareRdpRequester`. The action-specific capability owns
+the exact opened process handle, a freshly inspected canonical executable plus
+complete argv identity, and the accepted complete live token proof. The
+handler can only consume that object through `commit_share_rdp_change`; it no
+longer names the registry writer. The commit method first requires the current
+pipe PID to equal the retained process PID and requires the retained process
+object to remain nonsignaled. It re-reads creation time through the retained
+handle, freshly inspects executable and complete argv, requires byte-for-byte
+identity equality, replays current-canonical-executable and exact no-argument
+UI role, then freshly obtains both the named-pipe last-message impersonation
+token and retained-process token. Both fresh token proofs must equal the
+accepted proof, which must remain elevated. A second pipe-PID observation and
+retained-handle liveness observation immediately precede the exact current-
+product 64-bit HKLM writer. That writer is the method's final expression, so
+the capability and process handle remain owned throughout the synchronous
+mutation. Missing, exited, reused, changed, non-elevated, wrong-image, wrong-
+role, stale-token, or inconclusive evidence returns the typed rejected result
+without a write. No generic callback, direct handler writer, detached Boolean,
+async gap, compatibility branch, or fallback remains.
+
+This design follows the relevant Win32 contracts. Microsoft's
+`GetNamedPipeClientProcessId` documentation defines the connected pipe-client
+PID observation; `ImpersonateNamedPipeClient` explicitly uses the security
+context of the last message read; zero-time `WaitForSingleObject` observes the
+retained process object's current signaled state; and the `PROCESS_INFORMATION`
+contract states that a process ID remains valid until all handles to that
+process close and the process object is freed. Retaining the process handle
+therefore prevents a later process from reusing that PID as the same retained
+object during commit, while the creation-time and fresh identity checks make
+the intended generation explicit. Primary references:
+
+- <https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid>
+- <https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient>
+- <https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject>
+- <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-process_information>
+- <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes>
+
+The evidence is deliberately bounded. Named-pipe impersonation proves the
+last-read message's security context, and the pipe API reports the connected
+client process. These facts do not prove that the client handle was never
+inherited or duplicated and do not establish exclusive byte authorship. A
+handoff nevertheless cannot bypass this action by changing the observed
+token, pipe PID, executable, argv, process generation, elevation, or liveness:
+every such visible change fails closed, and the exact accepted elevated token
+plus exact interactive-UI generation must remain current through the write.
+No stronger exclusive-frame-authorship claim is made.
+
+The focused Windows service-channel checker independently extracts the
+capability, retained fields, admission return, final commit, and writer-last
+ordering. Its 70-entry mutation inventory corrupts the handler dispatch,
+capability type and each retained field, fresh admission identity, final PID/
+generation/liveness/identity/image/role, both final token sources, accepted-
+token equality, elevation, final pipe PID, final liveness, writer ownership,
+and the R-S11ib/Appendix C #387/ledger/digest bindings. The separately
+implemented workspace validator enforces the same outcome without delegating
+its verdict to the focused checker.
+
+Exact-current pre-catalog evidence is green. Python byte compilation, changed-
+shell syntax, the independent workspace baseline, and all 70 focused
+mutations passed. The shared embedded source analyzer exited zero. The Apple
+embedded structural/mutation analyzer exited zero only after producing exact
+zero-byte `r_s11b`, `r_s11b2`, and `r_s11e16` verdict files. Native-codec watch
+passed normally and in adversarial self-test mode against the synchronized
+requirements identity. Exact Rust 1.75 rustfmt parsed both changed Rust
+modules; current-line comparison found zero overlap (`src/ipc.rs`: 5 changed /
+281 formatter-touched, `src/ipc/auth.rs`: 72 changed / 21 formatter-touched).
+The approved verifier image has no Cargo or Rust compiler, so this is source
+and parser evidence, not a Windows compile or execution claim.
+
+Preflight process-integrity failures are explicit and uncounted. Two intended
+in-memory affected-family filters printed 46 selected tuples, but the
+verifier's sealed-program self-reexec correctly replaced that modified
+interpreter with the canonical on-disk verifier. Those executions were
+therefore partial full catalogs, not filtered evidence; they stopped on two
+adjacent stale expected diagnostics for the admission pipe-token and process-
+token mutations. The mutations were already rejected by the stricter ordered
+admission proof. A complete neighboring-fixture audit aligned all admission-
+stage labels, bound creation-time inversion to its exact equality diagnostic,
+and strengthened the writer-last mutation to move rather than delete the
+writer. Three later purported parallel slices were likewise observed through
+their canonical on-disk argv to be duplicate full catalogs and were stopped
+and removed by their three exact task names. An initial Apple heredoc
+extraction matched no source and was rejected because the required verdict
+files were absent; only the corrected line-bounded run is evidence. None of
+these stopped attempts is represented as a pass.
+
+The authoritative complete catalog then ran directly, without a wrapper,
+filter, slice, or substituted program, from mutation one across all 5,441
+source-mutation tuples. Exact task container `rd-rs11ib-full-catalog`
+(`7bb7b3f475e66e22c7334ca7e5cc486629648c47d3490bace1847aa48b95428c`)
+used immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+UID/GID 1000, network none, read-only root/repository, all capabilities
+dropped, no-new-privileges, PID limit 64, memory/swap limit 2 GiB, two-CPU
+ceiling, and one 256 MiB no-exec tmpfs. It ran from
+`2026-08-31T05:28:46.079674349Z` through
+`2026-08-31T08:39:03.931155595Z` (3h10m17.851s), printed only the terminal
+verdict `verify-verifier-workspace: ok`, and exited zero without OOM, restart,
+or runtime error. The post-run tracked-manifest digest remained exactly
+`c30a61169ab9f0ae52e98f211c0789916b53844c6c009a5e92899e64150d1e2e`
+and the binary-diff digest remained exactly
+`459a6b1a89dd44090bf1fdff3ae1c420b966c7859b07387312a1cf1f4c683a6d`;
+all eight individual frozen hashes also matched. The stopped task container
+was removed by exact name after its state, log, confinement, tuple count, and
+hashes were captured. This catalog is exact evidence for the final source
+snapshot preceding this receipt. After the receipt was appended, diff/syntax,
+the focused 70-mutation suite, independent baseline, shared embedded analyzer,
+native-watch normal/self-test, and Apple embedded analyzer all passed again;
+the Apple run produced exact zero-byte `r_s11b`, `r_s11b2`, and `r_s11e16`
+verdicts. This sentence is the final ledger-only adjustment and is included in
+the final pre-commit fast recheck recorded in the append-only audit receipt.
+
+Exact-current Windows compilation and unit execution, adversarial pipe-handle
+inheritance/duplication and PID/process/token/argv race tests, an installed SCM
+LocalSystem service exercised through the real settings page, sustained
+latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact
+equality, independent reproduction, and R-V3 external review remain open.
+This slice does not inspect, stop, restart, modify, or connect to a host
+RustDesk process or service; inspect or change a host listener, firewall,
+network namespace, or configuration; touch Android, a VM,
+Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root,
+privileged containers, host networking, published ports, devices, or a Docker
+socket inside a verifier.

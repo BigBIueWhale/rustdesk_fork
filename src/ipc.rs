@@ -5937,14 +5937,16 @@ pub(crate) async fn handle_windows_service_owned_share_rdp_request(
     enable: bool,
     stream: &mut Connection,
 ) {
-    let accepted = authorize_windows_service_owned_share_rdp_requester(stream)
-        && match crate::platform::windows::set_service_owned_share_rdp(enable) {
+    let accepted = match authorize_windows_service_owned_share_rdp_requester(stream) {
+        Some(requester) => match requester.commit_share_rdp_change(stream, enable) {
             Ok(()) => true,
             Err(err) => {
                 log::warn!("Rejected Windows service-owned RDP session-sharing change: {err}");
                 false
             }
-        };
+        },
+        None => false,
+    };
     if !accepted {
         log::warn!("Rejected Windows service-owned RDP session-sharing change");
     }

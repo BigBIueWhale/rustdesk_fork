@@ -4114,12 +4114,26 @@ if echo "$main_request_enum" | grep -q 'SetShareRdp'; then
   r_s11b3="$r_s11b3 windows-share-rdp-present-on-main-protocol"
 fi
 grep -q 'authorize_windows_service_owned_share_rdp_requester(stream)' src/ipc.rs      || r_s11b3="$r_s11b3 windows-share-rdp-exact-requester-gate-missing"
+grep -qF ') -> Option<WindowsServiceOwnedShareRdpRequester>' src/ipc/auth.rs            || r_s11b3="$r_s11b3 windows-share-rdp-capability-result-missing"
+grep -qF 'pub(crate) struct WindowsServiceOwnedShareRdpRequester' src/ipc/auth.rs       || r_s11b3="$r_s11b3 windows-share-rdp-capability-missing"
+grep -qF 'process: WindowsPeerProcess' src/ipc/auth.rs                                  || r_s11b3="$r_s11b3 windows-share-rdp-retained-process-missing"
+grep -qF 'identity: WindowsProcessImmutableIdentity' src/ipc/auth.rs                    || r_s11b3="$r_s11b3 windows-share-rdp-retained-identity-missing"
+grep -qF 'token: WindowsLiveTokenProof' src/ipc/auth.rs                                 || r_s11b3="$r_s11b3 windows-share-rdp-retained-token-missing"
 grep -q 'stream.windows_pipe_client_token_proof()' src/ipc/auth.rs                    || r_s11b3="$r_s11b3 windows-share-rdp-pipe-token-proof-missing"
 grep -q 'process.live_token_proof()' src/ipc/auth.rs                                  || r_s11b3="$r_s11b3 windows-share-rdp-process-token-proof-missing"
 grep -q 'if pipe_token != process_token' src/ipc/auth.rs                              || r_s11b3="$r_s11b3 windows-share-rdp-token-identity-match-missing"
 grep -q 'if !pipe_token.authority.is_elevated' src/ipc/auth.rs                        || r_s11b3="$r_s11b3 windows-share-rdp-elevation-gate-missing"
 grep -q 'windows_identity_has_exact_role(identity, &\[\])' src/ipc/auth.rs             || r_s11b3="$r_s11b3 windows-share-rdp-exact-ui-role-missing"
 grep -q 'process.require_running("Windows service-owned RDP policy requester")' src/ipc/auth.rs || r_s11b3="$r_s11b3 windows-share-rdp-live-generation-missing"
+grep -qF 'requester.commit_share_rdp_change(stream, enable)' src/ipc.rs                 || r_s11b3="$r_s11b3 windows-share-rdp-capability-commit-missing"
+grep -qF 'if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time' src/ipc/auth.rs || r_s11b3="$r_s11b3 windows-share-rdp-final-generation-missing"
+grep -qF 'let identity = self.process.fresh_identity()?;' src/ipc/auth.rs               || r_s11b3="$r_s11b3 windows-share-rdp-final-identity-missing"
+grep -qF 'if pipe_token != self.token || process_token != self.token' src/ipc/auth.rs    || r_s11b3="$r_s11b3 windows-share-rdp-final-token-equality-missing"
+grep -qF 'require_running("Windows service-owned RDP policy requester at commit")' src/ipc/auth.rs || r_s11b3="$r_s11b3 windows-share-rdp-final-liveness-missing"
+share_rdp_handler=$(awk '/pub\(crate\) async fn handle_windows_service_owned_share_rdp_request/,/^}/' src/ipc.rs)
+if grep -qF 'crate::platform::windows::set_service_owned_share_rdp(enable)' <<<"$share_rdp_handler"; then
+  r_s11b3="$r_s11b3 windows-share-rdp-handler-direct-writer-present"
+fi
 grep -q 'Some(ServiceIpcResponse::ShareRdpSet { accepted })' src/ipc.rs                || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
 grep -q 'ServiceIpcRequest::SetShareRdp { enabled }' src/platform/windows.rs           || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
 grep -q 'handle_windows_service_owned_share_rdp_request' src/platform/windows.rs       || r_s11b3="$r_s11b3 windows-service-share-rdp-handler-missing"

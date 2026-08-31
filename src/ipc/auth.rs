@@ -241,6 +241,13 @@ pub(crate) struct WindowsSasPipeDispatch {
 }
 
 #[cfg(windows)]
+pub(crate) struct WindowsServiceOwnedShareRdpRequester {
+    process: WindowsPeerProcess,
+    identity: WindowsProcessImmutableIdentity,
+    token: WindowsLiveTokenProof,
+}
+
+#[cfg(windows)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct WindowsLiveTokenAuthority {
     is_local_system: bool,
@@ -4266,10 +4273,10 @@ pub(crate) fn authorize_windows_service_owned_sas_requester(
 #[cfg(windows)]
 pub(crate) fn authorize_windows_service_owned_share_rdp_requester(
     stream: &Connection,
-) -> bool {
+) -> Option<WindowsServiceOwnedShareRdpRequester> {
     let Some(peer_pid) = stream.peer_pid() else {
         log::warn!("Rejected Windows service-owned RDP policy requester without a peer pid");
-        return false;
+        return None;
     };
     let process = match WindowsPeerProcess::open(peer_pid) {
         Ok(process) => process,
@@ -4277,7 +4284,7 @@ pub(crate) fn authorize_windows_service_owned_share_rdp_requester(
             log::warn!(
                 "Rejected Windows service-owned RDP policy requester identity: peer_pid={peer_pid}, err={err}"
             );
-            return false;
+            return None;
         }
     };
     let pipe_token = match stream.windows_pipe_client_token_proof() {
@@ -4286,7 +4293,7 @@ pub(crate) fn authorize_windows_service_owned_share_rdp_requester(
             log::warn!(
                 "Rejected Windows service-owned RDP policy requester token: peer_pid={peer_pid}, err={err}"
             );
-            return false;
+            return None;
         }
     };
     let process_token = match process.live_token_proof() {
@@ -4295,55 +4302,106 @@ pub(crate) fn authorize_windows_service_owned_share_rdp_requester(
             log::warn!(
                 "Rejected Windows service-owned RDP policy requester process token: peer_pid={peer_pid}, err={err}"
             );
-            return false;
+            return None;
         }
     };
     if pipe_token != process_token {
         log::warn!(
             "Rejected Windows service-owned RDP policy requester whose pipe and process token identities differ: peer_pid={peer_pid}"
         );
-        return false;
+        return None;
     }
     if !pipe_token.authority.is_elevated {
         log::warn!(
             "Rejected Windows service-owned RDP policy requester with a non-elevated token: peer_pid={peer_pid}"
         );
-        return false;
+        return None;
     }
-    let identity = match process.immutable_identity() {
+    let identity = match process.fresh_identity() {
         Ok(identity) => identity,
         Err(err) => {
             log::warn!(
                 "Rejected Windows service-owned RDP policy requester identity: peer_pid={peer_pid}, err={err}"
             );
-            return false;
+            return None;
         }
     };
     if let Err(err) = ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE) {
         log::warn!(
             "Rejected Windows service-owned RDP policy requester executable: peer_pid={peer_pid}, err={err}"
         );
-        return false;
+        return None;
     }
     if !windows_identity_is_service_owned_share_rdp_client(&identity) {
         log::warn!(
             "Rejected Windows service-owned RDP policy requester with the wrong process role: peer_pid={peer_pid}"
         );
-        return false;
+        return None;
     }
     if let Err(err) = process.require_running("Windows service-owned RDP policy requester") {
         log::warn!(
             "Rejected Windows service-owned RDP policy requester liveness: peer_pid={peer_pid}, err={err}"
         );
-        return false;
+        return None;
     }
     if stream.peer_pid() != Some(peer_pid) {
         log::warn!(
             "Rejected Windows service-owned RDP policy requester after named-pipe peer pid changed: peer_pid={peer_pid}"
         );
-        return false;
+        return None;
     }
-    true
+    Some(WindowsServiceOwnedShareRdpRequester {
+        process,
+        identity,
+        token: pipe_token,
+    })
+}
+
+#[cfg(windows)]
+impl WindowsServiceOwnedShareRdpRequester {
+    pub(crate) fn commit_share_rdp_change(
+        self,
+        stream: &Connection,
+        enable: bool,
+    ) -> ResultType<()> {
+        let peer_pid = stream.peer_pid().ok_or_else(|| {
+            anyhow::anyhow!("Windows service-owned RDP policy requester disappeared before commit")
+        })?;
+        if peer_pid != self.process.key.pid {
+            bail!(
+                "Windows service-owned RDP policy requester changed before commit: expected {}, got {}",
+                self.process.key.pid,
+                peer_pid
+            );
+        }
+        self.process
+            .require_running("Windows service-owned RDP policy requester before commit")?;
+        if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {
+            bail!("Windows service-owned RDP policy requester generation changed before commit");
+        }
+        let identity = self.process.fresh_identity()?;
+        if identity != self.identity {
+            bail!("Windows service-owned RDP policy requester identity changed before commit");
+        }
+        ensure_windows_identity_matches_current(&identity, crate::POSTFIX_SERVICE)?;
+        if !windows_identity_is_service_owned_share_rdp_client(&identity) {
+            bail!("Windows service-owned RDP policy requester role changed before commit");
+        }
+        let pipe_token = stream.windows_pipe_client_token_proof()?;
+        let process_token = self.process.live_token_proof()?;
+        if pipe_token != self.token || process_token != self.token {
+            bail!("Windows service-owned RDP policy requester token changed before commit");
+        }
+        if !pipe_token.authority.is_elevated {
+            bail!("Windows service-owned RDP policy requester is no longer elevated");
+        }
+        if stream.peer_pid() != Some(peer_pid) {
+            bail!("Windows service-owned RDP policy requester pipe changed before commit");
+        }
+        self.process
+            .require_running("Windows service-owned RDP policy requester at commit")?;
+        crate::platform::windows::set_service_owned_share_rdp(enable)
+    }
 }
 
 #[cfg(windows)]

@@ -63,12 +63,15 @@ pub(crate) use ipc_auth::{
 };
 #[cfg(target_os = "macos")]
 use ipc_auth::{
+    authenticate_macos_service_owned_credential_requester_identity,
     authenticate_macos_service_owned_password_requester,
     authenticate_macos_service_owned_password_right_requester,
+    macos_service_owned_credential_requester_identity_is_live,
+    macos_service_owned_credential_requester_matches_post_request_authorization,
     macos_service_owned_password_requester_is_live,
     macos_service_owned_password_requester_matches_post_request_last_owner,
     macos_service_owned_password_right_requester_matches_post_request_authorization,
-    MacosServiceOwnedPasswordRequester,
+    MacosPeerProcessIdentity, MacosServiceOwnedPasswordRequester,
 };
 #[cfg(windows)]
 pub(crate) use ipc_auth::{
@@ -1348,16 +1351,20 @@ async fn authorize_macos_service_scoped_credential_stream_for_task(
     authorization: ipc_auth::ServiceScopedIpcAuthorization,
     _authorization_slot: OwnedSemaphorePermit,
     deadline: tokio::time::Instant,
-) -> bool {
+) -> Option<ipc_auth::ServiceScopedIpcAuthorization> {
     match run_bounded_macos_security_proof(deadline, "macos-credential-ipc-proof", move || {
-        Ok(ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization))
+        let retained_authorization = authorization.clone();
+        let authorized =
+            ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization);
+        Ok((retained_authorization, authorized))
     })
     .await
     {
-        Ok(authorized) => authorized,
+        Ok((authorization, true)) => Some(authorization),
+        Ok((_authorization, false)) => None,
         Err(err) => {
             log::error!("macOS service credential IPC authorization task failed: {err}");
-            false
+            None
         }
     }
 }
@@ -3190,18 +3197,22 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                             + std::time::Duration::from_millis(
                                 SERVICE_IPC_REQUEST_TIMEOUT_MS,
                             );
-                        if authorize_macos_service_scoped_credential_stream_for_task(
-                            authorization,
-                            authorization_permit,
-                            deadline,
-                        )
-                        .await
-                        {
-                            handle_macos_service_credential_snapshot_transaction(
-                                stream, permit,
+                        let Some(authorization) =
+                            authorize_macos_service_scoped_credential_stream_for_task(
+                                authorization,
+                                authorization_permit,
+                                deadline,
                             )
-                            .await;
-                        }
+                            .await
+                        else {
+                            return;
+                        };
+                        handle_macos_service_credential_snapshot_transaction(
+                            stream,
+                            authorization,
+                            permit,
+                        )
+                        .await;
                     });
                 }
             }
@@ -3425,6 +3436,7 @@ async fn handle_linux_service_credential_snapshot_transaction(
 #[cfg(target_os = "macos")]
 async fn handle_macos_service_credential_snapshot_transaction(
     mut stream: Conn,
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
     _permit: OwnedSemaphorePermit,
 ) {
     let deadline = tokio::time::Instant::now()
@@ -3437,8 +3449,23 @@ async fn handle_macos_service_credential_snapshot_transaction(
                 return;
             }
         };
-    if !macos_peer_is_service_owned_server(&stream, deadline).await {
+    let Some(requester) =
+        authenticate_macos_service_owned_credential_requester(authorization, deadline).await
+    else {
         log::warn!("Rejected macOS service credential snapshot requester");
+        return;
+    };
+    let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
+        &stream,
+        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+    );
+    if !macos_service_owned_credential_requester_matches_post_request_authorization(
+        &requester.identity,
+        post_request_authorization,
+    ) {
+        log::warn!(
+            "Rejected macOS service credential snapshot requester whose stream identity changed"
+        );
         return;
     }
     let replica = match service_owned_runtime_prs_replica("macOS") {
@@ -5248,39 +5275,35 @@ async fn macos_service_owned_password_authorization_right_is_ready(
 }
 
 #[cfg(target_os = "macos")]
-async fn macos_peer_is_service_owned_server<T>(stream: &T, deadline: tokio::time::Instant) -> bool
-where
-    T: std::os::unix::io::AsRawFd,
-{
-    let identity = match ipc_auth::macos_peer_process_identity_from_stream(
-        stream,
-        "macOS service-owned credential snapshot requester",
-    ) {
-        Ok(identity) => identity,
-        Err(err) => {
-            log::warn!("Rejected macOS service-owned credential snapshot request: {err}");
-            return false;
-        }
-    };
+struct MacosServiceOwnedCredentialRequester {
+    identity: MacosPeerProcessIdentity,
+    argv: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+async fn authenticate_macos_service_owned_credential_requester(
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
+    deadline: tokio::time::Instant,
+) -> Option<MacosServiceOwnedCredentialRequester> {
     let Some(_authorization_slot) = try_acquire_macos_service_credential_ipc_authorization_slot()
     else {
-        return false;
+        return None;
     };
     let proof_deadline = deadline.into_std();
     match run_bounded_macos_security_proof(deadline, "macos-credential-snapshot-proof", move || {
-        Ok(macos_peer_is_service_owned_server_blocking(
-            identity,
+        authenticate_macos_service_owned_credential_requester_blocking(
+            authorization,
             proof_deadline,
-        ))
+        )
     })
     .await
     {
-        Ok(accepted) => accepted,
+        Ok(requester) => requester,
         Err(err) => {
             log::warn!(
                 "Rejected macOS service-owned credential snapshot request: peer proof task failed: {err}"
             );
-            false
+            None
         }
     }
 }
@@ -5293,17 +5316,11 @@ fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_peer_is_service_owned_server_blocking(
-    identity: ipc_auth::MacosPeerProcessIdentity,
+fn authenticate_macos_service_owned_credential_requester_blocking(
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
     proof_deadline: std::time::Instant,
-) -> bool {
-    if !ipc_auth::macos_peer_is_trusted_installed_app(&identity) {
-        log::warn!(
-            "Rejected macOS service-owned credential snapshot request: peer code is not the trusted installed app, peer_pid={}",
-            identity.pid()
-        );
-        return false;
-    }
+) -> ResultType<Option<MacosServiceOwnedCredentialRequester>> {
+    let identity = authenticate_macos_service_owned_credential_requester_identity(authorization)?;
     let peer_uid = identity.uid();
     let peer_pid = identity.pid();
     let app_name = crate::get_app_name();
@@ -5316,22 +5333,47 @@ fn macos_peer_is_service_owned_server_blocking(
         log::warn!(
             "Rejected macOS service-owned credential snapshot request: peer process disappeared, peer_pid={peer_pid}"
         );
-        return false;
+        return Ok(None);
     };
     if !process.name().eq_ignore_ascii_case(&app_name) {
         log::warn!(
             "Rejected macOS service-owned credential snapshot request: peer process is not {app_name}, peer_pid={peer_pid}"
         );
-        return false;
+        return Ok(None);
     }
-    if !macos_service_owned_server_live_argv_is_expected(process.cmd()) {
+    let argv = process.cmd().to_vec();
+    if !macos_service_owned_server_live_argv_is_expected(&argv) {
         log::warn!(
             "Rejected macOS service-owned credential snapshot request: peer process is not service-owned --server, peer_pid={peer_pid}"
         );
+        return Ok(None);
+    }
+    if !macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline) {
+        return Ok(None);
+    }
+    let requester = MacosServiceOwnedCredentialRequester { identity, argv };
+    Ok(macos_service_owned_credential_requester_is_live(&requester).then_some(requester))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_credential_requester_is_live(
+    requester: &MacosServiceOwnedCredentialRequester,
+) -> bool {
+    if !macos_service_owned_credential_requester_identity_is_live(&requester.identity) {
         return false;
     }
-    macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)
-        && ipc_auth::macos_peer_is_trusted_installed_app(&identity)
+    let app_name = crate::get_app_name();
+    let system = hbb_common::sysinfo::System::new_all();
+    let Some(process) = system
+        .processes()
+        .values()
+        .find(|process| process.pid().as_u32() == requester.identity.pid())
+    else {
+        return false;
+    };
+    process.name().eq_ignore_ascii_case(&app_name)
+        && process.cmd() == requester.argv
+        && macos_service_owned_server_live_argv_is_expected(process.cmd())
 }
 
 #[cfg(target_os = "macos")]

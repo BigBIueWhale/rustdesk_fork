@@ -68,6 +68,7 @@ def validate(sources: Dict[str, str]) -> None:
     apple = sources["apple"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
+    native_watch = sources["native_watch"]
     workspace = sources["workspace"]
 
     for token, label in (
@@ -277,10 +278,12 @@ def validate(sources: Dict[str, str]) -> None:
             "service_scoped_ipc_authorization_snapshot_from_stream(",
             "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
             "transactions.spawn(async move",
+            "let Some(authorization)",
             "authorize_macos_service_scoped_credential_stream_for_task(",
             "handle_macos_service_credential_snapshot_transaction(",
+            "stream,\n                            authorization,\n                            permit,",
         ),
-        "bounded proof-before-request macOS credential admission",
+        "bounded retained proof-before-request macOS credential admission",
     )
     forbid(
         credential_accept,
@@ -299,11 +302,15 @@ def validate(sources: Dict[str, str]) -> None:
         credential_handler,
         (
             "receive_credential_snapshot_request_unix(&mut stream, deadline)",
-            "macos_peer_is_service_owned_server(&stream, deadline).await",
+            "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+            "service_scoped_ipc_authorization_snapshot(",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "macos_service_owned_credential_requester_matches_post_request_authorization(",
+            "&requester.identity,\n        post_request_authorization,",
             'service_owned_runtime_prs_replica("macOS")',
             "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
         ),
-        "bodyless request, exact LaunchAgent proof, and secret response",
+        "bodyless request, retained exact LaunchAgent proof, post-request equality, and secret response",
     )
     for token, label in (
         ("get_local_permanent_password_storage_and_salt", "persistent envelope read"),
@@ -316,7 +323,7 @@ def validate(sources: Dict[str, str]) -> None:
 
     exact_peer = extract(
         ipc,
-        "async fn macos_peer_is_service_owned_server<T>(",
+        "async fn authenticate_macos_service_owned_credential_requester(",
         "\n}\n\n#[cfg(any(target_os = \"macos\", test))]\n"
         "fn macos_service_owned_server_live_argv_is_expected",
         "macOS exact LaunchAgent peer proof admission",
@@ -324,14 +331,15 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         exact_peer,
         (
-            "macos_peer_process_identity_from_stream(",
             "try_acquire_macos_service_credential_ipc_authorization_slot()",
             "let proof_deadline = deadline.into_std();",
             'run_bounded_macos_security_proof(deadline, "macos-credential-snapshot-proof"',
-            "macos_peer_is_service_owned_server_blocking(",
-            "identity,\n            proof_deadline,",
+            "authenticate_macos_service_owned_credential_requester_blocking(\n"
+            "            authorization,\n"
+            "            proof_deadline,\n"
+            "        )",
         ),
-        "audit-token and exactly owned blocking peer proof admission",
+        "retained audit-token and exactly owned blocking peer proof admission",
     )
     forbid(
         exact_peer,
@@ -340,20 +348,120 @@ def validate(sources: Dict[str, str]) -> None:
     )
     blocking_peer = extract(
         ipc,
-        "fn macos_peer_is_service_owned_server_blocking(",
+        "fn authenticate_macos_service_owned_credential_requester_blocking(",
         "\n}\n\n#[cfg(target_os = \"macos\")]\n"
-        "fn macos_service_owned_server_launch_agent_label",
+        "fn macos_service_owned_credential_requester_is_live",
         "macOS exact LaunchAgent blocking peer proof",
     )
     require_order(
         blocking_peer,
         (
-            "macos_peer_is_trusted_installed_app(&identity)",
-            "macos_service_owned_server_live_argv_is_expected(process.cmd())",
-            "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
-            "ipc_auth::macos_peer_is_trusted_installed_app(&identity)",
+            "authenticate_macos_service_owned_credential_requester_identity(authorization)?",
+            "let argv = process.cmd().to_vec();",
+            "macos_service_owned_server_live_argv_is_expected(&argv)",
+            "if !macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
+            "MacosServiceOwnedCredentialRequester { identity, argv }",
+            "macos_service_owned_credential_requester_is_live(&requester).then_some(requester)",
         ),
-        "installed-app, exact argv, exact launchd, and final code proof",
+        "retained installed-app identity, exact argv, exact launchd, and final requester replay",
+    )
+    final_requester = extract(
+        ipc,
+        "fn macos_service_owned_credential_requester_is_live(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "fn macos_service_owned_server_launch_agent_label",
+        "macOS credential requester final replay",
+    )
+    require_order(
+        final_requester,
+        (
+            "macos_service_owned_credential_requester_identity_is_live(&requester.identity)",
+            "process.pid().as_u32() == requester.identity.pid()",
+            "process.name().eq_ignore_ascii_case(&app_name)",
+            "process.cmd() == requester.argv",
+            "macos_service_owned_server_live_argv_is_expected(process.cmd())",
+        ),
+        "final installed generation and exact argv replay",
+    )
+    forbid(
+        ipc,
+        "macos_peer_is_service_owned_server(",
+        "obsolete Boolean credential peer check",
+    )
+    forbid(
+        ipc,
+        "macos_peer_is_service_owned_server_blocking(",
+        "obsolete Boolean blocking credential peer check",
+    )
+
+    retained_admission = extract(
+        ipc,
+        "async fn authorize_macos_service_scoped_credential_stream_for_task(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "async fn authorize_macos_service_server_snapshot_for_task",
+        "macOS retained credential admission proof",
+    )
+    require_order(
+        retained_admission,
+        (
+            "let retained_authorization = authorization.clone();",
+            "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
+            "Ok((retained_authorization, authorized))",
+            "Ok((authorization, true)) => Some(authorization)",
+        ),
+        "generic proof returns the exact accepted credential authorization snapshot",
+    )
+
+    requester_identity = extract(
+        auth,
+        "pub(crate) fn authenticate_macos_service_owned_credential_requester_identity(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "pub(crate) fn macos_service_owned_credential_requester_identity_is_live",
+        "macOS credential requester identity admission",
+    )
+    require_order(
+        requester_identity,
+        (
+            "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "!authorization.uid_authorized",
+            "authorization.macos_peer_identity",
+            "macos_service_owned_password_requester_identity_is_live(&identity)",
+            "Ok(identity)",
+        ),
+        "credential endpoint, UID authority, and installed-app audit generation",
+    )
+    requester_generation = extract(
+        auth,
+        "pub(crate) fn macos_service_owned_credential_requester_identity_is_live(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization",
+        "macOS credential requester generation replay",
+    )
+    require_order(
+        requester_generation,
+        (
+            "macos_service_owned_password_requester_identity_is_live(identity)",
+            "macos_service_owned_password_requester_generation_is_live(identity)",
+        ),
+        "final exact installed-app audit generation replay",
+    )
+    requester_post = extract(
+        auth,
+        "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "fn macos_service_owned_password_requester_identity_is_live",
+        "macOS credential requester post-request authorization equality",
+    )
+    require_order(
+        requester_post,
+        (
+            "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "!authorization.uid_authorized",
+            "post_request_identity.uid == requester.uid",
+            "post_request_identity.pid == requester.pid",
+            "post_request_identity.audit_token == requester.audit_token",
+        ),
+        "post-request endpoint, UID, PID, and full audit-token equality",
     )
     launchctl_parser = extract(
         ipc,
@@ -518,6 +626,24 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "immediate kernel peer identity snapshot",
     )
+    service_snapshot = extract(
+        auth,
+        "pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream<T>(",
+        "\n}\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\n"
+        "pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot",
+        "service-scoped accepted-socket authorization snapshot",
+    )
+    require_order(
+        service_snapshot,
+        (
+            "let peer_uid = peer_uid_from_fd(fd);",
+            "match (peer_uid, peer_pid_from_fd(fd), peer_audit_token_from_fd(fd))",
+            "macos_peer_process_identity_from_socket_components(uid, pid, audit_token)",
+            "uid_authorized",
+            "ServiceScopedIpcAuthorization {",
+        ),
+        "credential socket UID, PID, full audit-token, and UID authority snapshot",
+    )
 
     snapshot_client = extract(
         ipc,
@@ -623,6 +749,10 @@ def validate(sources: Dict[str, str]) -> None:
             "R-S11e-191",
             "R-S11fe",
             "R-S11e-192",
+            '<span class="id">R-S11ia</span>',
+            "<tr><td>386</td>",
+            "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
+            "The same identity additionally binds R-S11ia and Appendix C #386.",
         ):
             require(gate, token, "{} documentation binding".format(label))
     for token, label in (
@@ -633,6 +763,12 @@ def validate(sources: Dict[str, str]) -> None:
         ("<tr><td>312</td>", "Appendix C #312"),
         ('<span class="id">R-S11fe</span>', "R-S11fe requirement"),
         ("<tr><td>313</td>", "Appendix C #313"),
+        ('<span class="id">R-S11ia</span>', "R-S11ia requirement"),
+        ("<tr><td>386</td>", "Appendix C #386"),
+        (
+            "macOS service-owned credential replication responds only to one retained exact LaunchAgent requester generation",
+            "exact credential response requirement",
+        ),
     ):
         require(requirements, token, label)
     require(
@@ -649,6 +785,16 @@ def validate(sources: Dict[str, str]) -> None:
         hardening,
         "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
         "launchctl bounded-child hardening ledger",
+    )
+    require(
+        hardening,
+        "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
+        "exact credential response hardening ledger",
+    )
+    require(
+        native_watch,
+        "The same identity additionally binds R-S11ia and Appendix C #386.",
+        "native-watch exact credential response binding",
     )
     for token, label in (
         (
@@ -684,6 +830,30 @@ def validate(sources: Dict[str, str]) -> None:
             '"R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",\n'
             '            "R-S11fe/R-S11e-192 unbounded macOS launchd proof-child resources",',
             "independent launchctl bounded-child ledger mutation",
+        ),
+        (
+            '"exact accepted credential snapshot return",',
+            "independent retained credential snapshot validation",
+        ),
+        (
+            '"macOS final installed generation and argv replay",',
+            "independent final credential requester replay validation",
+        ),
+        (
+            '"macOS credential endpoint, UID, PID, and full-token finality",',
+            "independent credential post-request equality validation",
+        ),
+        (
+            '"focused macOS credential final argv mutation",',
+            "independent focused-verifier mutation binding",
+        ),
+        (
+            '"shared macOS credential response finality proof",',
+            "independent shared-gate mutation binding",
+        ),
+        (
+            '"exact macOS credential requester finality identity binding",',
+            "independent requirement-ledger-digest mutation binding",
         ),
     ):
         require(workspace, token, label)
@@ -759,9 +929,97 @@ MUTATIONS = (
     ),
     Mutation(
         "ipc",
-        "if !macos_peer_is_service_owned_server(&stream, deadline).await",
-        "if false",
+        "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+        "None /* exact LaunchAgent proof bypassed */",
         "exact LaunchAgent proof before replica",
+    ),
+    Mutation(
+        "ipc",
+        'match run_bounded_macos_security_proof(deadline, "macos-credential-ipc-proof", move || {\n'
+        "        let retained_authorization = authorization.clone();",
+        'match run_bounded_macos_security_proof(deadline, "macos-credential-ipc-proof", move || {\n'
+        "        let retained_authorization = ();",
+        "retained accepted credential authorization snapshot",
+    ),
+    Mutation(
+        "ipc",
+        "stream,\n                            authorization,\n                            permit,",
+        "stream,\n                            (),\n                            permit,",
+        "retained credential authorization dispatch",
+    ),
+    Mutation(
+        "auth",
+        "if authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX {\n"
+        "        bail!(\"macOS service-owned credential requester used the wrong endpoint\");",
+        "if false {\n"
+        "        bail!(\"macOS service-owned credential requester used the wrong endpoint\");",
+        "credential requester endpoint authority",
+    ),
+    Mutation(
+        "auth",
+        "if !authorization.uid_authorized {\n"
+        "        bail!(\"macOS service-owned credential requester is not root or the active console user\");",
+        "if false {\n"
+        "        bail!(\"macOS service-owned credential requester is not root or the active console user\");",
+        "credential requester UID authority",
+    ),
+    Mutation(
+        "ipc",
+        "if !macos_service_owned_server_live_argv_is_expected(&argv) {",
+        "if false {",
+        "credential requester exact initial argv role",
+    ),
+    Mutation(
+        "ipc",
+        "if !macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline) {",
+        "if false && !macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline) {",
+        "exact launchd ownership proof",
+    ),
+    Mutation(
+        "ipc",
+        "macos_service_owned_credential_requester_is_live(&requester).then_some(requester)",
+        "Some(requester)",
+        "final credential requester replay",
+    ),
+    Mutation(
+        "auth",
+        "&& macos_service_owned_password_requester_generation_is_live(identity)",
+        "&& true",
+        "final credential requester installed-app generation",
+    ),
+    Mutation(
+        "ipc",
+        "&& process.cmd() == requester.argv",
+        "&& true",
+        "final credential requester complete argv equality",
+    ),
+    Mutation(
+        "ipc",
+        "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n"
+        "        &stream,\n"
+        "        password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n"
+        "    );",
+        "let post_request_authorization = authorization; /* post-request snapshot omitted */",
+        "post-request credential stream snapshot",
+    ),
+    Mutation(
+        "auth",
+        "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX\n"
+        "        || !authorization.uid_authorized",
+        "false",
+        "post-request credential endpoint and UID authority",
+    ),
+    Mutation(
+        "auth",
+        "&& post_request_identity.pid == requester.pid",
+        "&& true",
+        "post-request credential PID equality",
+    ),
+    Mutation(
+        "auth",
+        "&& post_request_identity.audit_token == requester.audit_token",
+        "&& true",
+        "post-request credential full audit-token equality",
     ),
     Mutation(
         "ipc",
@@ -780,23 +1038,12 @@ MUTATIONS = (
         "raw credential response writer",
     ),
     Mutation(
-        "ipc",
-        "ipc_auth::macos_peer_process_identity_from_stream(",
-        "stream.macos_peer_process_identity(",
-        "raw-stream audit-token peer snapshot",
-    ),
-    Mutation(
-        "ipc",
-        "if !ipc_auth::macos_peer_is_trusted_installed_app(&identity) {",
-        "if false {",
+        "auth",
+        "if !macos_service_owned_password_requester_identity_is_live(&identity) {\n"
+        "        bail!(\"macOS service-owned credential requester is not the live trusted installed app\");",
+        "if false {\n"
+        "        bail!(\"macOS service-owned credential requester is not the live trusted installed app\");",
         "installed-app code proof",
-    ),
-    Mutation(
-        "ipc",
-        "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)\n"
-        "        && ipc_auth::macos_peer_is_trusted_installed_app(&identity)",
-        "true",
-        "exact launchd ownership proof",
     ),
     Mutation(
         "ipc",
@@ -925,9 +1172,12 @@ MUTATIONS = (
     ),
     Mutation(
         "auth",
-        "audit_token: peer_audit_token_from_fd(fd)\n"
-        "            .ok_or_else(|| anyhow::anyhow!(\"Failed to resolve {description} audit token\"))?,",
-        "audit_token: [0; 8],",
+        "(Some(uid), Some(pid), Some(audit_token)) => {\n"
+        "            macos_peer_process_identity_from_socket_components(uid, pid, audit_token)\n"
+        "        }",
+        "(Some(uid), Some(pid), Some(audit_token)) => {\n"
+        "            Some(MacosPeerProcessIdentity { uid, pid, audit_token })\n"
+        "        }",
         "socket audit-token snapshot",
     ),
     Mutation(
@@ -1039,6 +1289,42 @@ MUTATIONS = (
         "launchctl bounded-child hardening ledger",
     ),
     Mutation(
+        "verify",
+        'grep -Fq \'<span class="id">R-S11ia</span>\' requirements.html',
+        "true # exact credential response requirement binding disabled",
+        "shared exact credential response documentation binding",
+    ),
+    Mutation(
+        "apple",
+        'grep -Fq \'<span class="id">R-S11ia</span>\' "$REPO/requirements.html"',
+        "true # Apple exact credential response requirement binding disabled",
+        "Apple exact credential response documentation binding",
+    ),
+    Mutation(
+        "requirements",
+        '<span class="id">R-S11ia</span>',
+        '<span class="id">R-S11ia-disabled</span>',
+        "normative exact credential response requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>386</td>",
+        "<tr><td>386-disabled</td>",
+        "Appendix C exact credential response disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
+        "R-S11ia-disabled/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
+        "exact credential response hardening ledger",
+    ),
+    Mutation(
+        "native_watch",
+        "The same identity additionally binds R-S11ia and Appendix C #386.",
+        "The same identity no longer binds R-S11ia and Appendix C #386.",
+        "native-watch exact credential response binding",
+    ),
+    Mutation(
         "workspace",
         '"    c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",\n'
         '            "raw macOS credential request writer",',
@@ -1075,6 +1361,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "apple": "scripts/apple-conform-check.sh",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
+        "native_watch": "docs/NATIVE-CODEC-WATCH.md",
         "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {

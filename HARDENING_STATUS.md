@@ -28648,7 +28648,7 @@ by these Linux source gates.
 Current normative identity for this slice:
 
 ```text
-5c4b18879ac370f7c5256abafc0dc24bf7b81f855556c45403b34ff1fb8dea58  requirements.html
+requirements.html: 5c4b18879ac370f7c5256abafc0dc24bf7b81f855556c45403b34ff1fb8dea58
 ```
 
 Evidence receipt for the source snapshot preceding this receipt:
@@ -28701,3 +28701,176 @@ Exact-current signed macOS compilation/execution, real Authorization Services
 allow/deny and race behavior, installed LaunchDaemon behavior, sustained
 performance/resource testing, cold release-artifact equality, independent
 reproduction, and external review remain open.
+
+### R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality
+
+**Status:** SOURCE REPAIR AUTHORED / FOCUSED 70-MUTATION,
+AFFECTED-FAMILY 35-MUTATION, INDEPENDENT, SHARED-EMBEDDED, APPLE-EMBEDDED,
+COMPLETE 5,415-TUPLE, AND NATIVE-WATCH SOURCE GATES GREEN / NATIVE MACOS,
+INSTALLED LAUNCHDAEMON/LAUNCHAGENT, RACE, PERFORMANCE, RELEASE-ARTIFACT,
+INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+
+Continuing the action-by-action privileged IPC review found a narrower secret-
+response finality defect in macOS raw `_service_credential`. This bodyless
+request asks the root LaunchDaemon to return its password-equivalent permanent-
+password PRS as a nonpersistent runtime replica to the per-user service-owned
+`--server`. Before this slice, the listener captured a service-scoped UID,
+effective PID, and full `LOCAL_PEERTOKEN` before task transfer, but its generic
+proof returned only a Boolean and discarded the accepted record. After the
+request, the handler derived a new last-owner identity, proved the installed
+app, inspected exact `--server --service-owned-server` argv, and required
+bounded `launchctl print` output to bind that PID to the trusted LaunchAgent
+plist. The proof again returned only a Boolean. It neither required the later
+identity to equal the accepted generation, retained complete argv across the
+potentially slow launchd query, replayed that argv afterward, nor took a fresh
+endpoint/UID/PID/full-token snapshot immediately before loading and sending the
+PRS. The existing signed-code, role, launchd, raw-protocol, and client-side
+root-helper checks materially constrained the old path, so this is source-
+proven secret-response requester-generation and finality debt—not evidence that
+a PRS was disclosed, that exploitation occurred, that a deployed artifact
+contained the defect, or that any host service/network state was changed.
+
+The listener's bounded generic credential proof now clones and returns the
+exact accepted `ServiceScopedIpcAuthorization` only after the existing generic
+root/current-console and installed-app/helper admission succeeds. The spawned
+transaction must carry that record into the handler; a Boolean or re-derived
+identity is no longer the action surface. The action-specific proof consumes
+the retained record and requires the exact `_service_credential` postfix,
+fresh root/current-console UID authority, a live signed installed-app identity
+and trusted bundle layout, and a complete current argv equal to exactly
+`--server` plus the fixed service-owned-server argument. UI, password, tray,
+connection-manager, helper, service, malformed, missing, and extra-argument
+roles fail closed.
+
+The proof retains that complete argv while the bounded, closed-environment
+`launchctl print` query proves the exact top-level PID and trusted LaunchAgent
+plist path. After the query returns, it re-proves the same installed-app audit-
+token generation and fresh console-UID eligibility, reloads the process table,
+requires the same PID and application name, requires byte-for-byte equality
+with the retained argv, and rechecks the finite service-owned-server role. It
+returns the resulting identity-plus-argv requester object rather than a
+detached Boolean. The handler then takes a fresh service-scoped snapshot of the
+same stream and requires `_service_credential`, fresh UID authority, UID,
+effective PID, and full audit-token equality with that requester. Only after
+all of those checks succeed does it call
+`service_owned_runtime_prs_replica("macOS")` and send the operation-bound raw
+replica. Missing, helper-only, stale, changed, mixed, wrong-endpoint, launchd-
+only, last-owner-only, code-only, or disjunctive evidence closes the stream
+without reading the credential replica.
+
+This remains deliberately bounded evidence rather than a stronger claim than
+Darwin exposes. The final stream snapshot is XNU mutable last-owner consistency
+evidence: it detects a currently different accessor and visible token/PID
+generation mismatch, but it does not prove exclusive request-frame authorship
+or detect every descriptor handoff followed by restored activity from the
+retained process. The exact signed requester generation, complete role,
+trusted LaunchAgent record, post-query replay, and final socket equality are a
+conjunction because none is sufficient alone. The raw request/response wire,
+operation ID, one-second absolute deadline, transaction and proof capacities,
+bounded/reaped launchctl child, trusted plist/path checks, root-owned PRS
+source, client-side root-helper proof, and nonpersistent runtime-only install
+are unchanged.
+
+The focused credential verifier now independently extracts the retained
+pre-task snapshot, authority-bearing requester object, endpoint/UID/installed-
+generation checks, exact argv and launchd proof, post-query replay, post-request
+endpoint/UID/PID/full-token equality, and replica-load ordering. Its deliberate
+mutations cover each of those edges plus shared/Apple/independent/document
+bindings. The shared embedded checker, Apple structural checker, and separately
+implemented workspace validator check the same outcome with their own source
+regions and verdicts. The verification receipts below and the final normative
+digest were appended only after those exact bytes passed; no pending gate is
+counted as green.
+
+Exact-current signed macOS compilation/execution, audit-token/PID-reuse/argv/
+descriptor-sharing and launchd-state race tests, physical installed
+LaunchDaemon/LaunchAgent behavior, sustained latency/CPU/memory/resource soak,
+clean committed cold R-B2/R-B10 artifact equality, independent reproduction,
+and R-V3 external review remain open. This slice does not inspect, stop,
+restart, modify, or connect to a host RustDesk service; inspect or change a host
+listener, firewall, or network namespace; touch Android, a VM,
+Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root,
+privileged containers, host networking, published ports, devices, or a Docker
+socket inside a verifier.
+
+Current normative identity for this slice:
+
+```text
+db278737c942297a357406d6ff2e944f900fce5fa266e902d995cd0068e9d7e7  requirements.html
+```
+
+Evidence receipt for the source snapshot preceding this receipt:
+
+- `git diff --check`, changed-shell syntax, and changed-Python compilation
+  checks passed. The separately implemented workspace baseline printed
+  `verify-verifier-workspace: ok` in the approved verifier image.
+- The focused macOS service-credential IPC checker passed its baseline and
+  printed `verify-macos-service-credential-ipc: 70 deliberate mutations
+  rejected`. The independent catalog then passed an isolated 31-tuple run
+  containing every R-S11ia source/verifier/shared/Apple/document mutation, a
+  32-tuple run adding the adjacent historical retained-generic-authorization
+  fixture, and a 35-tuple run additionally covering every late Apple scoped
+  credential-mutation meta-fixture.
+- The shared `verify.sh` embedded source checker exited zero. The Apple
+  embedded structural and scoped-mutation checker exited zero with empty
+  `r_s11b`, `r_s11b2`, and `r_s11e16` verdict files. Those are embedded
+  source-checker results, not a claim that an outer Apple toolchain/build
+  conformance workflow or native macOS runtime test ran.
+- `native-codec-watch.sh` and its self-test passed. Pinned Rust 1.75
+  `rustfmt` still reports known whole-file drift outside this slice; an exact
+  current-line comparison found zero overlap (`src/ipc.rs`: 93 changed lines /
+  276 rustfmt-touched / zero overlap; `src/ipc/auth.rs`: 45 changed lines / 23
+  rustfmt-touched / zero overlap). The approved image contains neither
+  `cargo` nor `rustc`, so no exact-current Rust or macOS compile/execution
+  claim is made.
+- Two setup invocations are deliberately uncounted: one filtered harness was
+  started without Docker stdin attachment and therefore executed no supplied
+  harness, and one invocation omitted `--source-mutations-only` and performed
+  only the approximately five-second baseline despite being initially
+  described as a catalog run. Neither is represented as mutation evidence.
+- The first actual complete-catalog attempt correctly stopped after 1,257
+  seconds because the new credential retained-snapshot return made a
+  historical generic-return mutation target ambiguous. Its target was
+  restricted to the generic `_service` diagnostic context. After the UI/host
+  interruption, the still-running exact task container and unified session
+  were recovered; all nine hashes matched the recorded checkpoint. That
+  restarted-from-zero attempt stopped after 1,233 seconds because the new
+  credential-specific retained-snapshot mutation still matched both generic
+  and credential functions. Adding the credential proof label made that
+  target unique.
+- The next complete attempt stopped after 1,258 seconds because the
+  independent validator accepted a deliberate `if false &&` bypass of the
+  exact LaunchAgent PID-ownership guard. The validator now requires the full
+  `if !macos_launch_agent_owns_service_owned_server_pid(...)` condition. The
+  expanded 31-tuple preflight then exposed and closed three more independent-
+  gate weaknesses before another long run: it now binds the focused
+  requester-identity validator and its argv/token self-mutations, requires all
+  six Apple credential-authority verdict uses (the baseline verdict plus five
+  scoped verdict expectations), and reports the Apple R-S11ia requirement
+  binding under its exact diagnostic family.
+- A subsequent complete attempt passed all earlier regions and stopped after
+  4,461 seconds only because a redundant newly added Apple scoped-mutation
+  check intercepted the pre-existing exact `credential-raw-response` binding
+  under a different diagnostic label. The redundant six checks were removed;
+  the original stricter scoped bindings remain, the six-count verdict guard
+  remains, and the resulting combined 35-tuple affected/late family printed
+  `verify-verifier-workspace: ok`.
+- The complete unmodified catalog was restarted from tuple zero after every
+  correction. Its final run covered all 5,415 deliberate source mutations,
+  printed `verify-verifier-workspace: ok`, and exited zero after 11,312 seconds
+  (3h08m32s) in the approved immutable image with `--network=none`, UID/GID
+  1000, a read-only repository bind and root filesystem, all capabilities
+  dropped, `no-new-privileges`, one 256 MiB no-exec tmpfs, and explicit
+  PID/memory/CPU caps. All nine frozen file hashes were byte-identical after
+  completion (`verifier_status=0`, `frozen_status=0`). The task-created stopped
+  container was removed by exact name.
+
+This receipt records Linux source and verifier evidence only. Exact-current
+signed macOS compilation/execution, real audit-token/PID-reuse/argv/descriptor-
+handoff and launchd-state races, installed LaunchDaemon/LaunchAgent behavior,
+sustained performance/resource testing, clean committed cold R-B2/R-B10
+artifact equality, independent reproduction, and external review remain open.
+No host RustDesk service, listener, firewall, network namespace, Android
+device, VM, Haggai/Desktop_Haggai_computer workload, unrelated Docker object,
+root authority, privileged container, host network, published port, device, or
+Docker socket inside a verifier was inspected or used by this slice.

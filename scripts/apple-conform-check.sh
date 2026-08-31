@@ -1154,6 +1154,9 @@ def analyze(sources):
         mac_password_requester_live = item(auth, "pub(crate) fn macos_service_owned_password_requester_is_live")
         mac_password_right_post_request = item(auth, "pub(crate) fn macos_service_owned_password_right_requester_matches_post_request_authorization")
         mac_password_post_request_last_owner = item(auth, "pub(crate) fn macos_service_owned_password_requester_matches_post_request_last_owner")
+        mac_credential_requester_auth = item(auth, "pub(crate) fn authenticate_macos_service_owned_credential_requester_identity")
+        mac_credential_requester_generation = item(auth, "pub(crate) fn macos_service_owned_credential_requester_identity_is_live")
+        mac_credential_post_request = item(auth, "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization")
         mac_password_requester_role = item(auth, "fn macos_service_owned_password_client_argv_is_expected")
         mac_password_requester_generation = item(auth, "fn macos_service_owned_password_requester_generation_is_live")
         mac_socket_token_match = item(auth, "fn macos_audit_token_matches_socket_identity")
@@ -1167,8 +1170,9 @@ def analyze(sources):
         readiness_server = item(ipc, "async fn macos_service_owned_password_authorization_right_is_ready")
         service_transaction = item(ipc, "async fn handle_service_ipc_transaction")
         service_handler = item(ipc, "async fn handle_service_request")
-        snapshot_peer = item(ipc, "async fn macos_peer_is_service_owned_server")
-        snapshot_identity = item(ipc, "fn macos_peer_is_service_owned_server_blocking")
+        snapshot_peer = item(ipc, "async fn authenticate_macos_service_owned_credential_requester")
+        snapshot_identity = item(ipc, "fn authenticate_macos_service_owned_credential_requester_blocking")
+        snapshot_final = item(ipc, "fn macos_service_owned_credential_requester_is_live")
         snapshot_argv = item(ipc, "fn macos_service_owned_server_live_argv_is_expected")
         snapshot_path = item(ipc, "fn macos_root_wheel_path_is_trusted")
         snapshot_plist = item(ipc, "fn macos_service_owned_server_launch_agent_plist_value_is_expected")
@@ -1357,11 +1361,16 @@ def analyze(sources):
                 "transactions.spawn(async move",
                 "authorize_macos_service_scoped_credential_stream_for_task(",
                 "handle_macos_service_credential_snapshot_transaction(",
+                "stream", "authorization", "permit",
             ],
         ) and "receive_credential_snapshot_request_unix" not in credential_accept
-            and all(token in mac_credential_auth for token in [
+            and ordered(mac_credential_auth, [
                 "run_bounded_macos_security_proof(",
+                "let retained_authorization = authorization.clone()",
                 "authorize_service_scoped_ipc_authorization_snapshot(",
+                "Ok((retained_authorization, authorized))",
+                "Ok((authorization, true)) => Some(authorization)",
+                "Ok((_authorization, false)) => None",
             ]))
         ordinary_accept = run_service[run_service.find("result = incoming.next()") :]
         need("b2", "macos-audit-snapshot-not-immediate", ordered(password_accept, [
@@ -1432,11 +1441,11 @@ def analyze(sources):
         need("b2", "readiness-snapshot-not-password-budgeted", ordered(readiness_server, [
             "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "ensure_service_owned_unattended_password_authorization_right()",
         ]) and ordered(snapshot_peer, [
-            "macos_peer_process_identity_from_stream(",
             "try_acquire_macos_service_credential_ipc_authorization_slot()",
             "let proof_deadline = deadline.into_std();",
             "run_bounded_macos_security_proof(deadline",
-            "macos_peer_is_service_owned_server_blocking(",
+            "authenticate_macos_service_owned_credential_requester_blocking(",
+            "authorization",
             "proof_deadline",
         ]))
 
@@ -1530,9 +1539,30 @@ def analyze(sources):
 
         need("b2", "snapshot-requester-argv-not-exact", all(token in snapshot_argv for token in [
             "cmd.len() == 3", 'Some("--server")', "Some(crate::common::SERVICE_OWNED_SERVER_ARG)",
-        ]) and "macos_service_owned_server_live_argv_is_expected(process.cmd())" in snapshot_identity)
-        need("b2", "snapshot-requester-not-installed-launchd-plist-proven", all(token in snapshot_identity for token in [
-            "macos_peer_is_trusted_installed_app(&identity)", "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
+        ]) and "macos_service_owned_server_live_argv_is_expected(&argv)" in snapshot_identity
+            and "macos_service_owned_server_live_argv_is_expected(process.cmd())" in snapshot_final)
+        need("b2", "snapshot-requester-not-installed-launchd-plist-proven", ordered(snapshot_identity, [
+            "authenticate_macos_service_owned_credential_requester_identity(authorization)",
+            "let argv = process.cmd().to_vec()",
+            "macos_service_owned_server_live_argv_is_expected(&argv)",
+            "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
+            "MacosServiceOwnedCredentialRequester { identity, argv }",
+            "macos_service_owned_credential_requester_is_live(&requester).then_some(requester)",
+        ]) and ordered(mac_credential_requester_auth, [
+            "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "if !authorization.uid_authorized",
+            "authorization.macos_peer_identity",
+            "macos_service_owned_password_requester_identity_is_live(&identity)",
+            "Ok(identity)",
+        ]) and ordered(mac_credential_requester_generation, [
+            "macos_service_owned_password_requester_identity_is_live(identity)",
+            "&& macos_service_owned_password_requester_generation_is_live(identity)",
+        ]) and ordered(snapshot_final, [
+            "macos_service_owned_credential_requester_identity_is_live(&requester.identity)",
+            "process.pid().as_u32() == requester.identity.pid()",
+            "process.name().eq_ignore_ascii_case(&app_name)",
+            "process.cmd() == requester.argv",
+            "macos_service_owned_server_live_argv_is_expected(process.cmd())",
         ]) and all(token in snapshot_path for token in [
             "std::fs::symlink_metadata(path)", "!metadata.file_type().is_symlink()", "metadata.uid() == 0",
             "metadata.gid() == 0", "mode() & 0o022 == 0", "macos_path_has_no_extended_acl(path)",
@@ -1549,10 +1579,23 @@ def analyze(sources):
         ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(snapshot_handler, [
             "let deadline = tokio::time::Instant::now()",
             "receive_credential_snapshot_request_unix(&mut stream, deadline)",
-            "macos_peer_is_service_owned_server(&stream, deadline).await",
+            "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+            "service_scoped_ipc_authorization_snapshot(",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "macos_service_owned_credential_requester_matches_post_request_authorization(",
+            "&requester.identity", "post_request_authorization",
             'service_owned_runtime_prs_replica("macOS")',
             "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
-        ]) and not any(token in snapshot_handler for token in [
+        ]) and ordered(mac_credential_post_request, [
+            "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "|| !authorization.uid_authorized",
+            "let Some(post_request_identity) = authorization.macos_peer_identity",
+            "post_request_identity.uid == requester.uid",
+            "&& post_request_identity.pid == requester.pid",
+            "&& post_request_identity.audit_token == requester.audit_token",
+        ]) and "macos_peer_is_service_owned_server(" not in ipc
+            and "macos_peer_is_service_owned_server_blocking(" not in ipc
+            and not any(token in snapshot_handler for token in [
             "get_local_permanent_password_storage_and_salt",
             "send_service_response_timeout", "ServiceIpcResponse",
             "storage", "salt",
@@ -1740,6 +1783,11 @@ scoped_mutation("macos-password-final-requester-replay", "ipc", "async fn handle
 scoped_mutation("macos-password-post-request-last-owner-token", "auth", "pub(crate) fn macos_service_owned_password_requester_matches_post_request_last_owner", "&& identity.audit_token == requester.identity.audit_token", "&& true", "b2", "macos-password-requester-post-request-last-owner-not-exact")
 scoped_mutation("macos-password-post-request-last-owner-final-grant", "ipc", "async fn handle_sensitive_macos_service_ipc_transaction", "let authority_allowed = capability_and_requester_are_live\n        && macos_service_owned_password_requester_matches_post_request_last_owner(", "let authority_allowed = capability_and_requester_are_live\n        || macos_service_owned_password_requester_matches_post_request_last_owner(", "b2", "macos-password-requester-post-request-last-owner-not-exact")
 scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authenticate_macos_service_owned_password_requester_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
+scoped_mutation("credential-retained-authority", "ipc", "async fn authorize_macos_service_scoped_credential_stream_for_task", "let retained_authorization = authorization.clone();", "let retained_authorization = ();", "b2", "macos-credential-peer-auth-not-before-request")
+scoped_mutation("credential-final-generation", "auth", "pub(crate) fn macos_service_owned_credential_requester_identity_is_live", "&& macos_service_owned_password_requester_generation_is_live(identity)", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-final-argv", "ipc", "fn macos_service_owned_credential_requester_is_live", "&& process.cmd() == requester.argv", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-post-token", "auth", "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization", "&& post_request_identity.audit_token == requester.audit_token", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-post-snapshot", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot_disabled(", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
@@ -1840,6 +1888,10 @@ grep -Fq '<span class="id">R-S11hz</span>' "$REPO/requirements.html" || r_s11b2=
 grep -Fq '<tr><td>385</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-requester-appendix-missing"
 grep -Fq 'R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-right-requester-ledger-missing"
 grep -Fq 'The same identity additionally binds R-S11hz and Appendix C #385.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-password-right-requester-digest-binding-missing"
+grep -Fq '<span class="id">R-S11ia</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-requester-finality-requirement-missing"
+grep -Fq '<tr><td>386</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-requester-finality-appendix-missing"
+grep -Fq 'R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-credential-requester-finality-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ia and Appendix C #386.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-credential-requester-finality-digest-binding-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

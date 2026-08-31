@@ -3852,6 +3852,51 @@ pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot(
 }
 
 #[cfg(target_os = "macos")]
+pub(crate) fn authenticate_macos_service_owned_credential_requester_identity(
+    authorization: ServiceScopedIpcAuthorization,
+) -> ResultType<MacosPeerProcessIdentity> {
+    if authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX {
+        bail!("macOS service-owned credential requester used the wrong endpoint");
+    }
+    if !authorization.uid_authorized {
+        bail!("macOS service-owned credential requester is not root or the active console user");
+    }
+    let identity = authorization.macos_peer_identity.ok_or_else(|| {
+        anyhow::anyhow!("macOS service-owned credential requester identity is unavailable")
+    })?;
+    if !macos_service_owned_password_requester_identity_is_live(&identity) {
+        bail!("macOS service-owned credential requester is not the live trusted installed app");
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_service_owned_credential_requester_identity_is_live(
+    identity: &MacosPeerProcessIdentity,
+) -> bool {
+    macos_service_owned_password_requester_identity_is_live(identity)
+        && macos_service_owned_password_requester_generation_is_live(identity)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization(
+    requester: &MacosPeerProcessIdentity,
+    authorization: ServiceScopedIpcAuthorization,
+) -> bool {
+    if authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX
+        || !authorization.uid_authorized
+    {
+        return false;
+    }
+    let Some(post_request_identity) = authorization.macos_peer_identity else {
+        return false;
+    };
+    post_request_identity.uid == requester.uid
+        && post_request_identity.pid == requester.pid
+        && post_request_identity.audit_token == requester.audit_token
+}
+
+#[cfg(target_os = "macos")]
 fn macos_service_owned_password_requester_identity_is_live(
     identity: &MacosPeerProcessIdentity,
 ) -> bool {

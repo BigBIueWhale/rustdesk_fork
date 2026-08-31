@@ -2922,6 +2922,10 @@ grep -Fq '<span class="id">R-S11hz</span>' requirements.html || r_s11b2="$r_s11b
 grep -Fq '<tr><td>385</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-requester-appendix-missing"
 grep -Fq 'R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-right-requester-ledger-missing"
 grep -Fq 'The same identity additionally binds R-S11hz and Appendix C #385.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-password-right-requester-digest-binding-missing"
+grep -Fq '<span class="id">R-S11ia</span>' requirements.html || r_s11b2="$r_s11b2 macos-credential-requester-finality-requirement-missing"
+grep -Fq '<tr><td>386</td>' requirements.html || r_s11b2="$r_s11b2 macos-credential-requester-finality-appendix-missing"
+grep -Fq 'R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-credential-requester-finality-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ia and Appendix C #386.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-credential-requester-finality-digest-binding-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3314,7 +3318,7 @@ service_handler = between(
 readiness_server = between(
     ipc,
     "async fn macos_service_owned_password_authorization_right_is_ready",
-    "async fn macos_peer_is_service_owned_server",
+    "async fn authenticate_macos_service_owned_credential_requester",
 )
 need(
     "macos-password-right-retained-service-requester-invalid",
@@ -3378,6 +3382,162 @@ need(
         ),
     )
     and "macos_service_owned_password_right_requester_matches_post_request_authorization(\n                &requester,\n                post_request_authorization,\n            ) && macos_service_owned_password_requester_is_live(&requester)\n                && crate::platform::ensure_service_owned_unattended_password_authorization_right()" in readiness_server,
+)
+mac_credential_pretask_proof = between(
+    ipc,
+    "async fn authorize_macos_service_scoped_credential_stream_for_task",
+    "async fn authorize_macos_service_server_snapshot_for_task",
+)
+mac_credential_accept = between(
+    run_service,
+    "result = credential_incoming.next()",
+    "result = password_incoming.next()",
+)
+mac_credential_handler = between(
+    ipc,
+    "async fn handle_macos_service_credential_snapshot_transaction",
+    "async fn handle_sensitive_macos_service_ipc_transaction",
+)
+mac_credential_identity = between(
+    auth,
+    "pub(crate) fn authenticate_macos_service_owned_credential_requester_identity",
+    "pub(crate) fn macos_service_owned_credential_requester_identity_is_live",
+)
+mac_credential_generation = between(
+    auth,
+    "pub(crate) fn macos_service_owned_credential_requester_identity_is_live",
+    "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization",
+)
+mac_credential_post_request = between(
+    auth,
+    "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization",
+    "fn macos_service_owned_password_requester_identity_is_live",
+)
+mac_credential_action = between(
+    ipc,
+    "async fn authenticate_macos_service_owned_credential_requester(",
+    "fn macos_service_owned_server_live_argv_is_expected",
+)
+mac_credential_blocking = between(
+    ipc,
+    "fn authenticate_macos_service_owned_credential_requester_blocking(",
+    "fn macos_service_owned_credential_requester_is_live",
+)
+mac_credential_final = between(
+    ipc,
+    "fn macos_service_owned_credential_requester_is_live(",
+    "fn macos_service_owned_server_launch_agent_label",
+)
+need(
+    "macos-credential-retained-accepted-requester-invalid",
+    ordered(
+        mac_credential_pretask_proof,
+        (
+            "let retained_authorization = authorization.clone()",
+            "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
+            "Ok((retained_authorization, authorized))",
+            "Ok((authorization, true)) => Some(authorization)",
+            "Ok((_authorization, false)) => None",
+        ),
+    )
+    and ordered(
+        mac_credential_accept,
+        (
+            "try_acquire_service_credential_ipc_transaction_slot()",
+            "try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "service_scoped_ipc_authorization_snapshot_from_stream(",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "transactions.spawn(async move",
+            "authorize_macos_service_scoped_credential_stream_for_task(",
+            "authorization",
+            "handle_macos_service_credential_snapshot_transaction(",
+            "stream",
+            "authorization",
+            "permit",
+        ),
+    ),
+)
+need(
+    "macos-credential-exact-requester-generation-invalid",
+    ordered(
+        mac_credential_identity,
+        (
+            "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "if !authorization.uid_authorized",
+            "authorization.macos_peer_identity",
+            "macos_service_owned_password_requester_identity_is_live(&identity)",
+            "Ok(identity)",
+        ),
+    )
+    and ordered(
+        mac_credential_generation,
+        (
+            "macos_service_owned_password_requester_identity_is_live(identity)",
+            "&& macos_service_owned_password_requester_generation_is_live(identity)",
+        ),
+    )
+    and ordered(
+        mac_credential_action,
+        (
+            "try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "let proof_deadline = deadline.into_std()",
+            'run_bounded_macos_security_proof(deadline, "macos-credential-snapshot-proof"',
+            "authenticate_macos_service_owned_credential_requester_blocking(",
+            "authorization",
+            "proof_deadline",
+        ),
+    )
+    and ordered(
+        mac_credential_blocking,
+        (
+            "authenticate_macos_service_owned_credential_requester_identity(authorization)",
+            "let argv = process.cmd().to_vec()",
+            "macos_service_owned_server_live_argv_is_expected(&argv)",
+            "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
+            "MacosServiceOwnedCredentialRequester { identity, argv }",
+            "macos_service_owned_credential_requester_is_live(&requester).then_some(requester)",
+        ),
+    )
+    and ordered(
+        mac_credential_final,
+        (
+            "macos_service_owned_credential_requester_identity_is_live(&requester.identity)",
+            "process.pid().as_u32() == requester.identity.pid()",
+            "process.name().eq_ignore_ascii_case(&app_name)",
+            "process.cmd() == requester.argv",
+            "macos_service_owned_server_live_argv_is_expected(process.cmd())",
+        ),
+    ),
+)
+need(
+    "macos-credential-post-request-response-finality-invalid",
+    ordered(
+        mac_credential_post_request,
+        (
+            "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "|| !authorization.uid_authorized",
+            "let Some(post_request_identity) = authorization.macos_peer_identity",
+            "post_request_identity.uid == requester.uid",
+            "&& post_request_identity.pid == requester.pid",
+            "&& post_request_identity.audit_token == requester.audit_token",
+        ),
+    )
+    and ordered(
+        mac_credential_handler,
+        (
+            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+            "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+            "service_scoped_ipc_authorization_snapshot(",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "macos_service_owned_credential_requester_matches_post_request_authorization(",
+            "&requester.identity",
+            "post_request_authorization",
+            'service_owned_runtime_prs_replica("macOS")',
+            "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
+        ),
+    )
+    and "macos_peer_is_service_owned_server(" not in ipc
+    and "macos_peer_is_service_owned_server_blocking(" not in ipc,
 )
 service_client = between(
     ipc,

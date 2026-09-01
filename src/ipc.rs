@@ -76,11 +76,13 @@ use ipc_auth::{
 #[cfg(windows)]
 pub(crate) use ipc_auth::{
     authenticate_windows_sensitive_pipe_server, authorize_windows_sensitive_pipe_client,
-    authorize_windows_service_main_ipc_connection, ensure_windows_ipc_server_matches_current,
-    ensure_windows_service_main_server_pid, preauthorize_windows_sensitive_pipe_client,
-    windows_ipc_listener_sddl, windows_ipc_listener_security_attributes,
-    windows_named_pipe_client_access_mask, windows_sensitive_pipe_security,
-    WindowsSensitivePipeClientProof, WindowsSensitivePipeSecurity, WindowsSensitivePipeServerProof,
+    authorize_windows_service_control_requester, authorize_windows_service_credential_requester,
+    ensure_windows_ipc_server_matches_current, ensure_windows_service_main_server_pid,
+    preauthorize_windows_sensitive_pipe_client, windows_ipc_listener_sddl,
+    windows_ipc_listener_security_attributes, windows_named_pipe_client_access_mask,
+    windows_sensitive_pipe_security, WindowsSensitivePipeClientProof, WindowsSensitivePipeSecurity,
+    WindowsSensitivePipeServerProof, WindowsServiceControlRequester,
+    WindowsServiceCredentialRequester,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
@@ -3903,14 +3905,14 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
                     }
                 };
                 let stream = Connection::new_protected_service(stream);
-                if !authorize_windows_service_main_ipc_connection(&stream) {
+                let Some(requester) = authorize_windows_service_control_requester(&stream) else {
                     continue;
-                }
+                };
                 let Some(permit) = try_acquire_windows_service_control_transaction_slot() else {
                     log::debug!("Rejected Windows service-main control connection because work is at capacity");
                     continue;
                 };
-                transactions.spawn(handle_windows_service_control_transaction(stream, permit));
+                transactions.spawn(handle_windows_service_control_transaction(stream, requester, permit));
             }
             completed = transactions.join_next(), if !transactions.is_empty() => {
                 if let Some(Err(err)) = completed {
@@ -3931,14 +3933,14 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
                     }
                 };
                 let stream = Connection::new_protected_service(stream);
-                if !authorize_windows_service_main_ipc_connection(&stream) {
+                let Some(requester) = authorize_windows_service_credential_requester(&stream) else {
                     continue;
-                }
+                };
                 let Some(permit) = try_acquire_windows_service_credential_transaction_slot() else {
                     log::debug!("Rejected Windows service credential connection because work is at capacity");
                     continue;
                 };
-                transactions.spawn(handle_windows_service_credential_transaction(stream, permit));
+                transactions.spawn(handle_windows_service_credential_transaction(stream, requester, permit));
             }
         }
     }
@@ -3970,6 +3972,7 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
 #[cfg(target_os = "windows")]
 async fn handle_windows_service_credential_transaction(
     mut stream: Connection,
+    requester: WindowsServiceCredentialRequester,
     _permit: OwnedSemaphorePermit,
 ) {
     let request = match stream
@@ -3986,15 +3989,12 @@ async fn handle_windows_service_credential_transaction(
             return;
         }
     };
-    if !authorize_windows_service_main_ipc_connection(&stream) {
-        return;
-    }
     match request {
         WindowsServiceCredentialRequest::QuiesceCredentialReplica { transition_id } => {
             let response = if !password_mutation_id_is_valid(&transition_id) {
                 WindowsServiceCredentialResponse::Rejected
             } else {
-                match crate::server::quiesce_windows_credential_replica(&transition_id) {
+                match requester.quiesce_replica(&stream, &transition_id) {
                     Ok(state) => WindowsServiceCredentialResponse::State(state),
                     Err(err) => {
                         log::warn!("Rejected Windows credential replica quiesce: {err}");
@@ -4021,12 +4021,8 @@ async fn handle_windows_service_credential_transaction(
             {
                 WindowsServiceCredentialResponse::Rejected
             } else {
-                match crate::server::apply_windows_credential_replica(
-                    &transition_id,
-                    &storage,
-                    &salt,
-                    replica_tag,
-                ) {
+                match requester.apply_replica(&stream, &transition_id, &storage, &salt, replica_tag)
+                {
                     Ok(state) => WindowsServiceCredentialResponse::State(state),
                     Err(err) => {
                         log::warn!("Rejected Windows credential replica apply: {err}");
@@ -4042,9 +4038,13 @@ async fn handle_windows_service_credential_transaction(
             .await;
         }
         WindowsServiceCredentialRequest::QueryCredentialReplica => {
-            let response = WindowsServiceCredentialResponse::State(
-                crate::server::query_windows_credential_replica(),
-            );
+            let response = match requester.query_replica(&stream) {
+                Ok(state) => WindowsServiceCredentialResponse::State(state),
+                Err(err) => {
+                    log::warn!("Rejected Windows credential replica query: {err}");
+                    WindowsServiceCredentialResponse::Rejected
+                }
+            };
             write_windows_service_credential_response_with_deadline(
                 &mut stream,
                 &response,
@@ -4056,7 +4056,7 @@ async fn handle_windows_service_credential_transaction(
             let response = if !password_mutation_id_is_valid(&transition_id) {
                 WindowsServiceCredentialResponse::Rejected
             } else {
-                match crate::server::resume_windows_credential_replica(&transition_id) {
+                match requester.resume_replica(&stream, &transition_id) {
                     Ok(state) => WindowsServiceCredentialResponse::State(state),
                     Err(err) => {
                         log::warn!("Rejected Windows credential replica resume: {err}");
@@ -4077,6 +4077,7 @@ async fn handle_windows_service_credential_transaction(
 #[cfg(target_os = "windows")]
 async fn handle_windows_service_control_transaction(
     mut stream: Connection,
+    requester: WindowsServiceControlRequester,
     _permit: OwnedSemaphorePermit,
 ) {
     let request = match stream
@@ -4093,19 +4094,15 @@ async fn handle_windows_service_control_transaction(
             return;
         }
     };
-    if !authorize_windows_service_main_ipc_connection(&stream) {
-        return;
-    }
     match request {
         WindowsServiceControlRequest::PortForwardSessionCount => {
-            let count = crate::server::AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|connection| {
-                    connection.conn_type == crate::server::AuthConnType::PortForward
-                })
-                .count();
+            let count = match requester.count_port_forward_sessions(&stream) {
+                Ok(count) => count,
+                Err(err) => {
+                    log::warn!("Rejected Windows service-main session count: {err}");
+                    return;
+                }
+            };
             let response = WindowsServiceControlResponse::PortForwardSessionCount(count);
             write_windows_service_control_response_with_deadline(
                 &mut stream,
@@ -4115,6 +4112,13 @@ async fn handle_windows_service_control_transaction(
             .await;
         }
         WindowsServiceControlRequest::Shutdown => {
+            let requester = match requester.prepare_shutdown(&stream) {
+                Ok(requester) => requester,
+                Err(err) => {
+                    log::warn!("Rejected Windows service-main shutdown: {err}");
+                    return;
+                }
+            };
             let response = WindowsServiceControlResponse::ShutdownAccepted;
             if !write_windows_service_control_response_with_deadline(
                 &mut stream,
@@ -4125,7 +4129,9 @@ async fn handle_windows_service_control_transaction(
             {
                 return;
             }
-            crate::server::request_graceful_shutdown();
+            if let Err(err) = requester.commit(&stream) {
+                log::warn!("Rejected Windows service-main shutdown at commit: {err}");
+            }
         }
     }
 }

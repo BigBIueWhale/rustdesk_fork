@@ -248,6 +248,28 @@ pub(crate) struct WindowsServiceOwnedShareRdpRequester {
 }
 
 #[cfg(windows)]
+struct WindowsServiceMainRequester {
+    process: WindowsPeerProcess,
+    identity: WindowsProcessImmutableIdentity,
+    token: WindowsLiveTokenProof,
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsServiceCredentialRequester {
+    requester: WindowsServiceMainRequester,
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsServiceControlRequester {
+    requester: WindowsServiceMainRequester,
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsServiceShutdownRequester {
+    requester: WindowsServiceControlRequester,
+}
+
+#[cfg(windows)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct WindowsLiveTokenAuthority {
     is_local_system: bool,
@@ -993,27 +1015,6 @@ impl Drop for WindowsLocalMemory {
             unsafe {
                 let _ = LocalFree(Some(HLOCAL(self.0)));
             }
-        }
-    }
-}
-
-#[cfg(windows)]
-#[derive(Clone, Copy)]
-enum WindowsPipeClientTokenRequirement {
-    LocalSystem,
-}
-
-#[cfg(windows)]
-impl WindowsPipeClientTokenRequirement {
-    fn context(self) -> &'static str {
-        match self {
-            Self::LocalSystem => "Windows service-owned main IPC peer",
-        }
-    }
-
-    fn is_satisfied(self, authority: WindowsLiveTokenAuthority) -> bool {
-        match self {
-            Self::LocalSystem => authority.is_local_system,
         }
     }
 }
@@ -4130,30 +4131,49 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
 }
 
 #[cfg(windows)]
-pub(crate) fn authorize_windows_service_main_ipc_connection(stream: &Connection) -> bool {
-    match stream.windows_pipe_client_token_is_local_system() {
-        Ok(true) => {}
-        Ok(false) => {
-            log::warn!("Rejected non-LocalSystem Windows service-main IPC client");
-            return false;
-        }
-        Err(err) => {
-            log::warn!("Rejected Windows service-main IPC client token: {err}");
-            return false;
-        }
-    }
+fn authenticate_windows_service_main_requester(
+    stream: &Connection,
+) -> Option<WindowsServiceMainRequester> {
     let Some(peer_pid) = stream.peer_pid() else {
-        log::warn!("Rejected Windows service-main IPC client without a process id");
-        return false;
+        log::warn!("Rejected Windows service-main requester without a process id");
+        return None;
     };
-    let identity =
-        match WindowsPeerProcess::open(peer_pid).and_then(|process| process.immutable_identity()) {
-            Ok(identity) => identity,
-            Err(err) => {
-                log::warn!("Rejected Windows service-main IPC client identity: {err}");
-                return false;
-            }
-        };
+    let process = match WindowsPeerProcess::open(peer_pid) {
+        Ok(process) => process,
+        Err(err) => {
+            log::warn!("Rejected Windows service-main requester process: {err}");
+            return None;
+        }
+    };
+    let pipe_token = match stream.windows_pipe_client_token_proof() {
+        Ok(proof) => proof,
+        Err(err) => {
+            log::warn!("Rejected Windows service-main requester pipe token: {err}");
+            return None;
+        }
+    };
+    let process_token = match process.live_token_proof() {
+        Ok(proof) => proof,
+        Err(err) => {
+            log::warn!("Rejected Windows service-main requester process token: {err}");
+            return None;
+        }
+    };
+    if pipe_token != process_token {
+        log::warn!("Rejected Windows service-main requester whose pipe and process token identities differ");
+        return None;
+    }
+    if !pipe_token.authority.is_local_system {
+        log::warn!("Rejected non-LocalSystem Windows service-main requester");
+        return None;
+    }
+    let identity = match process.fresh_identity() {
+        Ok(identity) => identity,
+        Err(err) => {
+            log::warn!("Rejected Windows service-main requester identity: {err}");
+            return None;
+        }
+    };
     let expected_parent = (|| -> ResultType<WindowsProcessIdentityKey> {
         let pid = std::env::var(super::WINDOWS_SERVICE_SUPERVISOR_PID_ENV)
             .map_err(|err| anyhow::anyhow!("missing Windows service supervisor pid: {err}"))?
@@ -4175,36 +4195,184 @@ pub(crate) fn authorize_windows_service_main_ipc_connection(stream: &Connection)
     let expected_parent = match expected_parent {
         Ok(identity) => identity,
         Err(err) => {
-            log::warn!("Rejected Windows service-main IPC client without launch-bound supervisor identity: {err}");
-            return false;
+            log::warn!("Rejected Windows service-main requester without launch-bound supervisor identity: {err}");
+            return None;
         }
     };
     if identity.key != expected_parent {
         log::warn!(
-            "Rejected Windows service-main IPC client identity: expected {}:{}, got {}:{}",
+            "Rejected Windows service-main requester identity: expected {}:{}, got {}:{}",
             expected_parent.pid,
             expected_parent.creation_time,
             identity.key.pid,
             identity.key.creation_time
         );
-        return false;
+        return None;
     }
     if let Err(err) = ensure_windows_identity_matches_fixed_service(
         &identity,
         super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX,
     ) {
-        log::warn!("Rejected Windows service-main IPC client executable: {err}");
-        return false;
+        log::warn!("Rejected Windows service-main requester executable: {err}");
+        return None;
     }
     if !windows_identity_has_exact_role(&identity, &["--service"]) {
-        log::warn!("Rejected Windows service-main IPC client with the wrong process role");
-        return false;
+        log::warn!("Rejected Windows service-main requester with the wrong process role");
+        return None;
+    }
+    if let Err(err) = process.require_running("Windows service-main requester") {
+        log::warn!("Rejected Windows service-main requester liveness: {err}");
+        return None;
     }
     if stream.peer_pid() != Some(peer_pid) {
-        log::warn!("Rejected Windows service-main IPC client after named-pipe peer pid changed");
-        return false;
+        log::warn!("Rejected Windows service-main requester after named-pipe peer pid changed");
+        return None;
     }
-    true
+    Some(WindowsServiceMainRequester {
+        process,
+        identity,
+        token: pipe_token,
+    })
+}
+
+#[cfg(windows)]
+pub(crate) fn authorize_windows_service_credential_requester(
+    stream: &Connection,
+) -> Option<WindowsServiceCredentialRequester> {
+    authenticate_windows_service_main_requester(stream)
+        .map(|requester| WindowsServiceCredentialRequester { requester })
+}
+
+#[cfg(windows)]
+pub(crate) fn authorize_windows_service_control_requester(
+    stream: &Connection,
+) -> Option<WindowsServiceControlRequester> {
+    authenticate_windows_service_main_requester(stream)
+        .map(|requester| WindowsServiceControlRequester { requester })
+}
+
+#[cfg(windows)]
+impl WindowsServiceMainRequester {
+    fn revalidate(&self, stream: &Connection, context: &str) -> ResultType<()> {
+        let peer_pid = stream
+            .peer_pid()
+            .ok_or_else(|| anyhow::anyhow!("{context} disappeared before action"))?;
+        if peer_pid != self.process.key.pid {
+            bail!(
+                "{context} process changed before action: expected {}, got {}",
+                self.process.key.pid,
+                peer_pid
+            );
+        }
+        self.process.require_running(context)?;
+        if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {
+            bail!("{context} process generation changed before action");
+        }
+        let identity = self.process.fresh_identity()?;
+        if identity != self.identity {
+            bail!("{context} process identity changed before action");
+        }
+        ensure_windows_identity_matches_fixed_service(
+            &identity,
+            super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX,
+        )?;
+        if !windows_identity_has_exact_role(&identity, &["--service"]) {
+            bail!("{context} process role changed before action");
+        }
+        let pipe_token = stream.windows_pipe_client_token_proof()?;
+        let process_token = self.process.live_token_proof()?;
+        if pipe_token != self.token || process_token != self.token {
+            bail!("{context} token changed before action");
+        }
+        if !pipe_token.authority.is_local_system {
+            bail!("{context} is no longer LocalSystem");
+        }
+        if stream.peer_pid() != Some(peer_pid) {
+            bail!("{context} named-pipe process changed at action");
+        }
+        self.process.require_running(context)
+    }
+}
+
+#[cfg(windows)]
+impl WindowsServiceCredentialRequester {
+    pub(crate) fn quiesce_replica(
+        self,
+        stream: &Connection,
+        transition_id: &str,
+    ) -> ResultType<super::WindowsCredentialReplicaState> {
+        self.requester
+            .revalidate(stream, "Windows credential-replica quiesce requester")?;
+        crate::server::quiesce_windows_credential_replica(transition_id)
+    }
+
+    pub(crate) fn apply_replica(
+        self,
+        stream: &Connection,
+        transition_id: &str,
+        storage: &str,
+        salt: &str,
+        replica_tag: [u8; 32],
+    ) -> ResultType<super::WindowsCredentialReplicaState> {
+        self.requester
+            .revalidate(stream, "Windows credential-replica apply requester")?;
+        crate::server::apply_windows_credential_replica(transition_id, storage, salt, replica_tag)
+    }
+
+    pub(crate) fn query_replica(
+        self,
+        stream: &Connection,
+    ) -> ResultType<super::WindowsCredentialReplicaState> {
+        self.requester
+            .revalidate(stream, "Windows credential-replica query requester")?;
+        Ok(crate::server::query_windows_credential_replica())
+    }
+
+    pub(crate) fn resume_replica(
+        self,
+        stream: &Connection,
+        transition_id: &str,
+    ) -> ResultType<super::WindowsCredentialReplicaState> {
+        self.requester
+            .revalidate(stream, "Windows credential-replica resume requester")?;
+        crate::server::resume_windows_credential_replica(transition_id)
+    }
+}
+
+#[cfg(windows)]
+impl WindowsServiceControlRequester {
+    pub(crate) fn count_port_forward_sessions(self, stream: &Connection) -> ResultType<usize> {
+        self.requester
+            .revalidate(stream, "Windows service session-count requester")?;
+        Ok(crate::server::AUTHED_CONNS
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|connection| connection.conn_type == crate::server::AuthConnType::PortForward)
+            .count())
+    }
+
+    pub(crate) fn prepare_shutdown(
+        self,
+        stream: &Connection,
+    ) -> ResultType<WindowsServiceShutdownRequester> {
+        self.requester.revalidate(
+            stream,
+            "Windows service shutdown requester before acknowledgement",
+        )?;
+        Ok(WindowsServiceShutdownRequester { requester: self })
+    }
+}
+
+#[cfg(windows)]
+impl WindowsServiceShutdownRequester {
+    pub(crate) fn commit(self, stream: &Connection) -> ResultType<()> {
+        self.requester
+            .requester
+            .revalidate(stream, "Windows service shutdown requester at commit")?;
+        crate::server::request_graceful_shutdown();
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
@@ -4900,16 +5068,6 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         }
     }
 
-    fn windows_pipe_client_token_satisfies(
-        &self,
-        requirement: WindowsPipeClientTokenRequirement,
-    ) -> ResultType<bool> {
-        let authority = self.windows_pipe_client_authority().map_err(|err| {
-            anyhow::anyhow!("Failed to authorize {}: {}", requirement.context(), err)
-        })?;
-        Ok(requirement.is_satisfied(authority))
-    }
-
     fn windows_pipe_client_token_proof(&self) -> ResultType<WindowsLiveTokenProof> {
         let context = "Windows named-pipe client";
         let pipe_handle = self.inner.get_ref().as_raw_handle();
@@ -4935,10 +5093,6 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
 
     fn windows_pipe_client_authority(&self) -> ResultType<WindowsLiveTokenAuthority> {
         Ok(self.windows_pipe_client_token_proof()?.authority)
-    }
-
-    pub(crate) fn windows_pipe_client_token_is_local_system(&self) -> ResultType<bool> {
-        self.windows_pipe_client_token_satisfies(WindowsPipeClientTokenRequirement::LocalSystem)
     }
 
     pub(crate) fn prepare_sas_as_windows_pipe_client(

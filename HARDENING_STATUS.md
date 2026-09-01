@@ -6122,6 +6122,10 @@ network configuration was inspected or changed.
   elevation-only receiver proof without changing which component owns the machine-policy write. R-S11ib/
   R-S11e-265 and Appendix C #387 subsequently replace the detached authorization Boolean with an exact
   requester capability retained through the registry mutation itself.
+  R-S11ic/R-S11e-266 and Appendix C #388 subsequently apply the same lifetime rule to the distinct
+  Windows service credential/control endpoints: endpoint-specific capabilities retain the exact LocalSystem
+  supervisor generation across request parsing and through each protected action, including both sides of the
+  shutdown acknowledgement.
 - **R-S11b-3e — service identity/salt reads are side-effect-free — CLOSED 2026-07-09.** Platforms: all
   desktop installed-service paths. Endpoint/action: `Config::get_id()`, `Data::ConfigRequest("id")`,
   `Data::ConfigRequest("salt")`, `ipc::get_id()`, login username validation, local recording metadata, and
@@ -26249,6 +26253,11 @@ No retry, reconnect, timer, poller, worker class, runtime, listener, port, depen
 privilege transition, service restart, network change, or new credential operation is
 introduced.
 
+R-S11ic/R-S11e-266 and Appendix C #388 later supersede only the preserved
+Boolean-reauthorization lifetime: the closed protocols and independent budgets remain,
+while endpoint-specific authority-bearing capabilities now retain the exact supervisor
+generation from admission across request parsing and through each protected action.
+
 The deterministic Rust wire regression (compiled on every test target through test-only
 type visibility) fixes exact credential/control request and response encodings and
 requires own-direction acceptance plus opposite-direction, cross-endpoint,
@@ -28798,7 +28807,7 @@ socket inside a verifier.
 Current normative identity for this slice:
 
 ```text
-d275eae9f2c846b1c3d64306adce5a86450b2967cd79dd292bdddef66ddc9fb9  requirements.html
+7c64e503cd3ba49a00afa038928cfa7f3de9e277a9add0fb2eced7c9a3bb2c64  requirements.html
 ```
 
 Evidence receipt for the source snapshot preceding this receipt:
@@ -29023,3 +29032,211 @@ network namespace, or configuration; touch Android, a VM,
 Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root,
 privileged containers, host networking, published ports, devices, or a Docker
 socket inside a verifier.
+
+### R-S11ic/R-S11e-266 — retained Windows service-main supervisor authority through exact actions
+
+**Status:** SOURCE REPAIR IMPLEMENTED / COMPLETE SOURCE-VERIFICATION MATRIX GREEN /
+NATIVE WINDOWS, INSTALLED, PERFORMANCE, RELEASE, AND REVIEW EVIDENCE OPEN.
+
+The continuing action-by-action privileged IPC review found the same authority-
+lifetime class at a broader existing Windows boundary. The service-owned main server
+has two SYSTEM-only child-to-parent endpoints. `_service_credential` quiesces,
+applies, queries, or resumes the nonpersistent password credential replica.
+`_service_main_control` counts active port-forward sessions or acknowledges and then
+latches graceful shutdown. The endpoint protocols, DACLs, transaction budgets,
+deadlines, exact launch-bound supervisor PID/creation-time environment, fixed service
+image, and exact `--service` role were already narrow.
+
+The final requester lifetime was not. Both listener branches called
+`authorize_windows_service_main_ipc_connection`, which proved the pipe token was
+LocalSystem, opened and inspected the expected supervisor, checked fixed image and
+role, observed a stable pipe PID, returned `bool`, and closed the process handle. Each
+handler then awaited and parsed one request, repeated the same Boolean check, and only
+after that return called the credential-replica functions, read `AUTHED_CONNS`, or
+acknowledged and requested shutdown. The process identity could come from the shared
+immutable-identity cache. Neither check required complete equality between the
+named-pipe last-message impersonation token and the opened process generation's live
+token proof. Blame attributes the authorizer and the Boolean/action sequence to
+`57bcb529` (2026-07-13); the later R-S11hg protocol split in `f1b0b072` (2026-08-22)
+intentionally preserved that authentication shape.
+
+This is source-proven requester-lifetime, process/token-binding, and final-action
+authority debt. It is not evidence that a non-LocalSystem process reached either
+endpoint, that the SYSTEM-only DACL or launch-bound identity checks were bypassed,
+that a credential was changed or disclosed, that shutdown occurred, that the host was
+compromised, or that any unidentified deployed artifact contained this source. The
+old post-parse check materially narrowed the race; it did not make a Boolean an
+authority-bearing lifetime across the protected action.
+
+The repair deletes that Boolean API and its now-unused token-requirement Boolean
+adapter. One private `WindowsServiceMainRequester` owns the exact opened supervisor
+process handle, a freshly inspected canonical executable plus complete argv identity,
+and the accepted complete live token proof. Admission independently reads the pipe
+token and the retained process token, requires exact equality and LocalSystem, then
+requires the fresh process identity to equal the launch-bound PID/creation time, fixed
+service image, and exact `--service` role. It proves retained-handle liveness and a
+second stable pipe PID before returning authority.
+
+The common evidence is wrapped immediately in distinct
+`WindowsServiceCredentialRequester` and `WindowsServiceControlRequester` types. The
+corresponding listener moves exactly that type into its existing independently
+budgeted transaction. It therefore remains owned across the bounded request-read
+`await`; neither handler performs a new post-read Boolean check or can substitute the
+other endpoint's capability. The credential handler can consume its object only
+through `quiesce_replica`, `apply_replica`, `query_replica`, or `resume_replica`. The
+control handler can consume its object only through `count_port_forward_sessions` or
+`prepare_shutdown`. The handlers no longer name any credential-replica function,
+`AUTHED_CONNS`, or the graceful-shutdown latch.
+
+Every consuming method repeats one common exact final proof. It requires the current
+pipe PID to equal the retained process, requires that process object nonsignaled,
+re-reads creation time through the retained handle, freshly inspects executable and
+complete argv and requires byte-for-byte equality to admission, replays the fixed
+service image and exact `--service` role, freshly obtains both the named-pipe
+last-message token and retained-process token, requires both complete proofs to equal
+the accepted LocalSystem proof, then repeats stable pipe PID and retained-handle
+liveness. The credential operation or session-count read is the method's final
+expression, so the exact process object remains owned through the protected action.
+Missing, exited, reused, changed, non-LocalSystem, wrong-image, wrong-role,
+stale-token, cross-endpoint, or inconclusive evidence fails closed.
+
+Shutdown retains the established acknowledgement-before-latch behavior without an
+authority gap. `prepare_shutdown` performs the complete replay and converts the
+control object into `WindowsServiceShutdownRequester`. The handler owns that exact
+prepared capability while awaiting the bounded `ShutdownAccepted` response. A failed
+write returns without shutdown. On a successful write, `commit` repeats the complete
+replay and only then calls `request_graceful_shutdown`; a failed replay logs refusal
+and does not latch shutdown. Thus the response ordering is unchanged while the exact
+requester process handle remains owned on both sides of the asynchronous response.
+
+The evidence has the same explicit Win32 limitation as R-S11ib. The named-pipe API
+reports the connected client PID, and impersonation proves the security context of the
+last message read. Retaining the process object, creation time, fresh identity, both
+token sources, and liveness prevents visible PID/generation/image/argv/token/role
+substitution from surviving commit. It does not prove that a pipe handle was never
+inherited or duplicated and is not represented as exclusive byte authorship or
+complete handle-handoff detection.
+
+No request or response variant, listener, port, retry, reconnect, timer, poller, task
+class, runtime, dependency, service restart, lifecycle transition, credential
+operation, privilege, or network behavior is added. The closed directional protocols,
+independent budgets, frame and request/response deadlines, transaction drain,
+credential validation/state machine, and acknowledgement-before-latch order remain.
+
+The source-verification matrix is complete for this slice. The focused Windows
+service-channel checker, shared and Apple embedded source gates, and independently
+implemented workspace validator bind both endpoint-specific capability types, all
+retained state, fresh admission, equal pipe/process LocalSystem proof, listener-to-
+capability dispatch, final PID/generation/liveness/identity/image/role/token replay,
+action-last ordering, direct-handler-sink absence, and shutdown preparation,
+retention, and commit ordering. Their deliberate mutations also bind
+R-S11ic/Appendix C #388, the synchronized normative digest, the focused verifier,
+the independent validator dispatch, and this ledger. Exact receipts follow below;
+native Windows compilation and installed runtime behavior remain open.
+
+Exact-current Windows compilation and unit execution, adversarial pipe-handle
+inheritance/duplication and PID/process/token/argv race tests, native exchanges through
+an installed SCM LocalSystem service, sustained latency/CPU/memory/resource soak,
+clean committed cold R-B2/R-B10 artifact equality, independent reproduction, and R-V3
+external review remain open. This slice does not inspect, stop, restart, modify, or
+connect to a host RustDesk process or service; inspect or change a host listener,
+firewall, network namespace, or configuration; touch Android, a VM,
+Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root, privileged
+containers, host networking, published ports, devices, or a Docker socket inside a
+verifier.
+
+Current normative identity for this slice is `requirements.html` SHA-256
+`7c64e503cd3ba49a00afa038928cfa7f3de9e277a9add0fb2eced7c9a3bb2c64`.
+The unique canonical two-field digest line remains in the R-S11ia receipt and is
+bound by the focused, independent, and native-watch gates.
+
+Evidence receipt for the source snapshot preceding this receipt:
+
+- `git diff --check`, changed-shell syntax, and changed-Python byte compilation
+  passed. The separately implemented workspace baseline printed
+  `verify-verifier-workspace: ok`. The focused Windows service-channel checker
+  printed `verify-windows-service-channel-protocols: 131 deliberate mutations
+  rejected`.
+- The exact Apple embedded structural/mutation analyzer exited zero with zero-byte
+  `r_s11b`, `r_s11b2`, and `r_s11e16` verdict files. The shared `verify.sh`
+  R-S11/R-S11g embedded analyzer exited zero and printed its normal success verdict
+  after two in-memory substitutions of old-mawk-incompatible `{4}` interval tokens;
+  repository bytes were unchanged. These are embedded source-checker results, not
+  an outer Apple toolchain/build or native runtime claim.
+- `native-codec-watch.sh` and its adversarial self-test passed against the synchronized
+  normative identity. Pinned Rust 1.75 `rustfmt` parsed both changed Rust modules.
+  Known whole-file formatter drift remains outside this slice; a corrected exact
+  current-line comparison found zero overlap (`src/ipc.rs`: 43 Git-changed current
+  lines / 276 rustfmt-touched current lines / four insertion boundaries / zero
+  overlap; `src/ipc/auth.rs`: 219 Git-changed current lines / 20 rustfmt-touched
+  current lines / zero overlap). The earlier stdin-consuming overlap harness that
+  reported zero Git lines was rejected and is uncounted.
+- Before the final catalog, a six-case direct-sink preflight required the intended
+  independent diagnostic for injected handler-side quiesce, apply, query, resume,
+  session-count, and shutdown actions while preserving the legitimate capability
+  dispatch. A complete adjacent-family diagnostic then ran the real
+  `validate_sources` pipeline over all 57 canonical R-S11ic tuples and printed
+  `r-s11ic-family-diagnostic: all 57 canonical tuples effective` followed by
+  `verify-verifier-workspace: ok`.
+- Two complete-catalog attempts are explicitly failed and uncounted. Container
+  `a24e9896cae1c1e11cbb7b899e68e6889afc5dfb1f572cc0a0615cac991bf3f6`
+  ran from `2026-08-31T20:55:48.517519531Z` through
+  `2026-08-31T22:05:08.852994590Z` (1h09m20.335s) and correctly stopped because a
+  direct-handler-sink mutation removed the ordered capability call and therefore
+  reached the stricter ordering diagnostic before its expected absence diagnostic.
+  The fixtures now inject each forbidden sink while retaining the capability call,
+  and cover all six protected actions. Container
+  `14696a526bb399950aa5f3372a69994f85ed1b9d62e4475f0e7d8ac43c155146`
+  ran from `2026-08-31T22:11:54.446215733Z` through
+  `2026-08-31T23:20:37.302926157Z` (1h08m42.857s) and correctly stopped because the
+  cached-identity substitution removed the earlier ordered fresh-identity stage.
+  The catalog now separately proves loss of the fresh ordered stage and injection
+  of cached identity while retaining the fresh call. Neither stopped run is
+  represented as passing mutation evidence.
+- Diagnostic setup invocations that did not execute their requested target are also
+  uncounted: one shared-gate process-substitution producer failed after finding two,
+  not one, mawk compatibility targets; one targeted Python import intentionally
+  self-reexecuted the canonical verifier baseline under `-I -S`; one over-escaped
+  heredoc supplied no harness; and one minimal source map omitted the validator's
+  self-source binding. Their visible diagnostics led to corrected, explicit-success
+  runs; none is described as a pass for the intended target.
+- The authoritative complete catalog was restarted directly from tuple zero after
+  every correction, without a wrapper, filter, slice, substituted program, timeout,
+  or parallel duplicate. Its final run covered all 5,484 canonical source-mutation
+  tuples. Exact task container
+  `d824084150c307d03d2fe1cc6f5cce72307d60d55d35b14bd232dc35420a9b4a`
+  used immutable image
+  `sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+  UID/GID 1000, network none, read-only root/repository, all capabilities dropped,
+  `no-new-privileges`, PID limit 64, 2 GiB memory and swap limits, a two-CPU ceiling,
+  and one 256 MiB no-exec tmpfs. It ran from
+  `2026-08-31T23:26:01.010003602Z` through
+  `2026-09-01T02:30:08.754395536Z` (3h04m07.744s), printed only
+  `verify-verifier-workspace: ok`, and exited zero without OOM, restart, or runtime
+  error. All nine frozen file hashes were byte-identical after completion, including
+  independent-verifier hash
+  `9a7cbe279f7b7c96c8b45bacbf6b660937eadc0995cf5ee2eb78e1d00d187dd1`
+  and binary-diff digest
+  `74669a00c0939d475f3d7e8ebdcfcc64e929bd5e58463731880372f6b1239965`.
+  The stopped task container was removed by exact name after its state, log,
+  confinement, timestamps, and hashes were captured.
+- After this receipt was appended and the unique canonical hardening digest-line
+  invariant was restored, the final exact bytes passed `git diff --check`, digest
+  uniqueness/synchronization, changed-shell syntax, changed-Python byte compilation,
+  the focused 131-mutation suite, independent workspace baseline, Apple embedded
+  analyzer with three empty verdict files, shared embedded analyzer with its two
+  in-memory old-mawk compatibility substitutions, native-watch normal/self-test,
+  and the corrected Rustfmt changed-line overlap check. The first post-receipt native
+  watch correctly rejected a duplicate canonical digest line and is uncounted; the
+  corrected full rerun is the recorded result.
+
+This receipt records Linux source and verifier evidence only. The approved verifier
+image contains neither Cargo nor rustc. Exact-current Windows compilation and unit
+execution, adversarial pipe-handle inheritance/duplication and PID/process/token/argv
+races, installed SCM LocalSystem exchanges, sustained performance/resource testing,
+clean committed cold R-B2/R-B10 artifact equality, independent reproduction, and
+external review remain open. No host RustDesk service, listener, firewall, network
+namespace, configuration, Android device, VM, Haggai/Desktop_Haggai_computer
+workload, unrelated Docker object, root authority, privileged container, host
+network, published port, device, or Docker socket inside a verifier was inspected or
+used by this slice.

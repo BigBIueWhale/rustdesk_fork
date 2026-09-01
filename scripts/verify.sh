@@ -1025,7 +1025,11 @@ if grep -q 'WindowsServiceMain\(Endpoint\|Request\|Response\)' src/ipc.rs; then
 fi
 grep -q 'prepare_windows_service_main_ipc().await' src/ipc.rs                         || r_s11="$r_s11 windows-service-main-listeners-not-prepared"
 grep -q 'run_windows_service_main_ipc(service_main)' src/ipc.rs                       || r_s11="$r_s11 windows-service-main-listeners-not-run"
-grep -q 'authorize_windows_service_main_ipc_connection(&stream)' src/ipc.rs           || r_s11="$r_s11 windows-service-main-client-auth-missing"
+grep -q 'authorize_windows_service_control_requester(&stream)' src/ipc.rs             || r_s11="$r_s11 windows-service-control-requester-auth-missing"
+grep -q 'authorize_windows_service_credential_requester(&stream)' src/ipc.rs          || r_s11="$r_s11 windows-service-credential-requester-auth-missing"
+if grep -q 'authorize_windows_service_main_ipc_connection' src/ipc.rs src/ipc/auth.rs; then
+  r_s11="$r_s11 windows-service-main-detached-boolean-auth-present"
+fi
 grep -q 'postfix == super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX' src/ipc/auth.rs   || r_s11="$r_s11 windows-service-main-dacl-not-specialized"
 windows_service_request_block=$(awk '/async fn handle_windows_service_ipc_request/,/^}/' src/platform/windows.rs)
 if echo "$windows_service_request_block" | grep -q 'ipc::Data::Close'; then

@@ -18759,6 +18759,249 @@ def validate_windows_service_channel_protocol_contract(sources):
         "closed Windows credential state payload",
     )
 
+    common_requester = extract_braced_item(
+        auth,
+        "struct WindowsServiceMainRequester",
+        "retained Windows service-main requester capability",
+    )
+    require_order(
+        common_requester,
+        (
+            "process: WindowsPeerProcess",
+            "identity: WindowsProcessImmutableIdentity",
+            "token: WindowsLiveTokenProof",
+        ),
+        "retained Windows service-main requester state",
+    )
+    for declaration, retained, label in (
+        (
+            "pub(crate) struct WindowsServiceCredentialRequester",
+            "requester: WindowsServiceMainRequester",
+            "Windows service credential requester capability",
+        ),
+        (
+            "pub(crate) struct WindowsServiceControlRequester",
+            "requester: WindowsServiceMainRequester",
+            "Windows service control requester capability",
+        ),
+        (
+            "pub(crate) struct WindowsServiceShutdownRequester",
+            "requester: WindowsServiceControlRequester",
+            "Windows service prepared-shutdown capability",
+        ),
+    ):
+        require_text(
+            extract_braced_item(auth, declaration, label),
+            retained,
+            f"retained exact authority in {label}",
+        )
+
+    service_main_auth = extract_braced_item(
+        auth,
+        "fn authenticate_windows_service_main_requester(",
+        "Windows service-main requester authentication",
+    )
+    require_text(
+        service_main_auth,
+        ") -> Option<WindowsServiceMainRequester>",
+        "authority-bearing Windows service-main requester result",
+    )
+    require_order(
+        service_main_auth,
+        (
+            "let Some(peer_pid) = stream.peer_pid()",
+            "WindowsPeerProcess::open(peer_pid)",
+            "stream.windows_pipe_client_token_proof()",
+            "process.live_token_proof()",
+            "if pipe_token != process_token",
+            "if !pipe_token.authority.is_local_system",
+            "process.fresh_identity()",
+            "WINDOWS_SERVICE_SUPERVISOR_PID_ENV",
+            "WINDOWS_SERVICE_SUPERVISOR_CREATION_ENV",
+            "if identity.key != expected_parent",
+            "ensure_windows_identity_matches_fixed_service(",
+            'windows_identity_has_exact_role(&identity, &["--service"])',
+            'process.require_running("Windows service-main requester")',
+            "if stream.peer_pid() != Some(peer_pid)",
+            "Some(WindowsServiceMainRequester",
+            "process,",
+            "identity,",
+            "token: pipe_token,",
+        ),
+        "exact retained LocalSystem service-supervisor admission",
+    )
+    require_text(
+        service_main_auth,
+        "let identity = match process.fresh_identity() {",
+        "fresh Windows service-main requester identity",
+    )
+    require_text(
+        service_main_auth,
+        'if !windows_identity_has_exact_role(&identity, &["--service"]) {',
+        "exact Windows service-main requester role",
+    )
+    require_absent(
+        service_main_auth,
+        "immutable_identity()",
+        "cached Windows service-main requester identity",
+    )
+    require_absent(
+        service_main_auth,
+        "-> bool",
+        "detached Boolean Windows service-main requester result",
+    )
+
+    for signature, result, construction, label in (
+        (
+            "pub(crate) fn authorize_windows_service_credential_requester(",
+            ") -> Option<WindowsServiceCredentialRequester>",
+            "WindowsServiceCredentialRequester { requester }",
+            "Windows credential requester wrapper",
+        ),
+        (
+            "pub(crate) fn authorize_windows_service_control_requester(",
+            ") -> Option<WindowsServiceControlRequester>",
+            "WindowsServiceControlRequester { requester }",
+            "Windows control requester wrapper",
+        ),
+    ):
+        wrapper = extract_braced_item(auth, signature, label)
+        require_order(
+            wrapper,
+            (
+                result,
+                "authenticate_windows_service_main_requester(stream)",
+                construction,
+            ),
+            f"exact {label}",
+        )
+
+    revalidation = extract_braced_item(
+        auth,
+        "fn revalidate(&self, stream: &Connection, context: &str)",
+        "Windows service-main final requester revalidation",
+    )
+    require_order(
+        revalidation,
+        (
+            "let peer_pid = stream",
+            ".peer_pid()",
+            "if peer_pid != self.process.key.pid",
+            "self.process.require_running(context)?",
+            "windows_process_creation_time(self.process.handle.0)?",
+            "self.process.key.creation_time",
+            "self.process.fresh_identity()?",
+            "if identity != self.identity",
+            "ensure_windows_identity_matches_fixed_service(",
+            'windows_identity_has_exact_role(&identity, &["--service"])',
+            "stream.windows_pipe_client_token_proof()?",
+            "self.process.live_token_proof()?",
+            "if pipe_token != self.token || process_token != self.token",
+            "if !pipe_token.authority.is_local_system",
+            "if stream.peer_pid() != Some(peer_pid)",
+            "self.process.require_running(context)",
+        ),
+        "exact final LocalSystem supervisor proof before action",
+    )
+    require_text(
+        revalidation,
+        "if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {",
+        "final Windows service-main requester generation equality",
+    )
+    require_text(
+        revalidation,
+        'if !windows_identity_has_exact_role(&identity, &["--service"]) {',
+        "final exact Windows service-main requester role",
+    )
+
+    for signature, action, label in (
+        (
+            "pub(crate) fn quiesce_replica(",
+            "crate::server::quiesce_windows_credential_replica(transition_id)",
+            "Windows credential quiesce capability",
+        ),
+        (
+            "pub(crate) fn apply_replica(",
+            "crate::server::apply_windows_credential_replica(transition_id, storage, salt, replica_tag)",
+            "Windows credential apply capability",
+        ),
+        (
+            "pub(crate) fn query_replica(",
+            "Ok(crate::server::query_windows_credential_replica())",
+            "Windows credential query capability",
+        ),
+        (
+            "pub(crate) fn resume_replica(",
+            "crate::server::resume_windows_credential_replica(transition_id)",
+            "Windows credential resume capability",
+        ),
+    ):
+        method = extract_braced_item(auth, signature, label)
+        require_order(
+            method,
+            ("self.requester", ".revalidate(", action),
+            f"final exact authority and action in {label}",
+        )
+        if not method.rstrip().endswith(action + "\n    }"):
+            raise VerificationError(f"{label} action is not final")
+
+    count_method = extract_braced_item(
+        auth,
+        "pub(crate) fn count_port_forward_sessions(",
+        "Windows service session-count capability",
+    )
+    require_order(
+        count_method,
+        (
+            "self.requester",
+            ".revalidate(",
+            "Ok(crate::server::AUTHED_CONNS",
+            "crate::server::AuthConnType::PortForward",
+            ".count())",
+        ),
+        "final exact authority and Windows session-count read",
+    )
+    if not count_method.rstrip().endswith(".count())\n    }"):
+        raise VerificationError("Windows service session-count action is not final")
+
+    prepare_shutdown = extract_braced_item(
+        auth,
+        "pub(crate) fn prepare_shutdown(",
+        "prepared Windows service shutdown authority",
+    )
+    require_order(
+        prepare_shutdown,
+        (
+            "self.requester.revalidate(",
+            '"Windows service shutdown requester before acknowledgement"',
+            "Ok(WindowsServiceShutdownRequester { requester: self })",
+        ),
+        "Windows shutdown pre-acknowledgement authority retention",
+    )
+    shutdown_commit = extract_braced_item(
+        auth,
+        "pub(crate) fn commit(self, stream: &Connection)",
+        "Windows service shutdown capability commit",
+    )
+    require_order(
+        shutdown_commit,
+        (
+            "self.requester",
+            ".requester",
+            ".revalidate(",
+            '"Windows service shutdown requester at commit"',
+            "crate::server::request_graceful_shutdown();",
+            "Ok(())",
+        ),
+        "post-acknowledgement Windows shutdown authority and commit",
+    )
+    for retired in (
+        "authorize_windows_service_main_ipc_connection",
+        "windows_pipe_client_token_is_local_system",
+        "WindowsPipeClientTokenRequirement",
+    ):
+        require_absent(auth + ipc, retired, "detached Windows service-main authority")
+
     listener = extract_between(
         ipc,
         "async fn run_windows_service_main_ipc(",
@@ -18770,13 +19013,15 @@ def validate_windows_service_channel_protocol_contract(sources):
         listener,
         (
             "result = control_incoming.next()",
+            "authorize_windows_service_control_requester(&stream)",
             "try_acquire_windows_service_control_transaction_slot()",
-            "handle_windows_service_control_transaction(stream, permit)",
+            "handle_windows_service_control_transaction(stream, requester, permit)",
             "result = credential_incoming.next()",
+            "authorize_windows_service_credential_requester(&stream)",
             "try_acquire_windows_service_credential_transaction_slot()",
-            "handle_windows_service_credential_transaction(stream, permit)",
+            "handle_windows_service_credential_transaction(stream, requester, permit)",
         ),
-        "endpoint-specific Windows service listener dispatch",
+        "endpoint-specific retained-requester Windows service listener dispatch",
     )
     credential = extract_between(
         ipc,
@@ -18788,15 +19033,19 @@ def validate_windows_service_channel_protocol_contract(sources):
     require_order(
         credential,
         (
+            "requester: WindowsServiceCredentialRequester",
             ".next_windows_service_credential_request_timeout(",
-            "authorize_windows_service_main_ipc_connection(&stream)",
             "match request",
             "WindowsServiceCredentialRequest::QuiesceCredentialReplica",
+            "requester.quiesce_replica(&stream, &transition_id)",
             "WindowsServiceCredentialRequest::ApplyCredentialReplica",
+            "requester.apply_replica(",
             "WindowsServiceCredentialRequest::QueryCredentialReplica",
+            "requester.query_replica(&stream)",
             "WindowsServiceCredentialRequest::ResumeCredentialReplica",
+            "requester.resume_replica(&stream, &transition_id)",
         ),
-        "credential-only parse and dispatch",
+        "credential-only parse and retained-capability dispatch",
     )
     require_text(
         credential,
@@ -18808,6 +19057,17 @@ def validate_windows_service_channel_protocol_contract(sources):
         "WindowsServiceControl",
         "control protocol in credential receiver",
     )
+    for protected_action in (
+        "crate::server::quiesce_windows_credential_replica",
+        "crate::server::apply_windows_credential_replica",
+        "crate::server::query_windows_credential_replica",
+        "crate::server::resume_windows_credential_replica",
+    ):
+        require_absent(
+            credential,
+            protected_action,
+            "direct protected action in Windows credential receiver",
+        )
     control = extract_between(
         ipc,
         "async fn handle_windows_service_control_transaction(",
@@ -18817,13 +19077,18 @@ def validate_windows_service_channel_protocol_contract(sources):
     require_order(
         control,
         (
+            "requester: WindowsServiceControlRequester",
             ".next_windows_service_control_request_timeout(",
-            "authorize_windows_service_main_ipc_connection(&stream)",
             "match request",
             "WindowsServiceControlRequest::PortForwardSessionCount",
+            "requester.count_port_forward_sessions(&stream)",
             "WindowsServiceControlRequest::Shutdown",
+            "requester.prepare_shutdown(&stream)",
+            "WindowsServiceControlResponse::ShutdownAccepted",
+            '"Windows service-main shutdown acknowledgement"',
+            "requester.commit(&stream)",
         ),
-        "control-only parse and dispatch",
+        "control-only retained-capability dispatch and acknowledgement-before-latch",
     )
     require_text(
         control,
@@ -18835,6 +19100,15 @@ def validate_windows_service_channel_protocol_contract(sources):
         "WindowsServiceCredential",
         "credential protocol in control receiver",
     )
+    for protected_action in (
+        "crate::server::AUTHED_CONNS",
+        "crate::server::request_graceful_shutdown()",
+    ):
+        require_absent(
+            control,
+            protected_action,
+            "direct protected action in Windows control receiver",
+        )
     for text, label in (
         (
             "fn windows_service_credential_and_control_channels_use_closed_directional_protocols()",
@@ -18897,6 +19171,42 @@ def validate_windows_service_channel_protocol_contract(sources):
         (
             '"policy writer inside retained capability"',
             "focused capability-owned writer mutation",
+        ),
+        (
+            '"authority-bearing service-main requester result"',
+            "focused service-main capability-result mutation",
+        ),
+        (
+            '"retained service-main requester process handle"',
+            "focused service-main retained-process mutation",
+        ),
+        (
+            '"service-main pipe/process token equality"',
+            "focused service-main token-equality mutation",
+        ),
+        (
+            '"final service-main generation equality"',
+            "focused service-main final-generation mutation",
+        ),
+        (
+            '"final accepted service-main token equality"',
+            "focused service-main final-token mutation",
+        ),
+        (
+            '"capability-owned credential apply"',
+            "focused capability-owned credential mutation",
+        ),
+        (
+            '"shutdown revalidation after acknowledgement"',
+            "focused post-acknowledgement shutdown mutation",
+        ),
+        (
+            '"shutdown latch inside retained capability"',
+            "focused capability-owned shutdown mutation",
+        ),
+        (
+            '"detached LocalSystem token helper absence"',
+            "focused detached LocalSystem-helper absence mutation",
         ),
     ):
         require_text(
@@ -18961,6 +19271,26 @@ def validate_windows_service_channel_protocol_contract(sources):
         sources["native_watch"],
         "The same identity additionally binds R-S11ib and Appendix C #387.",
         "retained Windows RDP-policy capability identity binding",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ic</span>',
+        "retained Windows service-main requester requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>388</td>",
+        "retained Windows service-main requester Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ic/R-S11e-266 — retained Windows service-main supervisor authority through exact actions",
+        "retained Windows service-main requester hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11ic and Appendix C #388.",
+        "retained Windows service-main requester identity binding",
     )
     require_text(
         sources["workspace_verifier"],
@@ -74062,20 +74392,40 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_auth_source",
-            "let pipe_token = match stream.windows_pipe_client_token_proof() {",
-            "let pipe_token = match process.live_token_proof() {",
+            "let pipe_token = match stream.windows_pipe_client_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            "            log::warn!(\n"
+            '                "Rejected Windows service-owned RDP policy requester token',
+            "let pipe_token = match process.live_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            "            log::warn!(\n"
+            '                "Rejected Windows service-owned RDP policy requester token',
             "same-generation exact-role Windows RDP-policy requester admission",
         ),
         (
             "ipc_auth_source",
-            "let process_token = match process.live_token_proof() {",
-            "let process_token = match stream.windows_pipe_client_token_proof() {",
+            "let process_token = match process.live_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            "            log::warn!(\n"
+            '                "Rejected Windows service-owned RDP policy requester process token',
+            "let process_token = match stream.windows_pipe_client_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            "            log::warn!(\n"
+            '                "Rejected Windows service-owned RDP policy requester process token',
             "same-generation exact-role Windows RDP-policy requester admission",
         ),
         (
             "ipc_auth_source",
-            "if pipe_token != process_token {",
-            "if pipe_token == process_token {",
+            "if pipe_token != process_token {\n"
+            "        log::warn!(\n"
+            '            "Rejected Windows service-owned RDP policy requester whose pipe and process token identities differ',
+            "if pipe_token == process_token {\n"
+            "        log::warn!(\n"
+            '            "Rejected Windows service-owned RDP policy requester whose pipe and process token identities differ',
             "same-generation exact-role Windows RDP-policy requester admission",
         ),
         (
@@ -74098,11 +74448,15 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_auth_source",
+            "pub(crate) struct WindowsServiceOwnedShareRdpRequester {\n"
             "    process: WindowsPeerProcess,\n"
             "    identity: WindowsProcessImmutableIdentity,\n"
-            "    token: WindowsLiveTokenProof,",
+            "    token: WindowsLiveTokenProof,\n"
+            "}",
+            "pub(crate) struct WindowsServiceOwnedShareRdpRequester {\n"
             "    identity: WindowsProcessImmutableIdentity,\n"
-            "    token: WindowsLiveTokenProof,",
+            "    token: WindowsLiveTokenProof,\n"
+            "}",
             "retained Windows RDP-policy requester capability state",
         ),
         (
@@ -74159,8 +74513,12 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_auth_source",
-            "if peer_pid != self.process.key.pid {",
-            "if peer_pid == self.process.key.pid {",
+            "if peer_pid != self.process.key.pid {\n"
+            "            bail!(\n"
+            '                "Windows service-owned RDP policy requester changed before commit',
+            "if peer_pid == self.process.key.pid {\n"
+            "            bail!(\n"
+            '                "Windows service-owned RDP policy requester changed before commit',
             "final retained Windows RDP-policy requester proof and mutation",
         ),
         (
@@ -74180,14 +74538,20 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_auth_source",
-            "let identity = self.process.fresh_identity()?;",
-            "let identity = self.identity.clone();",
+            "let identity = self.process.fresh_identity()?;\n"
+            "        if identity != self.identity {\n"
+            '            bail!("Windows service-owned RDP policy requester identity changed before commit");',
+            "let identity = self.identity.clone();\n"
+            "        if identity != self.identity {\n"
+            '            bail!("Windows service-owned RDP policy requester identity changed before commit");',
             "final retained Windows RDP-policy requester proof and mutation",
         ),
         (
             "ipc_auth_source",
-            "if identity != self.identity {",
-            "if identity == self.identity {",
+            "if identity != self.identity {\n"
+            '            bail!("Windows service-owned RDP policy requester identity changed before commit");',
+            "if identity == self.identity {\n"
+            '            bail!("Windows service-owned RDP policy requester identity changed before commit");',
             "final retained Windows RDP-policy requester proof and mutation",
         ),
         (
@@ -74206,22 +74570,32 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_auth_source",
-            "let pipe_token = stream.windows_pipe_client_token_proof()?;",
-            "let pipe_token = self.token.clone();",
+            "let pipe_token = stream.windows_pipe_client_token_proof()?;\n"
+            "        let process_token = self.process.live_token_proof()?;\n"
+            "        if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("Windows service-owned RDP policy requester token changed before commit");',
+            "let pipe_token = self.token.clone();\n"
+            "        let process_token = self.process.live_token_proof()?;\n"
+            "        if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("Windows service-owned RDP policy requester token changed before commit");',
             "final retained Windows RDP-policy requester proof and mutation",
         ),
         (
             "ipc_auth_source",
             "let process_token = self.process.live_token_proof()?;\n"
-            "        if pipe_token != self.token || process_token != self.token {",
+            "        if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("Windows service-owned RDP policy requester token changed before commit");',
             "let process_token = self.token.clone();\n"
-            "        if pipe_token != self.token || process_token != self.token {",
+            "        if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("Windows service-owned RDP policy requester token changed before commit");',
             "final retained Windows RDP-policy requester proof and mutation",
         ),
         (
             "ipc_auth_source",
-            "if pipe_token != self.token || process_token != self.token {",
-            "if pipe_token == self.token || process_token == self.token {",
+            "if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("Windows service-owned RDP policy requester token changed before commit");',
+            "if pipe_token == self.token || process_token == self.token {\n"
+            '            bail!("Windows service-owned RDP policy requester token changed before commit");',
             "final retained Windows RDP-policy requester proof and mutation",
         ),
         (
@@ -74260,6 +74634,328 @@ def run_source_mutations(sources):
             "fn windows_service_owned_share_rdp_client_role_is_exact_interactive_ui()",
             "fn windows_service_owned_share_rdp_client_role_is_broad()",
             "Windows service-owned RDP policy role regression",
+        ),
+        (
+            "ipc_source",
+            "let Some(requester) = authorize_windows_service_control_requester(&stream) else {",
+            "let Some(requester) = authorize_windows_service_credential_requester(&stream) else {",
+            "endpoint-specific retained-requester Windows service listener dispatch",
+        ),
+        (
+            "ipc_source",
+            "let Some(requester) = authorize_windows_service_credential_requester(&stream) else {",
+            "let Some(requester) = authorize_windows_service_control_requester(&stream) else {",
+            "endpoint-specific retained-requester Windows service listener dispatch",
+        ),
+        (
+            "ipc_source",
+            "handle_windows_service_control_transaction(stream, requester, permit)",
+            "handle_windows_service_control_transaction(stream, permit)",
+            "endpoint-specific retained-requester Windows service listener dispatch",
+        ),
+        (
+            "ipc_source",
+            "handle_windows_service_credential_transaction(stream, requester, permit)",
+            "handle_windows_service_credential_transaction(stream, permit)",
+            "endpoint-specific retained-requester Windows service listener dispatch",
+        ),
+        (
+            "ipc_source",
+            "    requester: WindowsServiceCredentialRequester,\n"
+            "    _permit: OwnedSemaphorePermit,",
+            "    _permit: OwnedSemaphorePermit,",
+            "credential-only parse and retained-capability dispatch",
+        ),
+        (
+            "ipc_source",
+            "    requester: WindowsServiceControlRequester,\n"
+            "    _permit: OwnedSemaphorePermit,",
+            "    _permit: OwnedSemaphorePermit,",
+            "control-only retained-capability dispatch and acknowledgement-before-latch",
+        ),
+        (
+            "ipc_source",
+            "requester.quiesce_replica(&stream, &transition_id)",
+            "{ let _ = crate::server::quiesce_windows_credential_replica(&transition_id); requester.quiesce_replica(&stream, &transition_id) }",
+            "direct protected action in Windows credential receiver",
+        ),
+        (
+            "ipc_source",
+            "requester.apply_replica(&stream, &transition_id, &storage, &salt, replica_tag)",
+            "{ let _ = crate::server::apply_windows_credential_replica(&transition_id, &storage, &salt, replica_tag); requester.apply_replica(&stream, &transition_id, &storage, &salt, replica_tag) }",
+            "direct protected action in Windows credential receiver",
+        ),
+        (
+            "ipc_source",
+            "requester.query_replica(&stream)",
+            "{ let _ = crate::server::query_windows_credential_replica(); requester.query_replica(&stream) }",
+            "direct protected action in Windows credential receiver",
+        ),
+        (
+            "ipc_source",
+            "requester.resume_replica(&stream, &transition_id)",
+            "{ let _ = crate::server::resume_windows_credential_replica(&transition_id); requester.resume_replica(&stream, &transition_id) }",
+            "direct protected action in Windows credential receiver",
+        ),
+        (
+            "ipc_source",
+            "requester.count_port_forward_sessions(&stream)",
+            "{ let _ = crate::server::AUTHED_CONNS.lock().unwrap().len(); requester.count_port_forward_sessions(&stream) }",
+            "direct protected action in Windows control receiver",
+        ),
+        (
+            "ipc_source",
+            "let requester = match requester.prepare_shutdown(&stream) {",
+            "let requester = match Ok(requester) {",
+            "control-only retained-capability dispatch and acknowledgement-before-latch",
+        ),
+        (
+            "ipc_source",
+            "if let Err(err) = requester.commit(&stream) {",
+            "if let Err(err) = { crate::server::request_graceful_shutdown(); requester.commit(&stream) } {",
+            "direct protected action in Windows control receiver",
+        ),
+        (
+            "ipc_auth_source",
+            "struct WindowsServiceMainRequester {",
+            "struct DetachedWindowsServiceMainRequester {",
+            "retained Windows service-main requester capability",
+        ),
+        (
+            "ipc_auth_source",
+            "struct WindowsServiceMainRequester {\n"
+            "    process: WindowsPeerProcess,\n"
+            "    identity: WindowsProcessImmutableIdentity,\n"
+            "    token: WindowsLiveTokenProof,\n"
+            "}",
+            "struct WindowsServiceMainRequester {\n"
+            "    identity: WindowsProcessImmutableIdentity,\n"
+            "    token: WindowsLiveTokenProof,\n"
+            "}",
+            "retained Windows service-main requester state",
+        ),
+        (
+            "ipc_auth_source",
+            "pub(crate) struct WindowsServiceCredentialRequester {\n"
+            "    requester: WindowsServiceMainRequester,\n"
+            "}",
+            "pub(crate) struct WindowsServiceCredentialRequester {\n"
+            "    requester: WindowsServiceControlRequester,\n"
+            "}",
+            "retained exact authority in Windows service credential requester capability",
+        ),
+        (
+            "ipc_auth_source",
+            "pub(crate) struct WindowsServiceControlRequester {\n"
+            "    requester: WindowsServiceMainRequester,\n"
+            "}",
+            "pub(crate) struct WindowsServiceControlRequester {\n"
+            "    requester: WindowsServiceCredentialRequester,\n"
+            "}",
+            "retained exact authority in Windows service control requester capability",
+        ),
+        (
+            "ipc_auth_source",
+            "pub(crate) struct WindowsServiceShutdownRequester {\n"
+            "    requester: WindowsServiceControlRequester,\n"
+            "}",
+            "pub(crate) struct WindowsServiceShutdownRequester {\n"
+            "    requester: WindowsServiceCredentialRequester,\n"
+            "}",
+            "retained exact authority in Windows service prepared-shutdown capability",
+        ),
+        (
+            "ipc_auth_source",
+            ") -> Option<WindowsServiceMainRequester> {",
+            ") -> bool {",
+            "authority-bearing Windows service-main requester result",
+        ),
+        (
+            "ipc_auth_source",
+            "let pipe_token = match stream.windows_pipe_client_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester pipe token',
+            "let pipe_token = match process.live_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester pipe token',
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "let process_token = match process.live_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester process token',
+            "let process_token = match stream.windows_pipe_client_token_proof() {\n"
+            "        Ok(proof) => proof,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester process token',
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "if pipe_token != process_token {\n"
+            '        log::warn!("Rejected Windows service-main requester whose pipe and process token identities differ");',
+            "if pipe_token == process_token {\n"
+            '        log::warn!("Rejected Windows service-main requester whose pipe and process token identities differ");',
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "if !pipe_token.authority.is_local_system {\n"
+            '        log::warn!("Rejected non-LocalSystem Windows service-main requester");',
+            "if pipe_token.authority.is_local_system {\n"
+            '        log::warn!("Rejected non-LocalSystem Windows service-main requester");',
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "let identity = match process.fresh_identity() {\n"
+            "        Ok(identity) => identity,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester identity',
+            "let identity = match process.immutable_identity() {\n"
+            "        Ok(identity) => identity.as_ref().clone(),\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester identity',
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "let identity = match process.fresh_identity() {\n"
+            "        Ok(identity) => identity,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester identity',
+            "let _cached_identity = process.immutable_identity();\n"
+            "    let identity = match process.fresh_identity() {\n"
+            "        Ok(identity) => identity,\n"
+            "        Err(err) => {\n"
+            '            log::warn!("Rejected Windows service-main requester identity',
+            "cached Windows service-main requester identity",
+        ),
+        (
+            "ipc_auth_source",
+            "if identity.key != expected_parent {\n"
+            "        log::warn!(\n"
+            '            "Rejected Windows service-main requester identity',
+            "if identity.key == expected_parent {\n"
+            "        log::warn!(\n"
+            '            "Rejected Windows service-main requester identity',
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "if !windows_identity_has_exact_role(&identity, &[\"--service\"]) {\n"
+            '        log::warn!("Rejected Windows service-main requester with the wrong process role");',
+            "if windows_identity_has_exact_role(&identity, &[\"--service\"]) {\n"
+            '        log::warn!("Rejected Windows service-main requester with the wrong process role");',
+            "exact Windows service-main requester role",
+        ),
+        (
+            "ipc_auth_source",
+            "Some(WindowsServiceMainRequester {\n"
+            "        process,\n"
+            "        identity,\n"
+            "        token: pipe_token,\n"
+            "    })",
+            "None",
+            "exact retained LocalSystem service-supervisor admission",
+        ),
+        (
+            "ipc_auth_source",
+            "if peer_pid != self.process.key.pid {\n"
+            "            bail!(\n"
+            '                "{context} process changed before action',
+            "if peer_pid == self.process.key.pid {\n"
+            "            bail!(\n"
+            '                "{context} process changed before action',
+            "exact final LocalSystem supervisor proof before action",
+        ),
+        (
+            "ipc_auth_source",
+            "if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {\n"
+            '            bail!("{context} process generation changed before action");',
+            "if windows_process_creation_time(self.process.handle.0)? == self.process.key.creation_time {\n"
+            '            bail!("{context} process generation changed before action");',
+            "final Windows service-main requester generation equality",
+        ),
+        (
+            "ipc_auth_source",
+            "let identity = self.process.fresh_identity()?;\n"
+            "        if identity != self.identity {\n"
+            '            bail!("{context} process identity changed before action");',
+            "let identity = self.identity.clone();\n"
+            "        if identity != self.identity {\n"
+            '            bail!("{context} process identity changed before action");',
+            "exact final LocalSystem supervisor proof before action",
+        ),
+        (
+            "ipc_auth_source",
+            "let pipe_token = stream.windows_pipe_client_token_proof()?;\n"
+            "        let process_token = self.process.live_token_proof()?;\n"
+            "        if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("{context} token changed before action");',
+            "let pipe_token = self.token.clone();\n"
+            "        let process_token = self.token.clone();\n"
+            "        if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("{context} token changed before action");',
+            "exact final LocalSystem supervisor proof before action",
+        ),
+        (
+            "ipc_auth_source",
+            "if pipe_token != self.token || process_token != self.token {\n"
+            '            bail!("{context} token changed before action");',
+            "if pipe_token == self.token || process_token == self.token {\n"
+            '            bail!("{context} token changed before action");',
+            "exact final LocalSystem supervisor proof before action",
+        ),
+        (
+            "ipc_auth_source",
+            "if !pipe_token.authority.is_local_system {\n"
+            '            bail!("{context} is no longer LocalSystem");',
+            "if pipe_token.authority.is_local_system {\n"
+            '            bail!("{context} is no longer LocalSystem");',
+            "exact final LocalSystem supervisor proof before action",
+        ),
+        (
+            "ipc_auth_source",
+            "crate::server::apply_windows_credential_replica(transition_id, storage, salt, replica_tag)\n"
+            "    }",
+            'bail!("disabled")\n'
+            "    }",
+            "final exact authority and action in Windows credential apply capability",
+        ),
+        (
+            "ipc_auth_source",
+            "self.requester.revalidate(\n"
+            "            stream,\n"
+            '            "Windows service shutdown requester before acknowledgement",\n'
+            "        )?;",
+            "",
+            "Windows shutdown pre-acknowledgement authority retention",
+        ),
+        (
+            "ipc_auth_source",
+            "self.requester\n"
+            "            .requester\n"
+            '            .revalidate(stream, "Windows service shutdown requester at commit")?;',
+            "",
+            "post-acknowledgement Windows shutdown authority and commit",
+        ),
+        (
+            "ipc_auth_source",
+            "crate::server::request_graceful_shutdown();\n"
+            "        Ok(())",
+            "Ok(())",
+            "post-acknowledgement Windows shutdown authority and commit",
+        ),
+        (
+            "ipc_auth_source",
+            "fn windows_pipe_client_authority(&self)",
+            "fn windows_pipe_client_token_is_local_system(&self)",
+            "detached Windows service-main authority",
         ),
         (
             "windows_service_channel_protocol_verifier",
@@ -74346,6 +75042,30 @@ def run_source_mutations(sources):
             "retained Windows RDP-policy capability identity binding",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11ic</span>',
+            '<span class="id">R-S11ic-disabled</span>',
+            "retained Windows service-main requester requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>388</td>",
+            "<tr><td>388-disabled</td>",
+            "retained Windows service-main requester Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ic/R-S11e-266 — retained Windows service-main supervisor authority through exact actions",
+            "R-S11ic-disabled/R-S11e-266 — retained Windows service-main supervisor authority through exact actions",
+            "retained Windows service-main requester hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ic and Appendix C #388.",
+            "The same identity no longer binds R-S11ic and Appendix C #388.",
+            "retained Windows service-main requester identity binding",
+        ),
+        (
             "ipc_source",
             "enum WindowsServiceCredentialRequest",
             "enum WindowsServiceMainRequest",
@@ -74368,15 +75088,15 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "handle_windows_service_control_transaction(stream, permit)",
-            "handle_windows_service_credential_transaction(stream, permit)",
-            "endpoint-specific Windows service listener dispatch",
+            "handle_windows_service_control_transaction(stream, requester, permit)",
+            "handle_windows_service_credential_transaction(stream, requester, permit)",
+            "endpoint-specific retained-requester Windows service listener dispatch",
         ),
         (
             "ipc_source",
             ".next_windows_service_credential_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
             ".next_windows_service_control_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
-            "credential-only parse and dispatch",
+            "credential-only parse and retained-capability dispatch",
         ),
         (
             "ipc_source",

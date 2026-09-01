@@ -28807,7 +28807,7 @@ socket inside a verifier.
 Current normative identity for this slice:
 
 ```text
-7c64e503cd3ba49a00afa038928cfa7f3de9e277a9add0fb2eced7c9a3bb2c64  requirements.html
+Historical requirements identity: 7c64e503cd3ba49a00afa038928cfa7f3de9e277a9add0fb2eced7c9a3bb2c64  requirements.html
 ```
 
 Evidence receipt for the source snapshot preceding this receipt:
@@ -29240,3 +29240,174 @@ namespace, configuration, Android device, VM, Haggai/Desktop_Haggai_computer
 workload, unrelated Docker object, root authority, privileged container, host
 network, published port, device, or Docker socket inside a verifier was inspected or
 used by this slice.
+
+### R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission
+
+**Status:** SOURCE REPAIR IMPLEMENTED / EXACT-CURRENT SOURCE VERIFICATION GREEN /
+NATIVE MACOS, INSTALLED, PERFORMANCE, RELEASE, AND REVIEW EVIDENCE OPEN.
+
+The continuing action-by-action privileged IPC review found one remaining authority-
+lifetime defect inside the R-S11hy macOS password path. Before this slice, the raw
+`_service_password` listener correctly authenticated one exact installed-app requester
+and retained its audit-token generation plus complete finite argv before reading the
+secret. After the request, a bounded Security.framework worker correctly required the
+hardened right, verified the external Authorization Services form, and replayed the
+requester. A final socket snapshot correctly required the same post-request UID,
+effective PID, and full `LOCAL_PEERTOKEN` last owner.
+
+Those proofs did not reach the credential-ledger action as authority-bearing objects.
+Commit `609804c9` introduced `capability_and_requester_are_live: bool` and
+`authority_allowed: bool` while repairing the requester proof. The handler and generic
+ledger-admission shape came from `57bcb529`: it accepted `authority_allowed: bool`,
+formed another `admission_allowed` Boolean, and called `prepare_if_allowed`. That
+coordinator classified a same-kind, same-fingerprint existing operation before it
+consulted the Boolean. A failed final replay that knew the operation UUID and password
+could therefore reach prior-status classification, while a new `Prepared` insertion
+still required the Boolean to be true.
+
+This is source-proven requester-lifetime, admission-API, and replay-status authority
+debt. It is not evidence that a new credential write was admitted without
+Authorization Services, that a credential was disclosed, that a host or service was
+compromised or changed, that the user's earlier Android/Windows presentation symptoms
+were caused by this code, or that any unidentified deployed artifact contained it.
+
+The repair deletes both detached macOS authority Booleans and the
+`macos_peer_is_authorized_for_service_owned_password_change` Boolean adapter. The
+bounded proof now returns either no authority or exactly one private, non-cloneable
+`MacosServiceOwnedPasswordAdmission`. Its sole construction follows, in order, the
+hardened right-definition check, native external-form verification, and exact live
+requester replay. The complete request and secret stay paired with that prospective
+authority; failure produces the typed rejected status without entering the ledger.
+
+The admission object's consuming `prepare_mutation` operation validates the canonical
+operation UUID and password bound, freshly replays the retained installed-app
+generation/complete argv/finite role, and then requires the post-request socket last
+owner's UID, effective PID, and full audit token to equal the requester. Its next
+protected action calls `prepare_macos_service_owned`, whose signature requires a
+reference to that exact capability. There is one capability construction and one
+capability-owned coordinator call. The coordinator's new `Prepared` insertion is the
+irreversible authorization point. The coordinator outcome stays structurally split:
+only `owns_preparation == true` constructs
+`PreparedMacosServiceOwnedPasswordMutation` and crosses into the async mutation
+handler. An authorized same-operation replay, collision rejection, or shutdown result
+instead drops the password and carries only operation ID plus status through a
+separate status variant and status-only resolver. That resolver cannot prepare,
+acknowledge, or start a credential mutation. The prepared type carries no generic
+preparation record, and its handler accepts no authority/admission Boolean, cannot
+infer ledger admission, and cannot call generic preparation.
+
+After `Prepared` exists, the existing root-service state machine deliberately owns
+finality. Permit acquisition, acknowledgement, worker commit, completion, replay
+recovery, shutdown drain, and fail-admitted handling remain independent of later
+requester survival. Cancelling an already admitted credential transaction when the UI
+process exits would reintroduce an uncertain outcome and violate R-S11g. Before that
+point, any missing right, invalid external form, changed requester, invalid operation
+or value, changed socket last owner, duplicate capability construction, generic
+constructor, detached Boolean, or direct-handler preparation fails closed.
+
+This ordering follows Apple's documented factored-helper model. The helper imports an
+external authorization reference, requests the right immediately before the privileged
+operation, and uses that result to decide whether the operation is permitted. In this
+state machine, inserting `Prepared` is the decision that authorizes the future root
+credential write; the exact Authorization Services/requester capability therefore has
+to reach that insertion, not expire into a Boolean one API layer earlier. The XNU
+audit-token/last-owner limitation recorded by R-S11hy remains unchanged: this is
+generation and current-last-owner consistency, not exclusive frame authorship or
+proof that a socket descriptor was never shared. Primary sources consulted:
+
+- <https://developer.apple.com/library/archive/documentation/Security/Conceptual/authorization_concepts/03authtasks/authtasks.html>
+- <https://developer.apple.com/library/archive/documentation/Security/Conceptual/authorization_concepts/02authconcepts/authconcepts.html>
+- <https://developer.apple.com/documentation/security/authorizationcreatefromexternalform%28_%3A_%3A%29>
+- <https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c>
+
+No endpoint, wire frame, prompt, right definition, listener, capacity, timeout, retry,
+reconnect, task class, worker, credential sink, runtime replica, service lifecycle,
+port, network behavior, or dependency changed. The persistent Android service design,
+viewer reconnect/focus behavior, display pipeline, and the user's cross-platform
+connection-flow/performance stop-ship request are outside this source slice and remain
+open exactly as recorded elsewhere in this ledger.
+
+The focused password-IPC verifier now structurally extracts the typed grant,
+non-cloneable requester ownership, sole construction, final request validation and
+both requester/socket replays, capability-typed coordinator admission, prepared
+insertion ownership, secret-free status resolution, prepared handler input, and sole
+caller graph. Its deliberate mutations cover skipped right,
+external authorization, requester, operation/value, and socket checks; cloneability;
+duplicate construction; non-consuming preparation; fabricated prepared state;
+secret-bearing or mutation-capable status resolution; Boolean coordinator/handler
+authority; and direct handler ledger admission. The shared and Apple embedded gates
+and the independently implemented workspace validator bind the same outcome.
+
+The exact-current source-verification snapshot was frozen at
+`2026-09-01T04:29:19.649648187Z`. Its identities were:
+
+```text
+27c88e22a2162b3afe5853696f36c2667e1178c963eac677e83b355b0daef9a0  HARDENING_STATUS.md
+554dabff3c91b4bef30085f6e36909ee7488b351f20cc2a9b0f031f2e9be1959  docs/NATIVE-CODEC-WATCH.md
+snapshot 9726f602a30285bc55c9a17dd0b862aff7699d2c0e609cdc995f7f2ec7bf92fc  requirements.html
+dc0fa8548bef4fe5c9bdc413a4dc52f6d3f654bb1b9a4b4ea3e67a2e11127a86  scripts/apple-conform-check.sh
+939e000a018ac467f0f96a4b108d33c4969dc199d957d79f10c7074fff8548ea  scripts/verify-linux-service-password-ipc.py
+6459539dcc864f8fd04d5feff6a62061bdbaef9d900f9ea95f6acb677773708c  scripts/verify-verifier-workspace.py
+afa0167628dc273973ce3272d60175eed7250f9e367d69c7b6242bd63e0e04df  scripts/verify.sh
+9c47ef835fa3bf8e449a2535e9971be2e753041f8d42cdfb3f5d57250b5df958  src/ipc.rs
+8e5d633e1b858fd87698c6d0d44e17237fdcc5c81795e4b32723276368e32786  git diff --binary
+```
+
+Against those exact bytes, the focused password-IPC baseline and all 119 of its
+deliberate self-mutations passed. The independently implemented workspace baseline,
+the exact shared embedded analyzer, the exact Apple embedded analyzer (with zero-byte
+R-S11b/R-S11b2/R-S11e-16 verdict files), the native-watch normal and self-test modes,
+isolated Python byte-compilation, Bash syntax checks, `git diff --check`, and the Rust
+1.75 formatting comparison passed. The formatting comparison found 181 changed Rust
+lines, 280 lines touched by rustfmt, and zero overlap, so no unrelated formatting
+rewrite was accepted.
+
+The canonical independent source-mutation catalog then evaluated all 5,537 tuples
+with `--source-mutations-only` and returned `verify-verifier-workspace: ok`. It ran
+once, without a wrapper, timeout, parallel duplicate, or writable repository bind, in
+container
+`f3141e30bdfbfa2d17f3d2e5bb9425e021bc4a1da8b27744ac916994ffb0b98a`
+from `2026-09-01T04:29:28.984148531Z` through
+`2026-09-01T07:46:27.440841403Z` (3:16:58.456692872), exited 0, and was not
+OOM-killed. The immutable verifier image was
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`;
+it ran as UID/GID 1000, with no network, a read-only repository bind and root
+filesystem, all capabilities dropped, `no-new-privileges`, and bounded CPU, memory,
+PIDs, and temporary storage. Recomputed file and binary-diff identities matched the
+frozen values exactly after exit. The exact named container was then removed and an
+exact-name residue check was empty.
+
+An earlier uncounted catalog attempt ran from approximately `04:06:31Z` through
+`04:27:18Z`, exited 1, and was not OOM-killed. It stopped because a right-readiness
+mutation correctly produced the stricter current diagnostic, “right definition,
+Authorization Services proof, requester replay, and typed grant,” while the catalog
+tuple still expected an older, narrower label. This was catalog-expectation drift,
+not a product-code acceptance. The tuple was aligned, all 88 macOS-password-marked
+catalog cases passed a fresh filtered preflight, and only then was the canonical run
+restarted from tuple zero. The failed container was inspected and removed before the
+successful run; it contributes no passing evidence.
+
+The verifier image intentionally contains neither Cargo nor rustc. No compilation,
+native macOS, installed-service, runtime, performance, or release-artifact claim is
+made from these source gates. This receipt is the only post-catalog repository edit;
+it changes `HARDENING_STATUS.md`, not the catalogued product, norm, or verifier bytes.
+The final receipt-bearing documentation is rechecked by the bounded fast gates before
+publication.
+
+Current normative identity for this slice:
+
+9726f602a30285bc55c9a17dd0b862aff7699d2c0e609cdc995f7f2ec7bf92fc  requirements.html
+
+It binds R-S11id/R-S11e-267 and Appendix C #389 and is synchronized with
+`docs/NATIVE-CODEC-WATCH.md`.
+
+Exact-current signed macOS compilation and execution, Authorization Services
+allow/deny/expiry/replay behavior, audit-token/PID/argv/descriptor-sharing races,
+installed LaunchDaemon operation for every legitimate and refused role, sustained
+latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact equality,
+independent reproduction, and R-V3 external review remain open. This slice does not
+inspect, stop, restart, modify, or connect to a host RustDesk process/service; inspect
+or change a host listener, firewall, network namespace, or configuration; touch
+Android, a VM, Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root,
+privileged containers, host networking, published ports, devices, or a Docker socket
+inside a verifier.

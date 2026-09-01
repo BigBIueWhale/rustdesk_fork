@@ -1145,7 +1145,10 @@ def analyze(sources):
         run_service = item(ipc, "async fn run_service_ipc")
         main_sensitive = item(ipc, "async fn handle_sensitive_main_ipc_transaction")
         mac_sensitive = item(ipc, "async fn handle_sensitive_macos_service_ipc_transaction")
+        mac_password_grant = item(ipc, "fn grant_macos_service_owned_password_admission")
+        mac_password_admission = item(ipc, "impl MacosServiceOwnedPasswordAdmission")
         mac_password_mutation = item(ipc, "async fn handle_macos_service_owned_unattended_password_request")
+        mac_password_status = item(ipc, "async fn resolve_macos_service_owned_unattended_password_status")
         mac_service_auth = item(ipc, "async fn authorize_macos_service_scoped_ipc_connection_for_task")
         mac_password_auth = item(ipc, "async fn authenticate_macos_service_owned_password_requester_for_task")
         mac_credential_auth = item(ipc, "async fn authorize_macos_service_scoped_credential_stream_for_task")
@@ -1255,15 +1258,64 @@ def analyze(sources):
             "handle_sensitive_macos_service_ipc_transaction(",
         ]) and "receive_request_unix" not in password_accept and ordered(mac_sensitive, [
             "SensitivePayloadKind::PasswordWithAuthorization", "try_acquire_macos_service_password_ipc_authorization_slot()",
-            "run_bounded_macos_security_proof(", "ensure_service_owned_unattended_password_authorization_right()",
-            "macos_peer_is_authorized_for_service_owned_password_change(",
-            "macos_service_owned_password_requester_is_live(&requester)",
-            "Ok((request, requester, capability_and_requester_are_live))",
-            "macos_service_owned_password_requester_matches_post_request_last_owner(",
-            "request.into_password()", "handle_macos_service_owned_unattended_password_request(",
+            "run_bounded_macos_security_proof(", "grant_macos_service_owned_password_admission(",
+            "request.authorization()", "Ok((request, admission))", "request.into_password()",
+            "admission.prepare_mutation(&stream, operation_id.to_string(), value)",
+            "MacosServiceOwnedPasswordPreparation::Prepared(mutation)",
+            "handle_macos_service_owned_unattended_password_request(",
+            "MacosServiceOwnedPasswordPreparation::Status",
+            "resolve_macos_service_owned_unattended_password_status(",
             "send_status_unix",
-        ]) and "&& macos_service_owned_password_requester_is_live(&requester)" in mac_sensitive
-            and "let authority_allowed = capability_and_requester_are_live\n        && macos_service_owned_password_requester_matches_post_request_last_owner(" in mac_sensitive)
+        ]) and "capability_and_requester_are_live" not in mac_sensitive
+            and "authority_allowed" not in mac_sensitive
+            and "struct MacosServiceOwnedPasswordAdmission {\n    requester: MacosServiceOwnedPasswordRequester,\n}" in ipc
+            and "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission" not in ipc
+            and "struct PreparedMacosServiceOwnedPasswordMutation {\n    operation_id: String,\n    password: SensitivePassword,\n}" in ipc
+            and "enum MacosServiceOwnedPasswordPreparation {\n    Prepared(PreparedMacosServiceOwnedPasswordMutation),\n    Status {\n        operation_id: String,\n        status: PasswordMutationStatus,\n    },\n}" in ipc
+            and ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1
+            and ordered(mac_password_grant, [
+                "ensure_service_owned_unattended_password_authorization_right()",
+                "verify_service_owned_unattended_password_authorization(authorization)",
+                "macos_service_owned_password_requester_is_live(&requester)",
+                "Some(MacosServiceOwnedPasswordAdmission { requester })",
+            ])
+            and "if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {" in mac_password_grant
+            and "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {" in mac_password_grant
+            and "if !macos_service_owned_password_requester_is_live(&requester) {" in mac_password_grant
+            and "-> Option<MacosServiceOwnedPasswordAdmission>" in mac_password_grant.split("{", 1)[0]
+            and ordered(mac_password_admission, [
+                "password_mutation_id_is_valid(&operation_id)",
+                'service_owned_password_value_is_valid("macOS", password.as_str())',
+                "macos_service_owned_password_requester_is_live(&self.requester)",
+                "macos_service_owned_password_requester_matches_post_request_last_owner(",
+                "&self.requester", "stream", "prepare_macos_service_owned(",
+                "&self", "&operation_id", "password.as_str()",
+                "if preparation.owns_preparation {",
+                "MacosServiceOwnedPasswordPreparation::Prepared(",
+                "PreparedMacosServiceOwnedPasswordMutation {",
+                "MacosServiceOwnedPasswordPreparation::Status",
+            ])
+            and "fn prepare_mutation(\n        self," in mac_password_admission
+            and "-> Option<MacosServiceOwnedPasswordPreparation>" in mac_password_admission
+            and "if !password_mutation_id_is_valid(&operation_id)\n            || !service_owned_password_value_is_valid(\"macOS\", password.as_str())" in mac_password_admission
+            and "if !macos_service_owned_password_requester_is_live(&self.requester) {" in mac_password_admission
+            and "if !macos_service_owned_password_requester_matches_post_request_last_owner(" in mac_password_admission
+            and "authority_allowed" not in mac_password_admission
+            and "admission_allowed" not in mac_password_admission
+            and "_admission: &MacosServiceOwnedPasswordAdmission" in coordinator
+            and ipc.count("prepare_macos_service_owned(") == 2
+            and "mutation: PreparedMacosServiceOwnedPasswordMutation" in mac_password_mutation
+            and "preparation.owns_preparation" not in mac_password_mutation
+            and "authority_allowed" not in mac_password_mutation
+            and "admission_allowed" not in mac_password_mutation
+            and "prepare_if_allowed(" not in mac_password_mutation
+            and "SensitivePassword" not in mac_password_status
+            and "prepare_if_allowed(" not in mac_password_status
+            and "prepare_macos_service_owned(" not in mac_password_status
+            and "acknowledge(" not in mac_password_status
+            and "spawn_password_mutation(" not in mac_password_status
+            and ipc.count("handle_macos_service_owned_unattended_password_request(") == 2
+            and ipc.count("resolve_macos_service_owned_unattended_password_status(") == 2)
         mac_password_role_body = re.sub(
             r"\s+", " ",
             mac_password_requester_role[mac_password_requester_role.find("{") + 1:-1],
@@ -1296,15 +1348,11 @@ def analyze(sources):
              ]))
         need("b2", "macos-password-requester-post-request-last-owner-not-exact",
              mac_password_post_request_last_owner_body == 'let Ok(identity) = macos_peer_process_identity_from_stream( stream, "post-request macOS service-owned password requester last owner", ) else { return false; }; identity.uid == requester.identity.uid && identity.pid == requester.identity.pid && identity.audit_token == requester.identity.audit_token'
-             and ordered(mac_sensitive, [
-                 "password::receive_request_unix(",
-                 "macos_peer_is_authorized_for_service_owned_password_change(",
-                 "macos_service_owned_password_requester_is_live(&requester)",
-                 "Ok((request, requester, capability_and_requester_are_live))",
-                 "let authority_allowed = capability_and_requester_are_live",
-                 "&& macos_service_owned_password_requester_matches_post_request_last_owner(",
-                 "&requester, &stream",
-                 "request.into_password()",
+             and "if !macos_service_owned_password_requester_matches_post_request_last_owner(" in mac_password_admission
+             and ordered(mac_password_admission, [
+                 "macos_service_owned_password_requester_is_live(&self.requester)",
+                 "macos_service_owned_password_requester_matches_post_request_last_owner(",
+                 "&self.requester", "stream", "prepare_macos_service_owned(",
              ]))
         need("b2", "macos-password-requester-role-or-generation-not-exact",
              all(token in mac_password_requester_auth for token in [
@@ -1521,9 +1569,17 @@ def analyze(sources):
             "prepare_if_allowed", "entry.kind != kind || entry.fingerprint != fingerprint", "PasswordMutationState::Prepared",
             "fn acknowledge", "PasswordMutationState::Pending", "fn complete", "PasswordMutationState::Complete(result, std::time::Instant::now())",
             "async fn wait_for_complete", "async fn drain", "fn clear_after_transactions_drain",
+        ]) and ordered(mac_password_admission, [
+            "prepare_macos_service_owned(", "if preparation.owns_preparation {",
+            "MacosServiceOwnedPasswordPreparation::Prepared(",
+            "PreparedMacosServiceOwnedPasswordMutation {",
         ]) and ordered(mac_password_mutation, [
-            "prepare_if_allowed(", "preparation.owns_preparation", "acknowledge(&operation_id", "spawn_password_mutation(",
+            "try_acquire_main_ipc_blocking_mutation_slot(", "acknowledge(&operation_id", "spawn_password_mutation(",
             "worker.await", "PasswordMutationStatus::Complete(result)",
+        ]) and ordered(mac_password_status, [
+            "match status", "PasswordMutationStatus::Complete(result)",
+            "PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending",
+            "wait_for_complete(&operation_id, kind)",
         ]))
         uuid = client.find("let operation_id = hbb_common::uuid::Uuid::new_v4();")
         retry_loop = client.find("loop {", uuid)
@@ -1779,9 +1835,21 @@ scoped_mutation("macos-password-token-service-snapshot", "auth", "pub(crate) fn 
 scoped_mutation("macos-password-generation-admission", "auth", "pub(crate) fn authenticate_macos_service_owned_password_requester", "if !macos_service_owned_password_requester_generation_is_live(&identity)", "if false && !macos_service_owned_password_requester_generation_is_live(&identity)", "b2", "macos-password-requester-role-or-generation-not-exact")
 scoped_mutation("macos-password-generation-final-uid", "auth", "fn macos_service_owned_password_requester_generation_is_live", "&& is_allowed_service_peer_uid(identity.uid, active_uid_fresh())", "&& true", "b2", "macos-password-requester-role-or-generation-not-exact")
 scoped_mutation("macos-password-generation-replay", "auth", "pub(crate) fn macos_service_owned_password_requester_is_live", "&& macos_service_owned_password_requester_generation_is_live(&requester.identity)", "&& true", "b2", "macos-password-requester-role-or-generation-not-exact")
-scoped_mutation("macos-password-final-requester-replay", "ipc", "async fn handle_sensitive_macos_service_ipc_transaction", "&& macos_service_owned_password_requester_is_live(&requester)", "|| macos_service_owned_password_requester_is_live(&requester)", "b2", "macos-peer-auth-not-before-secret-read")
+mutation("macos-password-admission-clone", "ipc", "struct MacosServiceOwnedPasswordAdmission {", "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission {", "b2", "macos-peer-auth-not-before-secret-read")
+mutation("macos-password-admission-second-construction", "ipc", "Some(MacosServiceOwnedPasswordAdmission { requester })", "let _duplicate = Some(MacosServiceOwnedPasswordAdmission { requester });\n    Some(MacosServiceOwnedPasswordAdmission { requester })", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-admission-right", "ipc", "fn grant_macos_service_owned_password_admission", "if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {", "if false && !crate::platform::ensure_service_owned_unattended_password_authorization_right() {", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-admission-authorization", "ipc", "fn grant_macos_service_owned_password_admission", "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {", "if false && !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-final-requester-replay", "ipc", "fn grant_macos_service_owned_password_admission", "if !macos_service_owned_password_requester_is_live(&requester) {", "if false && !macos_service_owned_password_requester_is_live(&requester) {", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-capability-final-requester-replay", "ipc", "impl MacosServiceOwnedPasswordAdmission", "if !macos_service_owned_password_requester_is_live(&self.requester) {", "if false && !macos_service_owned_password_requester_is_live(&self.requester) {", "b2", "macos-peer-auth-not-before-secret-read")
 scoped_mutation("macos-password-post-request-last-owner-token", "auth", "pub(crate) fn macos_service_owned_password_requester_matches_post_request_last_owner", "&& identity.audit_token == requester.identity.audit_token", "&& true", "b2", "macos-password-requester-post-request-last-owner-not-exact")
-scoped_mutation("macos-password-post-request-last-owner-final-grant", "ipc", "async fn handle_sensitive_macos_service_ipc_transaction", "let authority_allowed = capability_and_requester_are_live\n        && macos_service_owned_password_requester_matches_post_request_last_owner(", "let authority_allowed = capability_and_requester_are_live\n        || macos_service_owned_password_requester_matches_post_request_last_owner(", "b2", "macos-password-requester-post-request-last-owner-not-exact")
+scoped_mutation("macos-password-post-request-last-owner-final-grant", "ipc", "impl MacosServiceOwnedPasswordAdmission", "if !macos_service_owned_password_requester_matches_post_request_last_owner(", "if false && !macos_service_owned_password_requester_matches_post_request_last_owner(", "b2", "macos-password-requester-post-request-last-owner-not-exact")
+scoped_mutation("macos-password-ledger-detached-authority", "ipc", "impl PasswordMutationCoordinator", "_admission: &MacosServiceOwnedPasswordAdmission,", "_admission: bool,", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-capability-not-consumed", "ipc", "impl MacosServiceOwnedPasswordAdmission", "    fn prepare_mutation(\n        self,", "    fn prepare_mutation(\n        &self,", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-prepared-without-ledger-ownership", "ipc", "impl MacosServiceOwnedPasswordAdmission", "        if preparation.owns_preparation {", "        if true { /* preparation.owns_preparation */", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-status-retains-secret", "ipc", "enum MacosServiceOwnedPasswordPreparation", "        status: PasswordMutationStatus,", "        status: PasswordMutationStatus,\n        password: SensitivePassword,", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-handler-detached-authority", "ipc", "async fn handle_macos_service_owned_unattended_password_request", "mutation: PreparedMacosServiceOwnedPasswordMutation,", "mutation: PreparedMacosServiceOwnedPasswordMutation,\n    authority_allowed: bool,", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-handler-direct-ledger-admission", "ipc", "async fn handle_macos_service_owned_unattended_password_request", "    let kind = PasswordMutationKind::ServiceOwned;\n    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {", "    let kind = PasswordMutationKind::ServiceOwned;\n    let _bypass = password_mutations().prepare_if_allowed(&operation_id, kind, password.as_str(), true);\n    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {", "b2", "macos-peer-auth-not-before-secret-read")
+scoped_mutation("macos-password-status-starts-worker", "ipc", "async fn resolve_macos_service_owned_unattended_password_status", "    let kind = PasswordMutationKind::ServiceOwned;\n    let result = match status {", "    let kind = PasswordMutationKind::ServiceOwned;\n    let _bypass = spawn_password_mutation(operation_id.clone(), password, kind, permit);\n    let result = match status {", "b2", "macos-peer-auth-not-before-secret-read")
 scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authenticate_macos_service_owned_password_requester_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
 scoped_mutation("credential-retained-authority", "ipc", "async fn authorize_macos_service_scoped_credential_stream_for_task", "let retained_authorization = authorization.clone();", "let retained_authorization = ();", "b2", "macos-credential-peer-auth-not-before-request")
 scoped_mutation("credential-final-generation", "auth", "pub(crate) fn macos_service_owned_credential_requester_identity_is_live", "&& macos_service_owned_password_requester_generation_is_live(identity)", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
@@ -1892,6 +1960,14 @@ grep -Fq '<span class="id">R-S11ia</span>' "$REPO/requirements.html" || r_s11b2=
 grep -Fq '<tr><td>386</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-requester-finality-appendix-missing"
 grep -Fq 'R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-credential-requester-finality-ledger-missing"
 grep -Fq 'The same identity additionally binds R-S11ia and Appendix C #386.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-credential-requester-finality-digest-binding-missing"
+grep -Fq '<span class="id">R-S11id</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-typed-admission-requirement-missing"
+grep -Fq '<tr><td>389</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-typed-admission-appendix-missing"
+grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-typed-admission-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-password-typed-admission-digest-binding-missing"
+grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-typed-admission-norm-missing"
+grep -Fq 'whose type signature itself requires a reference to that exact admission object' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-capability-coordinator-norm-missing"
+grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-prepared-state-norm-missing"
+grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-prepared-handler-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

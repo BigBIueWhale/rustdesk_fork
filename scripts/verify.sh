@@ -2930,6 +2930,14 @@ grep -Fq '<span class="id">R-S11ia</span>' requirements.html || r_s11b2="$r_s11b
 grep -Fq '<tr><td>386</td>' requirements.html || r_s11b2="$r_s11b2 macos-credential-requester-finality-appendix-missing"
 grep -Fq 'R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-credential-requester-finality-ledger-missing"
 grep -Fq 'The same identity additionally binds R-S11ia and Appendix C #386.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-credential-requester-finality-digest-binding-missing"
+grep -Fq '<span class="id">R-S11id</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-typed-admission-requirement-missing"
+grep -Fq '<tr><td>389</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-typed-admission-appendix-missing"
+grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-typed-admission-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-password-typed-admission-digest-binding-missing"
+grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html || r_s11b2="$r_s11b2 macos-password-typed-admission-norm-missing"
+grep -Fq 'whose type signature itself requires a reference to that exact admission object' requirements.html || r_s11b2="$r_s11b2 macos-password-capability-coordinator-norm-missing"
+grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-prepared-state-norm-missing"
+grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-prepared-handler-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3277,6 +3285,31 @@ mac_sensitive = between(
     "async fn handle_sensitive_macos_service_ipc_transaction",
     "async fn handle_main_ipc_transaction",
 )
+mac_password_grant = between(
+    ipc,
+    "fn grant_macos_service_owned_password_admission",
+    "impl MacosServiceOwnedPasswordAdmission",
+)
+mac_password_admission = between(
+    ipc,
+    "impl MacosServiceOwnedPasswordAdmission",
+    "async fn macos_service_owned_password_authorization_right_is_ready",
+)
+password_coordinator = between(
+    ipc,
+    "impl PasswordMutationCoordinator",
+    "struct PasswordMutationCompletion",
+)
+mac_password_mutation = between(
+    ipc,
+    "async fn handle_macos_service_owned_unattended_password_request",
+    "async fn resolve_macos_service_owned_unattended_password_status",
+)
+mac_password_status = between(
+    ipc,
+    "async fn resolve_macos_service_owned_unattended_password_status",
+    "pub(crate) async fn handle_windows_service_owned_share_rdp_request",
+)
 need(
     "macos-capability-proof-or-secret-ownership-order-invalid",
     ordered(
@@ -3286,18 +3319,71 @@ need(
             "SensitivePayloadKind::PasswordWithAuthorization",
             "try_acquire_macos_service_password_ipc_authorization_slot()",
             "run_bounded_macos_security_proof(",
-            "ensure_service_owned_unattended_password_authorization_right()",
-            "macos_peer_is_authorized_for_service_owned_password_change(",
+            "grant_macos_service_owned_password_admission(",
+            "requester",
             "request.authorization()",
-            "macos_service_owned_password_requester_is_live(&requester)",
-            "Ok((request, requester, capability_and_requester_are_live))",
-            "let authority_allowed = capability_and_requester_are_live",
-            "&& macos_service_owned_password_requester_matches_post_request_last_owner(",
-            "&requester, &stream",
+            "Ok((request, admission))",
             "request.into_password()",
+            "admission.prepare_mutation(&stream, operation_id.to_string(), value)",
+            "MacosServiceOwnedPasswordPreparation::Prepared(mutation)",
             "handle_macos_service_owned_unattended_password_request(",
+            "MacosServiceOwnedPasswordPreparation::Status",
+            "resolve_macos_service_owned_unattended_password_status(",
         ),
-    ),
+    )
+    and "capability_and_requester_are_live" not in mac_sensitive
+    and "authority_allowed" not in mac_sensitive
+    and "struct MacosServiceOwnedPasswordAdmission {\n    requester: MacosServiceOwnedPasswordRequester,\n}" in ipc
+    and "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission" not in ipc
+    and "struct PreparedMacosServiceOwnedPasswordMutation {\n    operation_id: String,\n    password: SensitivePassword,\n}" in ipc
+    and "enum MacosServiceOwnedPasswordPreparation {\n    Prepared(PreparedMacosServiceOwnedPasswordMutation),\n    Status {\n        operation_id: String,\n        status: PasswordMutationStatus,\n    },\n}" in ipc
+    and ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1
+    and ordered(
+        mac_password_grant,
+        (
+            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+            "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization)",
+            "if !macos_service_owned_password_requester_is_live(&requester)",
+            "Some(MacosServiceOwnedPasswordAdmission { requester })",
+        ),
+    )
+    and ordered(
+        mac_password_admission,
+        (
+            "if !password_mutation_id_is_valid(&operation_id)",
+            '|| !service_owned_password_value_is_valid("macOS", password.as_str())',
+            "if !macos_service_owned_password_requester_is_live(&self.requester)",
+            "if !macos_service_owned_password_requester_matches_post_request_last_owner(",
+            "&self.requester",
+            "stream",
+            "prepare_macos_service_owned(",
+            "&self",
+            "&operation_id",
+            "password.as_str()",
+            "if preparation.owns_preparation {",
+            "MacosServiceOwnedPasswordPreparation::Prepared(",
+            "PreparedMacosServiceOwnedPasswordMutation {",
+            "MacosServiceOwnedPasswordPreparation::Status",
+        ),
+    )
+    and "fn prepare_mutation(\n        self," in mac_password_admission
+    and "-> Option<MacosServiceOwnedPasswordPreparation>" in mac_password_admission
+    and "authority_allowed" not in mac_password_admission
+    and "admission_allowed" not in mac_password_admission
+    and "_admission: &MacosServiceOwnedPasswordAdmission" in password_coordinator
+    and ipc.count("prepare_macos_service_owned(") == 2
+    and "mutation: PreparedMacosServiceOwnedPasswordMutation" in mac_password_mutation
+    and "preparation.owns_preparation" not in mac_password_mutation
+    and "authority_allowed" not in mac_password_mutation
+    and "admission_allowed" not in mac_password_mutation
+    and "prepare_if_allowed(" not in mac_password_mutation
+    and "SensitivePassword" not in mac_password_status
+    and "prepare_if_allowed(" not in mac_password_status
+    and "prepare_macos_service_owned(" not in mac_password_status
+    and "acknowledge(" not in mac_password_status
+    and "spawn_password_mutation(" not in mac_password_status
+    and ipc.count("handle_macos_service_owned_unattended_password_request(") == 2
+    and ipc.count("resolve_macos_service_owned_unattended_password_status(") == 2,
 )
 mac_service_proof = between(
     ipc,

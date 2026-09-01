@@ -12667,34 +12667,203 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "password::receive_request_unix(",
             "SensitivePayloadKind::PasswordWithAuthorization",
             "run_bounded_macos_security_proof(",
-            "ensure_service_owned_unattended_password_authorization_right()",
-            "macos_peer_is_authorized_for_service_owned_password_change(",
+            "grant_macos_service_owned_password_admission(",
+            "requester",
             "request.authorization()",
-            "&& macos_service_owned_password_requester_is_live(&requester)",
-            "Ok((request, requester, capability_and_requester_are_live))",
-            "let authority_allowed = capability_and_requester_are_live\n"
-            "        && macos_service_owned_password_requester_matches_post_request_last_owner(",
+            "Ok((request, admission))",
             "request.into_password()",
+            "admission.prepare_mutation(&stream, operation_id.to_string(), value)",
+            "MacosServiceOwnedPasswordPreparation::Prepared(mutation)",
             "handle_macos_service_owned_unattended_password_request(",
+            "MacosServiceOwnedPasswordPreparation::Status",
+            "resolve_macos_service_owned_unattended_password_status(",
         ),
-        "Authorization Services capability plus final exact requester replay before mutation",
+        "action-specific admission capability through final replay and ledger preparation",
+    )
+    require_absent(sensitive, "capability_and_requester_are_live", "detached capability Boolean")
+    require_absent(sensitive, "authority_allowed", "detached authority Boolean")
+
+    require_text(
+        ipc,
+        "struct MacosServiceOwnedPasswordAdmission {\n"
+        "    requester: MacosServiceOwnedPasswordRequester,\n"
+        "}",
+        "exact-requester macOS password admission type",
+    )
+    require_absent(
+        ipc,
+        "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission",
+        "cloneable macOS password admission",
+    )
+    require_exact_count(
+        ipc,
+        "Some(MacosServiceOwnedPasswordAdmission { requester })",
+        1,
+        "sole macOS password admission construction",
     )
     require_text(
-        sensitive,
-        "                    crate::platform::ensure_service_owned_unattended_password_authorization_right()\n"
-        "                        && macos_peer_is_authorized_for_service_owned_password_change(\n"
-        "                            request.authorization(),\n"
-        "                        )\n"
-        "                        && macos_service_owned_password_requester_is_live(&requester);",
-        "conjunctive macOS right, capability, and requester finality",
+        ipc,
+        "struct PreparedMacosServiceOwnedPasswordMutation {\n"
+        "    operation_id: String,\n"
+        "    password: SensitivePassword,\n"
+        "}",
+        "genuinely prepared macOS password mutation type",
     )
     require_text(
-        sensitive,
-        "let authority_allowed = capability_and_requester_are_live\n"
-        "        && macos_service_owned_password_requester_matches_post_request_last_owner(\n"
-        "            &requester, &stream,\n"
-        "        );",
-        "conjunctive post-capability socket last-owner replay",
+        ipc,
+        "enum MacosServiceOwnedPasswordPreparation {\n"
+        "    Prepared(PreparedMacosServiceOwnedPasswordMutation),\n"
+        "    Status {\n"
+        "        operation_id: String,\n"
+        "        status: PasswordMutationStatus,\n"
+        "    },\n"
+        "}",
+        "separate prepared-mutation and secret-free status outcomes",
+    )
+
+    admission_grant = extract_braced_item(
+        ipc,
+        "fn grant_macos_service_owned_password_admission(",
+        "macOS service-owned password admission grant",
+    )
+    require_order(
+        admission_grant,
+        (
+            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+            "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization)",
+            "if !macos_service_owned_password_requester_is_live(&requester)",
+            "Some(MacosServiceOwnedPasswordAdmission { requester })",
+        ),
+        "right definition, Authorization Services proof, requester replay, and typed grant",
+    )
+    require_text(
+        ipc,
+        "fn grant_macos_service_owned_password_admission(\n"
+        "    requester: MacosServiceOwnedPasswordRequester,\n"
+        "    authorization: &[u8],\n"
+        ") -> Option<MacosServiceOwnedPasswordAdmission> {",
+        "typed macOS password admission result",
+    )
+
+    admission_capability = extract_braced_item(
+        ipc,
+        "impl MacosServiceOwnedPasswordAdmission",
+        "macOS service-owned password admission capability",
+    )
+    require_text(
+        admission_capability,
+        "fn prepare_mutation(\n"
+        "        self,\n"
+        "        stream: &Conn,\n"
+        "        operation_id: String,\n"
+        "        password: SensitivePassword,\n"
+        "    ) -> Option<MacosServiceOwnedPasswordPreparation> {",
+        "consuming macOS password admission preparation",
+    )
+    require_order(
+        admission_capability,
+        (
+            "if !password_mutation_id_is_valid(&operation_id)",
+            '|| !service_owned_password_value_is_valid("macOS", password.as_str())',
+            "if !macos_service_owned_password_requester_is_live(&self.requester)",
+            "if !macos_service_owned_password_requester_matches_post_request_last_owner(",
+            "&self.requester",
+            "stream",
+            "prepare_macos_service_owned(",
+            "&self",
+            "&operation_id",
+            "password.as_str()",
+            "if preparation.owns_preparation {",
+            "MacosServiceOwnedPasswordPreparation::Prepared(",
+            "PreparedMacosServiceOwnedPasswordMutation {",
+            "MacosServiceOwnedPasswordPreparation::Status",
+        ),
+        "validated request, final requester/socket replay, and capability-typed ledger admission",
+    )
+    require_absent(admission_capability, "authority_allowed", "detached authority Boolean")
+    require_absent(admission_capability, "admission_allowed", "detached admission Boolean")
+
+    coordinator = extract_braced_item(
+        ipc,
+        "impl PasswordMutationCoordinator",
+        "password mutation coordinator",
+    )
+    require_text(
+        coordinator,
+        "_admission: &MacosServiceOwnedPasswordAdmission,",
+        "action-specific coordinator admission parameter",
+    )
+    require_exact_count(
+        ipc,
+        "prepare_macos_service_owned(",
+        2,
+        "single capability-owned macOS password ledger caller",
+    )
+
+    mutation_handler = extract_braced_item(
+        ipc,
+        "async fn handle_macos_service_owned_unattended_password_request(",
+        "prepared macOS service-owned password mutation handler",
+    )
+    require_text(
+        ipc,
+        "async fn handle_macos_service_owned_unattended_password_request(\n"
+        "    mutation: PreparedMacosServiceOwnedPasswordMutation,\n"
+        ") -> PasswordMutationStatus {",
+        "prepared mutation handler input",
+    )
+    require_absent(mutation_handler, "authority_allowed", "detached handler authority Boolean")
+    require_absent(mutation_handler, "admission_allowed", "detached handler admission Boolean")
+    require_absent(mutation_handler, "prepare_if_allowed(", "direct Boolean ledger admission")
+    require_absent(
+        mutation_handler,
+        "preparation.owns_preparation",
+        "handler-side preparation-state inference",
+    )
+    require_order(
+        mutation_handler,
+        (
+            "try_acquire_main_ipc_blocking_mutation_slot()",
+            "acknowledge(&operation_id, kind, password.as_str())",
+            "spawn_password_mutation(operation_id.clone(), password, kind, permit)",
+        ),
+        "prepared mutation permit, acknowledgement, and worker",
+    )
+    require_exact_count(
+        ipc,
+        "handle_macos_service_owned_unattended_password_request(",
+        2,
+        "single sensitive-transaction macOS mutation-handler caller",
+    )
+
+    status_resolver = extract_braced_item(
+        ipc,
+        "async fn resolve_macos_service_owned_unattended_password_status(",
+        "authorized macOS service-owned password status resolver",
+    )
+    require_order(
+        status_resolver,
+        (
+            "match status",
+            "PasswordMutationStatus::Complete(result)",
+            "PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending",
+            "wait_for_complete(&operation_id, kind)",
+        ),
+        "authorized replay/status-only resolution",
+    )
+    for text, label in (
+        ("SensitivePassword", "secret-bearing status resolution"),
+        ("prepare_if_allowed(", "status resolver generic ledger admission"),
+        ("prepare_macos_service_owned(", "status resolver typed ledger admission"),
+        ("acknowledge(", "status resolver acknowledgement"),
+        ("spawn_password_mutation(", "status resolver mutation worker"),
+    ):
+        require_absent(status_resolver, text, label)
+    require_exact_count(
+        ipc,
+        "resolve_macos_service_owned_unattended_password_status(",
+        2,
+        "single sensitive-transaction status-resolver caller",
     )
 
     regression = extract_braced_item(
@@ -12760,8 +12929,8 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "focused macOS requester replay conjunction",
         ),
         (
-            '"conjunctive right definition, Authorization Services capability, and exact requester replay"',
-            "focused macOS final grant conjunction",
+            '"fail-closed Authorization Services guard"',
+            "focused macOS typed admission grant",
         ),
         (
             '"macOS password requester admits the server role"',
@@ -12784,16 +12953,48 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "focused macOS pre-task snapshot mutation",
         ),
         (
-            '"macOS password mutation authority loses exact requester replay"',
-            "focused macOS final-requester mutation",
+            '"macOS password admission bypasses its post-authorization requester replay"',
+            "focused macOS admission requester-replay mutation",
         ),
         (
             '"macOS post-request last-owner replay loses full audit-token equality"',
             "focused macOS post-request token mutation",
         ),
         (
-            '"macOS password mutation authority disjoins post-request last-owner replay"',
-            "focused macOS final socket-replay mutation",
+            '"macOS password capability bypasses post-request socket ownership"',
+            "focused macOS capability socket-replay mutation",
+        ),
+        (
+            '"macOS password coordinator accepts a detached Boolean instead of the capability"',
+            "focused macOS typed coordinator mutation",
+        ),
+        (
+            '"macOS password admission is no longer consumed by preparation"',
+            "focused macOS consuming-admission mutation",
+        ),
+        (
+            '"macOS password preparation fabricates Prepared without ledger ownership"',
+            "focused macOS prepared-state mutation",
+        ),
+        (
+            '"macOS password status-only outcome retains the credential secret"',
+            "focused macOS secret-free status mutation",
+        ),
+        (
+            '"macOS password admission capability gains a second construction site"',
+            "focused macOS sole-construction mutation",
+        ),
+        (
+            '"macOS password handler regains a detached authority Boolean"',
+            "focused macOS prepared-handler mutation",
+        ),
+        (
+            '"macOS password handler directly reopens Boolean ledger admission"',
+            "focused macOS direct-ledger mutation",
+        ),
+        (
+            '"macOS password status resolver starts a mutation worker"',
+            "focused macOS status-resolver mutation",
         ),
         (
             '"macOS password exact-role regression is removed"',
@@ -12903,6 +13104,22 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "shared macOS post-request socket last-owner replay",
         ),
         (
+            'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1',
+            "shared sole macOS password admission construction",
+        ),
+        (
+            'ipc.count("prepare_macos_service_owned(") == 2',
+            "shared sole capability-owned macOS coordinator call",
+        ),
+        (
+            'ipc.count("handle_macos_service_owned_unattended_password_request(") == 2',
+            "shared sole prepared-handler call",
+        ),
+        (
+            'ipc.count("resolve_macos_service_owned_unattended_password_status(") == 2',
+            "shared sole status-resolver call",
+        ),
+        (
             '"macos-password-right-retained-service-requester-invalid"',
             "shared macOS password-right retained requester proof",
         ),
@@ -12953,6 +13170,38 @@ def validate_macos_service_owned_password_requester_contract(sources):
         (
             "grep -Fq 'The same identity additionally binds R-S11ia and Appendix C #386.' docs/NATIVE-CODEC-WATCH.md",
             "shared macOS credential requester finality digest binding",
+        ),
+        (
+            'grep -Fq \'<span class="id">R-S11id</span>\' requirements.html',
+            "shared typed macOS password admission requirement binding",
+        ),
+        (
+            "grep -Fq '<tr><td>389</td>' requirements.html",
+            "shared typed macOS password admission Appendix binding",
+        ),
+        (
+            "grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' HARDENING_STATUS.md",
+            "shared typed macOS password admission hardening binding",
+        ),
+        (
+            "grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' docs/NATIVE-CODEC-WATCH.md",
+            "shared typed macOS password admission digest binding",
+        ),
+        (
+            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html",
+            "shared typed macOS password admission normative shape",
+        ),
+        (
+            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' requirements.html",
+            "shared capability-typed macOS coordinator norm",
+        ),
+        (
+            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' requirements.html",
+            "shared exact prepared-state norm",
+        ),
+        (
+            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' requirements.html",
+            "shared prepared macOS handler norm",
         ),
     ):
         require_text(verify, text, label)
@@ -13020,6 +13269,38 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "Apple macOS post-request full-token mutation",
         ),
         (
+            'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1',
+            "Apple sole macOS password admission construction",
+        ),
+        (
+            'ipc.count("prepare_macos_service_owned(") == 2',
+            "Apple sole capability-owned macOS coordinator call",
+        ),
+        (
+            'ipc.count("handle_macos_service_owned_unattended_password_request(") == 2',
+            "Apple sole prepared-handler call",
+        ),
+        (
+            'ipc.count("resolve_macos_service_owned_unattended_password_status(") == 2',
+            "Apple sole status-resolver call",
+        ),
+        (
+            'scoped_mutation("macos-password-capability-not-consumed"',
+            "Apple consuming-admission mutation",
+        ),
+        (
+            'scoped_mutation("macos-password-prepared-without-ledger-ownership"',
+            "Apple prepared-state mutation",
+        ),
+        (
+            'scoped_mutation("macos-password-status-retains-secret"',
+            "Apple secret-free status mutation",
+        ),
+        (
+            'scoped_mutation("macos-password-status-starts-worker"',
+            "Apple status-resolver mutation",
+        ),
+        (
             'mac_password_right_requester_auth = item(auth, "pub(crate) fn authenticate_macos_service_owned_password_right_requester")',
             "Apple macOS password-right requester proof",
         ),
@@ -13038,6 +13319,38 @@ def validate_macos_service_owned_password_requester_contract(sources):
         (
             'scoped_mutation("macos-password-right-policy-disjunction"',
             "Apple macOS password-right policy disjunction mutation",
+        ),
+        (
+            'grep -Fq \'<span class="id">R-S11id</span>\' "$REPO/requirements.html"',
+            "Apple typed macOS password admission requirement binding",
+        ),
+        (
+            "grep -Fq '<tr><td>389</td>' \"$REPO/requirements.html\"",
+            "Apple typed macOS password admission Appendix binding",
+        ),
+        (
+            "grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' \"$REPO/HARDENING_STATUS.md\"",
+            "Apple typed macOS password admission hardening binding",
+        ),
+        (
+            "grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' \"$REPO/docs/NATIVE-CODEC-WATCH.md\"",
+            "Apple typed macOS password admission digest binding",
+        ),
+        (
+            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' \"$REPO/requirements.html\"",
+            "Apple typed macOS password admission normative shape",
+        ),
+        (
+            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' \"$REPO/requirements.html\"",
+            "Apple capability-typed macOS coordinator norm",
+        ),
+        (
+            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' \"$REPO/requirements.html\"",
+            "Apple exact prepared-state norm",
+        ),
+        (
+            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' \"$REPO/requirements.html\"",
+            "Apple prepared macOS handler norm",
         ),
     ):
         require_text(apple, text, label)
@@ -13147,6 +13460,51 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "The same identity additionally binds R-S11ia and Appendix C #386.",
             "exact macOS credential requester finality identity binding",
         ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11id</span>',
+            "typed macOS password admission requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>389</td>",
+            "typed macOS password admission Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission",
+            "typed macOS password admission hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11id and Appendix C #389.",
+            "typed macOS password admission identity binding",
+        ),
+        (
+            sources["requirements"],
+            "MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean",
+            "normative non-cloneable macOS password admission",
+        ),
+        (
+            sources["requirements"],
+            "whose type signature itself requires a reference to that exact admission object",
+            "normative capability-typed macOS coordinator admission",
+        ),
+        (
+            sources["requirements"],
+            "only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>",
+            "normative exact Prepared construction",
+        ),
+        (
+            sources["requirements"],
+            "MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>",
+            "normative prepared-handler Boolean/direct-admission prohibition",
+        ),
+        (
+            sources["hardening"],
+            "There is one capability construction and one\ncapability-owned coordinator call.",
+            "macOS typed admission sole-construction/caller ledger statement",
+        ),
     ):
         require_text(source, text, label)
 
@@ -13175,6 +13533,37 @@ def validate_macos_service_owned_password_requester_contract(sources):
         "    validate_macos_service_owned_password_requester_contract(sources)\n",
         "macOS password requester independent validator dispatch",
     )
+    for text, label in (
+        (
+            'require_exact_count(\n        ipc,\n        "Some(MacosServiceOwnedPasswordAdmission { requester })",\n        1,',
+            "independent sole macOS admission-construction assertion",
+        ),
+        (
+            'require_exact_count(\n        ipc,\n        "prepare_macos_service_owned(",\n        2,',
+            "independent sole capability-owned coordinator-call assertion",
+        ),
+        (
+            'require_absent(mutation_handler, "prepare_if_allowed(", "direct Boolean ledger admission")',
+            "independent prepared-handler direct-admission prohibition",
+        ),
+        (
+            '"    ) -> Option<MacosServiceOwnedPasswordPreparation> {",\n        "consuming macOS password admission preparation"',
+            "independent consuming-admission assertion",
+        ),
+        (
+            'require_absent(status_resolver, text, label)',
+            "independent status-resolver prohibition loop",
+        ),
+        (
+            'require_exact_count(\n        ipc,\n        "resolve_macos_service_owned_unattended_password_status(",\n        2,',
+            "independent sole status-resolver caller assertion",
+        ),
+        (
+            'sources["requirements"],\n            \'<span class="id">R-S11id</span>\'',
+            "independent typed macOS password requirement binding",
+        ),
+    ):
+        require_text(sources["workspace_verifier"], text, label)
 
 
 def validate_macos_helper_build_binding_contract(sources):
@@ -65823,17 +66212,104 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "&& macos_service_owned_password_requester_is_live(&requester);",
-            "|| macos_service_owned_password_requester_is_live(&requester);",
-            "Authorization Services capability plus final exact requester replay before mutation",
+            "struct MacosServiceOwnedPasswordAdmission {",
+            "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission {",
+            "cloneable macOS password admission",
         ),
         (
             "ipc_source",
-            "let authority_allowed = capability_and_requester_are_live\n"
-            "        && macos_service_owned_password_requester_matches_post_request_last_owner(",
-            "let authority_allowed = capability_and_requester_are_live\n"
-            "        || macos_service_owned_password_requester_matches_post_request_last_owner(",
-            "Authorization Services capability plus final exact requester replay before mutation",
+            "Some(MacosServiceOwnedPasswordAdmission { requester })",
+            "let _duplicate = Some(MacosServiceOwnedPasswordAdmission { requester });\n"
+            "    Some(MacosServiceOwnedPasswordAdmission { requester })",
+            "sole macOS password admission construction",
+        ),
+        (
+            "ipc_source",
+            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {",
+            "if false && !crate::platform::ensure_service_owned_unattended_password_authorization_right() {",
+            "right definition, Authorization Services proof, requester replay, and typed grant",
+        ),
+        (
+            "ipc_source",
+            "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
+            "if false && !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
+            "right definition, Authorization Services proof, requester replay, and typed grant",
+        ),
+        (
+            "ipc_source",
+            "if !macos_service_owned_password_requester_is_live(&requester) {\n"
+            "        log::warn!(\n"
+            "            \"Rejected macOS service-owned unattended password change: requester changed during authorization\"",
+            "if false && !macos_service_owned_password_requester_is_live(&requester) {\n"
+            "        log::warn!(\n"
+            "            \"Rejected macOS service-owned unattended password change: requester changed during authorization\"",
+            "right definition, Authorization Services proof, requester replay, and typed grant",
+        ),
+        (
+            "ipc_source",
+            "if !macos_service_owned_password_requester_is_live(&self.requester) {",
+            "if false && !macos_service_owned_password_requester_is_live(&self.requester) {",
+            "validated request, final requester/socket replay, and capability-typed ledger admission",
+        ),
+        (
+            "ipc_source",
+            "if !macos_service_owned_password_requester_matches_post_request_last_owner(\n"
+            "            &self.requester,\n"
+            "            stream,\n"
+            "        ) {",
+            "if false && !macos_service_owned_password_requester_matches_post_request_last_owner(\n"
+            "            &self.requester,\n"
+            "            stream,\n"
+            "        ) {",
+            "validated request, final requester/socket replay, and capability-typed ledger admission",
+        ),
+        (
+            "ipc_source",
+            "_admission: &MacosServiceOwnedPasswordAdmission,",
+            "_admission: bool,",
+            "action-specific coordinator admission parameter",
+        ),
+        (
+            "ipc_source",
+            "    fn prepare_mutation(\n        self,",
+            "    fn prepare_mutation(\n        &self,",
+            "consuming macOS password admission preparation",
+        ),
+        (
+            "ipc_source",
+            "        if preparation.owns_preparation {",
+            "        if true { /* preparation.owns_preparation */",
+            "validated request, final requester/socket replay, and capability-typed ledger admission",
+        ),
+        (
+            "ipc_source",
+            "        status: PasswordMutationStatus,",
+            "        status: PasswordMutationStatus,\n        password: SensitivePassword,",
+            "separate prepared-mutation and secret-free status outcomes",
+        ),
+        (
+            "ipc_source",
+            "mutation: PreparedMacosServiceOwnedPasswordMutation,",
+            "mutation: PreparedMacosServiceOwnedPasswordMutation,\n    authority_allowed: bool,",
+            "prepared mutation handler input",
+        ),
+        (
+            "ipc_source",
+            "    let kind = PasswordMutationKind::ServiceOwned;\n"
+            "    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {",
+            "    let kind = PasswordMutationKind::ServiceOwned;\n"
+            "    let _bypass = password_mutations().prepare_if_allowed(&operation_id, kind, password.as_str(), true);\n"
+            "    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {",
+            "direct Boolean ledger admission",
+        ),
+        (
+            "ipc_source",
+            "    let kind = PasswordMutationKind::ServiceOwned;\n"
+            "    let result = match status {",
+            "    let kind = PasswordMutationKind::ServiceOwned;\n"
+            "    let _bypass = spawn_password_mutation(operation_id.clone(), password, kind, permit);\n"
+            "    let result = match status {",
+            "status resolver mutation worker",
         ),
         (
             "ipc_auth_source",
@@ -66178,9 +66654,9 @@ def run_source_mutations(sources):
         ),
         (
             "linux_password_ipc_validator",
-            '"macOS password mutation authority loses exact requester replay"',
-            '"macOS password mutation authority retains exact requester replay"',
-            "focused macOS final-requester mutation",
+            '"macOS password admission bypasses its post-authorization requester replay"',
+            '"macOS password admission retains its post-authorization requester replay"',
+            "focused macOS admission requester-replay mutation",
         ),
         (
             "linux_password_ipc_validator",
@@ -66190,9 +66666,57 @@ def run_source_mutations(sources):
         ),
         (
             "linux_password_ipc_validator",
-            '"macOS password mutation authority disjoins post-request last-owner replay"',
-            '"macOS password mutation authority conjoins post-request last-owner replay"',
-            "focused macOS final socket-replay mutation",
+            '"macOS password capability bypasses post-request socket ownership"',
+            '"macOS password capability retains post-request socket ownership"',
+            "focused macOS capability socket-replay mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password coordinator accepts a detached Boolean instead of the capability"',
+            '"macOS password coordinator retains the typed capability"',
+            "focused macOS typed coordinator mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password admission is no longer consumed by preparation"',
+            '"macOS password admission remains consumed by preparation"',
+            "focused macOS consuming-admission mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password preparation fabricates Prepared without ledger ownership"',
+            '"macOS password preparation retains ledger ownership"',
+            "focused macOS prepared-state mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password status-only outcome retains the credential secret"',
+            '"macOS password status-only outcome remains secret-free"',
+            "focused macOS secret-free status mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password admission capability gains a second construction site"',
+            '"macOS password admission capability retains one construction site"',
+            "focused macOS sole-construction mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password handler regains a detached authority Boolean"',
+            '"macOS password handler retains prepared mutation authority"',
+            "focused macOS prepared-handler mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password handler directly reopens Boolean ledger admission"',
+            '"macOS password handler keeps ledger admission capability-owned"',
+            "focused macOS direct-ledger mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password status resolver starts a mutation worker"',
+            '"macOS password status resolver remains status-only"',
+            "focused macOS status-resolver mutation",
         ),
         (
             "linux_password_ipc_validator",
@@ -66421,6 +66945,204 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11hy and Appendix C #384.",
             "The same identity no longer binds R-S11hy and Appendix C #384.",
             "exact macOS service-owned password requester identity binding",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11id</span>\' requirements.html',
+            "true # typed macOS password admission requirement binding disabled",
+            "shared typed macOS password admission requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>389</td>' requirements.html",
+            "true # typed macOS password admission Appendix binding disabled",
+            "shared typed macOS password admission Appendix binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' HARDENING_STATUS.md",
+            "true # typed macOS password admission hardening binding disabled",
+            "shared typed macOS password admission hardening binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' docs/NATIVE-CODEC-WATCH.md",
+            "true # typed macOS password admission digest binding disabled",
+            "shared typed macOS password admission digest binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html",
+            "true # typed macOS admission shape norm disabled",
+            "shared typed macOS password admission normative shape",
+        ),
+        (
+            "verify",
+            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' requirements.html",
+            "true # typed macOS coordinator norm disabled",
+            "shared capability-typed macOS coordinator norm",
+        ),
+        (
+            "verify",
+            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' requirements.html",
+            "true # exact macOS prepared-state norm disabled",
+            "shared exact prepared-state norm",
+        ),
+        (
+            "verify",
+            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' requirements.html",
+            "true # prepared macOS handler norm disabled",
+            "shared prepared macOS handler norm",
+        ),
+        (
+            "verify",
+            'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1',
+            'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") >= 1',
+            "shared sole macOS password admission construction",
+        ),
+        (
+            "verify",
+            'ipc.count("prepare_macos_service_owned(") == 2',
+            'ipc.count("prepare_macos_service_owned(") >= 2',
+            "shared sole capability-owned macOS coordinator call",
+        ),
+        (
+            "verify",
+            'ipc.count("handle_macos_service_owned_unattended_password_request(") == 2',
+            'ipc.count("handle_macos_service_owned_unattended_password_request(") >= 2',
+            "shared sole prepared-handler call",
+        ),
+        (
+            "verify",
+            'ipc.count("resolve_macos_service_owned_unattended_password_status(") == 2',
+            'ipc.count("resolve_macos_service_owned_unattended_password_status(") >= 2',
+            "shared sole status-resolver call",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11id</span>\' "$REPO/requirements.html"',
+            "true # Apple typed macOS password admission requirement binding disabled",
+            "Apple typed macOS password admission requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq '<tr><td>389</td>' \"$REPO/requirements.html\"",
+            "true # Apple typed macOS password admission Appendix binding disabled",
+            "Apple typed macOS password admission Appendix binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' \"$REPO/HARDENING_STATUS.md\"",
+            "true # Apple typed macOS password admission hardening binding disabled",
+            "Apple typed macOS password admission hardening binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' \"$REPO/docs/NATIVE-CODEC-WATCH.md\"",
+            "true # Apple typed macOS password admission digest binding disabled",
+            "Apple typed macOS password admission digest binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' \"$REPO/requirements.html\"",
+            "true # Apple typed macOS admission shape norm disabled",
+            "Apple typed macOS password admission normative shape",
+        ),
+        (
+            "apple",
+            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' \"$REPO/requirements.html\"",
+            "true # Apple typed macOS coordinator norm disabled",
+            "Apple capability-typed macOS coordinator norm",
+        ),
+        (
+            "apple",
+            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' \"$REPO/requirements.html\"",
+            "true # Apple exact prepared-state norm disabled",
+            "Apple exact prepared-state norm",
+        ),
+        (
+            "apple",
+            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' \"$REPO/requirements.html\"",
+            "true # Apple prepared macOS handler norm disabled",
+            "Apple prepared macOS handler norm",
+        ),
+        (
+            "apple",
+            'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1',
+            'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") >= 1',
+            "Apple sole macOS password admission construction",
+        ),
+        (
+            "apple",
+            'ipc.count("prepare_macos_service_owned(") == 2',
+            'ipc.count("prepare_macos_service_owned(") >= 2',
+            "Apple sole capability-owned macOS coordinator call",
+        ),
+        (
+            "apple",
+            'ipc.count("handle_macos_service_owned_unattended_password_request(") == 2',
+            'ipc.count("handle_macos_service_owned_unattended_password_request(") >= 2',
+            "Apple sole prepared-handler call",
+        ),
+        (
+            "apple",
+            'ipc.count("resolve_macos_service_owned_unattended_password_status(") == 2',
+            'ipc.count("resolve_macos_service_owned_unattended_password_status(") >= 2',
+            "Apple sole status-resolver call",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11id</span>',
+            '<span class="id">R-S11id-disabled</span>',
+            "typed macOS password admission requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>389</td>",
+            "<tr><td>389-disabled</td>",
+            "typed macOS password admission Appendix C row",
+        ),
+        (
+            "requirements",
+            "MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean",
+            "MAY</span> produce a cloneable or Boolean MacosServiceOwnedPasswordAdmission",
+            "normative non-cloneable macOS password admission",
+        ),
+        (
+            "requirements",
+            "whose type signature itself requires a reference to that exact admission object",
+            "whose type signature accepts a detached Boolean",
+            "normative capability-typed macOS coordinator admission",
+        ),
+        (
+            "requirements",
+            "only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>",
+            "any coordinator status may construct PreparedMacosServiceOwnedPasswordMutation",
+            "normative exact Prepared construction",
+        ),
+        (
+            "requirements",
+            "MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>",
+            "MAY</span> accept authority_allowed, admission_allowed, or call prepare_if_allowed",
+            "normative prepared-handler Boolean/direct-admission prohibition",
+        ),
+        (
+            "hardening",
+            "R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission",
+            "R-S11id-disabled/R-S11e-267 — typed macOS service-owned password authority through ledger admission",
+            "typed macOS password admission hardening ledger",
+        ),
+        (
+            "hardening",
+            "There is one capability construction and one\ncapability-owned coordinator call.",
+            "There may be many capability constructions and\ncapability-owned coordinator calls.",
+            "macOS typed admission sole-construction/caller ledger statement",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11id and Appendix C #389.",
+            "The same identity no longer binds R-S11id and Appendix C #389.",
+            "typed macOS password admission identity binding",
         ),
         (
             "verify",

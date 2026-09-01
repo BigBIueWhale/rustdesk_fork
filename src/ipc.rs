@@ -755,6 +755,26 @@ struct PasswordMutationPreparation {
     owns_preparation: bool,
 }
 
+#[cfg(target_os = "macos")]
+struct MacosServiceOwnedPasswordAdmission {
+    requester: MacosServiceOwnedPasswordRequester,
+}
+
+#[cfg(target_os = "macos")]
+struct PreparedMacosServiceOwnedPasswordMutation {
+    operation_id: String,
+    password: SensitivePassword,
+}
+
+#[cfg(target_os = "macos")]
+enum MacosServiceOwnedPasswordPreparation {
+    Prepared(PreparedMacosServiceOwnedPasswordMutation),
+    Status {
+        operation_id: String,
+        status: PasswordMutationStatus,
+    },
+}
+
 #[cfg(target_os = "linux")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct LinuxPasswordCaller {
@@ -1061,6 +1081,21 @@ impl PasswordMutationCoordinator {
             status: PasswordMutationStatus::Prepared,
             owns_preparation: true,
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn prepare_macos_service_owned(
+        &self,
+        _admission: &MacosServiceOwnedPasswordAdmission,
+        operation_id: &str,
+        value: &str,
+    ) -> PasswordMutationPreparation {
+        self.prepare_if_allowed(
+            operation_id,
+            PasswordMutationKind::ServiceOwned,
+            value,
+            true,
+        )
     }
 
     #[cfg(test)]
@@ -3509,32 +3544,23 @@ async fn handle_sensitive_macos_service_ipc_transaction(
     else {
         return;
     };
-    let (request, requester, capability_and_requester_are_live) =
-        match run_bounded_macos_security_proof(
-            deadline,
-            "macos-password-capability-proof",
-            move || {
-                let capability_and_requester_are_live =
-                    crate::platform::ensure_service_owned_unattended_password_authorization_right()
-                        && macos_peer_is_authorized_for_service_owned_password_change(
-                            request.authorization(),
-                        )
-                        && macos_service_owned_password_requester_is_live(&requester);
-                Ok((request, requester, capability_and_requester_are_live))
-            },
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(err) => {
-                log::warn!("macOS password authorization capability proof failed: {err}");
-                return;
-            }
-        };
-    let authority_allowed = capability_and_requester_are_live
-        && macos_service_owned_password_requester_matches_post_request_last_owner(
-            &requester, &stream,
-        );
+    let (request, admission) = match run_bounded_macos_security_proof(
+        deadline,
+        "macos-password-capability-proof",
+        move || {
+            let admission =
+                grant_macos_service_owned_password_admission(requester, request.authorization());
+            Ok((request, admission))
+        },
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            log::warn!("macOS password authorization capability proof failed: {err}");
+            return;
+        }
+    };
     let value = match request.into_password() {
         Ok(value) => value,
         Err(err) => {
@@ -3542,12 +3568,18 @@ async fn handle_sensitive_macos_service_ipc_transaction(
             return;
         }
     };
-    let status = handle_macos_service_owned_unattended_password_request(
-        operation_id.to_string(),
-        value,
-        authority_allowed,
-    )
-    .await;
+    let status = match admission
+        .and_then(|admission| admission.prepare_mutation(&stream, operation_id.to_string(), value))
+    {
+        Some(MacosServiceOwnedPasswordPreparation::Prepared(mutation)) => {
+            handle_macos_service_owned_unattended_password_request(mutation).await
+        }
+        Some(MacosServiceOwnedPasswordPreparation::Status {
+            operation_id,
+            status,
+        }) => resolve_macos_service_owned_unattended_password_status(operation_id, status).await,
+        None => PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+    };
     if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
     {
         log::trace!("macOS service password status could not be returned: {err}");
@@ -5234,12 +5266,77 @@ async fn execute_linux_service_owned_unattended_password_request(
 }
 
 #[cfg(target_os = "macos")]
-fn macos_peer_is_authorized_for_service_owned_password_change(authorization: &[u8]) -> bool {
-    if crate::platform::verify_service_owned_unattended_password_authorization(authorization) {
-        return true;
+fn grant_macos_service_owned_password_admission(
+    requester: MacosServiceOwnedPasswordRequester,
+    authorization: &[u8],
+) -> Option<MacosServiceOwnedPasswordAdmission> {
+    if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {
+        log::warn!(
+            "Rejected macOS service-owned unattended password change: authorization right is unavailable"
+        );
+        return None;
     }
-    log::warn!("Rejected macOS service-owned unattended password change: authorization denied");
-    false
+    if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {
+        log::warn!("Rejected macOS service-owned unattended password change: authorization denied");
+        return None;
+    }
+    if !macos_service_owned_password_requester_is_live(&requester) {
+        log::warn!(
+            "Rejected macOS service-owned unattended password change: requester changed during authorization"
+        );
+        return None;
+    }
+    Some(MacosServiceOwnedPasswordAdmission { requester })
+}
+
+#[cfg(target_os = "macos")]
+impl MacosServiceOwnedPasswordAdmission {
+    fn prepare_mutation(
+        self,
+        stream: &Conn,
+        operation_id: String,
+        password: SensitivePassword,
+    ) -> Option<MacosServiceOwnedPasswordPreparation> {
+        if !password_mutation_id_is_valid(&operation_id)
+            || !service_owned_password_value_is_valid("macOS", password.as_str())
+        {
+            log::warn!("Rejected macOS service-owned unattended password change");
+            return None;
+        }
+        if !macos_service_owned_password_requester_is_live(&self.requester) {
+            log::warn!(
+                "Rejected macOS service-owned unattended password change: requester changed before admission"
+            );
+            return None;
+        }
+        if !macos_service_owned_password_requester_matches_post_request_last_owner(
+            &self.requester,
+            stream,
+        ) {
+            log::warn!(
+                "Rejected macOS service-owned unattended password change: stream owner changed before admission"
+            );
+            return None;
+        }
+        let preparation = password_mutations().prepare_macos_service_owned(
+            &self,
+            &operation_id,
+            password.as_str(),
+        );
+        if preparation.owns_preparation {
+            Some(MacosServiceOwnedPasswordPreparation::Prepared(
+                PreparedMacosServiceOwnedPasswordMutation {
+                    operation_id,
+                    password,
+                },
+            ))
+        } else {
+            Some(MacosServiceOwnedPasswordPreparation::Status {
+                operation_id,
+                status: preparation.status,
+            })
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -5879,60 +5976,59 @@ async fn permanent_password_is_set_for_current_process() -> bool {
 
 #[cfg(target_os = "macos")]
 async fn handle_macos_service_owned_unattended_password_request(
-    operation_id: String,
-    password: SensitivePassword,
-    authority_allowed: bool,
+    mutation: PreparedMacosServiceOwnedPasswordMutation,
 ) -> PasswordMutationStatus {
+    let PreparedMacosServiceOwnedPasswordMutation {
+        operation_id,
+        password,
+    } = mutation;
     let kind = PasswordMutationKind::ServiceOwned;
-    let admission_allowed = password_mutation_id_is_valid(&operation_id)
-        && authority_allowed
-        && service_owned_password_value_is_valid("macOS", password.as_str());
-    let preparation = password_mutations().prepare_if_allowed(
-        &operation_id,
-        kind,
-        password.as_str(),
-        admission_allowed,
-    );
-    let result = if preparation.owns_preparation {
-        let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
-            if !password_mutations().fail_admitted(&operation_id, kind, password.as_str()) {
-                log::error!("macOS password admission failure could not be finalized");
-            }
-            return PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure);
-        };
-        if !password_mutations().acknowledge(&operation_id, kind, password.as_str()) {
-            log::error!("macOS password preparation could not be acknowledged");
-            if !password_mutations().fail_admitted(&operation_id, kind, password.as_str()) {
-                log::error!("macOS password acknowledgement failure could not be finalized");
-            }
-            IpcMutationResult::InternalFailure
-        } else {
-            let worker = spawn_password_mutation(operation_id.clone(), password, kind, permit);
-            match worker.await {
-                Ok(result) => result,
-                Err(err) => {
-                    log::error!("macOS password mutation worker failed: {err}");
-                    IpcMutationResult::InternalFailure
-                }
-            }
+    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
+        if !password_mutations().fail_admitted(&operation_id, kind, password.as_str()) {
+            log::error!("macOS password admission failure could not be finalized");
         }
+        return PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure);
+    };
+    let result = if !password_mutations().acknowledge(&operation_id, kind, password.as_str()) {
+        log::error!("macOS password preparation could not be acknowledged");
+        if !password_mutations().fail_admitted(&operation_id, kind, password.as_str()) {
+            log::error!("macOS password acknowledgement failure could not be finalized");
+        }
+        IpcMutationResult::InternalFailure
     } else {
-        match preparation.status {
-            PasswordMutationStatus::Complete(result) => result,
-            PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending => {
-                match tokio::time::timeout(
-                    Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS),
-                    password_mutations().wait_for_complete(&operation_id, kind),
-                )
-                .await
-                {
-                    Ok(Some(result)) => result,
-                    Ok(None) | Err(_) => return PasswordMutationStatus::Pending,
-                }
-            }
-            PasswordMutationStatus::Unknown | PasswordMutationStatus::ShuttingDown => {
+        let worker = spawn_password_mutation(operation_id.clone(), password, kind, permit);
+        match worker.await {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!("macOS password mutation worker failed: {err}");
                 IpcMutationResult::InternalFailure
             }
+        }
+    };
+    PasswordMutationStatus::Complete(result)
+}
+
+#[cfg(target_os = "macos")]
+async fn resolve_macos_service_owned_unattended_password_status(
+    operation_id: String,
+    status: PasswordMutationStatus,
+) -> PasswordMutationStatus {
+    let kind = PasswordMutationKind::ServiceOwned;
+    let result = match status {
+        PasswordMutationStatus::Complete(result) => result,
+        PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending => {
+            match tokio::time::timeout(
+                Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS),
+                password_mutations().wait_for_complete(&operation_id, kind),
+            )
+            .await
+            {
+                Ok(Some(result)) => result,
+                Ok(None) | Err(_) => return PasswordMutationStatus::Pending,
+            }
+        }
+        PasswordMutationStatus::Unknown | PasswordMutationStatus::ShuttingDown => {
+            IpcMutationResult::InternalFailure
         }
     };
     PasswordMutationStatus::Complete(result)

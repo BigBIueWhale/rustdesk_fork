@@ -2945,6 +2945,13 @@ grep -Fq 'The same identity additionally binds R-S11ie and Appendix C #390.' doc
 grep -Fq 'one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html || r_s11b2="$r_s11b2 linux-password-typed-admission-norm-missing"
 grep -Fq 'successful <code>pkcheck</code> exit and exact post-authorization requester replay' requirements.html || r_s11b2="$r_s11b2 linux-password-post-polkit-grant-norm-missing"
 grep -Fq 'signature itself requires a reference to the exact admission object' requirements.html || r_s11b2="$r_s11b2 linux-password-capability-coordinator-norm-missing"
+grep -Fq '<span class="id">R-S11if</span>' requirements.html || r_s11b2="$r_s11b2 windows-password-typed-admission-requirement-missing"
+grep -Fq '<tr><td>391</td>' requirements.html || r_s11b2="$r_s11b2 windows-password-typed-admission-appendix-missing"
+grep -Fq 'R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission' HARDENING_STATUS.md || r_s11b2="$r_s11b2 windows-password-typed-admission-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11if and Appendix C #391.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 windows-password-typed-admission-digest-binding-missing"
+grep -Fq 'distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities' requirements.html || r_s11b2="$r_s11b2 windows-password-distinct-capabilities-norm-missing"
+grep -Fq 'private listener sender variant, not a caller-supplied string' requirements.html || r_s11b2="$r_s11b2 windows-password-fixed-listener-authority-norm-missing"
+grep -Fq 'insertion of a fresh keyed <code>Active</code> ledger entry <span class="kw">MUST</span> consume it' requirements.html || r_s11b2="$r_s11b2 windows-password-consuming-ledger-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3767,11 +3774,16 @@ pipe_create = between(
 pipe_handler = between(
     windows,
     "fn handle_windows_sensitive_password_pipe",
-    "pub(crate) fn start_windows_sensitive_password_listener",
+    "fn enqueue_windows_sensitive_password_request",
+)
+pipe_enqueue = between(
+    windows,
+    "fn enqueue_windows_sensitive_password_request",
+    "fn start_windows_sensitive_password_listener",
 )
 pipe_listener = between(
     windows,
-    "pub(crate) fn start_windows_sensitive_password_listener",
+    "fn start_windows_sensitive_password_listener",
     "fn transact_windows_sensitive_password_blocking",
 )
 pipe_client = between(windows, "fn connect_client(postfix: &str", "fn accept(&self")
@@ -3809,12 +3821,110 @@ need(
             "authorize_windows_sensitive_pipe_client(",
             "InboundSensitiveRequest::allocate(header)",
             "read_message(request.body_mut()",
-            "proof.revalidate(pipe.handle.0, deadline)",
-            "requests.try_send(request)",
+            "proof.into_user_owned_password_admission(pipe.handle.0, deadline)",
+            "WindowsUserOwnedPasswordRequest {",
+            "proof.into_service_owned_password_admission(pipe.handle.0, deadline)",
+            "WindowsServiceOwnedPasswordRequest {",
             "encode_status(operation_id, status)",
             "decode_ack(&acknowledgement.0, operation_id)",
         ),
-    ),
+    )
+    and "requests.try_send(request)" in pipe_enqueue
+    and "pub(crate) fn start_windows_sensitive_password_listener" not in windows
+    and "pub(crate) struct WindowsSensitivePasswordRequest" not in windows
+    and "start_windows_user_owned_password_listener" in pipe_listener
+    and "start_windows_service_owned_password_listener" in pipe_listener,
+)
+windows_password_caps = between(
+    ipc,
+    "pub(crate) struct WindowsUserOwnedPasswordAdmission",
+    "struct WindowsCredentialOperationEntry",
+)
+windows_password_ledger = between(
+    ipc,
+    "impl WindowsCredentialOperationLedger",
+    "enum WindowsCredentialTransactionPhase",
+)
+windows_client_proof = between(
+    auth,
+    "impl WindowsSensitivePipeClientProof",
+    "pub(crate) fn preauthorize_windows_sensitive_pipe_client",
+)
+windows_user_request = between(
+    windows,
+    "pub(crate) struct WindowsUserOwnedPasswordRequest",
+    "pub(crate) struct WindowsSensitivePasswordListener",
+)
+windows_service_runtime = between(
+    windows,
+    "async fn run_service(arguments: Vec<OsString>)",
+    "pub(crate) struct WindowsPathIdentity",
+)
+need(
+    "windows-password-authority-not-typed-through-queue-and-ledger-admission",
+    all(
+        token in windows_password_caps
+        for token in (
+            "pub(crate) struct WindowsUserOwnedPasswordAdmission",
+            "_requester: ipc_auth::WindowsSensitivePipeClientProof",
+            "enum WindowsServiceOwnedPasswordRequester",
+            "Authenticated {",
+            "_proof: ipc_auth::WindowsSensitivePipeClientProof",
+            "pub(crate) struct WindowsServiceOwnedPasswordAdmission",
+            "_requester: WindowsServiceOwnedPasswordRequester",
+        )
+    )
+    and "#[derive(Clone)]\npub(crate) struct WindowsUserOwnedPasswordAdmission" not in ipc
+    and "#[derive(Clone)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission" not in ipc
+    and ordered(
+        windows_client_proof,
+        (
+            "fn revalidate(&self, pipe: HANDLE, deadline: Instant)",
+            "pub(crate) fn into_user_owned_password_admission(",
+            "self,",
+            "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX",
+            "self.revalidate(pipe, deadline)?;",
+            "WindowsUserOwnedPasswordAdmission { _requester: self }",
+            "pub(crate) fn into_service_owned_password_admission(",
+            "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX",
+            "self.revalidate(pipe, deadline)?;",
+            "WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self }",
+        ),
+    )
+    and "pub(crate) fn revalidate(&self, pipe: HANDLE, deadline: Instant)" not in windows_client_proof
+    and auth.count("WindowsUserOwnedPasswordAdmission { _requester: self }") == 1
+    and auth.count("WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self }") == 1
+    and all(
+        token in windows_user_request
+        for token in (
+            "admission: ipc::WindowsUserOwnedPasswordAdmission",
+            "admission: ipc::WindowsServiceOwnedPasswordAdmission",
+            "UserOwned(mpsc::Sender<WindowsUserOwnedPasswordRequest>)",
+            "ServiceOwned(mpsc::Sender<WindowsServiceOwnedPasswordRequest>)",
+            "Self::UserOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX",
+            "Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX",
+        )
+    )
+    and "_admission: WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
+    and "_admission: &WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
+    and "admission: &WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
+    and "self.status(admission, operation_id, value)" in windows_password_ledger
+    and "begin_windows_user_owned_password_mutation(\n                            admission," in ipc
+    and "_admission: WindowsUserOwnedPasswordAdmission" in ipc
+    and "classify_windows_user_owned_password_during_shutdown(\n                admission," in ipc
+    and ordered(
+        windows_service_runtime,
+        (
+            "start_windows_service_owned_password_listener(",
+            "WindowsServiceOwnedPasswordRequest {",
+            "credential_ledger.status(\n                    &admission,",
+            "classify_during_shutdown(&admission, &operation_id, value.as_str())",
+            "credential_ledger.admit(\n                    admission,",
+        ),
+    )
+    and windows_service_runtime.count("WindowsServiceOwnedPasswordRequest {") == 2
+    and windows_service_runtime.count("classify_during_shutdown(&admission") == 2
+    and "credential_ledger.admit(\n                    &admission," not in windows_service_runtime,
 )
 impersonation = between(
     auth,

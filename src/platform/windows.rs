@@ -1158,10 +1158,52 @@ impl WindowsSensitivePipe {
     }
 }
 
-pub(crate) struct WindowsSensitivePasswordRequest {
-    pub(crate) operation_id: String,
-    pub(crate) value: ipc::SensitivePassword,
-    pub(crate) response: std_mpsc::SyncSender<ipc::PasswordMutationStatus>,
+pub(crate) struct WindowsUserOwnedPasswordRequest {
+    admission: ipc::WindowsUserOwnedPasswordAdmission,
+    operation_id: String,
+    value: ipc::SensitivePassword,
+    response: std_mpsc::SyncSender<ipc::PasswordMutationStatus>,
+}
+
+impl WindowsUserOwnedPasswordRequest {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        ipc::WindowsUserOwnedPasswordAdmission,
+        String,
+        ipc::SensitivePassword,
+        std_mpsc::SyncSender<ipc::PasswordMutationStatus>,
+    ) {
+        (self.admission, self.operation_id, self.value, self.response)
+    }
+}
+
+struct WindowsServiceOwnedPasswordRequest {
+    admission: ipc::WindowsServiceOwnedPasswordAdmission,
+    operation_id: String,
+    value: ipc::SensitivePassword,
+    response: std_mpsc::SyncSender<ipc::PasswordMutationStatus>,
+}
+
+enum WindowsSensitivePasswordRequestSender {
+    UserOwned(mpsc::Sender<WindowsUserOwnedPasswordRequest>),
+    ServiceOwned(mpsc::Sender<WindowsServiceOwnedPasswordRequest>),
+}
+
+impl WindowsSensitivePasswordRequestSender {
+    fn postfix(&self) -> &'static str {
+        match self {
+            Self::UserOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX,
+            Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX,
+        }
+    }
+
+    fn is_closed(&self) -> bool {
+        match self {
+            Self::UserOwned(requests) => requests.is_closed(),
+            Self::ServiceOwned(requests) => requests.is_closed(),
+        }
+    }
 }
 
 pub(crate) struct WindowsSensitivePasswordListener {
@@ -1201,10 +1243,10 @@ fn retain_windows_sensitive_password_listener(worker: std::thread::JoinHandle<()
 
 fn handle_windows_sensitive_password_pipe(
     pipe: &WindowsSensitivePipe,
-    postfix: &'static str,
-    requests: &mpsc::Sender<WindowsSensitivePasswordRequest>,
+    requests: &WindowsSensitivePasswordRequestSender,
     deadline: Instant,
 ) -> ResultType<()> {
+    let postfix = requests.postfix();
     let security = pipe.current_server_security(postfix)?;
     ipc::preauthorize_windows_sensitive_pipe_client(pipe.handle.0, postfix, &security, deadline)?;
     let mut header_bytes =
@@ -1223,24 +1265,34 @@ fn handle_windows_sensitive_password_pipe(
     let operation_id = request.operation_id();
     let value = request.into_password()?;
     let (response_tx, response_rx) = std_mpsc::sync_channel(1);
-    let request = WindowsSensitivePasswordRequest {
-        operation_id: operation_id.to_string(),
-        value,
-        response: response_tx,
-    };
-    proof.revalidate(pipe.handle.0, deadline)?;
-    let status = match requests.try_send(request) {
-        Ok(()) => match deadline.checked_duration_since(Instant::now()) {
-            Some(remaining) => response_rx
-                .recv_timeout(remaining)
-                .unwrap_or(ipc::PasswordMutationStatus::Pending),
-            None => ipc::PasswordMutationStatus::Pending,
-        },
-        Err(mpsc::error::TrySendError::Full(_)) => {
-            ipc::windows_credential_queue_uncertainty_status()
+    let status = match requests {
+        WindowsSensitivePasswordRequestSender::UserOwned(requests) => {
+            let admission = proof.into_user_owned_password_admission(pipe.handle.0, deadline)?;
+            enqueue_windows_sensitive_password_request(
+                requests,
+                WindowsUserOwnedPasswordRequest {
+                    admission,
+                    operation_id: operation_id.to_string(),
+                    value,
+                    response: response_tx,
+                },
+                response_rx,
+                deadline,
+            )?
         }
-        Err(mpsc::error::TrySendError::Closed(_)) => {
-            bail!("Windows sensitive IPC mutation receiver closed")
+        WindowsSensitivePasswordRequestSender::ServiceOwned(requests) => {
+            let admission = proof.into_service_owned_password_admission(pipe.handle.0, deadline)?;
+            enqueue_windows_sensitive_password_request(
+                requests,
+                WindowsServiceOwnedPasswordRequest {
+                    admission,
+                    operation_id: operation_id.to_string(),
+                    value,
+                    response: response_tx,
+                },
+                response_rx,
+                deadline,
+            )?
         }
     };
     let mut response = WindowsSensitiveStack::<{ ipc::password::STATUS_FRAME_BYTES }>(
@@ -1255,16 +1307,32 @@ fn handle_windows_sensitive_password_pipe(
     Ok(())
 }
 
-pub(crate) fn start_windows_sensitive_password_listener(
-    postfix: &'static str,
-    requests: mpsc::Sender<WindowsSensitivePasswordRequest>,
-) -> ResultType<WindowsSensitivePasswordListener> {
-    if !matches!(
-        postfix,
-        ipc::password::USER_PASSWORD_IPC_POSTFIX | ipc::password::SERVICE_PASSWORD_IPC_POSTFIX
-    ) {
-        bail!("Unsupported Windows sensitive password listener endpoint");
+fn enqueue_windows_sensitive_password_request<Request>(
+    requests: &mpsc::Sender<Request>,
+    request: Request,
+    response: std_mpsc::Receiver<ipc::PasswordMutationStatus>,
+    deadline: Instant,
+) -> ResultType<ipc::PasswordMutationStatus> {
+    match requests.try_send(request) {
+        Ok(()) => Ok(match deadline.checked_duration_since(Instant::now()) {
+            Some(remaining) => response
+                .recv_timeout(remaining)
+                .unwrap_or(ipc::PasswordMutationStatus::Pending),
+            None => ipc::PasswordMutationStatus::Pending,
+        }),
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            Ok(ipc::windows_credential_queue_uncertainty_status())
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {
+            bail!("Windows sensitive IPC mutation receiver closed")
+        }
     }
+}
+
+fn start_windows_sensitive_password_listener(
+    requests: WindowsSensitivePasswordRequestSender,
+) -> ResultType<WindowsSensitivePasswordListener> {
+    let postfix = requests.postfix();
     let pipe = WindowsSensitivePipe::create_initial_server(postfix)?;
     let accepting = Arc::new(AtomicBool::new(true));
     let quiesced = Arc::new(AtomicBool::new(false));
@@ -1296,7 +1364,7 @@ pub(crate) fn start_windows_sensitive_password_listener(
                         match requests.as_ref() {
                             Some(sender) => {
                                 if let Err(err) = handle_windows_sensitive_password_pipe(
-                                    &pipe, postfix, sender, deadline,
+                                    &pipe, sender, deadline,
                                 ) {
                                     if sender.is_closed() {
                                         fatal = Some(err);
@@ -1340,6 +1408,22 @@ pub(crate) fn start_windows_sensitive_password_listener(
         accepting,
         quiesced,
     })
+}
+
+pub(crate) fn start_windows_user_owned_password_listener(
+    requests: mpsc::Sender<WindowsUserOwnedPasswordRequest>,
+) -> ResultType<WindowsSensitivePasswordListener> {
+    start_windows_sensitive_password_listener(
+        WindowsSensitivePasswordRequestSender::UserOwned(requests),
+    )
+}
+
+fn start_windows_service_owned_password_listener(
+    requests: mpsc::Sender<WindowsServiceOwnedPasswordRequest>,
+) -> ResultType<WindowsSensitivePasswordListener> {
+    start_windows_sensitive_password_listener(
+        WindowsSensitivePasswordRequestSender::ServiceOwned(requests),
+    )
 }
 
 pub(crate) enum WindowsSensitivePasswordAttempt {
@@ -2928,8 +3012,7 @@ async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
             }
         },
     );
-    let password_listener = match start_windows_sensitive_password_listener(
-        ipc::password::SERVICE_PASSWORD_IPC_POSTFIX,
+    let password_listener = match start_windows_service_owned_password_listener(
         credential_request_tx,
     ) {
         Ok(listener) => listener,
@@ -3013,20 +3096,27 @@ async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
                 let Some(request) = request else {
                     break Err(anyhow!("Windows service credential request channel closed"));
                 };
+                let WindowsServiceOwnedPasswordRequest {
+                    admission,
+                    operation_id,
+                    value,
+                    response,
+                } = request;
                 if let Some(status) = credential_ledger.status(
-                    &request.operation_id,
-                    request.value.as_str(),
+                    &admission,
+                    &operation_id,
+                    value.as_str(),
                 ) {
-                    let _ = request.response.send(status);
+                    let _ = response.send(status);
                     continue;
                 }
-                if !ipc::password_mutation_id_is_valid(&request.operation_id)
+                if !ipc::password_mutation_id_is_valid(&operation_id)
                     || !ipc::service_owned_password_value_is_valid(
                         "Windows",
-                        request.value.as_str(),
+                        value.as_str(),
                     )
                 {
-                    let _ = request.response.send(ipc::PasswordMutationStatus::Complete(
+                    let _ = response.send(ipc::PasswordMutationStatus::Complete(
                         ipc::IpcMutationResult::Rejected,
                     ));
                     continue;
@@ -3034,18 +3124,23 @@ async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
                 let _admission = status_transition.lock().unwrap();
                 if stop_latched.load(Ordering::Acquire) || credential_ledger.is_shutting_down() {
                     let status = credential_ledger
-                        .classify_during_shutdown(&request.operation_id, request.value.as_str());
-                    let _ = request.response.send(status);
+                        .classify_during_shutdown(&admission, &operation_id, value.as_str());
+                    let _ = response.send(status);
                     continue;
                 }
-                if Config::is_disable_change_permanent_password()
-                    || !credential_ledger.admit(
-                        &request.operation_id,
-                        request.value.as_str(),
-                        !credential_tasks.is_empty(),
-                    )
-                {
-                    let _ = request.response.send(ipc::PasswordMutationStatus::Complete(
+                if Config::is_disable_change_permanent_password() {
+                    let _ = response.send(ipc::PasswordMutationStatus::Complete(
+                        ipc::IpcMutationResult::Rejected,
+                    ));
+                    continue;
+                }
+                if !credential_ledger.admit(
+                    admission,
+                    &operation_id,
+                    value.as_str(),
+                    !credential_tasks.is_empty(),
+                ) {
+                    let _ = response.send(ipc::PasswordMutationStatus::Complete(
                         ipc::IpcMutationResult::Rejected,
                     ));
                     continue;
@@ -3056,10 +3151,10 @@ async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
                         Ok(false) => None,
                         Err(err) => {
                             credential_ledger.complete(
-                                &request.operation_id,
+                                &operation_id,
                                 ipc::IpcMutationResult::InternalFailure,
                             )?;
-                            let _ = request.response.send(ipc::PasswordMutationStatus::Complete(
+                            let _ = response.send(ipc::PasswordMutationStatus::Complete(
                                 ipc::IpcMutationResult::InternalFailure,
                             ));
                             log::error!("Could not prove service child liveness before credential admission: {err}");
@@ -3068,14 +3163,14 @@ async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
                     },
                     None => None,
                 };
-                credential_operation_id = Some(request.operation_id.clone());
+                credential_operation_id = Some(operation_id.clone());
                 credential_tasks.spawn(execute_windows_service_credential_transaction(
-                    request.operation_id,
-                    request.value,
+                    operation_id,
+                    value,
                     child,
                     Arc::clone(&stop_apply),
                 ));
-                let _ = request.response.send(ipc::PasswordMutationStatus::Pending);
+                let _ = response.send(ipc::PasswordMutationStatus::Pending);
             }
             sas_request = sas_request_rx.recv() => {
                 let Some(sas_request) = sas_request else {
@@ -3265,9 +3360,15 @@ async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
     password_listener.quiesce().await;
     credential_ledger.begin_shutdown();
     while let Ok(request) = credential_request_rx.try_recv() {
+        let WindowsServiceOwnedPasswordRequest {
+            admission,
+            operation_id,
+            value,
+            response,
+        } = request;
         let status = credential_ledger
-            .classify_during_shutdown(&request.operation_id, request.value.as_str());
-        let _ = request.response.send(status);
+            .classify_during_shutdown(&admission, &operation_id, value.as_str());
+        let _ = response.send(status);
     }
     drop(credential_request_rx);
     {

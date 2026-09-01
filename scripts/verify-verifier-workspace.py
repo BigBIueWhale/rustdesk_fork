@@ -11661,11 +11661,10 @@ def validate_desktop_ipc_retained_owner_contract(sources):
     )
     require_text(
         validator,
-        '    require(\n'
-        '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
-        '        "Android exact active-generation teardown",\n'
-        '    )',
+        '    if start.count(\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {"\n'
+        '    ) != 2:\n'
+        '        raise VerificationError("both Android exact active-generation teardown checks are absent")',
         "focused Android exact active-generation ownership",
     )
     require_text(
@@ -12451,6 +12450,494 @@ def validate_linux_service_owned_password_requester_contract(sources):
         sources["workspace_verifier"],
         "    validate_linux_service_owned_password_requester_contract(sources)\n",
         "Linux password requester independent validator dispatch",
+    )
+
+
+def validate_windows_sensitive_password_admission_contract(sources):
+    ipc = sources["ipc_source"]
+    auth = sources["ipc_auth_source"]
+    windows = sources["windows_source"]
+    focused = sources["linux_password_ipc_validator"]
+
+    user_capability = extract_braced_item(
+        ipc,
+        "pub(crate) struct WindowsUserOwnedPasswordAdmission",
+        "Windows user-owned password admission capability",
+    )
+    require_text(
+        user_capability,
+        "_requester: ipc_auth::WindowsSensitivePipeClientProof,",
+        "retained Windows user requester proof",
+    )
+    service_capability = extract_braced_item(
+        ipc,
+        "pub(crate) struct WindowsServiceOwnedPasswordAdmission",
+        "Windows service-owned password admission capability",
+    )
+    require_text(
+        service_capability,
+        "_requester: WindowsServiceOwnedPasswordRequester,",
+        "retained Windows service requester proof",
+    )
+    for marker, label in (
+        (
+            "#[derive(Clone)]\npub(crate) struct WindowsUserOwnedPasswordAdmission",
+            "cloneable Windows user password admission",
+        ),
+        (
+            "#[derive(Clone)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission",
+            "cloneable Windows service password admission",
+        ),
+        (
+            "#[derive(Copy)]\npub(crate) struct WindowsUserOwnedPasswordAdmission",
+            "copyable Windows user password admission",
+        ),
+        (
+            "#[derive(Copy)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission",
+            "copyable Windows service password admission",
+        ),
+    ):
+        require_absent(ipc, marker, label)
+    requester = extract_braced_item(
+        ipc,
+        "enum WindowsServiceOwnedPasswordRequester",
+        "Windows service password requester authority",
+    )
+    require_text(
+        requester,
+        "Authenticated {\n        _proof: ipc_auth::WindowsSensitivePipeClientProof,\n    },",
+        "production authenticated Windows service requester proof",
+    )
+    require_text(
+        requester,
+        "#[cfg(test)]\n    Fixture,",
+        "test-only Windows service admission fixture",
+    )
+
+    proof = extract_braced_item(
+        auth,
+        "impl WindowsSensitivePipeClientProof",
+        "Windows sensitive pipe client proof",
+    )
+    require_absent(
+        proof,
+        "pub(crate) fn revalidate(&self, pipe: HANDLE, deadline: Instant)",
+        "public detached Windows password proof replay",
+    )
+    require_order(
+        proof,
+        (
+            "fn revalidate(&self, pipe: HANDLE, deadline: Instant)",
+            "windows_named_pipe_client_pid(pipe)? != self.process.key.pid",
+            'self.process\n            .require_running("Windows sensitive IPC client")?',
+            "windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time",
+            "let current_identity = self.process.fresh_identity()?;",
+            "require_windows_sensitive_password_client_role(&current_identity)?;",
+            "let process_token = self.process.live_token_proof()?;",
+            "let pipe_token = windows_named_pipe_client_token_proof(pipe, deadline)?;",
+            "windows_sensitive_pipe_security_at_deadline(self.postfix, deadline)?",
+            "process_token != self.process_token",
+            "windows_sensitive_auth_deadline_live(deadline, \"Windows sensitive IPC client proof\")?;",
+            "pub(crate) fn into_user_owned_password_admission(",
+            "self,",
+            "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX",
+            "self.revalidate(pipe, deadline)?;",
+            "WindowsUserOwnedPasswordAdmission { _requester: self }",
+            "pub(crate) fn into_service_owned_password_admission(",
+            "self,",
+            "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX",
+            "self.revalidate(pipe, deadline)?;",
+            "WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self }",
+        ),
+        "private final proof and endpoint-specific consuming Windows password mints",
+    )
+    require_text(
+        proof,
+        ") -> ResultType<super::WindowsUserOwnedPasswordAdmission> {",
+        "typed user password admission result",
+    )
+    require_text(
+        proof,
+        ") -> ResultType<super::WindowsServiceOwnedPasswordAdmission> {",
+        "typed service password admission result",
+    )
+    require_exact_count(
+        auth,
+        "WindowsUserOwnedPasswordAdmission { _requester: self }",
+        1,
+        "sole production Windows user admission construction",
+    )
+    require_exact_count(
+        auth,
+        "WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self }",
+        1,
+        "sole production Windows service admission construction",
+    )
+
+    user_request = extract_braced_item(
+        windows,
+        "pub(crate) struct WindowsUserOwnedPasswordRequest",
+        "typed Windows user password request",
+    )
+    service_request = extract_braced_item(
+        windows,
+        "struct WindowsServiceOwnedPasswordRequest",
+        "typed Windows service password request",
+    )
+    require_text(
+        user_request,
+        "admission: ipc::WindowsUserOwnedPasswordAdmission,",
+        "user request admission field",
+    )
+    require_text(
+        service_request,
+        "admission: ipc::WindowsServiceOwnedPasswordAdmission,",
+        "service request admission field",
+    )
+    sender = extract_braced_item(
+        windows,
+        "enum WindowsSensitivePasswordRequestSender",
+        "typed Windows password sender",
+    )
+    require_order(
+        sender,
+        (
+            "UserOwned(mpsc::Sender<WindowsUserOwnedPasswordRequest>)",
+            "ServiceOwned(mpsc::Sender<WindowsServiceOwnedPasswordRequest>)",
+        ),
+        "distinct user and service Windows password channels",
+    )
+    sender_impl = extract_braced_item(
+        windows,
+        "impl WindowsSensitivePasswordRequestSender",
+        "fixed Windows password sender endpoints",
+    )
+    require_order(
+        sender_impl,
+        (
+            "Self::UserOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX",
+            "Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX",
+        ),
+        "sender-derived user and service password endpoints",
+    )
+
+    handler = extract_braced_item(
+        windows,
+        "fn handle_windows_sensitive_password_pipe",
+        "typed Windows password pipe handoff",
+    )
+    require_order(
+        handler,
+        (
+            "let postfix = requests.postfix();",
+            "preauthorize_windows_sensitive_pipe_client(",
+            "pipe.read_message(&mut header_bytes.0",
+            "authorize_windows_sensitive_pipe_client(",
+            "pipe.read_message(request.body_mut()",
+            "pipe.require_no_queued_bytes(deadline)?;",
+            "request.validate_utf8()?;",
+            "WindowsSensitivePasswordRequestSender::UserOwned(requests) => {",
+            "proof.into_user_owned_password_admission(pipe.handle.0, deadline)?",
+            "WindowsUserOwnedPasswordRequest {",
+            "WindowsSensitivePasswordRequestSender::ServiceOwned(requests) => {",
+            "proof.into_service_owned_password_admission(pipe.handle.0, deadline)?",
+            "WindowsServiceOwnedPasswordRequest {",
+            "ipc::password::encode_status(operation_id, status)",
+            "ipc::password::decode_ack(&acknowledgement.0, operation_id)?;",
+        ),
+        "validated body, exact final authority, typed queue, and operation finality",
+    )
+    require_absent(handler, "postfix: &'static str", "caller-selected handler endpoint")
+    require_absent(handler, "proof.revalidate(", "detached handler proof replay")
+    enqueue = extract_braced_item(
+        windows,
+        "fn enqueue_windows_sensitive_password_request<Request>",
+        "bounded typed Windows password enqueue",
+    )
+    require_text(
+        enqueue,
+        "match requests.try_send(request)",
+        "bounded nonblocking typed enqueue",
+    )
+
+    listener = extract_braced_item(
+        windows,
+        "fn start_windows_sensitive_password_listener",
+        "private typed Windows password listener",
+    )
+    listener_header = listener.split("{", 1)[0]
+    require_text(
+        listener_header,
+        "requests: WindowsSensitivePasswordRequestSender,",
+        "typed listener sender input",
+    )
+    require_absent(listener_header, "postfix:", "listener postfix selector")
+    require_absent(
+        windows,
+        "pub(crate) fn start_windows_sensitive_password_listener",
+        "crate-visible generic Windows password listener",
+    )
+    require_absent(
+        windows,
+        "pub(crate) struct WindowsSensitivePasswordRequest",
+        "generic Windows password request",
+    )
+    user_listener = extract_braced_item(
+        windows,
+        "pub(crate) fn start_windows_user_owned_password_listener",
+        "fixed Windows user password listener",
+    )
+    require_text(
+        user_listener,
+        "WindowsSensitivePasswordRequestSender::UserOwned(requests)",
+        "fixed user listener action",
+    )
+    service_listener = extract_braced_item(
+        windows,
+        "fn start_windows_service_owned_password_listener",
+        "fixed Windows service password listener",
+    )
+    require_text(
+        service_listener,
+        "WindowsSensitivePasswordRequestSender::ServiceOwned(requests)",
+        "fixed service listener action",
+    )
+
+    main_prepare = extract_braced_item(
+        ipc,
+        "async fn prepare_main_ipc",
+        "typed Windows user password listener preparation",
+    )
+    require_text(
+        main_prepare,
+        "start_windows_user_owned_password_listener(\n                password_request_tx,",
+        "typed Windows user listener startup",
+    )
+    main_run = extract_braced_item(
+        ipc,
+        "async fn run_main_ipc",
+        "typed Windows user password receiver",
+    )
+    require_order(
+        main_run,
+        (
+            "let (admission, operation_id, value, response) = request.into_parts();",
+            "begin_windows_user_owned_password_mutation(\n                            admission,",
+            "classify_windows_user_owned_password_during_shutdown(\n                admission,",
+        ),
+        "user request capability consumption and shutdown disposition",
+    )
+    user_begin = extract_braced_item(
+        ipc,
+        "fn begin_windows_user_owned_password_mutation",
+        "consuming Windows user password mutation entry",
+    )
+    require_text(
+        user_begin.split("{", 1)[0],
+        "_admission: WindowsUserOwnedPasswordAdmission,",
+        "consuming Windows user password admission argument",
+    )
+    require_text(
+        user_begin,
+        "PasswordMutationKind::UserOwned,",
+        "fixed Windows user password action kind",
+    )
+
+    ledger = extract_braced_item(
+        ipc,
+        "impl WindowsCredentialOperationLedger",
+        "typed Windows service password ledger",
+    )
+    for text, label in (
+        (
+            "_admission: &WindowsServiceOwnedPasswordAdmission,",
+            "service replay capability argument",
+        ),
+        (
+            "admission: &WindowsServiceOwnedPasswordAdmission,",
+            "service shutdown capability argument",
+        ),
+        (
+            "_admission: WindowsServiceOwnedPasswordAdmission,",
+            "consuming fresh service admission argument",
+        ),
+        (
+            "self.status(admission, operation_id, value)",
+            "capability-bound shutdown classification",
+        ),
+    ):
+        require_text(ledger, text, label)
+    service_runtime = extract_braced_item(
+        windows,
+        "async fn run_service(arguments: Vec<OsString>)",
+        "typed LocalSystem password receiver",
+    )
+    require_order(
+        service_runtime,
+        (
+            "start_windows_service_owned_password_listener(",
+            "WindowsServiceOwnedPasswordRequest {",
+            "credential_ledger.status(\n                    &admission,",
+            "classify_during_shutdown(&admission, &operation_id, value.as_str())",
+            "credential_ledger.admit(\n                    admission,",
+        ),
+        "typed LocalSystem status, shutdown, and consuming admission",
+    )
+    require_exact_count(
+        service_runtime,
+        "WindowsServiceOwnedPasswordRequest {",
+        2,
+        "live and shutdown typed service request destruction",
+    )
+    require_exact_count(
+        service_runtime,
+        "classify_during_shutdown(&admission",
+        2,
+        "live and drained capability-bound shutdown classification",
+    )
+    require_absent(
+        service_runtime,
+        "credential_ledger.admit(\n                    &admission,",
+        "borrowed rather than consumed fresh service admission",
+    )
+
+    for text, label in (
+        (
+            "def verify_windows_password_admission_authority(rust: Mapping[str, RustSource]) -> None:",
+            "focused Windows password authority parser",
+        ),
+        (
+            '"Windows service admission drops its final live proof"',
+            "focused final-proof mutation",
+        ),
+        (
+            '"Windows typed listener regains a public endpoint selector"',
+            "focused public-listener mutation",
+        ),
+        (
+            '"Windows service ledger borrows instead of consuming first admission"',
+            "focused consuming-ledger mutation",
+        ),
+        (
+            '"Windows user consumer bypasses the typed mutation entry"',
+            "focused user-entry mutation",
+        ),
+        (
+            '"Windows password admission capability becomes cloneable"',
+            "focused capability-clone mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            '"windows-password-authority-not-typed-through-queue-and-ledger-admission"',
+            "shared embedded typed Windows password analyzer",
+        ),
+        (
+            sources["apple"],
+            '"windows-password-authority-not-typed-through-queue-and-ledger-admission"',
+            "Apple embedded typed Windows password analyzer",
+        ),
+        (
+            sources["apple"],
+            'scoped_mutation("windows-password-final-service-proof"',
+            "Apple final-proof mutation",
+        ),
+        (
+            sources["apple"],
+            'mutation("windows-password-public-generic-listener"',
+            "Apple public-listener mutation",
+        ),
+        (
+            sources["apple"],
+            'scoped_mutation("windows-password-service-consumer-bypass"',
+            "Apple service-consumer mutation",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<span class=\"id\">R-S11if</span>' requirements.html",
+            "shared typed Windows password requirement binding",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<tr><td>391</td>' requirements.html",
+            "shared typed Windows password Appendix binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<span class=\"id\">R-S11if</span>' \"$REPO/requirements.html\"",
+            "Apple typed Windows password requirement binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<tr><td>391</td>' \"$REPO/requirements.html\"",
+            "Apple typed Windows password Appendix binding",
+        ),
+        (
+            sources["ipc_password_source"],
+            "proof.into_service_owned_password_admission(pipe.handle.0, deadline)",
+            "Rust raw-password typed service admission regression",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11if</span>',
+            "typed Windows password admission requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>391</td>",
+            "typed Windows password admission Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission",
+            "typed Windows password admission hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11if and Appendix C #391.",
+            "typed Windows password admission identity binding",
+        ),
+        (
+            sources["requirements"],
+            "distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities",
+            "normative distinct Windows password capabilities",
+        ),
+        (
+            sources["requirements"],
+            "private listener sender variant, not a caller-supplied string",
+            "normative fixed Windows password listener action",
+        ),
+        (
+            sources["requirements"],
+            "insertion of a fresh keyed <code>Active</code> ledger entry <span class=\"kw\">MUST</span> consume it",
+            "normative consuming Windows service admission",
+        ),
+    ):
+        require_text(source, text, label)
+    require_exact_count(
+        sources["apple"],
+        '"windows-password-authority-not-typed-through-queue-and-ledger-admission"',
+        10,
+        "Apple embedded typed Windows password analyzer",
+    )
+    require_exact_count(
+        sources["build_windows_source"],
+        "into_service_owned_password_admission",
+        2,
+        "Windows native typed password admission source gate",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "def validate_windows_sensitive_password_admission_contract(sources):\n",
+        "Windows password admission independent validator definition",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_windows_sensitive_password_admission_contract(sources)\n",
+        "Windows password admission independent validator dispatch",
     )
 
 
@@ -37980,11 +38467,10 @@ def validate_android_listener_generation_contract(sources):
     )
     require_text(
         desktop_ipc,
-        '    require(\n'
-        '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
-        '        "Android exact active-generation teardown",\n'
-        '    )',
+        '    if start.count(\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {"\n'
+        '    ) != 2:\n'
+        '        raise VerificationError("both Android exact active-generation teardown checks are absent")',
         "independent exact active-generation desktop lifecycle assertion",
     )
     require_text(
@@ -56783,6 +57269,7 @@ def validate_sources(sources):
     validate_desktop_ipc_retained_owner_contract(sources)
     validate_linux_service_admission_contract(sources)
     validate_linux_service_owned_password_requester_contract(sources)
+    validate_windows_sensitive_password_admission_contract(sources)
     validate_macos_service_owned_password_requester_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
     validate_macos_variadic_open_mode_contract(sources)
@@ -66379,6 +66866,222 @@ def run_source_mutations(sources):
             "    validate_linux_service_owned_password_requester_contract(sources)\n",
             "    validate_linux_service_owned_password_requester_contract_disabled(sources)\n",
             "Linux password requester independent validator dispatch",
+        ),
+        (
+            "ipc_auth_source",
+            "        self.revalidate(pipe, deadline)?;\n        Ok(super::WindowsServiceOwnedPasswordAdmission {",
+            "        drop((pipe, deadline));\n        Ok(super::WindowsServiceOwnedPasswordAdmission {",
+            "private final proof and endpoint-specific consuming Windows password mints",
+        ),
+        (
+            "ipc_auth_source",
+            "if self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX {",
+            "if self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX {",
+            "private final proof and endpoint-specific consuming Windows password mints",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) struct WindowsServiceOwnedPasswordAdmission {",
+            "#[derive(Clone)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission {",
+            "cloneable Windows service password admission",
+        ),
+        (
+            "windows_source",
+            "struct WindowsServiceOwnedPasswordRequest {\n    admission: ipc::WindowsServiceOwnedPasswordAdmission,",
+            "struct WindowsServiceOwnedPasswordRequest {\n    admission: bool,",
+            "service request admission field",
+        ),
+        (
+            "windows_source",
+            "Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX,",
+            "Self::ServiceOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX,",
+            "sender-derived user and service password endpoints",
+        ),
+        (
+            "windows_source",
+            "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,",
+            "pub(crate) fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,",
+            "crate-visible generic Windows password listener",
+        ),
+        (
+            "windows_source",
+            "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,",
+            "fn start_windows_sensitive_password_listener(\n    postfix: &'static str,\n    requests: WindowsSensitivePasswordRequestSender,",
+            "listener postfix selector",
+        ),
+        (
+            "ipc_source",
+            "        _admission: WindowsServiceOwnedPasswordAdmission,\n        operation_id: &str,",
+            "        _admission: &WindowsServiceOwnedPasswordAdmission,\n        operation_id: &str,",
+            "consuming fresh service admission argument",
+        ),
+        (
+            "windows_source",
+            "                if !credential_ledger.admit(\n                    admission,",
+            "                if !credential_ledger.admit(\n                    &admission,",
+            "typed LocalSystem status, shutdown, and consuming admission",
+        ),
+        (
+            "ipc_source",
+            "fn begin_windows_user_owned_password_mutation(\n    _admission: WindowsUserOwnedPasswordAdmission,",
+            "fn begin_windows_user_owned_password_mutation(\n    _admission: bool,",
+            "consuming Windows user password admission argument",
+        ),
+        (
+            "ipc_source",
+            "                        let (status, worker) = begin_windows_user_owned_password_mutation(\n                            admission,",
+            "                        let (status, worker) = begin_password_mutation(\n                            admission,",
+            "user request capability consumption and shutdown disposition",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "def verify_windows_password_admission_authority(rust: Mapping[str, RustSource]) -> None:",
+            "def verify_windows_password_admission_authority_disabled(rust: Mapping[str, RustSource]) -> None:",
+            "focused Windows password authority parser",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Windows service admission drops its final live proof"',
+            '"Windows service admission retains its final live proof"',
+            "focused final-proof mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Windows typed listener regains a public endpoint selector"',
+            '"Windows typed listener retains a private endpoint selector"',
+            "focused public-listener mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Windows service ledger borrows instead of consuming first admission"',
+            '"Windows service ledger consumes first admission"',
+            "focused consuming-ledger mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Windows user consumer bypasses the typed mutation entry"',
+            '"Windows user consumer retains the typed mutation entry"',
+            "focused user-entry mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Windows password admission capability becomes cloneable"',
+            '"Windows password admission capability stays non-cloneable"',
+            "focused capability-clone mutation",
+        ),
+        (
+            "verify",
+            '"windows-password-authority-not-typed-through-queue-and-ledger-admission"',
+            '"windows-password-authority-not-checked"',
+            "shared embedded typed Windows password analyzer",
+        ),
+        (
+            "apple",
+            '"windows-password-authority-not-typed-through-queue-and-ledger-admission"',
+            '"windows-password-authority-not-checked"',
+            "Apple embedded typed Windows password analyzer",
+        ),
+        (
+            "apple",
+            'scoped_mutation("windows-password-final-service-proof"',
+            'scoped_mutation("windows-password-final-service-proof-disabled"',
+            "Apple final-proof mutation",
+        ),
+        (
+            "apple",
+            'mutation("windows-password-public-generic-listener"',
+            'mutation("windows-password-public-generic-listener-disabled"',
+            "Apple public-listener mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("windows-password-service-consumer-bypass"',
+            'scoped_mutation("windows-password-service-consumer-bypass-disabled"',
+            "Apple service-consumer mutation",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11if</span>\' requirements.html',
+            "true # typed Windows password admission requirement binding disabled",
+            "shared typed Windows password requirement binding",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11if</span>\' "$REPO/requirements.html"',
+            "true # Apple typed Windows password admission requirement binding disabled",
+            "Apple typed Windows password requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>391</td>' requirements.html",
+            "true # typed Windows password admission Appendix binding disabled",
+            "shared typed Windows password Appendix binding",
+        ),
+        (
+            "apple",
+            "grep -Fq '<tr><td>391</td>' \"$REPO/requirements.html\"",
+            "true # Apple typed Windows password admission Appendix binding disabled",
+            "Apple typed Windows password Appendix binding",
+        ),
+        (
+            "build_windows_source",
+            "into_service_owned_password_admission",
+            "mint_service_owned_password_admission_disabled",
+            "Windows native typed password admission source gate",
+        ),
+        (
+            "ipc_password_source",
+            "proof.into_service_owned_password_admission(pipe.handle.0, deadline)",
+            "proof.mint_service_owned_password_admission_disabled(pipe.handle.0, deadline)",
+            "Rust raw-password typed service admission regression",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11if</span>',
+            '<span class="id">R-S11if-disabled</span>',
+            "typed Windows password admission requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>391</td>",
+            "<tr><td>391-disabled</td>",
+            "typed Windows password admission Appendix C row",
+        ),
+        (
+            "requirements",
+            "distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities",
+            "one generic <code>WindowsSensitivePasswordAdmission</code> capability",
+            "normative distinct Windows password capabilities",
+        ),
+        (
+            "requirements",
+            "private listener sender variant, not a caller-supplied string",
+            "caller-supplied postfix string",
+            "normative fixed Windows password listener action",
+        ),
+        (
+            "requirements",
+            "insertion of a fresh keyed <code>Active</code> ledger entry <span class=\"kw\">MUST</span> consume it",
+            "insertion of a fresh keyed <code>Active</code> ledger entry may borrow it",
+            "normative consuming Windows service admission",
+        ),
+        (
+            "hardening",
+            "R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission",
+            "R-S11if-disabled/R-S11e-269 — typed Windows named-pipe password authority through user/service admission",
+            "typed Windows password admission hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11if and Appendix C #391.",
+            "The same identity no longer binds R-S11if and Appendix C #391.",
+            "typed Windows password admission identity binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_windows_sensitive_password_admission_contract(sources)\n",
+            "    validate_windows_sensitive_password_admission_contract_disabled(sources)\n",
+            "Windows password admission independent validator dispatch",
         ),
         (
             "ipc_auth_source",
@@ -92903,10 +93606,14 @@ def run_source_mutations(sources):
         ),
         (
             "desktop_ipc_validator",
-            '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
-            '        "Android exact active-generation teardown",',
-            '        "if android_listener_lifecycle_snapshot(0).is_none() {",\n'
-            '        "Android exact active-generation teardown",',
+            '    if start.count(\n'
+            '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {"\n'
+            '    ) != 2:\n'
+            '        raise VerificationError("both Android exact active-generation teardown checks are absent")',
+            '    if start.count(\n'
+            '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {"\n'
+            '    ) != 1:\n'
+            '        raise VerificationError("both Android exact active-generation teardown checks are absent")',
             "focused Android exact active-generation ownership",
         ),
         (

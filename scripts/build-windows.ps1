@@ -762,7 +762,7 @@ function Assert-MachineCredentialDesign {
     foreach ($required in @('FOLDERID_ProgramData', 'SERVICE_OWNED_SERVER_ARG', 'initialize_windows_service_owned_root')) {
         if (-not $platform.Contains($required)) { Die "machine credential root gate missing Windows role/root binding: $required" }
     }
-    foreach ($required in @('SensitivePassword', 'begin_password_mutation', 'windows_credential_client_decision', 'windows_credential_queue_uncertainty_status', 'windows_credential_lost_reply_stop_and_apply_remain_consistent', 'windows_credential_operation_bound_failures_remain_terminal_during_recovery')) {
+    foreach ($required in @('SensitivePassword', 'WindowsUserOwnedPasswordAdmission', 'WindowsServiceOwnedPasswordAdmission', 'begin_windows_user_owned_password_mutation', 'windows_credential_client_decision', 'windows_credential_queue_uncertainty_status', 'windows_credential_lost_reply_stop_and_apply_remain_consistent', 'windows_credential_operation_bound_failures_remain_terminal_during_recovery')) {
         if (-not $ipc.Contains($required)) { Die "machine credential secret-lifetime gate missing: $required" }
     }
     foreach ($required in @('REQUEST_HEADER_BYTES: usize = 36', 'STATUS_FRAME_BYTES: usize = 32', 'ACK_FRAME_BYTES: usize = 28', 'FixedSensitiveBody', 'try_reserve_exact', 'zeroize_sensitive_bytes', 'SensitiveStackBytes', 'encode_ack', 'decode_ack')) {
@@ -774,17 +774,20 @@ function Assert-MachineCredentialDesign {
     foreach ($forbidden in @('BytesCodec', 'Framed<', 'serde_json', 'Serialize for SensitivePassword', 'Deserialize for SensitivePassword')) {
         if ($passwordProduction.Contains($forbidden)) { Die "raw password protocol depends on forbidden generic framing/serialization: $forbidden" }
     }
-    foreach ($required in @('classify_during_shutdown', 'windows_credential_queue_uncertainty_status', 'FILE_FLAG_FIRST_PIPE_INSTANCE', 'PIPE_REJECT_REMOTE_CLIENTS', 'WINDOWS_SENSITIVE_PIPE_MAX_INSTANCES: u32 = 1', 'preauthorize_windows_sensitive_pipe_client', 'windows_sensitive_pipe_kernel_sddl', 'pipe.ensure_kernel_dacl_retained().and_then', 'GetSecurityInfo', 'ipc::password::decode_ack', 'windows-sensitive-ipc-client-supervisor', 'Ok(worker) => match worker.join()')) {
+    foreach ($required in @('classify_during_shutdown', 'windows_credential_queue_uncertainty_status', 'WindowsUserOwnedPasswordRequest', 'WindowsServiceOwnedPasswordRequest', 'WindowsSensitivePasswordRequestSender', 'start_windows_user_owned_password_listener', 'start_windows_service_owned_password_listener', 'FILE_FLAG_FIRST_PIPE_INSTANCE', 'PIPE_REJECT_REMOTE_CLIENTS', 'WINDOWS_SENSITIVE_PIPE_MAX_INSTANCES: u32 = 1', 'preauthorize_windows_sensitive_pipe_client', 'windows_sensitive_pipe_kernel_sddl', 'pipe.ensure_kernel_dacl_retained().and_then', 'GetSecurityInfo', 'ipc::password::decode_ack', 'windows-sensitive-ipc-client-supervisor', 'Ok(worker) => match worker.join()')) {
         if (-not $platform.Contains($required)) { Die "machine credential finality gate missing: $required" }
     }
     if ($platform -notmatch 'GENERIC_READ\.0\s*\|\s*FILE_WRITE_DATA\.0\s*\|\s*FILE_WRITE_ATTRIBUTES\.0') {
         Die 'Windows sensitive pipe client lacks the exact message-mode access rights'
     }
-    foreach ($required in @('PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE', 'stable_active_session_principal', 'windows_sensitive_pipe_security_at_deadline', 'preauthorize_windows_sensitive_pipe_client')) {
+    foreach ($required in @('PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE', 'stable_active_session_principal', 'windows_sensitive_pipe_security_at_deadline', 'preauthorize_windows_sensitive_pipe_client', 'into_user_owned_password_admission', 'into_service_owned_password_admission', 'self.revalidate(pipe, deadline)?')) {
         if (-not $auth.Contains($required)) { Die "Windows sensitive peer proof gate missing: $required" }
     }
+    if ($platform.Contains('pub(crate) fn start_windows_sensitive_password_listener') -or $platform.Contains('pub(crate) struct WindowsSensitivePasswordRequest')) {
+        Die 'Windows sensitive password listener still exposes the generic endpoint/request authority surface'
+    }
     $handlerStart = $platform.IndexOf('fn handle_windows_sensitive_password_pipe')
-    $handlerEnd = $platform.IndexOf('pub(crate) fn start_windows_sensitive_password_listener', $handlerStart)
+    $handlerEnd = $platform.IndexOf('fn enqueue_windows_sensitive_password_request', $handlerStart)
     if ($handlerStart -lt 0 -or $handlerEnd -le $handlerStart) { Die 'Windows sensitive password handler boundary is missing' }
     $handler = $platform.Substring($handlerStart, $handlerEnd - $handlerStart)
     $handlerOrder = @(
@@ -792,8 +795,10 @@ function Assert-MachineCredentialDesign {
         'pipe.read_message(&mut header_bytes.0',
         'ipc::authorize_windows_sensitive_pipe_client(',
         'pipe.read_message(request.body_mut()',
-        'proof.revalidate(pipe.handle.0, deadline)',
-        'requests.try_send(request)',
+        'proof.into_user_owned_password_admission(pipe.handle.0, deadline)',
+        'WindowsUserOwnedPasswordRequest {',
+        'proof.into_service_owned_password_admission(pipe.handle.0, deadline)',
+        'WindowsServiceOwnedPasswordRequest {',
         'pipe.write_message(&response.0',
         'ipc::password::decode_ack'
     ) | ForEach-Object { $handler.IndexOf($_) }

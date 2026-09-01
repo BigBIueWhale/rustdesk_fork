@@ -2345,6 +2345,26 @@ enum WindowsCredentialOperationState {
     Complete(IpcMutationResult, std::time::Instant),
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) struct WindowsUserOwnedPasswordAdmission {
+    _requester: ipc_auth::WindowsSensitivePipeClientProof,
+}
+
+#[cfg(any(target_os = "windows", test))]
+enum WindowsServiceOwnedPasswordRequester {
+    #[cfg(target_os = "windows")]
+    Authenticated {
+        _proof: ipc_auth::WindowsSensitivePipeClientProof,
+    },
+    #[cfg(test)]
+    Fixture,
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) struct WindowsServiceOwnedPasswordAdmission {
+    _requester: WindowsServiceOwnedPasswordRequester,
+}
+
 #[cfg(any(target_os = "windows", test))]
 struct WindowsCredentialOperationEntry {
     request_tag: PasswordMutationFingerprint,
@@ -2391,7 +2411,12 @@ impl WindowsCredentialOperationLedger {
             .is_some()
     }
 
-    pub(crate) fn status(&self, operation_id: &str, value: &str) -> Option<PasswordMutationStatus> {
+    pub(crate) fn status(
+        &self,
+        _admission: &WindowsServiceOwnedPasswordAdmission,
+        operation_id: &str,
+        value: &str,
+    ) -> Option<PasswordMutationStatus> {
         let request_tag = self.request_tag(value);
         self.entries.get(operation_id).map(|entry| {
             if entry.request_tag != request_tag {
@@ -2409,15 +2434,17 @@ impl WindowsCredentialOperationLedger {
 
     pub(crate) fn classify_during_shutdown(
         &self,
+        admission: &WindowsServiceOwnedPasswordAdmission,
         operation_id: &str,
         value: &str,
     ) -> PasswordMutationStatus {
-        self.status(operation_id, value)
+        self.status(admission, operation_id, value)
             .unwrap_or(PasswordMutationStatus::ShuttingDown)
     }
 
     pub(crate) fn admit(
         &mut self,
+        _admission: WindowsServiceOwnedPasswordAdmission,
         operation_id: &str,
         value: &str,
         transaction_active: bool,
@@ -2874,7 +2901,7 @@ enum SensitiveMainListenerEvent {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     AcceptFailed(String),
     #[cfg(target_os = "windows")]
-    Request(crate::platform::windows::WindowsSensitivePasswordRequest),
+    Request(crate::platform::windows::WindowsUserOwnedPasswordRequest),
     Ended,
 }
 
@@ -2890,7 +2917,7 @@ async fn next_sensitive_main_listener_event(listener: &mut Incoming) -> Sensitiv
 #[cfg(target_os = "windows")]
 async fn next_sensitive_main_listener_event(
     listener: &mut Option<
-        mpsc::Receiver<crate::platform::windows::WindowsSensitivePasswordRequest>,
+        mpsc::Receiver<crate::platform::windows::WindowsUserOwnedPasswordRequest>,
     >,
 ) -> SensitiveMainListenerEvent {
     match listener.as_mut() {
@@ -2910,7 +2937,7 @@ struct PreparedMainIpc {
     password_events: Incoming,
     #[cfg(target_os = "windows")]
     password_events:
-        Option<mpsc::Receiver<crate::platform::windows::WindowsSensitivePasswordRequest>>,
+        Option<mpsc::Receiver<crate::platform::windows::WindowsUserOwnedPasswordRequest>>,
     #[cfg(target_os = "windows")]
     password_listener: Option<crate::platform::windows::WindowsSensitivePasswordListener>,
     listener_guard: LocalIpcListenerGuard,
@@ -2927,8 +2954,7 @@ async fn prepare_main_ipc() -> ResultType<PreparedMainIpc> {
     } else {
         let (password_request_tx, password_events) = mpsc::channel(MAIN_IPC_TRANSACTION_BUDGET);
         let password_listener =
-            crate::platform::windows::start_windows_sensitive_password_listener(
-                password::USER_PASSWORD_IPC_POSTFIX,
+            crate::platform::windows::start_windows_user_owned_password_listener(
                 password_request_tx,
             )?;
         (Some(password_events), Some(password_listener))
@@ -2983,15 +3009,16 @@ async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
                     }
                     #[cfg(target_os = "windows")]
                     SensitiveMainListenerEvent::Request(request) => {
+                        let (admission, operation_id, value, response) = request.into_parts();
                         let authority_allowed = current_process_allows_user_owned_permanent_password_write()
                             && !Config::is_disable_change_permanent_password();
-                        let (status, worker) = begin_password_mutation(
-                            request.operation_id,
-                            request.value,
-                            PasswordMutationKind::UserOwned,
+                        let (status, worker) = begin_windows_user_owned_password_mutation(
+                            admission,
+                            operation_id,
+                            value,
                             authority_allowed,
                         );
-                        let _ = request.response.send(status);
+                        let _ = response.send(status);
                         if let Some(worker) = worker {
                             transactions.spawn(async move {
                                 if let Err(err) = worker.await {
@@ -3038,12 +3065,13 @@ async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
     #[cfg(target_os = "windows")]
     if let Some(password_events) = password_events.as_mut() {
         while let Ok(request) = password_events.try_recv() {
-            let status = password_mutations().classify_during_shutdown(
-                &request.operation_id,
-                PasswordMutationKind::UserOwned,
-                request.value.as_str(),
+            let (admission, operation_id, value, response) = request.into_parts();
+            let status = classify_windows_user_owned_password_during_shutdown(
+                admission,
+                &operation_id,
+                value.as_str(),
             );
-            let _ = request.response.send(status);
+            let _ = response.send(status);
         }
     }
     while let Some(result) = transactions.join_next().await {
@@ -3680,6 +3708,37 @@ fn begin_password_mutation(
     }
     let worker = spawn_password_mutation(operation_id.clone(), value, kind, permit);
     (PasswordMutationStatus::Prepared, Some(worker))
+}
+
+#[cfg(target_os = "windows")]
+fn begin_windows_user_owned_password_mutation(
+    _admission: WindowsUserOwnedPasswordAdmission,
+    operation_id: String,
+    value: MainPasswordMutationValue,
+    authority_allowed: bool,
+) -> (
+    PasswordMutationStatus,
+    Option<tokio::task::JoinHandle<IpcMutationResult>>,
+) {
+    begin_password_mutation(
+        operation_id,
+        value,
+        PasswordMutationKind::UserOwned,
+        authority_allowed,
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn classify_windows_user_owned_password_during_shutdown(
+    _admission: WindowsUserOwnedPasswordAdmission,
+    operation_id: &str,
+    value: &str,
+) -> PasswordMutationStatus {
+    password_mutations().classify_during_shutdown(
+        operation_id,
+        PasswordMutationKind::UserOwned,
+        value,
+    )
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -8421,6 +8480,12 @@ pub async fn get_terminal_session_count() -> ResultType<usize> {
 mod test {
     use super::*;
 
+    fn windows_service_owned_password_admission_fixture() -> WindowsServiceOwnedPasswordAdmission {
+        WindowsServiceOwnedPasswordAdmission {
+            _requester: WindowsServiceOwnedPasswordRequester::Fixture,
+        }
+    }
+
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner() {
@@ -8439,13 +8504,26 @@ mod test {
     #[test]
     fn windows_credential_ledger_replays_lost_ack_without_password_retention() {
         let mut ledger = WindowsCredentialOperationLedger::new(4);
-        assert!(ledger.admit("operation", "new-password", false));
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "new-password",
+            false,
+        ));
         assert_eq!(
-            ledger.status("operation", "new-password"),
+            ledger.status(
+                &windows_service_owned_password_admission_fixture(),
+                "operation",
+                "new-password",
+            ),
             Some(PasswordMutationStatus::Pending)
         );
         assert_eq!(
-            ledger.status("operation", "different-password"),
+            ledger.status(
+                &windows_service_owned_password_admission_fixture(),
+                "operation",
+                "different-password",
+            ),
             Some(PasswordMutationStatus::Complete(
                 IpcMutationResult::Rejected
             ))
@@ -8454,7 +8532,11 @@ mod test {
             .complete("operation", IpcMutationResult::Applied)
             .unwrap();
         assert_eq!(
-            ledger.status("operation", "new-password"),
+            ledger.status(
+                &windows_service_owned_password_admission_fixture(),
+                "operation",
+                "new-password",
+            ),
             Some(PasswordMutationStatus::Complete(IpcMutationResult::Applied))
         );
     }
@@ -8462,31 +8544,72 @@ mod test {
     #[test]
     fn windows_credential_ledger_evicts_only_completed_replay_entries() {
         let mut ledger = WindowsCredentialOperationLedger::new(1);
-        assert!(ledger.admit("first", "one", false));
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "first",
+            "one",
+            false,
+        ));
         ledger
             .complete("first", IpcMutationResult::Rejected)
             .unwrap();
-        assert!(ledger.admit("second", "two", false));
-        assert_eq!(ledger.status("first", "one"), None);
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "second",
+            "two",
+            false,
+        ));
         assert_eq!(
-            ledger.status("second", "two"),
+            ledger.status(
+                &windows_service_owned_password_admission_fixture(),
+                "first",
+                "one",
+            ),
+            None
+        );
+        assert_eq!(
+            ledger.status(
+                &windows_service_owned_password_admission_fixture(),
+                "second",
+                "two",
+            ),
             Some(PasswordMutationStatus::Pending)
         );
 
         let mut active = WindowsCredentialOperationLedger::new(1);
-        assert!(active.admit("first", "one", false));
-        assert!(!active.admit("second", "two", false));
+        assert!(active.admit(
+            windows_service_owned_password_admission_fixture(),
+            "first",
+            "one",
+            false,
+        ));
+        assert!(!active.admit(
+            windows_service_owned_password_admission_fixture(),
+            "second",
+            "two",
+            false,
+        ));
 
         let mut stopping = WindowsCredentialOperationLedger::new(2);
         stopping.begin_shutdown();
         assert!(stopping.is_shutting_down());
-        assert!(!stopping.admit("after-stop", "secret", false));
+        assert!(!stopping.admit(
+            windows_service_owned_password_admission_fixture(),
+            "after-stop",
+            "secret",
+            false,
+        ));
     }
 
     #[test]
     fn windows_credential_queue_saturation_never_contradicts_replay_state() {
         let mut ledger = WindowsCredentialOperationLedger::new(2);
-        assert!(ledger.admit("committed", "secret", false));
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "committed",
+            "secret",
+            false,
+        ));
         ledger
             .complete("committed", IpcMutationResult::Applied)
             .unwrap();
@@ -8496,7 +8619,11 @@ mod test {
             PasswordMutationStatus::Pending
         );
         assert_eq!(
-            ledger.status("committed", "secret"),
+            ledger.status(
+                &windows_service_owned_password_admission_fixture(),
+                "committed",
+                "secret",
+            ),
             Some(PasswordMutationStatus::Complete(IpcMutationResult::Applied))
         );
         assert_eq!(
@@ -8508,11 +8635,20 @@ mod test {
     #[test]
     fn windows_credential_shutdown_drain_replays_active_duplicate() {
         let mut ledger = WindowsCredentialOperationLedger::new(2);
-        assert!(ledger.admit("operation", "secret", false));
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         ledger.begin_shutdown();
 
         assert_eq!(
-            ledger.classify_during_shutdown("operation", "secret"),
+            ledger.classify_during_shutdown(
+                &windows_service_owned_password_admission_fixture(),
+                "operation",
+                "secret",
+            ),
             PasswordMutationStatus::Pending
         );
     }
@@ -8520,14 +8656,23 @@ mod test {
     #[test]
     fn windows_credential_shutdown_drain_replays_completed_duplicate() {
         let mut ledger = WindowsCredentialOperationLedger::new(2);
-        assert!(ledger.admit("operation", "secret", false));
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         ledger
             .complete("operation", IpcMutationResult::Applied)
             .unwrap();
         ledger.begin_shutdown();
 
         assert_eq!(
-            ledger.classify_during_shutdown("operation", "secret"),
+            ledger.classify_during_shutdown(
+                &windows_service_owned_password_admission_fixture(),
+                "operation",
+                "secret",
+            ),
             PasswordMutationStatus::Complete(IpcMutationResult::Applied)
         );
     }
@@ -8538,7 +8683,11 @@ mod test {
         ledger.begin_shutdown();
 
         assert_eq!(
-            ledger.classify_during_shutdown("fresh-operation", "secret"),
+            ledger.classify_during_shutdown(
+                &windows_service_owned_password_admission_fixture(),
+                "fresh-operation",
+                "secret",
+            ),
             PasswordMutationStatus::ShuttingDown
         );
     }
@@ -8554,10 +8703,19 @@ mod test {
     #[test]
     fn windows_credential_lost_reply_stop_and_apply_remain_consistent() {
         let mut ledger = WindowsCredentialOperationLedger::new(2);
-        assert!(ledger.admit("operation", "secret", false));
+        assert!(ledger.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         ledger.begin_shutdown();
 
-        let drained = ledger.classify_during_shutdown("operation", "secret");
+        let drained = ledger.classify_during_shutdown(
+            &windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+        );
         assert_eq!(drained, PasswordMutationStatus::Pending);
         assert_eq!(
             windows_credential_client_decision(drained, false),
@@ -8567,7 +8725,11 @@ mod test {
         ledger
             .complete("operation", IpcMutationResult::Applied)
             .unwrap();
-        let final_status = ledger.classify_during_shutdown("operation", "secret");
+        let final_status = ledger.classify_during_shutdown(
+            &windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+        );
         assert_eq!(
             windows_credential_client_decision(final_status, true),
             WindowsCredentialClientDecision::Applied
@@ -8597,13 +8759,23 @@ mod test {
     #[test]
     fn windows_credential_operation_bound_failures_remain_terminal_during_recovery() {
         let mut first_service = WindowsCredentialOperationLedger::new(2);
-        assert!(first_service.admit("operation", "secret", false));
+        assert!(first_service.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         first_service
             .complete("operation", IpcMutationResult::Applied)
             .unwrap();
 
         let mut transaction_busy_service = WindowsCredentialOperationLedger::new(2);
-        assert!(!transaction_busy_service.admit("operation", "secret", true));
+        assert!(!transaction_busy_service.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            true,
+        ));
         assert_eq!(
             windows_credential_client_decision(
                 PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
@@ -8613,8 +8785,18 @@ mod test {
         );
 
         let mut capacity_full_service = WindowsCredentialOperationLedger::new(1);
-        assert!(capacity_full_service.admit("other-operation", "other-secret", false));
-        assert!(!capacity_full_service.admit("operation", "secret", false));
+        assert!(capacity_full_service.admit(
+            windows_service_owned_password_admission_fixture(),
+            "other-operation",
+            "other-secret",
+            false,
+        ));
+        assert!(!capacity_full_service.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         assert_eq!(
             windows_credential_client_decision(
                 PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
@@ -8624,12 +8806,21 @@ mod test {
         );
 
         let mut liveness_failure_service = WindowsCredentialOperationLedger::new(2);
-        assert!(liveness_failure_service.admit("operation", "secret", false));
+        assert!(liveness_failure_service.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         liveness_failure_service
             .complete("operation", IpcMutationResult::InternalFailure)
             .unwrap();
         let liveness_status = liveness_failure_service
-            .status("operation", "secret")
+            .status(
+                &windows_service_owned_password_admission_fixture(),
+                "operation",
+                "secret",
+            )
             .unwrap();
         assert_eq!(
             windows_credential_client_decision(
@@ -8644,13 +8835,24 @@ mod test {
         );
 
         let mut reapplying_service = WindowsCredentialOperationLedger::new(2);
-        assert!(reapplying_service.admit("operation", "secret", false));
+        assert!(reapplying_service.admit(
+            windows_service_owned_password_admission_fixture(),
+            "operation",
+            "secret",
+            false,
+        ));
         reapplying_service
             .complete("operation", IpcMutationResult::Applied)
             .unwrap();
         assert_eq!(
             windows_credential_client_decision(
-                reapplying_service.status("operation", "secret").unwrap(),
+                reapplying_service
+                    .status(
+                        &windows_service_owned_password_admission_fixture(),
+                        "operation",
+                        "secret",
+                    )
+                    .unwrap(),
                 true,
             ),
             WindowsCredentialClientDecision::Applied

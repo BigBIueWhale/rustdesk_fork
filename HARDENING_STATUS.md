@@ -29510,7 +29510,7 @@ validator bind the same outcome with separately shaped checks and mutations.
 
 Current normative identity for this slice:
 
-c35026e17e572d84869dbce0b021ef08449169cbef0c162da5cdbbb0a02232ee  requirements.html
+snapshot c35026e17e572d84869dbce0b021ef08449169cbef0c162da5cdbbb0a02232ee  requirements.html
 
 It binds R-S11ie/R-S11e-268 and Appendix C #390 and is synchronized with
 `docs/NATIVE-CODEC-WATCH.md`.
@@ -29605,3 +29605,186 @@ publication. The first receipt-bearing run correctly rejected a second unprefixe
 current requirements identity introduced by the historical hash block; that receipt
 copy was marked `snapshot`, the sole-current cardinality was restored, and the entire
 bounded suite was restarted from its beginning.
+
+### R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission
+
+**Status:** SOURCE IMPLEMENTED / EXACT-CURRENT SOURCE GATES GREEN;
+NATIVE WINDOWS, INSTALLED, PERFORMANCE, RELEASE, AND REVIEW EVIDENCE OPEN.
+
+The continuing action-by-action privileged IPC review found the Windows analogue of
+the authority-lifetime debt closed for macOS and Linux by R-S11id and R-S11ie. Before
+this slice, the raw Windows password listener correctly used one retained first-instance
+message-mode named pipe per endpoint, rejected remote clients, enforced the endpoint
+DACL, preauthorized the connected requester before reading the header, obtained a
+retained process/identity/process-token/impersonated-pipe-token/endpoint-security proof
+before reading the secret body, validated the complete frame, and freshly replayed the
+full proof immediately before its sole bounded queue insertion.
+
+That final proof did not reach either receiver as an authority-bearing lifetime. Both
+the ordinary user endpoint and LocalSystem service endpoint enqueued the same reduced
+`WindowsSensitivePasswordRequest`, containing only operation ID, password, and reply
+channel. The crate-visible generic listener starter separately accepted a caller-chosen
+postfix and that generic sender. The ordinary desktop receiver then selected
+`UserOwned` and its local policy through ordinary values; the LocalSystem receiver
+queried, classified, and admitted the service credential ledger from strings and
+transaction state. Their type signatures did not require the exact action proof that
+had authorized the enqueue.
+
+This is source-proven action-authority lifetime and internal admission-API debt. The
+sole synchronous enqueue path still required the complete final named-pipe proof, so
+this review did not identify an unauthenticated or unauthorized fresh password write
+path. It is not evidence of an unauthorized credential change, credential disclosure,
+exploitation, host RustDesk/service/configuration/firewall/network mutation, public
+exposure, Docker privilege use, host compromise, operational RustDesk failure, or
+causation of the user's older Android or Windows display-delay reports. No claim is
+made about whether an unidentified deployed artifact contained this source state.
+
+The repair introduces distinct non-cloneable
+`WindowsUserOwnedPasswordAdmission` and
+`WindowsServiceOwnedPasswordAdmission` capabilities. The user capability directly
+retains the complete client proof. The production service capability retains the same
+proof behind an action-specific authenticated requester variant; its `Fixture` variant
+exists only under `cfg(test)`. The proof's raw `revalidate` method is now private.
+Its consuming user and service mint methods first reject the other endpoint postfix,
+then repeat the complete live proof, and only then construct the matching capability.
+
+The request transport is likewise split into
+`WindowsUserOwnedPasswordRequest` and private
+`WindowsServiceOwnedPasswordRequest`, each carrying only its matching capability.
+A private `WindowsSensitivePasswordRequestSender` fixes the channel type and derives
+the endpoint postfix. The generic listener starter is private and accepts only that
+typed sender; the crate surface exposes only the fixed user wrapper, while the fixed
+service wrapper remains private to the Windows service module. There is no public
+generic postfix/request pairing. After body/framing validation, each sender match arm
+consumes the retained proof into its exact capability, constructs the matching typed
+request, and passes it to the unchanged bounded nonblocking enqueue/status wait.
+
+The ordinary desktop receiver destructures the typed user request. Its normal mutation
+entry consumes `WindowsUserOwnedPasswordAdmission` and fixes
+`PasswordMutationKind::UserOwned`; its shutdown disposition also consumes the
+capability. Current-process user-owned authority and disabled-password policy remain
+receiver-derived eligibility, not substitutes for the requester capability.
+
+The LocalSystem receiver destructures the typed service request. Same-operation replay
+status and shutdown classification require a reference to that exact request's
+`WindowsServiceOwnedPasswordAdmission`. A fresh keyed ledger `Active` insertion
+consumes the capability. The capability intentionally is not stored after that first
+authoritative admission: the ledger retains only its process-random keyed request
+fingerprint and state. Once `Active` exists, LocalSystem still owns child-liveness
+selection, durable commit, PRS replica convergence, completion, retry/replay, shutdown
+drain, and failure finality independently of requester survival. Retaining a stale
+process handle in terminal replay state or reauthorizing admitted recovery would make
+R-S11g less correct.
+
+This proof model follows the Windows named-pipe authority primitives already used by
+the implementation. Microsoft documents that a server can impersonate the client
+security context that wrote the last pipe message, that the server must check
+`ImpersonateNamedPipeClient` failure before executing the request, that
+`GetNamedPipeClientProcessId` returns the client PID for the server pipe handle, and
+that impersonation must be ended with `RevertToSelf` (with fail-stop treatment if
+restoration fails). Primary sources consulted:
+
+- <https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient>
+- <https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid>
+- <https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-reverttoself>
+
+No endpoint, raw frame, prompt, UAC/elevation rule, DACL, listener count, port, network
+behavior, capacity, timeout, retry, reconnect, task class, runtime, process launch,
+credential sink, service lifecycle transition, dependency, or release artifact changed.
+The persistent Android service design, viewer reconnect/focus behavior, display
+pipeline, and the user's explicit stop-ship requirement that the complete connection
+flow be correct and performant on every platform remain open exactly as recorded
+elsewhere in this ledger; this authority slice neither claims nor attempts to close
+them.
+
+The focused desktop sensitive-password verifier now parses the Windows platform source
+alongside the shared IPC/authentication source. It binds the two non-cloneable
+capabilities, private proof replay, endpoint-specific consuming mints, typed request and
+channel pairing, sender-derived postfix, body-before-final-proof ordering, typed bounded
+enqueue, private generic listener, user entry consumption, service replay/shutdown
+borrowing, new service admission consumption, and post-admission finality. Its new
+deliberate mutations cover skipped final proof, wrong-endpoint minting, public postfix
+reinjection, dropped request capability, borrowed fresh admission, direct service/user
+bypass, cloneability, and wrong sender endpoint. Shared, Apple, independently shaped
+workspace, and full-catalog verification closure is recorded below.
+
+Current normative identity for this slice:
+
+74096976262530c2060b0cd0f04caa4e5799b501abd8f9de0c7092880b35c8e8  requirements.html
+
+It binds R-S11if/R-S11e-269 and Appendix C #391 and is synchronized with
+`docs/NATIVE-CODEC-WATCH.md`.
+
+Exact-current Windows compilation and unit execution, installed LocalSystem and user
+endpoint behavior, UAC allow/deny/timeout/shutdown behavior, adversarial
+PID/generation/identity/token/endpoint/process-exit races, service retry/recovery,
+sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact
+equality, independent reproduction, and R-V3 external review remain open. This slice
+does not inspect, stop, restart, modify, or connect to a host RustDesk process/service;
+inspect or change a host listener, firewall, network namespace, or configuration; touch
+Android, a VM, Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root,
+privileged containers, host networking, published ports, devices, or a Docker socket
+inside a verifier.
+
+Verification receipt (2026-09-01, exact pre-receipt source tree):
+
+- `scripts/verify-linux-service-password-ipc.py --repo /repo --self-test` passed its
+  structured Rust-token baseline and all 144 deliberate mutations. The new Windows
+  cases remove the final proof call rather than leaving its token in a comment, so a
+  textual checker cannot mistake mutation residue for live authority replay.
+- The shared embedded Windows/macOS raw-password architecture analyzer extracted from
+  `scripts/verify.sh` exited 0 on the exact sources. The complete Apple embedded matrix
+  exited 0 with empty `r_s11b`, `r_s11b2`, and `r_s11e16` verdicts after exercising
+  the Windows final-proof, endpoint, visibility/postfix, request-capability, ledger,
+  consumer, cloneability, and sender mutations.
+- `scripts/verify-desktop-ipc-lifecycle.py --repo /repo --self-test` passed all 26
+  mutations. During final closure its stale one-occurrence Android teardown fixture
+  was corrected to require both exact-generation checks and to mutate only the
+  periodic teardown branch. This is a verifier repair; no Android product source was
+  changed in this slice.
+- `scripts/verify-verifier-workspace.py --repo /repo` passed. A supplemental confined
+  preflight of only the contiguous new Windows mutation block also passed; it was not
+  used as a substitute for the complete catalog.
+- A fresh, direct, unfiltered
+  `scripts/verify-verifier-workspace.py --repo /repo --source-mutations-only` run then
+  traversed the complete 5,603-tuple catalog from mutation one and reached terminal
+  `verify-verifier-workspace: ok` with exit code 0. Earlier runs that stopped on a
+  non-runtime function-name target, a proof token retained in a comment, a conflated
+  visibility/postfix expected label, non-exact Apple analyzer cardinality, mismatched
+  requirement-binding labels, or replacement names retaining the original token as a
+  substring are deliberately uncounted. Each defect was repaired before the sole
+  credited full run restarted from mutation one.
+- `scripts/native-codec-watch.sh` and its mutation self-test passed. The current
+  requirements identity is exactly
+  `74096976262530c2060b0cd0f04caa4e5799b501abd8f9de0c7092880b35c8e8`; it occurs once
+  as the current hardening identity and exactly matches
+  `docs/NATIVE-CODEC-WATCH.md`.
+- Python bytecode compilation for the changed Python gates, Bash syntax parsing for
+  the changed shell gates, and `git diff --check` passed. Pinned Rust 1.75 `rustfmt
+  --check --config skip_children=true` parsed all four edited Rust files but returned
+  nonzero because it proposes broad pre-existing whole-file formatting changes plus
+  style-only wrapping. No unrelated whole-file formatting rewrite is included. Added
+  production lines contain no `unwrap`, `expect`, nested runtime, `block_on`, or new
+  blocking sleep; added `unwrap` calls are confined to tests.
+
+Every executable verification above ran in immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+with no network, UID/GID 1000, a read-only repository mount, all capabilities dropped,
+`no-new-privileges`, 64 PIDs, two CPUs, 2 GiB memory with no additional swap, and a
+256 MiB `nosuid,nodev,noexec` tmpfs. Rust formatting additionally mounted the pinned
+toolchain read-only. No image was built or pulled, no listener or port was opened, and
+no host RustDesk/service/configuration/firewall/network/process, Android device, VM,
+Haggai/Desktop_Haggai_computer, unrelated container, or Docker state was inspected or
+modified.
+
+The final hardening receipt is documentation-only and is followed by a bounded rerun
+of the baseline/focused/shared/Apple/lifecycle/native-watch/syntax/hash gates. The
+5,603-tuple catalog is not rerun after this receipt because the receipt changes only
+this evidence ledger, while the catalogued product, requirements, native-watch,
+focused/shared/Apple verifier, and independent-verifier bytes remain unchanged.
+
+This evidence does not provide an exact-current Windows compile or unit run, an
+installed LocalSystem/user-endpoint execution, UAC or named-pipe race execution,
+performance/resource soak, clean cold release-artifact equality, independent
+reproduction, or external review. Those remain open and must not be inferred from the
+source-gate result.

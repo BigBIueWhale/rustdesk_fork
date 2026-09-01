@@ -1151,6 +1151,11 @@ mod tests {
             "preauthorize_windows_sensitive_pipe_client",
             "authorize_windows_sensitive_pipe_client",
             "authenticate_windows_sensitive_pipe_server",
+            "WindowsUserOwnedPasswordRequest",
+            "WindowsServiceOwnedPasswordRequest",
+            "WindowsSensitivePasswordRequestSender",
+            "start_windows_user_owned_password_listener",
+            "start_windows_service_owned_password_listener",
             "windows-sensitive-ipc-client-supervisor",
             "Ok(worker) => match worker.join()",
             "ipc::password::decode_ack",
@@ -1174,7 +1179,7 @@ mod tests {
             .find("fn handle_windows_sensitive_password_pipe")
             .unwrap();
         let handler_end = facade[handler..]
-            .find("pub(crate) fn start_windows_sensitive_password_listener")
+            .find("fn enqueue_windows_sensitive_password_request")
             .unwrap();
         let handler = &facade[handler..handler + handler_end];
         let preauthorization = handler
@@ -1191,14 +1196,28 @@ mod tests {
             .unwrap();
         assert!(preauthorization < header_read);
         assert!(header_read < client_proof && client_proof < password_read);
-        let final_proof = handler
-            .rfind("proof.revalidate(pipe.handle.0, deadline)")
+        let user_admission = handler
+            .find("proof.into_user_owned_password_admission(pipe.handle.0, deadline)")
             .unwrap();
-        let admission = handler.find("requests.try_send(request)").unwrap();
-        assert!(password_read < final_proof && final_proof < admission);
+        let user_enqueue = handler[user_admission..]
+            .find("enqueue_windows_sensitive_password_request(")
+            .map(|offset| user_admission + offset)
+            .unwrap();
+        let service_admission = handler
+            .find("proof.into_service_owned_password_admission(pipe.handle.0, deadline)")
+            .unwrap();
+        let service_enqueue = handler[service_admission..]
+            .find("enqueue_windows_sensitive_password_request(")
+            .map(|offset| service_admission + offset)
+            .unwrap();
+        assert!(password_read < user_admission && user_admission < user_enqueue);
+        assert!(password_read < service_admission && service_admission < service_enqueue);
         let status_write = handler.find("pipe.write_message(&response.0").unwrap();
         let acknowledgement = handler.find("ipc::password::decode_ack").unwrap();
-        assert!(admission < status_write && status_write < acknowledgement);
+        assert!(user_enqueue < status_write && service_enqueue < status_write);
+        assert!(status_write < acknowledgement);
+        assert!(!facade.contains("pub(crate) fn start_windows_sensitive_password_listener"));
+        assert!(!facade.contains("WindowsSensitivePasswordRequest {"));
         assert!(!facade.contains("create_standby_server"));
 
         let auth = include_str!("auth.rs");
@@ -1219,6 +1238,9 @@ mod tests {
             .find("windows_sensitive_pipe_security_at_deadline")
             .unwrap();
         assert!(identity < process_token && process_token < pipe_token && pipe_token < security);
+        assert!(revalidate.contains("self.revalidate(pipe, deadline)?"));
+        assert!(revalidate.contains("WindowsUserOwnedPasswordAdmission { _requester: self }"));
+        assert!(revalidate.contains("WindowsServiceOwnedPasswordRequester::Authenticated"));
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

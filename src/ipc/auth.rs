@@ -1593,7 +1593,7 @@ pub(crate) struct WindowsSensitivePipeClientProof {
 
 #[cfg(windows)]
 impl WindowsSensitivePipeClientProof {
-    pub(crate) fn revalidate(&self, pipe: HANDLE, deadline: Instant) -> ResultType<()> {
+    fn revalidate(&self, pipe: HANDLE, deadline: Instant) -> ResultType<()> {
         windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC client proof")?;
         if windows_named_pipe_client_pid(pipe)? != self.process.key.pid {
             bail!("Windows sensitive IPC client pid changed before admission");
@@ -1633,6 +1633,32 @@ impl WindowsSensitivePipeClientProof {
         }
         windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC client proof")?;
         Ok(())
+    }
+
+    pub(crate) fn into_user_owned_password_admission(
+        self,
+        pipe: HANDLE,
+        deadline: Instant,
+    ) -> ResultType<super::WindowsUserOwnedPasswordAdmission> {
+        if self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX {
+            bail!("Windows sensitive IPC proof does not authorize a user-owned password write");
+        }
+        self.revalidate(pipe, deadline)?;
+        Ok(super::WindowsUserOwnedPasswordAdmission { _requester: self })
+    }
+
+    pub(crate) fn into_service_owned_password_admission(
+        self,
+        pipe: HANDLE,
+        deadline: Instant,
+    ) -> ResultType<super::WindowsServiceOwnedPasswordAdmission> {
+        if self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX {
+            bail!("Windows sensitive IPC proof does not authorize a service-owned password write");
+        }
+        self.revalidate(pipe, deadline)?;
+        Ok(super::WindowsServiceOwnedPasswordAdmission {
+            _requester: super::WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self },
+        })
     }
 }
 

@@ -1148,6 +1148,16 @@ def analyze(sources):
         linux_password_admission = item(ipc, "impl LinuxServiceOwnedPasswordAdmission")
         linux_password_operation = item(ipc, "async fn execute_linux_service_owned_password_operation")
         linux_password_coordinator = item(ipc, "impl LinuxPasswordAdmissionCoordinator")
+        windows_password_proof = item(auth, "impl WindowsSensitivePipeClientProof")
+        windows_password_ledger = item(ipc, "impl WindowsCredentialOperationLedger")
+        windows_user_password_request = item(windows, "pub(crate) struct WindowsUserOwnedPasswordRequest")
+        windows_service_password_request = item(windows, "struct WindowsServiceOwnedPasswordRequest")
+        windows_password_sender = item(windows, "enum WindowsSensitivePasswordRequestSender")
+        windows_password_pipe = item(windows, "fn handle_windows_sensitive_password_pipe")
+        windows_password_enqueue = item(windows, "fn enqueue_windows_sensitive_password_request")
+        windows_password_listener = item(windows, "fn start_windows_sensitive_password_listener")
+        windows_service_runtime = item(windows, "async fn run_service(arguments: Vec<OsString>)")
+        windows_user_password_begin = item(ipc, "fn begin_windows_user_owned_password_mutation")
         mac_sensitive = item(ipc, "async fn handle_sensitive_macos_service_ipc_transaction")
         mac_password_grant = item(ipc, "fn grant_macos_service_owned_password_admission")
         mac_password_admission = item(ipc, "impl MacosServiceOwnedPasswordAdmission")
@@ -1309,6 +1319,60 @@ def analyze(sources):
             and ipc_production.count("grant_linux_service_owned_password_admission(") == 2
             and ipc_production.count("admit_commit(") == 2
             and ipc_production.count("admit_authorized(") == 2)
+        need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",
+            "pub(crate) struct WindowsUserOwnedPasswordAdmission {\n    _requester: ipc_auth::WindowsSensitivePipeClientProof,\n}" in ipc
+            and "pub(crate) struct WindowsServiceOwnedPasswordAdmission {\n    _requester: WindowsServiceOwnedPasswordRequester,\n}" in ipc
+            and "#[derive(Clone)]\npub(crate) struct WindowsUserOwnedPasswordAdmission" not in ipc
+            and "#[derive(Clone)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission" not in ipc
+            and "Authenticated {\n        _proof: ipc_auth::WindowsSensitivePipeClientProof," in ipc
+            and ordered(windows_password_proof, [
+                "fn revalidate(&self, pipe: HANDLE, deadline: Instant)",
+                "pub(crate) fn into_user_owned_password_admission(", "self,",
+                "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX",
+                "self.revalidate(pipe, deadline)?;",
+                "WindowsUserOwnedPasswordAdmission { _requester: self }",
+                "pub(crate) fn into_service_owned_password_admission(", "self,",
+                "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX",
+                "self.revalidate(pipe, deadline)?;",
+                "WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self }",
+            ])
+            and "pub(crate) fn revalidate(&self, pipe: HANDLE, deadline: Instant)" not in windows_password_proof
+            and auth.count("WindowsUserOwnedPasswordAdmission { _requester: self }") == 1
+            and auth.count("WindowsServiceOwnedPasswordRequester::Authenticated { _proof: self }") == 1
+            and "admission: ipc::WindowsUserOwnedPasswordAdmission" in windows_user_password_request
+            and "admission: ipc::WindowsServiceOwnedPasswordAdmission" in windows_service_password_request
+            and "UserOwned(mpsc::Sender<WindowsUserOwnedPasswordRequest>)" in windows_password_sender
+            and "ServiceOwned(mpsc::Sender<WindowsServiceOwnedPasswordRequest>)" in windows_password_sender
+            and "Self::UserOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX" in windows
+            and "Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX" in windows
+            and ordered(windows_password_pipe, [
+                "let postfix = requests.postfix();", "preauthorize_windows_sensitive_pipe_client(",
+                "pipe.read_message(&mut header_bytes.0", "authorize_windows_sensitive_pipe_client(",
+                "pipe.read_message(request.body_mut()", "request.validate_utf8()?;",
+                "proof.into_user_owned_password_admission(pipe.handle.0, deadline)",
+                "WindowsUserOwnedPasswordRequest {", "proof.into_service_owned_password_admission(pipe.handle.0, deadline)",
+                "WindowsServiceOwnedPasswordRequest {", "encode_status(operation_id, status)",
+            ])
+            and "requests.try_send(request)" in windows_password_enqueue
+            and "requests: WindowsSensitivePasswordRequestSender" in windows_password_listener.split("{", 1)[0]
+            and "postfix:" not in windows_password_listener.split("{", 1)[0]
+            and "pub(crate) fn start_windows_sensitive_password_listener" not in windows
+            and "pub(crate) struct WindowsSensitivePasswordRequest" not in windows
+            and "_admission: &WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
+            and "admission: &WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
+            and "_admission: WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
+            and "self.status(admission, operation_id, value)" in windows_password_ledger
+            and "_admission: WindowsUserOwnedPasswordAdmission" in windows_user_password_begin.split("{", 1)[0]
+            and "PasswordMutationKind::UserOwned" in windows_user_password_begin
+            and ordered(windows_service_runtime, [
+                "start_windows_service_owned_password_listener(", "WindowsServiceOwnedPasswordRequest {",
+                "credential_ledger.status(\n                    &admission,",
+                "classify_during_shutdown(&admission, &operation_id, value.as_str())",
+                "credential_ledger.admit(\n                    admission,",
+            ])
+            and windows_service_runtime.count("WindowsServiceOwnedPasswordRequest {") == 2
+            and windows_service_runtime.count("classify_during_shutdown(&admission") == 2
+            and "credential_ledger.admit(\n                    &admission," not in windows_service_runtime)
         password_accept = run_service[run_service.find("result = password_incoming.next()") : run_service.find("result = incoming.next()")]
         need("b2", "macos-peer-auth-not-before-secret-read", ordered(password_accept, [
             "try_acquire_service_password_ipc_transaction_slot()", "try_acquire_macos_service_password_ipc_authorization_slot()",
@@ -1909,6 +1973,15 @@ scoped_mutation("linux-password-ledger-caller", "ipc", "impl LinuxPasswordAdmiss
 scoped_mutation("linux-password-ledger-state", "ipc", "impl LinuxPasswordAdmissionCoordinator", "|| entry.caller != caller\n            || entry.state != LinuxPasswordAdmissionState::Authorizing", "|| entry.caller != caller\n            || false", "b2", "linux-post-polkit-authority-not-typed-through-ledger-admission")
 scoped_mutation("linux-password-operation-direct-ledger-admission", "ipc", "async fn execute_linux_service_owned_password_operation", "if !admission.admit_commit(coordinator, operation_id, value)? {", "if !coordinator.admit_authorized(&admission, operation_id, value) {", "b2", "linux-post-polkit-authority-not-typed-through-ledger-admission")
 mutation("linux-password-operation-generic-authorizer", "ipc", "async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(", "async fn execute_linux_service_owned_password_operation<Authorize, Commit, CommitFuture>(", "b2", "linux-post-polkit-authority-not-typed-through-ledger-admission")
+scoped_mutation("windows-password-final-service-proof", "auth", "pub(crate) fn into_service_owned_password_admission", "self.revalidate(pipe, deadline)?;", "drop((pipe, deadline));", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+scoped_mutation("windows-password-service-mint-endpoint", "auth", "pub(crate) fn into_service_owned_password_admission", "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX", "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+mutation("windows-password-public-generic-listener", "windows", "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,", "pub(crate) fn start_windows_sensitive_password_listener(\n    postfix: &'static str,\n    requests: WindowsSensitivePasswordRequestSender,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+scoped_mutation("windows-password-service-request-capability", "windows", "struct WindowsServiceOwnedPasswordRequest", "admission: ipc::WindowsServiceOwnedPasswordAdmission,", "admission: bool,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+scoped_mutation("windows-password-ledger-capability-consumption", "ipc", "impl WindowsCredentialOperationLedger", "_admission: WindowsServiceOwnedPasswordAdmission,", "_admission: &WindowsServiceOwnedPasswordAdmission,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+scoped_mutation("windows-password-service-consumer-bypass", "windows", "async fn run_service(arguments: Vec<OsString>)", "credential_ledger.admit(\n                    admission,", "credential_ledger.admit(\n                    &admission,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+scoped_mutation("windows-password-user-consumer-bypass", "ipc", "fn begin_windows_user_owned_password_mutation", "_admission: WindowsUserOwnedPasswordAdmission,", "_admission: bool,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+mutation("windows-password-admission-clone", "ipc", "pub(crate) struct WindowsServiceOwnedPasswordAdmission {", "#[derive(Clone)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission {", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
+scoped_mutation("windows-password-service-sender-endpoint", "windows", "impl WindowsSensitivePasswordRequestSender", "Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX,", "Self::ServiceOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 mutation("macos-password-admission-clone", "ipc", "struct MacosServiceOwnedPasswordAdmission {", "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission {", "b2", "macos-peer-auth-not-before-secret-read")
 mutation("macos-password-admission-second-construction", "ipc", "Some(MacosServiceOwnedPasswordAdmission { requester })", "let _duplicate = Some(MacosServiceOwnedPasswordAdmission { requester });\n    Some(MacosServiceOwnedPasswordAdmission { requester })", "b2", "macos-peer-auth-not-before-secret-read")
 scoped_mutation("macos-password-admission-right", "ipc", "fn grant_macos_service_owned_password_admission", "if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {", "if false && !crate::platform::ensure_service_owned_unattended_password_authorization_right() {", "b2", "macos-peer-auth-not-before-secret-read")
@@ -2049,6 +2122,13 @@ grep -Fq 'The same identity additionally binds R-S11ie and Appendix C #390.' "$R
 grep -Fq 'one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-password-typed-admission-norm-missing"
 grep -Fq 'successful <code>pkcheck</code> exit and exact post-authorization requester replay' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-password-post-polkit-grant-norm-missing"
 grep -Fq 'signature itself requires a reference to the exact admission object' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-password-capability-coordinator-norm-missing"
+grep -Fq '<span class="id">R-S11if</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-typed-admission-requirement-missing"
+grep -Fq '<tr><td>391</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-typed-admission-appendix-missing"
+grep -Fq 'R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 windows-password-typed-admission-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11if and Appendix C #391.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 windows-password-typed-admission-digest-binding-missing"
+grep -Fq 'distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-distinct-capabilities-norm-missing"
+grep -Fq 'private listener sender variant, not a caller-supplied string' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-fixed-listener-authority-norm-missing"
+grep -Fq 'insertion of a fresh keyed <code>Active</code> ledger entry <span class="kw">MUST</span> consume it' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-consuming-ledger-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

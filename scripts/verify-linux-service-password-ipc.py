@@ -375,6 +375,7 @@ REQUIRED_SOURCES = (
     "src/flutter_ffi.rs",
     "src/common.rs",
     "src/platform/linux.rs",
+    "src/platform/windows.rs",
     "src/server.rs",
     "libs/hbb_common/src/config.rs",
 )
@@ -856,7 +857,10 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     connect_raw.forbid(("ConnectionTmpl", "::"), "generic framed connection construction")
     connect_raw.forbid(("send_json",), "JSON transport")
 
-    main_prepare = ipc.function("prepare_main_ipc")
+    main_prepares = ipc.functions("prepare_main_ipc")
+    if len(main_prepares) != 1:
+        raise VerificationError("src/ipc.rs: expected one prepared main IPC owner")
+    main_prepare = main_prepares[0]
     main_prepare.require_order(
         (
             (("new_listener", "(", '""', ")"), "ordinary main listener"),
@@ -2336,6 +2340,276 @@ def verify_mutation_coordinators(rust: Mapping[str, RustSource]) -> None:
         )
     )
 
+
+def verify_windows_password_admission_authority(rust: Mapping[str, RustSource]) -> None:
+    ipc = rust["src/ipc.rs"]
+    auth = rust["src/ipc/auth.rs"]
+    windows = rust["src/platform/windows.rs"]
+
+    user_capability = ipc.item("struct", "WindowsUserOwnedPasswordAdmission")
+    user_capability.require(
+        ("_requester", ":", "ipc_auth", "::", "WindowsSensitivePipeClientProof"),
+        "retained user-owned requester proof",
+        unique=True,
+    )
+    service_capability = ipc.item("struct", "WindowsServiceOwnedPasswordAdmission")
+    service_capability.require(
+        ("_requester", ":", "WindowsServiceOwnedPasswordRequester"),
+        "retained service-owned requester authority",
+        unique=True,
+    )
+    service_requester = ipc.item("enum", "WindowsServiceOwnedPasswordRequester")
+    service_requester.require(
+        (
+            "Authenticated",
+            "{",
+            "_proof",
+            ":",
+            "ipc_auth",
+            "::",
+            "WindowsSensitivePipeClientProof",
+            OPTIONAL_COMMA,
+            "}",
+        ),
+        "production authenticated requester proof",
+        unique=True,
+    )
+    for item_name in (
+        "WindowsUserOwnedPasswordAdmission",
+        "WindowsServiceOwnedPasswordAdmission",
+    ):
+        declaration = ipc.all().require(("struct", item_name), f"{item_name} declaration", unique=True)
+        preceding = ipc.all().values[max(0, declaration - 12) : declaration]
+        if "Clone" in preceding or "Copy" in preceding:
+            raise VerificationError(f"src/ipc.rs: {item_name} must be non-cloneable")
+
+    proof_impl = ("impl", "WindowsSensitivePipeClientProof")
+    revalidate = auth.method(proof_impl, "revalidate", "impl WindowsSensitivePipeClientProof")
+    revalidate.require_order(
+        (
+            (("windows_named_pipe_client_pid", "(", "pipe", ")"), "stable pipe client PID"),
+            (("process", ".", "require_running", "("), "retained process liveness"),
+            (("windows_process_creation_time", "("), "same process generation"),
+            (("process", ".", "fresh_identity", "(", ")"), "fresh immutable identity"),
+            (("process", ".", "live_token_proof", "(", ")"), "fresh process token"),
+            (("windows_named_pipe_client_token_proof", "("), "fresh impersonated pipe token"),
+            (("windows_sensitive_pipe_security_at_deadline", "("), "fresh endpoint security"),
+            (("process_token", "!=", "self", ".", "process_token"), "retained token equality"),
+            (("windows_sensitive_auth_deadline_live", "("), "final deadline sample"),
+        )
+    )
+    auth.impl(proof_impl, "impl WindowsSensitivePipeClientProof").forbid(
+        ("pub", "(", "crate", ")", "fn", "revalidate"),
+        "externally callable detached Windows proof revalidation",
+    )
+
+    user_mint = auth.method(
+        proof_impl,
+        "into_user_owned_password_admission",
+        "impl WindowsSensitivePipeClientProof",
+    )
+    user_mint.require_order(
+        (
+            (("self", ".", "postfix", "!=", "super", "::", "password", "::", "USER_PASSWORD_IPC_POSTFIX"), "exact user endpoint"),
+            (("self", ".", "revalidate", "(", "pipe", ",", "deadline", ")"), "final live proof"),
+            (("WindowsUserOwnedPasswordAdmission", "{", "_requester", ":", "self", "}"), "consuming user admission mint"),
+        )
+    )
+    service_mint = auth.method(
+        proof_impl,
+        "into_service_owned_password_admission",
+        "impl WindowsSensitivePipeClientProof",
+    )
+    service_mint.require_order(
+        (
+            (("self", ".", "postfix", "!=", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "exact service endpoint"),
+            (("self", ".", "revalidate", "(", "pipe", ",", "deadline", ")"), "final live proof"),
+            (("WindowsServiceOwnedPasswordRequester", "::", "Authenticated", "{", "_proof", ":", "self", OPTIONAL_COMMA, "}"), "consuming service admission mint"),
+        )
+    )
+    auth.all().require(
+        (
+            "pub", "(", "crate", ")", "fn", "into_user_owned_password_admission", "(",
+            "self", ",", "pipe", ":", "HANDLE", ",", "deadline", ":", "Instant",
+            OPTIONAL_COMMA, ")", "->", "ResultType", "<", "super", "::",
+            "WindowsUserOwnedPasswordAdmission", ">",
+        ),
+        "consuming typed user admission signature",
+        unique=True,
+    )
+    auth.all().require(
+        (
+            "pub", "(", "crate", ")", "fn", "into_service_owned_password_admission", "(",
+            "self", ",", "pipe", ":", "HANDLE", ",", "deadline", ":", "Instant",
+            OPTIONAL_COMMA, ")", "->", "ResultType", "<", "super", "::",
+            "WindowsServiceOwnedPasswordAdmission", ">",
+        ),
+        "consuming typed service admission signature",
+        unique=True,
+    )
+
+    user_request = windows.item("struct", "WindowsUserOwnedPasswordRequest")
+    user_request.require_order(
+        (
+            (("admission", ":", "ipc", "::", "WindowsUserOwnedPasswordAdmission"), "typed user admission"),
+            (("operation_id", ":", "String"), "operation ID"),
+            (("value", ":", "ipc", "::", "SensitivePassword"), "owned secret"),
+            (("response", ":", "std_mpsc", "::", "SyncSender", "<", "ipc", "::", "PasswordMutationStatus", ">"), "status channel"),
+        ),
+        unique=True,
+    )
+    service_request = windows.item("struct", "WindowsServiceOwnedPasswordRequest")
+    service_request.require_order(
+        (
+            (("admission", ":", "ipc", "::", "WindowsServiceOwnedPasswordAdmission"), "typed service admission"),
+            (("operation_id", ":", "String"), "operation ID"),
+            (("value", ":", "ipc", "::", "SensitivePassword"), "owned secret"),
+            (("response", ":", "std_mpsc", "::", "SyncSender", "<", "ipc", "::", "PasswordMutationStatus", ">"), "status channel"),
+        ),
+        unique=True,
+    )
+    sender = windows.item("enum", "WindowsSensitivePasswordRequestSender")
+    sender.require_order(
+        (
+            (("UserOwned", "(", "mpsc", "::", "Sender", "<", "WindowsUserOwnedPasswordRequest", ">", ")"), "user request channel"),
+            (("ServiceOwned", "(", "mpsc", "::", "Sender", "<", "WindowsServiceOwnedPasswordRequest", ">", ")"), "service request channel"),
+        ),
+        unique=True,
+    )
+    sender_postfix = windows.method(
+        ("impl", "WindowsSensitivePasswordRequestSender"),
+        "postfix",
+        "impl WindowsSensitivePasswordRequestSender",
+    )
+    sender_postfix.require_order(
+        (
+            (("Self", "::", "UserOwned", "(", "_", ")", "=>", "ipc", "::", "password", "::", "USER_PASSWORD_IPC_POSTFIX"), "fixed user endpoint"),
+            (("Self", "::", "ServiceOwned", "(", "_", ")", "=>", "ipc", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "fixed service endpoint"),
+        )
+    )
+
+    handler = windows.function("handle_windows_sensitive_password_pipe")
+    handler.require_order(
+        (
+            (("postfix", "=", "requests", ".", "postfix", "(", ")"), "sender-derived endpoint"),
+            (("preauthorize_windows_sensitive_pipe_client", "("), "bounded preauthorization"),
+            (("read_message", "(", "&", "mut", "header_bytes", ".", "0"), "header read"),
+            (("authorize_windows_sensitive_pipe_client", "("), "complete client proof"),
+            (("read_message", "(", "request", ".", "body_mut", "(", ")"), "body read"),
+            (("request", ".", "validate_utf8", "(", ")"), "body validation"),
+            (("WindowsSensitivePasswordRequestSender", "::", "UserOwned", "(", "requests", ")", "=>"), "user action branch"),
+            (("proof", ".", "into_user_owned_password_admission", "(", "pipe", ".", "handle", ".", "0", ",", "deadline", ")"), "final user admission"),
+            (("WindowsUserOwnedPasswordRequest", "{", "admission", ","), "typed user handoff"),
+            (("WindowsSensitivePasswordRequestSender", "::", "ServiceOwned", "(", "requests", ")", "=>"), "service action branch"),
+            (("proof", ".", "into_service_owned_password_admission", "(", "pipe", ".", "handle", ".", "0", ",", "deadline", ")"), "final service admission"),
+            (("WindowsServiceOwnedPasswordRequest", "{", "admission", ","), "typed service handoff"),
+            (("encode_status", "(", "operation_id", ",", "status", ")"), "operation-bound status"),
+            (("decode_ack", "(", "&", "acknowledgement", ".", "0", ",", "operation_id", ")"), "operation-bound acknowledgement"),
+        )
+    )
+    handler.forbid(("postfix", ":", "&", "'static", "str"), "caller-selected endpoint")
+    handler.forbid(("proof", ".", "revalidate", "("), "detached final proof")
+    enqueue = windows.function("enqueue_windows_sensitive_password_request")
+    enqueue.require(("requests", ".", "try_send", "(", "request", ")"), "bounded typed enqueue", unique=True)
+
+    windows.all().require(
+        ("fn", "start_windows_sensitive_password_listener", "(", "requests", ":", "WindowsSensitivePasswordRequestSender"),
+        "private typed listener signature",
+        unique=True,
+    )
+    windows.all().forbid(
+        ("pub", "(", "crate", ")", "fn", "start_windows_sensitive_password_listener"),
+        "public generic listener authority surface",
+    )
+    windows.all().forbid(
+        ("struct", "WindowsSensitivePasswordRequest"),
+        "generic password request authority surface",
+    )
+    user_listener = windows.function("start_windows_user_owned_password_listener")
+    user_listener.require(
+        ("WindowsSensitivePasswordRequestSender", "::", "UserOwned", "(", "requests", ")"),
+        "fixed user listener action",
+        unique=True,
+    )
+    service_listener = windows.function("start_windows_service_owned_password_listener")
+    service_listener.require(
+        ("WindowsSensitivePasswordRequestSender", "::", "ServiceOwned", "(", "requests", ")"),
+        "fixed service listener action",
+        unique=True,
+    )
+
+    main_prepare = ipc.function("prepare_main_ipc")
+    main_prepare.require(
+        (
+            "start_windows_user_owned_password_listener",
+            "(",
+            "password_request_tx",
+            OPTIONAL_COMMA,
+            ")",
+        ),
+        "typed user listener startup",
+        unique=True,
+    )
+    main_runners = ipc.functions("run_main_ipc")
+    if len(main_runners) != 1:
+        raise VerificationError("src/ipc.rs: expected one retained main IPC runner")
+    main_run = main_runners[0]
+    main_run.require_order(
+        (
+            (("request", ".", "into_parts", "(", ")"), "typed user request destruction"),
+            (("begin_windows_user_owned_password_mutation", "(", "admission", ",", "operation_id", ",", "value", ",", "authority_allowed"), "consuming user admission"),
+        )
+    )
+    user_begin = ipc.function("begin_windows_user_owned_password_mutation")
+    user_begin.require(
+        ("begin_password_mutation", "(", "operation_id", ",", "value", ",", "PasswordMutationKind", "::", "UserOwned", ",", "authority_allowed"),
+        "fixed user-owned mutation kind",
+        unique=True,
+    )
+    ipc.all().require(
+        ("fn", "begin_windows_user_owned_password_mutation", "(", "_admission", ":", "WindowsUserOwnedPasswordAdmission"),
+        "consuming user-owned admission signature",
+        unique=True,
+    )
+
+    ipc.all().require(
+        ("pub", "(", "crate", ")", "fn", "status", "(", "&", "self", ",", "_admission", ":", "&", "WindowsServiceOwnedPasswordAdmission"),
+        "service replay query capability signature",
+        unique=True,
+    )
+    ipc.all().require(
+        ("pub", "(", "crate", ")", "fn", "classify_during_shutdown", "(", "&", "self", ",", "admission", ":", "&", "WindowsServiceOwnedPasswordAdmission"),
+        "service shutdown query capability signature",
+        unique=True,
+    )
+    ipc.all().require(
+        ("pub", "(", "crate", ")", "fn", "admit", "(", "&", "mut", "self", ",", "_admission", ":", "WindowsServiceOwnedPasswordAdmission"),
+        "consuming service ledger admission signature",
+        unique=True,
+    )
+    run_service = windows.function("run_service")
+    run_service.require_order(
+        (
+            (("start_windows_service_owned_password_listener", "(", "credential_request_tx", OPTIONAL_COMMA, ")"), "typed service listener startup"),
+            (("WindowsServiceOwnedPasswordRequest", "{", "admission", ",", "operation_id", ",", "value", ",", "response", ",", "}", "=", "request"), "typed service request destruction"),
+            (("credential_ledger", ".", "status", "(", "&", "admission", ",", "&", "operation_id", ",", "value", ".", "as_str", "(", ")"), "capability-bound replay query"),
+            (("credential_ledger", ".", "classify_during_shutdown", "(", "&", "admission", ",", "&", "operation_id", ",", "value", ".", "as_str", "(", ")"), "capability-bound shutdown query"),
+            (("credential_ledger", ".", "admit", "(", "admission", ",", "&", "operation_id", ",", "value", ".", "as_str", "(", ")"), "consuming service ledger admission"),
+        )
+    )
+    if len(run_service.positions(("WindowsServiceOwnedPasswordRequest", "{", "admission", ","))) != 2:
+        raise VerificationError(
+            "src/platform/windows.rs: live and shutdown service request paths must both retain typed admission"
+        )
+    if len(run_service.positions(("credential_ledger", ".", "classify_during_shutdown", "(", "&", "admission"))) != 2:
+        raise VerificationError(
+            "src/platform/windows.rs: live and drained service requests must both query with typed admission"
+        )
+    run_service.forbid(
+        ("credential_ledger", ".", "admit", "(", "&", "admission"),
+        "borrowed rather than consumed service admission",
+    )
+
     main_shutdown = ipc.method(
         ("impl", "PasswordMutationCoordinator"),
         "begin_shutdown",
@@ -2930,6 +3204,7 @@ def validate_sources(sources: Mapping[str, str]) -> None:
         "src/core_main.rs",
         "src/ui_interface.rs",
         "src/platform/linux.rs",
+        "src/platform/windows.rs",
         "src/server.rs",
     ):
         critical = rust[path].all()
@@ -2945,6 +3220,7 @@ def validate_sources(sources: Mapping[str, str]) -> None:
     verify_linux_identity_and_authority(rust)
     verify_macos_identity_and_authority(rust)
     verify_mutation_coordinators(rust)
+    verify_windows_password_admission_authority(rust)
     verify_flow_finality_and_shutdown(rust)
     verify_linux_credential_replica_bootstrap(rust)
     verify_callers(rust)
@@ -2983,6 +3259,60 @@ def expect_rejection(sources: Mapping[str, str], mutation: Mutation) -> None:
 def self_test(sources: Mapping[str, str]) -> None:
     validate_sources(sources)
     mutations = (
+        Mutation(
+            "Windows service admission drops its final live proof",
+            "src/ipc/auth.rs",
+            "        self.revalidate(pipe, deadline)?;\n        Ok(super::WindowsServiceOwnedPasswordAdmission {",
+            "        drop((pipe, deadline));\n        Ok(super::WindowsServiceOwnedPasswordAdmission {",
+        ),
+        Mutation(
+            "Windows service proof mints authority for the user endpoint",
+            "src/ipc/auth.rs",
+            "if self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX {",
+            "if self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX {",
+        ),
+        Mutation(
+            "Windows typed listener regains a public endpoint selector",
+            "src/platform/windows.rs",
+            "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,",
+            "pub(crate) fn start_windows_sensitive_password_listener(\n    postfix: &'static str,\n    requests: WindowsSensitivePasswordRequestSender,",
+        ),
+        Mutation(
+            "Windows service request drops its typed admission",
+            "src/platform/windows.rs",
+            "struct WindowsServiceOwnedPasswordRequest {\n    admission: ipc::WindowsServiceOwnedPasswordAdmission,",
+            "struct WindowsServiceOwnedPasswordRequest {\n    admission: bool,",
+        ),
+        Mutation(
+            "Windows service ledger borrows instead of consuming first admission",
+            "src/ipc.rs",
+            "        _admission: WindowsServiceOwnedPasswordAdmission,\n        operation_id: &str,",
+            "        _admission: &WindowsServiceOwnedPasswordAdmission,\n        operation_id: &str,",
+        ),
+        Mutation(
+            "Windows service consumer bypasses capability-bound ledger admission",
+            "src/platform/windows.rs",
+            "                if !credential_ledger.admit(\n                    admission,",
+            "                if !credential_ledger.admit(\n                    &admission,",
+        ),
+        Mutation(
+            "Windows user consumer bypasses the typed mutation entry",
+            "src/ipc.rs",
+            "                        let (status, worker) = begin_windows_user_owned_password_mutation(\n                            admission,",
+            "                        let (status, worker) = begin_password_mutation(\n                            admission,",
+        ),
+        Mutation(
+            "Windows password admission capability becomes cloneable",
+            "src/ipc.rs",
+            "pub(crate) struct WindowsServiceOwnedPasswordAdmission {",
+            "#[derive(Clone)]\npub(crate) struct WindowsServiceOwnedPasswordAdmission {",
+        ),
+        Mutation(
+            "Windows service sender selects the user endpoint",
+            "src/platform/windows.rs",
+            "Self::ServiceOwned(_) => ipc::password::SERVICE_PASSWORD_IPC_POSTFIX,",
+            "Self::ServiceOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX,",
+        ),
         Mutation(
             "credential replica service endpoint excludes Linux",
             "libs/hbb_common/src/config.rs",

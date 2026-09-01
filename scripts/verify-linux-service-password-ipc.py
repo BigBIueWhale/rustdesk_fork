@@ -1307,37 +1307,154 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
             (("terminate_and_reap_linux_pkcheck", "(", "&", "mut", "child"), "child termination and reap"),
         )
     )
-    authority = ipc.function("linux_peer_is_authorized_for_service_owned_password_change")
-    proof = authority.require(("linux_pkcheck_authorizes_service_owned_password_change", "(", "subject", ",", "shutdown", ")"), "polkit proof", unique=True)
-    live = authority.require(
-        (
-            "linux_service_owned_password_requester_is_live",
-            "(",
-            "identity",
-            ")",
-        ),
-        "final exact-role live identity proof",
+    admission_type = ipc.item("struct", "LinuxServiceOwnedPasswordAdmission")
+    admission_type.require(
+        ("requester", ":", "PeerProcessIdentity"),
+        "retained full Linux requester identity",
         unique=True,
     )
-    if live <= proof:
-        raise VerificationError(
-            f"{authority.label}: final live identity proof must follow successful interactive authority"
-        )
-    braced_conjunctive_gate = (
-        "Ok", "(", "authorized", ")", "=>", "{", "authorized", "&&",
-        "linux_service_owned_password_requester_is_live", "(", "identity", ")", "}",
+    ipc.all().forbid(
+        ("derive", "(", "Clone", ")", "]", "struct", "LinuxServiceOwnedPasswordAdmission"),
+        "cloneable Linux password admission",
     )
-    direct_gate = (
-        "Ok", "(", "authorized", ")", "=>", "authorized", "&&",
-        "linux_service_owned_password_requester_is_live", "(", "identity", ")",
+
+    grant = ipc.function("grant_linux_service_owned_password_admission")
+    ipc.all().require(
+        (
+            "async", "fn", "grant_linux_service_owned_password_admission", "(",
+            "identity", ":", "&", "PeerProcessIdentity", OPTIONAL_COMMA, ")", "->",
+            "Option", "<", "LinuxServiceOwnedPasswordAdmission", ">",
+        ),
+        "typed Linux password admission grant",
+        unique=True,
     )
-    if not (
-        authority.positions(braced_conjunctive_gate)
-        or authority.positions(direct_gate)
-    ):
-        raise VerificationError(
-            f"{authority.label}: successful polkit and final live identity must jointly gate authority"
+    grant.require_order(
+        (
+            (("linux_polkit_subject_for_identity", "(", "identity", ")"), "socket-derived polkit subject"),
+            (("linux_pkcheck_authorizes_service_owned_password_change", "(", "subject", ",", "shutdown", ")"), "bounded polkit proof"),
+            (("Ok", "(", "true", ")", "=>", "{"), "successful authorization branch"),
+            (("linux_service_owned_password_requester_is_live", "(", "identity", ")"), "post-authorization full requester replay"),
+            (("Some", "(", "LinuxServiceOwnedPasswordAdmission", "{", "requester", ":", "identity", ".", "clone", "(", ")"), "non-cloneable action admission grant"),
+        ),
+        unique=True,
+    )
+    grant.require(
+        ("if", "!", "linux_service_owned_password_requester_is_live", "(", "identity", ")"),
+        "fail-closed post-authorization requester guard",
+        unique=True,
+    )
+    ipc.all().require(
+        (
+            "Some", "(", "LinuxServiceOwnedPasswordAdmission", "{",
+            "requester", ":", "identity", ".", "clone", "(", ")", OPTIONAL_COMMA, "}", ")",
+        ),
+        "sole production Linux password admission construction",
+        unique=True,
+    )
+
+    admission_commit = ipc.method(
+        ("impl", "LinuxServiceOwnedPasswordAdmission"),
+        "admit_commit",
+        "Linux service-owned password admission capability",
+    )
+    ipc.all().require(
+        (
+            "fn", "admit_commit", "(", "self", ",", "coordinator", ":", "&",
+            "LinuxPasswordAdmissionCoordinator", ",", "operation_id", ":", "&", "str", ",",
+            "value", ":", "&", "str", OPTIONAL_COMMA, ")", "->", "ResultType", "<", "bool", ">",
+        ),
+        "consuming Linux password admission method",
+        unique=True,
+    )
+    admission_commit.require_order(
+        (
+            (("LinuxPasswordCaller", "::", "from", "(", "&", "self", ".", "requester", ")"), "capability-derived ledger caller"),
+            (("password_mutation_id_is_valid", "(", "operation_id", ")"), "canonical operation identifier"),
+            (("service_owned_password_value_is_valid", "(", '"Linux"', ",", "value", ")"), "bounded credential value"),
+            (("linux_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ")"), "final full requester replay"),
+            (("cancel_authorization", "(", "operation_id", ",", "value", ",", "&", "caller", ")"), "exact pre-admission cancellation"),
+            (("admit_authorized", "(", "&", "self", ",", "operation_id", ",", "value", ")"), "capability-typed ledger transition"),
         )
+    )
+    admission_commit.require(
+        (
+            "if", "!", "password_mutation_id_is_valid", "(", "operation_id", ")",
+            "||", "!", "service_owned_password_value_is_valid", "(", '"Linux"', ",", "value", ")",
+            "||", "!", "linux_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ")",
+        ),
+        "conjunctive operation, value, and requester validation",
+        unique=True,
+    )
+    admission_commit.forbid(("authority_allowed",), "detached Linux authority Boolean")
+    admission_commit.forbid(("admitted",), "detached Linux admission Boolean")
+
+    coordinator_scope = ipc.impl(
+        ("impl", "LinuxPasswordAdmissionCoordinator"),
+        "Linux password admission coordinator",
+    )
+    coordinator_scope.require(
+        (
+            "fn", "admit_authorized", "(", "&", "self", ",", "admission", ":", "&",
+            "LinuxServiceOwnedPasswordAdmission", ",",
+        ),
+        "action-specific coordinator admission parameter",
+        unique=True,
+    )
+    coordinator_admission = ipc.method(
+        ("impl", "LinuxPasswordAdmissionCoordinator"),
+        "admit_authorized",
+        "Linux password admission coordinator",
+    )
+    coordinator_admission.require_order(
+        (
+            (("LinuxPasswordCaller", "::", "from", "(", "&", "admission", ".", "requester", ")"), "capability-derived caller"),
+            (("fingerprint", "=", "ledger", ".", "fingerprint", "(", "value", ")"), "exact value fingerprint"),
+            (("entry", ".", "kind", "!=", "PasswordMutationKind", "::", "ServiceOwned"), "fixed service-owned kind"),
+            (("entry", ".", "fingerprint", "!=", "fingerprint"), "value equality"),
+            (("entry", ".", "caller", "!=", "caller"), "requester equality"),
+            (("entry", ".", "state", "!=", "LinuxPasswordAdmissionState", "::", "Authorizing"), "sole pre-admission state"),
+            (("entry", ".", "state", "=", "LinuxPasswordAdmissionState", "::", "Committing"), "irreversible admitted transition"),
+        )
+    )
+    coordinator_admission.forbid(("bool",), "detached coordinator authority parameter")
+
+    cancellation = ipc.method(
+        ("impl", "LinuxPasswordAdmissionCoordinator"),
+        "cancel_authorization",
+        "Linux password admission coordinator",
+    )
+    cancellation.require_order(
+        (
+            (("fingerprint", "=", "ledger", ".", "fingerprint", "(", "value", ")"), "exact denied value fingerprint"),
+            (("entry", ".", "kind", "!=", "PasswordMutationKind", "::", "ServiceOwned"), "denied service-owned kind"),
+            (("entry", ".", "fingerprint", "!=", "fingerprint"), "denied value equality"),
+            (("entry", ".", "caller", "!=", "*", "caller"), "denied requester equality"),
+            (("entry", ".", "state", "!=", "LinuxPasswordAdmissionState", "::", "Authorizing"), "denied pre-admission state"),
+            (("ledger", ".", "entries", ".", "remove", "(", "operation_id", ")"), "exact denied claim removal"),
+        )
+    )
+
+    test_module = ipc.all().require(
+        ("#", "[", "cfg", "(", "test", ")", "]", "mod", "test"),
+        "IPC test module",
+        unique=True,
+    )
+    production = Region(ipc, 0, test_module, "src/ipc.rs production")
+    production.require(
+        ("grant_linux_service_owned_password_admission", "(", "identity", ")", ".", "await"),
+        "sole real Linux admission grant call",
+        unique=True,
+    )
+    production.require(
+        ("coordinator", ".", "admit_authorized", "(", "&", "self", ",", "operation_id", ",", "value", ")"),
+        "sole capability-owned coordinator admission call",
+        unique=True,
+    )
+    production.forbid(
+        ("linux_peer_is_authorized_for_service_owned_password_change",),
+        "obsolete Boolean Linux authority adapter",
+    )
+    production.forbid(("finish_authorization",), "obsolete Boolean ledger transition")
 
 
 def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
@@ -2140,17 +2257,8 @@ def verify_mutation_coordinators(rust: Mapping[str, RustSource]) -> None:
             (("state", ":", "LinuxPasswordAdmissionState", "::", "Authorizing"), "new authority state"),
         )
     )
-    finish_auth = ipc.method(("impl", "LinuxPasswordAdmissionCoordinator"), "finish_authorization", "impl LinuxPasswordAdmissionCoordinator")
-    finish_auth.require_order(
-        (
-            (("entry", ".", "caller", "!=", "*", "caller"), "authorization caller consistency"),
-            (("entry", ".", "state", "!=", "LinuxPasswordAdmissionState", "::", "Authorizing"), "authorizing-only completion"),
-            (("if", "admitted", "{"), "successful authorization branch"),
-            (("LinuxPasswordAdmissionState", "::", "Committing"), "admitted commit transition"),
-            (("else", "{", "ledger", ".", "entries", ".", "remove", "(", "operation_id", ")"), "denial without durable capacity consumption"),
-        )
-    )
-    finish_auth.forbid(
+    cancel_auth = ipc.method(("impl", "LinuxPasswordAdmissionCoordinator"), "cancel_authorization", "impl LinuxPasswordAdmissionCoordinator")
+    cancel_auth.forbid(
         ("LinuxPasswordAdmissionState", "::", "Complete", "(", "IpcMutationResult", "::", "Rejected"),
         "durable replay entry for a denied authorization",
     )
@@ -2319,22 +2427,39 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     )
 
     operation = ipc.function("execute_linux_service_owned_password_operation")
+    ipc.all().require(
+        (
+            "async", "fn", "execute_linux_service_owned_password_operation", "<", "Commit", ",",
+            "CommitFuture", ">", "(", "coordinator", ":", "&",
+            "LinuxPasswordAdmissionCoordinator", ",", "operation_id", ":", "&", "str", ",",
+            "value", ":", "&", "str", ",", "identity", ":", "&", "PeerProcessIdentity", ",",
+            "mut", "commit", ":", "Commit", OPTIONAL_COMMA, ")", "->", "ResultType", "<",
+            "IpcMutationResult", ">",
+        ),
+        "noninjectable typed Linux password operation",
+        unique=True,
+    )
     operation.require_order(
         (
             (("kind", "=", "PasswordMutationKind", "::", "ServiceOwned"), "fixed service-owned kind"),
-            (("coordinator", ".", "begin", "(", "operation_id", ",", "kind", ",", "value", ",", "caller", ")"), "bound admission/replay"),
+            (("caller", "=", "LinuxPasswordCaller", "::", "from", "(", "identity", ")"), "full-identity-derived ledger caller"),
+            (("coordinator", ".", "begin", "(", "operation_id", ",", "kind", ",", "value", ",", "&", "caller", ")"), "bound admission/replay"),
             (("Authorize", "=>", "{"), "new authority branch"),
-            (("authorize", "(", ")", ".", "await"), "interactive authority"),
-            (("finish_authorization", "(", "operation_id", ",", "caller", ",", "admitted", ")"), "authority finalization"),
+            (("grant_linux_service_owned_password_admission", "(", "identity", ")", ".", "await"), "typed interactive authority"),
+            (("cancel_authorization", "(", "operation_id", ",", "value", ",", "&", "caller", ")"), "exact denied claim cancellation"),
+            (("admission", ".", "admit_commit", "(", "coordinator", ",", "operation_id", ",", "value", ")"), "consuming typed ledger admission"),
             (("Wait", "=>", "{"), "in-flight replay wait"),
             (("shutdown", ".", "cancelled", "(", ")"), "shutdown-aware wait"),
             (("Recover", "=>", "{"), "recovery ownership"),
             (("Complete", "(", "result", ")", "=>", "return", "Ok", "(", "result", ")"), "terminal replay"),
             (("commit", "(", ")", ".", "await"), "commit after authority/admission"),
-            (("release_failed_commit", "(", "operation_id", ",", "caller", ")"), "transport failure recovery"),
-            (("coordinator", ".", "complete", "(", "operation_id", ",", "caller", ",", "result", ")"), "terminal result recording"),
+            (("release_failed_commit", "(", "operation_id", ",", "&", "caller", ")"), "transport failure recovery"),
+            (("coordinator", ".", "complete", "(", "operation_id", ",", "&", "caller", ",", "result", ")"), "terminal result recording"),
         )
     )
+    operation.forbid(("authorize", "(", ")"), "generic Linux authority callback")
+    operation.forbid(("finish_authorization", "("), "Boolean authority finalization")
+    operation.forbid(("admitted",), "detached Linux admission Boolean")
     commit = ipc.function("commit_service_owned_unattended_password_change")
     commit.require_order(
         (
@@ -2973,6 +3098,108 @@ def self_test(sources: Mapping[str, str]) -> None:
             "fn linux_service_owned_password_client_roles_are_unchecked()",
         ),
         Mutation(
+            "Linux post-polkit password admission becomes cloneable",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedPasswordAdmission {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordAdmission {",
+        ),
+        Mutation(
+            "Linux post-polkit password admission bypasses its requester replay",
+            "src/ipc.rs",
+            "if !linux_service_owned_password_requester_is_live(identity) {\n                log::warn!(\n                    \"Rejected service-owned unattended password change: requester changed after pkcheck authorization\"",
+            "if false && !linux_service_owned_password_requester_is_live(identity) {\n                log::warn!(\n                    \"Rejected service-owned unattended password change: requester changed after pkcheck authorization\"",
+        ),
+        Mutation(
+            "Linux post-polkit password admission discards its requester capability",
+            "src/ipc.rs",
+            "Some(LinuxServiceOwnedPasswordAdmission {\n                requester: identity.clone(),\n            })",
+            "None /* LinuxServiceOwnedPasswordAdmission requester discarded */",
+        ),
+        Mutation(
+            "Linux post-polkit password admission gains a second production construction",
+            "src/ipc.rs",
+            "Some(LinuxServiceOwnedPasswordAdmission {\n                requester: identity.clone(),\n            })",
+            "let _duplicate = Some(LinuxServiceOwnedPasswordAdmission { requester: identity.clone() });\n            Some(LinuxServiceOwnedPasswordAdmission {\n                requester: identity.clone(),\n            })",
+        ),
+        Mutation(
+            "Linux password admission capability is no longer consumed",
+            "src/ipc.rs",
+            "    fn admit_commit(\n        self,",
+            "    fn admit_commit(\n        &self,",
+        ),
+        Mutation(
+            "Linux password admission capability bypasses operation-id validation",
+            "src/ipc.rs",
+            "if !password_mutation_id_is_valid(operation_id)\n            || !service_owned_password_value_is_valid(\"Linux\", value)",
+            "if false && !password_mutation_id_is_valid(operation_id)\n            || !service_owned_password_value_is_valid(\"Linux\", value)",
+        ),
+        Mutation(
+            "Linux password admission capability bypasses value validation",
+            "src/ipc.rs",
+            "|| !service_owned_password_value_is_valid(\"Linux\", value)\n            || !linux_service_owned_password_requester_is_live(&self.requester)",
+            "|| false && !service_owned_password_value_is_valid(\"Linux\", value)\n            || !linux_service_owned_password_requester_is_live(&self.requester)",
+        ),
+        Mutation(
+            "Linux password admission capability bypasses its final requester replay",
+            "src/ipc.rs",
+            "|| !linux_service_owned_password_requester_is_live(&self.requester)",
+            "|| false && !linux_service_owned_password_requester_is_live(&self.requester)",
+        ),
+        Mutation(
+            "Linux password coordinator accepts a detached Boolean instead of the capability",
+            "src/ipc.rs",
+            "admission: &LinuxServiceOwnedPasswordAdmission,",
+            "admission: bool,",
+        ),
+        Mutation(
+            "Linux password coordinator bypasses the service-owned operation kind",
+            "src/ipc.rs",
+            "if entry.kind != PasswordMutationKind::ServiceOwned\n            || entry.fingerprint != fingerprint\n            || entry.caller != caller",
+            "if entry.fingerprint != fingerprint\n            || entry.caller != caller /* service-owned kind bypassed */",
+        ),
+        Mutation(
+            "Linux password coordinator bypasses the admitted value fingerprint",
+            "src/ipc.rs",
+            "|| entry.fingerprint != fingerprint\n            || entry.caller != caller",
+            "|| entry.caller != caller /* admitted fingerprint bypassed */",
+        ),
+        Mutation(
+            "Linux password coordinator bypasses the admitted requester",
+            "src/ipc.rs",
+            "|| entry.caller != caller\n            || entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "|| entry.state != LinuxPasswordAdmissionState::Authorizing /* admitted requester bypassed */",
+        ),
+        Mutation(
+            "Linux password coordinator bypasses the Authorizing state",
+            "src/ipc.rs",
+            "|| entry.caller != caller\n            || entry.state != LinuxPasswordAdmissionState::Authorizing\n        {",
+            "|| entry.caller != caller\n            || false /* Authorizing state bypassed */\n        {",
+        ),
+        Mutation(
+            "Linux password operation reopens an injected Boolean authorizer",
+            "src/ipc.rs",
+            "async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(",
+            "async fn execute_linux_service_owned_password_operation<Authorize, Commit, CommitFuture>(",
+        ),
+        Mutation(
+            "Linux password operation bypasses the consuming admission capability",
+            "src/ipc.rs",
+            "if !admission.admit_commit(coordinator, operation_id, value)? {",
+            "if !coordinator.admit_authorized(&admission, operation_id, value) {",
+        ),
+        Mutation(
+            "Linux denied authorization cancellation bypasses its value fingerprint",
+            "src/ipc.rs",
+            "|| entry.fingerprint != fingerprint\n            || entry.caller != *caller",
+            "|| entry.caller != *caller /* denied fingerprint bypassed */",
+        ),
+        Mutation(
+            "Linux denied authorization cancellation can remove admitted work",
+            "src/ipc.rs",
+            "|| entry.caller != *caller\n            || entry.state != LinuxPasswordAdmissionState::Authorizing\n        {",
+            "|| entry.caller != *caller\n            || false /* cancellation state bypassed */\n        {",
+        ),
+        Mutation(
             "macOS password requester drops its accepted-socket audit-token identity",
             "src/ipc/auth.rs",
             "pub(crate) struct MacosServiceOwnedPasswordRequester {\n    identity: MacosPeerProcessIdentity,\n    argv: Vec<String>,\n}",
@@ -3452,12 +3679,6 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc.rs",
             "WindowsCredentialOperationState::Active => None,",
             "WindowsCredentialOperationState::Active => { return true; } /* None */",
-        ),
-        Mutation(
-            "final live identity proof no longer gates successful authority",
-            "src/ipc.rs",
-            "            authorized\n                && linux_service_owned_password_requester_is_live(identity)",
-            "            authorized\n                || linux_service_owned_password_requester_is_live(identity) /* authorized && */",
         ),
         Mutation(
             "final live identity proof uses a stale session authority",

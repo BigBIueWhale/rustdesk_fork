@@ -5219,7 +5219,7 @@ def validate_smoke_contract(
     pkcheck_authorization = extract_between(
         ipc_source,
         "fn linux_pkcheck_authorizes_service_owned_password_change",
-        "\nasync fn linux_peer_is_authorized_for_service_owned_password_change",
+        "\nasync fn grant_linux_service_owned_password_admission",
         "Linux pkcheck helper launch",
     )
     for text, label in (
@@ -12086,25 +12086,148 @@ def validate_linux_service_owned_password_requester_contract(sources):
             "generic or secret-reading Linux password listener authority",
         )
 
-    authority = extract_braced_item(
+    require_text(
         ipc,
-        "async fn linux_peer_is_authorized_for_service_owned_password_change(",
-        "post-polkit Linux service-owned password requester authority",
-    )
-    require_order(
-        authority,
-        (
-            "linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown)",
-            "Ok(authorized)",
-            "authorized\n                && linux_service_owned_password_requester_is_live(identity)",
-        ),
-        "successful polkit plus final exact Linux requester generation",
+        "struct LinuxServiceOwnedPasswordAdmission {\n"
+        "    requester: PeerProcessIdentity,\n"
+        "}",
+        "full-requester Linux password admission type",
     )
     require_absent(
-        authority,
-        "peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)",
-        "generic final Linux password action authority",
+        ipc,
+        "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordAdmission",
+        "cloneable Linux password admission",
     )
+    production = ipc.rsplit("#[cfg(test)]\nmod test", 1)[0]
+    require_exact_count(
+        production,
+        "Some(LinuxServiceOwnedPasswordAdmission {",
+        1,
+        "sole production Linux password admission construction",
+    )
+
+    grant = extract_braced_item(
+        ipc,
+        "async fn grant_linux_service_owned_password_admission(",
+        "typed post-polkit Linux service-owned password grant",
+    )
+    require_text(
+        ipc,
+        "async fn grant_linux_service_owned_password_admission(\n"
+        "    identity: &PeerProcessIdentity,\n"
+        ") -> Option<LinuxServiceOwnedPasswordAdmission> {",
+        "typed Linux password admission result",
+    )
+    require_order(
+        grant,
+        (
+            "linux_polkit_subject_for_identity(identity)",
+            "linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown)",
+            "Ok(true) => {",
+            "if !linux_service_owned_password_requester_is_live(identity)",
+            "Some(LinuxServiceOwnedPasswordAdmission {",
+            "requester: identity.clone()",
+        ),
+        "successful pkcheck, exact post-authorization replay, and requester-retaining grant",
+    )
+
+    capability = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedPasswordAdmission",
+        "consuming Linux service-owned password admission capability",
+    )
+    require_text(
+        capability,
+        "fn admit_commit(\n"
+        "        self,\n"
+        "        coordinator: &LinuxPasswordAdmissionCoordinator,\n"
+        "        operation_id: &str,\n"
+        "        value: &str,\n"
+        "    ) -> ResultType<bool> {",
+        "consuming Linux password admission transition",
+    )
+    require_order(
+        capability,
+        (
+            "LinuxPasswordCaller::from(&self.requester)",
+            "if !password_mutation_id_is_valid(operation_id)",
+            '|| !service_owned_password_value_is_valid("Linux", value)',
+            "|| !linux_service_owned_password_requester_is_live(&self.requester)",
+            "cancel_authorization(operation_id, value, &caller)",
+            "admit_authorized(&self, operation_id, value)",
+        ),
+        "operation/value/requester validation before capability-typed ledger admission",
+    )
+
+    coordinator = extract_braced_item(
+        ipc,
+        "impl LinuxPasswordAdmissionCoordinator",
+        "Linux password admission coordinator",
+    )
+    require_text(
+        coordinator,
+        "admission: &LinuxServiceOwnedPasswordAdmission,",
+        "action-specific Linux coordinator admission parameter",
+    )
+    require_order(
+        coordinator,
+        (
+            "fn admit_authorized(",
+            "LinuxPasswordCaller::from(&admission.requester)",
+            "let fingerprint = ledger.fingerprint(value)",
+            "entry.kind != PasswordMutationKind::ServiceOwned",
+            "|| entry.fingerprint != fingerprint",
+            "|| entry.caller != caller",
+            "|| entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "entry.state = LinuxPasswordAdmissionState::Committing",
+            "fn cancel_authorization(",
+            "entry.kind != PasswordMutationKind::ServiceOwned",
+            "|| entry.fingerprint != fingerprint",
+            "|| entry.caller != *caller",
+            "|| entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "ledger.entries.remove(operation_id)",
+        ),
+        "typed admission and exact denial cancellation state transitions",
+    )
+
+    operation = extract_braced_item(
+        ipc,
+        "async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(",
+        "typed Linux service-owned password operation",
+    )
+    require_order(
+        operation,
+        (
+            "LinuxPasswordCaller::from(identity)",
+            "coordinator.begin(operation_id, kind, value, &caller)",
+            "LinuxPasswordAdmissionDecision::Authorize => {",
+            "grant_linux_service_owned_password_admission(identity).await",
+            "cancel_authorization(operation_id, value, &caller)",
+            "admission.admit_commit(coordinator, operation_id, value)",
+            "LinuxPasswordAdmissionDecision::Wait => {",
+            "LinuxPasswordAdmissionDecision::Recover => {}",
+            "LinuxPasswordAdmissionDecision::Complete(result) => return Ok(result)",
+            "commit().await",
+            "release_failed_commit(operation_id, &caller)",
+            "coordinator.complete(operation_id, &caller, result)",
+        ),
+        "typed new admission followed by service-owned replay, recovery, and terminal finality",
+    )
+    for forbidden, label in (
+        ("AuthorizeFuture", "generic Boolean authorization future"),
+        ("finish_authorization", "detached Boolean ledger finalization"),
+        (
+            "linux_peer_is_authorized_for_service_owned_password_change",
+            "obsolete Boolean authority adapter",
+        ),
+    ):
+        require_absent(production, forbidden, label)
+    for text, count, label in (
+        ("grant_linux_service_owned_password_admission(", 2, "sole real typed grant caller"),
+        ("admit_commit(", 2, "sole consuming capability caller"),
+        ("admit_authorized(", 2, "sole production capability-owned coordinator caller"),
+    ):
+        require_exact_count(production, text, count, label)
 
     regression = extract_braced_item(
         auth,
@@ -12126,6 +12249,10 @@ def validate_linux_service_owned_password_requester_contract(sources):
 
     for text, label in (
         (
+            'admission_type = ipc.item("struct", "LinuxServiceOwnedPasswordAdmission")',
+            "focused sole Linux capability construction enforcement",
+        ),
+        (
             '(("argv", ":", "args", ",", "cm_launch_token"), "complete process role capture")',
             "focused complete-argv retention enforcement",
         ),
@@ -12138,8 +12265,20 @@ def validate_linux_service_owned_password_requester_contract(sources):
             "focused pre-body action authenticator enforcement",
         ),
         (
-            '"final exact-role live identity proof"',
-            "focused post-polkit exact-role enforcement",
+            '"typed Linux password admission grant"',
+            "focused typed post-polkit grant enforcement",
+        ),
+        (
+            '"sole production Linux password admission construction"',
+            "focused sole Linux capability construction enforcement",
+        ),
+        (
+            '"consuming Linux password admission method"',
+            "focused consuming Linux admission enforcement",
+        ),
+        (
+            '"action-specific coordinator admission parameter"',
+            "focused capability-typed Linux coordinator enforcement",
         ),
         (
             '"Linux process identity retains only a truncated argv"',
@@ -12160,6 +12299,22 @@ def validate_linux_service_owned_password_requester_contract(sources):
         (
             '"Linux password exact-role regression is removed"',
             "focused finite-role regression mutation",
+        ),
+        (
+            '"Linux post-polkit password admission becomes cloneable"',
+            "focused Linux admission clone mutation",
+        ),
+        (
+            '"Linux password admission capability bypasses its final requester replay"',
+            "focused Linux capability final-replay mutation",
+        ),
+        (
+            '"Linux password coordinator accepts a detached Boolean instead of the capability"',
+            "focused Linux detached-coordinator mutation",
+        ),
+        (
+            '"Linux password operation bypasses the consuming admission capability"',
+            "focused Linux direct-ledger mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -12207,6 +12362,78 @@ def validate_linux_service_owned_password_requester_contract(sources):
         sources["native_watch"],
         "The same identity additionally binds R-S11hx and Appendix C #383.",
         "exact Linux service-owned password requester identity binding",
+    )
+    for source, text, label in (
+        (
+            sources["requirements"],
+            '<span class="id">R-S11ie</span>',
+            "typed Linux post-polkit password authority requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>390</td>",
+            "typed Linux post-polkit password authority Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
+            "typed Linux post-polkit password authority hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11ie and Appendix C #390.",
+            "typed Linux post-polkit password authority identity binding",
+        ),
+        (
+            sources["requirements"],
+            "one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean",
+            "normative non-cloneable Linux password admission",
+        ),
+        (
+            sources["requirements"],
+            "successful <code>pkcheck</code> exit and exact post-authorization requester replay",
+            "normative post-polkit Linux capability grant",
+        ),
+        (
+            sources["requirements"],
+            "signature itself requires a reference to the exact admission object",
+            "normative capability-typed Linux coordinator admission",
+        ),
+    ):
+        require_text(source, text, label)
+    for source, text, label in (
+        (
+            sources["verify"],
+            '"linux-post-polkit-authority-not-typed-through-ledger-admission"',
+            "shared embedded typed Linux password admission analyzer",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<span class=\"id\">R-S11ie</span>' requirements.html",
+            "shared typed Linux password requirement binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<span class=\"id\">R-S11ie</span>' \"$REPO/requirements.html\"",
+            "Apple typed Linux password requirement binding",
+        ),
+        (
+            sources["apple"],
+            'mutation("linux-password-admission-clone"',
+            "Apple Linux admission clone mutation",
+        ),
+        (
+            sources["apple"],
+            'scoped_mutation("linux-password-operation-direct-ledger-admission"',
+            "Apple Linux direct-ledger mutation",
+        ),
+    ):
+        require_text(source, text, label)
+    require_exact_count(
+        sources["apple"],
+        '"linux-post-polkit-authority-not-typed-through-ledger-admission"',
+        15,
+        "Apple embedded typed Linux password admission analyzer",
     )
     require_text(
         sources["workspace_verifier"],
@@ -65855,9 +66082,107 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "                && linux_service_owned_password_requester_is_live(identity)",
-            "                && peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)",
-            "successful polkit plus final exact Linux requester generation",
+            "struct LinuxServiceOwnedPasswordAdmission {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordAdmission {",
+            "cloneable Linux password admission",
+        ),
+        (
+            "ipc_source",
+            "Some(LinuxServiceOwnedPasswordAdmission {\n"
+            "                requester: identity.clone(),\n"
+            "            })",
+            "let _duplicate = Some(LinuxServiceOwnedPasswordAdmission { requester: identity.clone() });\n"
+            "            Some(LinuxServiceOwnedPasswordAdmission {\n"
+            "                requester: identity.clone(),\n"
+            "            })",
+            "sole production Linux password admission construction",
+        ),
+        (
+            "ipc_source",
+            "if !linux_service_owned_password_requester_is_live(identity) {\n"
+            "                log::warn!(\n"
+            "                    \"Rejected service-owned unattended password change: requester changed after pkcheck authorization\"",
+            "if false && !linux_service_owned_password_requester_is_live(identity) {\n"
+            "                log::warn!(\n"
+            "                    \"Rejected service-owned unattended password change: requester changed after pkcheck authorization\"",
+            "successful pkcheck, exact post-authorization replay, and requester-retaining grant",
+        ),
+        (
+            "ipc_source",
+            "Some(LinuxServiceOwnedPasswordAdmission {\n"
+            "                requester: identity.clone(),\n"
+            "            })",
+            "None /* LinuxServiceOwnedPasswordAdmission requester discarded */",
+            "sole production Linux password admission construction",
+        ),
+        (
+            "ipc_source",
+            "    fn admit_commit(\n        self,",
+            "    fn admit_commit(\n        &self,",
+            "consuming Linux password admission transition",
+        ),
+        (
+            "ipc_source",
+            "if !password_mutation_id_is_valid(operation_id)\n"
+            "            || !service_owned_password_value_is_valid(\"Linux\", value)",
+            "if false && !password_mutation_id_is_valid(operation_id)\n"
+            "            || !service_owned_password_value_is_valid(\"Linux\", value)",
+            "operation/value/requester validation before capability-typed ledger admission",
+        ),
+        (
+            "ipc_source",
+            "|| !service_owned_password_value_is_valid(\"Linux\", value)\n"
+            "            || !linux_service_owned_password_requester_is_live(&self.requester)",
+            "|| false && !service_owned_password_value_is_valid(\"Linux\", value)\n"
+            "            || !linux_service_owned_password_requester_is_live(&self.requester)",
+            "operation/value/requester validation before capability-typed ledger admission",
+        ),
+        (
+            "ipc_source",
+            "|| !linux_service_owned_password_requester_is_live(&self.requester)",
+            "|| false && !linux_service_owned_password_requester_is_live(&self.requester)",
+            "operation/value/requester validation before capability-typed ledger admission",
+        ),
+        (
+            "ipc_source",
+            "admission: &LinuxServiceOwnedPasswordAdmission,",
+            "admission: bool,",
+            "action-specific Linux coordinator admission parameter",
+        ),
+        (
+            "ipc_source",
+            "if entry.kind != PasswordMutationKind::ServiceOwned\n"
+            "            || entry.fingerprint != fingerprint\n"
+            "            || entry.caller != caller",
+            "if entry.fingerprint != fingerprint\n"
+            "            || entry.caller != caller",
+            "typed admission and exact denial cancellation state transitions",
+        ),
+        (
+            "ipc_source",
+            "|| entry.fingerprint != fingerprint\n"
+            "            || entry.caller != caller",
+            "|| entry.caller != caller",
+            "typed admission and exact denial cancellation state transitions",
+        ),
+        (
+            "ipc_source",
+            "|| entry.caller != caller\n"
+            "            || entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "|| entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "typed admission and exact denial cancellation state transitions",
+        ),
+        (
+            "ipc_source",
+            "if !admission.admit_commit(coordinator, operation_id, value)? {",
+            "if !coordinator.admit_authorized(&admission, operation_id, value) {",
+            "typed new admission followed by service-owned replay, recovery, and terminal finality",
+        ),
+        (
+            "ipc_source",
+            "async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(",
+            "async fn execute_linux_service_owned_password_operation<Authorize, Commit, CommitFuture>(",
+            "typed Linux service-owned password operation",
         ),
         (
             "ipc_auth_source",
@@ -65882,6 +66207,36 @@ def run_source_mutations(sources):
             '"Linux password requester finality loses its role recheck"',
             '"Linux password requester finality keeps its role recheck"',
             "focused final role-recheck mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'admission_type = ipc.item("struct", "LinuxServiceOwnedPasswordAdmission")',
+            'admission_type_disabled = ipc.item("struct", "LinuxServiceOwnedPasswordAdmission")',
+            "focused sole Linux capability construction enforcement",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux post-polkit password admission becomes cloneable"',
+            '"Linux post-polkit password admission remains cloneable"',
+            "focused Linux admission clone mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux password admission capability bypasses its final requester replay"',
+            '"Linux password admission capability retains its final requester replay"',
+            "focused Linux capability final-replay mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux password coordinator accepts a detached Boolean instead of the capability"',
+            '"Linux password coordinator retains the capability"',
+            "focused Linux detached-coordinator mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux password operation bypasses the consuming admission capability"',
+            '"Linux password operation retains the consuming admission capability"',
+            "focused Linux direct-ledger mutation",
         ),
         (
             "verify",
@@ -65936,6 +66291,78 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11hx and Appendix C #383.",
             "The same identity no longer binds R-S11hx and Appendix C #383.",
             "exact Linux service-owned password requester identity binding",
+        ),
+        (
+            "verify",
+            '"linux-post-polkit-authority-not-typed-through-ledger-admission"',
+            '"linux-post-polkit-authority-not-checked"',
+            "shared embedded typed Linux password admission analyzer",
+        ),
+        (
+            "apple",
+            '"linux-post-polkit-authority-not-typed-through-ledger-admission"',
+            '"linux-post-polkit-authority-not-checked"',
+            "Apple embedded typed Linux password admission analyzer",
+        ),
+        (
+            "apple",
+            'mutation("linux-password-admission-clone"',
+            'mutation("linux-password-admission-clone-disabled"',
+            "Apple Linux admission clone mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-password-operation-direct-ledger-admission"',
+            'scoped_mutation("linux-password-operation-direct-ledger-admission-disabled"',
+            "Apple Linux direct-ledger mutation",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11ie</span>\' requirements.html',
+            "true # typed Linux password admission requirement binding disabled",
+            "shared typed Linux password requirement binding",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11ie</span>\' "$REPO/requirements.html"',
+            "true # Apple typed Linux password admission requirement binding disabled",
+            "Apple typed Linux password requirement binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ie</span>',
+            '<span class="id">R-S11ie-disabled</span>',
+            "typed Linux post-polkit password authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>390</td>",
+            "<tr><td>390-disabled</td>",
+            "typed Linux post-polkit password authority Appendix C row",
+        ),
+        (
+            "requirements",
+            "one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean",
+            "one cloneable <code>LinuxServiceOwnedPasswordAdmission</code> or a Boolean",
+            "normative non-cloneable Linux password admission",
+        ),
+        (
+            "requirements",
+            "successful <code>pkcheck</code> exit and exact post-authorization requester replay",
+            "a successful <code>pkcheck</code> exit without requester replay",
+            "normative post-polkit Linux capability grant",
+        ),
+        (
+            "hardening",
+            "R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
+            "R-S11ie-disabled/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
+            "typed Linux post-polkit password authority hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ie and Appendix C #390.",
+            "The same identity no longer binds R-S11ie and Appendix C #390.",
+            "typed Linux post-polkit password authority identity binding",
         ),
         (
             "workspace_verifier",

@@ -784,6 +784,11 @@ struct LinuxPasswordCaller {
 }
 
 #[cfg(target_os = "linux")]
+struct LinuxServiceOwnedPasswordAdmission {
+    requester: PeerProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
 impl From<&PeerProcessIdentity> for LinuxPasswordCaller {
     fn from(identity: &PeerProcessIdentity) -> Self {
         Self {
@@ -928,24 +933,50 @@ impl LinuxPasswordAdmissionCoordinator {
         LinuxPasswordAdmissionDecision::Authorize
     }
 
-    fn finish_authorization(
+    fn admit_authorized(
         &self,
+        admission: &LinuxServiceOwnedPasswordAdmission,
         operation_id: &str,
-        caller: &LinuxPasswordCaller,
-        admitted: bool,
+        value: &str,
     ) -> bool {
+        let caller = LinuxPasswordCaller::from(&admission.requester);
         let mut ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
         let Some(entry) = ledger.entries.get_mut(operation_id) else {
             return false;
         };
-        if entry.caller != *caller || entry.state != LinuxPasswordAdmissionState::Authorizing {
+        if entry.kind != PasswordMutationKind::ServiceOwned
+            || entry.fingerprint != fingerprint
+            || entry.caller != caller
+            || entry.state != LinuxPasswordAdmissionState::Authorizing
+        {
             return false;
         }
-        if admitted {
-            entry.state = LinuxPasswordAdmissionState::Committing;
-        } else {
-            ledger.entries.remove(operation_id);
+        entry.state = LinuxPasswordAdmissionState::Committing;
+        drop(ledger);
+        self.changed.notify_waiters();
+        true
+    }
+
+    fn cancel_authorization(
+        &self,
+        operation_id: &str,
+        value: &str,
+        caller: &LinuxPasswordCaller,
+    ) -> bool {
+        let mut ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
+        let Some(entry) = ledger.entries.get(operation_id) else {
+            return false;
+        };
+        if entry.kind != PasswordMutationKind::ServiceOwned
+            || entry.fingerprint != fingerprint
+            || entry.caller != *caller
+            || entry.state != LinuxPasswordAdmissionState::Authorizing
+        {
+            return false;
         }
+        ledger.entries.remove(operation_id);
         drop(ledger);
         self.changed.notify_waiters();
         true
@@ -5047,9 +5078,9 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
 }
 
 #[cfg(target_os = "linux")]
-async fn linux_peer_is_authorized_for_service_owned_password_change(
+async fn grant_linux_service_owned_password_admission(
     identity: &PeerProcessIdentity,
-) -> bool {
+) -> Option<LinuxServiceOwnedPasswordAdmission> {
     let subject = linux_polkit_subject_for_identity(identity);
     let shutdown = crate::server::shutdown_token();
     match tokio::task::spawn_blocking(move || {
@@ -5057,50 +5088,79 @@ async fn linux_peer_is_authorized_for_service_owned_password_change(
     })
     .await
     {
-        Ok(authorized) => {
-            authorized
-                && linux_service_owned_password_requester_is_live(identity)
+        Ok(true) => {
+            if !linux_service_owned_password_requester_is_live(identity) {
+                log::warn!(
+                    "Rejected service-owned unattended password change: requester changed after pkcheck authorization"
+                );
+                return None;
+            }
+            Some(LinuxServiceOwnedPasswordAdmission {
+                requester: identity.clone(),
+            })
         }
+        Ok(false) => None,
         Err(err) => {
             log::warn!(
                 "Rejected service-owned unattended password change: pkcheck task failed: {err}"
             );
-            false
+            None
         }
     }
 }
 
 #[cfg(target_os = "linux")]
-async fn execute_linux_service_owned_password_operation<
-    Authorize,
-    AuthorizeFuture,
-    Commit,
-    CommitFuture,
->(
+impl LinuxServiceOwnedPasswordAdmission {
+    fn admit_commit(
+        self,
+        coordinator: &LinuxPasswordAdmissionCoordinator,
+        operation_id: &str,
+        value: &str,
+    ) -> ResultType<bool> {
+        let caller = LinuxPasswordCaller::from(&self.requester);
+        if !password_mutation_id_is_valid(operation_id)
+            || !service_owned_password_value_is_valid("Linux", value)
+            || !linux_service_owned_password_requester_is_live(&self.requester)
+        {
+            if !coordinator.cancel_authorization(operation_id, value, &caller) {
+                bail!("Linux password denial could not cancel its authorization claim");
+            }
+            return Ok(false);
+        }
+        if !coordinator.admit_authorized(&self, operation_id, value) {
+            bail!("Linux password admission state changed before commit ownership");
+        }
+        Ok(true)
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(
     coordinator: &LinuxPasswordAdmissionCoordinator,
     operation_id: &str,
     value: &str,
-    caller: &LinuxPasswordCaller,
-    mut authorize: Authorize,
+    identity: &PeerProcessIdentity,
     mut commit: Commit,
 ) -> ResultType<IpcMutationResult>
 where
-    Authorize: FnMut() -> AuthorizeFuture,
-    AuthorizeFuture: std::future::Future<Output = bool>,
     Commit: FnMut() -> CommitFuture,
     CommitFuture: std::future::Future<Output = ResultType<IpcMutationResult>>,
 {
     let kind = PasswordMutationKind::ServiceOwned;
+    let caller = LinuxPasswordCaller::from(identity);
     let shutdown = crate::server::shutdown_token();
     loop {
         let changed = coordinator.changed.notified();
-        match coordinator.begin(operation_id, kind, value, caller) {
+        match coordinator.begin(operation_id, kind, value, &caller) {
             LinuxPasswordAdmissionDecision::Authorize => {
-                let admitted = authorize().await;
-                if !coordinator.finish_authorization(operation_id, caller, admitted) {
-                    bail!("Linux password authorization admission state changed unexpectedly");
-                }
-                if !admitted {
+                let Some(admission) = grant_linux_service_owned_password_admission(identity).await
+                else {
+                    if !coordinator.cancel_authorization(operation_id, value, &caller) {
+                        bail!("Linux password denial could not cancel its authorization claim");
+                    }
+                    return Ok(IpcMutationResult::Rejected);
+                };
+                if !admission.admit_commit(coordinator, operation_id, value)? {
                     return Ok(IpcMutationResult::Rejected);
                 }
             }
@@ -5124,13 +5184,13 @@ where
         let result = match commit().await {
             Ok(result) => result,
             Err(err) => {
-                if !coordinator.release_failed_commit(operation_id, caller) {
+                if !coordinator.release_failed_commit(operation_id, &caller) {
                     bail!("Linux password commit ownership changed after a commit failure");
                 }
                 return Err(err);
             }
         };
-        if !coordinator.complete(operation_id, caller, result) {
+        if !coordinator.complete(operation_id, &caller, result) {
             bail!("Linux admitted password operation could not record its terminal result");
         }
         return Ok(result);
@@ -5230,15 +5290,13 @@ async fn execute_linux_service_owned_unattended_password_request(
         log::warn!("Rejected service-owned unattended password change");
         return PasswordMutationStatus::Complete(IpcMutationResult::Rejected);
     }
-    let caller = LinuxPasswordCaller::from(&identity);
     let commit_operation_id = operation_id.clone();
     let mut commit_value = Some(value.clone());
     let result = match execute_linux_service_owned_password_operation(
         linux_password_admissions(),
         &operation_id,
         value.as_str(),
-        &caller,
-        || linux_peer_is_authorized_for_service_owned_password_change(&identity),
+        &identity,
         || {
             let value = commit_value.take();
             let operation_id = commit_operation_id.clone();
@@ -10383,10 +10441,22 @@ mod test {
     }
 
     #[cfg(target_os = "linux")]
-    #[tokio::test(flavor = "current_thread")]
-    async fn linux_admitted_replay_after_lost_response_does_not_repeat_denied_polkit() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+    fn linux_password_admission_for_test(
+        caller: &LinuxPasswordCaller,
+    ) -> LinuxServiceOwnedPasswordAdmission {
+        LinuxServiceOwnedPasswordAdmission {
+            requester: PeerProcessIdentity::for_test(
+                caller.pid,
+                caller.uid,
+                caller.start_time.clone(),
+                vec!["rustdesk".to_owned()],
+            ),
+        }
+    }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_admitted_replay_after_lost_response_uses_terminal_result() {
         let coordinator = LinuxPasswordAdmissionCoordinator::new();
         let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
         let caller = LinuxPasswordCaller {
@@ -10394,39 +10464,27 @@ mod test {
             uid: 1000,
             start_time: "10".to_owned(),
         };
-        let authorization_calls = AtomicUsize::new(0);
-        let first = execute_linux_service_owned_password_operation(
-            &coordinator,
-            &operation_id,
-            "new-password",
-            &caller,
-            || {
-                authorization_calls.fetch_add(1, Ordering::Relaxed);
-                async { true }
-            },
-            || async { Ok(IpcMutationResult::Applied) },
-        )
-        .await
-        .unwrap();
-        assert_eq!(first, IpcMutationResult::Applied);
-
-        // Model loss of the outer result: replay the exact request. This closure models a fresh
-        // polkit denial and must never run because the operation is already admitted/complete.
-        let replay = execute_linux_service_owned_password_operation(
-            &coordinator,
-            &operation_id,
-            "new-password",
-            &caller,
-            || {
-                authorization_calls.fetch_add(1, Ordering::Relaxed);
-                async { false }
-            },
-            || async { Ok(IpcMutationResult::InternalFailure) },
-        )
-        .await
-        .unwrap();
-        assert_eq!(replay, IpcMutationResult::Applied);
-        assert_eq!(authorization_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "new-password",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Authorize
+        );
+        let admission = linux_password_admission_for_test(&caller);
+        assert!(coordinator.admit_authorized(&admission, &operation_id, "new-password"));
+        assert!(coordinator.complete(&operation_id, &caller, IpcMutationResult::Applied));
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "new-password",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Complete(IpcMutationResult::Applied)
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -10449,7 +10507,7 @@ mod test {
                 ),
                 LinuxPasswordAdmissionDecision::Authorize
             );
-            assert!(coordinator.finish_authorization(&operation_id, &caller, false));
+            assert!(coordinator.cancel_authorization(&operation_id, "secret", &caller));
         }
         assert!(coordinator.ledger.lock().unwrap().entries.is_empty());
     }
@@ -10475,7 +10533,8 @@ mod test {
                 ),
                 LinuxPasswordAdmissionDecision::Authorize
             );
-            assert!(coordinator.finish_authorization(&operation_id, &caller, true));
+            let admission = linux_password_admission_for_test(&caller);
+            assert!(coordinator.admit_authorized(&admission, &operation_id, "secret"));
             assert!(coordinator.complete(&operation_id, &caller, IpcMutationResult::Applied));
             if index == 0 {
                 std::thread::sleep(std::time::Duration::from_millis(1));
@@ -10542,7 +10601,8 @@ mod test {
             ),
             LinuxPasswordAdmissionDecision::Authorize
         );
-        assert!(coordinator.finish_authorization(&operation_id, &caller, true));
+        let admission = linux_password_admission_for_test(&caller);
+        assert!(coordinator.admit_authorized(&admission, &operation_id, "secret"));
         assert_eq!(
             coordinator.begin(
                 &operation_id,
@@ -10574,10 +10634,8 @@ mod test {
     }
 
     #[cfg(target_os = "linux")]
-    #[tokio::test(flavor = "current_thread")]
-    async fn linux_admitted_unresolved_replay_recovers_when_polkit_is_unavailable() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+    #[test]
+    fn linux_admitted_unresolved_replay_recovers_without_new_authorization() {
         let coordinator = LinuxPasswordAdmissionCoordinator::new();
         let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
         let caller = LinuxPasswordCaller {
@@ -10585,36 +10643,37 @@ mod test {
             uid: 1000,
             start_time: "11".to_owned(),
         };
-        let authorization_calls = AtomicUsize::new(0);
-        let first = execute_linux_service_owned_password_operation(
-            &coordinator,
-            &operation_id,
-            "new-password",
-            &caller,
-            || {
-                authorization_calls.fetch_add(1, Ordering::Relaxed);
-                async { true }
-            },
-            || async { Err(hbb_common::anyhow::anyhow!("lost child response")) },
-        )
-        .await;
-        assert!(first.is_err());
-
-        let replay = execute_linux_service_owned_password_operation(
-            &coordinator,
-            &operation_id,
-            "new-password",
-            &caller,
-            || {
-                authorization_calls.fetch_add(1, Ordering::Relaxed);
-                async { false }
-            },
-            || async { Ok(IpcMutationResult::Applied) },
-        )
-        .await
-        .unwrap();
-        assert_eq!(replay, IpcMutationResult::Applied);
-        assert_eq!(authorization_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "new-password",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Authorize
+        );
+        let admission = linux_password_admission_for_test(&caller);
+        assert!(coordinator.admit_authorized(&admission, &operation_id, "new-password"));
+        assert!(coordinator.release_failed_commit(&operation_id, &caller));
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "new-password",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Recover
+        );
+        assert!(coordinator.complete(&operation_id, &caller, IpcMutationResult::Applied));
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "new-password",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Complete(IpcMutationResult::Applied)
+        );
 
         let mismatched_caller = LinuxPasswordCaller {
             pid: 102,

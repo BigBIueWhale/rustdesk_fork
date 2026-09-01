@@ -29396,7 +29396,7 @@ publication.
 
 Current normative identity for this slice:
 
-9726f602a30285bc55c9a17dd0b862aff7699d2c0e609cdc995f7f2ec7bf92fc  requirements.html
+snapshot 9726f602a30285bc55c9a17dd0b862aff7699d2c0e609cdc995f7f2ec7bf92fc  requirements.html
 
 It binds R-S11id/R-S11e-267 and Appendix C #389 and is synchronized with
 `docs/NATIVE-CODEC-WATCH.md`.
@@ -29411,3 +29411,197 @@ or change a host listener, firewall, network namespace, or configuration; touch
 Android, a VM, Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root,
 privileged containers, host networking, published ports, devices, or a Docker socket
 inside a verifier.
+
+### R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission
+
+**Status:** EXACT-CURRENT SOURCE GATES GREEN / NATIVE LINUX, INSTALLED,
+PERFORMANCE, RELEASE, AND REVIEW EVIDENCE OPEN.
+
+The continuing action-by-action privileged IPC review found the Linux analogue of the
+authority-lifetime issue closed for macOS by R-S11id. Before this slice, the raw
+`_service_password` listener correctly retained the complete socket-derived
+`PeerProcessIdentity`, admitted only the finite interactive UI, `--password`, or
+`--password-stdin` roles before reading the secret, formed the polkit subject from the
+same PID/start-time/UID identity, ran the fixed trusted `pkcheck` under its existing
+deadline/shutdown/reap contract, and replayed the complete requester after successful
+authorization.
+
+Those proofs did not reach the credential ledger as an authority-bearing lifetime.
+The original transaction state machine and `finish_authorization` API came from
+`57bcb529`; the original polkit authorization path came from `a3347f2`; and
+`db7da583` added the exact-role final replay. The post-polkit adapter still returned a
+`bool`, while `finish_authorization` accepted that detached Boolean and a reduced
+PID/UID/start-time caller. It converted `Authorizing` to `Committing` without an API
+type that retained the complete requester identity or made successful action proof a
+structural precondition of the transition.
+
+This is source-proven action-authority lifetime and admission-API debt. The actual
+stack was synchronous and a new write still required successful `pkcheck`, the exact
+post-authorization requester replay, and matching ledger caller/state; this review did
+not identify a path that admitted a new password write without those checks. It is not
+evidence of an unauthorized password change, credential disclosure, exploitation,
+host RustDesk/service/configuration/firewall/network mutation, public exposure,
+Docker privilege use, host compromise, or causation of the user's older Android or
+Windows display-delay reports. No claim is made about whether an unidentified deployed
+artifact contained this source state.
+
+The repair replaces the detached successful-authority Boolean with one private,
+non-cloneable `LinuxServiceOwnedPasswordAdmission`. Its sole production construction
+occurs only after successful bounded `pkcheck` and a fresh exact replay of the complete
+requester; it retains the full `PeerProcessIdentity`. Denial, timeout, shutdown,
+worker failure, changed generation, or changed role yields no capability. The
+operation executor no longer accepts an injectable authorization closure/future,
+reduced caller, or Boolean authority and no longer names `finish_authorization`.
+
+The capability's consuming `admit_commit` method rederives the ledger caller, validates
+the canonical operation UUID and password bound, and repeats the complete live
+requester replay immediately before the protected transition. A failed pre-admission
+check can remove only an exact service-owned `Authorizing` entry with the same
+operation ID, keyed value fingerprint, and caller. Its next protected action is the
+sole production call to `admit_authorized`, whose signature requires a reference to
+that exact capability. The coordinator independently rederives the caller from the
+capability and requires exact service-owned kind, keyed fingerprint, caller, and
+`Authorizing` state before changing the entry to `Committing`. The capability is then
+consumed; a generic Boolean finalizer or direct executor-to-ledger alternative is
+absent.
+
+`Committing` remains the irreversible authorization point. Once admitted, the root
+service deliberately owns durable persistence, child PRS convergence, terminal
+completion, same-ID/value/caller replay, failed-commit recovery, shutdown drain, and
+uncertain-outcome finality without rerunning polkit or depending on requester survival.
+Cancelling or reauthorizing `Committing`, `Recoverable`, or `Complete` work would make
+R-S11g finality less correct. Only the exact pre-admission `Authorizing` claim is
+cancellable on denial.
+
+This ordering follows polkit's privileged-mechanism model: the mechanism obtains the
+subject from trusted operating-system credentials, checks a specific action for that
+subject, and treats the result as authority for the protected operation. The
+three-part process subject remains PID, process start time, and UID, avoiding the
+documented PID-reuse ambiguity of a bare process identifier. The connected Unix socket
+remains the origin of PID and UID; `/proc/<pid>/stat` supplies the retained generation.
+Primary sources consulted:
+
+- <https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html>
+- <https://polkit.pages.freedesktop.org/polkit/PolkitUnixProcess.html>
+- <https://polkit.pages.freedesktop.org/polkit/polkit.8.html>
+- <https://polkit.pages.freedesktop.org/polkit/eggdbus-interface-org.freedesktop.PolicyKit1.Authority.html>
+- <https://man7.org/linux/man-pages/man7/socket.7.html>
+- <https://www.kernel.org/doc/html/v6.15/filesystems/proc.html>
+
+No endpoint, raw frame, polkit action/policy, prompt, listener, port, network behavior,
+capacity, timeout, retry, reconnect, task class, runtime, process launch, credential
+sink, service lifecycle transition, or dependency changed. The persistent Android
+service design, viewer reconnect/focus behavior, display pipeline, and the user's
+cross-platform complete-connection-flow correctness/performance stop-ship request are
+outside this source slice and remain open exactly as recorded elsewhere in this
+ledger.
+
+The focused password-IPC verifier now extracts the non-cloneable full-requester
+capability, typed post-polkit grant, sole production construction, consuming
+operation/value/requester validation, exact denial cancellation, capability-typed
+coordinator signature, exact kind/fingerprint/caller/state transition, sole production
+call graph, obsolete Boolean absence, and post-admission replay/recovery/finality. Its
+deliberate mutations cover cloneability, duplicate/discarded construction, skipped
+post-polkit and final requester replay, skipped operation/value validation, detached
+Boolean coordinator input, weakened kind/fingerprint/caller/state checks, broadened
+denial cancellation, generic-authorizer reintroduction, and direct transition bypass.
+The shared and Apple embedded analyzers and the independently implemented workspace
+validator bind the same outcome with separately shaped checks and mutations.
+
+Current normative identity for this slice:
+
+c35026e17e572d84869dbce0b021ef08449169cbef0c162da5cdbbb0a02232ee  requirements.html
+
+It binds R-S11ie/R-S11e-268 and Appendix C #390 and is synchronized with
+`docs/NATIVE-CODEC-WATCH.md`.
+
+Exact-current Linux compilation and unit execution, real polkit
+allow/deny/timeout/shutdown behavior, adversarial PID/UID/start-time/argv races,
+installed-service behavior, sustained latency/CPU/memory/resource soak, clean
+committed cold R-B2/R-B10 artifact equality, independent reproduction, and R-V3
+external review remain open. This slice does not inspect, stop, restart, modify, or
+connect to a host RustDesk process/service; inspect or change a host listener,
+firewall, network namespace, or configuration; touch Android, a VM,
+Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root, privileged
+containers, host networking, published ports, devices, or a Docker socket inside a
+verifier.
+
+Source-verification receipt. The exact pre-receipt repository snapshot was frozen at
+`2026-09-01T13:11:38.462871093Z`:
+
+```text
+a4c669b26c02ccbee85e708354b527219cebccc5275349e0daba2b14b4bde322  HARDENING_STATUS.md
+0c42116a7f4504d3786a047697e933305a7c01b2100c0e9f93375f1ce619fcfa  docs/NATIVE-CODEC-WATCH.md
+snapshot c35026e17e572d84869dbce0b021ef08449169cbef0c162da5cdbbb0a02232ee  requirements.html
+7037c28f8742c37dd42629ef69f8768cf2299acbde2e3fc0e509712a3b969fc5  scripts/apple-conform-check.sh
+3bdc2555dcf663c2f49b1ea4d645d061af7c725ac372eedaf63d462fc3ea49ea  scripts/verify-linux-service-password-ipc.py
+7a781e9539bb61969fde70acdef2934525e2926e0249e1e7b2bf6613e05ede35  scripts/verify-verifier-workspace.py
+862a21fccf6bc78007eebe6ac9dd484fc413340dc9bdd2d7633653816a81c0a9  scripts/verify.sh
+fb0522c8bc645a45e9410ba8ee629b1b0f6cf6d8ba6cf37b9737934106ea75b0  src/ipc.rs
+af5276f31cefc229bd218fe45b1d163ad723074030d0e6db6561528bb463e054  git diff --binary
+```
+
+Against those bytes, the focused Linux service-password verifier baseline and all
+135 deliberate mutations passed. The independent workspace baseline, isolated
+Python byte-compilation, Bash parsing for every changed shell gate, `git diff
+--check`, requirements identity synchronization, and the native-codec watch normal
+and adversarial self-test modes passed. Pinned Rust 1.75 rustfmt parsed the complete
+edited Rust source; the exact current-line comparison found 167 changed Rust lines,
+274 lines touched by the file's pre-existing whole-file formatting drift, and zero
+overlap. The first temporary-copy rustfmt harness omitted the sibling module and
+therefore failed before comparison; the fresh `skip_children=true` single-file run is
+the passing evidence.
+
+The complete independent source-mutation catalog contains 5,567 tuples. Two fresh
+catalog attempts correctly exposed gate-on-gate defects and contribute no passing
+evidence. The first found that renaming the focused verifier's exact Linux admission
+parser binding was accepted by the independent validator. The validator was tightened
+to require that exact live binding. The second then found that the Apple verifier's
+typed-authority verdict appeared 15 times while the independent validator required
+only one; mutating any single occurrence left the weak presence check satisfied. It
+was replaced with the exact count of 15. Neither failure implicated product code, and
+neither mutation was weakened, removed, or relabeled to obtain a pass. Each edit
+passed isolated parsing and the independent baseline before the complete catalog was
+restarted from tuple zero.
+
+The final unmodified catalog run returned `verify-verifier-workspace: ok` in container
+`fc321675077dc5b73eae3fb0d25b703e07330211384ddfddda2ec19748c24fdd`
+from `2026-09-01T09:50:33.932862815Z` through
+`2026-09-01T13:03:22.408454011Z` (3:12:48.475591196), exited 0, and was not
+OOM-killed. The launch was initially described as a targeted in-memory wrapper, but
+the verifier's mandatory isolation guard detected the non-isolated stdin interpreter
+and immediately re-executed the exact repository file as
+`/usr/bin/python3 -I -S /repo/scripts/verify-verifier-workspace.py --repo /repo
+--source-mutations-only`. That discarded the wrapper before mutation execution. The
+observed process command was the exact re-executed repository verifier, the wrapper's
+injected marker never appeared, and the full-catalog runtime and terminal result are
+therefore canonical full-catalog evidence, not a filtered result. An earlier stdin
+launch without Docker `-i` exited empty and is explicitly uncounted.
+
+After the catalog, the exact shared embedded analyzer passed. The full Apple embedded
+analyzer and its deliberate mutations passed with zero-byte `r_s11b`, `r_s11b2`, and
+`r_s11e16` verdict files in container
+`6e1ecc24715054610cb3f9d3ee60b260b3553e0ebcb2e1f7333f36c33978452f`,
+which exited 0 and was not OOM-killed. A first AST inventory command also omitted
+Docker `-i`, produced no output, and is uncounted; its corrected fresh run reported
+exactly 135 focused mutations and 5,567 catalog tuples.
+
+All source verification used the immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+with no network, UID/GID 1000, a read-only repository mount, all capabilities dropped,
+`no-new-privileges`, 64 PIDs, two CPUs, 2 GiB memory with no additional swap, and a
+256 MiB `nosuid,nodev,noexec` tmpfs. The verifier image contains neither Cargo nor
+rustc. The pinned development image and existing offline Cargo/vendor inputs were
+absent, so no large image pull, dependency duplication, or new target tree was
+created on the storage-constrained host. No exact-current native compile or unit,
+real-polkit, installed-service, runtime, performance, release, or external-review
+claim is made.
+
+This receipt and the status line are the only post-catalog repository edits. They
+change this hardening ledger only, not the catalogued product, requirement,
+native-watch, focused/shared/Apple verifier, or independent-verifier bytes. All
+bounded fast gates are rerun against the receipt-bearing documentation before
+publication. The first receipt-bearing run correctly rejected a second unprefixed
+current requirements identity introduced by the historical hash block; that receipt
+copy was marked `snapshot`, the sole-current cardinality was restored, and the entire
+bounded suite was restarted from its beginning.

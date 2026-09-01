@@ -2938,6 +2938,13 @@ grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordA
 grep -Fq 'whose type signature itself requires a reference to that exact admission object' requirements.html || r_s11b2="$r_s11b2 macos-password-capability-coordinator-norm-missing"
 grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-prepared-state-norm-missing"
 grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-prepared-handler-norm-missing"
+grep -Fq '<span class="id">R-S11ie</span>' requirements.html || r_s11b2="$r_s11b2 linux-password-typed-admission-requirement-missing"
+grep -Fq '<tr><td>390</td>' requirements.html || r_s11b2="$r_s11b2 linux-password-typed-admission-appendix-missing"
+grep -Fq 'R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-password-typed-admission-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ie and Appendix C #390.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 linux-password-typed-admission-digest-binding-missing"
+grep -Fq 'one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html || r_s11b2="$r_s11b2 linux-password-typed-admission-norm-missing"
+grep -Fq 'successful <code>pkcheck</code> exit and exact post-authorization requester replay' requirements.html || r_s11b2="$r_s11b2 linux-password-post-polkit-grant-norm-missing"
+grep -Fq 'signature itself requires a reference to the exact admission object' requirements.html || r_s11b2="$r_s11b2 linux-password-capability-coordinator-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3070,6 +3077,104 @@ need(
             "password_mutations().clear_after_transactions_drain();",
         ),
     ),
+)
+
+ipc_production = ipc.rsplit("#[cfg(test)]\nmod test", 1)[0]
+linux_password_grant = between(
+    ipc,
+    "async fn grant_linux_service_owned_password_admission",
+    "impl LinuxServiceOwnedPasswordAdmission",
+)
+linux_password_admission = between(
+    ipc,
+    "impl LinuxServiceOwnedPasswordAdmission",
+    "async fn execute_linux_service_owned_password_operation",
+)
+linux_password_operation = between(
+    ipc,
+    "async fn execute_linux_service_owned_password_operation",
+    "async fn commit_service_owned_unattended_password_change",
+)
+linux_password_coordinator = between(
+    ipc,
+    "impl LinuxPasswordAdmissionCoordinator",
+    "impl PasswordMutationCoordinator",
+)
+need(
+    "linux-post-polkit-authority-not-typed-through-ledger-admission",
+    "struct LinuxServiceOwnedPasswordAdmission {\n    requester: PeerProcessIdentity,\n}" in ipc
+    and "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordAdmission" not in ipc
+    and ipc_production.count("Some(LinuxServiceOwnedPasswordAdmission {") == 1
+    and ordered(
+        linux_password_grant,
+        (
+            "linux_polkit_subject_for_identity(identity)",
+            "linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown)",
+            "Ok(true) => {",
+            "if !linux_service_owned_password_requester_is_live(identity) {",
+            "Some(LinuxServiceOwnedPasswordAdmission {",
+            "requester: identity.clone()",
+        ),
+    )
+    and "-> Option<LinuxServiceOwnedPasswordAdmission>" in linux_password_grant.split("{", 1)[0]
+    and ordered(
+        linux_password_admission,
+        (
+            "fn admit_commit(",
+            "self,",
+            "LinuxPasswordCaller::from(&self.requester)",
+            "if !password_mutation_id_is_valid(operation_id)",
+            '|| !service_owned_password_value_is_valid("Linux", value)',
+            "|| !linux_service_owned_password_requester_is_live(&self.requester)",
+            "cancel_authorization(operation_id, value, &caller)",
+            "admit_authorized(&self, operation_id, value)",
+        ),
+    )
+    and "fn admit_commit(\n        self," in linux_password_admission
+    and ordered(
+        linux_password_coordinator,
+        (
+            "fn admit_authorized(",
+            "admission: &LinuxServiceOwnedPasswordAdmission",
+            "LinuxPasswordCaller::from(&admission.requester)",
+            "let fingerprint = ledger.fingerprint(value)",
+            "entry.kind != PasswordMutationKind::ServiceOwned",
+            "|| entry.fingerprint != fingerprint",
+            "|| entry.caller != caller",
+            "|| entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "entry.state = LinuxPasswordAdmissionState::Committing",
+            "fn cancel_authorization(",
+            "entry.kind != PasswordMutationKind::ServiceOwned",
+            "|| entry.fingerprint != fingerprint",
+            "|| entry.caller != *caller",
+            "|| entry.state != LinuxPasswordAdmissionState::Authorizing",
+            "ledger.entries.remove(operation_id)",
+        ),
+    )
+    and ordered(
+        linux_password_operation,
+        (
+            "LinuxPasswordCaller::from(identity)",
+            "coordinator.begin(operation_id, kind, value, &caller)",
+            "LinuxPasswordAdmissionDecision::Authorize => {",
+            "grant_linux_service_owned_password_admission(identity).await",
+            "cancel_authorization(operation_id, value, &caller)",
+            "admission.admit_commit(coordinator, operation_id, value)",
+            "LinuxPasswordAdmissionDecision::Wait => {",
+            "LinuxPasswordAdmissionDecision::Recover => {}",
+            "LinuxPasswordAdmissionDecision::Complete(result) => return Ok(result)",
+            "commit().await",
+            "release_failed_commit(operation_id, &caller)",
+            "coordinator.complete(operation_id, &caller, result)",
+        ),
+    )
+    and "AuthorizeFuture" not in ipc_production
+    and "async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(" in ipc_production
+    and "finish_authorization" not in ipc_production
+    and "linux_peer_is_authorized_for_service_owned_password_change" not in ipc_production
+    and ipc_production.count("grant_linux_service_owned_password_admission(") == 2
+    and ipc_production.count("admit_commit(") == 2
+    and ipc_production.count("admit_authorized(") == 2,
 )
 
 mac_worker = between(ipc, "struct MacosSecurityProofWorker", "fn try_acquire_service_ipc_transaction_slot")
@@ -4663,7 +4768,7 @@ if [ -n "$r_s11e29" ]; then echo "  FAIL R-S11e-29 Linux service helper inherite
 # apply the same descriptor policy before its helper image executes.
 echo "== (3b-iii-d9) Linux pkcheck helper inherited descriptor authority (R-S11p/R-S11e-30) =="
 r_s11e30=
-pkcheck_authorization_block=$(awk '/fn linux_pkcheck_authorizes_service_owned_password_change/,/async fn linux_peer_is_authorized_for_service_owned_password_change/' src/ipc.rs)
+pkcheck_authorization_block=$(awk '/fn linux_pkcheck_authorizes_service_owned_password_change/,/async fn grant_linux_service_owned_password_admission/' src/ipc.rs)
 for pkcheck_binding in \
   'let mut command = std::process::Command::new(pkcheck);' \
   'hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)' \

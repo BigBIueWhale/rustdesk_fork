@@ -212,6 +212,44 @@ pub(crate) use password::{zeroize_sensitive_bytes, SensitivePassword};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 type MainPasswordMutationValue = SensitivePassword;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+struct ServiceOwnedRuntimePrsReplica {
+    value: SensitivePassword,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl ServiceOwnedRuntimePrsReplica {
+    fn as_sensitive_password(&self) -> &SensitivePassword {
+        &self.value
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum MainPasswordMutationRequest<'a> {
+    UserOwned(&'a MainPasswordMutationValue),
+    #[cfg(target_os = "linux")]
+    ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica),
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl MainPasswordMutationRequest<'_> {
+    fn value(&self) -> &SensitivePassword {
+        match self {
+            Self::UserOwned(value) => value,
+            #[cfg(target_os = "linux")]
+            Self::ServiceOwnedRuntimePrs(replica) => replica.as_sensitive_password(),
+        }
+    }
+
+    fn is_service_owned(&self) -> bool {
+        match self {
+            Self::UserOwned(_) => false,
+            #[cfg(target_os = "linux")]
+            Self::ServiceOwnedRuntimePrs(_) => true,
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 const SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 static SERVICE_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
@@ -790,6 +828,103 @@ struct LinuxServiceOwnedPasswordAdmission {
 }
 
 #[cfg(target_os = "linux")]
+struct LinuxServiceOwnedPasswordReplicaWriter {
+    stream: ConnClient,
+    server: PeerProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+enum LinuxServiceOwnedPasswordReplicaAttempt {
+    Status(PasswordMutationStatus),
+    NotSent(anyhow::Error),
+    Uncertain(anyhow::Error),
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceOwnedPasswordReplicaWriter {
+    async fn connect(deadline: tokio::time::Instant) -> ResultType<Self> {
+        if !crate::platform::is_root() || !crate::common::is_service_supervisor_process() {
+            bail!(
+                "Linux service-owned password replica writer requires the exact root service supervisor role"
+            );
+        }
+        let expected_uid = user_main_ipc_server_uid()?;
+        let path = Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX);
+        let stream = timeout(
+            password::remaining_millis(deadline)?,
+            Endpoint::connect(path),
+        )
+        .await??;
+        let server = authenticate_linux_service_owned_password_replica_server(
+            &stream,
+            password::USER_PASSWORD_IPC_POSTFIX,
+        )?;
+        if server.uid() != expected_uid {
+            bail!(
+                "service-owned password replica uid mismatch: expected={}, actual={}",
+                expected_uid,
+                server.uid()
+            );
+        }
+        password::remaining_millis(deadline)?;
+        Ok(Self { stream, server })
+    }
+
+    fn reauthenticate(&self) -> ResultType<()> {
+        if !crate::platform::is_root() || !crate::common::is_service_supervisor_process() {
+            bail!(
+                "Linux service-owned password replica writer lost its root service supervisor role"
+            );
+        }
+        let refreshed = authenticate_linux_service_owned_password_replica_server(
+            &self.stream,
+            password::USER_PASSWORD_IPC_POSTFIX,
+        )?;
+        if refreshed != self.server {
+            bail!("Linux service-owned password replica server identity changed before write");
+        }
+        Ok(())
+    }
+
+    async fn begin(
+        mut self,
+        operation_id: hbb_common::uuid::Uuid,
+        replica: &ServiceOwnedRuntimePrsReplica,
+        deadline: tokio::time::Instant,
+    ) -> LinuxServiceOwnedPasswordReplicaAttempt {
+        if let Err(err) = self.reauthenticate() {
+            return LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err);
+        }
+        match password::send_request_unix(
+            &mut self.stream,
+            operation_id,
+            replica.as_sensitive_password(),
+            None,
+            deadline,
+        )
+        .await
+        {
+            Ok(()) => match password::receive_status_unix(
+                &mut self.stream,
+                operation_id,
+                deadline,
+            )
+            .await
+            {
+                Ok(status) => LinuxServiceOwnedPasswordReplicaAttempt::Status(status),
+                Err(err) => LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err),
+            },
+            Err(password::UnixSensitivePasswordSendError::NotSent(err)) => {
+                LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err)
+            }
+            Err(password::UnixSensitivePasswordSendError::Uncertain(err)) => {
+                LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 struct LinuxServiceOwnedCredentialReplicaRequester {
     identity: PeerProcessIdentity,
 }
@@ -846,7 +981,7 @@ impl LinuxServiceOwnedCredentialReplicaAdmission {
         password::send_credential_replica_unix(
             stream,
             self.operation_id,
-            &replica,
+            replica.as_sensitive_password(),
             deadline,
         )
         .await
@@ -3619,8 +3754,13 @@ async fn handle_macos_service_credential_snapshot_transaction(
             return;
         }
     };
-    if let Err(err) =
-        password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline).await
+    if let Err(err) = password::send_credential_replica_unix(
+        &mut stream,
+        operation_id,
+        replica.as_sensitive_password(),
+        deadline,
+    )
+    .await
     {
         log::trace!("macOS service credential snapshot could not be returned: {err}");
     }
@@ -5328,7 +5468,13 @@ async fn commit_service_owned_unattended_password_change(
         }
     };
     let ms_timeout = 1_000;
-    match complete_main_password_mutation(operation_id, &replica, true, ms_timeout).await {
+    match complete_main_password_mutation(
+        operation_id,
+        MainPasswordMutationRequest::ServiceOwnedRuntimePrs(&replica),
+        ms_timeout,
+    )
+    .await
+    {
         Ok(IpcMutationResult::Applied) => Ok(IpcMutationResult::Applied),
         Ok(result) => {
             crate::server::request_graceful_shutdown_after_authority_failure();
@@ -5346,13 +5492,17 @@ async fn commit_service_owned_unattended_password_change(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<SensitivePassword> {
+fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica> {
     match Config::read_permanent_password_prs() {
         hbb_common::config::PermanentPasswordPrsRead::Available(prs) => {
-            Ok(SensitivePassword::new(prs))
+            Ok(ServiceOwnedRuntimePrsReplica {
+                value: SensitivePassword::new(prs),
+            })
         }
         hbb_common::config::PermanentPasswordPrsRead::Empty => {
-            Ok(SensitivePassword::new(String::new()))
+            Ok(ServiceOwnedRuntimePrsReplica {
+                value: SensitivePassword::new(String::new()),
+            })
         }
         hbb_common::config::PermanentPasswordPrsRead::UndecryptableStorage => {
             bail!("{platform} root service credential storage is undecryptable")
@@ -6547,22 +6697,8 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
 async fn connect_sensitive_unix(
     deadline: tokio::time::Instant,
     postfix: &str,
-    service_owned_replica: bool,
 ) -> ResultType<ConnClient> {
-    let use_user_main_ipc = USE_USER_MAIN_IPC.with(|use_user_main| use_user_main.get());
-    let route_to_user_main = unsafe { hbb_common::libc::geteuid() == 0 }
-        && postfix == password::USER_PASSWORD_IPC_POSTFIX
-        && use_user_main_ipc;
-    let (path, expected_user_uid) = if route_to_user_main {
-        let uid = user_main_ipc_server_uid()?;
-        (Config::ipc_path_for_uid(uid, postfix), Some(uid))
-    } else {
-        (
-            Config::ipc_path(postfix),
-            (postfix == password::USER_PASSWORD_IPC_POSTFIX)
-                .then(|| unsafe { hbb_common::libc::geteuid() as u32 }),
-        )
-    };
+    let path = Config::ipc_path(postfix);
     let stream = timeout(
         password::remaining_millis(deadline)?,
         Endpoint::connect(path),
@@ -6570,36 +6706,8 @@ async fn connect_sensitive_unix(
     .await??;
     match postfix {
         password::USER_PASSWORD_IPC_POSTFIX => {
-            if service_owned_replica {
-                #[cfg(target_os = "linux")]
-                {
-                    let identity = authenticate_linux_service_owned_password_replica_server(
-                        &stream,
-                        password::USER_PASSWORD_IPC_POSTFIX,
-                    )?;
-                    let expected_uid = expected_user_uid.ok_or_else(|| {
-                        hbb_common::anyhow::anyhow!(
-                            "service-owned password replica route has no expected uid"
-                        )
-                    })?;
-                    if identity.uid() != expected_uid {
-                        bail!(
-                            "service-owned password replica uid mismatch: expected={}, actual={}",
-                            expected_uid,
-                            identity.uid()
-                        );
-                    }
-                }
-                #[cfg(target_os = "macos")]
-                {
-                    bail!("service-owned password replicas are unavailable on macOS");
-                }
-            } else {
-                let expected_uid = expected_user_uid.ok_or_else(|| {
-                    hbb_common::anyhow::anyhow!("user password IPC route has no expected uid")
-                })?;
-                ensure_user_owned_password_server_is_trusted(&stream, expected_uid)?;
-            }
+            let expected_uid = unsafe { hbb_common::libc::geteuid() as u32 };
+            ensure_user_owned_password_server_is_trusted(&stream, expected_uid)?;
         }
         password::SERVICE_PASSWORD_IPC_POSTFIX => {
             #[cfg(target_os = "linux")]
@@ -7377,27 +7485,17 @@ async fn connect_user_owned_password_main(
 async fn connect_user_owned_password_stream(
     deadline: tokio::time::Instant,
 ) -> ResultType<ConnClient> {
-    connect_sensitive_unix(deadline, password::USER_PASSWORD_IPC_POSTFIX, false).await
-}
-
-#[cfg(target_os = "linux")]
-async fn connect_service_owned_password_replica_stream(
-    deadline: tokio::time::Instant,
-) -> ResultType<ConnClient> {
-    let connection = {
-        let _scope = UserMainIpcScope::new();
-        connect_sensitive_unix(deadline, password::USER_PASSWORD_IPC_POSTFIX, true).await?
-    };
-    Ok(connection)
+    connect_sensitive_unix(deadline, password::USER_PASSWORD_IPC_POSTFIX).await
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn complete_main_password_mutation(
     operation_id: String,
-    value: &MainPasswordMutationValue,
-    service_owned: bool,
+    mutation: MainPasswordMutationRequest<'_>,
     ms_timeout: u64,
 ) -> ResultType<IpcMutationResult> {
+    let service_owned = mutation.is_service_owned();
+    let value = mutation.value();
     let operation_uuid = hbb_common::uuid::Uuid::parse_str(&operation_id)
         .map_err(|err| hbb_common::anyhow::anyhow!("invalid password operation UUID: {err}"))?;
     let mut query_only = false;
@@ -7507,15 +7605,29 @@ async fn complete_main_password_mutation(
         }
 
         #[cfg(any(target_os = "linux", target_os = "macos"))]
-        let mut stream = if service_owned {
+        let response: ResultType<PasswordMutationStatus> = if service_owned {
             #[cfg(target_os = "linux")]
             {
-                match connect_service_owned_password_replica_stream(deadline).await {
-                    Ok(stream) => stream,
+                let writer = match LinuxServiceOwnedPasswordReplicaWriter::connect(deadline).await {
+                    Ok(writer) => writer,
                     Err(err) => {
                         log::warn!("Retrying admitted password mutation after child identity failure: {err}");
                         hbb_common::sleep(0.1).await;
                         continue;
+                    }
+                };
+                let replica = match &mutation {
+                    MainPasswordMutationRequest::ServiceOwnedRuntimePrs(replica) => *replica,
+                    MainPasswordMutationRequest::UserOwned(_) => {
+                        bail!("service-owned password mutation has no typed runtime PRS")
+                    }
+                };
+                match writer.begin(operation_uuid, replica, deadline).await {
+                    LinuxServiceOwnedPasswordReplicaAttempt::Status(status) => Ok(status),
+                    LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err) => Err(err),
+                    LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {
+                        recovery_required = true;
+                        Err(err)
                     }
                 }
             }
@@ -7524,7 +7636,7 @@ async fn complete_main_password_mutation(
                 bail!("service-owned main password mutation is unsupported on this platform");
             }
         } else {
-            match connect_user_owned_password_stream(deadline).await {
+            let mut stream = match connect_user_owned_password_stream(deadline).await {
                 Ok(stream) => stream,
                 Err(err) if !recovery_required => return Err(err),
                 Err(err) => {
@@ -7534,11 +7646,7 @@ async fn complete_main_password_mutation(
                     hbb_common::sleep(0.1).await;
                     continue;
                 }
-            }
-        };
-
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        let response: ResultType<PasswordMutationStatus> = {
+            };
             match password::send_request_unix(&mut stream, operation_uuid, value, None, deadline)
                 .await
             {
@@ -7839,7 +7947,12 @@ async fn set_user_owned_permanent_password_with_ack_async(
     validate_unattended_password_value(&v)?;
     let ms_timeout = 5_000;
     let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
-    let result = complete_main_password_mutation(operation_id, &v, false, ms_timeout).await?;
+    let result = complete_main_password_mutation(
+        operation_id,
+        MainPasswordMutationRequest::UserOwned(&v),
+        ms_timeout,
+    )
+    .await?;
     Ok(match result {
         IpcMutationResult::Applied => true,
         IpcMutationResult::Rejected => false,
@@ -7959,8 +8072,7 @@ async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) ->
         let authorization: Option<password::SensitiveAuthorization> = None;
 
         let mut stream =
-            match connect_sensitive_unix(deadline, password::SERVICE_PASSWORD_IPC_POSTFIX, false)
-                .await
+            match connect_sensitive_unix(deadline, password::SERVICE_PASSWORD_IPC_POSTFIX).await
             {
                 Ok(connection) => connection,
                 Err(err) if !recovery_required => return Err(err),

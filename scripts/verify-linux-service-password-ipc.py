@@ -840,13 +840,11 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     connect_raw = ipc.function("connect_sensitive_unix")
     connect_raw.require_order(
         (
-            (("postfix", "==", "password", "::", "USER_PASSWORD_IPC_POSTFIX"), "user endpoint route"),
-            (("Config", "::", "ipc_path_for_uid"), "UID-bound user endpoint path"),
+            (("Config", "::", "ipc_path", "(", "postfix", ")"), "ordinary caller-owned raw endpoint path"),
             (("timeout", "(", "password", "::", "remaining_millis", "(", "deadline", ")", "?", ",", "Endpoint", "::", "connect"), "raw bounded connect"),
             (("match", "postfix", "{"), "finite endpoint dispatch"),
             (("USER_PASSWORD_IPC_POSTFIX", "=>"), "user endpoint proof"),
-            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "service-owned replica identity/argv proof"),
-            (("identity", ".", "uid", "(", ")", "!=", "expected_uid"), "service-owned replica UID binding"),
+            (("geteuid", "(", ")"), "user-owned caller UID"),
             (("ensure_user_owned_password_server_is_trusted", "(", "&", "stream", ",", "expected_uid", ")"), "user-owned server UID/executable/argv proof"),
             (("SERVICE_PASSWORD_IPC_POSTFIX", "=>"), "service endpoint proof"),
             (("ensure_linux_root_service_stream", "(", "&", "stream", ",", "postfix", ")"), "service server kernel uid/PID proof"),
@@ -854,6 +852,12 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (("remaining_millis", "(", "deadline", ")"), "post-proof deadline check"),
         )
     )
+    connect_raw.forbid(
+        ("authenticate_linux_service_owned_password_replica_server", "("),
+        "service-owned child writer authority in the ordinary raw connector",
+    )
+    connect_raw.forbid(("service_owned_replica",), "detached service-owned replica Boolean")
+    connect_raw.forbid(("Config", "::", "ipc_path_for_uid"), "root-to-child route selection")
     connect_raw.forbid(("ConnectionTmpl", "::"), "generic framed connection construction")
     connect_raw.forbid(("send_json",), "JSON transport")
 
@@ -2703,6 +2707,139 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
         "credential handler bypasses typed requester/admission authority",
     )
 
+    runtime_prs = ipc.item("struct", "ServiceOwnedRuntimePrsReplica")
+    runtime_prs.require(
+        ("value", ":", "SensitivePassword"),
+        "sensitive canonical PRS payload",
+        unique=True,
+    )
+    mutation_request = ipc.item("enum", "MainPasswordMutationRequest")
+    mutation_request.require_order(
+        (
+            (("UserOwned", "(", "&", "'", "a", "MainPasswordMutationValue", ")"), "typed user-owned password"),
+            (("ServiceOwnedRuntimePrs", "(", "&", "'", "a", "ServiceOwnedRuntimePrsReplica", ")"), "typed service-owned runtime PRS"),
+        ),
+        unique=True,
+    )
+    mutation_value = ipc.method(
+        ("impl", "MainPasswordMutationRequest"),
+        "value",
+        "typed main password mutation value",
+    )
+    mutation_value.require_order(
+        (
+            (("Self", "::", "UserOwned", "(", "value", ")", "=>", "value"), "user-owned value projection"),
+            (("Self", "::", "ServiceOwnedRuntimePrs", "(", "replica", ")", "=>", "replica", ".", "as_sensitive_password", "(", ")"), "PRS-only value projection"),
+        ),
+        unique=True,
+    )
+    mutation_kind = ipc.method(
+        ("impl", "MainPasswordMutationRequest"),
+        "is_service_owned",
+        "typed main password mutation kind",
+    )
+    mutation_kind.require_order(
+        (
+            (("Self", "::", "UserOwned", "(", "_", ")", "=>", "false"), "user-owned classification"),
+            (("Self", "::", "ServiceOwnedRuntimePrs", "(", "_", ")", "=>", "true"), "service-owned classification"),
+        ),
+        unique=True,
+    )
+
+    writer = ipc.item("struct", "LinuxServiceOwnedPasswordReplicaWriter")
+    writer.require_order(
+        (
+            (("stream", ":", "ConnClient"), "owned connected raw stream"),
+            (("server", ":", "PeerProcessIdentity"), "retained complete child identity"),
+        ),
+        unique=True,
+    )
+    attempt = ipc.item("enum", "LinuxServiceOwnedPasswordReplicaAttempt")
+    attempt.require_order(
+        (
+            (("Status", "(", "PasswordMutationStatus", ")"), "operation-bound status"),
+            (("NotSent", "(", "anyhow", "::", "Error", ")"), "pre-send failure"),
+            (("Uncertain", "(", "anyhow", "::", "Error", ")"), "uncertain-send failure"),
+        ),
+        unique=True,
+    )
+    for item_kind, item_name in (
+        ("struct", "ServiceOwnedRuntimePrsReplica"),
+        ("enum", "MainPasswordMutationRequest"),
+        ("struct", "LinuxServiceOwnedPasswordReplicaWriter"),
+        ("enum", "LinuxServiceOwnedPasswordReplicaAttempt"),
+    ):
+        declaration = ipc.all().require(
+            (item_kind, item_name),
+            f"{item_name} declaration",
+            unique=True,
+        )
+        preceding = ipc.all().values[max(0, declaration - 12) : declaration]
+        if "Clone" in preceding or "Copy" in preceding:
+            raise VerificationError(f"src/ipc.rs: {item_name} must be non-cloneable")
+
+    writer_connect = ipc.method(
+        ("impl", "LinuxServiceOwnedPasswordReplicaWriter"),
+        "connect",
+        "Linux service-owned PRS writer connection",
+    )
+    writer_connect.require_order(
+        (
+            (("!", "crate", "::", "platform", "::", "is_root", "(", ")", "||", "!", "crate", "::", "common", "::", "is_service_supervisor_process", "(", ")"), "exact root supervisor role"),
+            (("user_main_ipc_server_uid", "(", ")"), "exact current child UID selection"),
+            (("Config", "::", "ipc_path_for_uid", "(", "expected_uid", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", ")"), "fixed child password endpoint"),
+            (("timeout", "(", "password", "::", "remaining_millis", "(", "deadline", ")", "?", ",", "Endpoint", "::", "connect", "(", "path", ")"), "bounded raw child connect"),
+            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "exact child generation proof"),
+            (("server", ".", "uid", "(", ")", "!=", "expected_uid"), "selected UID binding"),
+            (("password", "::", "remaining_millis", "(", "deadline", ")", "?", ";", "Ok", "(", "Self"), "post-proof deadline"),
+            (("Self", "{", "stream", ",", "server", "}"), "typed writer construction"),
+        ),
+        unique=True,
+    )
+    writer_connect.forbid(("connect_sensitive_unix", "("), "ordinary postfix-selectable connector")
+    writer_connect.forbid(("UserMainIpcScope",), "ambient thread-local route authority")
+    writer_connect.forbid(("Config", "::", "ipc_path", "("), "caller-owned IPC path")
+
+    writer_reauthenticate = ipc.method(
+        ("impl", "LinuxServiceOwnedPasswordReplicaWriter"),
+        "reauthenticate",
+        "Linux service-owned PRS writer final proof",
+    )
+    writer_reauthenticate.require_order(
+        (
+            (("!", "crate", "::", "platform", "::", "is_root", "(", ")", "||", "!", "crate", "::", "common", "::", "is_service_supervisor_process", "(", ")"), "fresh root supervisor role"),
+            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "self", ".", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "fresh exact child proof"),
+            (("refreshed", "!=", "self", ".", "server"), "complete accepted-child continuity"),
+        ),
+        unique=True,
+    )
+
+    writer_begin = ipc.method(
+        ("impl", "LinuxServiceOwnedPasswordReplicaWriter"),
+        "begin",
+        "Linux service-owned PRS writer transaction",
+    )
+    writer_begin.require_order(
+        (
+            (("self", ".", "reauthenticate", "(", ")"), "final child proof before secret send"),
+            (("NotSent", "(", "err", ")"), "pre-send proof failure classification"),
+            (("send_request_unix", "(", "&", "mut", "self", ".", "stream", ",", "operation_id", ",", "replica", ".", "as_sensitive_password", "(", ")", ",", "None", ",", "deadline"), "typed UUID-bound PRS send"),
+            (("receive_status_unix", "(", "&", "mut", "self", ".", "stream", ",", "operation_id", ",", "deadline"), "same-operation finality response"),
+            (("Status", "(", "status", ")"), "terminal status classification"),
+            (("Uncertain", "(", "err", ")"), "post-send response uncertainty"),
+            (("UnixSensitivePasswordSendError", "::", "NotSent", "(", "err", ")"), "raw pre-send classification"),
+            (("LinuxServiceOwnedPasswordReplicaAttempt", "::", "NotSent", "(", "err", ")"), "typed pre-send classification"),
+            (("UnixSensitivePasswordSendError", "::", "Uncertain", "(", "err", ")"), "raw uncertain-send classification"),
+            (("LinuxServiceOwnedPasswordReplicaAttempt", "::", "Uncertain", "(", "err", ")"), "typed uncertain-send classification"),
+        )
+    )
+    if "    async fn begin(\n        mut self," not in ipc.text:
+        raise VerificationError("src/ipc.rs: Linux PRS writer transaction must consume its writer")
+    if "        replica: &ServiceOwnedRuntimePrsReplica," not in ipc.text:
+        raise VerificationError("src/ipc.rs: Linux PRS writer transaction must require the typed replica")
+    writer_begin.forbid(("SensitivePassword",), "generic password parameter")
+    writer_begin.forbid(("USER_PASSWORD_IPC_POSTFIX",), "transaction-time endpoint selection")
+
     credential_requester = ipc.item(
         "struct", "LinuxServiceOwnedCredentialReplicaRequester"
     )
@@ -2766,7 +2903,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     credential_respond.require_order(
         (
             (("service_owned_runtime_prs_replica", "(", '"Linux"', ")"), "root-owned PRS snapshot"),
-            (("send_credential_replica_unix", "(", "stream", ",", "self", ".", "operation_id", ",", "&", "replica", ",", "deadline"), "operation-bound PRS response"),
+            (("send_credential_replica_unix", "(", "stream", ",", "self", ".", "operation_id", ",", "replica", ".", "as_sensitive_password", "(", ")", ",", "deadline"), "operation-bound typed PRS response"),
         ),
         unique=True,
     )
@@ -2846,26 +2983,36 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("if", "!", "durable_result", "{", "return", "Ok", "(", "IpcMutationResult", "::", "Rejected", ")"), "no-replica result before durable acceptance"),
             (("service_owned_runtime_prs_replica", "(", '"Linux"', ")"), "root PRS extraction after persistence"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on post-persistence PRS failure"),
-            (("complete_main_password_mutation", "(", "operation_id", ",", "&", "replica", ",", "true", ",", "ms_timeout", ")"), "same-operation PRS child convergence"),
+            (("complete_main_password_mutation", "(", "operation_id", ",", "MainPasswordMutationRequest", "::", "ServiceOwnedRuntimePrs", "(", "&", "replica", ")", ",", "ms_timeout", OPTIONAL_COMMA, ")"), "typed same-operation PRS child convergence"),
             (("Ok", "(", "IpcMutationResult", "::", "Applied", ")", "=>", "Ok", "(", "IpcMutationResult", "::", "Applied", ")"), "exact applied convergence"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on non-applied child result"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on child transport/finality failure"),
         )
     )
     commit.forbid(
-        ("complete_main_password_mutation", "(", "operation_id", ",", "&", "value"),
+        ("MainPasswordMutationRequest", "::", "UserOwned", "(", "&", "value", ")"),
         "plaintext forwarding to the service-owned child",
     )
+    commit.forbid(("ServiceOwnedRuntimePrsReplica", "{"), "local plaintext-to-PRS type forgery")
     commit.forbid(("loop", "{"), "outer unbounded finality loop")
     commit.forbid(("sleep", "(", "0.1", ")", ".", "await"), "outer finality retry")
     commit.forbid(("Uuid", "::", "new_v4"), "operation ID regeneration during recovery")
 
     root_replica = ipc.function("service_owned_runtime_prs_replica")
+    ipc.all().require(
+        (
+            "fn", "service_owned_runtime_prs_replica", "(", "platform", ":", "&", "str", ")",
+            "->", "ResultType", "<", "ServiceOwnedRuntimePrsReplica", ">",
+        ),
+        "typed canonical PRS loader result",
+        unique=True,
+    )
     root_replica.require_order(
         (
             (("Config", "::", "read_permanent_password_prs", "(", ")"), "root credential read"),
-            (("Available", "(", "prs", ")", "=>", "{", "Ok", "(", "SensitivePassword", "::", "new", "(", "prs", ")", ")"), "available PRS replica"),
+            (("Available", "(", "prs", ")", "=>", "{", "Ok", "(", "ServiceOwnedRuntimePrsReplica", "{", "value", ":", "SensitivePassword", "::", "new", "(", "prs", ")"), "available typed PRS replica"),
             (("PermanentPasswordPrsRead", "::", "Empty", "=>"), "explicit empty replica"),
+            (("ServiceOwnedRuntimePrsReplica", "{", "value", ":", "SensitivePassword", "::", "new", "(", "String", "::", "new", "(", ")", ")"), "typed empty replica"),
             (("UndecryptableStorage", "=>"), "undecryptable storage branch"),
             (("bail", "!", "(", '"{platform} root service credential storage is undecryptable"', ")"), "undecryptable fail closed"),
         )
@@ -2921,8 +3068,19 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     )
 
     complete_main = ipc.function("complete_main_password_mutation")
+    ipc.all().require(
+        (
+            "async", "fn", "complete_main_password_mutation", "(", "operation_id", ":", "String", ",",
+            "mutation", ":", "MainPasswordMutationRequest", "<", "'", "_", ">", ",", "ms_timeout", ":", "u64",
+            OPTIONAL_COMMA, ")", "->", "ResultType", "<", "IpcMutationResult", ">",
+        ),
+        "typed main-password completion signature",
+        unique=True,
+    )
     complete_main.require_order(
         (
+            (("service_owned", "=", "mutation", ".", "is_service_owned", "(", ")"), "enum-derived authority class"),
+            (("value", "=", "mutation", ".", "value", "(", ")"), "enum-derived secret value"),
             (("Uuid", "::", "parse_str", "(", "&", "operation_id", ")"), "single operation UUID parse"),
             (("query_only", "=", "false"), "begin state"),
             (("recovery_required", "=", "service_owned"), "service-parent prior admission finality"),
@@ -2935,13 +3093,20 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("main_ipc_request_on_stream_deadline", "(", "stream"), "absolute-deadline query"),
             (("PasswordMutationStatus", "{", "operation_id", ":", "operation_id", ".", "clone", "(", ")"), "same-operation ordinary query argument"),
             (("query_only", "=", "matches", "!", "(", "response", ",", "PasswordMutationStatus", "::", "Prepared", "|", "PasswordMutationStatus", "::", "Pending", ")"), "prepared/pending query transition"),
-            (("connect_service_owned_password_replica_stream", "(", "deadline", ")"), "authenticated raw child begin"),
-            (("send_request_unix", "(", "&", "mut", "stream", ",", "operation_uuid", ",", "value", ",", "None", ",", "deadline", ")"), "same UUID/value raw begin"),
-            (("receive_status_unix", "(", "&", "mut", "stream", ",", "operation_uuid", ",", "deadline", ")"), "same UUID status"),
+            (("LinuxServiceOwnedPasswordReplicaWriter", "::", "connect", "(", "deadline", ")"), "typed authenticated raw child writer"),
+            (("MainPasswordMutationRequest", "::", "ServiceOwnedRuntimePrs", "(", "replica", ")", "=>", "*", "replica"), "typed PRS extraction"),
+            (("writer", ".", "begin", "(", "operation_uuid", ",", "replica", ",", "deadline", ")"), "consuming UUID-bound PRS transaction"),
+            (("LinuxServiceOwnedPasswordReplicaAttempt", "::", "Uncertain", "(", "err", ")", "=>", "{", "recovery_required", "=", "true"), "typed uncertain-send finality transition"),
+            (("connect_user_owned_password_stream", "(", "deadline", ")"), "user-owned raw connection"),
+            (("send_request_unix", "(", "&", "mut", "stream", ",", "operation_uuid", ",", "value", ",", "None", ",", "deadline", ")"), "same UUID/value user-owned raw begin"),
+            (("receive_status_unix", "(", "&", "mut", "stream", ",", "operation_uuid", ",", "deadline", ")"), "same UUID user-owned status"),
             (("Err", "(", "password", "::", "UnixSensitivePasswordSendError", "::", "Uncertain", "(", "err", ")", ")", "=>", "{", "recovery_required", "=", "true"), "Unix uncertain-send finality transition"),
             (("query_only", "=", "matches", "!", "(", "response", ",", "PasswordMutationStatus", "::", "Prepared", "|", "PasswordMutationStatus", "::", "Pending", ")"), "begin acknowledgement query transition"),
         )
     )
+    complete_main.forbid(("service_owned", ":", "bool"), "caller-supplied service-owned Boolean")
+    complete_main.forbid(("connect_service_owned_password_replica_stream",), "untyped service-owned raw connector")
+    complete_main.forbid(("ServiceOwnedRuntimePrsReplica", "{"), "completion-time PRS type forgery")
     complete_main.forbid(("main_ipc_request_on_stream", "(", "stream", ",", "request"), "password-bearing ordinary IPC fallback")
     complete_main.forbid(("Uuid", "::", "new_v4"), "operation ID regeneration inside retry loop")
 
@@ -2954,7 +3119,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("loop", "{"), "service retry loop"),
             (("recovery_required", "&&", "tokio", "::", "time", "::", "Instant", "::", "now", "(", ")", ">=", "recovery_deadline"), "overall recovery deadline enforcement"),
             (("deadline", "=", "tokio", "::", "time", "::", "Instant", "::", "now"), "per-attempt absolute deadline"),
-            (("connect_sensitive_unix", "(", "deadline", ",", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ",", "false", ")"), "raw service endpoint"),
+            (("connect_sensitive_unix", "(", "deadline", ",", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "raw service endpoint"),
             (("send_request_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "&", "v"), "same UUID/value request"),
             (("receive_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "deadline", ")"), "same UUID status"),
             (("Err", "(", "password", "::", "UnixSensitivePasswordSendError", "::", "Uncertain", "(", "err", ")", ")", "=>", "{", "recovery_required", "=", "true"), "uncertain response finality"),
@@ -3293,7 +3458,7 @@ def verify_callers(rust: Mapping[str, RustSource]) -> None:
     user_call.require_order(
         (
             (("Uuid", "::", "new_v4", "(", ")", ".", "to_string", "(", ")"), "operation ID"),
-            (("complete_main_password_mutation", "(", "operation_id", ",", "&", "v", ",", "false", ",", "ms_timeout", ")"), "raw user-owned begin/finality"),
+            (("complete_main_password_mutation", "(", "operation_id", ",", "MainPasswordMutationRequest", "::", "UserOwned", "(", "&", "v", ")", ",", "ms_timeout", OPTIONAL_COMMA, ")"), "typed raw user-owned begin/finality"),
         )
     )
 
@@ -3418,6 +3583,114 @@ def self_test(sources: Mapping[str, str]) -> None:
             "Self::ServiceOwned(_) => ipc::password::USER_PASSWORD_IPC_POSTFIX,",
         ),
         Mutation(
+            "Linux runtime PRS loses its distinct payload type",
+            "src/ipc.rs",
+            "struct ServiceOwnedRuntimePrsReplica {\n    value: SensitivePassword,\n}",
+            "struct ServiceOwnedRuntimePrsReplica {\n    value: String,\n}",
+        ),
+        Mutation(
+            "main password mutation service variant accepts an ordinary password",
+            "src/ipc.rs",
+            "ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica),",
+            "ServiceOwnedRuntimePrs(&'a MainPasswordMutationValue),",
+        ),
+        Mutation(
+            "main password mutation misclassifies the PRS action as user-owned",
+            "src/ipc.rs",
+            "Self::ServiceOwnedRuntimePrs(_) => true,",
+            "Self::ServiceOwnedRuntimePrs(_) => false,",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer becomes cloneable",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedPasswordReplicaWriter {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaWriter {",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer drops the retained child identity",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedPasswordReplicaWriter {\n    stream: ConnClient,\n    server: PeerProcessIdentity,\n}",
+            "struct LinuxServiceOwnedPasswordReplicaWriter {\n    stream: ConnClient,\n    server_alive: bool,\n}",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer admits a non-supervisor root process",
+            "src/ipc.rs",
+            "if !crate::platform::is_root() || !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer requires the exact root service supervisor role\"",
+            "if !crate::platform::is_root() && !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer requires the exact root service supervisor role\"",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer selects a caller-owned socket path",
+            "src/ipc.rs",
+            "let path = Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX);",
+            "let path = Config::ipc_path(password::USER_PASSWORD_IPC_POSTFIX);",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer authenticates the wrong endpoint",
+            "src/ipc.rs",
+            "let server = authenticate_linux_service_owned_password_replica_server(\n            &stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "let server = authenticate_linux_service_owned_password_replica_server(\n            &stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer bypasses selected child UID binding",
+            "src/ipc.rs",
+            "if server.uid() != expected_uid {\n            bail!(\n                \"service-owned password replica uid mismatch:",
+            "if false && server.uid() != expected_uid {\n            bail!(\n                \"service-owned password replica uid mismatch:",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer loses its final root-supervisor replay",
+            "src/ipc.rs",
+            "if !crate::platform::is_root() || !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer lost its root service supervisor role\"",
+            "if !crate::platform::is_root() {\n            bail!(\n                \"Linux service-owned password replica writer lost its root service supervisor role\"",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer bypasses accepted-child continuity",
+            "src/ipc.rs",
+            "if refreshed != self.server {\n            bail!(\"Linux service-owned password replica server identity changed before write\");",
+            "if false && refreshed != self.server {\n            bail!(\"Linux service-owned password replica server identity changed before write\");",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer transaction borrows its authority",
+            "src/ipc.rs",
+            "    async fn begin(\n        mut self,",
+            "    async fn begin(\n        &mut self,",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer transaction accepts a generic password",
+            "src/ipc.rs",
+            "        replica: &ServiceOwnedRuntimePrsReplica,",
+            "        replica: &SensitivePassword,",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer skips its final child replay",
+            "src/ipc.rs",
+            "if let Err(err) = self.reauthenticate() {\n            return LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err);\n        }",
+            "if let Err(err) = Ok::<(), anyhow::Error>(()) {\n            return LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err);\n        }",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer replaces the retained operation UUID",
+            "src/ipc.rs",
+            "            &mut self.stream,\n            operation_id,\n            replica.as_sensitive_password(),",
+            "            &mut self.stream,\n            hbb_common::uuid::Uuid::new_v4(),\n            replica.as_sensitive_password(),",
+        ),
+        Mutation(
+            "Linux service-owned PRS writer loses response uncertainty",
+            "src/ipc.rs",
+            "Err(err) => LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err),",
+            "Err(err) => LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err),",
+        ),
+        Mutation(
+            "Linux service-owned PRS completion stops entering recovery after uncertainty",
+            "src/ipc.rs",
+            "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = true;\n                        Err(err)\n                    }",
+            "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = false;\n                        Err(err)\n                    }",
+        ),
+        Mutation(
+            "Linux root completion routes plaintext through the user-owned variant",
+            "src/ipc.rs",
+            "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(&replica),",
+            "MainPasswordMutationRequest::UserOwned(&value),",
+        ),
+        Mutation(
             "Linux credential requester capability becomes cloneable",
             "src/ipc.rs",
             "struct LinuxServiceOwnedCredentialReplicaRequester {",
@@ -3480,8 +3753,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "Linux credential response drops its operation binding",
             "src/ipc.rs",
-            "            self.operation_id,\n            &replica,",
-            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            &replica,",
+            "            self.operation_id,\n            replica.as_sensitive_password(),",
+            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            replica.as_sensitive_password(),",
         ),
         Mutation(
             "Linux credential handler bypasses capability-owned response",
@@ -3516,8 +3789,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "shared service-owned PRS snapshot helper is bypassed",
             "src/ipc.rs",
-            "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<SensitivePassword>",
-            "fn service_owned_runtime_prs_replica_unchecked(platform: &str) -> ResultType<SensitivePassword>",
+            "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>",
+            "fn service_owned_runtime_prs_replica_unchecked(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>",
         ),
         Mutation(
             "interactive confirmation comparison regains ordinary string equality",
@@ -4227,12 +4500,6 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc.rs",
             "Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true)",
             "Config::set_permanent_password_persisted(value.as_str()).map(|_| true)",
-        ),
-        Mutation(
-            "root forwards plaintext instead of the canonical PRS replica",
-            "src/ipc.rs",
-            "complete_main_password_mutation(operation_id, &replica, true, ms_timeout)",
-            "complete_main_password_mutation(operation_id, &value, true, ms_timeout)",
         ),
         Mutation(
             "post-persistence child rejection no longer fail-stops the generation",

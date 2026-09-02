@@ -2959,6 +2959,13 @@ grep -Fq 'The same identity additionally binds R-S11ig and Appendix C #392.' doc
 grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-requester-capability-norm-missing"
 grep -Fq 'one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-admission-capability-norm-missing"
 grep -Fq 'Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica("Linux")</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-capability-response-norm-missing"
+grep -Fq '<span class="id">R-S11ih</span>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-requirement-missing"
+grep -Fq '<tr><td>393</td>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-appendix-missing"
+grep -Fq 'R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ih and Appendix C #393.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-digest-binding-missing"
+grep -Fq 'distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-type-norm-missing"
+grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-writer-norm-missing"
+grep -Fq 'accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-consuming-action-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3265,6 +3272,128 @@ need(
     and ipc_production.count("LinuxServiceOwnedCredentialReplicaRequester::authenticate(") == 1
     and ipc_production.count("requester.admit(&stream, operation_id)") == 1
     and ipc_production.count("admission.respond(&mut stream, deadline).await") == 1,
+)
+
+runtime_prs = between(
+    ipc,
+    "struct ServiceOwnedRuntimePrsReplica",
+    "enum MainPasswordMutationRequest",
+)
+mutation_request = between(
+    ipc,
+    "enum MainPasswordMutationRequest",
+    "const SERVICE_IPC_TRANSACTION_BUDGET",
+)
+linux_prs_writer = between(
+    ipc,
+    "struct LinuxServiceOwnedPasswordReplicaWriter",
+    "struct LinuxServiceOwnedCredentialReplicaRequester",
+)
+connect_sensitive = between(
+    ipc,
+    "async fn connect_sensitive_unix",
+    "async fn main_ipc_request(",
+)
+complete_password = between(
+    ipc,
+    "async fn complete_main_password_mutation",
+    "async fn user_owned_permanent_password_is_writable",
+)
+linux_password_commit = between(
+    ipc,
+    "async fn commit_service_owned_unattended_password_change",
+    "fn service_owned_runtime_prs_replica",
+)
+need(
+    "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction",
+    "struct ServiceOwnedRuntimePrsReplica {\n    value: SensitivePassword,\n}" in ipc
+    and "#[derive(Clone)]\nstruct ServiceOwnedRuntimePrsReplica" not in ipc
+    and ordered(runtime_prs, (
+        "impl ServiceOwnedRuntimePrsReplica",
+        "fn as_sensitive_password(&self) -> &SensitivePassword",
+        "&self.value",
+    ))
+    and ordered(mutation_request, (
+        "enum MainPasswordMutationRequest<'a>",
+        "UserOwned(&'a MainPasswordMutationValue)",
+        "ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica)",
+        "Self::UserOwned(value) => value",
+        "Self::ServiceOwnedRuntimePrs(replica) => replica.as_sensitive_password()",
+        "Self::UserOwned(_) => false",
+        "Self::ServiceOwnedRuntimePrs(_) => true",
+    ))
+    and "struct LinuxServiceOwnedPasswordReplicaWriter {\n    stream: ConnClient,\n    server: PeerProcessIdentity,\n}" in ipc
+    and "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaWriter" not in ipc
+    and "#[derive(Copy)]\nstruct LinuxServiceOwnedPasswordReplicaWriter" not in ipc
+    and ordered(linux_prs_writer, (
+        "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+        "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+        "user_main_ipc_server_uid()?",
+        "Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX)",
+        "Endpoint::connect(path)",
+        "authenticate_linux_service_owned_password_replica_server(",
+        "&stream",
+        "password::USER_PASSWORD_IPC_POSTFIX",
+        "server.uid() != expected_uid",
+        "Ok(Self { stream, server })",
+        "fn reauthenticate(&self) -> ResultType<()>",
+        "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+        "authenticate_linux_service_owned_password_replica_server(",
+        "&self.stream",
+        "password::USER_PASSWORD_IPC_POSTFIX",
+        "refreshed != self.server",
+        "async fn begin(",
+        "mut self",
+        "replica: &ServiceOwnedRuntimePrsReplica",
+        "self.reauthenticate()",
+        "password::send_request_unix(",
+        "&mut self.stream",
+        "operation_id",
+        "replica.as_sensitive_password()",
+        "password::receive_status_unix(",
+        "&mut self.stream",
+        "operation_id",
+        "LinuxServiceOwnedPasswordReplicaAttempt::Status(status)",
+        "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)",
+        "UnixSensitivePasswordSendError::NotSent(err)",
+        "LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err)",
+        "UnixSensitivePasswordSendError::Uncertain(err)",
+        "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)",
+    ))
+    and "if server.uid() != expected_uid {" in linux_prs_writer
+    and "if false && server.uid() != expected_uid {" not in linux_prs_writer
+    and "if refreshed != self.server {" in linux_prs_writer
+    and "if false && refreshed != self.server {" not in linux_prs_writer
+    and "async fn begin(\n        mut self," in linux_prs_writer
+    and "async fn begin(\n        &mut self," not in linux_prs_writer
+    and "UserMainIpcScope" not in linux_prs_writer
+    and "connect_sensitive_unix" not in linux_prs_writer
+    and "Config::ipc_path(" not in linux_prs_writer
+    and "service_owned_replica" not in connect_sensitive
+    and "Config::ipc_path_for_uid" not in connect_sensitive
+    and "authenticate_linux_service_owned_password_replica_server" not in connect_sensitive
+    and ordered(complete_password, (
+        "mutation: MainPasswordMutationRequest<'_>",
+        "let service_owned = mutation.is_service_owned()",
+        "let value = mutation.value()",
+        "LinuxServiceOwnedPasswordReplicaWriter::connect(deadline).await",
+        "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(replica) => *replica",
+        "writer.begin(operation_uuid, replica, deadline).await",
+        "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {",
+        "recovery_required = true",
+        "connect_user_owned_password_stream(deadline).await",
+        "password::send_request_unix(&mut stream, operation_uuid, value, None, deadline)",
+    ))
+    and "service_owned: bool" not in complete_password
+    and "connect_service_owned_password_replica_stream" not in ipc_production
+    and ordered(linux_password_commit, (
+        'service_owned_runtime_prs_replica("Linux")',
+        "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(&replica)",
+    ))
+    and "MainPasswordMutationRequest::UserOwned(&value)" not in linux_password_commit
+    and "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>" in ipc
+    and ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1
+    and ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1,
 )
 
 mac_worker = between(ipc, "struct MacosSecurityProofWorker", "fn try_acquire_service_ipc_transaction_slot")
@@ -3818,7 +3947,11 @@ need(
             "&requester.identity",
             "post_request_authorization",
             'service_owned_runtime_prs_replica("macOS")',
-            "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
+            "send_credential_replica_unix(",
+            "&mut stream",
+            "operation_id",
+            "replica.as_sensitive_password()",
+            "deadline",
         ),
     )
     and "macos_peer_is_service_owned_server(" not in ipc

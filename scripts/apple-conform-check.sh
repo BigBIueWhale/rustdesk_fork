@@ -1199,6 +1199,12 @@ def analyze(sources):
         snapshot_handler = item(ipc, "async fn handle_macos_service_credential_snapshot_transaction")
         client = item(ipc, "async fn set_service_owned_unattended_password_with_ack")
         connect_sensitive = item(ipc, "async fn connect_sensitive_unix")
+        runtime_prs = item(ipc, "impl ServiceOwnedRuntimePrsReplica")
+        mutation_request = item(ipc, "enum MainPasswordMutationRequest")
+        mutation_request_impl = item(ipc, "impl MainPasswordMutationRequest")
+        linux_prs_writer = item(ipc, "impl LinuxServiceOwnedPasswordReplicaWriter")
+        complete_password = item(ipc, "async fn complete_main_password_mutation")
+        linux_password_commit = item(ipc, "async fn commit_service_owned_unattended_password_change")
         connect_service = item(ipc, "async fn connect_with_path")
         coordinator = item(ipc, "impl PasswordMutationCoordinator")
         ledger = item(ipc, "impl PasswordMutationLedger")
@@ -1367,6 +1373,78 @@ def analyze(sources):
             and ipc_production.count("LinuxServiceOwnedCredentialReplicaRequester::authenticate(") == 1
             and ipc_production.count("requester.admit(&stream, operation_id)") == 1
             and ipc_production.count("admission.respond(&mut stream, deadline).await") == 1)
+        need("b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction",
+            "struct ServiceOwnedRuntimePrsReplica {\n    value: SensitivePassword,\n}" in ipc
+            and "#[derive(Clone)]\nstruct ServiceOwnedRuntimePrsReplica" not in ipc
+            and ordered(runtime_prs, [
+                "fn as_sensitive_password(&self) -> &SensitivePassword", "&self.value",
+            ])
+            and ordered(mutation_request, [
+                "UserOwned(&'a MainPasswordMutationValue)",
+                "ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica)",
+            ])
+            and ordered(mutation_request_impl, [
+                "Self::UserOwned(value) => value",
+                "Self::ServiceOwnedRuntimePrs(replica) => replica.as_sensitive_password()",
+                "Self::UserOwned(_) => false", "Self::ServiceOwnedRuntimePrs(_) => true",
+            ])
+            and "struct LinuxServiceOwnedPasswordReplicaWriter {\n    stream: ConnClient,\n    server: PeerProcessIdentity,\n}" in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaWriter" not in ipc
+            and "#[derive(Copy)]\nstruct LinuxServiceOwnedPasswordReplicaWriter" not in ipc
+            and ordered(linux_prs_writer, [
+                "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+                "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+                "user_main_ipc_server_uid()?",
+                "Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX)",
+                "Endpoint::connect(path)",
+                "authenticate_linux_service_owned_password_replica_server(", "&stream",
+                "password::USER_PASSWORD_IPC_POSTFIX", "server.uid() != expected_uid",
+                "Ok(Self { stream, server })", "fn reauthenticate(&self) -> ResultType<()>",
+                "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+                "authenticate_linux_service_owned_password_replica_server(", "&self.stream",
+                "password::USER_PASSWORD_IPC_POSTFIX", "refreshed != self.server",
+                "async fn begin(", "mut self", "replica: &ServiceOwnedRuntimePrsReplica",
+                "self.reauthenticate()", "password::send_request_unix(", "&mut self.stream",
+                "operation_id", "replica.as_sensitive_password()", "password::receive_status_unix(",
+                "&mut self.stream", "operation_id", "LinuxServiceOwnedPasswordReplicaAttempt::Status(status)",
+                "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)",
+                "UnixSensitivePasswordSendError::NotSent(err)",
+                "LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err)",
+                "UnixSensitivePasswordSendError::Uncertain(err)",
+                "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)",
+            ])
+            and "if server.uid() != expected_uid {" in linux_prs_writer
+            and "if false && server.uid() != expected_uid {" not in linux_prs_writer
+            and "if refreshed != self.server {" in linux_prs_writer
+            and "if false && refreshed != self.server {" not in linux_prs_writer
+            and "async fn begin(\n        mut self," in linux_prs_writer
+            and "async fn begin(\n        &mut self," not in linux_prs_writer
+            and "UserMainIpcScope" not in linux_prs_writer
+            and "connect_sensitive_unix" not in linux_prs_writer
+            and "Config::ipc_path(" not in linux_prs_writer
+            and "service_owned_replica" not in connect_sensitive
+            and "Config::ipc_path_for_uid" not in connect_sensitive
+            and "authenticate_linux_service_owned_password_replica_server" not in connect_sensitive
+            and ordered(complete_password, [
+                "mutation: MainPasswordMutationRequest<'_>",
+                "let service_owned = mutation.is_service_owned()", "let value = mutation.value()",
+                "LinuxServiceOwnedPasswordReplicaWriter::connect(deadline).await",
+                "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(replica) => *replica",
+                "writer.begin(operation_uuid, replica, deadline).await",
+                "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {",
+                "recovery_required = true", "connect_user_owned_password_stream(deadline).await",
+                "password::send_request_unix(&mut stream, operation_uuid, value, None, deadline)",
+            ])
+            and "service_owned: bool" not in complete_password
+            and "connect_service_owned_password_replica_stream" not in ipc_production
+            and ordered(linux_password_commit, [
+                'service_owned_runtime_prs_replica("Linux")',
+                "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(&replica)",
+            ])
+            and "MainPasswordMutationRequest::UserOwned(&value)" not in linux_password_commit
+            and "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>" in ipc
+            and ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1
+            and ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1)
         need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",
             "pub(crate) struct WindowsUserOwnedPasswordAdmission {\n    _requester: ipc_auth::WindowsSensitivePipeClientProof,\n}" in ipc
             and "pub(crate) struct WindowsServiceOwnedPasswordAdmission {\n    _requester: WindowsServiceOwnedPasswordRequester,\n}" in ipc
@@ -1813,7 +1891,8 @@ def analyze(sources):
             "macos_service_owned_credential_requester_matches_post_request_authorization(",
             "&requester.identity", "post_request_authorization",
             'service_owned_runtime_prs_replica("macOS")',
-            "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
+            "send_credential_replica_unix(", "&mut stream", "operation_id",
+            "replica.as_sensitive_password()", "deadline",
         ]) and ordered(mac_credential_post_request, [
             "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
             "|| !authorization.uid_authorized",
@@ -2031,6 +2110,18 @@ scoped_mutation("linux-credential-response-consume", "ipc", "impl LinuxServiceOw
 scoped_mutation("linux-credential-operation-binding", "ipc", "impl LinuxServiceOwnedCredentialReplicaAdmission", "self.operation_id,", "hbb_common::uuid::Uuid::from_bytes([1; 16]),", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
 scoped_mutation("linux-credential-handler-response", "ipc", "async fn handle_linux_service_credential_snapshot_transaction", "admission.respond(&mut stream, deadline).await", "send_linux_credential_replica_unchecked(&mut stream, admission, deadline).await", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
 mutation("linux-credential-generic-proof-visibility", "auth", "pub(super) fn authenticate_linux_service_owned_password_replica_server<T>(", "pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+mutation("linux-runtime-prs-type", "ipc", "struct ServiceOwnedRuntimePrsReplica {\n    value: SensitivePassword,\n}", "struct ServiceOwnedRuntimePrsReplica {\n    value: String,\n}", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+mutation("linux-runtime-prs-variant", "ipc", "ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica),", "ServiceOwnedRuntimePrs(&'a MainPasswordMutationValue),", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-classification", "ipc", "impl MainPasswordMutationRequest", "Self::ServiceOwnedRuntimePrs(_) => true,", "Self::ServiceOwnedRuntimePrs(_) => false,", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+mutation("linux-runtime-prs-writer-clone", "ipc", "struct LinuxServiceOwnedPasswordReplicaWriter {", "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaWriter {", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-role", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "!crate::platform::is_root() || !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer requires the exact root service supervisor role\"", "!crate::platform::is_root() && !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer requires the exact root service supervisor role\"", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-path", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX)", "Config::ipc_path(password::USER_PASSWORD_IPC_POSTFIX)", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-uid", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "if server.uid() != expected_uid {", "if false && server.uid() != expected_uid {", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-continuity", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "if refreshed != self.server {", "if false && refreshed != self.server {", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-consume", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "async fn begin(\n        mut self,", "async fn begin(\n        &mut self,", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-type", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "replica: &ServiceOwnedRuntimePrsReplica,", "replica: &SensitivePassword,", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-writer-replay", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "if let Err(err) = self.reauthenticate() {", "if let Err(err) = Ok::<(), anyhow::Error>(()) {", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-recovery", "ipc", "async fn complete_main_password_mutation", "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = true;", "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = false;", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
 scoped_mutation("windows-password-final-service-proof", "auth", "pub(crate) fn into_service_owned_password_admission", "self.revalidate(pipe, deadline)?;", "drop((pipe, deadline));", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 scoped_mutation("windows-password-service-mint-endpoint", "auth", "pub(crate) fn into_service_owned_password_admission", "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX", "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 mutation("windows-password-public-generic-listener", "windows", "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,", "pub(crate) fn start_windows_sensitive_password_listener(\n    postfix: &'static str,\n    requests: WindowsSensitivePasswordRequestSender,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
@@ -2061,7 +2152,7 @@ scoped_mutation("credential-final-generation", "auth", "pub(crate) fn macos_serv
 scoped_mutation("credential-final-argv", "ipc", "fn macos_service_owned_credential_requester_is_live", "&& process.cmd() == requester.argv", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-post-token", "auth", "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization", "&& post_request_identity.audit_token == requester.audit_token", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-post-snapshot", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot_disabled(", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
-scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(\n        &mut stream,\n        operation_id,\n        replica.as_sensitive_password(),\n        deadline,\n    )", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
@@ -2194,6 +2285,13 @@ grep -Fq 'The same identity additionally binds R-S11ig and Appendix C #392.' "$R
 grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-requester-capability-norm-missing"
 grep -Fq 'one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-admission-capability-norm-missing"
 grep -Fq 'Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica("Linux")</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-capability-response-norm-missing"
+grep -Fq '<span class="id">R-S11ih</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-requirement-missing"
+grep -Fq '<tr><td>393</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-appendix-missing"
+grep -Fq 'R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ih and Appendix C #393.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-digest-binding-missing"
+grep -Fq 'distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-type-norm-missing"
+grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-writer-norm-missing"
+grep -Fq 'accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-consuming-action-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

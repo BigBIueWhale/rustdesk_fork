@@ -13336,6 +13336,587 @@ def validate_linux_credential_replica_admission_contract(sources):
     )
 
 
+def validate_linux_runtime_prs_writer_contract(sources):
+    ipc = sources["ipc_source"]
+    focused = sources["linux_password_ipc_validator"]
+
+    runtime_prs = extract_braced_item(
+        ipc,
+        "struct ServiceOwnedRuntimePrsReplica",
+        "typed service-owned runtime PRS",
+    )
+    require_text(runtime_prs, "value: SensitivePassword,", "sensitive PRS value")
+    runtime_prs_impl = extract_braced_item(
+        ipc,
+        "impl ServiceOwnedRuntimePrsReplica",
+        "typed service-owned runtime PRS borrow",
+    )
+    require_order(
+        runtime_prs_impl,
+        (
+            "fn as_sensitive_password(&self) -> &SensitivePassword",
+            "&self.value",
+        ),
+        "borrow-only service-owned runtime PRS projection",
+    )
+    request = extract_braced_item(
+        ipc,
+        "enum MainPasswordMutationRequest",
+        "typed main password mutation request",
+    )
+    require_order(
+        request,
+        (
+            "UserOwned(&'a MainPasswordMutationValue),",
+            "ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica),",
+        ),
+        "distinct user-owned and runtime-PRS actions",
+    )
+    request_impl = extract_braced_item(
+        ipc,
+        "impl MainPasswordMutationRequest",
+        "typed main password mutation projections",
+    )
+    require_order(
+        request_impl,
+        (
+            "Self::UserOwned(value) => value,",
+            "Self::ServiceOwnedRuntimePrs(replica) => replica.as_sensitive_password(),",
+            "Self::UserOwned(_) => false,",
+            "Self::ServiceOwnedRuntimePrs(_) => true,",
+        ),
+        "type-derived secret and authority classification",
+    )
+    for marker, label in (
+        (
+            "#[derive(Clone)]\nstruct ServiceOwnedRuntimePrsReplica",
+            "cloneable service-owned runtime PRS",
+        ),
+        (
+            "#[derive(Copy)]\nstruct ServiceOwnedRuntimePrsReplica",
+            "copyable service-owned runtime PRS",
+        ),
+        (
+            "#[derive(Clone)]\nenum MainPasswordMutationRequest",
+            "cloneable main password mutation request",
+        ),
+        (
+            "#[derive(Copy)]\nenum MainPasswordMutationRequest",
+            "copyable main password mutation request",
+        ),
+    ):
+        require_absent(ipc, marker, label)
+
+    writer_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedPasswordReplicaWriter",
+        "typed Linux runtime PRS writer",
+    )
+    require_order(
+        writer_record,
+        ("stream: ConnClient,", "server: PeerProcessIdentity,"),
+        "retained stream and complete child identity",
+    )
+    attempt = extract_braced_item(
+        ipc,
+        "enum LinuxServiceOwnedPasswordReplicaAttempt",
+        "typed Linux runtime PRS attempt",
+    )
+    require_order(
+        attempt,
+        (
+            "Status(PasswordMutationStatus),",
+            "NotSent(anyhow::Error),",
+            "Uncertain(anyhow::Error),",
+        ),
+        "status and transport-finality classification",
+    )
+    for marker, label in (
+        (
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaWriter",
+            "cloneable Linux runtime PRS writer",
+        ),
+        (
+            "#[derive(Copy)]\nstruct LinuxServiceOwnedPasswordReplicaWriter",
+            "copyable Linux runtime PRS writer",
+        ),
+        (
+            "#[derive(Clone)]\nenum LinuxServiceOwnedPasswordReplicaAttempt",
+            "cloneable Linux runtime PRS attempt",
+        ),
+        (
+            "#[derive(Copy)]\nenum LinuxServiceOwnedPasswordReplicaAttempt",
+            "copyable Linux runtime PRS attempt",
+        ),
+    ):
+        require_absent(ipc, marker, label)
+
+    writer = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedPasswordReplicaWriter",
+        "Linux runtime PRS writer authority",
+    )
+    require_order(
+        writer,
+        (
+            "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+            "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+            "let expected_uid = user_main_ipc_server_uid()?;",
+            "Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX)",
+            "Endpoint::connect(path)",
+            "authenticate_linux_service_owned_password_replica_server(",
+            "&stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "if server.uid() != expected_uid {",
+            "password::remaining_millis(deadline)?;",
+            "Ok(Self { stream, server })",
+            "fn reauthenticate(&self) -> ResultType<()>",
+            "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+            "authenticate_linux_service_owned_password_replica_server(",
+            "&self.stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "if refreshed != self.server {",
+            "async fn begin(",
+            "mut self,",
+            "operation_id: hbb_common::uuid::Uuid,",
+            "replica: &ServiceOwnedRuntimePrsReplica,",
+            "if let Err(err) = self.reauthenticate() {",
+            "LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err)",
+            "password::send_request_unix(",
+            "&mut self.stream,\n            operation_id,\n            replica.as_sensitive_password(),",
+            "password::receive_status_unix(",
+            "&mut self.stream,\n                operation_id,\n                deadline,",
+            "LinuxServiceOwnedPasswordReplicaAttempt::Status(status)",
+            "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)",
+            "UnixSensitivePasswordSendError::NotSent(err)",
+            "LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err)",
+            "UnixSensitivePasswordSendError::Uncertain(err)",
+            "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)",
+        ),
+        "fixed child proof, consuming typed PRS transaction, and finality",
+    )
+    require_exact_count(
+        writer,
+        "!crate::platform::is_root() || !crate::common::is_service_supervisor_process()",
+        2,
+        "initial and final exact root-supervisor proof",
+    )
+    for text in (
+        "if server.uid() != expected_uid {",
+        "if refreshed != self.server {",
+        "async fn begin(\n        mut self,",
+    ):
+        require_text(
+            writer,
+            text,
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        )
+    for text in (
+        "if false && server.uid() != expected_uid {",
+        "if false && refreshed != self.server {",
+        "async fn begin(\n        &mut self,",
+    ):
+        require_absent(
+            writer,
+            text,
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        )
+    for text, label in (
+        ("UserMainIpcScope", "ambient user-main route in typed writer"),
+        ("connect_sensitive_unix", "ordinary sensitive connector in typed writer"),
+        ("Config::ipc_path(", "caller-owned IPC path in typed writer"),
+        ("replica: &SensitivePassword", "generic password in typed writer transaction"),
+    ):
+        require_absent(writer, text, label)
+
+    connector = extract_braced_item(
+        ipc,
+        "async fn connect_sensitive_unix",
+        "ordinary Unix sensitive connector",
+    )
+    require_order(
+        connector,
+        (
+            "let path = Config::ipc_path(postfix);",
+            "Endpoint::connect(path)",
+            "password::USER_PASSWORD_IPC_POSTFIX => {",
+            "ensure_user_owned_password_server_is_trusted(&stream, expected_uid)?;",
+            "password::SERVICE_PASSWORD_IPC_POSTFIX => {",
+        ),
+        "ordinary user/service raw endpoint proof",
+    )
+    for text, label in (
+        ("service_owned_replica", "detached service-owned replica Boolean"),
+        ("Config::ipc_path_for_uid", "root-to-child path selection"),
+        (
+            "authenticate_linux_service_owned_password_replica_server",
+            "service-owned child proof in ordinary connector",
+        ),
+    ):
+        require_absent(connector, text, label)
+
+    completion = extract_braced_item(
+        ipc,
+        "async fn complete_main_password_mutation",
+        "typed main password completion",
+    )
+    require_order(
+        completion,
+        (
+            "mutation: MainPasswordMutationRequest<'_>,",
+            "let service_owned = mutation.is_service_owned();",
+            "let value = mutation.value();",
+            "LinuxServiceOwnedPasswordReplicaWriter::connect(deadline).await",
+            "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(replica) => *replica,",
+            "writer.begin(operation_uuid, replica, deadline).await",
+            "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {",
+            "recovery_required = true;",
+            "connect_user_owned_password_stream(deadline).await",
+            "password::send_request_unix(&mut stream, operation_uuid, value, None, deadline)",
+        ),
+        "enum-derived service path, consuming writer, and user-owned separation",
+    )
+    require_text(
+        completion,
+        "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n"
+        "                        recovery_required = true;",
+        "enum-derived service path, consuming writer, and user-owned separation",
+    )
+    require_absent(
+        completion,
+        "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n"
+        "                        recovery_required = false;",
+        "enum-derived service path, consuming writer, and user-owned separation",
+    )
+    for text, label in (
+        ("service_owned: bool", "caller-supplied service-owned Boolean"),
+        ("ServiceOwnedRuntimePrsReplica {", "completion-time PRS type forgery"),
+        (
+            "connect_service_owned_password_replica_stream",
+            "untyped service-owned child connector",
+        ),
+    ):
+        require_absent(completion, text, label)
+    require_absent(
+        ipc,
+        "async fn connect_service_owned_password_replica_stream",
+        "obsolete untyped service-owned child connector",
+    )
+
+    commit = extract_braced_item(
+        ipc,
+        "async fn commit_service_owned_unattended_password_change",
+        "Linux durable password commit and runtime convergence",
+    )
+    require_order(
+        commit,
+        (
+            "Config::set_permanent_password_persisted(durable_value.as_str())",
+            'service_owned_runtime_prs_replica("Linux")',
+            "MainPasswordMutationRequest::ServiceOwnedRuntimePrs(&replica)",
+        ),
+        "durable-first typed PRS convergence",
+    )
+    require_absent(
+        commit,
+        "MainPasswordMutationRequest::UserOwned(&value)",
+        "plaintext rerouted through user-owned mutation",
+    )
+    require_absent(
+        commit,
+        "ServiceOwnedRuntimePrsReplica {",
+        "local plaintext-to-PRS type forgery",
+    )
+    loader = extract_braced_item(
+        ipc,
+        "fn service_owned_runtime_prs_replica",
+        "typed canonical PRS loader",
+    )
+    require_text(
+        ipc,
+        "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>",
+        "typed canonical PRS loader result",
+    )
+    require_order(
+        loader,
+        (
+            "Config::read_permanent_password_prs()",
+            "PermanentPasswordPrsRead::Available(prs)",
+            "ServiceOwnedRuntimePrsReplica {\n                value: SensitivePassword::new(prs),",
+            "PermanentPasswordPrsRead::Empty",
+            "ServiceOwnedRuntimePrsReplica {\n                value: SensitivePassword::new(String::new()),",
+            "PermanentPasswordPrsRead::UndecryptableStorage",
+        ),
+        "available, empty, and undecryptable typed PRS handling",
+    )
+    require_exact_count(
+        ipc,
+        "LinuxServiceOwnedPasswordReplicaWriter::connect(",
+        1,
+        "sole typed Linux runtime PRS writer mint",
+    )
+    require_exact_count(
+        ipc,
+        "writer.begin(operation_uuid, replica, deadline).await",
+        1,
+        "sole consuming Linux runtime PRS transaction",
+    )
+
+    for text, label in (
+        (
+            'runtime_prs = ipc.item("struct", "ServiceOwnedRuntimePrsReplica")',
+            "focused typed PRS parser",
+        ),
+        (
+            'writer = ipc.item("struct", "LinuxServiceOwnedPasswordReplicaWriter")',
+            "focused typed writer parser",
+        ),
+        (
+            'writer_begin = ipc.method(',
+            "focused consuming writer parser",
+        ),
+        (
+            '"Linux runtime PRS loses its distinct payload type"',
+            "focused PRS type mutation",
+        ),
+        (
+            '"Linux service-owned PRS writer admits a non-supervisor root process"',
+            "focused root-supervisor mutation",
+        ),
+        (
+            '"Linux service-owned PRS writer bypasses accepted-child continuity"',
+            "focused child-continuity mutation",
+        ),
+        (
+            '"Linux service-owned PRS writer transaction borrows its authority"',
+            "focused consuming-writer mutation",
+        ),
+        (
+            '"Linux service-owned PRS writer loses response uncertainty"',
+            "focused response-finality mutation",
+        ),
+        (
+            '"Linux root completion routes plaintext through the user-owned variant"',
+            "focused plaintext-route mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        'connect_sensitive = between(\n    ipc,\n    "async fn connect_sensitive_unix",\n    "async fn main_ipc_request(",\n)',
+        "shared exact ordinary sensitive-connector extraction",
+    )
+    shared = extract_between(
+        sources["verify"],
+        'need(\n    "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction"',
+        "\n\nmac_worker =",
+        "shared typed Linux runtime PRS writer analyzer",
+    )
+    require_order(
+        shared,
+        (
+            '"struct ServiceOwnedRuntimePrsReplica {\\n    value: SensitivePassword,\\n}" in ipc',
+            '"#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" not in ipc',
+            '"struct LinuxServiceOwnedPasswordReplicaWriter {\\n    stream: ConnClient,\\n    server: PeerProcessIdentity,\\n}" in ipc',
+            '"#[derive(Clone)]\\nstruct LinuxServiceOwnedPasswordReplicaWriter" not in ipc',
+            '"if server.uid() != expected_uid {" in linux_prs_writer',
+            '"if false && server.uid() != expected_uid {" not in linux_prs_writer',
+            '"if refreshed != self.server {" in linux_prs_writer',
+            '"if false && refreshed != self.server {" not in linux_prs_writer',
+            '"async fn begin(\\n        mut self," in linux_prs_writer',
+            '"async fn begin(\\n        &mut self," not in linux_prs_writer',
+            '"UserMainIpcScope" not in linux_prs_writer',
+            '"service_owned_replica" not in connect_sensitive',
+            '"service_owned: bool" not in complete_password',
+            '"connect_service_owned_password_replica_stream" not in ipc_production',
+            '"MainPasswordMutationRequest::UserOwned(&value)" not in linux_password_commit',
+            'ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1',
+            'ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1',
+        ),
+        "shared typed Linux runtime PRS writer predicates",
+    )
+    for text, label in (
+        (
+            '"#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" in ipc',
+            "shared cloneable runtime PRS acceptance",
+        ),
+        (
+            '"#[derive(Clone)]\\nstruct LinuxServiceOwnedPasswordReplicaWriter" in ipc',
+            "shared cloneable runtime PRS writer acceptance",
+        ),
+        (
+            '"service_owned_replica" in connect_sensitive',
+            "shared detached replica-Boolean acceptance",
+        ),
+        (
+            '"connect_service_owned_password_replica_stream" in ipc_production',
+            "shared untyped replica connector acceptance",
+        ),
+        (
+            'ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") >= 1',
+            "shared non-sole runtime PRS writer mint acceptance",
+        ),
+        (
+            'ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") >= 1',
+            "shared non-sole runtime PRS writer transaction acceptance",
+        ),
+    ):
+        require_absent(shared, text, label)
+    require_exact_count(
+        sources["apple"],
+        '"linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction"',
+        13,
+        "Apple typed Linux runtime PRS analyzer and mutations",
+    )
+    apple = extract_between(
+        sources["apple"],
+        'need("b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction"',
+        "\n        password_accept = run_service[",
+        "Apple typed Linux runtime PRS writer analyzer",
+    )
+    require_order(
+        apple,
+        (
+            '"struct ServiceOwnedRuntimePrsReplica {\\n    value: SensitivePassword,\\n}" in ipc',
+            '"#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" not in ipc',
+            '"struct LinuxServiceOwnedPasswordReplicaWriter {\\n    stream: ConnClient,\\n    server: PeerProcessIdentity,\\n}" in ipc',
+            '"#[derive(Clone)]\\nstruct LinuxServiceOwnedPasswordReplicaWriter" not in ipc',
+            '"if server.uid() != expected_uid {" in linux_prs_writer',
+            '"if false && server.uid() != expected_uid {" not in linux_prs_writer',
+            '"if refreshed != self.server {" in linux_prs_writer',
+            '"if false && refreshed != self.server {" not in linux_prs_writer',
+            '"async fn begin(\\n        mut self," in linux_prs_writer',
+            '"async fn begin(\\n        &mut self," not in linux_prs_writer',
+            '"UserMainIpcScope" not in linux_prs_writer',
+            '"service_owned_replica" not in connect_sensitive',
+            '"service_owned: bool" not in complete_password',
+            '"connect_service_owned_password_replica_stream" not in ipc_production',
+            '"MainPasswordMutationRequest::UserOwned(&value)" not in linux_password_commit',
+            'ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1',
+            'ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1',
+        ),
+        "Apple typed Linux runtime PRS writer predicates",
+    )
+    for text, label in (
+        (
+            '"#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" in ipc',
+            "Apple cloneable runtime PRS acceptance",
+        ),
+        (
+            '"#[derive(Clone)]\\nstruct LinuxServiceOwnedPasswordReplicaWriter" in ipc',
+            "Apple cloneable runtime PRS writer acceptance",
+        ),
+        (
+            '"service_owned_replica" in connect_sensitive',
+            "Apple detached replica-Boolean acceptance",
+        ),
+        (
+            '"connect_service_owned_password_replica_stream" in ipc_production',
+            "Apple untyped replica connector acceptance",
+        ),
+        (
+            'ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") >= 1',
+            "Apple non-sole runtime PRS writer mint acceptance",
+        ),
+        (
+            'ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") >= 1',
+            "Apple non-sole runtime PRS writer transaction acceptance",
+        ),
+    ):
+        require_absent(apple, text, label)
+    for text, label in (
+        (
+            'mutation("linux-runtime-prs-type"',
+            "Apple PRS type mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-writer-role"',
+            "Apple root-supervisor mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-writer-continuity"',
+            "Apple child-continuity mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-writer-consume"',
+            "Apple consuming-writer mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-recovery"',
+            "Apple uncertainty-recovery mutation",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "grep -Fq '<span class=\"id\">R-S11ih</span>' requirements.html",
+            "shared typed Linux runtime PRS requirement binding",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<tr><td>393</td>' requirements.html",
+            "shared typed Linux runtime PRS Appendix binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<span class=\"id\">R-S11ih</span>' \"$REPO/requirements.html\"",
+            "Apple typed Linux runtime PRS requirement binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<tr><td>393</td>' \"$REPO/requirements.html\"",
+            "Apple typed Linux runtime PRS Appendix binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11ih</span>',
+            "typed Linux runtime PRS requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>393</td>",
+            "typed Linux runtime PRS Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority",
+            "typed Linux runtime PRS hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11ih and Appendix C #393.",
+            "typed Linux runtime PRS identity binding",
+        ),
+        (
+            sources["requirements"],
+            "distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>",
+            "normative distinct runtime PRS type",
+        ),
+        (
+            sources["requirements"],
+            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>",
+            "normative private runtime PRS writer",
+        ),
+        (
+            sources["requirements"],
+            "accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>",
+            "normative typed runtime PRS transaction",
+        ),
+    ):
+        require_text(source, text, label)
+    require_text(
+        sources["workspace_verifier"],
+        "def validate_linux_runtime_prs_writer_contract(sources):\n",
+        "typed Linux runtime PRS independent validator definition",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_linux_runtime_prs_writer_contract(sources)\n",
+        "typed Linux runtime PRS independent validator dispatch",
+    )
+
+
 def validate_macos_service_owned_password_requester_contract(sources):
     ipc = sources["ipc_source"]
     auth = sources["ipc_auth_source"]
@@ -19318,7 +19899,8 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "macos_service_owned_credential_requester_matches_post_request_authorization(",
             "&requester.identity,\n        post_request_authorization,",
             'service_owned_runtime_prs_replica("macOS")',
-            "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
+            "send_credential_replica_unix(",
+            "&mut stream,\n        operation_id,\n        replica.as_sensitive_password(),\n        deadline,",
         ),
         "bodyless request, retained requester proof, final equality, and raw PRS response",
     )
@@ -53782,8 +54364,8 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     )
     require_text(
         post_mutation,
-        "complete_main_password_mutation(operation_id, &v, false, ms_timeout).await?",
-        "raw password completion authority",
+        "MainPasswordMutationRequest::UserOwned(&v)",
+        "typed raw password completion authority",
     )
     for text in ("storage", "salt", "Config::"):
         require_absent(
@@ -55284,7 +55866,7 @@ def validate_ipc_lifecycle_checker_contract(sources):
             "Linux credential/bootstrap verifier invocation",
         ),
         (
-            '"root forwards plaintext instead of the canonical PRS replica"',
+            '"Linux root completion routes plaintext through the user-owned variant"',
             "Linux plaintext-forwarding adversarial mutation",
         ),
         (
@@ -57665,6 +58247,7 @@ def validate_sources(sources):
     validate_linux_service_admission_contract(sources)
     validate_linux_service_owned_password_requester_contract(sources)
     validate_linux_credential_replica_admission_contract(sources)
+    validate_linux_runtime_prs_writer_contract(sources)
     validate_windows_sensitive_password_admission_contract(sources)
     validate_macos_service_owned_password_requester_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
@@ -67338,8 +67921,8 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "            self.operation_id,\n            &replica,",
-            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            &replica,",
+            "            self.operation_id,\n            replica.as_sensitive_password(),",
+            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            replica.as_sensitive_password(),",
             "consuming operation-bound PRS response",
         ),
         (
@@ -67533,6 +68116,426 @@ def run_source_mutations(sources):
             "    validate_linux_credential_replica_admission_contract(sources)\n",
             "    validate_linux_credential_replica_admission_contract_disabled(sources)\n",
             "typed Linux credential independent validator dispatch",
+        ),
+        (
+            "ipc_source",
+            "struct ServiceOwnedRuntimePrsReplica {\n    value: SensitivePassword,\n}",
+            "struct ServiceOwnedRuntimePrsReplica {\n    value: String,\n}",
+            "sensitive PRS value",
+        ),
+        (
+            "ipc_source",
+            "    fn as_sensitive_password(&self) -> &SensitivePassword {\n        &self.value\n    }",
+            "    fn as_sensitive_password(&self) -> &SensitivePassword {\n        unreachable!()\n    }",
+            "borrow-only service-owned runtime PRS projection",
+        ),
+        (
+            "ipc_source",
+            "    ServiceOwnedRuntimePrs(&'a ServiceOwnedRuntimePrsReplica),",
+            "    ServiceOwnedRuntimePrs(&'a MainPasswordMutationValue),",
+            "distinct user-owned and runtime-PRS actions",
+        ),
+        (
+            "ipc_source",
+            "            Self::ServiceOwnedRuntimePrs(_) => true,",
+            "            Self::ServiceOwnedRuntimePrs(_) => false,",
+            "type-derived secret and authority classification",
+        ),
+        (
+            "ipc_source",
+            "struct ServiceOwnedRuntimePrsReplica {",
+            "#[derive(Clone)]\nstruct ServiceOwnedRuntimePrsReplica {",
+            "cloneable service-owned runtime PRS",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedPasswordReplicaWriter {\n    stream: ConnClient,\n    server: PeerProcessIdentity,\n}",
+            "struct LinuxServiceOwnedPasswordReplicaWriter {\n    stream: ConnClient,\n}",
+            "retained stream and complete child identity",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedPasswordReplicaWriter {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaWriter {",
+            "cloneable Linux runtime PRS writer",
+        ),
+        (
+            "ipc_source",
+            "enum LinuxServiceOwnedPasswordReplicaAttempt {\n    Status(PasswordMutationStatus),\n    NotSent(anyhow::Error),\n    Uncertain(anyhow::Error),\n}",
+            "enum LinuxServiceOwnedPasswordReplicaAttempt {\n    Status(PasswordMutationStatus),\n    NotSent(anyhow::Error),\n}",
+            "status and transport-finality classification",
+        ),
+        (
+            "ipc_source",
+            "!crate::platform::is_root() || !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer requires the exact root service supervisor role\"",
+            "!crate::platform::is_root() && !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer requires the exact root service supervisor role\"",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "Config::ipc_path_for_uid(expected_uid, password::USER_PASSWORD_IPC_POSTFIX)",
+            "Config::ipc_path(password::USER_PASSWORD_IPC_POSTFIX)",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "            &stream,\n            password::USER_PASSWORD_IPC_POSTFIX,\n        )?;\n        if server.uid() != expected_uid {",
+            "            &stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        if server.uid() != expected_uid {",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "        if server.uid() != expected_uid {\n            bail!(\n                \"service-owned password replica uid mismatch: expected={}, actual={}\"",
+            "        if false && server.uid() != expected_uid {\n            bail!(\n                \"service-owned password replica uid mismatch: expected={}, actual={}\"",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "!crate::platform::is_root() || !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer lost its root service supervisor role\"",
+            "!crate::platform::is_root() && !crate::common::is_service_supervisor_process() {\n            bail!(\n                \"Linux service-owned password replica writer lost its root service supervisor role\"",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "            &self.stream,\n            password::USER_PASSWORD_IPC_POSTFIX,\n        )?;\n        if refreshed != self.server {",
+            "            &self.stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        if refreshed != self.server {",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "        if refreshed != self.server {\n            bail!(\"Linux service-owned password replica server identity changed before write\");",
+            "        if false && refreshed != self.server {\n            bail!(\"Linux service-owned password replica server identity changed before write\");",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "    async fn begin(\n        mut self,\n        operation_id: hbb_common::uuid::Uuid,\n        replica: &ServiceOwnedRuntimePrsReplica,",
+            "    async fn begin(\n        &mut self,\n        operation_id: hbb_common::uuid::Uuid,\n        replica: &ServiceOwnedRuntimePrsReplica,",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "        replica: &ServiceOwnedRuntimePrsReplica,\n        deadline: tokio::time::Instant,\n    ) -> LinuxServiceOwnedPasswordReplicaAttempt {",
+            "        replica: &SensitivePassword,\n        deadline: tokio::time::Instant,\n    ) -> LinuxServiceOwnedPasswordReplicaAttempt {",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "        if let Err(err) = self.reauthenticate() {\n            return LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err);\n        }",
+            "        if let Err(err) = Ok::<(), anyhow::Error>(()) {\n            return LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err);\n        }",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "            &mut self.stream,\n            operation_id,\n            replica.as_sensitive_password(),",
+            "            &mut self.stream,\n            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            replica.as_sensitive_password(),",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "                &mut self.stream,\n                operation_id,\n                deadline,",
+            "                &mut self.stream,\n                hbb_common::uuid::Uuid::from_bytes([2; 16]),\n                deadline,",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "                Err(err) => LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err),",
+            "                Err(err) => LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err),",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "            Err(password::UnixSensitivePasswordSendError::Uncertain(err)) => {\n                LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err)\n            }",
+            "            Err(password::UnixSensitivePasswordSendError::Uncertain(err)) => {\n                LinuxServiceOwnedPasswordReplicaAttempt::NotSent(err)\n            }",
+            "fixed child proof, consuming typed PRS transaction, and finality",
+        ),
+        (
+            "ipc_source",
+            "async fn connect_sensitive_unix(\n    deadline: tokio::time::Instant,\n    postfix: &str,\n) -> ResultType<ConnClient> {",
+            "async fn connect_sensitive_unix(\n    deadline: tokio::time::Instant,\n    postfix: &str,\n    service_owned_replica: bool,\n) -> ResultType<ConnClient> {",
+            "detached service-owned replica Boolean",
+        ),
+        (
+            "ipc_source",
+            "    mutation: MainPasswordMutationRequest<'_>,\n    ms_timeout: u64,",
+            "    mutation: MainPasswordMutationRequest<'_>,\n    service_owned: bool,\n    ms_timeout: u64,",
+            "caller-supplied service-owned Boolean",
+        ),
+        (
+            "ipc_source",
+            "    let service_owned = mutation.is_service_owned();",
+            "    let service_owned = false;",
+            "enum-derived service path, consuming writer, and user-owned separation",
+        ),
+        (
+            "ipc_source",
+            "                    MainPasswordMutationRequest::ServiceOwnedRuntimePrs(replica) => *replica,",
+            "                    MainPasswordMutationRequest::UserOwned(replica) => *replica,",
+            "enum-derived service path, consuming writer, and user-owned separation",
+        ),
+        (
+            "ipc_source",
+            "                    LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = true;",
+            "                    LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = false;",
+            "enum-derived service path, consuming writer, and user-owned separation",
+        ),
+        (
+            "ipc_source",
+            "        MainPasswordMutationRequest::ServiceOwnedRuntimePrs(&replica),\n        ms_timeout,",
+            "        MainPasswordMutationRequest::UserOwned(&value),\n        ms_timeout,",
+            "durable-first typed PRS convergence",
+        ),
+        (
+            "ipc_source",
+            "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica> {",
+            "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<SensitivePassword> {",
+            "typed canonical PRS loader result",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'runtime_prs = ipc.item("struct", "ServiceOwnedRuntimePrsReplica")',
+            'runtime_prs_disabled = ipc.item("struct", "ServiceOwnedRuntimePrsReplica")',
+            "focused typed PRS parser",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'writer = ipc.item("struct", "LinuxServiceOwnedPasswordReplicaWriter")',
+            'writer_disabled = ipc.item("struct", "LinuxServiceOwnedPasswordReplicaWriter")',
+            "focused typed writer parser",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'writer_begin = ipc.method(',
+            'writer_begin_disabled = ipc.method(',
+            "focused consuming writer parser",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux runtime PRS loses its distinct payload type"',
+            '"Linux runtime PRS keeps its distinct payload type"',
+            "focused PRS type mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux service-owned PRS writer admits a non-supervisor root process"',
+            '"Linux service-owned PRS writer rejects a non-supervisor root process"',
+            "focused root-supervisor mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux service-owned PRS writer bypasses accepted-child continuity"',
+            '"Linux service-owned PRS writer retains accepted-child continuity"',
+            "focused child-continuity mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux service-owned PRS writer transaction borrows its authority"',
+            '"Linux service-owned PRS writer transaction consumes its authority"',
+            "focused consuming-writer mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux service-owned PRS writer loses response uncertainty"',
+            '"Linux service-owned PRS writer retains response uncertainty"',
+            "focused response-finality mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux root completion routes plaintext through the user-owned variant"',
+            '"Linux root completion retains typed PRS routing"',
+            "focused plaintext-route mutation",
+        ),
+        (
+            "verify",
+            '"linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction"',
+            '"linux-runtime-prs-writer-authority-not-checked"',
+            "shared typed Linux runtime PRS writer analyzer",
+        ),
+        (
+            "verify",
+            'connect_sensitive = between(\n    ipc,\n    "async fn connect_sensitive_unix",\n    "async fn main_ipc_request(",\n)',
+            'connect_sensitive = between(\n    ipc,\n    "async fn connect_sensitive_unix",\n    "async fn connect_user_owned_password_main",\n)',
+            "shared exact ordinary sensitive-connector extraction",
+        ),
+        (
+            "verify",
+            'and "#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" not in ipc',
+            'and "#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" in ipc',
+            "shared typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "verify",
+            'and "if server.uid() != expected_uid {" in linux_prs_writer',
+            'and "if server.uid() != expected_uid {" not in linux_prs_writer',
+            "shared typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "verify",
+            'and "if false && refreshed != self.server {" not in linux_prs_writer',
+            'and "if false && refreshed != self.server {" in linux_prs_writer',
+            "shared typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "verify",
+            'and "async fn begin(\\n        mut self," in linux_prs_writer',
+            'and "async fn begin(\\n        &mut self," in linux_prs_writer',
+            "shared typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "verify",
+            'and "service_owned_replica" not in connect_sensitive',
+            'and "service_owned_replica" in connect_sensitive',
+            "shared typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "verify",
+            'and ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1',
+            'and ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") >= 1',
+            "shared typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            '"linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction"',
+            '"linux-runtime-prs-writer-authority-not-checked"',
+            "Apple typed Linux runtime PRS analyzer and mutations",
+        ),
+        (
+            "apple",
+            'and "#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" not in ipc',
+            'and "#[derive(Clone)]\\nstruct ServiceOwnedRuntimePrsReplica" in ipc',
+            "Apple typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            'and "if server.uid() != expected_uid {" in linux_prs_writer',
+            'and "if server.uid() != expected_uid {" not in linux_prs_writer',
+            "Apple typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            'and "if false && refreshed != self.server {" not in linux_prs_writer',
+            'and "if false && refreshed != self.server {" in linux_prs_writer',
+            "Apple typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            'and "async fn begin(\\n        mut self," in linux_prs_writer',
+            'and "async fn begin(\\n        &mut self," in linux_prs_writer',
+            "Apple typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            'and "service_owned_replica" not in connect_sensitive',
+            'and "service_owned_replica" in connect_sensitive',
+            "Apple typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            'and ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1',
+            'and ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") >= 1',
+            "Apple typed Linux runtime PRS writer predicates",
+        ),
+        (
+            "apple",
+            'mutation("linux-runtime-prs-type"',
+            'mutation("linux-runtime-prs-type-disabled"',
+            "Apple PRS type mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-writer-role"',
+            'scoped_mutation("linux-runtime-prs-writer-role-disabled"',
+            "Apple root-supervisor mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-writer-continuity"',
+            'scoped_mutation("linux-runtime-prs-writer-continuity-disabled"',
+            "Apple child-continuity mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-writer-consume"',
+            'scoped_mutation("linux-runtime-prs-writer-consume-disabled"',
+            "Apple consuming-writer mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-recovery"',
+            'scoped_mutation("linux-runtime-prs-recovery-disabled"',
+            "Apple uncertainty-recovery mutation",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11ih</span>\' requirements.html',
+            "true # typed Linux runtime PRS requirement binding disabled",
+            "shared typed Linux runtime PRS requirement binding",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11ih</span>\' "$REPO/requirements.html"',
+            "true # Apple typed Linux runtime PRS requirement binding disabled",
+            "Apple typed Linux runtime PRS requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>393</td>' requirements.html",
+            "true # typed Linux runtime PRS Appendix binding disabled",
+            "shared typed Linux runtime PRS Appendix binding",
+        ),
+        (
+            "apple",
+            "grep -Fq '<tr><td>393</td>' \"$REPO/requirements.html\"",
+            "true # Apple typed Linux runtime PRS Appendix binding disabled",
+            "Apple typed Linux runtime PRS Appendix binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ih</span>',
+            '<span class="id">R-S11ih-disabled</span>',
+            "typed Linux runtime PRS requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>393</td>",
+            "<tr><td>393-disabled</td>",
+            "typed Linux runtime PRS Appendix C row",
+        ),
+        (
+            "requirements",
+            "distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>",
+            "generic cloneable <code>SensitivePassword</code>",
+            "normative distinct runtime PRS type",
+        ),
+        (
+            "requirements",
+            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>",
+            "public cloneable <code>LinuxServiceOwnedPasswordReplicaWriter</code>",
+            "normative private runtime PRS writer",
+        ),
+        (
+            "requirements",
+            "accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>",
+            "accept any <code>&amp;SensitivePassword</code>",
+            "normative typed runtime PRS transaction",
+        ),
+        (
+            "hardening",
+            "R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority",
+            "R-S11ih-disabled/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority",
+            "typed Linux runtime PRS hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ih and Appendix C #393.",
+            "The same identity no longer binds R-S11ih and Appendix C #393.",
+            "typed Linux runtime PRS identity binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_linux_runtime_prs_writer_contract(sources)\n",
+            "    validate_linux_runtime_prs_writer_contract_disabled(sources)\n",
+            "typed Linux runtime PRS independent validator dispatch",
         ),
         (
             "ipc_auth_source",

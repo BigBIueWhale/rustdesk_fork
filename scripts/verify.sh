@@ -2952,6 +2952,13 @@ grep -Fq 'The same identity additionally binds R-S11if and Appendix C #391.' doc
 grep -Fq 'distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities' requirements.html || r_s11b2="$r_s11b2 windows-password-distinct-capabilities-norm-missing"
 grep -Fq 'private listener sender variant, not a caller-supplied string' requirements.html || r_s11b2="$r_s11b2 windows-password-fixed-listener-authority-norm-missing"
 grep -Fq 'insertion of a fresh keyed <code>Active</code> ledger entry <span class="kw">MUST</span> consume it' requirements.html || r_s11b2="$r_s11b2 windows-password-consuming-ledger-norm-missing"
+grep -Fq '<span class="id">R-S11ig</span>' requirements.html || r_s11b2="$r_s11b2 linux-credential-typed-response-requirement-missing"
+grep -Fq '<tr><td>392</td>' requirements.html || r_s11b2="$r_s11b2 linux-credential-typed-response-appendix-missing"
+grep -Fq 'R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-credential-typed-response-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ig and Appendix C #392.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 linux-credential-typed-response-digest-binding-missing"
+grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-requester-capability-norm-missing"
+grep -Fq 'one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-admission-capability-norm-missing"
+grep -Fq 'Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica("Linux")</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-capability-response-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3182,6 +3189,82 @@ need(
     and ipc_production.count("grant_linux_service_owned_password_admission(") == 2
     and ipc_production.count("admit_commit(") == 2
     and ipc_production.count("admit_authorized(") == 2,
+)
+
+linux_credential_requester = between(
+    ipc,
+    "impl LinuxServiceOwnedCredentialReplicaRequester",
+    "impl LinuxServiceOwnedCredentialReplicaAdmission",
+)
+linux_credential_admission = between(
+    ipc,
+    "impl LinuxServiceOwnedCredentialReplicaAdmission",
+    "impl From<&PeerProcessIdentity> for LinuxPasswordCaller",
+)
+linux_credential_handler = between(
+    ipc,
+    "async fn handle_linux_service_credential_snapshot_transaction",
+    "async fn handle_macos_service_credential_snapshot_transaction",
+)
+linux_credential_accept = between(
+    run_service,
+    "result = credential_incoming.next()",
+    "result = password_incoming.next()",
+)
+need(
+    "linux-credential-authority-not-typed-through-operation-bound-response",
+    "struct LinuxServiceOwnedCredentialReplicaRequester {\n    identity: PeerProcessIdentity,\n}" in ipc
+    and "struct LinuxServiceOwnedCredentialReplicaAdmission {\n    _requester: LinuxServiceOwnedCredentialReplicaRequester,\n    operation_id: hbb_common::uuid::Uuid,\n}" in ipc
+    and "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaRequester" not in ipc
+    and "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaAdmission" not in ipc
+    and ipc_production.count("LinuxServiceOwnedCredentialReplicaAdmission {") == 3
+    and ordered(linux_credential_accept, (
+        "try_acquire_service_credential_ipc_transaction_slot()",
+        "LinuxServiceOwnedCredentialReplicaRequester::authenticate(",
+        "handle_linux_service_credential_snapshot_transaction(",
+    ))
+    and ordered(linux_credential_requester, (
+        "fn authenticate<T>(stream: &T)",
+        "authenticate_linux_service_owned_password_replica_server(",
+        "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+        "Ok(Self { identity })",
+        "fn admit<T>(",
+        "self,",
+        "operation_id: hbb_common::uuid::Uuid",
+        "Self::authenticate(stream)?",
+        "refreshed.identity != self.identity",
+        "LinuxServiceOwnedCredentialReplicaAdmission {",
+        "_requester: self",
+        "operation_id",
+    ))
+    and "fn admit<T>(\n        self," in linux_credential_requester
+    and "fn admit<T>(\n        &self," not in linux_credential_requester
+    and "if refreshed.identity != self.identity {" in linux_credential_requester
+    and "if false && refreshed.identity != self.identity {" not in linux_credential_requester
+    and ordered(linux_credential_admission, (
+        "async fn respond(",
+        "self,",
+        'service_owned_runtime_prs_replica("Linux")',
+        "password::send_credential_replica_unix(",
+        "self.operation_id",
+    ))
+    and "async fn respond(\n        self," in linux_credential_admission
+    and "async fn respond(\n        &self," not in linux_credential_admission
+    and ordered(linux_credential_handler, (
+        "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+        "requester.admit(&stream, operation_id)",
+        "admission.respond(&mut stream, deadline).await",
+    ))
+    and not any(token in linux_credential_handler for token in (
+        "authenticate_linux_service_owned_password_replica_server",
+        "service_owned_runtime_prs_replica",
+        "send_credential_replica_unix",
+    ))
+    and "pub(super) fn authenticate_linux_service_owned_password_replica_server" in auth
+    and "pub(crate) fn authenticate_linux_service_owned_password_replica_server" not in auth
+    and ipc_production.count("LinuxServiceOwnedCredentialReplicaRequester::authenticate(") == 1
+    and ipc_production.count("requester.admit(&stream, operation_id)") == 1
+    and ipc_production.count("admission.respond(&mut stream, deadline).await") == 1,
 )
 
 mac_worker = between(ipc, "struct MacosSecurityProofWorker", "fn try_acquire_service_ipc_transaction_slot")

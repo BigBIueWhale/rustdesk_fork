@@ -29,6 +29,8 @@ use hbb_common::{
 };
 #[cfg(target_os = "linux")]
 use ipc_auth::authenticate_linux_service_owned_password_parent;
+#[cfg(target_os = "linux")]
+use ipc_auth::authenticate_linux_service_owned_password_replica_server;
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
 #[cfg(target_os = "windows")]
@@ -55,11 +57,10 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
     authenticate_linux_service_owned_password_requester,
-    authenticate_linux_service_owned_password_replica_server, current_linux_process_identity,
-    ensure_linux_process_identity_matches, ensure_linux_root_service_connection,
-    ensure_linux_root_service_stream, linux_cm_child_identity_is_live,
-    linux_process_identity_is_live, linux_service_owned_password_requester_is_live,
-    LinuxProcessIdentity, PeerProcessIdentity,
+    current_linux_process_identity, ensure_linux_process_identity_matches,
+    ensure_linux_root_service_connection, ensure_linux_root_service_stream,
+    linux_cm_child_identity_is_live, linux_process_identity_is_live,
+    linux_service_owned_password_requester_is_live, LinuxProcessIdentity, PeerProcessIdentity,
 };
 #[cfg(target_os = "macos")]
 use ipc_auth::{
@@ -786,6 +787,70 @@ struct LinuxPasswordCaller {
 #[cfg(target_os = "linux")]
 struct LinuxServiceOwnedPasswordAdmission {
     requester: PeerProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxServiceOwnedCredentialReplicaRequester {
+    identity: PeerProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxServiceOwnedCredentialReplicaAdmission {
+    _requester: LinuxServiceOwnedCredentialReplicaRequester,
+    operation_id: hbb_common::uuid::Uuid,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceOwnedCredentialReplicaRequester {
+    fn authenticate<T>(stream: &T) -> ResultType<Self>
+    where
+        T: std::os::unix::io::AsRawFd,
+    {
+        let identity = authenticate_linux_service_owned_password_replica_server(
+            stream,
+            password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+        )?;
+        Ok(Self { identity })
+    }
+
+    fn admit<T>(
+        self,
+        stream: &T,
+        operation_id: hbb_common::uuid::Uuid,
+    ) -> ResultType<LinuxServiceOwnedCredentialReplicaAdmission>
+    where
+        T: std::os::unix::io::AsRawFd,
+    {
+        let refreshed = Self::authenticate(stream)?;
+        if refreshed.identity != self.identity {
+            bail!("Linux service credential requester identity changed after its request");
+        }
+        Ok(LinuxServiceOwnedCredentialReplicaAdmission {
+            _requester: self,
+            operation_id,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceOwnedCredentialReplicaAdmission {
+    async fn respond(
+        self,
+        stream: &mut Conn,
+        deadline: tokio::time::Instant,
+    ) -> ResultType<()> {
+        let replica = service_owned_runtime_prs_replica("Linux").map_err(|err| {
+            log::error!("Linux root service credential snapshot is unavailable: {err}");
+            err
+        })?;
+        password::send_credential_replica_unix(
+            stream,
+            self.operation_id,
+            &replica,
+            deadline,
+        )
+        .await
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -3245,11 +3310,10 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
                         continue;
                     };
-                    let identity = match authenticate_linux_service_owned_password_replica_server(
+                    let requester = match LinuxServiceOwnedCredentialReplicaRequester::authenticate(
                         &stream,
-                        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
                     ) {
-                        Ok(identity) => identity,
+                        Ok(requester) => requester,
                         Err(err) => {
                             log::warn!("Rejected Linux service credential replica requester: {err}");
                             continue;
@@ -3257,7 +3321,7 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     };
                     transactions.spawn(handle_linux_service_credential_snapshot_transaction(
                         stream,
-                        identity,
+                        requester,
                         permit,
                     ));
                 }
@@ -3488,7 +3552,7 @@ async fn handle_sensitive_linux_service_ipc_transaction(
 #[cfg(target_os = "linux")]
 async fn handle_linux_service_credential_snapshot_transaction(
     mut stream: Conn,
-    identity: PeerProcessIdentity,
+    requester: LinuxServiceOwnedCredentialReplicaRequester,
     _permit: OwnedSemaphorePermit,
 ) {
     let deadline = tokio::time::Instant::now()
@@ -3501,30 +3565,14 @@ async fn handle_linux_service_credential_snapshot_transaction(
                 return;
             }
         };
-    let refreshed = match authenticate_linux_service_owned_password_replica_server(
-        &stream,
-        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
-    ) {
-        Ok(refreshed) => refreshed,
+    let admission = match requester.admit(&stream, operation_id) {
+        Ok(admission) => admission,
         Err(err) => {
             log::warn!("Rejected stale Linux service credential replica requester: {err}");
             return;
         }
     };
-    if refreshed != identity {
-        log::warn!("Rejected Linux service credential requester whose identity changed");
-        return;
-    }
-    let replica = match service_owned_runtime_prs_replica("Linux") {
-        Ok(replica) => replica,
-        Err(err) => {
-            log::error!("Linux root service credential snapshot is unavailable: {err}");
-            return;
-        }
-    };
-    if let Err(err) =
-        password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline).await
-    {
+    if let Err(err) = admission.respond(&mut stream, deadline).await {
         log::trace!("Linux service credential snapshot could not be returned: {err}");
     }
 }

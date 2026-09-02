@@ -1319,6 +1319,54 @@ def analyze(sources):
             and ipc_production.count("grant_linux_service_owned_password_admission(") == 2
             and ipc_production.count("admit_commit(") == 2
             and ipc_production.count("admit_authorized(") == 2)
+        linux_credential_requester = item(ipc, "impl LinuxServiceOwnedCredentialReplicaRequester")
+        linux_credential_admission = item(ipc, "impl LinuxServiceOwnedCredentialReplicaAdmission")
+        linux_credential_handler = item(ipc, "async fn handle_linux_service_credential_snapshot_transaction")
+        linux_credential_accept = item(run_service, "result = credential_incoming.next() => {")
+        need("b2", "linux-credential-authority-not-typed-through-operation-bound-response",
+            "struct LinuxServiceOwnedCredentialReplicaRequester {\n    identity: PeerProcessIdentity,\n}" in ipc
+            and "struct LinuxServiceOwnedCredentialReplicaAdmission {\n    _requester: LinuxServiceOwnedCredentialReplicaRequester,\n    operation_id: hbb_common::uuid::Uuid,\n}" in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaRequester" not in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaAdmission" not in ipc
+            and ipc_production.count("LinuxServiceOwnedCredentialReplicaAdmission {") == 3
+            and ordered(linux_credential_accept, [
+                "try_acquire_service_credential_ipc_transaction_slot()",
+                "LinuxServiceOwnedCredentialReplicaRequester::authenticate(",
+                "handle_linux_service_credential_snapshot_transaction(",
+            ])
+            and ordered(linux_credential_requester, [
+                "fn authenticate<T>(stream: &T)",
+                "authenticate_linux_service_owned_password_replica_server(",
+                "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+                "Ok(Self { identity })", "fn admit<T>(", "self,",
+                "operation_id: hbb_common::uuid::Uuid", "Self::authenticate(stream)?",
+                "refreshed.identity != self.identity",
+                "LinuxServiceOwnedCredentialReplicaAdmission {", "_requester: self", "operation_id",
+            ])
+            and "fn admit<T>(\n        self," in linux_credential_requester
+            and "fn admit<T>(\n        &self," not in linux_credential_requester
+            and "if refreshed.identity != self.identity {" in linux_credential_requester
+            and "if false && refreshed.identity != self.identity {" not in linux_credential_requester
+            and ordered(linux_credential_admission, [
+                "async fn respond(", "self,", 'service_owned_runtime_prs_replica("Linux")',
+                "password::send_credential_replica_unix(", "self.operation_id",
+            ])
+            and "async fn respond(\n        self," in linux_credential_admission
+            and "async fn respond(\n        &self," not in linux_credential_admission
+            and ordered(linux_credential_handler, [
+                "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+                "requester.admit(&stream, operation_id)",
+                "admission.respond(&mut stream, deadline).await",
+            ])
+            and not any(token in linux_credential_handler for token in [
+                "authenticate_linux_service_owned_password_replica_server",
+                "service_owned_runtime_prs_replica", "send_credential_replica_unix",
+            ])
+            and "pub(super) fn authenticate_linux_service_owned_password_replica_server" in auth
+            and "pub(crate) fn authenticate_linux_service_owned_password_replica_server" not in auth
+            and ipc_production.count("LinuxServiceOwnedCredentialReplicaRequester::authenticate(") == 1
+            and ipc_production.count("requester.admit(&stream, operation_id)") == 1
+            and ipc_production.count("admission.respond(&mut stream, deadline).await") == 1)
         need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",
             "pub(crate) struct WindowsUserOwnedPasswordAdmission {\n    _requester: ipc_auth::WindowsSensitivePipeClientProof,\n}" in ipc
             and "pub(crate) struct WindowsServiceOwnedPasswordAdmission {\n    _requester: WindowsServiceOwnedPasswordRequester,\n}" in ipc
@@ -1973,6 +2021,16 @@ scoped_mutation("linux-password-ledger-caller", "ipc", "impl LinuxPasswordAdmiss
 scoped_mutation("linux-password-ledger-state", "ipc", "impl LinuxPasswordAdmissionCoordinator", "|| entry.caller != caller\n            || entry.state != LinuxPasswordAdmissionState::Authorizing", "|| entry.caller != caller\n            || false", "b2", "linux-post-polkit-authority-not-typed-through-ledger-admission")
 scoped_mutation("linux-password-operation-direct-ledger-admission", "ipc", "async fn execute_linux_service_owned_password_operation", "if !admission.admit_commit(coordinator, operation_id, value)? {", "if !coordinator.admit_authorized(&admission, operation_id, value) {", "b2", "linux-post-polkit-authority-not-typed-through-ledger-admission")
 mutation("linux-password-operation-generic-authorizer", "ipc", "async fn execute_linux_service_owned_password_operation<Commit, CommitFuture>(", "async fn execute_linux_service_owned_password_operation<Authorize, Commit, CommitFuture>(", "b2", "linux-post-polkit-authority-not-typed-through-ledger-admission")
+mutation("linux-credential-requester-clone", "ipc", "struct LinuxServiceOwnedCredentialReplicaRequester {", "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaRequester {", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-fixed-endpoint", "ipc", "impl LinuxServiceOwnedCredentialReplicaRequester", "password::SERVICE_CREDENTIAL_IPC_POSTFIX,", "password::USER_PASSWORD_IPC_POSTFIX,", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-final-replay", "ipc", "impl LinuxServiceOwnedCredentialReplicaRequester", "let refreshed = Self::authenticate(stream)?;", "let refreshed = Self { identity: self.identity.clone() };", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-admission-consume", "ipc", "impl LinuxServiceOwnedCredentialReplicaRequester", "fn admit<T>(\n        self,", "fn admit<T>(\n        &self,", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-identity-continuity", "ipc", "impl LinuxServiceOwnedCredentialReplicaRequester", "if refreshed.identity != self.identity {", "if false && refreshed.identity != self.identity {", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+mutation("linux-credential-admission-requester", "ipc", "_requester: LinuxServiceOwnedCredentialReplicaRequester,", "_requester: bool,", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-response-consume", "ipc", "impl LinuxServiceOwnedCredentialReplicaAdmission", "async fn respond(\n        self,", "async fn respond(\n        &self,", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-operation-binding", "ipc", "impl LinuxServiceOwnedCredentialReplicaAdmission", "self.operation_id,", "hbb_common::uuid::Uuid::from_bytes([1; 16]),", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+scoped_mutation("linux-credential-handler-response", "ipc", "async fn handle_linux_service_credential_snapshot_transaction", "admission.respond(&mut stream, deadline).await", "send_linux_credential_replica_unchecked(&mut stream, admission, deadline).await", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
+mutation("linux-credential-generic-proof-visibility", "auth", "pub(super) fn authenticate_linux_service_owned_password_replica_server<T>(", "pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(", "b2", "linux-credential-authority-not-typed-through-operation-bound-response")
 scoped_mutation("windows-password-final-service-proof", "auth", "pub(crate) fn into_service_owned_password_admission", "self.revalidate(pipe, deadline)?;", "drop((pipe, deadline));", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 scoped_mutation("windows-password-service-mint-endpoint", "auth", "pub(crate) fn into_service_owned_password_admission", "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX", "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 mutation("windows-password-public-generic-listener", "windows", "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,", "pub(crate) fn start_windows_sensitive_password_listener(\n    postfix: &'static str,\n    requests: WindowsSensitivePasswordRequestSender,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
@@ -2129,6 +2187,13 @@ grep -Fq 'The same identity additionally binds R-S11if and Appendix C #391.' "$R
 grep -Fq 'distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-distinct-capabilities-norm-missing"
 grep -Fq 'private listener sender variant, not a caller-supplied string' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-fixed-listener-authority-norm-missing"
 grep -Fq 'insertion of a fresh keyed <code>Active</code> ledger entry <span class="kw">MUST</span> consume it' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-consuming-ledger-norm-missing"
+grep -Fq '<span class="id">R-S11ig</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-typed-response-requirement-missing"
+grep -Fq '<tr><td>392</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-typed-response-appendix-missing"
+grep -Fq 'R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-credential-typed-response-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ig and Appendix C #392.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 linux-credential-typed-response-digest-binding-missing"
+grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-requester-capability-norm-missing"
+grep -Fq 'one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-admission-capability-norm-missing"
+grep -Fq 'Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica("Linux")</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-capability-response-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

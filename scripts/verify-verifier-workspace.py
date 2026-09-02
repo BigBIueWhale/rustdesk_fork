@@ -500,7 +500,7 @@ class ManagedSignal(BaseException):
 
 MANAGED_SIGNALS = (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)
 MANAGED_UNIT_COLLECTION_SECONDS = 30
-VERIFIER_PROGRAM_LIMIT = 4 * 1024 * 1024
+VERIFIER_PROGRAM_LIMIT = 5 * 1024 * 1024
 VERIFIER_PROGRAM_SEALS = (
     fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
 )
@@ -12938,6 +12938,401 @@ def validate_windows_sensitive_password_admission_contract(sources):
         sources["workspace_verifier"],
         "    validate_windows_sensitive_password_admission_contract(sources)\n",
         "Windows password admission independent validator dispatch",
+    )
+
+
+def validate_linux_credential_replica_admission_contract(sources):
+    ipc = sources["ipc_source"]
+    auth = sources["ipc_auth_source"]
+    focused = sources["linux_password_ipc_validator"]
+
+    require_text(
+        focused,
+        'credential_requester = ipc.item(\n        "struct", "LinuxServiceOwnedCredentialReplicaRequester"\n    )',
+        "focused typed Linux credential requester parser",
+    )
+
+    requester_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedCredentialReplicaRequester",
+        "Linux credential replica requester",
+    )
+    require_text(
+        requester_record,
+        "identity: PeerProcessIdentity,",
+        "complete Linux credential requester identity",
+    )
+    admission_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedCredentialReplicaAdmission",
+        "Linux credential replica admission",
+    )
+    require_order(
+        admission_record,
+        (
+            "_requester: LinuxServiceOwnedCredentialReplicaRequester,",
+            "operation_id: hbb_common::uuid::Uuid,",
+        ),
+        "retained requester and operation-bound Linux credential admission",
+    )
+    for marker, label in (
+        (
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaRequester",
+            "cloneable Linux credential requester",
+        ),
+        (
+            "#[derive(Copy)]\nstruct LinuxServiceOwnedCredentialReplicaRequester",
+            "copyable Linux credential requester",
+        ),
+        (
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaAdmission",
+            "cloneable Linux credential admission",
+        ),
+        (
+            "#[derive(Copy)]\nstruct LinuxServiceOwnedCredentialReplicaAdmission",
+            "copyable Linux credential admission",
+        ),
+    ):
+        require_absent(ipc, marker, label)
+
+    requester_impl = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedCredentialReplicaRequester",
+        "fixed Linux credential requester authentication and admission",
+    )
+    require_order(
+        requester_impl,
+        (
+            "fn authenticate<T>(stream: &T)",
+            "authenticate_linux_service_owned_password_replica_server(",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "Ok(Self { identity })",
+            "fn admit<T>(",
+            "self,",
+            "operation_id: hbb_common::uuid::Uuid,",
+            "let refreshed = Self::authenticate(stream)?;",
+            "if refreshed.identity != self.identity {",
+            "LinuxServiceOwnedCredentialReplicaAdmission {",
+            "_requester: self,",
+            "operation_id,",
+        ),
+        "fixed endpoint, consuming final replay, exact identity, and typed admission",
+    )
+    require_text(
+        requester_impl,
+        "fn admit<T>(\n        self,",
+        "fixed endpoint, consuming final replay, exact identity, and typed admission",
+    )
+    require_absent(
+        requester_impl,
+        "fn admit<T>(\n        &self,",
+        "fixed endpoint, consuming final replay, exact identity, and typed admission",
+    )
+    require_text(
+        requester_impl,
+        "if refreshed.identity != self.identity {",
+        "fixed endpoint, consuming final replay, exact identity, and typed admission",
+    )
+    require_absent(
+        requester_impl,
+        "if false && refreshed.identity != self.identity {",
+        "fixed endpoint, consuming final replay, exact identity, and typed admission",
+    )
+    require_exact_count(
+        ipc,
+        "LinuxServiceOwnedCredentialReplicaAdmission {",
+        3,
+        "sole Linux credential admission construction",
+    )
+
+    admission_impl = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedCredentialReplicaAdmission",
+        "capability-owned Linux credential response",
+    )
+    require_order(
+        admission_impl,
+        (
+            "async fn respond(",
+            "self,",
+            'service_owned_runtime_prs_replica("Linux")',
+            "password::send_credential_replica_unix(",
+            "self.operation_id,",
+        ),
+        "consuming operation-bound PRS response",
+    )
+    require_text(
+        admission_impl,
+        "async fn respond(\n        self,",
+        "consuming operation-bound PRS response",
+    )
+    require_absent(
+        admission_impl,
+        "async fn respond(\n        &self,",
+        "consuming operation-bound PRS response",
+    )
+
+    run_service = extract_braced_item(
+        ipc,
+        "async fn run_service_ipc",
+        "Linux credential typed listener handoff",
+    )
+    credential_accept = extract_between(
+        run_service,
+        "result = credential_incoming.next()",
+        "result = password_incoming.next()",
+        "Linux credential accept lane",
+    )
+    require_order(
+        credential_accept,
+        (
+            "try_acquire_service_credential_ipc_transaction_slot()",
+            "LinuxServiceOwnedCredentialReplicaRequester::authenticate(",
+            "handle_linux_service_credential_snapshot_transaction(",
+        ),
+        "typed Linux credential listener handoff",
+    )
+    handler = extract_braced_item(
+        ipc,
+        "async fn handle_linux_service_credential_snapshot_transaction",
+        "typed Linux credential transaction",
+    )
+    require_order(
+        handler,
+        (
+            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+            "requester.admit(&stream, operation_id)",
+            "admission.respond(&mut stream, deadline).await",
+        ),
+        "bodyless request, consuming admission, and capability-owned response",
+    )
+    for token, label in (
+        (
+            "authenticate_linux_service_owned_password_replica_server",
+            "generic child proof in Linux credential handler",
+        ),
+        ("service_owned_runtime_prs_replica", "direct PRS read in Linux credential handler"),
+        ("send_credential_replica_unix", "direct raw response in Linux credential handler"),
+    ):
+        require_absent(handler, token, label)
+    require_exact_count(
+        ipc,
+        "LinuxServiceOwnedCredentialReplicaRequester::authenticate(",
+        1,
+        "sole typed Linux credential listener authentication",
+    )
+    require_exact_count(
+        ipc,
+        "requester.admit(&stream, operation_id)",
+        1,
+        "sole Linux credential final admission",
+    )
+    require_exact_count(
+        ipc,
+        "admission.respond(&mut stream, deadline).await",
+        1,
+        "sole capability-owned Linux credential response",
+    )
+    require_text(
+        auth,
+        "pub(super) fn authenticate_linux_service_owned_password_replica_server<T>(",
+        "parent-module-private generic Linux replica proof",
+    )
+    require_absent(
+        auth,
+        "pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(",
+        "crate-visible generic Linux replica proof",
+    )
+
+    for text, label in (
+        (
+            '"Linux credential requester capability becomes cloneable"',
+            "focused Linux credential requester clone mutation",
+        ),
+        (
+            '"Linux credential requester authenticates the wrong endpoint"',
+            "focused Linux credential endpoint mutation",
+        ),
+        (
+            '"Linux credential admission skips its fresh exact-child replay"',
+            "focused Linux credential replay mutation",
+        ),
+        (
+            '"Linux credential admission bypasses accepted-generation continuity"',
+            "focused Linux credential identity mutation",
+        ),
+        (
+            '"Linux credential admission gains a second construction"',
+            "focused Linux credential construction mutation",
+        ),
+        (
+            '"Linux credential response drops its operation binding"',
+            "focused Linux credential operation mutation",
+        ),
+        (
+            '"Linux credential handler bypasses capability-owned response"',
+            "focused Linux credential handler mutation",
+        ),
+        (
+            '"Linux generic replica proof regains crate visibility"',
+            "focused Linux generic-proof visibility mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        '"linux-credential-authority-not-typed-through-operation-bound-response"',
+        "shared embedded typed Linux credential analyzer",
+    )
+    for text, label in (
+        (
+            'and "fn admit<T>(\\n        self," in linux_credential_requester',
+            "shared typed Linux credential consuming-admission predicate",
+        ),
+        (
+            'and "fn admit<T>(\\n        &self," not in linux_credential_requester',
+            "shared typed Linux credential borrowed-admission rejection",
+        ),
+        (
+            'and "if refreshed.identity != self.identity {" in linux_credential_requester',
+            "shared typed Linux credential exact-identity predicate",
+        ),
+        (
+            'and "if false && refreshed.identity != self.identity {" not in linux_credential_requester',
+            "shared typed Linux credential identity-bypass rejection",
+        ),
+        (
+            'and "async fn respond(\\n        self," in linux_credential_admission',
+            "shared typed Linux credential consuming-response predicate",
+        ),
+        (
+            'and "async fn respond(\\n        &self," not in linux_credential_admission',
+            "shared typed Linux credential borrowed-response rejection",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+    require_exact_count(
+        sources["apple"],
+        '"linux-credential-authority-not-typed-through-operation-bound-response"',
+        11,
+        "Apple embedded typed Linux credential analyzer and mutations",
+    )
+    for text, label in (
+        (
+            'and "fn admit<T>(\\n        self," in linux_credential_requester',
+            "Apple typed Linux credential consuming-admission predicate",
+        ),
+        (
+            'and "fn admit<T>(\\n        &self," not in linux_credential_requester',
+            "Apple typed Linux credential borrowed-admission rejection",
+        ),
+        (
+            'and "if refreshed.identity != self.identity {" in linux_credential_requester',
+            "Apple typed Linux credential exact-identity predicate",
+        ),
+        (
+            'and "if false && refreshed.identity != self.identity {" not in linux_credential_requester',
+            "Apple typed Linux credential identity-bypass rejection",
+        ),
+        (
+            'and "async fn respond(\\n        self," in linux_credential_admission',
+            "Apple typed Linux credential consuming-response predicate",
+        ),
+        (
+            'and "async fn respond(\\n        &self," not in linux_credential_admission',
+            "Apple typed Linux credential borrowed-response rejection",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
+    for text, label in (
+        (
+            'scoped_mutation("linux-credential-final-replay"',
+            "Apple Linux credential final-replay mutation",
+        ),
+        (
+            'scoped_mutation("linux-credential-admission-consume"',
+            "Apple Linux credential consuming-admission mutation",
+        ),
+        (
+            'scoped_mutation("linux-credential-handler-response"',
+            "Apple Linux credential handler-response mutation",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
+    for source, text, label in (
+        (
+            sources["verify"],
+            "grep -Fq '<span class=\"id\">R-S11ig</span>' requirements.html",
+            "shared typed Linux credential requirement binding",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<tr><td>392</td>' requirements.html",
+            "shared typed Linux credential Appendix binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<span class=\"id\">R-S11ig</span>' \"$REPO/requirements.html\"",
+            "Apple typed Linux credential requirement binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<tr><td>392</td>' \"$REPO/requirements.html\"",
+            "Apple typed Linux credential Appendix binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11ig</span>',
+            "typed Linux credential requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>392</td>",
+            "typed Linux credential Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response",
+            "typed Linux credential hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11ig and Appendix C #392.",
+            "typed Linux credential identity binding",
+        ),
+        (
+            sources["requirements"],
+            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>",
+            "normative private Linux credential requester",
+        ),
+        (
+            sources["requirements"],
+            "one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>",
+            "normative Linux credential admission",
+        ),
+        (
+            sources["requirements"],
+            "Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica(\"Linux\")</code>",
+            "normative capability-owned Linux credential response",
+        ),
+    ):
+        require_text(source, text, label)
+    require_text(
+        sources["workspace_verifier"],
+        "def validate_linux_credential_replica_admission_contract(sources):\n",
+        "typed Linux credential independent validator definition",
+    )
+    require_exact_count(
+        sources["workspace_verifier"],
+        "VERIFIER_PROGRAM_LIMIT = 5 * 1024 * 1024",
+        3,
+        "bounded five-MiB independent verifier source acquisition",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_linux_credential_replica_admission_contract(sources)\n",
+        "typed Linux credential independent validator dispatch",
     )
 
 
@@ -57269,6 +57664,7 @@ def validate_sources(sources):
     validate_desktop_ipc_retained_owner_contract(sources)
     validate_linux_service_admission_contract(sources)
     validate_linux_service_owned_password_requester_contract(sources)
+    validate_linux_credential_replica_admission_contract(sources)
     validate_windows_sensitive_password_admission_contract(sources)
     validate_macos_service_owned_password_requester_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
@@ -66866,6 +67262,277 @@ def run_source_mutations(sources):
             "    validate_linux_service_owned_password_requester_contract(sources)\n",
             "    validate_linux_service_owned_password_requester_contract_disabled(sources)\n",
             "Linux password requester independent validator dispatch",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedCredentialReplicaRequester {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaRequester {",
+            "cloneable Linux credential requester",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedCredentialReplicaAdmission {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaAdmission {",
+            "cloneable Linux credential admission",
+        ),
+        (
+            "ipc_source",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        Ok(Self { identity })",
+            "password::USER_PASSWORD_IPC_POSTFIX,\n        )?;\n        Ok(Self { identity })",
+            "fixed endpoint, consuming final replay, exact identity, and typed admission",
+        ),
+        (
+            "ipc_source",
+            "let requester = match LinuxServiceOwnedCredentialReplicaRequester::authenticate(\n"
+            "                        &stream,\n"
+            "                    ) {",
+            "let requester = match authenticate_linux_service_owned_password_replica_server(\n"
+            "                        &stream, password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n"
+            "                    ) {",
+            "typed Linux credential listener handoff",
+        ),
+        (
+            "ipc_source",
+            "    fn admit<T>(\n        self,",
+            "    fn admit<T>(\n        &self,",
+            "fixed endpoint, consuming final replay, exact identity, and typed admission",
+        ),
+        (
+            "ipc_source",
+            "let refreshed = Self::authenticate(stream)?;",
+            "let refreshed = Self { identity: self.identity.clone() };",
+            "fixed endpoint, consuming final replay, exact identity, and typed admission",
+        ),
+        (
+            "ipc_source",
+            "if refreshed.identity != self.identity {\n"
+            "            bail!(\"Linux service credential requester identity changed after its request\");",
+            "if false && refreshed.identity != self.identity {\n"
+            "            bail!(\"Linux service credential requester identity changed after its request\");",
+            "fixed endpoint, consuming final replay, exact identity, and typed admission",
+        ),
+        (
+            "ipc_source",
+            "_requester: LinuxServiceOwnedCredentialReplicaRequester,",
+            "_requester: bool,",
+            "retained requester and operation-bound Linux credential admission",
+        ),
+        (
+            "ipc_source",
+            "Ok(LinuxServiceOwnedCredentialReplicaAdmission {\n"
+            "            _requester: self,\n"
+            "            operation_id,\n"
+            "        })",
+            "let _duplicate = || LinuxServiceOwnedCredentialReplicaAdmission { _requester: unreachable!(), operation_id };\n"
+            "        Ok(LinuxServiceOwnedCredentialReplicaAdmission {\n"
+            "            _requester: self,\n"
+            "            operation_id,\n"
+            "        })",
+            "sole Linux credential admission construction",
+        ),
+        (
+            "ipc_source",
+            "    async fn respond(\n        self,",
+            "    async fn respond(\n        &self,",
+            "consuming operation-bound PRS response",
+        ),
+        (
+            "ipc_source",
+            "            self.operation_id,\n            &replica,",
+            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            &replica,",
+            "consuming operation-bound PRS response",
+        ),
+        (
+            "ipc_source",
+            "if let Err(err) = admission.respond(&mut stream, deadline).await {",
+            "if let Err(err) = send_linux_credential_replica_unchecked(&mut stream, admission, deadline).await {",
+            "bodyless request, consuming admission, and capability-owned response",
+        ),
+        (
+            "ipc_auth_source",
+            "pub(super) fn authenticate_linux_service_owned_password_replica_server<T>(",
+            "pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(",
+            "parent-module-private generic Linux replica proof",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'credential_requester = ipc.item(\n        "struct", "LinuxServiceOwnedCredentialReplicaRequester"\n    )',
+            'credential_requester = ipc.item_disabled(\n        "struct", "LinuxServiceOwnedCredentialReplicaRequester"\n    )',
+            "focused typed Linux credential requester parser",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux credential requester capability becomes cloneable"',
+            '"Linux credential requester capability remains cloneable"',
+            "focused Linux credential requester clone mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux credential admission skips its fresh exact-child replay"',
+            '"Linux credential admission retains its fresh exact-child replay"',
+            "focused Linux credential replay mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux credential admission gains a second construction"',
+            '"Linux credential admission retains one construction"',
+            "focused Linux credential construction mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux credential response drops its operation binding"',
+            '"Linux credential response retains its operation binding"',
+            "focused Linux credential operation mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux generic replica proof regains crate visibility"',
+            '"Linux generic replica proof remains private"',
+            "focused Linux generic-proof visibility mutation",
+        ),
+        (
+            "verify",
+            '"linux-credential-authority-not-typed-through-operation-bound-response"',
+            '"linux-credential-authority-not-checked"',
+            "shared embedded typed Linux credential analyzer",
+        ),
+        (
+            "verify",
+            'and "fn admit<T>(\\n        &self," not in linux_credential_requester',
+            'and "fn admit<T>(\\n        &self," in linux_credential_requester',
+            "shared typed Linux credential borrowed-admission rejection",
+        ),
+        (
+            "verify",
+            'and "if false && refreshed.identity != self.identity {" not in linux_credential_requester',
+            'and "if false && refreshed.identity != self.identity {" in linux_credential_requester',
+            "shared typed Linux credential identity-bypass rejection",
+        ),
+        (
+            "verify",
+            'and "async fn respond(\\n        &self," not in linux_credential_admission',
+            'and "async fn respond(\\n        &self," in linux_credential_admission',
+            "shared typed Linux credential borrowed-response rejection",
+        ),
+        (
+            "apple",
+            '"linux-credential-authority-not-typed-through-operation-bound-response"',
+            '"linux-credential-authority-not-checked"',
+            "Apple embedded typed Linux credential analyzer",
+        ),
+        (
+            "apple",
+            'and "fn admit<T>(\\n        &self," not in linux_credential_requester',
+            'and "fn admit<T>(\\n        &self," in linux_credential_requester',
+            "Apple typed Linux credential borrowed-admission rejection",
+        ),
+        (
+            "apple",
+            'and "if false && refreshed.identity != self.identity {" not in linux_credential_requester',
+            'and "if false && refreshed.identity != self.identity {" in linux_credential_requester',
+            "Apple typed Linux credential identity-bypass rejection",
+        ),
+        (
+            "apple",
+            'and "async fn respond(\\n        &self," not in linux_credential_admission',
+            'and "async fn respond(\\n        &self," in linux_credential_admission',
+            "Apple typed Linux credential borrowed-response rejection",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-credential-final-replay"',
+            'scoped_mutation("linux-credential-final-replay-disabled"',
+            "Apple Linux credential final-replay mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-credential-admission-consume"',
+            'scoped_mutation("linux-credential-admission-consume-disabled"',
+            "Apple Linux credential consuming-admission mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-credential-handler-response"',
+            'scoped_mutation("linux-credential-handler-response-disabled"',
+            "Apple Linux credential handler-response mutation",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11ig</span>\' requirements.html',
+            "true # typed Linux credential requirement binding disabled",
+            "shared typed Linux credential requirement binding",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11ig</span>\' "$REPO/requirements.html"',
+            "true # Apple typed Linux credential requirement binding disabled",
+            "Apple typed Linux credential requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>392</td>' requirements.html",
+            "true # typed Linux credential Appendix binding disabled",
+            "shared typed Linux credential Appendix binding",
+        ),
+        (
+            "apple",
+            "grep -Fq '<tr><td>392</td>' \"$REPO/requirements.html\"",
+            "true # Apple typed Linux credential Appendix binding disabled",
+            "Apple typed Linux credential Appendix binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ig</span>',
+            '<span class="id">R-S11ig-disabled</span>',
+            "typed Linux credential requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>392</td>",
+            "<tr><td>392-disabled</td>",
+            "typed Linux credential Appendix C row",
+        ),
+        (
+            "requirements",
+            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>",
+            "public cloneable <code>LinuxServiceOwnedCredentialReplicaRequester</code>",
+            "normative private Linux credential requester",
+        ),
+        (
+            "requirements",
+            "one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>",
+            "one cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>",
+            "normative Linux credential admission",
+        ),
+        (
+            "requirements",
+            "Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica(\"Linux\")</code>",
+            "Any handler may read <code>service_owned_runtime_prs_replica(\"Linux\")</code>",
+            "normative capability-owned Linux credential response",
+        ),
+        (
+            "hardening",
+            "R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response",
+            "R-S11ig-disabled/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response",
+            "typed Linux credential hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ig and Appendix C #392.",
+            "The same identity no longer binds R-S11ig and Appendix C #392.",
+            "typed Linux credential identity binding",
+        ),
+        (
+            "workspace_verifier",
+            "VERIFIER_PROGRAM_LIMIT = 5 * 1024 * 1024",
+            "VERIFIER_PROGRAM_LIMIT = 6 * 1024 * 1024",
+            "bounded five-MiB independent verifier source acquisition",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_linux_credential_replica_admission_contract(sources)\n",
+            "    validate_linux_credential_replica_admission_contract_disabled(sources)\n",
+            "typed Linux credential independent validator dispatch",
         ),
         (
             "ipc_auth_source",
@@ -97143,13 +97810,16 @@ def run_source_mutations(sources):
             mutated[key] = changed
             if key == "requirements":
                 digest = hashlib.sha256(changed.encode("utf-8")).hexdigest()
+                baseline_digest = hashlib.sha256(
+                    sources["requirements"].encode("utf-8")
+                ).hexdigest()
                 mutated["native_watch"], native_hash_count = re.subn(
                     r"(?m)^Requirements hash: [0-9a-f]{64}$",
                     f"Requirements hash: {digest}",
                     mutated["native_watch"],
                 )
                 mutated["hardening"], hardening_hash_count = re.subn(
-                    r"(?m)^[0-9a-f]{64}  requirements\.html$",
+                    rf"(?m)^{re.escape(baseline_digest)}  requirements\.html$",
                     f"{digest}  requirements.html",
                     mutated["hardening"],
                 )

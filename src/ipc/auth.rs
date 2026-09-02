@@ -3371,7 +3371,7 @@ where
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(
+pub(super) fn authenticate_linux_service_owned_password_replica_server<T>(
     stream: &T,
     postfix: &str,
 ) -> ResultType<PeerProcessIdentity>

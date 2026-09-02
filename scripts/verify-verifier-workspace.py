@@ -12317,7 +12317,6 @@ def validate_linux_service_owned_password_requester_contract(sources):
         ),
     ):
         require_text(focused, text, label)
-
     require_text(
         sources["verify"],
         "python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test",
@@ -12739,8 +12738,18 @@ def validate_windows_sensitive_password_admission_contract(sources):
     )
     require_text(
         user_begin,
-        "PasswordMutationKind::UserOwned,",
-        "fixed Windows user password action kind",
+        "begin_user_owned_password_mutation(operation_id, value, authority_allowed)",
+        "fixed Windows user password action delegation",
+    )
+    user_owned_begin = extract_braced_item(
+        ipc,
+        "fn begin_user_owned_password_mutation",
+        "fixed user-owned password mutation entry",
+    )
+    require_text(
+        user_owned_begin,
+        "let kind = PasswordMutationKind::UserOwned;",
+        "fixed user-owned password action kind",
     )
 
     ledger = extract_braced_item(
@@ -13699,6 +13708,12 @@ def validate_linux_runtime_prs_writer_contract(sources):
         ),
     ):
         require_text(focused, text, label)
+    require_exact_count(
+        focused,
+        'runtime_prs = ipc.item("struct", "ServiceOwnedRuntimePrsReplica")',
+        2,
+        "focused typed PRS parser",
+    )
 
     require_text(
         sources["verify"],
@@ -13914,6 +13929,666 @@ def validate_linux_runtime_prs_writer_contract(sources):
         sources["workspace_verifier"],
         "    validate_linux_runtime_prs_writer_contract(sources)\n",
         "typed Linux runtime PRS independent validator dispatch",
+    )
+
+
+def validate_linux_runtime_prs_receiver_contract(sources):
+    ipc = sources["ipc_source"]
+    auth = sources["ipc_auth_source"]
+    focused = sources["linux_password_ipc_validator"]
+
+    runtime_prs = extract_braced_item(
+        ipc,
+        "impl ServiceOwnedRuntimePrsReplica",
+        "service-owned runtime PRS installation",
+    )
+    require_order(
+        runtime_prs,
+        (
+            "fn install_for_runtime(self) -> ResultType<bool>",
+            "Config::set_permanent_password_prs_for_runtime(self.value.as_str())",
+        ),
+        "consuming typed runtime PRS installation",
+    )
+    require_absent(
+        runtime_prs,
+        "fn install_for_runtime(&self)",
+        "borrowed runtime PRS installation",
+    )
+
+    receiver_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedPasswordReplicaReceiver",
+        "Linux runtime PRS receiver record",
+    )
+    require_text(
+        receiver_record,
+        "parent: LinuxProcessIdentity,",
+        "retained root-parent PID/UID/start-time generation",
+    )
+    admission_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedRuntimePrsAdmission",
+        "Linux runtime PRS admission record",
+    )
+    require_text(
+        admission_record,
+        "_receiver: LinuxServiceOwnedPasswordReplicaReceiver,",
+        "consumed exact-parent receiver authority",
+    )
+    action = extract_braced_item(
+        ipc,
+        "enum SensitiveMainPasswordAuthority",
+        "typed sensitive-main action authority",
+    )
+    require_order(
+        action,
+        (
+            "UserOwned,",
+            "ServiceOwnedRuntimePrs(LinuxServiceOwnedPasswordReplicaReceiver),",
+        ),
+        "distinct user-owned and service-owned receiver actions",
+    )
+    action_kind = extract_braced_item(
+        ipc,
+        "impl SensitiveMainPasswordAuthority",
+        "typed sensitive-main action classification",
+    )
+    require_order(
+        action_kind,
+        (
+            "Self::UserOwned => PasswordMutationKind::UserOwned,",
+            "Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::ServiceOwned,",
+        ),
+        "type-derived capacity classification",
+    )
+    for marker, label in (
+        (
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaReceiver",
+            "cloneable Linux runtime PRS receiver",
+        ),
+        (
+            "#[derive(Copy)]\nstruct LinuxServiceOwnedPasswordReplicaReceiver",
+            "copyable Linux runtime PRS receiver",
+        ),
+        (
+            "pub struct LinuxServiceOwnedPasswordReplicaReceiver",
+            "public Linux runtime PRS receiver",
+        ),
+        (
+            "pub(crate) struct LinuxServiceOwnedPasswordReplicaReceiver",
+            "crate-visible Linux runtime PRS receiver",
+        ),
+        (
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedRuntimePrsAdmission",
+            "cloneable Linux runtime PRS admission",
+        ),
+        (
+            "#[derive(Copy)]\nstruct LinuxServiceOwnedRuntimePrsAdmission",
+            "copyable Linux runtime PRS admission",
+        ),
+        (
+            "#[derive(Clone)]\nenum SensitiveMainPasswordAuthority",
+            "cloneable sensitive-main action authority",
+        ),
+        (
+            "#[derive(Copy)]\nenum SensitiveMainPasswordAuthority",
+            "copyable sensitive-main action authority",
+        ),
+    ):
+        require_absent(ipc, marker, label)
+
+    receiver = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedPasswordReplicaReceiver",
+        "Linux runtime PRS receiver authority",
+    )
+    require_text(
+        receiver,
+        "fn admit<T>(self, stream: &T) -> ResultType<LinuxServiceOwnedRuntimePrsAdmission>",
+        "borrowed receiver admission",
+    )
+    require_text(
+        receiver,
+        "if refreshed != self.parent {",
+        "bypassed parent-generation continuity",
+    )
+    require_order(
+        receiver,
+        (
+            "fn authenticate<T>(stream: &T) -> ResultType<Self>",
+            "if !crate::common::is_service_owned_server_process() {",
+            "authenticate_linux_service_owned_password_parent(",
+            "stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "Ok(Self { parent })",
+            "fn admit<T>(self, stream: &T) -> ResultType<LinuxServiceOwnedRuntimePrsAdmission>",
+            "if !crate::common::is_service_owned_server_process() {",
+            "authenticate_linux_service_owned_password_parent(",
+            "stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "if refreshed != self.parent {",
+            "Ok(LinuxServiceOwnedRuntimePrsAdmission { _receiver: self })",
+        ),
+        "initial and final fixed-endpoint exact-parent receiver proof",
+    )
+    require_exact_count(
+        receiver,
+        "if !crate::common::is_service_owned_server_process() {",
+        2,
+        "initial and final service-owned child-role proof",
+    )
+    require_exact_count(
+        receiver,
+        "password::USER_PASSWORD_IPC_POSTFIX",
+        2,
+        "initial and final fixed password endpoint proof",
+    )
+    for marker, label in (
+        ("fn admit<T>(&self", "borrowed receiver admission"),
+        ("if false && refreshed != self.parent", "bypassed parent-generation continuity"),
+        ("postfix: &str", "caller-selectable receiver endpoint"),
+    ):
+        require_absent(receiver, marker, label)
+    require_exact_count(
+        ipc,
+        "LinuxServiceOwnedRuntimePrsAdmission {",
+        2,
+        "sole runtime PRS admission construction plus declaration",
+    )
+
+    parent = extract_braced_item(
+        auth,
+        "fn authenticate_linux_service_owned_password_parent",
+        "Linux root-parent generation proof",
+    )
+    require_order(
+        parent,
+        (
+            "-> ResultType<LinuxProcessIdentity>",
+            "peer_uid_from_fd(fd)",
+            "if peer_uid != 0 {",
+            "peer_pid_from_fd(fd)",
+            "let identity = linux_kernel_process_identity_by_pid(peer_pid)?;",
+            "if identity.uid != peer_uid {",
+            "SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV",
+            "linux_proc_parent_pid(std::process::id())?",
+            "if peer_pid != expected_parent || actual_parent != expected_parent {",
+            "Ok(identity)",
+        ),
+        "kernel identity, launch-parent, and direct-parent conjunction",
+    )
+    require_absent(
+        auth,
+        "pub(crate) fn authenticate_linux_service_owned_password_parent",
+        "crate-visible generic root-parent proof",
+    )
+    for marker, label in (
+        ("peer_process_identity_from_stream", "ptrace-gated root procfs identity proof"),
+        ("linux_proc_cmdline_args", "root argv inspection dependency"),
+    ):
+        require_absent(parent, marker, label)
+
+    prepare = extract_braced_item(
+        ipc,
+        "fn prepare_linux_service_owned_runtime_prs",
+        "typed runtime PRS ledger preparation",
+    )
+    require_text(
+        prepare,
+        "_admission: LinuxServiceOwnedRuntimePrsAdmission,",
+        "borrowed runtime PRS ledger admission",
+    )
+    require_text(
+        prepare,
+        "replica: &ServiceOwnedRuntimePrsReplica,",
+        "generic runtime PRS ledger value",
+    )
+    require_order(
+        prepare,
+        (
+            "_admission: LinuxServiceOwnedRuntimePrsAdmission,",
+            "operation_id: &str,",
+            "replica: &ServiceOwnedRuntimePrsReplica,",
+            "self.prepare_if_allowed(",
+            "PasswordMutationKind::ServiceOwned,",
+            "replica.as_sensitive_password().as_str(),",
+            "replica.as_sensitive_password().as_str().len() <= UNATTENDED_PASSWORD_MAX_BYTES,",
+        ),
+        "consuming action capability and fixed service-owned ledger record",
+    )
+    for marker, label in (
+        (
+            "_admission: &LinuxServiceOwnedRuntimePrsAdmission",
+            "borrowed runtime PRS ledger admission",
+        ),
+        ("admission_allowed: bool", "detached runtime PRS authority Boolean"),
+        ("replica: &SensitivePassword", "generic runtime PRS ledger value"),
+    ):
+        require_absent(prepare, marker, label)
+
+    main_authority = extract_braced_item(
+        ipc,
+        "fn sensitive_main_ipc_authority",
+        "typed sensitive-main authority selection",
+    )
+    require_text(
+        main_authority,
+        "-> Option<SensitiveMainPasswordAuthority>",
+        "kind-only sensitive-main authority",
+    )
+    require_order(
+        main_authority,
+        (
+            "-> Option<SensitiveMainPasswordAuthority>",
+            "LinuxServiceOwnedPasswordReplicaReceiver::authenticate(stream)",
+            "SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs(receiver)",
+            "ensure_user_owned_password_client_is_trusted(",
+            "SensitiveMainPasswordAuthority::UserOwned",
+        ),
+        "typed service/user action selection",
+    )
+    for marker, label in (
+        (
+            "authenticate_linux_service_owned_password_parent",
+            "detached parent proof in main authority selector",
+        ),
+        ("Option<PasswordMutationKind>", "kind-only sensitive-main authority"),
+    ):
+        require_absent(main_authority, marker, label)
+
+    handler = extract_braced_item(
+        ipc,
+        "async fn handle_sensitive_main_ipc_transaction",
+        "typed sensitive-main transaction",
+    )
+    require_order(
+        handler,
+        (
+            "authority: SensitiveMainPasswordAuthority,",
+            "password::receive_request_unix(",
+            "let operation_id = request.operation_id();",
+            "request.into_password()",
+            "match authority {",
+            "SensitiveMainPasswordAuthority::UserOwned => {",
+            "begin_user_owned_password_mutation(",
+            "SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs(receiver) => {",
+            "match receiver.admit(&stream) {",
+            "begin_linux_service_owned_runtime_prs_mutation(",
+            "ServiceOwnedRuntimePrsReplica { value },",
+            "password::send_status_unix(&mut stream, operation_id, status, deadline)",
+            "worker.await",
+        ),
+        "post-request consuming admission and typed action dispatch",
+    )
+    for marker, label in (
+        ("begin_password_mutation(", "generic mutation entry"),
+        (
+            "authenticate_linux_service_owned_password_parent",
+            "handler-side detached parent proof",
+        ),
+        (
+            "set_permanent_password_prs_for_runtime",
+            "handler-side runtime PRS write",
+        ),
+    ):
+        require_absent(handler, marker, label)
+
+    begin = extract_braced_item(
+        ipc,
+        "fn begin_linux_service_owned_runtime_prs_mutation",
+        "typed runtime PRS mutation entry",
+    )
+    require_absent(
+        begin,
+        "spawn_password_mutation(",
+        "generic durable worker fallback",
+    )
+    require_order(
+        begin,
+        (
+            "admission: LinuxServiceOwnedRuntimePrsAdmission,",
+            "operation_id: String,",
+            "replica: ServiceOwnedRuntimePrsReplica,",
+            "let kind = PasswordMutationKind::ServiceOwned;",
+            "prepare_linux_service_owned_runtime_prs(",
+            "admission,\n        &operation_id,\n        &replica,",
+            "try_acquire_main_ipc_blocking_mutation_slot()",
+            "acknowledge(&operation_id, kind, value)",
+            "spawn_linux_service_owned_runtime_prs_mutation(operation_id.clone(), replica, permit)",
+        ),
+        "capability-bound preparation and dedicated worker dispatch",
+    )
+    for marker, label in (
+        ("authority_allowed", "detached runtime PRS entry authority Boolean"),
+        ("spawn_password_mutation(", "generic durable worker fallback"),
+        ("begin_user_owned_password_mutation(", "user-owned mutation fallback"),
+    ):
+        require_absent(begin, marker, label)
+
+    worker = extract_braced_item(
+        ipc,
+        "fn spawn_linux_service_owned_runtime_prs_mutation",
+        "dedicated runtime PRS worker",
+    )
+    require_absent(worker, "replica: SensitivePassword", "generic password worker input")
+    require_absent(
+        worker,
+        "Config::set_permanent_password_persisted",
+        "durable credential write from runtime PRS worker",
+    )
+    require_order(
+        worker,
+        (
+            "operation_id: String,",
+            "replica: ServiceOwnedRuntimePrsReplica,",
+            "permit: OwnedSemaphorePermit,",
+            "tokio::task::spawn_blocking(move || {",
+            "let kind = PasswordMutationKind::ServiceOwned;",
+            "replica.install_for_runtime()",
+            "completion.result = result;",
+        ),
+        "owned typed runtime install and fixed finality",
+    )
+    for marker, label in (
+        ("replica: SensitivePassword", "generic password worker input"),
+        (
+            "Config::set_permanent_password_persisted",
+            "durable credential write from runtime PRS worker",
+        ),
+    ):
+        require_absent(worker, marker, label)
+
+    generic_worker = extract_braced_item(
+        ipc,
+        "fn spawn_password_mutation",
+        "generic durable password worker",
+    )
+    require_text(
+        generic_worker,
+        "Config::set_permanent_password_persisted(value.as_str())",
+        "durable-only generic password worker",
+    )
+    for marker, label in (
+        (
+            "set_permanent_password_prs_for_runtime",
+            "runtime-state write from generic password worker",
+        ),
+        (
+            "is_service_owned_server_process",
+            "ambient process-role runtime-state selection",
+        ),
+        ("service_owned_runtime_replica", "detached runtime-replica Boolean"),
+    ):
+        require_absent(generic_worker, marker, label)
+
+    for marker, count, label in (
+        (
+            "LinuxServiceOwnedPasswordReplicaReceiver::authenticate(stream)",
+            1,
+            "sole receiver authentication owner",
+        ),
+        ("receiver.admit(&stream)", 1, "sole final receiver admission owner"),
+        (
+            "begin_linux_service_owned_runtime_prs_mutation(",
+            2,
+            "one typed mutation entry definition and call",
+        ),
+        (
+            "spawn_linux_service_owned_runtime_prs_mutation(",
+            2,
+            "one dedicated worker definition and call",
+        ),
+        (
+            "Config::set_permanent_password_prs_for_runtime(self.value.as_str())",
+            1,
+            "sole typed runtime PRS installation method sink",
+        ),
+        (
+            "replica.install_for_runtime()",
+            1,
+            "sole dedicated runtime PRS worker installation call",
+        ),
+    ):
+        require_exact_count(ipc.rsplit("#[cfg(test)]\nmod test", 1)[0], marker, count, label)
+
+    for text, label in (
+        (
+            "def verify_linux_runtime_prs_receiver_authority(rust: Mapping[str, RustSource]) -> None:",
+            "focused runtime PRS receiver validator",
+        ),
+        (
+            'receiver = ipc.item("struct", "LinuxServiceOwnedPasswordReplicaReceiver")',
+            "focused receiver parser",
+        ),
+        (
+            'parent = auth.function("authenticate_linux_service_owned_password_parent")',
+            "focused retained-parent parser",
+        ),
+        (
+            '"Linux runtime PRS receiver borrows authority at final admission"',
+            "focused consuming-admission mutation",
+        ),
+        (
+            '"Linux runtime PRS receiver becomes public"',
+            "focused private-receiver mutation",
+        ),
+        (
+            '"Linux root-parent proof discards PID start-time identity"',
+            "focused parent-generation mutation",
+        ),
+        (
+            '"Linux runtime PRS mutation entry accepts detached Boolean authority"',
+            "focused detached-authority mutation",
+        ),
+        (
+            '"generic password worker regains ambient runtime-PRS selection"',
+            "focused ambient-worker mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+    require_exact_count(
+        focused,
+        "    verify_linux_runtime_prs_receiver_authority(rust)\n",
+        1,
+        "focused runtime PRS receiver validator dispatch",
+    )
+
+    shared = extract_between(
+        sources["verify"],
+        'need(\n    "linux-runtime-prs-receiver-authority-not-typed-through-final-commit"',
+        "\n\nmac_worker =",
+        "shared Linux runtime PRS receiver analyzer",
+    )
+    for text, label in (
+        (
+            '"struct LinuxServiceOwnedPasswordReplicaReceiver {\\n    parent: LinuxProcessIdentity,\\n}" in ipc',
+            "shared retained parent generation predicate",
+        ),
+        (
+            '"fn admit<T>(&self" not in linux_runtime_prs_receiver',
+            "shared consuming receiver predicate",
+        ),
+        (
+            '"pub struct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc',
+            "shared private receiver predicate",
+        ),
+        (
+            '"if false && !crate::common::is_service_owned_server_process()" not in linux_runtime_prs_receiver',
+            "shared non-bypassable receiver-role predicate",
+        ),
+        (
+            '"pub(crate) fn authenticate_linux_service_owned_password_parent" not in auth',
+            "shared parent-proof visibility predicate",
+        ),
+        (
+            '"set_permanent_password_prs_for_runtime" not in generic_password_worker',
+            "shared generic-worker separation predicate",
+        ),
+        (
+            'ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1',
+            "shared sole typed runtime install predicate",
+        ),
+        (
+            'ipc_production.count("replica.install_for_runtime()") == 1',
+            "shared sole dedicated worker install predicate",
+        ),
+    ):
+        require_text(shared, text, label)
+    for text, label in (
+        (
+            '"fn admit<T>(&self" in linux_runtime_prs_receiver',
+            "shared borrowed receiver acceptance",
+        ),
+        (
+            '"pub(crate) fn authenticate_linux_service_owned_password_parent" in auth',
+            "shared crate-visible parent-proof acceptance",
+        ),
+        (
+            '"set_permanent_password_prs_for_runtime" in generic_password_worker',
+            "shared ambient worker acceptance",
+        ),
+        (
+            'ipc_production.count("replica.install_for_runtime()") >= 1',
+            "shared non-sole worker install acceptance",
+        ),
+    ):
+        require_absent(shared, text, label)
+
+    apple = extract_between(
+        sources["apple"],
+        'need("b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit"',
+        '\n        need("b2",',
+        "Apple Linux runtime PRS receiver analyzer",
+    )
+    for text, label in (
+        (
+            '"struct LinuxServiceOwnedPasswordReplicaReceiver {\\n    parent: LinuxProcessIdentity,\\n}" in ipc',
+            "Apple retained parent generation predicate",
+        ),
+        (
+            '"fn admit<T>(&self" not in linux_runtime_prs_receiver',
+            "Apple consuming receiver predicate",
+        ),
+        (
+            '"pub struct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc',
+            "Apple private receiver predicate",
+        ),
+        (
+            '"if false && !crate::common::is_service_owned_server_process()" not in linux_runtime_prs_receiver',
+            "Apple non-bypassable receiver-role predicate",
+        ),
+        (
+            '"pub(crate) fn authenticate_linux_service_owned_password_parent" not in auth',
+            "Apple parent-proof visibility predicate",
+        ),
+        (
+            '"set_permanent_password_prs_for_runtime" not in generic_password_worker',
+            "Apple generic-worker separation predicate",
+        ),
+        (
+            'ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1',
+            "Apple sole typed runtime install predicate",
+        ),
+        (
+            'ipc_production.count("replica.install_for_runtime()") == 1',
+            "Apple sole dedicated worker install predicate",
+        ),
+    ):
+        require_text(apple, text, label)
+    for text, label in (
+        (
+            'scoped_mutation("linux-runtime-prs-receiver-role"',
+            "Apple receiver-role mutation",
+        ),
+        (
+            'mutation("linux-runtime-prs-receiver-public"',
+            "Apple private-receiver mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-admission-consume"',
+            "Apple consuming-admission mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-parent-generation"',
+            "Apple parent-generation mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-ledger-consume"',
+            "Apple consuming-ledger mutation",
+        ),
+        (
+            'scoped_mutation("linux-runtime-prs-generic-worker"',
+            "Apple ambient-worker mutation",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "grep -Fq '<span class=\"id\">R-S11ii</span>' requirements.html",
+            "shared runtime PRS receiver requirement binding",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<tr><td>394</td>' requirements.html",
+            "shared runtime PRS receiver Appendix binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<span class=\"id\">R-S11ii</span>' \"$REPO/requirements.html\"",
+            "Apple runtime PRS receiver requirement binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<tr><td>394</td>' \"$REPO/requirements.html\"",
+            "Apple runtime PRS receiver Appendix binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11ii</span>',
+            "runtime PRS receiver requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>394</td>",
+            "runtime PRS receiver Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority",
+            "runtime PRS receiver hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11ii and Appendix C #394.",
+            "runtime PRS receiver identity binding",
+        ),
+        (
+            sources["requirements"],
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaReceiver</code>",
+            "normative retained receiver capability",
+        ),
+        (
+            sources["requirements"],
+            "consume that receiver to mint one <code>LinuxServiceOwnedRuntimePrsAdmission</code>",
+            "normative consuming final admission",
+        ),
+        (
+            sources["requirements"],
+            "generic durable-password worker <span class=\"kw\">MUST NOT</span> infer runtime-PRS behavior",
+            "normative generic-worker separation",
+        ),
+    ):
+        require_text(source, text, label)
+    require_text(
+        sources["workspace_verifier"],
+        "def validate_linux_runtime_prs_receiver_contract(sources):\n",
+        "runtime PRS receiver independent validator definition",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_linux_runtime_prs_receiver_contract(sources)\n",
+        "runtime PRS receiver independent validator dispatch",
     )
 
 
@@ -58248,6 +58923,7 @@ def validate_sources(sources):
     validate_linux_service_owned_password_requester_contract(sources)
     validate_linux_credential_replica_admission_contract(sources)
     validate_linux_runtime_prs_writer_contract(sources)
+    validate_linux_runtime_prs_receiver_contract(sources)
     validate_windows_sensitive_password_admission_contract(sources)
     validate_macos_service_owned_password_requester_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
@@ -68538,6 +69214,396 @@ def run_source_mutations(sources):
             "typed Linux runtime PRS independent validator dispatch",
         ),
         (
+            "ipc_source",
+            "fn install_for_runtime(self) -> ResultType<bool>",
+            "fn install_for_runtime(&self) -> ResultType<bool>",
+            "consuming typed runtime PRS installation",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedPasswordReplicaReceiver {\n    parent: LinuxProcessIdentity,\n}",
+            "struct LinuxServiceOwnedPasswordReplicaReceiver {\n    parent_alive: bool,\n}",
+            "retained root-parent PID/UID/start-time generation",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedPasswordReplicaReceiver {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaReceiver {",
+            "cloneable Linux runtime PRS receiver",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedPasswordReplicaReceiver {",
+            "pub struct LinuxServiceOwnedPasswordReplicaReceiver {",
+            "public Linux runtime PRS receiver",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedRuntimePrsAdmission {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedRuntimePrsAdmission {",
+            "cloneable Linux runtime PRS admission",
+        ),
+        (
+            "ipc_source",
+            "    ServiceOwnedRuntimePrs(LinuxServiceOwnedPasswordReplicaReceiver),",
+            "    ServiceOwnedRuntimePrs(PasswordMutationKind),",
+            "distinct user-owned and service-owned receiver actions",
+        ),
+        (
+            "ipc_source",
+            "            Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::ServiceOwned,",
+            "            Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::UserOwned,",
+            "type-derived capacity classification",
+        ),
+        (
+            "ipc_source",
+            "if !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver requires the exact service-owned server role\"",
+            "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver requires the exact service-owned server role\"",
+            "initial and final fixed-endpoint exact-parent receiver proof",
+        ),
+        (
+            "ipc_source",
+            "let parent = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "let parent = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "initial and final fixed-endpoint exact-parent receiver proof",
+        ),
+        (
+            "ipc_source",
+            "    fn admit<T>(self, stream: &T) -> ResultType<LinuxServiceOwnedRuntimePrsAdmission>",
+            "    fn admit<T>(&self, stream: &T) -> ResultType<LinuxServiceOwnedRuntimePrsAdmission>",
+            "borrowed receiver admission",
+        ),
+        (
+            "ipc_source",
+            "if !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver lost its exact service-owned server role\"",
+            "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver lost its exact service-owned server role\"",
+            "initial and final fixed-endpoint exact-parent receiver proof",
+        ),
+        (
+            "ipc_source",
+            "let refreshed = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "let refreshed = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "initial and final fixed-endpoint exact-parent receiver proof",
+        ),
+        (
+            "ipc_source",
+            "        if refreshed != self.parent {\n            bail!(\"Linux service-owned password replica parent identity changed before admission\");",
+            "        if false && refreshed != self.parent {\n            bail!(\"Linux service-owned password replica parent identity changed before admission\");",
+            "bypassed parent-generation continuity",
+        ),
+        (
+            "ipc_auth_source",
+            "let peer_pid = peer_pid_from_fd(fd)\n        .filter(|pid| *pid > 0)\n        .ok_or_else(|| anyhow::anyhow!(\"service-owned parent pid is unavailable for {postfix}\"))?;\n    let identity = linux_kernel_process_identity_by_pid(peer_pid)?;",
+            "let peer_pid = peer_pid_from_fd(fd)\n        .filter(|pid| *pid > 0)\n        .ok_or_else(|| anyhow::anyhow!(\"service-owned parent pid is unavailable for {postfix}\"))?;\n    let identity = LinuxProcessIdentity { pid: peer_pid, uid: peer_uid, start_time: String::new() };",
+            "kernel identity, launch-parent, and direct-parent conjunction",
+        ),
+        (
+            "ipc_auth_source",
+            "pub(super) fn authenticate_linux_service_owned_password_parent<T>(",
+            "pub(crate) fn authenticate_linux_service_owned_password_parent<T>(",
+            "crate-visible generic root-parent proof",
+        ),
+        (
+            "ipc_source",
+            "        _admission: LinuxServiceOwnedRuntimePrsAdmission,\n        operation_id: &str,\n        replica: &ServiceOwnedRuntimePrsReplica,",
+            "        _admission: &LinuxServiceOwnedRuntimePrsAdmission,\n        operation_id: &str,\n        replica: &ServiceOwnedRuntimePrsReplica,",
+            "borrowed runtime PRS ledger admission",
+        ),
+        (
+            "ipc_source",
+            "        _admission: LinuxServiceOwnedRuntimePrsAdmission,\n        operation_id: &str,\n        replica: &ServiceOwnedRuntimePrsReplica,",
+            "        _admission: LinuxServiceOwnedRuntimePrsAdmission,\n        operation_id: &str,\n        replica: &SensitivePassword,",
+            "generic runtime PRS ledger value",
+        ),
+        (
+            "ipc_source",
+            "            PasswordMutationKind::ServiceOwned,\n            replica.as_sensitive_password().as_str(),",
+            "            PasswordMutationKind::UserOwned,\n            replica.as_sensitive_password().as_str(),",
+            "consuming action capability and fixed service-owned ledger record",
+        ),
+        (
+            "ipc_source",
+            "fn sensitive_main_ipc_authority(stream: &Conn) -> Option<SensitiveMainPasswordAuthority>",
+            "fn sensitive_main_ipc_authority(stream: &Conn) -> Option<PasswordMutationKind>",
+            "kind-only sensitive-main authority",
+        ),
+        (
+            "ipc_source",
+            "            match receiver.admit(&stream) {",
+            "            match Ok(()) {",
+            "post-request consuming admission and typed action dispatch",
+        ),
+        (
+            "ipc_source",
+            "    admission: LinuxServiceOwnedRuntimePrsAdmission,\n    operation_id: String,\n    replica: ServiceOwnedRuntimePrsReplica,",
+            "    admission: bool,\n    operation_id: String,\n    replica: ServiceOwnedRuntimePrsReplica,",
+            "capability-bound preparation and dedicated worker dispatch",
+        ),
+        (
+            "ipc_source",
+            "spawn_linux_service_owned_runtime_prs_mutation(operation_id.clone(), replica, permit);",
+            "spawn_password_mutation(operation_id.clone(), replica.value, kind, permit);",
+            "generic durable worker fallback",
+        ),
+        (
+            "ipc_source",
+            "fn spawn_linux_service_owned_runtime_prs_mutation(\n    operation_id: String,\n    replica: ServiceOwnedRuntimePrsReplica,",
+            "fn spawn_linux_service_owned_runtime_prs_mutation(\n    operation_id: String,\n    replica: SensitivePassword,",
+            "generic password worker input",
+        ),
+        (
+            "ipc_source",
+            "        let result = match replica.install_for_runtime() {",
+            "        let result = match Config::set_permanent_password_persisted(replica.as_sensitive_password().as_str()) {",
+            "durable credential write from runtime PRS worker",
+        ),
+        (
+            "ipc_source",
+            "        let result = match Config::set_permanent_password_persisted(value.as_str()) {",
+            "        let result = match if kind == PasswordMutationKind::ServiceOwned && crate::common::is_service_owned_server_process() { Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true) } else { Config::set_permanent_password_persisted(value.as_str()) } {",
+            "runtime-state write from generic password worker",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "def verify_linux_runtime_prs_receiver_authority(rust: Mapping[str, RustSource]) -> None:",
+            "def verify_linux_runtime_prs_receiver_authority_disabled(rust: Mapping[str, RustSource]) -> None:",
+            "focused runtime PRS receiver validator",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "    verify_linux_runtime_prs_receiver_authority(rust)\n",
+            "    verify_linux_runtime_prs_receiver_authority_disabled(rust)\n",
+            "focused runtime PRS receiver validator dispatch",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux runtime PRS receiver borrows authority at final admission"',
+            '"Linux runtime PRS receiver consumes authority at final admission"',
+            "focused consuming-admission mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux runtime PRS receiver becomes public"',
+            '"Linux runtime PRS receiver remains private"',
+            "focused private-receiver mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux root-parent proof discards PID start-time identity"',
+            '"Linux root-parent proof retains PID start-time identity"',
+            "focused parent-generation mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"Linux runtime PRS mutation entry accepts detached Boolean authority"',
+            '"Linux runtime PRS mutation entry rejects detached Boolean authority"',
+            "focused detached-authority mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"generic password worker regains ambient runtime-PRS selection"',
+            '"generic password worker retains durable-only behavior"',
+            "focused ambient-worker mutation",
+        ),
+        (
+            "verify",
+            '"linux-runtime-prs-receiver-authority-not-typed-through-final-commit"',
+            '"linux-runtime-prs-receiver-authority-not-checked"',
+            "shared Linux runtime PRS receiver analyzer",
+        ),
+        (
+            "verify",
+            'and "fn admit<T>(&self" not in linux_runtime_prs_receiver',
+            'and "fn admit<T>(&self" in linux_runtime_prs_receiver',
+            "shared consuming receiver predicate",
+        ),
+        (
+            "verify",
+            'and "pub struct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc',
+            'and "pub struct LinuxServiceOwnedPasswordReplicaReceiver" in ipc',
+            "shared private receiver predicate",
+        ),
+        (
+            "verify",
+            'and "if false && !crate::common::is_service_owned_server_process()" not in linux_runtime_prs_receiver',
+            'and "if false && !crate::common::is_service_owned_server_process()" in linux_runtime_prs_receiver',
+            "shared non-bypassable receiver-role predicate",
+        ),
+        (
+            "verify",
+            'and "pub(crate) fn authenticate_linux_service_owned_password_parent" not in auth',
+            'and "pub(crate) fn authenticate_linux_service_owned_password_parent" in auth',
+            "shared parent-proof visibility predicate",
+        ),
+        (
+            "verify",
+            'and "set_permanent_password_prs_for_runtime" not in generic_password_worker',
+            'and "set_permanent_password_prs_for_runtime" in generic_password_worker',
+            "shared generic-worker separation predicate",
+        ),
+        (
+            "verify",
+            'and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1',
+            'and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") >= 1',
+            "shared sole typed runtime install predicate",
+        ),
+        (
+            "verify",
+            'and ipc_production.count("replica.install_for_runtime()") == 1',
+            'and ipc_production.count("replica.install_for_runtime()") >= 1',
+            "shared sole dedicated worker install predicate",
+        ),
+        (
+            "apple",
+            '        need("b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit",',
+            '        need("b2", "linux-runtime-prs-receiver-authority-not-checked",',
+            "Apple Linux runtime PRS receiver analyzer",
+        ),
+        (
+            "apple",
+            'and "fn admit<T>(&self" not in linux_runtime_prs_receiver',
+            'and "fn admit<T>(&self" in linux_runtime_prs_receiver',
+            "Apple consuming receiver predicate",
+        ),
+        (
+            "apple",
+            'and "pub struct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc',
+            'and "pub struct LinuxServiceOwnedPasswordReplicaReceiver" in ipc',
+            "Apple private receiver predicate",
+        ),
+        (
+            "apple",
+            'and "if false && !crate::common::is_service_owned_server_process()" not in linux_runtime_prs_receiver',
+            'and "if false && !crate::common::is_service_owned_server_process()" in linux_runtime_prs_receiver',
+            "Apple non-bypassable receiver-role predicate",
+        ),
+        (
+            "apple",
+            'and "pub(crate) fn authenticate_linux_service_owned_password_parent" not in auth',
+            'and "pub(crate) fn authenticate_linux_service_owned_password_parent" in auth',
+            "Apple parent-proof visibility predicate",
+        ),
+        (
+            "apple",
+            'and "set_permanent_password_prs_for_runtime" not in generic_password_worker',
+            'and "set_permanent_password_prs_for_runtime" in generic_password_worker',
+            "Apple generic-worker separation predicate",
+        ),
+        (
+            "apple",
+            'and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1',
+            'and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") >= 1',
+            "Apple sole typed runtime install predicate",
+        ),
+        (
+            "apple",
+            'and ipc_production.count("replica.install_for_runtime()") == 1',
+            'and ipc_production.count("replica.install_for_runtime()") >= 1',
+            "Apple sole dedicated worker install predicate",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-admission-consume"',
+            'scoped_mutation("linux-runtime-prs-admission-consume-disabled"',
+            "Apple consuming-admission mutation",
+        ),
+        (
+            "apple",
+            'mutation("linux-runtime-prs-receiver-public"',
+            'mutation("linux-runtime-prs-receiver-public-disabled"',
+            "Apple private-receiver mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-parent-generation"',
+            'scoped_mutation("linux-runtime-prs-parent-generation-disabled"',
+            "Apple parent-generation mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-ledger-consume"',
+            'scoped_mutation("linux-runtime-prs-ledger-consume-disabled"',
+            "Apple consuming-ledger mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-runtime-prs-generic-worker"',
+            'scoped_mutation("linux-runtime-prs-generic-worker-disabled"',
+            "Apple ambient-worker mutation",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11ii</span>\' requirements.html',
+            "true # runtime PRS receiver requirement binding disabled",
+            "shared runtime PRS receiver requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<tr><td>394</td>' requirements.html",
+            "true # runtime PRS receiver Appendix binding disabled",
+            "shared runtime PRS receiver Appendix binding",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11ii</span>\' "$REPO/requirements.html"',
+            "true # Apple runtime PRS receiver requirement binding disabled",
+            "Apple runtime PRS receiver requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq '<tr><td>394</td>' \"$REPO/requirements.html\"",
+            "true # Apple runtime PRS receiver Appendix binding disabled",
+            "Apple runtime PRS receiver Appendix binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ii</span>',
+            '<span class="id">R-S11ii-disabled</span>',
+            "runtime PRS receiver requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>394</td>",
+            "<tr><td>394-disabled</td>",
+            "runtime PRS receiver Appendix C row",
+        ),
+        (
+            "requirements",
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaReceiver</code>",
+            "cloneable <code>LinuxServiceOwnedPasswordReplicaReceiver</code>",
+            "normative retained receiver capability",
+        ),
+        (
+            "requirements",
+            "consume that receiver to mint one <code>LinuxServiceOwnedRuntimePrsAdmission</code>",
+            "reuse that receiver without an admission",
+            "normative consuming final admission",
+        ),
+        (
+            "requirements",
+            "generic durable-password worker <span class=\"kw\">MUST NOT</span> infer runtime-PRS behavior",
+            "generic durable-password worker <span class=\"kw\">MAY</span> infer runtime-PRS behavior",
+            "normative generic-worker separation",
+        ),
+        (
+            "hardening",
+            "R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority",
+            "R-S11ii-disabled/R-S11e-272 — typed Linux child-side runtime PRS receiver authority",
+            "runtime PRS receiver hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ii and Appendix C #394.",
+            "The same identity no longer binds R-S11ii and Appendix C #394.",
+            "runtime PRS receiver identity binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_linux_runtime_prs_receiver_contract(sources)\n",
+            "    validate_linux_runtime_prs_receiver_contract_disabled(sources)\n",
+            "runtime PRS receiver independent validator dispatch",
+        ),
+        (
             "ipc_auth_source",
             "        self.revalidate(pipe, deadline)?;\n        Ok(super::WindowsServiceOwnedPasswordAdmission {",
             "        drop((pipe, deadline));\n        Ok(super::WindowsServiceOwnedPasswordAdmission {",
@@ -68599,6 +69665,12 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
+            "fn begin_user_owned_password_mutation(\n    operation_id: String,\n    value: MainPasswordMutationValue,\n    authority_allowed: bool,\n) -> (\n    PasswordMutationStatus,\n    Option<tokio::task::JoinHandle<IpcMutationResult>>,\n) {\n    let kind = PasswordMutationKind::UserOwned;",
+            "fn begin_user_owned_password_mutation(\n    operation_id: String,\n    value: MainPasswordMutationValue,\n    authority_allowed: bool,\n) -> (\n    PasswordMutationStatus,\n    Option<tokio::task::JoinHandle<IpcMutationResult>>,\n) {\n    let kind = PasswordMutationKind::ServiceOwned;",
+            "fixed user-owned password action kind",
+        ),
+        (
+            "ipc_source",
             "                        let (status, worker) = begin_windows_user_owned_password_mutation(\n                            admission,",
             "                        let (status, worker) = begin_password_mutation(\n                            admission,",
             "user request capability consumption and shutdown disposition",
@@ -68647,8 +69719,8 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            '"windows-password-authority-not-typed-through-queue-and-ledger-admission"',
-            '"windows-password-authority-not-checked"',
+            '        need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",',
+            '        need("b2", "windows-password-authority-not-checked",',
             "Apple embedded typed Windows password analyzer",
         ),
         (

@@ -221,6 +221,11 @@ impl ServiceOwnedRuntimePrsReplica {
     fn as_sensitive_password(&self) -> &SensitivePassword {
         &self.value
     }
+
+    #[cfg(target_os = "linux")]
+    fn install_for_runtime(self) -> ResultType<bool> {
+        Config::set_permanent_password_prs_for_runtime(self.value.as_str())
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -841,6 +846,72 @@ enum LinuxServiceOwnedPasswordReplicaAttempt {
 }
 
 #[cfg(target_os = "linux")]
+struct LinuxServiceOwnedPasswordReplicaReceiver {
+    parent: LinuxProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxServiceOwnedRuntimePrsAdmission {
+    _receiver: LinuxServiceOwnedPasswordReplicaReceiver,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+enum SensitiveMainPasswordAuthority {
+    UserOwned,
+    #[cfg(target_os = "linux")]
+    ServiceOwnedRuntimePrs(LinuxServiceOwnedPasswordReplicaReceiver),
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl SensitiveMainPasswordAuthority {
+    fn mutation_kind(&self) -> PasswordMutationKind {
+        match self {
+            Self::UserOwned => PasswordMutationKind::UserOwned,
+            #[cfg(target_os = "linux")]
+            Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::ServiceOwned,
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceOwnedPasswordReplicaReceiver {
+    fn authenticate<T>(stream: &T) -> ResultType<Self>
+    where
+        T: std::os::unix::io::AsRawFd,
+    {
+        if !crate::common::is_service_owned_server_process() {
+            bail!(
+                "Linux service-owned password replica receiver requires the exact service-owned server role"
+            );
+        }
+        let parent = authenticate_linux_service_owned_password_parent(
+            stream,
+            password::USER_PASSWORD_IPC_POSTFIX,
+        )?;
+        Ok(Self { parent })
+    }
+
+    fn admit<T>(self, stream: &T) -> ResultType<LinuxServiceOwnedRuntimePrsAdmission>
+    where
+        T: std::os::unix::io::AsRawFd,
+    {
+        if !crate::common::is_service_owned_server_process() {
+            bail!(
+                "Linux service-owned password replica receiver lost its exact service-owned server role"
+            );
+        }
+        let refreshed = authenticate_linux_service_owned_password_parent(
+            stream,
+            password::USER_PASSWORD_IPC_POSTFIX,
+        )?;
+        if refreshed != self.parent {
+            bail!("Linux service-owned password replica parent identity changed before admission");
+        }
+        Ok(LinuxServiceOwnedRuntimePrsAdmission { _receiver: self })
+    }
+}
+
+#[cfg(target_os = "linux")]
 impl LinuxServiceOwnedPasswordReplicaWriter {
     async fn connect(deadline: tokio::time::Instant) -> ResultType<Self> {
         if !crate::platform::is_root() || !crate::common::is_service_supervisor_process() {
@@ -1314,6 +1385,21 @@ impl PasswordMutationCoordinator {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    fn prepare_linux_service_owned_runtime_prs(
+        &self,
+        _admission: LinuxServiceOwnedRuntimePrsAdmission,
+        operation_id: &str,
+        replica: &ServiceOwnedRuntimePrsReplica,
+    ) -> PasswordMutationPreparation {
+        self.prepare_if_allowed(
+            operation_id,
+            PasswordMutationKind::ServiceOwned,
+            replica.as_sensitive_password().as_str(),
+            replica.as_sensitive_password().as_str().len() <= UNATTENDED_PASSWORD_MAX_BYTES,
+        )
+    }
+
     #[cfg(target_os = "macos")]
     fn prepare_macos_service_owned(
         &self,
@@ -1513,21 +1599,39 @@ fn spawn_password_mutation(
             kind,
             result: IpcMutationResult::InternalFailure,
         };
-        #[cfg(target_os = "linux")]
-        let service_owned_runtime_replica = kind == PasswordMutationKind::ServiceOwned
-            && crate::common::is_service_owned_server_process();
-        #[cfg(not(target_os = "linux"))]
-        let service_owned_runtime_replica = false;
-        let persisted = if service_owned_runtime_replica {
-            Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true)
-        } else {
-            Config::set_permanent_password_persisted(value.as_str())
-        };
-        let result = match persisted {
+        let result = match Config::set_permanent_password_persisted(value.as_str()) {
             Ok(true) => IpcMutationResult::Applied,
             Ok(false) => IpcMutationResult::Rejected,
             Err(err) => {
                 log::error!("password mutation persistence failed: {err}");
+                IpcMutationResult::InternalFailure
+            }
+        };
+        completion.result = result;
+        result
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_linux_service_owned_runtime_prs_mutation(
+    operation_id: String,
+    replica: ServiceOwnedRuntimePrsReplica,
+    permit: OwnedSemaphorePermit,
+) -> tokio::task::JoinHandle<IpcMutationResult> {
+    let coordinator = Arc::clone(password_mutations());
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let kind = PasswordMutationKind::ServiceOwned;
+        let mut completion = PasswordMutationCompletion {
+            coordinator,
+            operation_id,
+            kind,
+            result: IpcMutationResult::InternalFailure,
+        };
+        let result = match replica.install_for_runtime() {
+            Ok(_) => IpcMutationResult::Applied,
+            Err(err) => {
+                log::error!("service-owned runtime PRS installation failed: {err}");
                 IpcMutationResult::InternalFailure
             }
         };
@@ -3195,8 +3299,14 @@ async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
                 match event {
                     #[cfg(any(target_os = "linux", target_os = "macos"))]
                     SensitiveMainListenerEvent::Accepted(stream) => {
-                        let Some(authority) = sensitive_main_ipc_authority(&stream) else { continue; };
-                        let Some(permit) = try_acquire_sensitive_main_ipc_transaction_slot(authority) else { continue; };
+                        let Some(authority) = sensitive_main_ipc_authority(&stream) else {
+                            continue;
+                        };
+                        let Some(permit) = try_acquire_sensitive_main_ipc_transaction_slot(
+                            authority.mutation_kind(),
+                        ) else {
+                            continue;
+                        };
                         transactions.spawn(handle_sensitive_main_ipc_transaction(
                             stream,
                             authority,
@@ -3289,14 +3399,11 @@ async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn sensitive_main_ipc_authority(stream: &Conn) -> Option<PasswordMutationKind> {
+fn sensitive_main_ipc_authority(stream: &Conn) -> Option<SensitiveMainPasswordAuthority> {
     #[cfg(target_os = "linux")]
     if MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned {
-        return match authenticate_linux_service_owned_password_parent(
-            stream,
-            password::USER_PASSWORD_IPC_POSTFIX,
-        ) {
-            Ok(_) => Some(PasswordMutationKind::ServiceOwned),
+        return match LinuxServiceOwnedPasswordReplicaReceiver::authenticate(stream) {
+            Ok(receiver) => Some(SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs(receiver)),
             Err(err) => {
                 log::warn!("Rejected service-owned main password IPC client: {err}");
                 None
@@ -3306,7 +3413,7 @@ fn sensitive_main_ipc_authority(stream: &Conn) -> Option<PasswordMutationKind> {
 
     match ensure_user_owned_password_client_is_trusted(stream, password::USER_PASSWORD_IPC_POSTFIX)
     {
-        Ok(()) => Some(PasswordMutationKind::UserOwned),
+        Ok(()) => Some(SensitiveMainPasswordAuthority::UserOwned),
         Err(err) => {
             log::warn!("Rejected user-owned main password IPC client: {err}");
             None
@@ -3317,7 +3424,7 @@ fn sensitive_main_ipc_authority(stream: &Conn) -> Option<PasswordMutationKind> {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn handle_sensitive_main_ipc_transaction(
     mut stream: Conn,
-    kind: PasswordMutationKind,
+    authority: SensitiveMainPasswordAuthority,
     _permit: OwnedSemaphorePermit,
 ) {
     let deadline = tokio::time::Instant::now()
@@ -3343,17 +3450,36 @@ async fn handle_sensitive_main_ipc_transaction(
             return;
         }
     };
-    let authority_allowed = match kind {
-        PasswordMutationKind::UserOwned => {
-            current_process_allows_user_owned_permanent_password_write()
-                && !Config::is_disable_change_permanent_password()
+    let (status, worker) = match authority {
+        SensitiveMainPasswordAuthority::UserOwned => {
+            let authority_allowed = current_process_allows_user_owned_permanent_password_write()
+                && !Config::is_disable_change_permanent_password();
+            begin_user_owned_password_mutation(
+                operation_id.to_string(),
+                value,
+                authority_allowed,
+            )
         }
-        PasswordMutationKind::ServiceOwned => {
-            MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
+        #[cfg(target_os = "linux")]
+        SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs(receiver) => {
+            match receiver.admit(&stream) {
+                Ok(admission) => begin_linux_service_owned_runtime_prs_mutation(
+                    admission,
+                    operation_id.to_string(),
+                    ServiceOwnedRuntimePrsReplica { value },
+                ),
+                Err(err) => {
+                    log::warn!(
+                        "Rejected stale Linux service-owned password replica parent: {err}"
+                    );
+                    (
+                        PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                        None,
+                    )
+                }
+            }
         }
     };
-    let (status, worker) =
-        begin_password_mutation(operation_id.to_string(), value, kind, authority_allowed);
     if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
     {
         log::trace!("main password IPC status could not be returned: {err}");
@@ -3854,15 +3980,15 @@ async fn handle_main_ipc_transaction(mut stream: Connection, _permit: OwnedSemap
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn begin_password_mutation(
+fn begin_user_owned_password_mutation(
     operation_id: String,
     value: MainPasswordMutationValue,
-    kind: PasswordMutationKind,
     authority_allowed: bool,
 ) -> (
     PasswordMutationStatus,
     Option<tokio::task::JoinHandle<IpcMutationResult>>,
 ) {
+    let kind = PasswordMutationKind::UserOwned;
     let admission_allowed =
         authority_allowed && value.as_str().len() <= UNATTENDED_PASSWORD_MAX_BYTES;
     let preparation = password_mutations().prepare_if_allowed(
@@ -3898,6 +4024,52 @@ fn begin_password_mutation(
     (PasswordMutationStatus::Prepared, Some(worker))
 }
 
+#[cfg(target_os = "linux")]
+fn begin_linux_service_owned_runtime_prs_mutation(
+    admission: LinuxServiceOwnedRuntimePrsAdmission,
+    operation_id: String,
+    replica: ServiceOwnedRuntimePrsReplica,
+) -> (
+    PasswordMutationStatus,
+    Option<tokio::task::JoinHandle<IpcMutationResult>>,
+) {
+    let kind = PasswordMutationKind::ServiceOwned;
+    let preparation = password_mutations().prepare_linux_service_owned_runtime_prs(
+        admission,
+        &operation_id,
+        &replica,
+    );
+    if !preparation.owns_preparation {
+        return (preparation.status, None);
+    }
+
+    let value = replica.as_sensitive_password().as_str();
+    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
+        if !password_mutations().fail_admitted(&operation_id, kind, value) {
+            log::error!("service-owned runtime PRS capacity failure could not be finalized");
+        }
+        return (
+            PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure),
+            None,
+        );
+    };
+    if !password_mutations().acknowledge(&operation_id, kind, value) {
+        log::error!("service-owned runtime PRS preparation could not be acknowledged");
+        if !password_mutations().fail_admitted(&operation_id, kind, value) {
+            log::error!(
+                "service-owned runtime PRS acknowledgement failure could not be finalized"
+            );
+        }
+        return (
+            PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure),
+            None,
+        );
+    }
+    let worker =
+        spawn_linux_service_owned_runtime_prs_mutation(operation_id.clone(), replica, permit);
+    (PasswordMutationStatus::Prepared, Some(worker))
+}
+
 #[cfg(target_os = "windows")]
 fn begin_windows_user_owned_password_mutation(
     _admission: WindowsUserOwnedPasswordAdmission,
@@ -3908,12 +4080,7 @@ fn begin_windows_user_owned_password_mutation(
     PasswordMutationStatus,
     Option<tokio::task::JoinHandle<IpcMutationResult>>,
 ) {
-    begin_password_mutation(
-        operation_id,
-        value,
-        PasswordMutationKind::UserOwned,
-        authority_allowed,
-    )
+    begin_user_owned_password_mutation(operation_id, value, authority_allowed)
 }
 
 #[cfg(target_os = "windows")]

@@ -30231,3 +30231,245 @@ stopped, restarted, modified, or connected to. The persistent Android service,
 cross-platform reconnect/focus flow, display-only delay, complete connection-flow
 correctness/performance request, and every other explicit open hardening item remain
 active.
+
+### R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority
+
+**Status:** SOURCE IMPLEMENTED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
+SOURCE-MUTATION GATES PASS / EXACT-CURRENT NATIVE EXECUTION REMAINS OPEN.
+
+The continuing action-by-action privileged IPC review followed the typed Linux
+root-to-child writer from R-S11ih across the raw `_password` socket into the
+service-owned child. Before this slice, that listener already accepted only a root
+peer whose socket PID equalled both the launch-parent identity recorded by the
+child and its live direct parent. The handler used the closed bounded raw password
+decoder, classified this exact child path as `ServiceOwned`, and invoked only
+`Config::set_permanent_password_prs_for_runtime`; that sink validates the
+password-equivalent CPace PRS and modifies only the child process's runtime
+credential replica. It does not persist the received value.
+
+The remaining defect was internal but concrete. The parent proof returned `()`, so
+the listener discarded the accepted parent generation immediately. It reduced the
+connection to `PasswordMutationKind::ServiceOwned`, moved generic secret bytes and
+a detached `authority_allowed` Boolean into the shared ledger entry, and let the
+generic blocking password worker choose between the durable store and runtime PRS
+store by comparing the kind and reading the ambient child-process role. Thus the
+sole current call path still performed the necessary checks, but the type and
+lifetime boundaries did not require those checks to remain attached through the
+protected action. This is source-proven action-authority,
+parent-generation-lifetime, and worker-separation debt. It is not evidence of an
+unauthorized connection, durable password mutation by the child, credential
+disclosure, authentication bypass, exploitation, host RustDesk/service/config/
+firewall/network mutation, public exposure, operational RustDesk failure, or
+causation of the older Android/Windows display-delay reports. No claim is made
+about an unidentified deployed artifact.
+
+The receiver path now uses three private, non-cloneable layers. First,
+`LinuxServiceOwnedPasswordReplicaReceiver::authenticate` requires the exact
+service-owned-server role and calls the fixed `_password` parent proof. That proof
+now returns `LinuxProcessIdentity` rather than `()`: it reads UID/PID from kernel
+socket credentials, requires UID 0, resolves that PID's UID and `/proc/<pid>/stat`
+start time, requires socket/proc UID equality, and requires both the recorded launch
+parent and the child's current PPID to equal the peer PID. The receiver retains that
+complete PID/UID/start-time generation. The generic postfix-accepting proof is
+parent-module-private. It deliberately does not attempt root executable or argv
+inspection from the unprivileged child because Linux procfs access to those fields
+may be ptrace-gated; kernel socket identity, PID start time, and direct-parent
+continuity are the relevant available boundary.
+
+Second, `SensitiveMainPasswordAuthority` carries either `UserOwned` or the owned
+service receiver. Its `mutation_kind` projection is used only for the existing
+bounded transaction semaphore. After the complete raw request is read and
+validated, `LinuxServiceOwnedPasswordReplicaReceiver::admit` consumes the receiver,
+freshly repeats the exact child role and fixed `_password` parent proof, and requires
+the complete new parent identity to equal the accepted generation. Only that method
+constructs `LinuxServiceOwnedRuntimePrsAdmission`; failure returns a rejected
+operation-bound status and starts no worker.
+
+Third, the service-owned runtime-PRS mutation entry and coordinator consume that
+admission, accept only `ServiceOwnedRuntimePrsReplica`, fix the action kind to
+`ServiceOwned`, preserve the existing keyed replay/finality state machine, and
+enforce the existing value bound. A dedicated blocking worker consumes the typed
+replica through `install_for_runtime`. The generic password worker now contains only
+`Config::set_permanent_password_persisted`; it has no runtime-PRS sink, service-owned
+kind branch, child-role query, endpoint selector, or detached runtime Boolean.
+Parent survival is required through final pre-ledger admission. After the action is
+irreversibly prepared, the child owns capacity, validation, runtime install,
+completion, replay, shutdown drain, and failure finality even if the parent exits.
+
+This changes no raw frame, payload-kind number, endpoint name, socket mode,
+credential derivation, durable credential write, authorization rule, listener,
+port, network behavior, timeout, capacity, retry/reconnect policy, display/control
+path, Android persistent-service behavior, Windows lifecycle behavior, process
+launch, service transition, dependency, or release artifact. Linux `unix(7)`
+documents that `SO_PEERCRED` returns the connected peer credentials in effect at
+connection/listen/socket-pair creation; Linux `proc_pid_stat(5)` documents field 22
+as process start time after boot. Those primary OS semantics are the basis for
+retaining and replaying PID/UID/start-time rather than treating a numeric PID as a
+generation.
+
+The focused Linux password IPC verifier was first run red against the new contract
+and rejected the source because the receiver capability was absent. After product
+and verifier implementation, its baseline passed. Its complete deliberate-mutation
+suite also passes and attacks consuming runtime install, receiver/admission/action
+non-cloneability and retained identity, both exact child-role checks, both fixed
+endpoints, consuming final admission, parent-generation equality and proof
+visibility, PID start-time retention, typed consuming ledger/entry/worker inputs,
+fixed service-owned classification, handler admission, dedicated runtime-only sink,
+generic durable-worker separation, and typed main-authority/handler signatures. Two
+intermediate self-test runs correctly exposed an insufficient writer-signature
+predicate and ambiguous/stale mutation fixtures; those diagnostic runs are not pass
+claims. The shared, Apple, independently implemented workspace, complete workspace
+catalog, native-watch, syntax/hash, and final receipt results are recorded below.
+
+Current normative identity for this slice:
+
+5beab37b0b2d725bdc21b1d8365879534ccf8be83fcf6ecf64fc6794f964d3b4  requirements.html
+
+It binds R-S11ii/R-S11e-272 and Appendix C #394 and is synchronized with
+`docs/NATIVE-CODEC-WATCH.md`.
+
+Exact-current Linux compilation and execution, installed root-service/active-user
+child behavior, adversarial parent-exit/PID-reuse/UID/direct-parent/launch-parent/
+socket races, replay/shutdown/error finality, sustained latency/CPU/memory/resource
+soak, clean committed cold R-B2/R-B10 artifact equality, independent reproduction,
+and R-V3 external review remain open. This slice does not inspect, stop, restart,
+modify, or connect to a host RustDesk process/service; inspect or change a host
+listener, firewall, network namespace, or configuration; touch Android, a VM,
+Haggai/Desktop_Haggai_computer, or unrelated Docker state; or use root, privileged
+containers, host networking, published ports, devices, or a Docker socket inside a
+verifier. The persistent Android service, cross-platform reconnect/focus flow,
+display-only delay, complete connection-flow correctness/performance request, and
+every other explicit open hardening item remain active.
+
+#### Verification receipt — 2026-09-02
+
+**Status:** SOURCE IMPLEMENTED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
+SOURCE-MUTATION GATES PASS / EXACT-CURRENT NATIVE EXECUTION REMAINS OPEN.
+
+The final source state for this slice passed the focused Linux password IPC
+verifier and all 200 of its deliberate mutations. Twenty-six focused mutations
+are new relative to the preceding 174-mutation receipt. They independently attack
+the consuming runtime install, private/non-cloneable receiver, retained complete
+parent identity, non-cloneable admission and typed authority action, both exact
+service-owned child-role checks, both fixed `_password` endpoint proofs, consuming
+final admission, parent-generation equality and proof visibility, typed consuming
+ledger/entry/worker inputs, fixed service-owned classification, post-request
+handler admission, dedicated runtime-only sink, generic durable-worker separation,
+focused-validator dispatch, and mutation-fixture reachability.
+
+The shared raw-password architecture analyzer passed by direct extraction and
+execution of its exact embedded Python program. The full outer `scripts/verify.sh`
+was not credited: its trusted harness requires `/usr/bin/docker` inside the
+verifier, while the mandated locked container deliberately has neither a Docker
+client nor Docker socket. Its attempted outer invocation stopped before the source
+analyzer with `main-verifier trusted Docker client is unavailable at
+/usr/bin/docker`; that is recorded as a harness-layer incompatibility, not a
+product failure or a full-gate pass.
+
+The complete Apple embedded password matrix then passed all 154 of its mutations,
+including 24 new mutations relative to the preceding 130-mutation receipt. Its
+final direct invocation dynamically extracted the exact heredoc, used a private
+tmpfs output directory, and required each of `r_s11b`, `r_s11b2`, and `r_s11e16`
+to exist and be empty. The independently implemented workspace baseline passed
+with distinct product, focused-gate, shared-gate, Apple-gate, normative,
+hardening-ledger, digest, and validator-dispatch checks.
+
+The complete 5,782-tuple in-memory source-mutation catalog restarted from mutation
+one after every diagnostic correction and passed in one uninterrupted final run:
+
+```text
+container: rustdesk-rs11ii-source-mutations-final
+started:   2026-09-02T14:56:02.397359319Z
+finished:  2026-09-02T18:19:54.317197277Z
+exit:      0
+OOMKilled: false
+output:    verify-verifier-workspace: ok
+```
+
+Sixty-six catalog tuples are new relative to the preceding 5,716-tuple receipt.
+They attack the product types and consuming call graph, parent proof identity and
+visibility, focused parser/dispatch/mutation fixtures, shared and Apple predicate
+exactness, Apple mutation names and diagnostic cardinality, R-S11ii and Appendix C
+#394 bindings, all three normative clauses, hardening and native-watch records,
+and independent-validator definition and dispatch. Because the catalog mutates
+every effective runtime source occurrence independently, its clean exit also
+proves that each new fixture exists, is reachable, and causes a semantic rejection
+rather than merely being listed. A separate 66-tuple R-S11ii preflight also
+restarted from its first mutation after each diagnostic correction and passed all
+effective occurrences before the complete catalog began.
+
+The uncounted diagnostic runs did useful verifier-hardening work and are not pass
+claims. The focused red-first baseline rejected the pre-fix call graph. Early
+focused self-tests exposed an under-specific writer signature, an ambiguous parent
+identity target, a stale runtime-sink fixture, a stale formatted main-listener
+fixture, and an optional-trailing-comma predicate. Complete-catalog preflights
+then rejected a doubled focused parser target, an over-broad admission-order
+diagnostic, and a parent extractor coupled to its old visibility. Later targeted
+runs exposed, in order, a handler mutation that accidentally added a third
+admission construction, an independent checker that validated the focused
+receiver function but not its dispatch, Apple analyzer-name mutations that also
+hit mutation metadata, and a Linux Apple extractor coupled to the mutable Windows
+analyzer identifier. Each checker defect was narrowed or independently bound, the
+baseline was rerun, and the relevant catalog restarted from mutation one. Every
+named retained failed catalog container was inspected as exit 1/non-OOM and
+removed; auto-removed targeted containers left no retained state.
+
+`scripts/native-codec-watch.sh` and its complete mutation self-test passed. The
+normative `requirements.html` identity is exactly
+`5beab37b0b2d725bdc21b1d8365879534ccf8be83fcf6ecf64fc6794f964d3b4` and
+matches `docs/NATIVE-CODEC-WATCH.md`; HTML parsing, unique R-S11ii and Appendix C
+#394 records, Bash parsing of all changed shell gates, Python AST parsing of both
+changed Python gates, and `git diff --check` passed. Pinned Rust 1.75 `rustfmt`
+with `--emit stdout --config skip_children=true` parsed both `src/ipc.rs` and
+`src/ipc/auth.rs` from the read-only tree. The added production Rust contains no
+`unwrap`, `expect`, nested runtime, `block_on`, or blocking sleep.
+
+Exact pre-receipt identities were:
+
+```text
+da23e680f09e5469df87c88eea01f2e2bc5739b45c690158f2cefca18e551cca  src/ipc.rs
+2714a2833c6f1a81efb4599ccc55f12874d4702a873903a4345dbc48f855f5eb  src/ipc/auth.rs
+cbd634c61fc2a6d6db8ddb2f2ef726551ce37126f1d1cfc4347f7a31791a2228  scripts/verify-linux-service-password-ipc.py
+ceb4c54ef3505b9a1f9f3d22d2cae47339375b7107aa9e3fe5b2886550704d37  scripts/verify.sh
+de3ad469bbabd0747af9e3e3355cbf228839a4cf27ea64d95e3dc0baefb1cc26  scripts/apple-conform-check.sh
+5cecee2b911e7179ef62a44fa0b3a72f655d8125537b6dee3f615392bbf7a88f  scripts/verify-verifier-workspace.py
+snapshot 5beab37b0b2d725bdc21b1d8365879534ccf8be83fcf6ecf64fc6794f964d3b4  requirements.html
+4f92da8482e14eae99ef9501babe5bc8e802a45264857260832fa0c81b727506  docs/NATIVE-CODEC-WATCH.md
+0f59ae5c2b6b69459f39486c70a910a21cd3b57a629ce2185ad3beaa7cc524c5  HARDENING_STATUS.md
+```
+
+The corresponding pre-receipt binary Git diff SHA-256 was
+`ca1fbc7d950ad2bbec6ce8196241a5013c154f8aae3196b1cbe424c5512532b5`.
+This documentation-only status/receipt update is followed by bounded reruns of
+the focused, shared, Apple, independent-baseline, native-watch, parsing/hash, and
+diff gates. The 5,782-tuple catalog is not rerun after the evidence-ledger update
+because the catalogued product, normative requirement, native-watch,
+focused/shared/Apple verifier, and independent-verifier bytes identified above
+remain unchanged.
+
+Every executable gate used immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+with `--network=none`, UID/GID 1000, a read-only repository mount, read-only root
+filesystem, all capabilities dropped, `no-new-privileges`, 64 PIDs, two CPUs,
+2 GiB memory with no additional swap, and a 256 MiB
+`nosuid,nodev,noexec` tmpfs. The credited catalog container recorded exactly those
+settings, used the pinned image content ID, exited zero without OOM, was inspected,
+and was then removed. Rust parsing additionally mounted the pinned toolchain
+read-only. No image was built or pulled, listener or port was opened, root/sudo or
+privileged container was used, host networking or device was attached, or Docker
+socket was exposed inside a verifier. Only exact verifier containers created for
+this slice were inspected and removed.
+
+The immutable verifier does not provide this repository's exact-current offline
+native dependency closure. No exact-current Linux compile/unit, installed-service,
+real-polkit, adversarial parent-exit/PID-reuse/UID/PPID/launch-parent/
+runtime-generation/socket race, replay/shutdown/error-finality execution,
+sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10
+artifact equality, independent reproduction, or external review claim is made.
+No host RustDesk process/service/configuration, listener, firewall/UFW/nftables/
+iptables state, network namespace, Android device, VM,
+Haggai/Desktop_Haggai_computer workload, or unrelated Docker object was inspected,
+stopped, restarted, modified, or connected to. The persistent Android service,
+cross-platform reconnect/focus flow, display-only delay, complete connection-flow
+correctness/performance request, and every other explicit open hardening item
+remain active.

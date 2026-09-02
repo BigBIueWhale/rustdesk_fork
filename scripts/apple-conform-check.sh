@@ -1158,6 +1158,7 @@ def analyze(sources):
         windows_password_listener = item(windows, "fn start_windows_sensitive_password_listener")
         windows_service_runtime = item(windows, "async fn run_service(arguments: Vec<OsString>)")
         windows_user_password_begin = item(ipc, "fn begin_windows_user_owned_password_mutation")
+        user_owned_password_begin = item(ipc, "fn begin_user_owned_password_mutation")
         mac_sensitive = item(ipc, "async fn handle_sensitive_macos_service_ipc_transaction")
         mac_password_grant = item(ipc, "fn grant_macos_service_owned_password_admission")
         mac_password_admission = item(ipc, "impl MacosServiceOwnedPasswordAdmission")
@@ -1203,6 +1204,14 @@ def analyze(sources):
         mutation_request = item(ipc, "enum MainPasswordMutationRequest")
         mutation_request_impl = item(ipc, "impl MainPasswordMutationRequest")
         linux_prs_writer = item(ipc, "impl LinuxServiceOwnedPasswordReplicaWriter")
+        linux_runtime_prs_receiver = item(ipc, "impl LinuxServiceOwnedPasswordReplicaReceiver")
+        sensitive_main_authority = item(ipc, "fn sensitive_main_ipc_authority")
+        sensitive_main_authority_kind = item(ipc, "impl SensitiveMainPasswordAuthority")
+        linux_runtime_prs_prepare = item(ipc, "fn prepare_linux_service_owned_runtime_prs")
+        linux_runtime_prs_begin = item(ipc, "fn begin_linux_service_owned_runtime_prs_mutation")
+        generic_password_worker = item(ipc, "fn spawn_password_mutation")
+        linux_runtime_prs_worker = item(ipc, "fn spawn_linux_service_owned_runtime_prs_mutation")
+        linux_runtime_prs_parent = item(auth, "fn authenticate_linux_service_owned_password_parent")
         complete_password = item(ipc, "async fn complete_main_password_mutation")
         linux_password_commit = item(ipc, "async fn commit_service_owned_unattended_password_change")
         connect_service = item(ipc, "async fn connect_with_path")
@@ -1267,7 +1276,8 @@ def analyze(sources):
         ]) and "Serialize for SensitivePassword" not in password_prod and "Deserialize" not in password_prod)
         need("b2", "main-peer-auth-not-before-secret-read", ordered(run_main, [
             "SensitiveMainListenerEvent::Accepted(stream)", "sensitive_main_ipc_authority(&stream)",
-            "try_acquire_sensitive_main_ipc_transaction_slot(authority)", "handle_sensitive_main_ipc_transaction(",
+            "try_acquire_sensitive_main_ipc_transaction_slot(", "authority.mutation_kind()",
+            "handle_sensitive_main_ipc_transaction(",
         ]) and "SensitivePayloadKind::Password" in main_sensitive)
         ipc_production = ipc.rsplit("#[cfg(test)]\nmod test", 1)[0]
         need("b2", "linux-post-polkit-authority-not-typed-through-ledger-admission",
@@ -1445,6 +1455,106 @@ def analyze(sources):
             and "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>" in ipc
             and ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1
             and ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1)
+        need("b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit",
+            ordered(runtime_prs, [
+                "fn install_for_runtime(self) -> ResultType<bool>",
+                "Config::set_permanent_password_prs_for_runtime(self.value.as_str())",
+            ])
+            and "fn install_for_runtime(&self)" not in runtime_prs
+            and "struct LinuxServiceOwnedPasswordReplicaReceiver {\n    parent: LinuxProcessIdentity,\n}" in ipc
+            and "struct LinuxServiceOwnedRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedPasswordReplicaReceiver,\n}" in ipc
+            and "ServiceOwnedRuntimePrs(LinuxServiceOwnedPasswordReplicaReceiver)" in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc
+            and "#[derive(Copy)]\nstruct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc
+            and "pub struct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc
+            and "pub(crate) struct LinuxServiceOwnedPasswordReplicaReceiver" not in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedRuntimePrsAdmission" not in ipc
+            and "#[derive(Copy)]\nstruct LinuxServiceOwnedRuntimePrsAdmission" not in ipc
+            and "pub struct LinuxServiceOwnedRuntimePrsAdmission" not in ipc
+            and "pub(crate) struct LinuxServiceOwnedRuntimePrsAdmission" not in ipc
+            and "#[derive(Clone)]\nenum SensitiveMainPasswordAuthority" not in ipc
+            and "#[derive(Copy)]\nenum SensitiveMainPasswordAuthority" not in ipc
+            and ordered(sensitive_main_authority_kind, [
+                "fn mutation_kind(&self) -> PasswordMutationKind",
+                "Self::UserOwned => PasswordMutationKind::UserOwned",
+                "Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::ServiceOwned",
+            ])
+            and ordered(linux_runtime_prs_receiver, [
+                "fn authenticate<T>(stream: &T) -> ResultType<Self>",
+                "!crate::common::is_service_owned_server_process()",
+                "authenticate_linux_service_owned_password_parent(", "stream",
+                "password::USER_PASSWORD_IPC_POSTFIX", "Ok(Self { parent })",
+                "fn admit<T>(self, stream: &T) -> ResultType<LinuxServiceOwnedRuntimePrsAdmission>",
+                "!crate::common::is_service_owned_server_process()",
+                "authenticate_linux_service_owned_password_parent(", "stream",
+                "password::USER_PASSWORD_IPC_POSTFIX", "if refreshed != self.parent",
+                "LinuxServiceOwnedRuntimePrsAdmission { _receiver: self }",
+            ])
+            and linux_runtime_prs_receiver.count("!crate::common::is_service_owned_server_process()") == 2
+            and linux_runtime_prs_receiver.count("password::USER_PASSWORD_IPC_POSTFIX") == 2
+            and "if false && !crate::common::is_service_owned_server_process()" not in linux_runtime_prs_receiver
+            and "fn admit<T>(&self" not in linux_runtime_prs_receiver
+            and "if false && refreshed != self.parent" not in linux_runtime_prs_receiver
+            and ipc_production.count("LinuxServiceOwnedRuntimePrsAdmission {") == 2
+            and ordered(linux_runtime_prs_parent, [
+                "-> ResultType<LinuxProcessIdentity>", "peer_uid_from_fd(fd)", "peer_uid != 0",
+                "peer_pid_from_fd(fd)", "linux_kernel_process_identity_by_pid(peer_pid)?",
+                "identity.uid != peer_uid", "SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV",
+                "linux_proc_parent_pid(std::process::id())?",
+                "peer_pid != expected_parent || actual_parent != expected_parent", "Ok(identity)",
+            ])
+            and "pub(crate) fn authenticate_linux_service_owned_password_parent" not in auth
+            and ordered(linux_runtime_prs_prepare, [
+                "_admission: LinuxServiceOwnedRuntimePrsAdmission", "operation_id: &str",
+                "replica: &ServiceOwnedRuntimePrsReplica", "PasswordMutationKind::ServiceOwned",
+                "replica.as_sensitive_password().as_str()",
+                "replica.as_sensitive_password().as_str().len() <= UNATTENDED_PASSWORD_MAX_BYTES",
+            ])
+            and "_admission: &LinuxServiceOwnedRuntimePrsAdmission" not in linux_runtime_prs_prepare
+            and "admission_allowed: bool" not in linux_runtime_prs_prepare
+            and ordered(sensitive_main_authority, [
+                "-> Option<SensitiveMainPasswordAuthority>",
+                "LinuxServiceOwnedPasswordReplicaReceiver::authenticate(stream)",
+                "SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs(receiver)",
+                "SensitiveMainPasswordAuthority::UserOwned",
+            ])
+            and "authenticate_linux_service_owned_password_parent" not in sensitive_main_authority
+            and ordered(main_sensitive, [
+                "authority: SensitiveMainPasswordAuthority", "password::receive_request_unix(",
+                "request.into_password()", "match authority",
+                "SensitiveMainPasswordAuthority::UserOwned", "begin_user_owned_password_mutation(",
+                "SensitiveMainPasswordAuthority::ServiceOwnedRuntimePrs(receiver)",
+                "receiver.admit(&stream)", "begin_linux_service_owned_runtime_prs_mutation(",
+                "ServiceOwnedRuntimePrsReplica { value }", "password::send_status_unix(", "worker.await",
+            ])
+            and "begin_password_mutation(" not in main_sensitive
+            and "authenticate_linux_service_owned_password_parent" not in main_sensitive
+            and "set_permanent_password_prs_for_runtime" not in main_sensitive
+            and ordered(linux_runtime_prs_begin, [
+                "admission: LinuxServiceOwnedRuntimePrsAdmission", "operation_id: String",
+                "replica: ServiceOwnedRuntimePrsReplica", "PasswordMutationKind::ServiceOwned",
+                "prepare_linux_service_owned_runtime_prs(", "admission", "&operation_id", "&replica",
+                "try_acquire_main_ipc_blocking_mutation_slot()", "acknowledge(&operation_id, kind, value)",
+                "spawn_linux_service_owned_runtime_prs_mutation(operation_id.clone(), replica, permit)",
+            ])
+            and "authority_allowed" not in linux_runtime_prs_begin
+            and "spawn_password_mutation(" not in linux_runtime_prs_begin
+            and ordered(linux_runtime_prs_worker, [
+                "operation_id: String", "replica: ServiceOwnedRuntimePrsReplica",
+                "permit: OwnedSemaphorePermit", "tokio::task::spawn_blocking(move ||",
+                "PasswordMutationKind::ServiceOwned", "replica.install_for_runtime()",
+                "completion.result = result",
+            ])
+            and "SensitivePassword" not in linux_runtime_prs_worker
+            and "set_permanent_password_persisted" not in linux_runtime_prs_worker
+            and "set_permanent_password_prs_for_runtime" not in generic_password_worker
+            and "is_service_owned_server_process" not in generic_password_worker
+            and ipc_production.count("LinuxServiceOwnedPasswordReplicaReceiver::authenticate(stream)") == 1
+            and ipc_production.count("receiver.admit(&stream)") == 1
+            and ipc_production.count("begin_linux_service_owned_runtime_prs_mutation(") == 2
+            and ipc_production.count("spawn_linux_service_owned_runtime_prs_mutation(") == 2
+            and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1
+            and ipc_production.count("replica.install_for_runtime()") == 1)
         need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",
             "pub(crate) struct WindowsUserOwnedPasswordAdmission {\n    _requester: ipc_auth::WindowsSensitivePipeClientProof,\n}" in ipc
             and "pub(crate) struct WindowsServiceOwnedPasswordAdmission {\n    _requester: WindowsServiceOwnedPasswordRequester,\n}" in ipc
@@ -1489,7 +1599,8 @@ def analyze(sources):
             and "_admission: WindowsServiceOwnedPasswordAdmission" in windows_password_ledger
             and "self.status(admission, operation_id, value)" in windows_password_ledger
             and "_admission: WindowsUserOwnedPasswordAdmission" in windows_user_password_begin.split("{", 1)[0]
-            and "PasswordMutationKind::UserOwned" in windows_user_password_begin
+            and "begin_user_owned_password_mutation(operation_id, value, authority_allowed)" in windows_user_password_begin
+            and "let kind = PasswordMutationKind::UserOwned;" in user_owned_password_begin
             and ordered(windows_service_runtime, [
                 "start_windows_service_owned_password_listener(", "WindowsServiceOwnedPasswordRequest {",
                 "credential_ledger.status(\n                    &admission,",
@@ -2121,6 +2232,30 @@ scoped_mutation("linux-runtime-prs-writer-continuity", "ipc", "impl LinuxService
 scoped_mutation("linux-runtime-prs-writer-consume", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "async fn begin(\n        mut self,", "async fn begin(\n        &mut self,", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
 scoped_mutation("linux-runtime-prs-writer-type", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "replica: &ServiceOwnedRuntimePrsReplica,", "replica: &SensitivePassword,", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
 scoped_mutation("linux-runtime-prs-writer-replay", "ipc", "impl LinuxServiceOwnedPasswordReplicaWriter", "if let Err(err) = self.reauthenticate() {", "if let Err(err) = Ok::<(), anyhow::Error>(()) {", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+scoped_mutation("linux-runtime-prs-install-consume", "ipc", "impl ServiceOwnedRuntimePrsReplica", "fn install_for_runtime(self) -> ResultType<bool>", "fn install_for_runtime(&self) -> ResultType<bool>", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+mutation("linux-runtime-prs-receiver-identity", "ipc", "struct LinuxServiceOwnedPasswordReplicaReceiver {\n    parent: LinuxProcessIdentity,\n}", "struct LinuxServiceOwnedPasswordReplicaReceiver {\n    parent_alive: bool,\n}", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+mutation("linux-runtime-prs-receiver-clone", "ipc", "struct LinuxServiceOwnedPasswordReplicaReceiver {", "#[derive(Clone)]\nstruct LinuxServiceOwnedPasswordReplicaReceiver {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+mutation("linux-runtime-prs-receiver-public", "ipc", "struct LinuxServiceOwnedPasswordReplicaReceiver {", "pub struct LinuxServiceOwnedPasswordReplicaReceiver {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+mutation("linux-runtime-prs-admission-clone", "ipc", "struct LinuxServiceOwnedRuntimePrsAdmission {", "#[derive(Clone)]\nstruct LinuxServiceOwnedRuntimePrsAdmission {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+mutation("linux-runtime-prs-action-payload", "ipc", "ServiceOwnedRuntimePrs(LinuxServiceOwnedPasswordReplicaReceiver),", "ServiceOwnedRuntimePrs(PasswordMutationKind),", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-action-kind", "ipc", "impl SensitiveMainPasswordAuthority", "Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::ServiceOwned,", "Self::ServiceOwnedRuntimePrs(_) => PasswordMutationKind::UserOwned,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-receiver-role", "ipc", "impl LinuxServiceOwnedPasswordReplicaReceiver", "if !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver requires the exact service-owned server role\"", "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver requires the exact service-owned server role\"", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-receiver-endpoint", "ipc", "impl LinuxServiceOwnedPasswordReplicaReceiver", "let parent = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::USER_PASSWORD_IPC_POSTFIX,", "let parent = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-admission-consume", "ipc", "impl LinuxServiceOwnedPasswordReplicaReceiver", "fn admit<T>(self, stream: &T)", "fn admit<T>(&self, stream: &T)", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-admission-role", "ipc", "impl LinuxServiceOwnedPasswordReplicaReceiver", "if !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver lost its exact service-owned server role\"", "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\n                \"Linux service-owned password replica receiver lost its exact service-owned server role\"", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-admission-endpoint", "ipc", "impl LinuxServiceOwnedPasswordReplicaReceiver", "let refreshed = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::USER_PASSWORD_IPC_POSTFIX,", "let refreshed = authenticate_linux_service_owned_password_parent(\n            stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-parent-continuity", "ipc", "impl LinuxServiceOwnedPasswordReplicaReceiver", "if refreshed != self.parent {", "if false && refreshed != self.parent {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-parent-generation", "auth", "pub(super) fn authenticate_linux_service_owned_password_parent", "let identity = linux_kernel_process_identity_by_pid(peer_pid)?;", "let identity = LinuxProcessIdentity { pid: peer_pid, uid: peer_uid, start_time: String::new() };", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+mutation("linux-runtime-prs-parent-visibility", "auth", "pub(super) fn authenticate_linux_service_owned_password_parent<T>(", "pub(crate) fn authenticate_linux_service_owned_password_parent<T>(", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-ledger-consume", "ipc", "fn prepare_linux_service_owned_runtime_prs", "_admission: LinuxServiceOwnedRuntimePrsAdmission,", "_admission: &LinuxServiceOwnedRuntimePrsAdmission,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-ledger-type", "ipc", "fn prepare_linux_service_owned_runtime_prs", "replica: &ServiceOwnedRuntimePrsReplica,", "replica: &SensitivePassword,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-ledger-kind", "ipc", "fn prepare_linux_service_owned_runtime_prs", "PasswordMutationKind::ServiceOwned,", "PasswordMutationKind::UserOwned,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-handler-admission", "ipc", "async fn handle_sensitive_main_ipc_transaction", "match receiver.admit(&stream) {", "match Ok(LinuxServiceOwnedRuntimePrsAdmission { _receiver: receiver }) {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-entry-boolean", "ipc", "fn begin_linux_service_owned_runtime_prs_mutation", "admission: LinuxServiceOwnedRuntimePrsAdmission,", "admission: bool,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-worker-type", "ipc", "fn spawn_linux_service_owned_runtime_prs_mutation", "replica: ServiceOwnedRuntimePrsReplica,", "replica: SensitivePassword,", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-worker-persistence", "ipc", "fn spawn_linux_service_owned_runtime_prs_mutation", "let result = match replica.install_for_runtime() {", "let result = match Config::set_permanent_password_persisted(replica.as_sensitive_password().as_str()) {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-generic-worker", "ipc", "fn spawn_password_mutation", "let result = match Config::set_permanent_password_persisted(value.as_str()) {", "let result = match if kind == PasswordMutationKind::ServiceOwned && crate::common::is_service_owned_server_process() { Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true) } else { Config::set_permanent_password_persisted(value.as_str()) } {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
+scoped_mutation("linux-runtime-prs-authority-collapse", "ipc", "fn sensitive_main_ipc_authority", "-> Option<SensitiveMainPasswordAuthority>", "-> Option<PasswordMutationKind>", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
 scoped_mutation("linux-runtime-prs-recovery", "ipc", "async fn complete_main_password_mutation", "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = true;", "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = false;", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
 scoped_mutation("windows-password-final-service-proof", "auth", "pub(crate) fn into_service_owned_password_admission", "self.revalidate(pipe, deadline)?;", "drop((pipe, deadline));", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 scoped_mutation("windows-password-service-mint-endpoint", "auth", "pub(crate) fn into_service_owned_password_admission", "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX", "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
@@ -2292,6 +2427,13 @@ grep -Fq 'The same identity additionally binds R-S11ih and Appendix C #393.' "$R
 grep -Fq 'distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-type-norm-missing"
 grep -Fq 'private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-writer-norm-missing"
 grep -Fq 'accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-consuming-action-norm-missing"
+grep -Fq '<span class="id">R-S11ii</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-requirement-missing"
+grep -Fq '<tr><td>394</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-appendix-missing"
+grep -Fq 'R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ii and Appendix C #394.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-digest-binding-missing"
+grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-receiver-capability-norm-missing"
+grep -Fq 'consume that receiver to mint one <code>LinuxServiceOwnedRuntimePrsAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-consuming-admission-norm-missing"
+grep -Fq 'generic durable-password worker <span class="kw">MUST NOT</span> infer runtime-PRS behavior' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-worker-separation-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

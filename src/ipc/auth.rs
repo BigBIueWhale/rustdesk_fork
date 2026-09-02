@@ -3338,10 +3338,10 @@ where
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn authenticate_linux_service_owned_password_parent<T>(
+pub(super) fn authenticate_linux_service_owned_password_parent<T>(
     stream: &T,
     postfix: &str,
-) -> ResultType<()>
+) -> ResultType<LinuxProcessIdentity>
 where
     T: std::os::unix::io::AsRawFd,
 {
@@ -3354,6 +3354,14 @@ where
     let peer_pid = peer_pid_from_fd(fd)
         .filter(|pid| *pid > 0)
         .ok_or_else(|| anyhow::anyhow!("service-owned parent pid is unavailable for {postfix}"))?;
+    let identity = linux_kernel_process_identity_by_pid(peer_pid)?;
+    if identity.uid != peer_uid {
+        bail!(
+            "service-owned password parent uid changed: socket_uid={}, proc_uid={}",
+            peer_uid,
+            identity.uid
+        );
+    }
     let expected_parent = std::env::var(crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV)
         .map_err(|_| anyhow::anyhow!("service-owned server launch parent is unavailable"))?
         .parse::<u32>()
@@ -3367,7 +3375,7 @@ where
             actual_parent
         );
     }
-    Ok(())
+    Ok(identity)
 }
 
 #[cfg(target_os = "linux")]

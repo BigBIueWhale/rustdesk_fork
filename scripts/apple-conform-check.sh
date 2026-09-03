@@ -1208,6 +1208,10 @@ def analyze(sources):
         snapshot_bounded_child = item(ipc, "fn run_macos_bounded_child_stdout")
         snapshot_child_cleanup = item(ipc, "fn terminate_and_reap_macos_bounded_child")
         snapshot_handler = item(ipc, "async fn handle_macos_service_credential_snapshot_transaction")
+        mac_credential_response_requester = item(ipc, "struct MacosServiceOwnedCredentialRequester")
+        mac_credential_response_admission = item(ipc, "struct MacosServiceOwnedCredentialReplicaAdmission")
+        mac_credential_response_admit = item(ipc, "impl MacosServiceOwnedCredentialRequester")
+        mac_credential_response_action = item(ipc, "impl MacosServiceOwnedCredentialReplicaAdmission")
         mac_runtime_prs_receiver = item(ipc, "impl MacosServiceOwnedCredentialReplicaReceiver")
         mac_runtime_prs_admission = item(ipc, "impl MacosServiceOwnedRuntimePrsAdmission")
         mac_runtime_prs_client = item(ipc, "pub async fn refresh_macos_service_owned_permanent_password_snapshot")
@@ -1401,8 +1405,8 @@ def analyze(sources):
             and "pub(super) fn authenticate_linux_service_owned_password_replica_server" in auth
             and "pub(crate) fn authenticate_linux_service_owned_password_replica_server" not in auth
             and ipc_production.count("LinuxServiceOwnedCredentialReplicaRequester::authenticate(") == 1
-            and ipc_production.count("requester.admit(&stream, operation_id)") == 1
-            and ipc_production.count("admission.respond(&mut stream, deadline).await") == 1)
+            and ipc_production.count("requester.admit(&stream, operation_id)") == 2
+            and ipc_production.count("admission.respond(&mut stream, deadline).await") == 2)
         need("b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction",
             "struct ServiceOwnedRuntimePrsReplica {\n    value: SensitivePassword,\n}" in ipc
             and "#[derive(Clone)]\nstruct ServiceOwnedRuntimePrsReplica" not in ipc
@@ -2076,18 +2080,55 @@ def analyze(sources):
             "Command::new(MACOS_LAUNCHCTL)", "run_macos_bounded_child_stdout(",
             "macos_launchctl_service_identity(&output.stdout, &target)",
             "reported_identity != Some((peer_pid, expected_plist.as_str()))",
-        ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(snapshot_handler, [
-            "let deadline = tokio::time::Instant::now()",
-            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
-            "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
-            "service_scoped_ipc_authorization_snapshot(",
-            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
-            "macos_service_owned_credential_requester_matches_post_request_authorization(",
-            "&requester.identity", "post_request_authorization",
-            'service_owned_runtime_prs_replica("macOS")',
-            "send_credential_replica_unix(", "&mut stream", "operation_id",
-            "replica.as_sensitive_password()", "deadline",
-        ]) and ordered(mac_credential_post_request, [
+        ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(mac_credential_response_requester, [
+            "identity: MacosPeerProcessIdentity", "argv: Vec<String>",
+        ]) and ordered(mac_credential_response_admission, [
+            "_requester: MacosServiceOwnedCredentialRequester",
+            "operation_id: hbb_common::uuid::Uuid",
+        ]) and "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialRequester" not in ipc
+            and "#[derive(Copy)]\nstruct MacosServiceOwnedCredentialRequester" not in ipc
+            and "pub struct MacosServiceOwnedCredentialRequester" not in ipc
+            and "pub(crate) struct MacosServiceOwnedCredentialRequester" not in ipc
+            and "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+            and "#[derive(Copy)]\nstruct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+            and "pub struct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+            and "pub(crate) struct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+            and ordered(mac_credential_response_admit, [
+                "fn admit(", "self", "stream: &Connection",
+                "operation_id: hbb_common::uuid::Uuid",
+                "service_scoped_ipc_authorization_snapshot(", "stream",
+                "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+                "macos_service_owned_credential_requester_matches_post_request_authorization(",
+                "&self.identity", "post_request_authorization",
+                "MacosServiceOwnedCredentialReplicaAdmission {",
+                "_requester: self", "operation_id",
+            ]) and "fn admit(\n        &self" not in mac_credential_response_admit
+            and "&mut self" not in mac_credential_response_admit
+            and "if false" not in mac_credential_response_admit
+            and "authority_allowed" not in mac_credential_response_admit
+            and ordered(mac_credential_response_action, [
+                "async fn respond(", "self", "stream: &mut Conn",
+                'service_owned_runtime_prs_replica("macOS")',
+                "send_credential_replica_unix(", "stream", "self.operation_id",
+                "replica.as_sensitive_password()", "deadline",
+            ]) and "&self" not in mac_credential_response_action
+            and "Uuid::new_v4" not in mac_credential_response_action
+            and "service_scoped_ipc_authorization_snapshot" not in mac_credential_response_action
+            and ordered(snapshot_handler, [
+                "let deadline = tokio::time::Instant::now()",
+                "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+                "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+                "requester.admit(&stream, operation_id)",
+                "admission.respond(&mut stream, deadline).await",
+            ]) and not any(token in snapshot_handler for token in [
+                "service_scoped_ipc_authorization_snapshot(",
+                "macos_service_owned_credential_requester_matches_post_request_authorization(",
+                'service_owned_runtime_prs_replica("macOS")',
+                "send_credential_replica_unix(", "&requester.identity", "authority_allowed",
+            ]) and ipc_production.count("Ok(MacosServiceOwnedCredentialReplicaAdmission {") == 1
+            and ipc_production.count("requester.admit(&stream, operation_id)") == 2
+            and ipc_production.count("admission.respond(&mut stream, deadline)") == 2
+            and ordered(mac_credential_post_request, [
             "authorization.postfix != super::password::SERVICE_CREDENTIAL_IPC_POSTFIX",
             "|| !authorization.uid_authorized",
             "let Some(post_request_identity) = authorization.macos_peer_identity",
@@ -2468,8 +2509,17 @@ scoped_mutation("credential-retained-authority", "ipc", "async fn authorize_maco
 scoped_mutation("credential-final-generation", "auth", "pub(crate) fn macos_service_owned_credential_requester_identity_is_live", "&& macos_service_owned_password_requester_generation_is_live(identity)", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-final-argv", "ipc", "fn macos_service_owned_credential_requester_is_live", "&& process.cmd() == requester.argv", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-post-token", "auth", "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization", "&& post_request_identity.audit_token == requester.audit_token", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
-scoped_mutation("credential-post-snapshot", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot_disabled(", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
-scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(\n        &mut stream,\n        operation_id,\n        replica.as_sensitive_password(),\n        deadline,\n    )", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-post-snapshot", "ipc", "impl MacosServiceOwnedCredentialRequester", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot_disabled(", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-raw-response", "ipc", "impl MacosServiceOwnedCredentialReplicaAdmission", "self.operation_id", "hbb_common::uuid::Uuid::new_v4()", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+mutation("credential-response-requester-clone", "ipc", "struct MacosServiceOwnedCredentialRequester {", "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialRequester {", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+mutation("credential-response-admission-clone", "ipc", "struct MacosServiceOwnedCredentialReplicaAdmission {", "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaAdmission {", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+mutation("credential-response-admission-requester", "ipc", "    _requester: MacosServiceOwnedCredentialRequester,", "    requester_authorized: bool,", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-response-requester-consume", "ipc", "impl MacosServiceOwnedCredentialRequester", "fn admit(\n        self,", "fn admit(\n        &self,", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-response-final-match", "ipc", "impl MacosServiceOwnedCredentialRequester", "if !macos_service_owned_credential_requester_matches_post_request_authorization(", "if false && !macos_service_owned_credential_requester_matches_post_request_authorization(", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-response-admission-construction", "ipc", "impl MacosServiceOwnedCredentialRequester", "Ok(MacosServiceOwnedCredentialReplicaAdmission {", "Ok(MacosServiceOwnedCredentialReplicaAdmissionDisabled {", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-response-action-consume", "ipc", "impl MacosServiceOwnedCredentialReplicaAdmission", "async fn respond(\n        self,", "async fn respond(\n        &self,", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-response-handler-admission", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "requester.admit(&stream, operation_id)", "requester.admit_disabled(&stream, operation_id)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-response-handler-action", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "admission.respond(&mut stream, deadline)", "admission.respond_disabled(&mut stream, deadline)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 mutation("macos-runtime-prs-server-authorization-clone", "auth", "pub(crate) struct MacosServiceServerAuthorization {", "#[derive(Clone)]\npub(crate) struct MacosServiceServerAuthorization {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
 mutation("macos-runtime-prs-receiver-clone", "ipc", "struct MacosServiceOwnedCredentialReplicaReceiver {", "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaReceiver {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
 mutation("macos-runtime-prs-admission-clone", "ipc", "struct MacosServiceOwnedRuntimePrsAdmission {", "#[derive(Clone)]\nstruct MacosServiceOwnedRuntimePrsAdmission {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
@@ -2653,6 +2703,13 @@ grep -Fq 'The same identity additionally binds R-S11ik and Appendix C #396.' "$R
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-receiver-capability-norm-missing"
 grep -Fq 'consume itself across the same-stream request and complete response' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-receiver-norm-missing"
 grep -Fq 'Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-install-norm-missing"
+grep -Fq '<span class="id">R-S11il</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-typed-response-requirement-missing"
+grep -Fq '<tr><td>397</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-typed-response-appendix-missing"
+grep -Fq 'R-S11il/R-S11e-275 — typed macOS credential-replica response authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-credential-typed-response-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11il and Appendix C #397.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-credential-typed-response-digest-binding-missing"
+grep -Fq 'private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-response-admission-norm-missing"
+grep -Fq 'Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica("macOS")</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-capability-response-norm-missing"
+grep -Fq 'compose only canonical request decode, bounded exact-requester authentication, <code>requester.admit</code>, and <code>admission.respond</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-closed-handler-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

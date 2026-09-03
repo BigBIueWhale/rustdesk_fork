@@ -2998,6 +2998,13 @@ grep -Fq 'The same identity additionally binds R-S11ik and Appendix C #396.' doc
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-receiver-capability-norm-missing"
 grep -Fq 'consume itself across the same-stream request and complete response' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-receiver-norm-missing"
 grep -Fq 'Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-install-norm-missing"
+grep -Fq '<span class="id">R-S11il</span>' requirements.html || r_s11b2="$r_s11b2 macos-credential-typed-response-requirement-missing"
+grep -Fq '<tr><td>397</td>' requirements.html || r_s11b2="$r_s11b2 macos-credential-typed-response-appendix-missing"
+grep -Fq 'R-S11il/R-S11e-275 — typed macOS credential-replica response authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-credential-typed-response-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11il and Appendix C #397.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-credential-typed-response-digest-binding-missing"
+grep -Fq 'private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>' requirements.html || r_s11b2="$r_s11b2 macos-credential-response-admission-norm-missing"
+grep -Fq 'Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica("macOS")</code>' requirements.html || r_s11b2="$r_s11b2 macos-credential-capability-response-norm-missing"
+grep -Fq 'compose only canonical request decode, bounded exact-requester authentication, <code>requester.admit</code>, and <code>admission.respond</code>' requirements.html || r_s11b2="$r_s11b2 macos-credential-closed-handler-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3302,8 +3309,8 @@ need(
     and "pub(super) fn authenticate_linux_service_owned_password_replica_server" in auth
     and "pub(crate) fn authenticate_linux_service_owned_password_replica_server" not in auth
     and ipc_production.count("LinuxServiceOwnedCredentialReplicaRequester::authenticate(") == 1
-    and ipc_production.count("requester.admit(&stream, operation_id)") == 1
-    and ipc_production.count("admission.respond(&mut stream, deadline).await") == 1,
+    and ipc_production.count("requester.admit(&stream, operation_id)") == 2
+    and ipc_production.count("admission.respond(&mut stream, deadline).await") == 2,
 )
 
 runtime_prs = between(
@@ -4097,6 +4104,26 @@ mac_credential_handler = between(
     "async fn handle_macos_service_credential_snapshot_transaction",
     "async fn handle_sensitive_macos_service_ipc_transaction",
 )
+mac_credential_response_requester = between(
+    ipc,
+    "struct MacosServiceOwnedCredentialRequester {",
+    "struct MacosServiceOwnedCredentialReplicaAdmission {",
+)
+mac_credential_response_admission = between(
+    ipc,
+    "struct MacosServiceOwnedCredentialReplicaAdmission {",
+    "impl MacosServiceOwnedCredentialRequester {",
+)
+mac_credential_response_admit = between(
+    ipc,
+    "impl MacosServiceOwnedCredentialRequester {",
+    "impl MacosServiceOwnedCredentialReplicaAdmission {",
+)
+mac_credential_response_action = between(
+    ipc,
+    "impl MacosServiceOwnedCredentialReplicaAdmission {",
+    "async fn authenticate_macos_service_owned_credential_requester(",
+)
 mac_credential_identity = between(
     auth,
     "pub(crate) fn authenticate_macos_service_owned_credential_requester_identity",
@@ -4247,23 +4274,84 @@ need(
         ),
     )
     and ordered(
-        mac_credential_handler,
+        mac_credential_response_requester,
         (
-            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
-            "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+            "identity: MacosPeerProcessIdentity",
+            "argv: Vec<String>",
+        ),
+    )
+    and ordered(
+        mac_credential_response_admission,
+        (
+            "_requester: MacosServiceOwnedCredentialRequester",
+            "operation_id: hbb_common::uuid::Uuid",
+        ),
+    )
+    and "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialRequester" not in ipc
+    and "#[derive(Copy)]\nstruct MacosServiceOwnedCredentialRequester" not in ipc
+    and "pub struct MacosServiceOwnedCredentialRequester" not in ipc
+    and "pub(crate) struct MacosServiceOwnedCredentialRequester" not in ipc
+    and "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+    and "#[derive(Copy)]\nstruct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+    and "pub struct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+    and "pub(crate) struct MacosServiceOwnedCredentialReplicaAdmission" not in ipc
+    and ordered(
+        mac_credential_response_admit,
+        (
+            "fn admit(",
+            "self",
+            "stream: &Connection",
+            "operation_id: hbb_common::uuid::Uuid",
             "service_scoped_ipc_authorization_snapshot(",
+            "stream",
             "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
             "macos_service_owned_credential_requester_matches_post_request_authorization(",
-            "&requester.identity",
+            "&self.identity",
             "post_request_authorization",
+            "MacosServiceOwnedCredentialReplicaAdmission {",
+            "_requester: self",
+            "operation_id",
+        ),
+    )
+    and "fn admit(\n        &self" not in mac_credential_response_admit
+    and "&mut self" not in mac_credential_response_admit
+    and "if false" not in mac_credential_response_admit
+    and "authority_allowed" not in mac_credential_response_admit
+    and ordered(
+        mac_credential_response_action,
+        (
+            "async fn respond(",
+            "self",
+            "stream: &mut Conn",
             'service_owned_runtime_prs_replica("macOS")',
             "send_credential_replica_unix(",
-            "&mut stream",
-            "operation_id",
+            "stream",
+            "self.operation_id",
             "replica.as_sensitive_password()",
             "deadline",
         ),
     )
+    and "&self" not in mac_credential_response_action
+    and "Uuid::new_v4" not in mac_credential_response_action
+    and "service_scoped_ipc_authorization_snapshot" not in mac_credential_response_action
+    and ordered(
+        mac_credential_handler,
+        (
+            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+            "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
+            "requester.admit(&stream, operation_id)",
+            "admission.respond(&mut stream, deadline).await",
+        ),
+    )
+    and "service_scoped_ipc_authorization_snapshot(" not in mac_credential_handler
+    and "macos_service_owned_credential_requester_matches_post_request_authorization(" not in mac_credential_handler
+    and 'service_owned_runtime_prs_replica("macOS")' not in mac_credential_handler
+    and "send_credential_replica_unix(" not in mac_credential_handler
+    and "&requester.identity" not in mac_credential_handler
+    and "authority_allowed" not in mac_credential_handler
+    and ipc_production.count("Ok(MacosServiceOwnedCredentialReplicaAdmission {") == 1
+    and ipc_production.count("requester.admit(&stream, operation_id)") == 2
+    and ipc_production.count("admission.respond(&mut stream, deadline)") == 2
     and "macos_peer_is_service_owned_server(" not in ipc
     and "macos_peer_is_service_owned_server_blocking(" not in ipc,
 )

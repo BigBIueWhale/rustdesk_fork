@@ -2987,6 +2987,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             "consuming requester and operation-bound admission signature",
         ),
         (
+            "impl LinuxServiceOwnedCredentialReplicaAdmission {\n"
             "    async fn respond(\n        self,\n        stream: &mut Conn,\n        deadline: tokio::time::Instant,",
             "consuming capability-owned response signature",
         ),
@@ -4507,20 +4508,38 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "Linux credential response borrows rather than consumes admission",
             "src/ipc.rs",
+            "impl LinuxServiceOwnedCredentialReplicaAdmission {\n"
             "    async fn respond(\n        self,",
+            "impl LinuxServiceOwnedCredentialReplicaAdmission {\n"
             "    async fn respond(\n        &self,",
         ),
         Mutation(
             "Linux credential response drops its operation binding",
             "src/ipc.rs",
-            "            self.operation_id,\n            replica.as_sensitive_password(),",
-            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n            replica.as_sensitive_password(),",
+            "        let replica = service_owned_runtime_prs_replica(\"Linux\").map_err(|err| {\n"
+            "            log::error!(\"Linux root service credential snapshot is unavailable: {err}\");\n"
+            "            err\n"
+            "        })?;\n"
+            "        password::send_credential_replica_unix(\n"
+            "            stream,\n"
+            "            self.operation_id,\n"
+            "            replica.as_sensitive_password(),",
+            "        let replica = service_owned_runtime_prs_replica(\"Linux\").map_err(|err| {\n"
+            "            log::error!(\"Linux root service credential snapshot is unavailable: {err}\");\n"
+            "            err\n"
+            "        })?;\n"
+            "        password::send_credential_replica_unix(\n"
+            "            stream,\n"
+            "            hbb_common::uuid::Uuid::from_bytes([1; 16]),\n"
+            "            replica.as_sensitive_password(),",
         ),
         Mutation(
             "Linux credential handler bypasses capability-owned response",
             "src/ipc.rs",
-            "if let Err(err) = admission.respond(&mut stream, deadline).await {",
-            "if let Err(err) = send_linux_credential_replica_unchecked(&mut stream, admission, deadline).await {",
+            "if let Err(err) = admission.respond(&mut stream, deadline).await {\n"
+            "        log::trace!(\"Linux service credential snapshot could not be returned: {err}\");",
+            "if let Err(err) = send_linux_credential_replica_unchecked(&mut stream, admission, deadline).await {\n"
+            "        log::trace!(\"Linux service credential snapshot could not be returned: {err}\");",
         ),
         Mutation(
             "Linux generic replica proof regains crate visibility",

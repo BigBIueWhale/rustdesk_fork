@@ -3996,34 +3996,14 @@ async fn handle_macos_service_credential_snapshot_transaction(
         log::warn!("Rejected macOS service credential snapshot requester");
         return;
     };
-    let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
-        &stream,
-        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
-    );
-    if !macos_service_owned_credential_requester_matches_post_request_authorization(
-        &requester.identity,
-        post_request_authorization,
-    ) {
-        log::warn!(
-            "Rejected macOS service credential snapshot requester whose stream identity changed"
-        );
-        return;
-    }
-    let replica = match service_owned_runtime_prs_replica("macOS") {
-        Ok(replica) => replica,
+    let admission = match requester.admit(&stream, operation_id) {
+        Ok(admission) => admission,
         Err(err) => {
-            log::error!("macOS root service credential snapshot is unavailable: {err}");
+            log::warn!("Rejected stale macOS service credential replica requester: {err}");
             return;
         }
     };
-    if let Err(err) = password::send_credential_replica_unix(
-        &mut stream,
-        operation_id,
-        replica.as_sensitive_password(),
-        deadline,
-    )
-    .await
-    {
+    if let Err(err) = admission.respond(&mut stream, deadline).await {
         log::trace!("macOS service credential snapshot could not be returned: {err}");
     }
 }
@@ -5999,6 +5979,57 @@ async fn macos_service_owned_password_authorization_right_is_ready(
 struct MacosServiceOwnedCredentialRequester {
     identity: MacosPeerProcessIdentity,
     argv: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+struct MacosServiceOwnedCredentialReplicaAdmission {
+    _requester: MacosServiceOwnedCredentialRequester,
+    operation_id: hbb_common::uuid::Uuid,
+}
+
+#[cfg(target_os = "macos")]
+impl MacosServiceOwnedCredentialRequester {
+    fn admit(
+        self,
+        stream: &Connection,
+        operation_id: hbb_common::uuid::Uuid,
+    ) -> ResultType<MacosServiceOwnedCredentialReplicaAdmission> {
+        let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
+            stream,
+            password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+        );
+        if !macos_service_owned_credential_requester_matches_post_request_authorization(
+            &self.identity,
+            post_request_authorization,
+        ) {
+            bail!("macOS service credential requester identity changed after its request");
+        }
+        Ok(MacosServiceOwnedCredentialReplicaAdmission {
+            _requester: self,
+            operation_id,
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl MacosServiceOwnedCredentialReplicaAdmission {
+    async fn respond(
+        self,
+        stream: &mut Conn,
+        deadline: tokio::time::Instant,
+    ) -> ResultType<()> {
+        let replica = service_owned_runtime_prs_replica("macOS").map_err(|err| {
+            log::error!("macOS root service credential snapshot is unavailable: {err}");
+            err
+        })?;
+        password::send_credential_replica_unix(
+            stream,
+            self.operation_id,
+            replica.as_sensitive_password(),
+            deadline,
+        )
+        .await
+    }
 }
 
 #[cfg(target_os = "macos")]

@@ -303,16 +303,22 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "receive_credential_snapshot_request_unix(&mut stream, deadline)",
             "authenticate_macos_service_owned_credential_requester(authorization, deadline).await",
-            "service_scoped_ipc_authorization_snapshot(",
-            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
-            "macos_service_owned_credential_requester_matches_post_request_authorization(",
-            "&requester.identity,\n        post_request_authorization,",
-            'service_owned_runtime_prs_replica("macOS")',
-            "password::send_credential_replica_unix(",
+            "requester.admit(&stream, operation_id)",
+            "admission.respond(&mut stream, deadline).await",
         ),
-        "bodyless request, retained exact LaunchAgent proof, post-request equality, and secret response",
+        "bodyless request, retained exact LaunchAgent proof, typed admission, and capability response",
     )
     for token, label in (
+        ("service_scoped_ipc_authorization_snapshot(", "direct post-request snapshot"),
+        (
+            "macos_service_owned_credential_requester_matches_post_request_authorization(",
+            "direct final identity matcher",
+        ),
+        ('service_owned_runtime_prs_replica("macOS")', "direct root PRS read"),
+        ("password::send_credential_replica_unix(", "direct raw replica writer"),
+        ("&requester.identity", "detached requester identity"),
+        ("authority_allowed", "detached response authority Boolean"),
+        ("SensitivePassword", "generic secret response authority"),
         ("get_local_permanent_password_storage_and_salt", "persistent envelope read"),
         ("send_service_response_timeout", "generic typed response"),
         ("ServiceIpcResponse", "serde response"),
@@ -320,6 +326,150 @@ def validate(sources: Dict[str, str]) -> None:
         ("salt", "persistent salt field"),
     ):
         forbid(credential_handler, token, label)
+
+    response_requester = extract(
+        ipc,
+        "struct MacosServiceOwnedCredentialRequester {",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n",
+        "macOS credential response requester capability",
+    )
+    require_order(
+        response_requester,
+        (
+            "identity: MacosPeerProcessIdentity",
+            "argv: Vec<String>",
+        ),
+        "requester retains complete installed generation and argv",
+    )
+    response_admission = extract(
+        ipc,
+        "struct MacosServiceOwnedCredentialReplicaAdmission {",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "impl MacosServiceOwnedCredentialRequester",
+        "macOS credential response admission capability",
+    )
+    require_order(
+        response_admission,
+        (
+            "_requester: MacosServiceOwnedCredentialRequester",
+            "operation_id: hbb_common::uuid::Uuid",
+        ),
+        "admission retains exact requester and wire operation UUID",
+    )
+    for type_name, region, label in (
+        (
+            "MacosServiceOwnedCredentialRequester",
+            response_requester,
+            "macOS credential response requester",
+        ),
+        (
+            "MacosServiceOwnedCredentialReplicaAdmission",
+            response_admission,
+            "macOS credential response admission",
+        ),
+    ):
+        for token, detail in (
+            ("#[derive(Clone)]", "cloneable"),
+            ("#[derive(Copy)]", "copyable"),
+            ("pub struct", "public"),
+            ("pub(crate) struct", "crate-visible"),
+        ):
+            forbid(region, token, "{} {} capability".format(label, detail))
+        for prefix, detail in (
+            ("#[derive(Clone)]\nstruct ", "cloneable"),
+            ("#[derive(Copy)]\nstruct ", "copyable"),
+            ("pub struct ", "public"),
+            ("pub(crate) struct ", "crate-visible"),
+        ):
+            forbid(ipc, prefix + type_name, "{} {} capability".format(label, detail))
+
+    response_admit = extract(
+        ipc,
+        "impl MacosServiceOwnedCredentialRequester {",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "impl MacosServiceOwnedCredentialReplicaAdmission",
+        "macOS credential response consuming admission",
+    )
+    require_order(
+        response_admit,
+        (
+            "fn admit(",
+            "self,",
+            "stream: &Connection",
+            "operation_id: hbb_common::uuid::Uuid",
+            "service_scoped_ipc_authorization_snapshot(",
+            "stream",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "macos_service_owned_credential_requester_matches_post_request_authorization(",
+            "&self.identity",
+            "post_request_authorization",
+            "MacosServiceOwnedCredentialReplicaAdmission {",
+            "_requester: self",
+            "operation_id",
+        ),
+        "consuming final socket proof and operation-bound response admission",
+    )
+    for token, label in (
+        ("fn admit(\n        &self", "borrowed response requester"),
+        ("&mut self", "borrowed response requester"),
+        ("if false", "final requester authority bypass"),
+        ("authority_allowed", "detached final response authority"),
+        ('service_owned_runtime_prs_replica("macOS")', "PRS read before admission"),
+        ("send_credential_replica_unix", "raw response before admission"),
+    ):
+        forbid(response_admit, token, label)
+
+    response_action = extract(
+        ipc,
+        "impl MacosServiceOwnedCredentialReplicaAdmission {",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "async fn authenticate_macos_service_owned_credential_requester",
+        "macOS credential admitted response action",
+    )
+    for token, label in (
+        ("&self", "borrowed response admission"),
+        ("Uuid::new_v4", "replacement response operation UUID"),
+        ("service_scoped_ipc_authorization_snapshot", "late detached snapshot"),
+        ("authority_allowed", "detached response authority"),
+        ("Config::set_permanent_password", "credential mutation in read-only response"),
+    ):
+        forbid(response_action, token, label)
+    require_order(
+        response_action,
+        (
+            "async fn respond(",
+            "self,",
+            "stream: &mut Conn",
+            "deadline: tokio::time::Instant",
+            'service_owned_runtime_prs_replica("macOS")',
+            "password::send_credential_replica_unix(",
+            "stream",
+            "self.operation_id",
+            "replica.as_sensitive_password()",
+            "deadline",
+        ),
+        "consuming capability-owned operation-bound PRS response",
+    )
+
+    ipc_production = ipc.rsplit("#[cfg(test)]\nmod test", 1)[0]
+    for token, count, label in (
+        (
+            "Ok(MacosServiceOwnedCredentialReplicaAdmission {",
+            1,
+            "sole macOS response-admission construction",
+        ),
+        (
+            "requester.admit(&stream, operation_id)",
+            2,
+            "one Linux and one macOS response admission",
+        ),
+        (
+            "admission.respond(&mut stream, deadline)",
+            2,
+            "one Linux and one macOS admitted credential response",
+        ),
+    ):
+        require_exact_count(ipc_production, token, count, label)
 
     exact_peer = extract(
         ipc,
@@ -989,6 +1139,10 @@ def validate(sources: Dict[str, str]) -> None:
             "<tr><td>395</td>",
             "R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
             "The same identity additionally binds R-S11ij and Appendix C #395.",
+            '<span class="id">R-S11il</span>',
+            "<tr><td>397</td>",
+            "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
+            "The same identity additionally binds R-S11il and Appendix C #397.",
         ):
             require(gate, token, "{} documentation binding".format(label))
     for token, label in (
@@ -1019,6 +1173,20 @@ def validate(sources: Dict[str, str]) -> None:
             "Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica",
             "typed admitted runtime-only install requirement",
         ),
+        ('<span class="id">R-S11il</span>', "R-S11il requirement"),
+        ("<tr><td>397</td>", "Appendix C #397"),
+        (
+            "private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>",
+            "private non-cloneable macOS response admission requirement",
+        ),
+        (
+            'Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica("macOS")</code>',
+            "capability-owned macOS PRS response requirement",
+        ),
+        (
+            "compose only canonical request decode, bounded exact-requester authentication, <code>requester.admit</code>, and <code>admission.respond</code>",
+            "closed macOS response-handler call graph requirement",
+        ),
     ):
         require(requirements, token, label)
     require(
@@ -1047,6 +1215,11 @@ def validate(sources: Dict[str, str]) -> None:
         "typed macOS runtime-PRS receiver hardening ledger",
     )
     require(
+        hardening,
+        "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
+        "typed macOS credential response hardening ledger",
+    )
+    require(
         native_watch,
         "The same identity additionally binds R-S11ia and Appendix C #386.",
         "native-watch exact credential response binding",
@@ -1055,6 +1228,11 @@ def validate(sources: Dict[str, str]) -> None:
         native_watch,
         "The same identity additionally binds R-S11ij and Appendix C #395.",
         "native-watch typed runtime-PRS receiver binding",
+    )
+    require(
+        native_watch,
+        "The same identity additionally binds R-S11il and Appendix C #397.",
+        "native-watch typed macOS response binding",
     )
     for token, label in (
         (
@@ -1135,8 +1313,34 @@ def validate(sources: Dict[str, str]) -> None:
             '"macOS runtime PRS receiver requirement-ledger-digest binding",',
             "independent requirement-ledger-digest typed receiver binding",
         ),
+        (
+            '"macOS credential response authority is typed through the final PRS write",',
+            "independent typed macOS response validation",
+        ),
+        (
+            '"focused macOS typed credential response mutation",',
+            "independent focused typed-response mutation binding",
+        ),
+        (
+            '"shared macOS typed credential response mutation",',
+            "independent shared typed-response mutation binding",
+        ),
+        (
+            '"Apple macOS typed credential response mutation",',
+            "independent Apple typed-response mutation binding",
+        ),
+        (
+            '"macOS typed credential response requirement-ledger-digest binding",',
+            "independent typed-response requirement-ledger binding",
+        ),
     ):
         require(workspace, token, label)
+    require(
+        workspace,
+        '"struct MacosServiceOwnedCredentialReplicaAdmission {",\n'
+        '            "#[derive(Clone)]\\nstruct MacosServiceOwnedCredentialReplicaAdmission {",',
+        "independent typed macOS response mutation binding",
+    )
 
 
 MUTATIONS = (
@@ -1276,10 +1480,13 @@ MUTATIONS = (
     Mutation(
         "ipc",
         "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n"
-        "        &stream,\n"
-        "        password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n"
-        "    );",
-        "let post_request_authorization = authorization; /* post-request snapshot omitted */",
+        "            stream,\n"
+        "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n"
+        "        );",
+        "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n"
+        "            stream,\n"
+        "            password::USER_PASSWORD_IPC_POSTFIX,\n"
+        "        );",
         "post-request credential stream snapshot",
     ),
     Mutation(
@@ -1303,24 +1510,116 @@ MUTATIONS = (
     ),
     Mutation(
         "ipc",
+        "struct MacosServiceOwnedCredentialRequester {",
+        "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialRequester {",
+        "non-cloneable macOS credential response requester",
+    ),
+    Mutation(
+        "ipc",
+        "struct MacosServiceOwnedCredentialReplicaAdmission {",
+        "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaAdmission {",
+        "non-cloneable macOS credential response admission",
+    ),
+    Mutation(
+        "ipc",
+        "    _requester: MacosServiceOwnedCredentialRequester,",
+        "    requester_authorized: bool,",
+        "response admission retains exact requester",
+    ),
+    Mutation(
+        "ipc",
+        "    operation_id: hbb_common::uuid::Uuid,\n"
+        "}\n\n#[cfg(target_os = \"macos\")]\n"
+        "impl MacosServiceOwnedCredentialRequester",
+        "    operation_id: String,\n"
+        "}\n\n#[cfg(target_os = \"macos\")]\n"
+        "impl MacosServiceOwnedCredentialRequester",
+        "response admission retains typed wire UUID",
+    ),
+    Mutation(
+        "ipc",
+        "    fn admit(\n"
+        "        self,\n"
+        "        stream: &Connection,",
+        "    fn admit(\n"
+        "        &self,\n"
+        "        stream: &Connection,",
+        "consuming macOS credential response requester",
+    ),
+    Mutation(
+        "ipc",
+        "        if !macos_service_owned_credential_requester_matches_post_request_authorization(\n"
+        "            &self.identity,",
+        "        if false && !macos_service_owned_credential_requester_matches_post_request_authorization(\n"
+        "            &self.identity,",
+        "final macOS credential response identity replay",
+    ),
+    Mutation(
+        "ipc",
+        "        Ok(MacosServiceOwnedCredentialReplicaAdmission {\n"
+        "            _requester: self,\n"
+        "            operation_id,",
+        "        Ok(MacosServiceOwnedCredentialReplicaAdmissionDisabled {\n"
+        "            _requester: self,\n"
+        "            operation_id,",
+        "sole macOS credential response admission construction",
+    ),
+    Mutation(
+        "ipc",
+        "impl MacosServiceOwnedCredentialReplicaAdmission {\n"
+        "    async fn respond(\n"
+        "        self,\n"
+        "        stream: &mut Conn,",
+        "impl MacosServiceOwnedCredentialReplicaAdmission {\n"
+        "    async fn respond(\n"
+        "        &self,\n"
+        "        stream: &mut Conn,",
+        "consuming macOS credential response admission",
+    ),
+    Mutation(
+        "ipc",
+        "    let admission = match requester.admit(&stream, operation_id) {\n"
+        "        Ok(admission) => admission,\n"
+        "        Err(err) => {\n"
+        "            log::warn!(\"Rejected stale macOS service credential replica requester: {err}\");",
+        "    let admission = match requester.admit_disabled(&stream, operation_id) {\n"
+        "        Ok(admission) => admission,\n"
+        "        Err(err) => {\n"
+        "            log::warn!(\"Rejected stale macOS service credential replica requester: {err}\");",
+        "handler uses sole typed macOS credential response admission",
+    ),
+    Mutation(
+        "ipc",
+        "    if let Err(err) = admission.respond(&mut stream, deadline).await {\n"
+        "        log::trace!(\"macOS service credential snapshot could not be returned: {err}\");",
+        "    if let Err(err) = admission.respond_disabled(&mut stream, deadline).await {\n"
+        "        log::trace!(\"macOS service credential snapshot could not be returned: {err}\");",
+        "handler uses sole capability-owned macOS PRS response",
+    ),
+    Mutation(
+        "ipc",
         'service_owned_runtime_prs_replica("macOS")',
         "SensitivePassword::new(String::new())",
         "canonical service-owned runtime PRS source",
     ),
     Mutation(
         "ipc",
-        "password::send_credential_replica_unix(\n"
-        "        &mut stream,\n"
-        "        operation_id,\n"
-        "        replica.as_sensitive_password(),\n"
-        "        deadline,\n"
-        "    )\n"
-        "    .await\n"
-        "    {\n"
-        "        log::trace!(\"macOS service credential snapshot could not be returned: {err}\");",
-        "stream.send_service_response_timeout(&replica, 1000).await\n"
-        "    {\n"
-        "        log::trace!(\"macOS service credential snapshot could not be returned: {err}\");",
+        "        let replica = service_owned_runtime_prs_replica(\"macOS\").map_err(|err| {\n"
+        "            log::error!(\"macOS root service credential snapshot is unavailable: {err}\");\n"
+        "            err\n"
+        "        })?;\n"
+        "        password::send_credential_replica_unix(\n"
+        "            stream,\n"
+        "            self.operation_id,\n"
+        "            replica.as_sensitive_password(),",
+        "        let replica = service_owned_runtime_prs_replica(\"macOS\").map_err(|err| {\n"
+        "            log::error!(\"macOS root service credential snapshot is unavailable: {err}\");\n"
+        "            err\n"
+        "        })?;\n"
+        "        password::send_credential_replica_unix(\n"
+        "            stream,\n"
+        "            hbb_common::uuid::Uuid::new_v4(),\n"
+        "            replica.as_sensitive_password(),",
         "raw credential response writer",
     ),
     Mutation(
@@ -1856,6 +2155,54 @@ MUTATIONS = (
         "native-watch typed macOS runtime-PRS receiver binding",
     ),
     Mutation(
+        "verify",
+        'grep -Fq \'<span class="id">R-S11il</span>\' requirements.html',
+        "true # typed macOS credential response requirement binding disabled",
+        "shared typed macOS credential response documentation binding",
+    ),
+    Mutation(
+        "apple",
+        'grep -Fq \'<span class="id">R-S11il</span>\' "$REPO/requirements.html"',
+        "true # Apple typed macOS credential response requirement binding disabled",
+        "Apple typed macOS credential response documentation binding",
+    ),
+    Mutation(
+        "requirements",
+        '<span class="id">R-S11il</span>',
+        '<span class="id">R-S11il-disabled</span>',
+        "normative typed macOS credential response requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>397</td>",
+        "<tr><td>397-disabled</td>",
+        "Appendix C typed macOS credential response disposition",
+    ),
+    Mutation(
+        "requirements",
+        "private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>",
+        "public cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>",
+        "normative private non-cloneable macOS response admission",
+    ),
+    Mutation(
+        "requirements",
+        "Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica(\"macOS\")</code>",
+        "Any caller may read the macOS service-owned runtime PRS",
+        "normative capability-owned macOS PRS response",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
+        "R-S11il-disabled/R-S11e-275 — typed macOS credential-replica response authority",
+        "typed macOS credential response hardening ledger",
+    ),
+    Mutation(
+        "native_watch",
+        "The same identity additionally binds R-S11il and Appendix C #397.",
+        "The same identity no longer binds R-S11il and Appendix C #397.",
+        "native-watch typed macOS credential response binding",
+    ),
+    Mutation(
         "workspace",
         '"struct MacosServiceOwnedCredentialReplicaReceiver {",\n'
         '            "#[derive(Clone)]\\nstruct MacosServiceOwnedCredentialReplicaReceiver {",',
@@ -1878,6 +2225,14 @@ MUTATIONS = (
         '"R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",\n'
         '            "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",',
         "independent launchctl ledger mutation binding",
+    ),
+    Mutation(
+        "workspace",
+        '"struct MacosServiceOwnedCredentialReplicaAdmission {",\n'
+        '            "#[derive(Clone)]\\nstruct MacosServiceOwnedCredentialReplicaAdmission {",',
+        '"struct MacosServiceOwnedCredentialReplicaAdmissionDisabled {",\n'
+        '            "#[derive(Clone)]\\nstruct MacosServiceOwnedCredentialReplicaAdmission {",',
+        "independent typed macOS response mutation binding",
     ),
 )
 

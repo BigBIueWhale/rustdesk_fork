@@ -1033,16 +1033,15 @@ def analyze(sources):
              and "WindowsServiceSasIpcRequest::Dispatch {}" in windows_sas
              and ".next_timeout(" not in windows_sas and "ipc::Data::" not in windows_sas)
         snapshot_client = item(ipc, "pub async fn refresh_macos_service_owned_permanent_password_snapshot")
-        need("b1", "macos-service-snapshot-client-not-raw", all(token in snapshot_client for token in [
-            "is_service_owned_server_process()",
-            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
-            "Endpoint::connect(path)",
-            "macos_service_server_authorization_snapshot(",
-            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await",
-            "send_credential_snapshot_request_unix(",
-            "receive_credential_replica_unix(",
-            "Config::set_permanent_password_prs_for_runtime(replica.as_str())",
+        need("b1", "macos-service-snapshot-client-not-typed-receiver", all(token in snapshot_client for token in [
+            "MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?",
+            "receiver.receive_and_admit(deadline).await?",
+            "admission.install()",
         ]) and not any(token in snapshot_client for token in [
+            "Endpoint::connect(", "macos_service_server_authorization_snapshot(",
+            "authorize_macos_service_server_snapshot_for_task(",
+            "send_credential_snapshot_request_unix(", "receive_credential_replica_unix(",
+            "Config::set_permanent_password_prs_for_runtime",
             "connect_service(", "send_service_request_timeout(",
             "next_service_response_timeout(", "ServiceIpcRequest::",
             "ServiceIpcResponse::", "storage", "salt",
@@ -1198,6 +1197,13 @@ def analyze(sources):
         snapshot_bounded_child = item(ipc, "fn run_macos_bounded_child_stdout")
         snapshot_child_cleanup = item(ipc, "fn terminate_and_reap_macos_bounded_child")
         snapshot_handler = item(ipc, "async fn handle_macos_service_credential_snapshot_transaction")
+        mac_runtime_prs_receiver = item(ipc, "impl MacosServiceOwnedCredentialReplicaReceiver")
+        mac_runtime_prs_admission = item(ipc, "impl MacosServiceOwnedRuntimePrsAdmission")
+        mac_runtime_prs_client = item(ipc, "pub async fn refresh_macos_service_owned_permanent_password_snapshot")
+        mac_service_server_authorization = item(auth, "pub(crate) struct MacosServiceServerAuthorization")
+        mac_service_server_verify = item(auth, "pub(crate) fn authorize_macos_service_server_snapshot")
+        mac_service_server_match = item(auth, "pub(crate) fn macos_service_server_authorizations_match")
+        mac_service_server_task_proof = item(ipc, "async fn authorize_macos_service_server_snapshot_for_task")
         client = item(ipc, "async fn set_service_owned_unattended_password_with_ack")
         connect_sensitive = item(ipc, "async fn connect_sensitive_unix")
         runtime_prs = item(ipc, "impl ServiceOwnedRuntimePrsReplica")
@@ -1554,7 +1560,7 @@ def analyze(sources):
             and ipc_production.count("begin_linux_service_owned_runtime_prs_mutation(") == 2
             and ipc_production.count("spawn_linux_service_owned_runtime_prs_mutation(") == 2
             and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1
-            and ipc_production.count("replica.install_for_runtime()") == 1)
+            and ipc_production.count("replica.install_for_runtime()") == 2)
         need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",
             "pub(crate) struct WindowsUserOwnedPasswordAdmission {\n    _requester: ipc_auth::WindowsSensitivePipeClientProof,\n}" in ipc
             and "pub(crate) struct WindowsServiceOwnedPasswordAdmission {\n    _requester: WindowsServiceOwnedPasswordRequester,\n}" in ipc
@@ -1889,7 +1895,7 @@ def analyze(sources):
             "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)", "peer_audit_token_from_fd(fd)",
         ]) and ordered(server_verify, ["identity.uid != 0", "macos_peer_is_trusted_privileged_helper(&authorization.identity)"]) and ordered(service_client_wrapper, [
             "connect_sensitive_unix(deadline", "password::send_request_unix(",
-        ]) and ordered(snapshot_client, [
+        ]) and ordered(mac_runtime_prs_receiver, [
             "Endpoint::connect(path)",
             "macos_service_server_authorization_snapshot(",
             "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await",
@@ -2018,6 +2024,84 @@ def analyze(sources):
             "send_service_response_timeout", "ServiceIpcResponse",
             "storage", "salt",
         ]))
+        need("b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install",
+            "struct MacosServiceOwnedCredentialReplicaReceiver {\n    stream: ConnClient,\n    server: ipc_auth::MacosServiceServerAuthorization,\n}" in ipc
+            and "struct MacosServiceOwnedRuntimePrsAdmission {\n    _receiver: MacosServiceOwnedCredentialReplicaReceiver,\n    replica: ServiceOwnedRuntimePrsReplica,\n}" in ipc
+            and "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "#[derive(Copy)]\nstruct MacosServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "pub struct MacosServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "pub(crate) struct MacosServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "#[derive(Clone)]\nstruct MacosServiceOwnedRuntimePrsAdmission" not in ipc
+            and "#[derive(Copy)]\nstruct MacosServiceOwnedRuntimePrsAdmission" not in ipc
+            and "pub struct MacosServiceOwnedRuntimePrsAdmission" not in ipc
+            and "pub(crate) struct MacosServiceOwnedRuntimePrsAdmission" not in ipc
+            and "#[derive(Clone)]\npub(crate) struct MacosServiceServerAuthorization" not in auth
+            and "#[derive(Copy)]\npub(crate) struct MacosServiceServerAuthorization" not in auth
+            and ordered(mac_service_server_authorization, [
+                "identity: MacosPeerProcessIdentity", "context: &'static str",
+            ])
+            and ordered(mac_service_server_verify, [
+                ") -> ResultType<MacosServiceServerAuthorization>",
+                "authorization.identity.uid != 0",
+                "macos_peer_is_trusted_privileged_helper(&authorization.identity)",
+                "Ok(authorization)",
+            ])
+            and ordered(mac_service_server_match, [
+                "accepted: &MacosServiceServerAuthorization",
+                "refreshed: &MacosServiceServerAuthorization",
+                "accepted.identity.uid == refreshed.identity.uid",
+                "accepted.identity.pid == refreshed.identity.pid",
+                "accepted.identity.audit_token == refreshed.identity.audit_token",
+            ])
+            and ordered(mac_service_server_task_proof, [
+                ") -> ResultType<ipc_auth::MacosServiceServerAuthorization>",
+                'run_bounded_macos_security_proof(deadline, "macos-service-server-proof"',
+                "ipc_auth::authorize_macos_service_server_snapshot(authorization)",
+            ])
+            and ordered(mac_runtime_prs_receiver, [
+                "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+                "!crate::common::is_service_owned_server_process()",
+                "Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX)",
+                "Endpoint::connect(path)",
+                "ipc_auth::macos_service_server_authorization_snapshot(",
+                "let server =",
+                "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?",
+                "MacosServiceOwnedCredentialReplicaReceiver { stream, server }",
+                "async fn receive_and_admit(", "mut self",
+                ") -> ResultType<MacosServiceOwnedRuntimePrsAdmission>",
+                "!crate::common::is_service_owned_server_process()",
+                "hbb_common::uuid::Uuid::new_v4()",
+                "password::send_credential_snapshot_request_unix(", "&mut self.stream", "operation_id",
+                "password::receive_credential_replica_unix(", "&mut self.stream", "operation_id",
+                "ipc_auth::macos_service_server_authorization_snapshot(", "&self.stream",
+                "let refreshed =",
+                "authorize_macos_service_server_snapshot_for_task(refreshed, deadline).await?",
+                "ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed)",
+                "MacosServiceOwnedRuntimePrsAdmission {", "_receiver: self",
+                "replica: ServiceOwnedRuntimePrsReplica { value }",
+            ])
+            and "if false" not in mac_runtime_prs_receiver
+            and "&mut self," not in mac_runtime_prs_receiver
+            and "connect_sensitive_unix(" not in mac_runtime_prs_receiver
+            and "connect_service(" not in mac_runtime_prs_receiver
+            and "Config::set_permanent_password_prs_for_runtime" not in mac_runtime_prs_receiver
+            and ordered(mac_runtime_prs_admission, [
+                "fn install(self) -> ResultType<bool>", "self.replica.install_for_runtime()",
+            ])
+            and "#[cfg(target_os = \"linux\")]\n    fn install_for_runtime" not in runtime_prs
+            and ordered(mac_runtime_prs_client, [
+                "let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?",
+                "let admission = receiver.receive_and_admit(deadline).await?", "admission.install()",
+            ])
+            and not any(token in mac_runtime_prs_client for token in [
+                "Endpoint::connect(", "macos_service_server_authorization_snapshot(",
+                "send_credential_snapshot_request_unix(", "receive_credential_replica_unix(",
+                "Config::set_permanent_password_prs_for_runtime",
+            ])
+            and ipc_production.count("MacosServiceOwnedCredentialReplicaReceiver::connect(") == 1
+            and ipc_production.count("receiver.receive_and_admit(deadline)") == 1
+            and ipc_production.count("MacosServiceOwnedRuntimePrsAdmission {") == 3
+            and auth.count("pub(crate) fn macos_service_server_authorizations_match(") == 1)
         need("b2", "snapshot-launchctl-child-not-resource-bounded", all(token in ipc for token in [
             "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;",
             "const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration =",
@@ -2159,7 +2243,7 @@ mutation("service-sas-response-shape", "ipc", "    DispatchAccepted { accepted: 
 mutation("service-generic-dispatch", "ipc", ".next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "service-dispatch-not-single-bounded-frame")
 mutation("windows-service-generic-dispatch", "windows", ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-handler-not-typed")
 mutation("windows-service-sas-generic-dispatch", "windows", ".next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-sas-handler-not-typed")
-mutation("macos-service-snapshot-raw-client", "ipc", "password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline).await?;", "c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, ms_timeout).await?;", "b1", "macos-service-snapshot-client-not-raw")
+mutation("macos-service-snapshot-typed-client", "ipc", "let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;", "let receiver = connect_service(1_000).await?;", "b1", "macos-service-snapshot-client-not-typed-receiver")
 mutation("macos-service-readiness-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "c.send_json_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "b1", "macos-service-readiness-client-not-typed")
 mutation("windows-service-share-rdp-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "c.send_json_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "b1", "windows-service-share-rdp-client-not-typed")
 mutation("windows-service-sas-generic-client", "ipc", ".send_windows_service_sas_request_timeout(", ".send_json_timeout(", "b1", "windows-service-sas-client-not-typed")
@@ -2288,6 +2372,29 @@ scoped_mutation("credential-final-argv", "ipc", "fn macos_service_owned_credenti
 scoped_mutation("credential-post-token", "auth", "pub(crate) fn macos_service_owned_credential_requester_matches_post_request_authorization", "&& post_request_identity.audit_token == requester.audit_token", "&& true", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-post-snapshot", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(", "let post_request_authorization = ipc_auth::service_scoped_ipc_authorization_snapshot_disabled(", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(\n        &mut stream,\n        operation_id,\n        replica.as_sensitive_password(),\n        deadline,\n    )", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+mutation("macos-runtime-prs-server-authorization-clone", "auth", "pub(crate) struct MacosServiceServerAuthorization {", "#[derive(Clone)]\npub(crate) struct MacosServiceServerAuthorization {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("macos-runtime-prs-receiver-clone", "ipc", "struct MacosServiceOwnedCredentialReplicaReceiver {", "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaReceiver {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("macos-runtime-prs-admission-clone", "ipc", "struct MacosServiceOwnedRuntimePrsAdmission {", "#[derive(Clone)]\nstruct MacosServiceOwnedRuntimePrsAdmission {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-server-authorization-return", "auth", "pub(crate) fn authorize_macos_service_server_snapshot", ") -> ResultType<MacosServiceServerAuthorization>", ") -> ResultType<()>", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-server-uid-continuity", "auth", "pub(crate) fn macos_service_server_authorizations_match", "accepted.identity.uid == refreshed.identity.uid", "true", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-server-pid-continuity", "auth", "pub(crate) fn macos_service_server_authorizations_match", "&& accepted.identity.pid == refreshed.identity.pid", "&& true", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-server-token-continuity", "auth", "pub(crate) fn macos_service_server_authorizations_match", "&& accepted.identity.audit_token == refreshed.identity.audit_token", "&& true", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-initial-role", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "if !crate::common::is_service_owned_server_process() {\n            bail!(\"macOS service credential snapshots require the exact service-owned server role\")", "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"macOS service credential snapshots require the exact service-owned server role\")", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-fixed-endpoint", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX)", "Config::ipc_path_for_uid(0, password::USER_PASSWORD_IPC_POSTFIX)", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-initial-proof-retention", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "let server =\n            authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?", "let _server =\n            authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-receiver-consume", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "async fn receive_and_admit(\n        mut self,", "async fn receive_and_admit(\n        &mut self,", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-final-role", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "if !crate::common::is_service_owned_server_process() {\n            bail!(\"macOS service credential receiver lost the exact service-owned server role\");", "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"macOS service credential receiver lost the exact service-owned server role\");", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-raw-response", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "password::receive_credential_replica_unix(", "password::receive_request_unix(", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-final-snapshot", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "let refreshed = ipc_auth::macos_service_server_authorization_snapshot(", "let refreshed = ipc_auth::macos_service_server_authorization_snapshot_disabled(", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-final-proof", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "authorize_macos_service_server_snapshot_for_task(refreshed, deadline).await?", "refreshed", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-final-continuity", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "if !ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed) {", "if false {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("macos-runtime-prs-admission-receiver", "ipc", "    _receiver: MacosServiceOwnedCredentialReplicaReceiver,", "    helper_authorized: bool,", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("macos-runtime-prs-admission-type", "ipc", "    replica: ServiceOwnedRuntimePrsReplica,\n}\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]", "    replica: SensitivePassword,\n}\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-admission-construction", "ipc", "impl MacosServiceOwnedCredentialReplicaReceiver", "Ok(MacosServiceOwnedRuntimePrsAdmission {", "Ok(MacosServiceOwnedRuntimePrsAdmissionDisabled {", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-install-consume", "ipc", "impl MacosServiceOwnedRuntimePrsAdmission", "fn install(self) -> ResultType<bool>", "fn install(&self) -> ResultType<bool>", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-install-sink", "ipc", "impl MacosServiceOwnedRuntimePrsAdmission", "self.replica.install_for_runtime()", "Config::set_permanent_password_prs_for_runtime(self.replica.as_sensitive_password().as_str())", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-cross-unix-sink", "ipc", "impl ServiceOwnedRuntimePrsReplica", "fn install_for_runtime(self) -> ResultType<bool>", "#[cfg(target_os = \"linux\")]\n    fn install_for_runtime(self) -> ResultType<bool>", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("macos-runtime-prs-client-bypass", "ipc", "pub async fn refresh_macos_service_owned_permanent_password_snapshot", "let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?", "let receiver = connect_service(1_000).await?", "b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
@@ -2434,6 +2541,13 @@ grep -Fq 'The same identity additionally binds R-S11ii and Appendix C #394.' "$R
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-receiver-capability-norm-missing"
 grep -Fq 'consume that receiver to mint one <code>LinuxServiceOwnedRuntimePrsAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-consuming-admission-norm-missing"
 grep -Fq 'generic durable-password worker <span class="kw">MUST NOT</span> infer runtime-PRS behavior' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-worker-separation-norm-missing"
+grep -Fq '<span class="id">R-S11ij</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-requirement-missing"
+grep -Fq '<tr><td>395</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-appendix-missing"
+grep -Fq 'R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ij and Appendix C #395.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-digest-binding-missing"
+grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedCredentialReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-receiver-capability-norm-missing"
+grep -Fq 'consume itself, freshly require the exact service-owned-server role' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-receiver-norm-missing"
+grep -Fq 'Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-install-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

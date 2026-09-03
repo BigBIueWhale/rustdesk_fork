@@ -14344,8 +14344,8 @@ def validate_linux_runtime_prs_receiver_contract(sources):
         ),
         (
             "replica.install_for_runtime()",
-            1,
-            "sole dedicated runtime PRS worker installation call",
+            2,
+            "exact Linux-worker and macOS-admission runtime PRS installation calls",
         ),
     ):
         require_exact_count(ipc.rsplit("#[cfg(test)]\nmod test", 1)[0], marker, count, label)
@@ -14428,8 +14428,8 @@ def validate_linux_runtime_prs_receiver_contract(sources):
             "shared sole typed runtime install predicate",
         ),
         (
-            'ipc_production.count("replica.install_for_runtime()") == 1',
-            "shared sole dedicated worker install predicate",
+            'ipc_production.count("replica.install_for_runtime()") == 2',
+            "shared exact dedicated worker install count",
         ),
     ):
         require_text(shared, text, label)
@@ -14448,7 +14448,7 @@ def validate_linux_runtime_prs_receiver_contract(sources):
         ),
         (
             'ipc_production.count("replica.install_for_runtime()") >= 1',
-            "shared non-sole worker install acceptance",
+            "shared non-exact worker install acceptance",
         ),
     ):
         require_absent(shared, text, label)
@@ -14489,8 +14489,8 @@ def validate_linux_runtime_prs_receiver_contract(sources):
             "Apple sole typed runtime install predicate",
         ),
         (
-            'ipc_production.count("replica.install_for_runtime()") == 1',
-            "Apple sole dedicated worker install predicate",
+            'ipc_production.count("replica.install_for_runtime()") == 2',
+            "Apple exact dedicated worker install count",
         ),
     ):
         require_text(apple, text, label)
@@ -20384,44 +20384,249 @@ def validate_service_ipc_protocol_authority_contract(sources):
         "Ok(Some(ServiceIpcResponse::Liveness {})) => Ok(true)",
         "typed incumbent service liveness response",
     )
+    service_server_authorization = extract_between(
+        auth,
+        "pub(crate) struct MacosServiceServerAuthorization {",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "pub(crate) fn macos_peer_process_identity_from_stream",
+        "macOS retained privileged-helper authorization",
+    )
+    require_order(
+        service_server_authorization,
+        (
+            "identity: MacosPeerProcessIdentity",
+            "context: &'static str",
+        ),
+        "complete private macOS privileged-helper identity",
+    )
+    for text, label in (
+        (
+            "#[derive(Clone)]\npub(crate) struct MacosServiceServerAuthorization",
+            "cloneable macOS privileged-helper authorization",
+        ),
+        (
+            "#[derive(Copy)]\npub(crate) struct MacosServiceServerAuthorization",
+            "copyable macOS privileged-helper authorization",
+        ),
+        (
+            "pub(crate) identity: MacosPeerProcessIdentity",
+            "crate-visible macOS privileged-helper identity",
+        ),
+    ):
+        require_absent(auth, text, label)
+    service_server_verify = extract_between(
+        auth,
+        "pub(crate) fn authorize_macos_service_server_snapshot(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n#[inline]\n"
+        "pub(crate) fn macos_service_server_authorizations_match",
+        "macOS typed privileged-helper proof",
+    )
+    require_order(
+        service_server_verify,
+        (
+            ") -> ResultType<MacosServiceServerAuthorization>",
+            "authorization.identity.uid != 0",
+            "macos_peer_is_trusted_privileged_helper(&authorization.identity)",
+            "Ok(authorization)",
+        ),
+        "typed macOS privileged-helper authorization return",
+    )
+    service_server_match = extract_between(
+        auth,
+        "pub(crate) fn macos_service_server_authorizations_match(",
+        "\n}\n\n#[cfg(windows)]",
+        "macOS privileged-helper identity continuity",
+    )
+    require_order(
+        service_server_match,
+        (
+            "accepted: &MacosServiceServerAuthorization",
+            "refreshed: &MacosServiceServerAuthorization",
+            "accepted.identity.uid == refreshed.identity.uid",
+            "accepted.identity.pid == refreshed.identity.pid",
+            "accepted.identity.audit_token == refreshed.identity.audit_token",
+        ),
+        "exact macOS privileged-helper UID, PID, and audit-token continuity",
+    )
+    service_server_task_proof = extract_between(
+        ipc,
+        "async fn authorize_macos_service_server_snapshot_for_task(",
+        "\n}\n\n#[inline]\npub async fn connect_service",
+        "macOS exactly owned typed privileged-helper proof",
+    )
+    require_order(
+        service_server_task_proof,
+        (
+            ") -> ResultType<ipc_auth::MacosServiceServerAuthorization>",
+            'run_bounded_macos_security_proof(deadline, "macos-service-server-proof"',
+            "ipc_auth::authorize_macos_service_server_snapshot(authorization)",
+        ),
+        "typed macOS privileged-helper proof task return",
+    )
+
+    require_text(
+        ipc,
+        "struct MacosServiceOwnedCredentialReplicaReceiver {\n"
+        "    stream: ConnClient,\n"
+        "    server: ipc_auth::MacosServiceServerAuthorization,\n"
+        "}",
+        "private macOS credential-replica receiver fields",
+    )
+    require_text(
+        ipc,
+        "struct MacosServiceOwnedRuntimePrsAdmission {\n"
+        "    _receiver: MacosServiceOwnedCredentialReplicaReceiver,\n"
+        "    replica: ServiceOwnedRuntimePrsReplica,\n"
+        "}",
+        "private macOS runtime-PRS admission fields",
+    )
+    for type_name, label in (
+        (
+            "MacosServiceOwnedCredentialReplicaReceiver",
+            "macOS credential-replica receiver",
+        ),
+        (
+            "MacosServiceOwnedRuntimePrsAdmission",
+            "macOS runtime-PRS admission",
+        ),
+    ):
+        for prefix, detail in (
+            ("#[derive(Clone)]\nstruct ", "cloneable"),
+            ("#[derive(Copy)]\nstruct ", "copyable"),
+            ("pub struct ", "public"),
+            ("pub(crate) struct ", "crate-visible"),
+        ):
+            require_absent(
+                ipc,
+                prefix + type_name,
+                f"{detail} {label}",
+            )
+
+    replica_receiver = extract_between(
+        ipc,
+        "impl MacosServiceOwnedCredentialReplicaReceiver {",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "impl MacosServiceOwnedRuntimePrsAdmission",
+        "macOS credential-replica receiver transaction",
+    )
+    require_order(
+        replica_receiver,
+        (
+            "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+            "!crate::common::is_service_owned_server_process()",
+            "Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX)",
+            "Endpoint::connect(path)",
+            "ipc_auth::macos_service_server_authorization_snapshot(",
+            "let server =",
+            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?",
+            "MacosServiceOwnedCredentialReplicaReceiver { stream, server }",
+            "async fn receive_and_admit(",
+            "mut self",
+            ") -> ResultType<MacosServiceOwnedRuntimePrsAdmission>",
+            "!crate::common::is_service_owned_server_process()",
+            "hbb_common::uuid::Uuid::new_v4()",
+            "password::send_credential_snapshot_request_unix(",
+            "&mut self.stream",
+            "operation_id",
+            "password::receive_credential_replica_unix(",
+            "&mut self.stream",
+            "operation_id",
+            "ipc_auth::macos_service_server_authorization_snapshot(",
+            "&self.stream",
+            "let refreshed =",
+            "authorize_macos_service_server_snapshot_for_task(refreshed, deadline).await?",
+            "ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed)",
+            "MacosServiceOwnedRuntimePrsAdmission {",
+            "_receiver: self",
+            "replica: ServiceOwnedRuntimePrsReplica { value }",
+        ),
+        "macOS child-side runtime PRS receiver final-action authority",
+    )
+    for text, label in (
+        ("if false", "detached macOS receiver authority bypass"),
+        ("&mut self,", "borrowed macOS credential-replica admission"),
+        ("connect_sensitive_unix(", "postfix-selectable macOS raw connector"),
+        ("connect_service(", "generic macOS service connector"),
+        (
+            "Config::set_permanent_password_prs_for_runtime",
+            "direct config sink in macOS receiver",
+        ),
+    ):
+        require_absent(replica_receiver, text, label)
+    replica_admission = extract_between(
+        ipc,
+        "impl MacosServiceOwnedRuntimePrsAdmission {",
+        "\n}\n\n#[cfg(target_os = \"linux\")]\n"
+        "impl LinuxServiceOwnedPasswordReplicaWriter",
+        "macOS runtime-PRS admitted action",
+    )
+    require_order(
+        replica_admission,
+        (
+            "fn install(self) -> ResultType<bool>",
+            "self.replica.install_for_runtime()",
+        ),
+        "consuming macOS runtime-only PRS install",
+    )
+    runtime_prs = extract_between(
+        ipc,
+        "impl ServiceOwnedRuntimePrsReplica {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "enum MainPasswordMutationRequest",
+        "typed Unix service-owned runtime PRS",
+    )
+    require_order(
+        runtime_prs,
+        (
+            "fn as_sensitive_password(&self) -> &SensitivePassword",
+            "fn install_for_runtime(self) -> ResultType<bool>",
+            "Config::set_permanent_password_prs_for_runtime(self.value.as_str())",
+        ),
+        "borrow-only typed PRS and consuming runtime-only sink",
+    )
+    require_absent(
+        runtime_prs,
+        '#[cfg(target_os = "linux")]\n    fn install_for_runtime',
+        "Linux-only typed runtime-PRS sink",
+    )
+
     snapshot_client = extract_between(
         ipc,
         "pub async fn refresh_macos_service_owned_permanent_password_snapshot(",
         "\n\n#[cfg(target_os = \"linux\")]\npub async fn refresh_linux_service_owned_permanent_password_snapshot(",
         "macOS service-owned password snapshot client",
     )
+    require_order(
+        snapshot_client,
+        (
+            "let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?",
+            "let admission = receiver.receive_and_admit(deadline).await?",
+            "admission.install()",
+        ),
+        "typed macOS credential-replica client call graph",
+    )
     for text, label in (
-        (
-            "is_service_owned_server_process()",
-            "exact-role macOS credential snapshot request",
-        ),
-        (
-            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
-            "raw macOS credential endpoint",
-        ),
+        ("Endpoint::connect(", "direct untyped macOS credential endpoint"),
         (
             "macos_service_server_authorization_snapshot(",
-            "macOS credential server audit-token snapshot",
+            "direct untyped macOS helper snapshot",
         ),
         (
-            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await",
-            "macOS credential server proof",
+            "authorize_macos_service_server_snapshot_for_task(",
+            "direct untyped macOS helper proof",
         ),
         (
             "send_credential_snapshot_request_unix(",
-            "raw macOS credential request writer",
+            "direct untyped raw macOS credential request",
         ),
         (
             "receive_credential_replica_unix(",
-            "raw macOS credential response reader",
+            "direct untyped raw macOS credential response",
         ),
         (
-            "Config::set_permanent_password_prs_for_runtime(replica.as_str())",
-            "nonpersistent macOS PRS installation",
+            "Config::set_permanent_password_prs_for_runtime",
+            "direct untyped nonpersistent macOS PRS installation",
         ),
-    ):
-        require_text(snapshot_client, text, label)
-    for text, label in (
         ("connect_service(", "generic macOS credential service connector"),
         ("ServiceIpcRequest::", "serde macOS credential request"),
         ("ServiceIpcResponse::", "serde macOS credential response"),
@@ -20431,6 +20636,18 @@ def validate_service_ipc_protocol_authority_contract(sources):
         ("salt", "persistent macOS credential salt replica"),
     ):
         require_absent(snapshot_client, text, label)
+    require_exact_count(
+        ipc.rsplit("#[cfg(test)]\nmod test", 1)[0],
+        "MacosServiceOwnedCredentialReplicaReceiver::connect(",
+        1,
+        "sole macOS credential-replica receiver construction call",
+    )
+    require_exact_count(
+        ipc.rsplit("#[cfg(test)]\nmod test", 1)[0],
+        "receiver.receive_and_admit(deadline)",
+        1,
+        "sole macOS credential-replica admission call",
+    )
 
     status_refresh = extract_between(
         ipc,
@@ -21143,8 +21360,12 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "macOS raw credential deliberate mutation dispatch",
         ),
         (
-            "root-helper-proof-before-request and nonpersistent PRS install",
-            "macOS raw credential client proof contract",
+            "typed macOS credential-replica receive and admitted runtime install",
+            "macOS typed credential client proof contract",
+        ),
+        (
+            "fixed endpoint, consuming response, final helper replay, and typed admission",
+            "macOS typed credential receiver finality contract",
         ),
         (
             "bodyless request, retained exact LaunchAgent proof, post-request equality, and secret response",
@@ -21168,6 +21389,96 @@ def validate_service_ipc_protocol_authority_contract(sources):
         ),
     ):
         require_text(focused, text, label)
+    shared_receiver = extract_between(
+        sources["verify"],
+        'need(\n    "macos-runtime-prs-receiver-authority-not-typed-through-final-install"',
+        "\nservice_client =",
+        "shared macOS runtime PRS receiver analyzer",
+    )
+    for text, label in (
+        (
+            '"struct MacosServiceOwnedCredentialReplicaReceiver {\\n    stream: ConnClient,\\n'
+            '    server: ipc_auth::MacosServiceServerAuthorization,\\n}" in ipc',
+            "shared macOS receiver fields predicate",
+        ),
+        (
+            '"#[derive(Clone)]\\nstruct MacosServiceOwnedCredentialReplicaReceiver" not in ipc',
+            "shared macOS receiver non-cloneability predicate",
+        ),
+        (
+            '"ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed)"',
+            "shared macOS final helper continuity predicate",
+        ),
+        (
+            'and "if false" not in mac_runtime_prs_receiver',
+            "shared macOS receiver bypass rejection predicate",
+        ),
+        (
+            'ipc_production.count("MacosServiceOwnedCredentialReplicaReceiver::connect(") == 1',
+            "shared macOS sole receiver construction predicate",
+        ),
+        (
+            'ipc_production.count("receiver.receive_and_admit(deadline)") == 1',
+            "shared macOS sole receiver admission predicate",
+        ),
+    ):
+        require_text(shared_receiver, text, label)
+    for text, label in (
+        (
+            'and "if false" in mac_runtime_prs_receiver',
+            "shared macOS receiver bypass acceptance",
+        ),
+        (
+            'ipc_production.count("receiver.receive_and_admit(deadline)") >= 1',
+            "shared macOS non-sole receiver admission acceptance",
+        ),
+    ):
+        require_absent(shared_receiver, text, label)
+    require_text(
+        sources["verify"],
+        '"macos-runtime-prs-receiver-authority-not-typed-through-final-install"',
+        "shared macOS runtime PRS receiver mutation",
+    )
+
+    apple_receiver = extract_between(
+        sources["apple"],
+        '        need("b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install"',
+        '        need("b2", "snapshot-launchctl-child-not-resource-bounded"',
+        "Apple macOS runtime PRS receiver analyzer",
+    )
+    for text, label in (
+        (
+            '"struct MacosServiceOwnedCredentialReplicaReceiver {\\n    stream: ConnClient,\\n'
+            '    server: ipc_auth::MacosServiceServerAuthorization,\\n}" in ipc',
+            "Apple macOS receiver fields predicate",
+        ),
+        (
+            '"#[derive(Clone)]\\nstruct MacosServiceOwnedCredentialReplicaReceiver" not in ipc',
+            "Apple macOS receiver non-cloneability predicate",
+        ),
+        (
+            '"ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed)"',
+            "Apple macOS final helper continuity predicate",
+        ),
+        (
+            'and "if false" not in mac_runtime_prs_receiver',
+            "Apple macOS receiver bypass rejection predicate",
+        ),
+        (
+            'ipc_production.count("MacosServiceOwnedCredentialReplicaReceiver::connect(") == 1',
+            "Apple macOS sole receiver construction predicate",
+        ),
+        (
+            'ipc_production.count("receiver.receive_and_admit(deadline)") == 1',
+            "Apple macOS sole receiver admission predicate",
+        ),
+    ):
+        require_text(apple_receiver, text, label)
+    require_text(
+        focused,
+        'Mutation(\n        "ipc",\n        "    async fn receive_and_admit(\\n"',
+        "focused macOS runtime PRS receiver mutation",
+    )
     for text, label in (
         (
             "def scoped_mutation(name, file_name, scope_anchor, old, new, group, expected):",
@@ -21210,6 +21521,21 @@ def validate_service_ipc_protocol_authority_contract(sources):
             '"async fn handle_macos_service_credential_snapshot_transaction",',
             "Apple scoped credential response mutation",
         ),
+        (
+            'scoped_mutation("macos-runtime-prs-receiver-consume", "ipc", '
+            '"impl MacosServiceOwnedCredentialReplicaReceiver",',
+            "Apple macOS runtime PRS receiver mutation",
+        ),
+        (
+            'scoped_mutation("macos-runtime-prs-final-continuity", "ipc", '
+            '"impl MacosServiceOwnedCredentialReplicaReceiver",',
+            "Apple macOS runtime PRS continuity mutation",
+        ),
+        (
+            'scoped_mutation("macos-runtime-prs-install-sink", "ipc", '
+            '"impl MacosServiceOwnedRuntimePrsAdmission",',
+            "Apple macOS runtime PRS install mutation",
+        ),
     ):
         require_text(sources["apple"], text, label)
     for text, label in (
@@ -21239,6 +21565,10 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "<tr><td>386</td>",
             "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
             "The same identity additionally binds R-S11ia and Appendix C #386.",
+            '<span class="id">R-S11ij</span>',
+            "<tr><td>395</td>",
+            "R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
+            "The same identity additionally binds R-S11ij and Appendix C #395.",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -21286,6 +21616,74 @@ def validate_service_ipc_protocol_authority_contract(sources):
         "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
         "bounded macOS launchd proof-child hardening ledger",
     )
+    for source_name, text, label in (
+        (
+            "requirements",
+            '<span class="id">R-S11ij</span>',
+            "macOS runtime PRS receiver requirement-ledger-digest binding",
+        ),
+        (
+            "requirements",
+            "<tr><td>395</td>",
+            "macOS runtime PRS receiver Appendix C binding",
+        ),
+        (
+            "requirements",
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedCredentialReplicaReceiver</code>",
+            "macOS runtime PRS receiver non-cloneability requirement",
+        ),
+        (
+            "requirements",
+            "consume itself, freshly require the exact service-owned-server role",
+            "macOS runtime PRS receiver consuming final proof requirement",
+        ),
+        (
+            "requirements",
+            "Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica",
+            "macOS runtime PRS admitted install requirement",
+        ),
+        (
+            "hardening",
+            "R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
+            "macOS runtime PRS receiver hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ij and Appendix C #395.",
+            "macOS runtime PRS receiver native-watch binding",
+        ),
+    ):
+        require_text(sources[source_name], text, label)
+    for text, label in (
+        (
+            "def validate_service_ipc_protocol_authority_contract(sources):",
+            "macOS runtime PRS receiver independent validator definition",
+        ),
+        (
+            "    validate_service_ipc_protocol_authority_contract(sources)\n",
+            "macOS runtime PRS receiver independent validator dispatch",
+        ),
+    ):
+        require_text(sources["workspace_verifier"], text, label)
+    for text, label in (
+        (
+            '            "focused macOS runtime PRS receiver mutation",',
+            "focused macOS runtime PRS receiver mutation",
+        ),
+        (
+            '            "shared macOS runtime PRS receiver mutation",',
+            "shared macOS runtime PRS receiver mutation",
+        ),
+        (
+            '            "Apple macOS runtime PRS receiver mutation",',
+            "Apple macOS runtime PRS receiver mutation",
+        ),
+        (
+            '            "macOS runtime PRS receiver requirement-ledger-digest binding",',
+            "macOS runtime PRS receiver requirement-ledger-digest binding",
+        ),
+    ):
+        require_text(sources["workspace_verifier"], text, label)
     require_text(
         sources["verify"],
         '"${RUN[@]}" cargo test --lib --features linux-pkg-config '
@@ -69449,9 +69847,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'and ipc_production.count("replica.install_for_runtime()") == 1',
+            'and ipc_production.count("replica.install_for_runtime()") == 2',
             'and ipc_production.count("replica.install_for_runtime()") >= 1',
-            "shared sole dedicated worker install predicate",
+            "shared exact dedicated worker install count",
         ),
         (
             "apple",
@@ -69497,9 +69895,9 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            'and ipc_production.count("replica.install_for_runtime()") == 1',
+            'and ipc_production.count("replica.install_for_runtime()") == 2',
             'and ipc_production.count("replica.install_for_runtime()") >= 1',
-            "Apple sole dedicated worker install predicate",
+            "Apple exact dedicated worker install count",
         ),
         (
             "apple",
@@ -71117,6 +71515,66 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11ia and Appendix C #386.",
             "The same identity no longer binds R-S11ia and Appendix C #386.",
             "exact macOS credential requester finality identity binding",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11ij</span>\' requirements.html',
+            "true # typed macOS runtime PRS receiver requirement binding disabled",
+            "shared macOS raw credential gate: <span class=\"id\">R-S11ij</span>",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11ij</span>\' "$REPO/requirements.html"',
+            "true # Apple typed macOS runtime PRS receiver requirement binding disabled",
+            "Apple macOS raw credential gate: <span class=\"id\">R-S11ij</span>",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ij</span>',
+            '<span class="id">R-S11ij-disabled</span>',
+            "macOS runtime PRS receiver requirement-ledger-digest binding",
+        ),
+        (
+            "requirements",
+            "<tr><td>395</td>",
+            "<tr><td>395-disabled</td>",
+            "macOS runtime PRS receiver Appendix C binding",
+        ),
+        (
+            "requirements",
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedCredentialReplicaReceiver</code>",
+            "cloneable <code>MacosServiceOwnedCredentialReplicaReceiver</code>",
+            "macOS runtime PRS receiver non-cloneability requirement",
+        ),
+        (
+            "requirements",
+            "consume itself, freshly require the exact service-owned-server role",
+            "borrow itself without rechecking the service-owned-server role",
+            "macOS runtime PRS receiver consuming final proof requirement",
+        ),
+        (
+            "requirements",
+            "Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica",
+            "Any caller may reach the shared Unix typed replica",
+            "macOS runtime PRS admitted install requirement",
+        ),
+        (
+            "hardening",
+            "R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
+            "R-S11ij-disabled/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
+            "macOS runtime PRS receiver hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ij and Appendix C #395.",
+            "The same identity no longer binds R-S11ij and Appendix C #395.",
+            "macOS runtime PRS receiver native-watch binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_service_ipc_protocol_authority_contract(sources)\n",
+            "    validate_service_ipc_protocol_authority_contract_disabled(sources)\n",
+            "macOS runtime PRS receiver independent validator dispatch",
         ),
         (
             "workspace_verifier",
@@ -78624,16 +79082,207 @@ def run_source_mutations(sources):
             "Windows typed protected SAS reader",
         ),
         (
+            "ipc_auth_source",
+            "pub(crate) struct MacosServiceServerAuthorization {",
+            "#[derive(Clone)]\n"
+            "pub(crate) struct MacosServiceServerAuthorization {",
+            "cloneable macOS privileged-helper authorization",
+        ),
+        (
+            "ipc_auth_source",
+            "    identity: MacosPeerProcessIdentity,\n"
+            "    context: &'static str,\n"
+            "}\n\n#[cfg(target_os = \"macos\")]\n"
+            "pub(crate) fn macos_peer_process_identity_from_stream",
+            "    pub(crate) identity: MacosPeerProcessIdentity,\n"
+            "    context: &'static str,\n"
+            "}\n\n#[cfg(target_os = \"macos\")]\n"
+            "pub(crate) fn macos_peer_process_identity_from_stream",
+            "crate-visible macOS privileged-helper identity",
+        ),
+        (
+            "ipc_auth_source",
+            ") -> ResultType<MacosServiceServerAuthorization> {\n"
+            "    if authorization.identity.uid != 0 {",
+            ") -> ResultType<()> {\n"
+            "    if authorization.identity.uid != 0 {",
+            "typed macOS privileged-helper authorization return",
+        ),
+        (
+            "ipc_auth_source",
+            "accepted.identity.uid == refreshed.identity.uid",
+            "true",
+            "exact macOS privileged-helper UID, PID, and audit-token continuity",
+        ),
+        (
+            "ipc_auth_source",
+            "&& accepted.identity.pid == refreshed.identity.pid",
+            "&& true",
+            "exact macOS privileged-helper UID, PID, and audit-token continuity",
+        ),
+        (
+            "ipc_auth_source",
+            "&& accepted.identity.audit_token == refreshed.identity.audit_token",
+            "&& true",
+            "exact macOS privileged-helper UID, PID, and audit-token continuity",
+        ),
+        (
             "ipc_source",
-            "    authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;\n"
-            "    password::remaining_millis(deadline)?;\n"
-            "    let operation_id = hbb_common::uuid::Uuid::new_v4();\n"
-            "    password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline)",
-            "    authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;\n"
-            "    password::remaining_millis(deadline)?;\n"
-            "    let operation_id = hbb_common::uuid::Uuid::new_v4();\n"
-            "    c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",
-            "raw macOS credential request writer",
+            "struct MacosServiceOwnedCredentialReplicaReceiver {",
+            "#[derive(Clone)]\nstruct MacosServiceOwnedCredentialReplicaReceiver {",
+            "cloneable macOS credential-replica receiver",
+        ),
+        (
+            "ipc_source",
+            "struct MacosServiceOwnedCredentialReplicaReceiver {\n"
+            "    stream: ConnClient,",
+            "pub struct MacosServiceOwnedCredentialReplicaReceiver {\n"
+            "    stream: ConnClient,",
+            "public macOS credential-replica receiver",
+        ),
+        (
+            "ipc_source",
+            "    server: ipc_auth::MacosServiceServerAuthorization,\n"
+            "}\n\n#[cfg(target_os = \"macos\")]\n"
+            "struct MacosServiceOwnedRuntimePrsAdmission",
+            "    server_authorized: bool,\n"
+            "}\n\n#[cfg(target_os = \"macos\")]\n"
+            "struct MacosServiceOwnedRuntimePrsAdmission",
+            "private macOS credential-replica receiver fields",
+        ),
+        (
+            "ipc_source",
+            "struct MacosServiceOwnedRuntimePrsAdmission {",
+            "#[derive(Clone)]\nstruct MacosServiceOwnedRuntimePrsAdmission {",
+            "cloneable macOS runtime-PRS admission",
+        ),
+        (
+            "ipc_source",
+            "    _receiver: MacosServiceOwnedCredentialReplicaReceiver,",
+            "    helper_authorized: bool,",
+            "private macOS runtime-PRS admission fields",
+        ),
+        (
+            "ipc_source",
+            "    replica: ServiceOwnedRuntimePrsReplica,\n"
+            "}\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]",
+            "    replica: SensitivePassword,\n"
+            "}\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]",
+            "private macOS runtime-PRS admission fields",
+        ),
+        (
+            "ipc_source",
+            "        if !crate::common::is_service_owned_server_process() {\n"
+            "            bail!(\"macOS service credential snapshots require the exact service-owned server role\");",
+            "        if false && !crate::common::is_service_owned_server_process() {\n"
+            "            bail!(\"macOS service credential snapshots require the exact service-owned server role\");",
+            "detached macOS receiver authority bypass",
+        ),
+        (
+            "ipc_source",
+            "            bail!(\"macOS service credential snapshots require the exact service-owned server role\");\n"
+            "        }\n"
+            "        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);",
+            "            bail!(\"macOS service credential snapshots require the exact service-owned server role\");\n"
+            "        }\n"
+            "        let path = Config::ipc_path_for_uid(0, password::USER_PASSWORD_IPC_POSTFIX);",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "        let server =\n"
+            "            authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;",
+            "        let _server =\n"
+            "            authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "    async fn receive_and_admit(\n"
+            "        mut self,",
+            "    async fn receive_and_admit(\n"
+            "        &mut self,",
+            "borrowed macOS credential-replica admission",
+        ),
+        (
+            "ipc_source",
+            "        if !crate::common::is_service_owned_server_process() {\n"
+            "            bail!(\"macOS service credential receiver lost the exact service-owned server role\");",
+            "        if false && !crate::common::is_service_owned_server_process() {\n"
+            "            bail!(\"macOS service credential receiver lost the exact service-owned server role\");",
+            "detached macOS receiver authority bypass",
+        ),
+        (
+            "ipc_source",
+            "        let value =\n"
+            "            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n"
+            "                .await?;",
+            "        let value = SensitivePassword::new(String::new());",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "        let refreshed = ipc_auth::macos_service_server_authorization_snapshot(\n"
+            "            &self.stream,\n"
+            "            \"macOS service credential server\",\n"
+            "        )?;",
+            "        let refreshed = self.server;",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "        let refreshed =\n"
+            "            authorize_macos_service_server_snapshot_for_task(refreshed, deadline).await?;",
+            "        let refreshed = refreshed;",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "if !ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed) {",
+            "if false {",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "        Ok(MacosServiceOwnedRuntimePrsAdmission {\n"
+            "            _receiver: self,\n"
+            "            replica: ServiceOwnedRuntimePrsReplica { value },",
+            "        Ok(MacosServiceOwnedRuntimePrsAdmissionDisabled {\n"
+            "            _receiver: self,\n"
+            "            replica: ServiceOwnedRuntimePrsReplica { value },",
+            "macOS child-side runtime PRS receiver final-action authority",
+        ),
+        (
+            "ipc_source",
+            "    fn install(self) -> ResultType<bool> {\n"
+            "        self.replica.install_for_runtime()",
+            "    fn install(&self) -> ResultType<bool> {\n"
+            "        self.replica.install_for_runtime()",
+            "consuming macOS runtime-only PRS install",
+        ),
+        (
+            "ipc_source",
+            "        self.replica.install_for_runtime()",
+            "        Config::set_permanent_password_prs_for_runtime(\n"
+            "            self.replica.as_sensitive_password().as_str(),\n"
+            "        )",
+            "exact Linux-worker and macOS-admission runtime PRS installation calls",
+        ),
+        (
+            "ipc_source",
+            "    fn install_for_runtime(self) -> ResultType<bool> {",
+            "    #[cfg(target_os = \"linux\")]\n"
+            "    fn install_for_runtime(self) -> ResultType<bool> {",
+            "Linux-only typed runtime-PRS sink",
+        ),
+        (
+            "ipc_source",
+            "    let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;\n"
+            "    let admission = receiver.receive_and_admit(deadline).await?;\n"
+            "    admission.install()",
+            "    Config::set_permanent_password_prs_for_runtime(\"\")\n"
+            "        .map(|_| false)",
+            "typed macOS credential-replica client call graph",
         ),
         (
             "ipc_source",
@@ -78821,9 +79470,47 @@ def run_source_mutations(sources):
         ),
         (
             "macos_service_credential_ipc_verifier",
-            "root-helper-proof-before-request and nonpersistent PRS install",
-            "generic-service request and storage-envelope install",
-            "macOS raw credential client proof contract",
+            "fixed endpoint, consuming response, final helper replay, and typed admission",
+            "generic endpoint, borrowed response, and detached Boolean admission",
+            "macOS typed credential receiver finality contract",
+        ),
+        (
+            "verify",
+            'need(\n    "macos-runtime-prs-receiver-authority-not-typed-through-final-install"',
+            'need(\n    "macos-runtime-prs-receiver-authority-not-checked"',
+            "shared macOS runtime PRS receiver analyzer",
+        ),
+        (
+            "verify",
+            'and "if false" not in mac_runtime_prs_receiver',
+            'and "if false" in mac_runtime_prs_receiver',
+            "shared macOS receiver bypass rejection predicate",
+        ),
+        (
+            "verify",
+            'and ipc_production.count("receiver.receive_and_admit(deadline)") == 1',
+            'and ipc_production.count("receiver.receive_and_admit(deadline)") >= 1',
+            "shared macOS sole receiver admission predicate",
+        ),
+        (
+            "apple",
+            '        need("b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install",',
+            '        need("b2", "macos-runtime-prs-receiver-authority-not-checked",',
+            "Apple macOS runtime PRS receiver analyzer",
+        ),
+        (
+            "apple",
+            'and "if false" not in mac_runtime_prs_receiver',
+            'and "if false" in mac_runtime_prs_receiver',
+            "Apple macOS receiver bypass rejection predicate",
+        ),
+        (
+            "apple",
+            'scoped_mutation("macos-runtime-prs-receiver-consume", "ipc", '
+            '"impl MacosServiceOwnedCredentialReplicaReceiver",',
+            'scoped_mutation("macos-runtime-prs-receiver-consume-disabled", "ipc", '
+            '"impl MacosServiceOwnedCredentialReplicaReceiver",',
+            "Apple macOS runtime PRS receiver mutation",
         ),
         (
             "ipc_source",

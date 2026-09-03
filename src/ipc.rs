@@ -222,7 +222,6 @@ impl ServiceOwnedRuntimePrsReplica {
         &self.value
     }
 
-    #[cfg(target_os = "linux")]
     fn install_for_runtime(self) -> ResultType<bool> {
         Config::set_permanent_password_prs_for_runtime(self.value.as_str())
     }
@@ -855,6 +854,18 @@ struct LinuxServiceOwnedRuntimePrsAdmission {
     _receiver: LinuxServiceOwnedPasswordReplicaReceiver,
 }
 
+#[cfg(target_os = "macos")]
+struct MacosServiceOwnedCredentialReplicaReceiver {
+    stream: ConnClient,
+    server: ipc_auth::MacosServiceServerAuthorization,
+}
+
+#[cfg(target_os = "macos")]
+struct MacosServiceOwnedRuntimePrsAdmission {
+    _receiver: MacosServiceOwnedCredentialReplicaReceiver,
+    replica: ServiceOwnedRuntimePrsReplica,
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 enum SensitiveMainPasswordAuthority {
     UserOwned,
@@ -908,6 +919,64 @@ impl LinuxServiceOwnedPasswordReplicaReceiver {
             bail!("Linux service-owned password replica parent identity changed before admission");
         }
         Ok(LinuxServiceOwnedRuntimePrsAdmission { _receiver: self })
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl MacosServiceOwnedCredentialReplicaReceiver {
+    async fn connect(deadline: tokio::time::Instant) -> ResultType<Self> {
+        if !crate::common::is_service_owned_server_process() {
+            bail!("macOS service credential snapshots require the exact service-owned server role");
+        }
+        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);
+        let stream = timeout(
+            password::remaining_millis(deadline)?,
+            Endpoint::connect(path),
+        )
+        .await??;
+        let authorization = ipc_auth::macos_service_server_authorization_snapshot(
+            &stream,
+            "macOS service credential server",
+        )?;
+        let server =
+            authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;
+        password::remaining_millis(deadline)?;
+        Ok(MacosServiceOwnedCredentialReplicaReceiver { stream, server })
+    }
+
+    async fn receive_and_admit(
+        mut self,
+        deadline: tokio::time::Instant,
+    ) -> ResultType<MacosServiceOwnedRuntimePrsAdmission> {
+        if !crate::common::is_service_owned_server_process() {
+            bail!("macOS service credential receiver lost the exact service-owned server role");
+        }
+        let operation_id = hbb_common::uuid::Uuid::new_v4();
+        password::send_credential_snapshot_request_unix(&mut self.stream, operation_id, deadline)
+            .await?;
+        let value =
+            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)
+                .await?;
+        let refreshed = ipc_auth::macos_service_server_authorization_snapshot(
+            &self.stream,
+            "macOS service credential server",
+        )?;
+        let refreshed =
+            authorize_macos_service_server_snapshot_for_task(refreshed, deadline).await?;
+        if !ipc_auth::macos_service_server_authorizations_match(&self.server, &refreshed) {
+            bail!("macOS service credential server identity changed before runtime PRS admission");
+        }
+        Ok(MacosServiceOwnedRuntimePrsAdmission {
+            _receiver: self,
+            replica: ServiceOwnedRuntimePrsReplica { value },
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl MacosServiceOwnedRuntimePrsAdmission {
+    fn install(self) -> ResultType<bool> {
+        self.replica.install_for_runtime()
     }
 }
 
@@ -1745,7 +1814,7 @@ async fn authorize_macos_service_scoped_credential_stream_for_task(
 async fn authorize_macos_service_server_snapshot_for_task(
     authorization: ipc_auth::MacosServiceServerAuthorization,
     deadline: tokio::time::Instant,
-) -> ResultType<()> {
+) -> ResultType<ipc_auth::MacosServiceServerAuthorization> {
     run_bounded_macos_security_proof(deadline, "macos-service-server-proof", move || {
         ipc_auth::authorize_macos_service_server_snapshot(authorization)
     })
@@ -7935,28 +8004,10 @@ pub async fn set_voice_call_input_device(value: String) -> ResultType<()> {
 pub async fn refresh_macos_service_owned_permanent_password_snapshot(
     ms_timeout: u64,
 ) -> ResultType<bool> {
-    if !crate::common::is_service_owned_server_process() {
-        bail!("macOS service credential snapshots require the exact service-owned server role");
-    }
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
-    let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);
-    let mut stream = timeout(
-        password::remaining_millis(deadline)?,
-        Endpoint::connect(path),
-    )
-    .await??;
-    let authorization = ipc_auth::macos_service_server_authorization_snapshot(
-        &stream,
-        "macOS service credential server",
-    )?;
-    authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;
-    password::remaining_millis(deadline)?;
-    let operation_id = hbb_common::uuid::Uuid::new_v4();
-    password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline).await?;
-    let replica =
-        password::receive_credential_replica_unix(&mut stream, operation_id, deadline).await?;
-    Config::set_permanent_password_prs_for_runtime(replica.as_str())?;
-    Ok(!replica.as_str().is_empty())
+    let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;
+    let admission = receiver.receive_and_admit(deadline).await?;
+    admission.install()
 }
 
 #[cfg(target_os = "linux")]

@@ -2308,7 +2308,7 @@ where
 #[cfg(target_os = "macos")]
 pub(crate) fn authorize_macos_service_server_snapshot(
     authorization: MacosServiceServerAuthorization,
-) -> ResultType<()> {
+) -> ResultType<MacosServiceServerAuthorization> {
     if authorization.identity.uid != 0 {
         bail!(
             "{} is not root: peer_uid={}",
@@ -2323,7 +2323,18 @@ pub(crate) fn authorize_macos_service_server_snapshot(
             authorization.identity.pid
         );
     }
-    Ok(())
+    Ok(authorization)
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
+pub(crate) fn macos_service_server_authorizations_match(
+    accepted: &MacosServiceServerAuthorization,
+    refreshed: &MacosServiceServerAuthorization,
+) -> bool {
+    accepted.identity.uid == refreshed.identity.uid
+        && accepted.identity.pid == refreshed.identity.pid
+        && accepted.identity.audit_token == refreshed.identity.audit_token
 }
 
 #[cfg(windows)]

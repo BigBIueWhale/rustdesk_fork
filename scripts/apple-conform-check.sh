@@ -1046,6 +1046,17 @@ def analyze(sources):
             "next_service_response_timeout(", "ServiceIpcRequest::",
             "ServiceIpcResponse::", "storage", "salt",
         ]))
+        linux_snapshot_client = item(ipc, "pub async fn refresh_linux_service_owned_permanent_password_snapshot")
+        need("b1", "linux-service-snapshot-client-not-typed-receiver", all(token in linux_snapshot_client for token in [
+            "LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?",
+            "receiver.receive_and_admit(deadline).await?",
+            "admission.install()",
+        ]) and not any(token in linux_snapshot_client for token in [
+            "Endpoint::connect(", "authenticate_linux_service_owned_password_parent(",
+            "send_credential_snapshot_request_unix(", "receive_credential_replica_unix(",
+            "SensitivePassword", "connect_service(", "send_service_request_timeout(",
+            "next_service_response_timeout(", "ServiceIpcRequest::", "ServiceIpcResponse::",
+        ]) and linux_snapshot_client.count("Config::set_permanent_password_prs_for_runtime") == 1)
         readiness_client = item(ipc, "async fn macos_service_owned_password_authorization_right_ready")
         need("b1", "macos-service-readiness-client-not-typed", all(token in readiness_client for token in [
             "send_service_request_timeout(",
@@ -1200,6 +1211,9 @@ def analyze(sources):
         mac_runtime_prs_receiver = item(ipc, "impl MacosServiceOwnedCredentialReplicaReceiver")
         mac_runtime_prs_admission = item(ipc, "impl MacosServiceOwnedRuntimePrsAdmission")
         mac_runtime_prs_client = item(ipc, "pub async fn refresh_macos_service_owned_permanent_password_snapshot")
+        linux_credential_runtime_prs_receiver = item(ipc, "impl LinuxServiceOwnedCredentialReplicaReceiver")
+        linux_credential_runtime_prs_admission = item(ipc, "impl LinuxServiceOwnedCredentialRuntimePrsAdmission")
+        linux_credential_runtime_prs_client = item(ipc, "pub async fn refresh_linux_service_owned_permanent_password_snapshot")
         mac_service_server_authorization = item(auth, "pub(crate) struct MacosServiceServerAuthorization")
         mac_service_server_verify = item(auth, "pub(crate) fn authorize_macos_service_server_snapshot")
         mac_service_server_match = item(auth, "pub(crate) fn macos_service_server_authorizations_match")
@@ -1461,6 +1475,69 @@ def analyze(sources):
             and "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<ServiceOwnedRuntimePrsReplica>" in ipc
             and ipc_production.count("LinuxServiceOwnedPasswordReplicaWriter::connect(") == 1
             and ipc_production.count("writer.begin(operation_uuid, replica, deadline).await") == 1)
+        need("b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    stream: ConnClient,\n    parent: LinuxProcessIdentity,\n}" in ipc
+            and "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,\n    replica: ServiceOwnedRuntimePrsReplica,\n}" in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "#[derive(Copy)]\nstruct LinuxServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "pub struct LinuxServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "pub(crate) struct LinuxServiceOwnedCredentialReplicaReceiver" not in ipc
+            and "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialRuntimePrsAdmission" not in ipc
+            and "#[derive(Copy)]\nstruct LinuxServiceOwnedCredentialRuntimePrsAdmission" not in ipc
+            and "pub struct LinuxServiceOwnedCredentialRuntimePrsAdmission" not in ipc
+            and "pub(crate) struct LinuxServiceOwnedCredentialRuntimePrsAdmission" not in ipc
+            and ordered(linux_credential_runtime_prs_receiver, [
+                "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+                "!crate::common::is_service_owned_server_process()",
+                "Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX)",
+                "password::remaining_millis(deadline)?", "Endpoint::connect(path)",
+                "let parent = authenticate_linux_service_owned_password_parent(",
+                "&stream", "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+                "password::remaining_millis(deadline)?", "Ok(Self { stream, parent })",
+                "async fn receive_and_admit(", "mut self",
+                ") -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission>",
+                "!crate::common::is_service_owned_server_process()",
+                "hbb_common::uuid::Uuid::new_v4()",
+                "password::send_credential_snapshot_request_unix(&mut self.stream, operation_id, deadline)",
+                "password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)",
+                "let refreshed = authenticate_linux_service_owned_password_parent(",
+                "&self.stream", "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+                "password::remaining_millis(deadline)?", "if refreshed != self.parent",
+                "LinuxServiceOwnedCredentialRuntimePrsAdmission {", "_receiver: self",
+                "replica: ServiceOwnedRuntimePrsReplica { value }",
+            ])
+            and linux_credential_runtime_prs_receiver.count("!crate::common::is_service_owned_server_process()") == 2
+            and linux_credential_runtime_prs_receiver.count("password::SERVICE_CREDENTIAL_IPC_POSTFIX") == 3
+            and linux_credential_runtime_prs_receiver.count("password::remaining_millis(deadline)?") == 3
+            and "if false" not in linux_credential_runtime_prs_receiver
+            and "async fn receive_and_admit(\n        &mut self," not in linux_credential_runtime_prs_receiver
+            and "password::USER_PASSWORD_IPC_POSTFIX" not in linux_credential_runtime_prs_receiver
+            and "connect_sensitive_unix(" not in linux_credential_runtime_prs_receiver
+            and "connect_service(" not in linux_credential_runtime_prs_receiver
+            and "Config::set_permanent_password_prs_for_runtime" not in linux_credential_runtime_prs_receiver
+            and ordered(linux_credential_runtime_prs_admission, [
+                "fn install(self) -> ResultType<bool>", "self.replica.install_for_runtime()",
+            ])
+            and "Config::set_permanent_password_prs_for_runtime" not in linux_credential_runtime_prs_admission
+            and ordered(linux_credential_runtime_prs_client, [
+                "!crate::common::is_service_owned_server_process()",
+                "service_child_is_unsupervised_recovery_fixture()",
+                'Config::set_permanent_password_prs_for_runtime("")',
+                "LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?",
+                "let admission = receiver.receive_and_admit(deadline).await?", "admission.install()",
+            ])
+            and not any(token in linux_credential_runtime_prs_client for token in [
+                "Endpoint::connect(", "authenticate_linux_service_owned_password_parent(",
+                "send_credential_snapshot_request_unix(", "receive_credential_replica_unix(",
+                "SensitivePassword",
+            ])
+            and linux_credential_runtime_prs_client.count("Config::set_permanent_password_prs_for_runtime") == 1
+            and ipc_production.count("LinuxServiceOwnedCredentialReplicaReceiver::connect(") == 1
+            and ipc_production.count("receiver.receive_and_admit(deadline)") == 2
+            and ipc_production.count("admission.install()") == 2
+            and ipc_production.count("LinuxServiceOwnedCredentialRuntimePrsAdmission {") == 3
+            and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1
+            and ipc_production.count("replica.install_for_runtime()") == 3)
         need("b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit",
             ordered(runtime_prs, [
                 "fn install_for_runtime(self) -> ResultType<bool>",
@@ -1560,7 +1637,7 @@ def analyze(sources):
             and ipc_production.count("begin_linux_service_owned_runtime_prs_mutation(") == 2
             and ipc_production.count("spawn_linux_service_owned_runtime_prs_mutation(") == 2
             and ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1
-            and ipc_production.count("replica.install_for_runtime()") == 2)
+            and ipc_production.count("replica.install_for_runtime()") == 3)
         need("b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission",
             "pub(crate) struct WindowsUserOwnedPasswordAdmission {\n    _requester: ipc_auth::WindowsSensitivePipeClientProof,\n}" in ipc
             and "pub(crate) struct WindowsServiceOwnedPasswordAdmission {\n    _requester: WindowsServiceOwnedPasswordRequester,\n}" in ipc
@@ -2099,7 +2176,7 @@ def analyze(sources):
                 "Config::set_permanent_password_prs_for_runtime",
             ])
             and ipc_production.count("MacosServiceOwnedCredentialReplicaReceiver::connect(") == 1
-            and ipc_production.count("receiver.receive_and_admit(deadline)") == 1
+            and ipc_production.count("receiver.receive_and_admit(deadline)") == 2
             and ipc_production.count("MacosServiceOwnedRuntimePrsAdmission {") == 3
             and auth.count("pub(crate) fn macos_service_server_authorizations_match(") == 1)
         need("b2", "snapshot-launchctl-child-not-resource-bounded", all(token in ipc for token in [
@@ -2244,6 +2321,7 @@ mutation("service-generic-dispatch", "ipc", ".next_service_request_timeout(SERVI
 mutation("windows-service-generic-dispatch", "windows", ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-handler-not-typed")
 mutation("windows-service-sas-generic-dispatch", "windows", ".next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-sas-handler-not-typed")
 mutation("macos-service-snapshot-typed-client", "ipc", "let receiver = MacosServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;", "let receiver = connect_service(1_000).await?;", "b1", "macos-service-snapshot-client-not-typed-receiver")
+mutation("linux-service-snapshot-typed-client", "ipc", "let receiver = LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;", "let receiver = connect_service(1_000).await?;", "b1", "linux-service-snapshot-client-not-typed-receiver")
 mutation("macos-service-readiness-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "c.send_json_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "b1", "macos-service-readiness-client-not-typed")
 mutation("windows-service-share-rdp-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "c.send_json_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "b1", "windows-service-share-rdp-client-not-typed")
 mutation("windows-service-sas-generic-client", "ipc", ".send_windows_service_sas_request_timeout(", ".send_json_timeout(", "b1", "windows-service-sas-client-not-typed")
@@ -2341,6 +2419,26 @@ scoped_mutation("linux-runtime-prs-worker-persistence", "ipc", "fn spawn_linux_s
 scoped_mutation("linux-runtime-prs-generic-worker", "ipc", "fn spawn_password_mutation", "let result = match Config::set_permanent_password_persisted(value.as_str()) {", "let result = match if kind == PasswordMutationKind::ServiceOwned && crate::common::is_service_owned_server_process() { Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true) } else { Config::set_permanent_password_persisted(value.as_str()) } {", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
 scoped_mutation("linux-runtime-prs-authority-collapse", "ipc", "fn sensitive_main_ipc_authority", "-> Option<SensitiveMainPasswordAuthority>", "-> Option<PasswordMutationKind>", "b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit")
 scoped_mutation("linux-runtime-prs-recovery", "ipc", "async fn complete_main_password_mutation", "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = true;", "LinuxServiceOwnedPasswordReplicaAttempt::Uncertain(err) => {\n                        recovery_required = false;", "b2", "linux-runtime-prs-writer-authority-not-typed-through-consuming-transaction")
+mutation("linux-credential-runtime-prs-receiver-identity", "ipc", "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    stream: ConnClient,\n    parent: LinuxProcessIdentity,\n}", "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    parent_alive: bool,\n}", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("linux-credential-runtime-prs-receiver-clone", "ipc", "struct LinuxServiceOwnedCredentialReplicaReceiver {", "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaReceiver {", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("linux-credential-runtime-prs-receiver-public", "ipc", "struct LinuxServiceOwnedCredentialReplicaReceiver {", "pub struct LinuxServiceOwnedCredentialReplicaReceiver {", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("linux-credential-runtime-prs-admission-receiver", "ipc", "    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,", "    receiver_authorized: bool,", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("linux-credential-runtime-prs-admission-type", "ipc", "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,\n    replica: ServiceOwnedRuntimePrsReplica,\n}", "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,\n    replica: SensitivePassword,\n}", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+mutation("linux-credential-runtime-prs-admission-clone", "ipc", "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {", "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialRuntimePrsAdmission {", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-initial-role", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\")", "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\")", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-fixed-endpoint", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX)", "Config::ipc_path_for_uid(0, password::USER_PASSWORD_IPC_POSTFIX)", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-initial-proof", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "let parent = authenticate_linux_service_owned_password_parent(", "let _parent = authenticate_linux_service_owned_password_parent(", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-receiver-consume", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "async fn receive_and_admit(\n        mut self,", "async fn receive_and_admit(\n        &mut self,", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-final-role", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential receiver lost the exact service-owned server role\");", "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential receiver lost the exact service-owned server role\");", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-response-uuid", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)", "password::receive_credential_replica_unix(&mut self.stream, hbb_common::uuid::Uuid::new_v4(), deadline)", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-raw-response", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "password::receive_credential_replica_unix(", "password::receive_request_unix(", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-final-endpoint", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "let refreshed = authenticate_linux_service_owned_password_parent(\n            &self.stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,", "let refreshed = authenticate_linux_service_owned_password_parent(\n            &self.stream,\n            password::USER_PASSWORD_IPC_POSTFIX,", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-final-deadline", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "password::remaining_millis(deadline)?;\n        if refreshed != self.parent", "drop(deadline);\n        if refreshed != self.parent", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-final-continuity", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "if refreshed != self.parent {", "if false && refreshed != self.parent {", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-admission-construction", "ipc", "impl LinuxServiceOwnedCredentialReplicaReceiver", "Ok(LinuxServiceOwnedCredentialRuntimePrsAdmission {", "Ok(LinuxServiceOwnedCredentialRuntimePrsAdmissionDisabled {", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-install-consume", "ipc", "impl LinuxServiceOwnedCredentialRuntimePrsAdmission", "fn install(self) -> ResultType<bool>", "fn install(&self) -> ResultType<bool>", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-install-sink", "ipc", "impl LinuxServiceOwnedCredentialRuntimePrsAdmission", "self.replica.install_for_runtime()", "Config::set_permanent_password_prs_for_runtime(self.replica.as_sensitive_password().as_str())", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
+scoped_mutation("linux-credential-runtime-prs-client-bypass", "ipc", "pub async fn refresh_linux_service_owned_permanent_password_snapshot", "let receiver = LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?", "let receiver = connect_service(1_000).await?", "b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install")
 scoped_mutation("windows-password-final-service-proof", "auth", "pub(crate) fn into_service_owned_password_admission", "self.revalidate(pipe, deadline)?;", "drop((pipe, deadline));", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 scoped_mutation("windows-password-service-mint-endpoint", "auth", "pub(crate) fn into_service_owned_password_admission", "self.postfix != super::password::SERVICE_PASSWORD_IPC_POSTFIX", "self.postfix != super::password::USER_PASSWORD_IPC_POSTFIX", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
 mutation("windows-password-public-generic-listener", "windows", "fn start_windows_sensitive_password_listener(\n    requests: WindowsSensitivePasswordRequestSender,", "pub(crate) fn start_windows_sensitive_password_listener(\n    postfix: &'static str,\n    requests: WindowsSensitivePasswordRequestSender,", "b2", "windows-password-authority-not-typed-through-queue-and-ledger-admission")
@@ -2548,6 +2646,13 @@ grep -Fq 'The same identity additionally binds R-S11ij and Appendix C #395.' "$R
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedCredentialReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-receiver-capability-norm-missing"
 grep -Fq 'consume itself, freshly require the exact service-owned-server role' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-receiver-norm-missing"
 grep -Fq 'Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-install-norm-missing"
+grep -Fq '<span class="id">R-S11ik</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-requirement-missing"
+grep -Fq '<tr><td>396</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-appendix-missing"
+grep -Fq 'R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ik and Appendix C #396.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-digest-binding-missing"
+grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-receiver-capability-norm-missing"
+grep -Fq 'consume itself across the same-stream request and complete response' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-receiver-norm-missing"
+grep -Fq 'Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-install-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

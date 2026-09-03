@@ -14344,8 +14344,8 @@ def validate_linux_runtime_prs_receiver_contract(sources):
         ),
         (
             "replica.install_for_runtime()",
-            2,
-            "exact Linux-worker and macOS-admission runtime PRS installation calls",
+            3,
+            "exact Linux-worker and Linux/macOS credential-admission runtime PRS installation calls",
         ),
     ):
         require_exact_count(ipc.rsplit("#[cfg(test)]\nmod test", 1)[0], marker, count, label)
@@ -14428,7 +14428,7 @@ def validate_linux_runtime_prs_receiver_contract(sources):
             "shared sole typed runtime install predicate",
         ),
         (
-            'ipc_production.count("replica.install_for_runtime()") == 2',
+            'ipc_production.count("replica.install_for_runtime()") == 3',
             "shared exact dedicated worker install count",
         ),
     ):
@@ -14489,7 +14489,7 @@ def validate_linux_runtime_prs_receiver_contract(sources):
             "Apple sole typed runtime install predicate",
         ),
         (
-            'ipc_production.count("replica.install_for_runtime()") == 2',
+            'ipc_production.count("replica.install_for_runtime()") == 3',
             "Apple exact dedicated worker install count",
         ),
     ):
@@ -14589,6 +14589,411 @@ def validate_linux_runtime_prs_receiver_contract(sources):
         sources["workspace_verifier"],
         "    validate_linux_runtime_prs_receiver_contract(sources)\n",
         "runtime PRS receiver independent validator dispatch",
+    )
+
+
+def validate_linux_credential_runtime_prs_receiver_contract(sources):
+    ipc = sources["ipc_source"]
+    focused = sources["linux_password_ipc_validator"]
+    production = ipc.rsplit("#[cfg(test)]\nmod test", 1)[0]
+
+    receiver_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedCredentialReplicaReceiver",
+        "Linux initial credential runtime PRS receiver record",
+    )
+    require_order(
+        receiver_record,
+        ("stream: ConnClient,", "parent: LinuxProcessIdentity,"),
+        "owned credential stream and retained root-parent generation",
+    )
+    admission_record = extract_braced_item(
+        ipc,
+        "struct LinuxServiceOwnedCredentialRuntimePrsAdmission",
+        "Linux initial credential runtime PRS admission record",
+    )
+    require_order(
+        admission_record,
+        (
+            "_receiver: LinuxServiceOwnedCredentialReplicaReceiver,",
+            "replica: ServiceOwnedRuntimePrsReplica,",
+        ),
+        "receiver-bound typed runtime PRS admission",
+    )
+    for type_name, label in (
+        (
+            "LinuxServiceOwnedCredentialReplicaReceiver",
+            "Linux initial credential receiver",
+        ),
+        (
+            "LinuxServiceOwnedCredentialRuntimePrsAdmission",
+            "Linux initial credential admission",
+        ),
+    ):
+        for prefix, detail in (
+            ("#[derive(Clone)]\nstruct ", "cloneable"),
+            ("#[derive(Copy)]\nstruct ", "copyable"),
+            ("pub struct ", "public"),
+            ("pub(crate) struct ", "crate-visible"),
+        ):
+            require_absent(ipc, prefix + type_name, f"{detail} {label}")
+
+    receiver = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedCredentialReplicaReceiver",
+        "Linux initial credential receiver transaction",
+    )
+    require_order(
+        receiver,
+        (
+            "async fn connect(deadline: tokio::time::Instant) -> ResultType<Self>",
+            "if !crate::common::is_service_owned_server_process() {",
+            "Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX)",
+            "password::remaining_millis(deadline)?",
+            "Endpoint::connect(path)",
+            "let parent = authenticate_linux_service_owned_password_parent(",
+            "&stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "password::remaining_millis(deadline)?;",
+            "Ok(Self { stream, parent })",
+            "async fn receive_and_admit(",
+            "mut self,",
+            ") -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission>",
+            "if !crate::common::is_service_owned_server_process() {",
+            "let operation_id = hbb_common::uuid::Uuid::new_v4();",
+            "password::send_credential_snapshot_request_unix(&mut self.stream, operation_id, deadline)",
+            "password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)",
+            "let refreshed = authenticate_linux_service_owned_password_parent(",
+            "&self.stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "password::remaining_millis(deadline)?;",
+            "if refreshed != self.parent {",
+            "Ok(LinuxServiceOwnedCredentialRuntimePrsAdmission {",
+            "_receiver: self,",
+            "replica: ServiceOwnedRuntimePrsReplica { value },",
+        ),
+        "fixed-endpoint same-stream request, response, and final parent-generation admission",
+    )
+    for marker, count, label in (
+        (
+            "if !crate::common::is_service_owned_server_process() {",
+            2,
+            "initial and final exact service-owned child role",
+        ),
+        (
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            3,
+            "path selection plus initial and final fixed credential endpoint proof",
+        ),
+        (
+            "password::remaining_millis(deadline)?",
+            3,
+            "connect and proof absolute-deadline checks",
+        ),
+        (
+            "hbb_common::uuid::Uuid::new_v4()",
+            1,
+            "single credential snapshot operation UUID",
+        ),
+        (
+            "password::send_credential_snapshot_request_unix",
+            1,
+            "single bodyless credential request",
+        ),
+        (
+            "password::receive_credential_replica_unix",
+            1,
+            "single canonical credential response",
+        ),
+        (
+            "authenticate_linux_service_owned_password_parent(",
+            2,
+            "initial and final same-stream parent proof",
+        ),
+    ):
+        require_exact_count(receiver, marker, count, label)
+    for marker, label in (
+        ("if false", "detached Linux initial credential authority bypass"),
+        (
+            "async fn receive_and_admit(\n        &mut self,",
+            "borrowed Linux initial credential receiver admission",
+        ),
+        (
+            "password::USER_PASSWORD_IPC_POSTFIX",
+            "wrong Linux initial credential endpoint",
+        ),
+        ("postfix: &str", "caller-selectable Linux credential endpoint"),
+        ("connect_sensitive_unix(", "postfix-selectable raw connector"),
+        ("connect_service(", "generic service connector"),
+        (
+            "Config::set_permanent_password_prs_for_runtime",
+            "direct runtime PRS sink in credential receiver",
+        ),
+        ("SensitivePassword", "generic credential receiver secret"),
+    ):
+        require_absent(receiver, marker, label)
+
+    admission = extract_braced_item(
+        ipc,
+        "impl LinuxServiceOwnedCredentialRuntimePrsAdmission",
+        "Linux initial credential admitted runtime PRS action",
+    )
+    require_order(
+        admission,
+        (
+            "fn install(self) -> ResultType<bool>",
+            "self.replica.install_for_runtime()",
+        ),
+        "consuming typed runtime-only PRS install",
+    )
+    require_absent(
+        admission,
+        "Config::set_permanent_password_prs_for_runtime",
+        "direct config sink in Linux initial credential admission",
+    )
+
+    client = extract_braced_item(
+        ipc,
+        "pub async fn refresh_linux_service_owned_permanent_password_snapshot",
+        "Linux service-owned initial credential snapshot client",
+    )
+    require_order(
+        client,
+        (
+            "if !crate::common::is_service_owned_server_process() {",
+            "service_child_is_unsupervised_recovery_fixture()",
+            'Config::set_permanent_password_prs_for_runtime("")',
+            "let receiver = LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;",
+            "let admission = receiver.receive_and_admit(deadline).await?;",
+            "admission.install()",
+        ),
+        "fixture-separated typed initial credential client call graph",
+    )
+    require_exact_count(
+        client,
+        "Config::set_permanent_password_prs_for_runtime",
+        1,
+        "debug-fixture empty runtime override only",
+    )
+    for marker, label in (
+        ("Endpoint::connect(", "direct untyped credential endpoint"),
+        (
+            "authenticate_linux_service_owned_password_parent(",
+            "direct detached parent proof",
+        ),
+        (
+            "send_credential_snapshot_request_unix(",
+            "direct raw credential request",
+        ),
+        (
+            "receive_credential_replica_unix(",
+            "direct raw credential response",
+        ),
+        ("SensitivePassword", "generic received secret in public wrapper"),
+        ("connect_service(", "generic service connector in public wrapper"),
+    ):
+        require_absent(client, marker, label)
+
+    for marker, count, label in (
+        (
+            "LinuxServiceOwnedCredentialReplicaReceiver::connect(",
+            1,
+            "sole Linux initial credential receiver construction call",
+        ),
+        (
+            "receiver.receive_and_admit(deadline)",
+            2,
+            "one Linux and one macOS typed credential admission call",
+        ),
+        (
+            "admission.install()",
+            2,
+            "one Linux and one macOS typed credential install call",
+        ),
+        (
+            "LinuxServiceOwnedCredentialRuntimePrsAdmission {",
+            3,
+            "declaration, implementation, and sole admission construction",
+        ),
+        (
+            "Config::set_permanent_password_prs_for_runtime(self.value.as_str())",
+            1,
+            "sole shared typed runtime PRS config sink",
+        ),
+        (
+            "replica.install_for_runtime()",
+            3,
+            "Linux update worker plus Linux and macOS initial credential installs",
+        ),
+    ):
+        require_exact_count(production, marker, count, label)
+
+    for text, label in (
+        (
+            "def verify_linux_credential_runtime_prs_receiver_authority(",
+            "focused initial credential receiver validator",
+        ),
+        (
+            'receiver = ipc.item("struct", "LinuxServiceOwnedCredentialReplicaReceiver")',
+            "focused initial credential receiver parser",
+        ),
+        (
+            '"Linux credential receiver borrows instead of consuming response authority"',
+            "focused consuming receiver mutation",
+        ),
+        (
+            '"Linux credential receiver reauthenticates the wrong endpoint"',
+            "focused final endpoint mutation",
+        ),
+        (
+            '"Linux credential receiver drops its final proof deadline"',
+            "focused final deadline mutation",
+        ),
+        (
+            '"Linux credential admission bypasses the typed runtime PRS sink"',
+            "focused final sink mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+    require_exact_count(
+        focused,
+        "    verify_linux_credential_runtime_prs_receiver_authority(rust)\n",
+        1,
+        "focused initial credential receiver validator dispatch",
+    )
+
+    shared = extract_between(
+        sources["verify"],
+        'need(\n    "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install"',
+        '\nneed(\n    "linux-runtime-prs-receiver-authority-not-typed-through-final-commit"',
+        "shared Linux initial credential receiver analyzer",
+    )
+    apple = extract_between(
+        sources["apple"],
+        'need("b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install"',
+        '\n        need("b2", "linux-runtime-prs-receiver-authority-not-typed-through-final-commit"',
+        "Apple Linux initial credential receiver analyzer",
+    )
+    for analyzer, owner in ((shared, "shared"), (apple, "Apple")):
+        for text, label in (
+            (
+                "struct LinuxServiceOwnedCredentialReplicaReceiver {\\n    stream: ConnClient,\\n    parent: LinuxProcessIdentity,\\n}",
+                "retained stream and parent-generation predicate",
+            ),
+            (
+                "password::remaining_millis(deadline)?",
+                "absolute deadline predicate",
+            ),
+            (
+                "if false",
+                "authority bypass rejection",
+            ),
+            (
+                'ipc_production.count("receiver.receive_and_admit(deadline)") == 2',
+                "macOS sole receiver admission predicate",
+            ),
+            (
+                'ipc_production.count("Config::set_permanent_password_prs_for_runtime(self.value.as_str())") == 1',
+                "sole typed runtime install predicate",
+            ),
+            (
+                'ipc_production.count("replica.install_for_runtime()") == 3',
+                "exact dedicated worker install count",
+            ),
+        ):
+            if label == "authority bypass rejection":
+                require_text(analyzer, '"if false" not in linux_credential_runtime_prs_receiver', f"{owner} {label}")
+            else:
+                require_text(analyzer, text, f"{owner} {label}")
+    for text, label in (
+        (
+            'mutation("linux-credential-runtime-prs-receiver-clone"',
+            "Apple receiver clone mutation",
+        ),
+        (
+            'scoped_mutation("linux-credential-runtime-prs-fixed-endpoint"',
+            "Apple fixed endpoint mutation",
+        ),
+        (
+            'scoped_mutation("linux-credential-runtime-prs-receiver-consume"',
+            "Apple consuming receiver mutation",
+        ),
+        (
+            'scoped_mutation("linux-credential-runtime-prs-final-deadline"',
+            "Apple final deadline mutation",
+        ),
+        (
+            'scoped_mutation("linux-credential-runtime-prs-install-sink"',
+            "Apple typed sink mutation",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "grep -Fq '<span class=\"id\">R-S11ik</span>' requirements.html",
+            "shared initial credential receiver requirement binding",
+        ),
+        (
+            sources["verify"],
+            "grep -Fq '<tr><td>396</td>' requirements.html",
+            "shared initial credential receiver Appendix binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<span class=\"id\">R-S11ik</span>' \"$REPO/requirements.html\"",
+            "Apple initial credential receiver requirement binding",
+        ),
+        (
+            sources["apple"],
+            "grep -Fq '<tr><td>396</td>' \"$REPO/requirements.html\"",
+            "Apple initial credential receiver Appendix binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11ik</span>',
+            "initial credential runtime PRS receiver requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>396</td>",
+            "initial credential runtime PRS receiver Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority",
+            "initial credential runtime PRS receiver hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11ik and Appendix C #396.",
+            "initial credential runtime PRS receiver identity binding",
+        ),
+        (
+            sources["requirements"],
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>",
+            "normative private receiver capability",
+        ),
+        (
+            sources["requirements"],
+            "consume itself across the same-stream request and complete response",
+            "normative consuming receiver transaction",
+        ),
+        (
+            sources["requirements"],
+            "Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>",
+            "normative typed final sink",
+        ),
+    ):
+        require_text(source, text, label)
+    require_text(
+        sources["workspace_verifier"],
+        "def validate_linux_credential_runtime_prs_receiver_contract(sources):\n",
+        "initial credential receiver independent validator definition",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        "    validate_linux_credential_runtime_prs_receiver_contract(sources)\n",
+        "initial credential receiver independent validator dispatch",
     )
 
 
@@ -20645,8 +21050,8 @@ def validate_service_ipc_protocol_authority_contract(sources):
     require_exact_count(
         ipc.rsplit("#[cfg(test)]\nmod test", 1)[0],
         "receiver.receive_and_admit(deadline)",
-        1,
-        "sole macOS credential-replica admission call",
+        2,
+        "one macOS and one Linux credential-replica admission call",
     )
 
     status_refresh = extract_between(
@@ -21418,7 +21823,7 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "shared macOS sole receiver construction predicate",
         ),
         (
-            'ipc_production.count("receiver.receive_and_admit(deadline)") == 1',
+            'ipc_production.count("receiver.receive_and_admit(deadline)") == 2',
             "shared macOS sole receiver admission predicate",
         ),
     ):
@@ -21469,7 +21874,7 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "Apple macOS sole receiver construction predicate",
         ),
         (
-            'ipc_production.count("receiver.receive_and_admit(deadline)") == 1',
+            'ipc_production.count("receiver.receive_and_admit(deadline)") == 2',
             "Apple macOS sole receiver admission predicate",
         ),
     ):
@@ -59322,6 +59727,7 @@ def validate_sources(sources):
     validate_linux_credential_replica_admission_contract(sources)
     validate_linux_runtime_prs_writer_contract(sources)
     validate_linux_runtime_prs_receiver_contract(sources)
+    validate_linux_credential_runtime_prs_receiver_contract(sources)
     validate_windows_sensitive_password_admission_contract(sources)
     validate_macos_service_owned_password_requester_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
@@ -69847,7 +70253,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'and ipc_production.count("replica.install_for_runtime()") == 2',
+            'and ipc_production.count("replica.install_for_runtime()") == 3',
             'and ipc_production.count("replica.install_for_runtime()") >= 1',
             "shared exact dedicated worker install count",
         ),
@@ -69895,7 +70301,7 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            'and ipc_production.count("replica.install_for_runtime()") == 2',
+            'and ipc_production.count("replica.install_for_runtime()") == 3',
             'and ipc_production.count("replica.install_for_runtime()") >= 1',
             "Apple exact dedicated worker install count",
         ),
@@ -70000,6 +70406,204 @@ def run_source_mutations(sources):
             "    validate_linux_runtime_prs_receiver_contract(sources)\n",
             "    validate_linux_runtime_prs_receiver_contract_disabled(sources)\n",
             "runtime PRS receiver independent validator dispatch",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    stream: ConnClient,\n    parent: LinuxProcessIdentity,\n}",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    parent_alive: bool,\n}",
+            "owned credential stream and retained root-parent generation",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaReceiver {",
+            "cloneable Linux initial credential receiver",
+        ),
+        (
+            "ipc_source",
+            "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,\n    replica: ServiceOwnedRuntimePrsReplica,\n}",
+            "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    receiver_authorized: bool,\n    replica: SensitivePassword,\n}",
+            "receiver-bound typed runtime PRS admission",
+        ),
+        (
+            "ipc_source",
+            "        if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\");",
+            "        if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\");",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "            bail!(\"Linux service credential snapshots require the exact service-owned server role\");\n        }\n        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);",
+            "            bail!(\"Linux service credential snapshots require the exact service-owned server role\");\n        }\n        let path = Config::ipc_path_for_uid(0, password::USER_PASSWORD_IPC_POSTFIX);",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "let parent = authenticate_linux_service_owned_password_parent(\n            &stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "let _parent = authenticate_linux_service_owned_password_parent(\n            &stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "    async fn receive_and_admit(\n        mut self,\n        deadline: tokio::time::Instant,\n    ) -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission>",
+            "    async fn receive_and_admit(\n        &mut self,\n        deadline: tokio::time::Instant,\n    ) -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission>",
+            "borrowed Linux initial credential receiver admission",
+        ),
+        (
+            "ipc_source",
+            "        if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential receiver lost the exact service-owned server role\");",
+            "        if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential receiver lost the exact service-owned server role\");",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "let value =\n            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+            "let value =\n            password::receive_credential_replica_unix(&mut self.stream, hbb_common::uuid::Uuid::new_v4(), deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "let value =\n            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+            "let value = SensitivePassword::new(String::new());\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "let refreshed = authenticate_linux_service_owned_password_parent(\n            &self.stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "let refreshed = authenticate_linux_service_owned_password_parent(\n            &self.stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        password::remaining_millis(deadline)?;\n        if refreshed != self.parent {",
+            "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        drop(deadline);\n        if refreshed != self.parent {",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "        if refreshed != self.parent {\n            bail!(\"Linux service credential parent identity changed before runtime PRS admission\");",
+            "        if false && refreshed != self.parent {\n            bail!(\"Linux service credential parent identity changed before runtime PRS admission\");",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "        Ok(LinuxServiceOwnedCredentialRuntimePrsAdmission {\n            _receiver: self,",
+            "        Ok(LinuxServiceOwnedCredentialRuntimePrsAdmissionDisabled {\n            _receiver: self,",
+            "fixed-endpoint same-stream request, response, and final parent-generation admission",
+        ),
+        (
+            "ipc_source",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(self) -> ResultType<bool> {\n        self.replica.install_for_runtime()",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(&self) -> ResultType<bool> {\n        self.replica.install_for_runtime()",
+            "consuming typed runtime-only PRS install",
+        ),
+        (
+            "ipc_source",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(self) -> ResultType<bool> {\n        self.replica.install_for_runtime()",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(self) -> ResultType<bool> {\n        Config::set_permanent_password_prs_for_runtime(self.replica.as_sensitive_password().as_str())",
+            "exact Linux-worker and Linux/macOS credential-admission runtime PRS installation calls",
+        ),
+        (
+            "ipc_source",
+            "    let receiver = LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;\n    let admission = receiver.receive_and_admit(deadline).await?;\n    admission.install()",
+            "    Config::set_permanent_password_prs_for_runtime(\"\")\n        .map(|_| false)",
+            "fixture-separated typed initial credential client call graph",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "def verify_linux_credential_runtime_prs_receiver_authority(\n",
+            "def verify_linux_credential_runtime_prs_receiver_authority_disabled(\n",
+            "focused initial credential receiver validator",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "    verify_linux_credential_runtime_prs_receiver_authority(rust)\n",
+            "    verify_linux_credential_runtime_prs_receiver_authority_disabled(rust)\n",
+            "focused initial credential receiver validator dispatch",
+        ),
+        (
+            "verify",
+            'need(\n    "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install"',
+            'need(\n    "linux-credential-runtime-prs-receiver-authority-not-checked"',
+            "shared Linux initial credential receiver analyzer",
+        ),
+        (
+            "verify",
+            'and "if false" not in linux_credential_runtime_prs_receiver',
+            'and "if false" in linux_credential_runtime_prs_receiver',
+            "shared authority bypass rejection",
+        ),
+        (
+            "apple",
+            '        need("b2", "linux-credential-runtime-prs-receiver-authority-not-typed-through-final-install"',
+            '        need("b2", "linux-credential-runtime-prs-receiver-authority-not-checked"',
+            "Apple Linux initial credential receiver analyzer",
+        ),
+        (
+            "apple",
+            'scoped_mutation("linux-credential-runtime-prs-final-deadline"',
+            'scoped_mutation("linux-credential-runtime-prs-final-deadline-disabled"',
+            "Apple final deadline mutation",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11ik</span>\' requirements.html',
+            "true # initial credential receiver requirement binding disabled",
+            "shared initial credential receiver requirement binding",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11ik</span>\' "$REPO/requirements.html"',
+            "true # Apple initial credential receiver requirement binding disabled",
+            "Apple initial credential receiver requirement binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ik</span>',
+            '<span class="id">R-S11ik-disabled</span>',
+            "initial credential runtime PRS receiver requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>396</td>",
+            "<tr><td>396-disabled</td>",
+            "initial credential runtime PRS receiver Appendix C row",
+        ),
+        (
+            "requirements",
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>",
+            "cloneable <code>LinuxServiceOwnedCredentialReplicaReceiver</code>",
+            "normative private receiver capability",
+        ),
+        (
+            "requirements",
+            "consume itself across the same-stream request and complete response",
+            "reuse itself across the same-stream request and complete response",
+            "normative consuming receiver transaction",
+        ),
+        (
+            "requirements",
+            "Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>",
+            "Any caller may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>",
+            "normative typed final sink",
+        ),
+        (
+            "hardening",
+            "R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority",
+            "R-S11ik-disabled/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority",
+            "initial credential runtime PRS receiver hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ik and Appendix C #396.",
+            "The same identity no longer binds R-S11ik and Appendix C #396.",
+            "initial credential runtime PRS receiver identity binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_linux_credential_runtime_prs_receiver_contract(sources)\n",
+            "    validate_linux_credential_runtime_prs_receiver_contract_disabled(sources)\n",
+            "initial credential receiver independent validator dispatch",
         ),
         (
             "ipc_auth_source",
@@ -79199,9 +79803,13 @@ def run_source_mutations(sources):
         (
             "ipc_source",
             "    async fn receive_and_admit(\n"
-            "        mut self,",
+            "        mut self,\n"
+            "        deadline: tokio::time::Instant,\n"
+            "    ) -> ResultType<MacosServiceOwnedRuntimePrsAdmission>",
             "    async fn receive_and_admit(\n"
-            "        &mut self,",
+            "        &mut self,\n"
+            "        deadline: tokio::time::Instant,\n"
+            "    ) -> ResultType<MacosServiceOwnedRuntimePrsAdmission>",
             "borrowed macOS credential-replica admission",
         ),
         (
@@ -79216,8 +79824,10 @@ def run_source_mutations(sources):
             "ipc_source",
             "        let value =\n"
             "            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n"
-            "                .await?;",
-            "        let value = SensitivePassword::new(String::new());",
+            "                .await?;\n"
+            "        let refreshed = ipc_auth::macos_service_server_authorization_snapshot(",
+            "        let value = SensitivePassword::new(String::new());\n"
+            "        let refreshed = ipc_auth::macos_service_server_authorization_snapshot(",
             "macOS child-side runtime PRS receiver final-action authority",
         ),
         (
@@ -79254,19 +79864,25 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
+            "impl MacosServiceOwnedRuntimePrsAdmission {\n"
             "    fn install(self) -> ResultType<bool> {\n"
             "        self.replica.install_for_runtime()",
+            "impl MacosServiceOwnedRuntimePrsAdmission {\n"
             "    fn install(&self) -> ResultType<bool> {\n"
             "        self.replica.install_for_runtime()",
             "consuming macOS runtime-only PRS install",
         ),
         (
             "ipc_source",
+            "impl MacosServiceOwnedRuntimePrsAdmission {\n"
+            "    fn install(self) -> ResultType<bool> {\n"
             "        self.replica.install_for_runtime()",
+            "impl MacosServiceOwnedRuntimePrsAdmission {\n"
+            "    fn install(self) -> ResultType<bool> {\n"
             "        Config::set_permanent_password_prs_for_runtime(\n"
             "            self.replica.as_sensitive_password().as_str(),\n"
             "        )",
-            "exact Linux-worker and macOS-admission runtime PRS installation calls",
+            "exact Linux-worker and Linux/macOS credential-admission runtime PRS installation calls",
         ),
         (
             "ipc_source",
@@ -79282,7 +79898,7 @@ def run_source_mutations(sources):
             "    admission.install()",
             "    Config::set_permanent_password_prs_for_runtime(\"\")\n"
             "        .map(|_| false)",
-            "typed macOS credential-replica client call graph",
+            "one Linux and one macOS typed credential admission call",
         ),
         (
             "ipc_source",
@@ -79488,7 +80104,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'and ipc_production.count("receiver.receive_and_admit(deadline)") == 1',
+            'and ipc_production.count("receiver.receive_and_admit(deadline)") == 2',
             'and ipc_production.count("receiver.receive_and_admit(deadline)") >= 1',
             "shared macOS sole receiver admission predicate",
         ),

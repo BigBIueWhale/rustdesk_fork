@@ -1592,9 +1592,13 @@ MUTATIONS = (
     Mutation(
         "ipc",
         "    async fn receive_and_admit(\n"
-        "        mut self,",
+        "        mut self,\n"
+        "        deadline: tokio::time::Instant,\n"
+        "    ) -> ResultType<MacosServiceOwnedRuntimePrsAdmission>",
         "    async fn receive_and_admit(\n"
-        "        &mut self,",
+        "        &mut self,\n"
+        "        deadline: tokio::time::Instant,\n"
+        "    ) -> ResultType<MacosServiceOwnedRuntimePrsAdmission>",
         "consuming credential-replica receiver",
     ),
     Mutation(
@@ -1609,8 +1613,10 @@ MUTATIONS = (
         "ipc",
         "        let value =\n"
         "            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n"
-        "                .await?;",
-        "        let value = SensitivePassword::new(String::new());",
+        "                .await?;\n"
+        "        let refreshed = ipc_auth::macos_service_server_authorization_snapshot(",
+        "        let value = SensitivePassword::new(String::new());\n"
+        "        let refreshed = ipc_auth::macos_service_server_authorization_snapshot(",
         "operation-bound raw replica receive",
     ),
     Mutation(
@@ -1647,15 +1653,21 @@ MUTATIONS = (
     ),
     Mutation(
         "ipc",
+        "impl MacosServiceOwnedRuntimePrsAdmission {\n"
         "    fn install(self) -> ResultType<bool> {\n"
         "        self.replica.install_for_runtime()",
+        "impl MacosServiceOwnedRuntimePrsAdmission {\n"
         "    fn install(&self) -> ResultType<bool> {\n"
         "        self.replica.install_for_runtime()",
         "consuming admitted runtime-PRS install",
     ),
     Mutation(
         "ipc",
+        "impl MacosServiceOwnedRuntimePrsAdmission {\n"
+        "    fn install(self) -> ResultType<bool> {\n"
         "        self.replica.install_for_runtime()",
+        "impl MacosServiceOwnedRuntimePrsAdmission {\n"
+        "    fn install(self) -> ResultType<bool> {\n"
         "        Config::set_permanent_password_prs_for_runtime(\n"
         "            self.replica.as_sensitive_password().as_str(),\n"
         "        )",

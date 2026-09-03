@@ -854,6 +854,18 @@ struct LinuxServiceOwnedRuntimePrsAdmission {
     _receiver: LinuxServiceOwnedPasswordReplicaReceiver,
 }
 
+#[cfg(target_os = "linux")]
+struct LinuxServiceOwnedCredentialReplicaReceiver {
+    stream: ConnClient,
+    parent: LinuxProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxServiceOwnedCredentialRuntimePrsAdmission {
+    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,
+    replica: ServiceOwnedRuntimePrsReplica,
+}
+
 #[cfg(target_os = "macos")]
 struct MacosServiceOwnedCredentialReplicaReceiver {
     stream: ConnClient,
@@ -919,6 +931,61 @@ impl LinuxServiceOwnedPasswordReplicaReceiver {
             bail!("Linux service-owned password replica parent identity changed before admission");
         }
         Ok(LinuxServiceOwnedRuntimePrsAdmission { _receiver: self })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceOwnedCredentialReplicaReceiver {
+    async fn connect(deadline: tokio::time::Instant) -> ResultType<Self> {
+        if !crate::common::is_service_owned_server_process() {
+            bail!("Linux service credential snapshots require the exact service-owned server role");
+        }
+        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);
+        let stream = timeout(
+            password::remaining_millis(deadline)?,
+            Endpoint::connect(path),
+        )
+        .await??;
+        let parent = authenticate_linux_service_owned_password_parent(
+            &stream,
+            password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+        )?;
+        password::remaining_millis(deadline)?;
+        Ok(Self { stream, parent })
+    }
+
+    async fn receive_and_admit(
+        mut self,
+        deadline: tokio::time::Instant,
+    ) -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission> {
+        if !crate::common::is_service_owned_server_process() {
+            bail!("Linux service credential receiver lost the exact service-owned server role");
+        }
+        let operation_id = hbb_common::uuid::Uuid::new_v4();
+        password::send_credential_snapshot_request_unix(&mut self.stream, operation_id, deadline)
+            .await?;
+        let value =
+            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)
+                .await?;
+        let refreshed = authenticate_linux_service_owned_password_parent(
+            &self.stream,
+            password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+        )?;
+        password::remaining_millis(deadline)?;
+        if refreshed != self.parent {
+            bail!("Linux service credential parent identity changed before runtime PRS admission");
+        }
+        Ok(LinuxServiceOwnedCredentialRuntimePrsAdmission {
+            _receiver: self,
+            replica: ServiceOwnedRuntimePrsReplica { value },
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceOwnedCredentialRuntimePrsAdmission {
+    fn install(self) -> ResultType<bool> {
+        self.replica.install_for_runtime()
     }
 }
 
@@ -8022,22 +8089,9 @@ pub async fn refresh_linux_service_owned_permanent_password_snapshot(
         return Ok(false);
     }
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
-    let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);
-    let mut stream = timeout(
-        password::remaining_millis(deadline)?,
-        Endpoint::connect(path),
-    )
-    .await??;
-    authenticate_linux_service_owned_password_parent(
-        &stream,
-        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
-    )?;
-    let operation_id = hbb_common::uuid::Uuid::new_v4();
-    password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline).await?;
-    let replica =
-        password::receive_credential_replica_unix(&mut stream, operation_id, deadline).await?;
-    Config::set_permanent_password_prs_for_runtime(replica.as_str())?;
-    Ok(!replica.as_str().is_empty())
+    let receiver = LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;
+    let admission = receiver.receive_and_admit(deadline).await?;
+    admission.install()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

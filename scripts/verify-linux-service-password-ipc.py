@@ -3098,13 +3098,19 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("is_service_owned_server_process", "(", ")"), "exact service-owned role"),
             (("service_child_is_unsupervised_recovery_fixture", "(", ")"), "debug fixture branch"),
             (("set_permanent_password_prs_for_runtime", "(", '""', ")"), "fixture explicit empty override"),
-            (("Config", "::", "ipc_path_for_uid", "(", "0", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", ")"), "root credential socket path"),
-            (("Endpoint", "::", "connect", "(", "path", ")"), "raw credential connection"),
-            (("authenticate_linux_service_owned_password_parent", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "kernel root peer and exact direct parent proof"),
-            (("send_credential_snapshot_request_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "deadline"), "operation-bound snapshot request"),
-            (("receive_credential_replica_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "deadline"), "operation-bound snapshot response"),
-            (("set_permanent_password_prs_for_runtime", "(", "replica", ".", "as_str", "(", ")", ")"), "nonpersistent runtime install"),
+            (("LinuxServiceOwnedCredentialReplicaReceiver", "::", "connect", "(", "deadline", ")", ".", "await"), "typed credential receiver connection"),
+            (("receiver", ".", "receive_and_admit", "(", "deadline", ")", ".", "await"), "consuming credential response admission"),
+            (("admission", ".", "install", "(", ")"), "capability-bound runtime install"),
         )
+    )
+    refresh.forbid(("Endpoint", "::", "connect"), "raw credential connection")
+    refresh.forbid(
+        ("receive_credential_replica_unix",),
+        "raw credential response outside the typed receiver",
+    )
+    refresh.forbid(
+        ("set_permanent_password_prs_for_runtime", "(", "replica"),
+        "direct received-secret runtime sink",
     )
 
     server = rust["src/server.rs"]
@@ -3510,6 +3516,158 @@ def verify_linux_runtime_prs_receiver_authority(rust: Mapping[str, RustSource]) 
             )
 
 
+def verify_linux_credential_runtime_prs_receiver_authority(
+    rust: Mapping[str, RustSource],
+) -> None:
+    ipc = rust["src/ipc.rs"]
+    receiver = ipc.item("struct", "LinuxServiceOwnedCredentialReplicaReceiver")
+    receiver.require_order(
+        (
+            (("stream", ":", "ConnClient"), "owned fixed credential stream"),
+            (("parent", ":", "LinuxProcessIdentity"), "retained root-parent generation"),
+        ),
+        unique=True,
+    )
+    admission = ipc.item(
+        "struct", "LinuxServiceOwnedCredentialRuntimePrsAdmission"
+    )
+    admission.require_order(
+        (
+            (("_receiver", ":", "LinuxServiceOwnedCredentialReplicaReceiver"), "consumed receiver authority"),
+            (("replica", ":", "ServiceOwnedRuntimePrsReplica"), "typed received PRS"),
+        ),
+        unique=True,
+    )
+    for type_name in (
+        "LinuxServiceOwnedCredentialReplicaReceiver",
+        "LinuxServiceOwnedCredentialRuntimePrsAdmission",
+    ):
+        ipc.all().forbid(
+            ("derive", "(", "Clone", ")", "]", "struct", type_name),
+            f"cloneable {type_name}",
+        )
+        ipc.all().forbid(
+            ("derive", "(", "Copy", ")", "]", "struct", type_name),
+            f"copyable {type_name}",
+        )
+        ipc.all().forbid(("pub", "struct", type_name), f"public {type_name}")
+        ipc.all().forbid(
+            ("pub", "(", "crate", ")", "struct", type_name),
+            f"crate-visible {type_name}",
+        )
+
+    connect = ipc.method(
+        ("impl", "LinuxServiceOwnedCredentialReplicaReceiver"),
+        "connect",
+        "Linux service credential receiver",
+    )
+    ipc.all().require(
+        (
+            "impl", "LinuxServiceOwnedCredentialReplicaReceiver", "{", "async", "fn", "connect", "(",
+            "deadline", ":", "tokio", "::", "time", "::", "Instant", ")",
+            "->", "ResultType", "<", "Self", ">",
+        ),
+        "private typed receiver connection signature",
+        unique=True,
+    )
+    connect.require_order(
+        (
+            (("is_service_owned_server_process", "(", ")"), "exact service-owned child role"),
+            (("Config", "::", "ipc_path_for_uid", "(", "0", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", ")"), "fixed UID-0 credential endpoint"),
+            (("password", "::", "remaining_millis", "(", "deadline", ")"), "pre-connect absolute deadline"),
+            (("Endpoint", "::", "connect", "(", "path", ")"), "owned credential connection"),
+            (("let", "parent", "=", "authenticate_linux_service_owned_password_parent", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "retained initial root-parent generation proof"),
+            (("password", "::", "remaining_millis", "(", "deadline", ")"), "post-proof absolute deadline"),
+            (("Ok", "(", "Self", "{", "stream", ",", "parent", "}", ")"), "typed receiver construction"),
+        )
+    )
+    connect.forbid(("postfix", ":", "&", "str"), "caller-selected endpoint")
+    connect.forbid(
+        ("USER_PASSWORD_IPC_POSTFIX",),
+        "ordinary password endpoint for initial credential snapshot",
+    )
+
+    receive = ipc.method(
+        ("impl", "LinuxServiceOwnedCredentialReplicaReceiver"),
+        "receive_and_admit",
+        "Linux service credential receiver",
+    )
+    ipc.all().require(
+        (
+            "async", "fn", "receive_and_admit", "(", "mut", "self", ",",
+            "deadline", ":", "tokio", "::", "time", "::", "Instant", OPTIONAL_COMMA, ")",
+            "->", "ResultType", "<", "LinuxServiceOwnedCredentialRuntimePrsAdmission", ">",
+        ),
+        "consuming credential-response admission signature",
+        unique=True,
+    )
+    receive.require_order(
+        (
+            (("is_service_owned_server_process", "(", ")"), "fresh exact child role"),
+            (("Uuid", "::", "new_v4", "(", ")"), "single snapshot operation UUID"),
+            (("send_credential_snapshot_request_unix", "(", "&", "mut", "self", ".", "stream", ",", "operation_id", ",", "deadline"), "same-stream UUID-bound request"),
+            (("receive_credential_replica_unix", "(", "&", "mut", "self", ".", "stream", ",", "operation_id", ",", "deadline"), "same-stream UUID-bound response"),
+            (("let", "refreshed", "=", "authenticate_linux_service_owned_password_parent", "(", "&", "self", ".", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "retained final same-stream parent-generation proof"),
+            (("password", "::", "remaining_millis", "(", "deadline", ")"), "post-proof absolute deadline"),
+            (("if", "refreshed", "!=", "self", ".", "parent"), "exact accepted-parent generation continuity"),
+            (("LinuxServiceOwnedCredentialRuntimePrsAdmission", "{", "_receiver", ":", "self", ",", "replica", ":", "ServiceOwnedRuntimePrsReplica", "{", "value", "}"), "typed response admission construction"),
+        )
+    )
+    receive.forbid(("postfix", ":", "&", "str"), "caller-selected endpoint")
+    receive.forbid(
+        ("SensitivePassword", "::", "new"),
+        "generic plaintext-to-PRS type forgery",
+    )
+    admission_constructions = ipc.all().positions(
+        ("LinuxServiceOwnedCredentialRuntimePrsAdmission", "{")
+    )
+    admitted_at = receive.require(
+        ("LinuxServiceOwnedCredentialRuntimePrsAdmission", "{"),
+        "typed credential admission construction",
+        unique=True,
+    )
+    if len(admission_constructions) != 3 or admitted_at not in admission_constructions:
+        raise VerificationError(
+            "src/ipc.rs: Linux credential runtime PRS admission must be constructed only by its consuming receiver"
+        )
+
+    install = ipc.method(
+        ("impl", "LinuxServiceOwnedCredentialRuntimePrsAdmission"),
+        "install",
+        "Linux credential runtime PRS admission",
+    )
+    ipc.all().require(
+        (
+            "impl", "LinuxServiceOwnedCredentialRuntimePrsAdmission", "{",
+            "fn", "install", "(", "self", ")", "->", "ResultType", "<", "bool", ">",
+        ),
+        "consuming capability-bound install",
+        unique=True,
+    )
+    install.require(
+        ("self", ".", "replica", ".", "install_for_runtime", "(", ")"),
+        "sole typed runtime-PRS sink",
+        unique=True,
+    )
+    install.forbid(
+        ("Config", "::", "set_permanent_password_prs_for_runtime"),
+        "direct runtime-state sink",
+    )
+
+    refresh = ipc.function("refresh_linux_service_owned_permanent_password_snapshot")
+    for needle, label, expected_calls in (
+        (("LinuxServiceOwnedCredentialReplicaReceiver", "::", "connect", "(", "deadline", ")"), "typed receiver connection", 1),
+        (("receiver", ".", "receive_and_admit", "(", "deadline", ")"), "consuming response admission", 2),
+        (("admission", ".", "install", "(", ")"), "capability-bound install", 2),
+    ):
+        calls = ipc.all().positions(needle)
+        at = refresh.require(needle, label, unique=True)
+        if len(calls) != expected_calls or at not in calls:
+            raise VerificationError(
+                f"src/ipc.rs: Linux credential {label} must have exactly one typed owner"
+            )
+
+
 def verify_linux_credential_replica_bootstrap(rust: Mapping[str, RustSource]) -> None:
     config = rust["libs/hbb_common/src/config.rs"]
     runtime_prs = config.method(
@@ -3804,6 +3962,7 @@ def validate_sources(sources: Mapping[str, str]) -> None:
     verify_windows_password_admission_authority(rust)
     verify_flow_finality_and_shutdown(rust)
     verify_linux_runtime_prs_receiver_authority(rust)
+    verify_linux_credential_runtime_prs_receiver_authority(rust)
     verify_linux_credential_replica_bootstrap(rust)
     verify_callers(rust)
 
@@ -4008,6 +4167,138 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc.rs",
             "fn install_for_runtime(self) -> ResultType<bool>",
             "fn install_for_runtime(&self) -> ResultType<bool>",
+        ),
+        Mutation(
+            "Linux credential receiver drops its owned stream and parent generation",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    stream: ConnClient,\n    parent: LinuxProcessIdentity,\n}",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {\n    parent_alive: bool,\n}",
+        ),
+        Mutation(
+            "Linux credential receiver becomes cloneable",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialReplicaReceiver {",
+        ),
+        Mutation(
+            "Linux credential receiver becomes public",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedCredentialReplicaReceiver {",
+            "pub struct LinuxServiceOwnedCredentialReplicaReceiver {",
+        ),
+        Mutation(
+            "Linux credential admission drops its consumed receiver authority",
+            "src/ipc.rs",
+            "    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,",
+            "    receiver_authorized: bool,",
+        ),
+        Mutation(
+            "Linux credential admission accepts a generic password",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,\n    replica: ServiceOwnedRuntimePrsReplica,\n}",
+            "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    _receiver: LinuxServiceOwnedCredentialReplicaReceiver,\n    replica: SensitivePassword,\n}",
+        ),
+        Mutation(
+            "Linux credential admission becomes cloneable",
+            "src/ipc.rs",
+            "struct LinuxServiceOwnedCredentialRuntimePrsAdmission {",
+            "#[derive(Clone)]\nstruct LinuxServiceOwnedCredentialRuntimePrsAdmission {",
+        ),
+        Mutation(
+            "Linux credential receiver admits a non-service-owned child role",
+            "src/ipc.rs",
+            "if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\");\n        }\n        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);",
+            "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\");\n        }\n        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);",
+        ),
+        Mutation(
+            "Linux credential receiver selects the ordinary password endpoint",
+            "src/ipc.rs",
+            "impl LinuxServiceOwnedCredentialReplicaReceiver {\n    async fn connect(deadline: tokio::time::Instant) -> ResultType<Self> {\n        if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\");\n        }\n        let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);",
+            "impl LinuxServiceOwnedCredentialReplicaReceiver {\n    async fn connect(deadline: tokio::time::Instant) -> ResultType<Self> {\n        if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential snapshots require the exact service-owned server role\");\n        }\n        let path = Config::ipc_path_for_uid(0, password::USER_PASSWORD_IPC_POSTFIX);",
+        ),
+        Mutation(
+            "Linux credential receiver discards its initial parent generation",
+            "src/ipc.rs",
+            "let parent = authenticate_linux_service_owned_password_parent(\n            &stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "let _parent = authenticate_linux_service_owned_password_parent(\n            &stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+        ),
+        Mutation(
+            "Linux credential receiver drops its post-connect proof deadline",
+            "src/ipc.rs",
+            "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        password::remaining_millis(deadline)?;\n        Ok(Self { stream, parent })",
+            "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        drop(deadline);\n        Ok(Self { stream, parent })",
+        ),
+        Mutation(
+            "Linux credential receiver borrows instead of consuming response authority",
+            "src/ipc.rs",
+            "    async fn receive_and_admit(\n        mut self,\n        deadline: tokio::time::Instant,\n    ) -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission>",
+            "    async fn receive_and_admit(\n        &mut self,\n        deadline: tokio::time::Instant,\n    ) -> ResultType<LinuxServiceOwnedCredentialRuntimePrsAdmission>",
+        ),
+        Mutation(
+            "Linux credential receiver loses its final exact child-role replay",
+            "src/ipc.rs",
+            "if !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential receiver lost the exact service-owned server role\");",
+            "if false && !crate::common::is_service_owned_server_process() {\n            bail!(\"Linux service credential receiver lost the exact service-owned server role\");",
+        ),
+        Mutation(
+            "Linux credential response uses a replacement operation UUID",
+            "src/ipc.rs",
+            "let value =\n            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+            "let value =\n            password::receive_credential_replica_unix(&mut self.stream, hbb_common::uuid::Uuid::new_v4(), deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+        ),
+        Mutation(
+            "Linux credential receiver replaces the typed replica response decoder",
+            "src/ipc.rs",
+            "let value =\n            password::receive_credential_replica_unix(&mut self.stream, operation_id, deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+            "let value =\n            password::receive_request_unix(&mut self.stream, operation_id, deadline)\n                .await?;\n        let refreshed = authenticate_linux_service_owned_password_parent(",
+        ),
+        Mutation(
+            "Linux credential receiver reauthenticates the wrong endpoint",
+            "src/ipc.rs",
+            "let refreshed = authenticate_linux_service_owned_password_parent(\n            &self.stream,\n            password::SERVICE_CREDENTIAL_IPC_POSTFIX,",
+            "let refreshed = authenticate_linux_service_owned_password_parent(\n            &self.stream,\n            password::USER_PASSWORD_IPC_POSTFIX,",
+        ),
+        Mutation(
+            "Linux credential receiver drops its final proof deadline",
+            "src/ipc.rs",
+            "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        password::remaining_millis(deadline)?;\n        if refreshed != self.parent {",
+            "            password::SERVICE_CREDENTIAL_IPC_POSTFIX,\n        )?;\n        drop(deadline);\n        if refreshed != self.parent {",
+        ),
+        Mutation(
+            "Linux credential receiver bypasses parent-generation continuity",
+            "src/ipc.rs",
+            "if refreshed != self.parent {\n            bail!(\"Linux service credential parent identity changed before runtime PRS admission\");",
+            "if false && refreshed != self.parent {\n            bail!(\"Linux service credential parent identity changed before runtime PRS admission\");",
+        ),
+        Mutation(
+            "Linux credential receiver stops minting its typed admission",
+            "src/ipc.rs",
+            "Ok(LinuxServiceOwnedCredentialRuntimePrsAdmission {\n            _receiver: self,",
+            "Ok(LinuxServiceOwnedCredentialRuntimePrsAdmissionDisabled {\n            _receiver: self,",
+        ),
+        Mutation(
+            "Linux credential admission install borrows its authority",
+            "src/ipc.rs",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(self) -> ResultType<bool>",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(&self) -> ResultType<bool>",
+        ),
+        Mutation(
+            "Linux credential admission bypasses the typed runtime PRS sink",
+            "src/ipc.rs",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(self) -> ResultType<bool> {\n        self.replica.install_for_runtime()",
+            "impl LinuxServiceOwnedCredentialRuntimePrsAdmission {\n    fn install(self) -> ResultType<bool> {\n        Config::set_permanent_password_prs_for_runtime(self.replica.as_sensitive_password().as_str())",
+        ),
+        Mutation(
+            "Linux credential snapshot wrapper bypasses the typed receiver",
+            "src/ipc.rs",
+            "let receiver = LinuxServiceOwnedCredentialReplicaReceiver::connect(deadline).await?;",
+            "let receiver = connect_service(ms_timeout).await?;",
+        ),
+        Mutation(
+            "Linux credential snapshot wrapper bypasses capability-bound install",
+            "src/ipc.rs",
+            "    let admission = receiver.receive_and_admit(deadline).await?;\n    admission.install()\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\npub fn is_permanent_password_set()",
+            "    let replica = receiver.receive_and_admit(deadline).await?;\n    Config::set_permanent_password_prs_for_runtime(replica.as_str())\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\npub fn is_permanent_password_set()",
         ),
         Mutation(
             "Linux runtime PRS receiver drops the retained parent generation",

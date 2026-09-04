@@ -1766,19 +1766,91 @@ def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
             (("service_scoped_ipc_authorization_snapshot", "(", "stream", ",", "crate", "::", "POSTFIX_SERVICE", ")"), "post-request socket identity snapshot"),
             (("run_bounded_macos_security_proof", "(", "deadline", ",", '"macos-password-right-proof"'), "bounded action proof"),
             (("authenticate_macos_service_owned_password_right_requester", "(", "authorization", ")"), "exact readiness requester admission"),
+            (("grant_macos_service_owned_password_right_admission", "(", "requester", ",", "post_request_authorization"), "consuming exact-requester admission"),
+            (("admission", ".", "ensure_ready", "(", ")"), "capability-owned authorization policy write"),
+        )
+    )
+    readiness.forbid(
+        ("macos_service_owned_password_right_requester_matches_post_request_authorization", "("),
+        "direct post-request identity proof outside admission grant",
+    )
+    readiness.forbid(
+        ("ensure_service_owned_unattended_password_authorization_right", "("),
+        "direct policy write outside admission capability",
+    )
+
+    right_admission_type = ipc.item("struct", "MacosServiceOwnedPasswordRightAdmission")
+    right_admission_type.require(
+        ("requester", ":", "MacosServiceOwnedPasswordRequester"),
+        "exact password-right requester ownership",
+        unique=True,
+    )
+    ipc.all().forbid(
+        ("derive", "(", "Clone", ")", "]", "struct", "MacosServiceOwnedPasswordRightAdmission"),
+        "cloneable macOS password-right admission",
+    )
+    ipc.all().forbid(
+        ("derive", "(", "Copy", ")", "]", "struct", "MacosServiceOwnedPasswordRightAdmission"),
+        "copyable macOS password-right admission",
+    )
+
+    right_admission_grant = ipc.function("grant_macos_service_owned_password_right_admission")
+    ipc.all().require(
+        (
+            "fn", "grant_macos_service_owned_password_right_admission", "(",
+            "requester", ":", "MacosServiceOwnedPasswordRequester", ",",
+            "post_request_authorization", ":", "ipc_auth", "::",
+            "ServiceScopedIpcAuthorization", OPTIONAL_COMMA, ")", "->", "Option", "<",
+            "MacosServiceOwnedPasswordRightAdmission", ">",
+        ),
+        "consuming typed macOS password-right admission constructor",
+        unique=True,
+    )
+    right_admission_grant.require_order(
+        (
             (("macos_service_owned_password_right_requester_matches_post_request_authorization", "(", "&", "requester", ",", "post_request_authorization"), "post-request full-identity replay"),
-            (("macos_service_owned_password_requester_is_live", "(", "&", "requester", ")"), "final complete role/generation replay"),
+            (("Some", "(", "MacosServiceOwnedPasswordRightAdmission", "{", "requester", "}", ")"), "action admission mint"),
+        )
+    )
+    right_admission_grant.require(
+        (
+            "if", "!", "macos_service_owned_password_right_requester_matches_post_request_authorization", "(",
+            "&", "requester", ",", "post_request_authorization", OPTIONAL_COMMA, ")",
+        ),
+        "fail-closed post-request password-right identity equality",
+        unique=True,
+    )
+    right_admission_grant.forbid(("bool",), "detached Boolean password-right admission")
+    ipc.all().require(
+        (
+            "Some", "(", "MacosServiceOwnedPasswordRightAdmission", "{", "requester", "}", ")",
+        ),
+        "sole macOS password-right admission construction",
+        unique=True,
+    )
+
+    right_admission_action = ipc.method(
+        ("impl", "MacosServiceOwnedPasswordRightAdmission"),
+        "ensure_ready",
+        "macOS password-right action admission capability",
+    )
+    ipc.all().require(
+        ("fn", "ensure_ready", "(", "self", ")", "->", "bool"),
+        "consuming macOS password-right action",
+        unique=True,
+    )
+    right_admission_action.require_order(
+        (
+            (("macos_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ")"), "final complete role/generation replay"),
             (("ensure_service_owned_unattended_password_authorization_right", "(", ")"), "authorization policy write"),
         )
     )
-    readiness.require(
+    right_admission_action.require(
         (
-            "macos_service_owned_password_right_requester_matches_post_request_authorization", "(",
-            "&", "requester", ",", "post_request_authorization", OPTIONAL_COMMA, ")",
-            "&&", "macos_service_owned_password_requester_is_live", "(", "&", "requester", ")",
+            "macos_service_owned_password_requester_is_live", "(", "&", "self", ".", "requester", ")",
             "&&", "crate", "::", "platform", "::", "ensure_service_owned_unattended_password_authorization_right", "(", ")",
         ),
-        "conjunctive post-request identity, final requester replay, and policy write",
+        "final requester replay and policy write conjunction",
         unique=True,
     )
 
@@ -5173,16 +5245,58 @@ def self_test(sources: Mapping[str, str]) -> None:
             "authorization.clone(); /* post-request socket snapshot omitted */",
         ),
         Mutation(
-            "macOS password-right readiness disjoins final requester replay",
+            "macOS password-right admission becomes cloneable",
             "src/ipc.rs",
-            ") && macos_service_owned_password_requester_is_live(&requester)\n                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
-            ") || macos_service_owned_password_requester_is_live(&requester)\n                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            "struct MacosServiceOwnedPasswordRightAdmission {",
+            "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordRightAdmission {",
         ),
         Mutation(
-            "macOS password-right readiness disjoins the policy write",
+            "macOS password-right admission drops exact requester ownership",
             "src/ipc.rs",
-            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
-            "|| crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
+            "struct MacosServiceOwnedPasswordRightAdmission {\n    requester: MacosServiceOwnedPasswordRequester,\n}",
+            "struct MacosServiceOwnedPasswordRightAdmission {\n    requester_authorized: bool,\n}",
+        ),
+        Mutation(
+            "macOS password-right admission grant borrows reusable requester authority",
+            "src/ipc.rs",
+            "fn grant_macos_service_owned_password_right_admission(\n    requester: MacosServiceOwnedPasswordRequester,",
+            "fn grant_macos_service_owned_password_right_admission(\n    requester: &MacosServiceOwnedPasswordRequester,",
+        ),
+        Mutation(
+            "macOS password-right admission bypasses post-request identity equality",
+            "src/ipc.rs",
+            "if !macos_service_owned_password_right_requester_matches_post_request_authorization(\n        &requester,",
+            "if false && !macos_service_owned_password_right_requester_matches_post_request_authorization(\n        &requester,",
+        ),
+        Mutation(
+            "macOS password-right admission action is reusable",
+            "src/ipc.rs",
+            "fn ensure_ready(self) -> bool {",
+            "fn ensure_ready(&self) -> bool {",
+        ),
+        Mutation(
+            "macOS password-right admission action bypasses final requester replay",
+            "src/ipc.rs",
+            "macos_service_owned_password_requester_is_live(&self.requester)\n            && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+            "true\n            && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+        ),
+        Mutation(
+            "macOS password-right admission action disjoins the policy write",
+            "src/ipc.rs",
+            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()\n    }\n}",
+            "|| crate::platform::ensure_service_owned_unattended_password_authorization_right()\n    }\n}",
+        ),
+        Mutation(
+            "macOS password-right readiness bypasses typed admission",
+            "src/ipc.rs",
+            "let Some(admission) = grant_macos_service_owned_password_right_admission(",
+            "let Some(admission) = grant_macos_service_owned_password_right_admission_disabled(",
+        ),
+        Mutation(
+            "macOS password-right readiness bypasses capability-owned final action",
+            "src/ipc.rs",
+            "Ok(admission.ensure_ready())",
+            "Ok(crate::platform::ensure_service_owned_unattended_password_authorization_right())",
         ),
         Mutation(
             "macOS password-right handler drops retained requester authority",

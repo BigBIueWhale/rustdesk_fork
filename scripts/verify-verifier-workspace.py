@@ -15443,22 +15443,98 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE)",
             'run_bounded_macos_security_proof(deadline, "macos-password-right-proof"',
             "authenticate_macos_service_owned_password_right_requester(authorization)",
-            "macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
-            "                &requester,\n"
-            "                post_request_authorization,",
-            ") && macos_service_owned_password_requester_is_live(&requester)",
-            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+            "grant_macos_service_owned_password_right_admission(\n"
+            "            requester,\n"
+            "            post_request_authorization,",
+            "Ok(admission.ensure_ready())",
         ),
-        "post-request full identity and final exact requester replay before AuthorizationRightSet",
+        "typed post-request admission through capability-owned AuthorizationRightSet",
+    )
+    require_absent(
+        readiness,
+        "macos_service_owned_password_right_requester_matches_post_request_authorization(",
+        "direct post-request identity proof outside password-right admission grant",
+    )
+    require_absent(
+        readiness,
+        "ensure_service_owned_unattended_password_authorization_right()",
+        "direct policy write outside password-right admission capability",
+    )
+
+    require_text(
+        ipc,
+        "struct MacosServiceOwnedPasswordRightAdmission {\n"
+        "    requester: MacosServiceOwnedPasswordRequester,\n"
+        "}",
+        "exact-requester macOS password-right admission type",
+    )
+    require_absent(
+        ipc,
+        "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordRightAdmission",
+        "cloneable macOS password-right admission",
+    )
+    require_absent(
+        ipc,
+        "#[derive(Copy)]\nstruct MacosServiceOwnedPasswordRightAdmission",
+        "copyable macOS password-right admission",
+    )
+    require_exact_count(
+        ipc,
+        "Some(MacosServiceOwnedPasswordRightAdmission { requester })",
+        1,
+        "sole macOS password-right admission construction",
+    )
+
+    right_admission_grant = extract_braced_item(
+        ipc,
+        "fn grant_macos_service_owned_password_right_admission(",
+        "macOS password-right admission grant",
+    )
+    require_order(
+        right_admission_grant,
+        (
+            "requester: MacosServiceOwnedPasswordRequester",
+            "post_request_authorization: ipc_auth::ServiceScopedIpcAuthorization",
+            "macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
+            "        &requester,\n"
+            "        post_request_authorization,",
+            "Some(MacosServiceOwnedPasswordRightAdmission { requester })",
+        ),
+        "consumed requester and post-request identity proof before typed admission mint",
     )
     require_text(
-        readiness,
-        "macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
-        "                &requester,\n"
-        "                post_request_authorization,\n"
-        "            ) && macos_service_owned_password_requester_is_live(&requester)\n"
-        "                && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
-        "conjunctive post-request identity, live exact requester, and policy write",
+        right_admission_grant,
+        "if !macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
+        "        &requester,\n"
+        "        post_request_authorization,\n"
+        "    )",
+        "fail-closed post-request password-right identity equality",
+    )
+    require_absent(
+        right_admission_grant,
+        "bool",
+        "detached Boolean password-right admission",
+    )
+
+    right_admission_action = extract_braced_item(
+        ipc,
+        "impl MacosServiceOwnedPasswordRightAdmission",
+        "macOS password-right admission action",
+    )
+    require_order(
+        right_admission_action,
+        (
+            "fn ensure_ready(self) -> bool",
+            "macos_service_owned_password_requester_is_live(&self.requester)",
+            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+        ),
+        "consuming final requester replay immediately before policy write",
+    )
+    require_text(
+        right_admission_action,
+        "macos_service_owned_password_requester_is_live(&self.requester)\n"
+        "            && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+        "conjunctive final requester replay and policy write",
     )
 
     sensitive = extract_braced_item(
@@ -15834,8 +15910,8 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "focused macOS password-right post-request audit-token mutation",
         ),
         (
-            '"macOS password-right readiness disjoins the policy write"',
-            "focused macOS password-right policy conjunction mutation",
+            '"macOS password-right admission action disjoins the policy write"',
+            "focused macOS password-right typed-action conjunction mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -16122,8 +16198,8 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "Apple macOS password-right post-request token mutation",
         ),
         (
-            'scoped_mutation("macos-password-right-policy-disjunction"',
-            "Apple macOS password-right policy disjunction mutation",
+            'scoped_mutation("macos-password-right-action-bypass"',
+            "Apple macOS password-right typed-action bypass mutation",
         ),
         (
             'grep -Fq \'<span class="id">R-S11id</span>\' "$REPO/requirements.html"',
@@ -16183,7 +16259,7 @@ def validate_macos_service_owned_password_requester_contract(sources):
         ),
         (
             '"macos-password-right-policy-write-requester-authority-not-exact"',
-            6,
+            13,
             "Apple macOS password-right policy-write authority verdict",
         ),
         (
@@ -16244,6 +16320,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11hz and Appendix C #385.",
             "exact macOS password-right requester identity binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11im</span>',
+            "typed macOS password-right action requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>398</td>",
+            "typed macOS password-right action Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
+            "typed macOS password-right action hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11im and Appendix C #398.",
+            "typed macOS password-right action identity binding",
         ),
         (
             sources["requirements"],
@@ -22379,6 +22475,10 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "<tr><td>397</td>",
             "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
             "The same identity additionally binds R-S11il and Appendix C #397.",
+            '<span class="id">R-S11im</span>',
+            "<tr><td>398</td>",
+            "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
+            "The same identity additionally binds R-S11im and Appendix C #398.",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -22496,6 +22596,41 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "native_watch",
             "The same identity additionally binds R-S11il and Appendix C #397.",
             "macOS typed credential response native-watch binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11im</span>',
+            "macOS typed password-right action requirement-ledger-digest binding",
+        ),
+        (
+            "requirements",
+            "<tr><td>398</td>",
+            "macOS typed password-right action Appendix C binding",
+        ),
+        (
+            "requirements",
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>",
+            "normative typed macOS password-right admission",
+        ),
+        (
+            "requirements",
+            "Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity",
+            "normative capability-owned macOS password-right action",
+        ),
+        (
+            "requirements",
+            "compose only bounded exact-requester authentication, consuming admission grant, and consuming action",
+            "macOS closed password-right proof requirement",
+        ),
+        (
+            "hardening",
+            "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
+            "macOS typed password-right action hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11im and Appendix C #398.",
+            "macOS typed password-right action native-watch binding",
         ),
     ):
         require_text(sources[source_name], text, label)
@@ -71794,27 +71929,81 @@ def run_source_mutations(sources):
             "ipc_source",
             "let requester = authenticate_macos_service_owned_password_right_requester(authorization)?;",
             "let requester = authenticate_macos_service_owned_password_requester(authorization)?;",
-            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+            "typed post-request admission through capability-owned AuthorizationRightSet",
         ),
         (
             "ipc_source",
             "ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE);",
             "authorization.clone(); /* post-request snapshot omitted */",
-            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+            "typed post-request admission through capability-owned AuthorizationRightSet",
         ),
         (
             "ipc_source",
-            ") && macos_service_owned_password_requester_is_live(&requester)\n"
-            "                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
-            ") || macos_service_owned_password_requester_is_live(&requester)\n"
-            "                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
-            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+            "struct MacosServiceOwnedPasswordRightAdmission {",
+            "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordRightAdmission {",
+            "cloneable macOS password-right admission",
         ),
         (
             "ipc_source",
-            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
-            "|| crate::platform::ensure_service_owned_unattended_password_authorization_right(),",
-            "post-request full identity and final exact requester replay before AuthorizationRightSet",
+            "struct MacosServiceOwnedPasswordRightAdmission {\n"
+            "    requester: MacosServiceOwnedPasswordRequester,\n"
+            "}",
+            "struct MacosServiceOwnedPasswordRightAdmission {\n"
+            "    requester_authorized: bool,\n"
+            "}",
+            "exact-requester macOS password-right admission type",
+        ),
+        (
+            "ipc_source",
+            "fn grant_macos_service_owned_password_right_admission(\n"
+            "    requester: MacosServiceOwnedPasswordRequester,",
+            "fn grant_macos_service_owned_password_right_admission(\n"
+            "    requester: &MacosServiceOwnedPasswordRequester,",
+            "consumed requester and post-request identity proof before typed admission mint",
+        ),
+        (
+            "ipc_source",
+            "if !macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
+            "        &requester,",
+            "if false && !macos_service_owned_password_right_requester_matches_post_request_authorization(\n"
+            "        &requester,",
+            "fail-closed post-request password-right identity equality",
+        ),
+        (
+            "ipc_source",
+            "fn ensure_ready(self) -> bool {",
+            "fn ensure_ready(&self) -> bool {",
+            "consuming final requester replay immediately before policy write",
+        ),
+        (
+            "ipc_source",
+            "macos_service_owned_password_requester_is_live(&self.requester)\n"
+            "            && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+            "true\n"
+            "            && crate::platform::ensure_service_owned_unattended_password_authorization_right()",
+            "consuming final requester replay immediately before policy write",
+        ),
+        (
+            "ipc_source",
+            "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()\n"
+            "    }\n"
+            "}",
+            "|| crate::platform::ensure_service_owned_unattended_password_authorization_right()\n"
+            "    }\n"
+            "}",
+            "consuming final requester replay immediately before policy write",
+        ),
+        (
+            "ipc_source",
+            "let Some(admission) = grant_macos_service_owned_password_right_admission(",
+            "let Some(admission) = grant_macos_service_owned_password_right_admission_disabled(",
+            "typed post-request admission through capability-owned AuthorizationRightSet",
+        ),
+        (
+            "ipc_source",
+            "Ok(admission.ensure_ready())",
+            "Ok(crate::platform::ensure_service_owned_unattended_password_authorization_right())",
+            "typed post-request admission through capability-owned AuthorizationRightSet",
         ),
         (
             "ipc_source",
@@ -72245,9 +72434,9 @@ def run_source_mutations(sources):
         ),
         (
             "linux_password_ipc_validator",
-            '"macOS password-right readiness disjoins the policy write"',
-            '"macOS password-right readiness conjoins the policy write"',
-            "focused macOS password-right policy conjunction mutation",
+            '"macOS password-right admission action disjoins the policy write"',
+            '"macOS password-right admission action conjoins the policy write"',
+            "focused macOS password-right typed-action conjunction mutation",
         ),
         (
             "verify",
@@ -72383,9 +72572,9 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            'scoped_mutation("macos-password-right-policy-disjunction"',
-            'scoped_mutation("macos-password-right-policy-disjunction-disabled"',
-            "Apple macOS password-right policy disjunction mutation",
+            'scoped_mutation("macos-password-right-action-bypass"',
+            'scoped_mutation("macos-password-right-action-bypass-disabled"',
+            "Apple macOS password-right typed-action bypass mutation",
         ),
         (
             "requirements",
@@ -72842,6 +73031,60 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11il and Appendix C #397.",
             "The same identity no longer binds R-S11il and Appendix C #397.",
             "macOS typed credential response native-watch binding",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11im</span>\' requirements.html',
+            "true # typed macOS password-right action requirement binding disabled",
+            "shared macOS raw credential gate: <span class=\"id\">R-S11im</span>",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11im</span>\' "$REPO/requirements.html"',
+            "true # Apple typed macOS password-right action requirement binding disabled",
+            "Apple macOS raw credential gate: <span class=\"id\">R-S11im</span>",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11im</span>',
+            '<span class="id">R-S11im-disabled</span>',
+            "typed macOS password-right action requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>398</td>",
+            "<tr><td>398-disabled</td>",
+            "typed macOS password-right action Appendix C row",
+        ),
+        (
+            "requirements",
+            "non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>",
+            "cloneable <code>MacosServiceOwnedPasswordRightAdmission</code>",
+            "normative typed macOS password-right admission",
+        ),
+        (
+            "requirements",
+            "Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity",
+            "Any caller may invoke the password-right policy writer",
+            "normative capability-owned macOS password-right action",
+        ),
+        (
+            "requirements",
+            "compose only bounded exact-requester authentication, consuming admission grant, and consuming action",
+            "compose a detached Boolean and direct policy write",
+            "macOS closed password-right proof requirement",
+        ),
+        (
+            "hardening",
+            "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
+            "R-S11im-disabled/R-S11e-276 — typed macOS password-right policy-write authority",
+            "typed macOS password-right action hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11im and Appendix C #398.",
+            "The same identity no longer binds R-S11im and Appendix C #398.",
+            "typed macOS password-right action identity binding",
         ),
         (
             "workspace_verifier",

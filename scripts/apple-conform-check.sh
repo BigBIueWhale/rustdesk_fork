@@ -1195,6 +1195,9 @@ def analyze(sources):
         bounded_proof = item(ipc, "async fn run_bounded_macos_security_proof")
         proof_finish = item(ipc, "impl MacosSecurityProofWorker")
         proof_drop = item(ipc, "impl Drop for MacosSecurityProofWorker")
+        mac_password_right_admission_type = item(ipc, "struct MacosServiceOwnedPasswordRightAdmission")
+        mac_password_right_admission_grant = item(ipc, "fn grant_macos_service_owned_password_right_admission")
+        mac_password_right_admission_action = item(ipc, "impl MacosServiceOwnedPasswordRightAdmission")
         readiness_server = item(ipc, "async fn macos_service_owned_password_authorization_right_is_ready")
         service_transaction = item(ipc, "async fn handle_service_ipc_transaction")
         service_handler = item(ipc, "async fn handle_service_request")
@@ -1903,11 +1906,28 @@ def analyze(sources):
                  "service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE)",
                  'run_bounded_macos_security_proof(deadline, "macos-password-right-proof"',
                  "authenticate_macos_service_owned_password_right_requester(authorization)",
+                 "grant_macos_service_owned_password_right_admission(",
+                 "requester", "post_request_authorization",
+                 "Ok(admission.ensure_ready())",
+             ]) and all(token not in readiness_server for token in [
                  "macos_service_owned_password_right_requester_matches_post_request_authorization(",
+                 "ensure_service_owned_unattended_password_authorization_right()",
+             ]) and "requester: MacosServiceOwnedPasswordRequester" in mac_password_right_admission_type
+             and "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordRightAdmission" not in ipc
+             and "#[derive(Copy)]\nstruct MacosServiceOwnedPasswordRightAdmission" not in ipc
+             and ordered(mac_password_right_admission_grant, [
+                 "requester: MacosServiceOwnedPasswordRequester",
+                 "post_request_authorization: ipc_auth::ServiceScopedIpcAuthorization",
+                 "if !macos_service_owned_password_right_requester_matches_post_request_authorization(",
                  "&requester", "post_request_authorization",
-                 "&& macos_service_owned_password_requester_is_live(&requester)",
+                 "Some(MacosServiceOwnedPasswordRightAdmission { requester })",
+             ]) and "bool" not in mac_password_right_admission_grant
+             and ipc.count("Some(MacosServiceOwnedPasswordRightAdmission { requester })") == 1
+             and ordered(mac_password_right_admission_action, [
+                 "fn ensure_ready(self) -> bool",
+                 "macos_service_owned_password_requester_is_live(&self.requester)",
                  "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()",
-             ]) and "macos_service_owned_password_right_requester_matches_post_request_authorization(\n                &requester,\n                post_request_authorization,\n            ) && macos_service_owned_password_requester_is_live(&requester)\n                && crate::platform::ensure_service_owned_unattended_password_authorization_right()" in readiness_server)
+             ]) and "macos_service_owned_password_requester_is_live(&self.requester)\n            && crate::platform::ensure_service_owned_unattended_password_authorization_right()" in mac_password_right_admission_action)
         need("b2", "macos-budgets-not-separated", all(token in ipc for token in [
             "const SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 4;",
             "static SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>>",
@@ -1932,11 +1952,11 @@ def analyze(sources):
             "self.worker.take()", "worker.join().is_err()", "std::process::abort();",
         ]) and all(token in proof_drop for token in ["self.worker.is_some()", "std::process::abort();"]))
         need("b2", "macos-security-proof-not-absolute-deadline", "timeout_at(deadline" in bounded_proof and "timeout_at(deadline" in item(password, "async fn with_deadline"))
-        proof_callers = readiness_server + snapshot_peer + snapshot_client + mac_password_auth + mac_credential_auth + mac_service_auth + mac_sensitive + connect_sensitive + connect_service
+        proof_callers = readiness_server + mac_password_right_admission_grant + mac_password_right_admission_action + snapshot_peer + snapshot_client + mac_password_auth + mac_credential_auth + mac_service_auth + mac_sensitive + connect_sensitive + connect_service
         need("b2", "macos-native-proof-detached-spawn-blocking", "spawn_blocking" not in proof_callers)
         need("b2", "readiness-snapshot-not-password-budgeted", ordered(readiness_server, [
-            "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "ensure_service_owned_unattended_password_authorization_right()",
-        ]) and ordered(snapshot_peer, [
+            "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "grant_macos_service_owned_password_right_admission(", "admission.ensure_ready()",
+        ]) and "ensure_service_owned_unattended_password_authorization_right()" in mac_password_right_admission_action and ordered(snapshot_peer, [
             "try_acquire_macos_service_credential_ipc_authorization_slot()",
             "let proof_deadline = deadline.into_std();",
             "run_bounded_macos_security_proof(deadline",
@@ -2386,8 +2406,15 @@ scoped_mutation("macos-password-right-post-pid", "auth", "fn macos_service_owned
 scoped_mutation("macos-password-right-post-token", "auth", "fn macos_service_owned_password_right_requester_matches_post_request_authorization", "&& post_request_identity.audit_token == requester.identity.audit_token", "&& true", "b2", "macos-password-right-requester-role-or-generation-not-exact")
 scoped_mutation("macos-password-right-generic-fallback", "ipc", "fn macos_service_owned_password_authorization_right_is_ready", "authenticate_macos_service_owned_password_right_requester(authorization)", "authenticate_macos_service_owned_password_requester(authorization)", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
 scoped_mutation("macos-password-right-post-snapshot", "ipc", "fn macos_service_owned_password_authorization_right_is_ready", "ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE)", "authorization.clone()", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
-scoped_mutation("macos-password-right-final-replay-disjunction", "ipc", "fn macos_service_owned_password_authorization_right_is_ready", ") && macos_service_owned_password_requester_is_live(&requester)", ") || macos_service_owned_password_requester_is_live(&requester)", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
-scoped_mutation("macos-password-right-policy-disjunction", "ipc", "fn macos_service_owned_password_authorization_right_is_ready", "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()", "|| crate::platform::ensure_service_owned_unattended_password_authorization_right()", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+mutation("macos-password-right-admission-clone", "ipc", "struct MacosServiceOwnedPasswordRightAdmission {", "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordRightAdmission {", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-admission-requester", "ipc", "struct MacosServiceOwnedPasswordRightAdmission", "requester: MacosServiceOwnedPasswordRequester,", "requester_authorized: bool,", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-admission-borrow", "ipc", "fn grant_macos_service_owned_password_right_admission", "requester: MacosServiceOwnedPasswordRequester,", "requester: &MacosServiceOwnedPasswordRequester,", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-admission-match", "ipc", "fn grant_macos_service_owned_password_right_admission", "if !macos_service_owned_password_right_requester_matches_post_request_authorization(", "if false && !macos_service_owned_password_right_requester_matches_post_request_authorization(", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-action-consume", "ipc", "impl MacosServiceOwnedPasswordRightAdmission", "fn ensure_ready(self) -> bool", "fn ensure_ready(&self) -> bool", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-final-replay", "ipc", "impl MacosServiceOwnedPasswordRightAdmission", "macos_service_owned_password_requester_is_live(&self.requester)", "true", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-policy-disjunction", "ipc", "impl MacosServiceOwnedPasswordRightAdmission", "&& crate::platform::ensure_service_owned_unattended_password_authorization_right()", "|| crate::platform::ensure_service_owned_unattended_password_authorization_right()", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-grant-bypass", "ipc", "fn macos_service_owned_password_authorization_right_is_ready", "grant_macos_service_owned_password_right_admission(", "grant_macos_service_owned_password_right_admission_disabled(", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
+scoped_mutation("macos-password-right-action-bypass", "ipc", "fn macos_service_owned_password_authorization_right_is_ready", "Ok(admission.ensure_ready())", "Ok(crate::platform::ensure_service_owned_unattended_password_authorization_right())", "b2", "macos-password-right-policy-write-requester-authority-not-exact")
 mutation("macos-password-right-pre-task-snapshot", "ipc", "let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(\n                    &stream,\n                    postfix,\n                );", "let authorization = (); /* service snapshot delayed */", "b2", "macos-audit-snapshot-not-immediate")
 mutation("macos-password-right-retained-proof", "ipc", "Ok((authorization, true)) => Some(authorization),", "Ok((_authorization, true)) => None,", "b2", "macos-audit-snapshot-not-immediate")
 mutation("macos-password-right-retained-dispatch", "ipc", "handle_service_ipc_transaction(stream, &postfix, authorization).await;", "handle_service_ipc_transaction(stream, &postfix, ()).await;", "b2", "macos-audit-snapshot-not-immediate")
@@ -2710,6 +2737,13 @@ grep -Fq 'The same identity additionally binds R-S11il and Appendix C #397.' "$R
 grep -Fq 'private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-response-admission-norm-missing"
 grep -Fq 'Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica("macOS")</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-capability-response-norm-missing"
 grep -Fq 'compose only canonical request decode, bounded exact-requester authentication, <code>requester.admit</code>, and <code>admission.respond</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-closed-handler-norm-missing"
+grep -Fq '<span class="id">R-S11im</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-typed-action-requirement-missing"
+grep -Fq '<tr><td>398</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-typed-action-appendix-missing"
+grep -Fq 'R-S11im/R-S11e-276 — typed macOS password-right policy-write authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-right-typed-action-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11im and Appendix C #398.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-password-right-typed-action-digest-binding-missing"
+grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
+grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"
+grep -Fq 'compose only bounded exact-requester authentication, consuming admission grant, and consuming action' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-closed-proof-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"

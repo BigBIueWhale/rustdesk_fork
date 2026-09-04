@@ -804,6 +804,11 @@ struct MacosServiceOwnedPasswordAdmission {
 }
 
 #[cfg(target_os = "macos")]
+struct MacosServiceOwnedPasswordRightAdmission {
+    requester: MacosServiceOwnedPasswordRequester,
+}
+
+#[cfg(target_os = "macos")]
 struct PreparedMacosServiceOwnedPasswordMutation {
     operation_id: String,
     password: SensitivePassword,
@@ -5938,6 +5943,28 @@ impl MacosServiceOwnedPasswordAdmission {
 }
 
 #[cfg(target_os = "macos")]
+fn grant_macos_service_owned_password_right_admission(
+    requester: MacosServiceOwnedPasswordRequester,
+    post_request_authorization: ipc_auth::ServiceScopedIpcAuthorization,
+) -> Option<MacosServiceOwnedPasswordRightAdmission> {
+    if !macos_service_owned_password_right_requester_matches_post_request_authorization(
+        &requester,
+        post_request_authorization,
+    ) {
+        return None;
+    }
+    Some(MacosServiceOwnedPasswordRightAdmission { requester })
+}
+
+#[cfg(target_os = "macos")]
+impl MacosServiceOwnedPasswordRightAdmission {
+    fn ensure_ready(self) -> bool {
+        macos_service_owned_password_requester_is_live(&self.requester)
+            && crate::platform::ensure_service_owned_unattended_password_authorization_right()
+    }
+}
+
+#[cfg(target_os = "macos")]
 async fn macos_service_owned_password_authorization_right_is_ready(
     authorization: ipc_auth::ServiceScopedIpcAuthorization,
     stream: &Connection,
@@ -5951,13 +5978,13 @@ async fn macos_service_owned_password_authorization_right_is_ready(
         ipc_auth::service_scoped_ipc_authorization_snapshot(stream, crate::POSTFIX_SERVICE);
     match run_bounded_macos_security_proof(deadline, "macos-password-right-proof", move || {
         let requester = authenticate_macos_service_owned_password_right_requester(authorization)?;
-        Ok(
-            macos_service_owned_password_right_requester_matches_post_request_authorization(
-                &requester,
-                post_request_authorization,
-            ) && macos_service_owned_password_requester_is_live(&requester)
-                && crate::platform::ensure_service_owned_unattended_password_authorization_right(),
-        )
+        let Some(admission) = grant_macos_service_owned_password_right_admission(
+            requester,
+            post_request_authorization,
+        ) else {
+            return Ok(false);
+        };
+        Ok(admission.ensure_ready())
     })
     .await
     {

@@ -1923,7 +1923,6 @@ def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     )
     admission_grant.require_order(
         (
-            (("ensure_service_owned_unattended_password_authorization_right", "(", ")"), "exact right definition"),
             (("verify_service_owned_unattended_password_authorization", "(", "authorization", ")"), "Authorization Services capability verification"),
             (("macos_service_owned_password_requester_is_live", "(", "&", "requester", ")"), "post-authorization exact requester replay"),
             (("Some", "(", "MacosServiceOwnedPasswordAdmission", "{", "requester", "}", ")"), "non-cloneable action admission grant"),
@@ -1934,10 +1933,9 @@ def verify_macos_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         "sole macOS password admission construction",
         unique=True,
     )
-    admission_grant.require(
-        ("if", "!", "crate", "::", "platform", "::", "ensure_service_owned_unattended_password_authorization_right", "(", ")"),
-        "fail-closed right normalization guard",
-        unique=True,
+    admission_grant.forbid(
+        ("ensure_service_owned_unattended_password_authorization_right", "("),
+        "policy mutation during macOS authorization verification",
     )
     admission_grant.require(
         ("if", "!", "crate", "::", "platform", "::", "verify_service_owned_unattended_password_authorization", "(", "authorization", ")"),
@@ -5035,10 +5033,10 @@ def self_test(sources: Mapping[str, str]) -> None:
             "#[derive(Clone)]\nstruct MacosServiceOwnedPasswordAdmission {",
         ),
         Mutation(
-            "macOS password admission bypasses right normalization",
+            "macOS password admission reintroduces policy mutation before authorization verification",
             "src/ipc.rs",
-            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {",
-            "if false && !crate::platform::ensure_service_owned_unattended_password_authorization_right() {",
+            "    if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
+            "    if !crate::platform::ensure_service_owned_unattended_password_authorization_right() { return None; }\n    if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
         ),
         Mutation(
             "macOS password admission bypasses Authorization Services verification",

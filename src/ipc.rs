@@ -5873,12 +5873,6 @@ fn grant_macos_service_owned_password_admission(
     requester: MacosServiceOwnedPasswordRequester,
     authorization: &[u8],
 ) -> Option<MacosServiceOwnedPasswordAdmission> {
-    if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {
-        log::warn!(
-            "Rejected macOS service-owned unattended password change: authorization right is unavailable"
-        );
-        return None;
-    }
     if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {
         log::warn!("Rejected macOS service-owned unattended password change: authorization denied");
         return None;

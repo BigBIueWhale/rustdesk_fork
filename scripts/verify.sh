@@ -3012,6 +3012,14 @@ grep -Fq 'The same identity additionally binds R-S11im and Appendix C #398.' doc
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
 grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' requirements.html || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"
 grep -Fq 'compose only bounded exact-requester authentication, consuming admission grant, and consuming action' requirements.html || r_s11b2="$r_s11b2 macos-password-right-closed-proof-norm-missing"
+grep -Fq '<span class="id">R-S11in</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-read-only-requirement-missing"
+grep -Fq '<tr><td>399</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-read-only-appendix-missing"
+grep -Fq 'R-S11in/R-S11e-277 — read-only macOS password authorization verification' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-verification-read-only-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11in and Appendix C #399.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-password-verification-read-only-digest-binding-missing"
+grep -Fq 'Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code> may reach the native <code>AuthorizationRightSet</code> writer.' requirements.html || r_s11b2="$r_s11b2 macos-password-readiness-sole-writer-norm-missing"
+grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-checked-cleanup-norm-missing"
+grep -Fq 'then repeat the exact read-only right-definition check' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-final-policy-check-norm-missing"
+grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-conjunction-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3964,12 +3972,12 @@ need(
     and ordered(
         mac_password_grant,
         (
-            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right()",
             "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization)",
             "if !macos_service_owned_password_requester_is_live(&requester)",
             "Some(MacosServiceOwnedPasswordAdmission { requester })",
         ),
     )
+    and "ensure_service_owned_unattended_password_authorization_right()" not in mac_password_grant
     and ordered(
         mac_password_admission,
         (
@@ -4514,6 +4522,48 @@ need(
     "macos-native-authorization-copy-not-wiped",
     macos_mm.count("AuthorizationExternalForm externalForm = {};") >= 2
     and macos_mm.count("explicit_bzero(&externalForm, sizeof(externalForm));") >= 2,
+)
+macos_native_right_write = between(
+    macos_mm,
+    "static bool EnsureRustDeskSetUnattendedPasswordRight()",
+    'extern "C" bool MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight()',
+)
+macos_native_authorization_verify = between(
+    macos_mm,
+    'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm',
+    "// https://gist.github.com/briankc/025415e25900750f402235dbf1b74e42",
+)
+need(
+    "macos-password-verification-mutates-authorization-policy",
+    "RustDeskSetUnattendedPasswordRightMatchesExpected()"
+    in macos_native_authorization_verify
+    and macos_native_authorization_verify.count(
+        "RustDeskSetUnattendedPasswordRightMatchesExpected()"
+    )
+    == 2
+    and "EnsureRustDeskSetUnattendedPasswordRight()"
+    not in macos_native_authorization_verify
+    and "AuthorizationRightSet(" not in macos_native_authorization_verify
+    and macos_native_authorization_verify.count("AuthorizationFree(") == 1
+    and "AuthorizationFree(authRef, kAuthorizationFlagDefaults)"
+    not in macos_native_authorization_verify
+    and "AuthorizationRightSet(" in macos_native_right_write
+    and macos_mm.count("AuthorizationRightSet(") == 1
+    and "ensure_service_owned_unattended_password_authorization_right()"
+    not in mac_password_grant
+    and ordered(
+        macos_native_authorization_verify,
+        (
+            "if (!RustDeskSetUnattendedPasswordRightMatchesExpected())",
+            "AuthorizationCreateFromExternalForm",
+            "AuthorizationCopyRights",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);",
+            "bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();",
+            "return status == errAuthorizationSuccess &&\n"
+            "           freeStatus == errAuthorizationSuccess &&\n"
+            "           rightStillMatches;",
+        ),
+    ),
 )
 
 pipe_create = between(

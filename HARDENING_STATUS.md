@@ -30474,6 +30474,206 @@ cross-platform reconnect/focus flow, display-only delay, complete connection-flo
 correctness/performance request, and every other explicit open hardening item
 remain active.
 
+### R-S11in/R-S11e-277 — read-only macOS password authorization verification
+
+**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
+SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
+PENDING.
+
+**Platform, action, and boundary.** This slice is limited to the macOS
+service-owned password transaction after the separately authenticated and typed
+`EnsurePasswordRightReady` action has normalized the fixed
+`com.carriez.RustDesk.set-unattended-password` Authorization Services right and
+the UI has obtained and externalized authorization for that right. The protected
+boundary is one exact external authorization form from one retained signed
+installed administrative requester generation -> read-only evaluation against
+the exact current policy definition -> the existing non-cloneable password
+admission and mutation ledger. Machine-policy creation or normalization belongs
+only to the typed readiness capability and is not verification authority.
+
+**Source-proven residual.** Read-only tracing found two policy writes and one
+unchecked cleanup result inside the later verification transaction.
+`src/ipc.rs::grant_macos_service_owned_password_admission`
+called `ensure_service_owned_unattended_password_authorization_right` before it
+called the native external-form verifier. That native
+`MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm` independently
+called `EnsureRustDeskSetUnattendedPasswordRight` before importing and checking
+the submitted authorization. Both calls reached `AuthorizationRightSet`, whose
+documented operation creates or updates a right in the policy database. Thus an
+operation named and used as verification could create or replace machine policy
+after the UI authorization reference had already been created. The native
+verifier also requested `kAuthorizationFlagDestroyRights` but discarded
+`AuthorizationFree`'s returned status, so failure to revoke/free the imported
+authorization could not fail the credential mutation closed. The rewritten
+definition remained fixed and administrator-only, the exact requester proof
+remained mandatory, and the typed password admission plus final socket replay
+still guarded persistence. This is therefore policy/verification separation,
+temporal-correctness, and cleanup-finality debt, not evidence of an authorization
+bypass, unauthorized password mutation, exploitation, host RustDesk/service/
+configuration/network mutation, public exposure, operational failure, or
+deployed-artifact causation.
+
+**Authority and API correction.** The only native `AuthorizationRightSet` call
+remains inside `EnsureRustDeskSetUnattendedPasswordRight`, reached from Rust only
+through `MacosServiceOwnedPasswordRightAdmission::ensure_ready`. The Rust
+password-admission grant no longer calls the right creator/normalizer. It now
+orders only native external-form verification -> fresh complete requester role
+and generation replay -> sole `MacosServiceOwnedPasswordAdmission` construction.
+
+The native external-form verifier is policy-read-only. It first requires
+`RustDeskSetUnattendedPasswordRightMatchesExpected`, which obtains the current
+definition with `AuthorizationRightGet` and checks the complete fixed
+administrator-only dictionary. It then copies the submitted bytes into a
+self-wiped `AuthorizationExternalForm`, internalizes them, evaluates only the
+named right with noninteractive `AuthorizationCopyRights`, calls
+`AuthorizationFree` exactly once with `kAuthorizationFlagDestroyRights` and
+retains its returned `OSStatus`, repeats the exact read-only definition check
+after that cleanup, and returns true only when authorization, revocation/free,
+and final definition checks all succeed. Missing or mismatched policy,
+malformed/expired/denied external authorization, failed import/evaluation,
+failed cleanup/revocation, or observed policy drift therefore produces no
+password admission and no mutation. The verifier cannot repair the policy;
+recovery requires a new readiness-and-prompt flow.
+
+This bracketing is application-side last-observed policy consistency. It does not
+claim an atomic lock on macOS's authorization database or protection against an
+independently privileged administrator racing policy changes. Apple documents
+`AuthorizationRightSet` as creating or updating policy, `AuthorizationRightGet`
+as retrieving a definition, `AuthorizationCopyRights` as synchronously
+authorizing rights, `AuthorizationFree` as returning a result while the destroy
+flag revokes shared and non-shared authorization, and external forms as
+transferable authorization references:
+https://developer.apple.com/documentation/security/authorizationrightset%28_%3A_%3A_%3A_%3A_%3A_%3A%29,
+https://developer.apple.com/documentation/security/authorization-services,
+https://developer.apple.com/documentation/security/authorizationfree%28_%3A_%3A%29,
+https://developer.apple.com/documentation/security/authorizationexternalform,
+and
+https://developer.apple.com/documentation/security/authorizationcreatefromexternalform%28_%3A_%3A%29.
+
+This changes no right name or dictionary, endpoint, request/response frame,
+payload kind, requester role, socket identity proof, administrator prompt,
+authorization bytes, credential transport, mutation ledger, persistence sink,
+listener, socket mode, port, network behavior, timeout, capacity, retry/reconnect
+policy, task/runtime/process/service lifecycle, display/control path,
+Android/Windows behavior, dependency, or artifact. Focused, shared, Apple, and
+independently implemented source gates and mutations bind verification-side
+writer absence, sole native writer cardinality, checked destroy/free cardinality
+and result, final-policy-after-cleanup ordering, the three-result conjunction,
+Rust grant ordering, R-S11in, Appendix C #399, the requirements digest, and this
+ledger entry.
+
+The normative requirements identity currently under verification is:
+
+```text
+840c0a6116284cbb7e115a3ece735e729f4956ccd946264c4573e06a121ade69  requirements.html
+```
+
+**Verification receipt (2026-09-05 through 2026-09-06).** All executable
+verification in this receipt ran as UID/GID 1000:1000 inside temporary Docker
+containers with network mode `none`, a read-only root filesystem, the repository
+mounted read-only at `/repo`, all capabilities dropped, `no-new-privileges`,
+private IPC/cgroup namespaces, finite PID/memory/no-swap/CPU limits, a bounded
+private `noexec` tmpfs, and no port bindings, devices, host namespaces, Docker
+socket, or added capabilities. No build, package installation, listener, service
+start/stop/restart, native macOS execution, or host-privilege operation occurred.
+
+The final bounded set passed Bash parsing for the shared, Apple, and native-watch
+gates; isolated Python parsing for the focused and independent verifiers; HTML
+parsing; requirements/native-watch digest equality; the focused password-IPC
+baseline and its complete deliberate-mutation self-test; the independently
+implemented workspace baseline; and native-watch baseline and self-test. The
+shared embedded analyzer and the eight explicit R-S11in requirement/Appendix/
+ledger/digest/normative bindings passed directly. The fresh Apple embedded matrix
+reported empty `r_s11b`, `r_s11b2`, and `r_s11e16` finding sets and
+`apple-rs11in-embedded-matrix: ok`. Its retained container was
+`84df1c1e778c001867f4a1364b0dd51a47eb9945db764a2d6ef66f2e0724dc31`,
+using image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`;
+it ran from `2026-09-05T19:51:12.974178012Z` through
+`2026-09-05T20:03:01.611854622Z`, exited 0, was not OOM-killed, and had no
+container error. Its product mutations included reintroduced Rust/native policy
+writes, removed final policy read, non-destroying cleanup, fabricated or ignored
+cleanup results, final-policy-before-cleanup ordering, omitted final-policy
+result, and disjunctive acceptance. The exact container was inspected before it
+alone was removed.
+
+The final independent catalog was derived structurally as exactly 5,927
+four-field mutation tuples and was restarted from mutation one after the last
+gate edit. Container
+`952ddf6b659e2aac7e20eacfbbe82cc7f50f6c479433ff9ef2b95d2af64bbf1f`
+used the same immutable image and the command
+`python3 -I -S scripts/verify-verifier-workspace.py` with
+`--repo . --source-mutations-only`. It ran uninterrupted from
+`2026-09-05T20:29:05.624509064Z` through
+`2026-09-06T00:07:31.826759609Z`, exited 0, was not OOM-killed, was not
+restarted, had no container error, and emitted only
+`verify-verifier-workspace: ok`. Inspection confirmed UID/GID 1000:1000,
+`network=none`, read-only root/source, unprivileged execution, no added and all
+dropped capabilities, `no-new-privileges`, PID limit 64, 2 GiB memory with equal
+memory/swap limits, two CPUs, private IPC/cgroup namespaces, one 512 MiB private
+`noexec` tmpfs, no host PID/UTS namespace, no ports, and no devices. The exact
+container was inspected before it alone was removed.
+
+The complete catalog froze the following pre-receipt inputs; post-run hashing
+reproduced every value exactly, and `git diff --check` remained clean:
+
+```text
+fbb596283c640f17b14fa45f124556147f8d684407620676bdf30ce05df4dfd3  HARDENING_STATUS.md
+c276a54cd36a9ed6f41cbc9235732608effbb127e010049873601042a5b00764  docs/NATIVE-CODEC-WATCH.md
+840c0a6116284cbb7e115a3ece735e729f4956ccd946264c4573e06a121ade69  requirements.html  (catalog-frozen input)
+f4dbf58c2e3b3edd91375fc3b1d5fc55c57cd750822303fa469e3e920c9d2fda  scripts/apple-conform-check.sh
+ca71dec044554a3befc3f458581c434f5f6854bb4062f88d697456901239b548  scripts/verify-linux-service-password-ipc.py
+902021b8bb92f5bd1ec1fcf82230b5e6037bd090e89f8d72119cc364a05b6677  scripts/verify-verifier-workspace.py
+d9394950dd494896a8828bf00ce086c4d264977e49bcfed3b44c40f86ff5c21c  scripts/verify.sh
+cfe13704821f30ee2fcf71f45d74de04ef36294376a3c5cf20771a0b06b31ee0  src/ipc.rs
+ec75d57a3c4ae8efab2603caa8c595bc18f76c331d8550ecc8c85c3e3f5340e1  src/platform/macos.mm
+87e3df9f19b48d8e14442f1534e5f5788b8490027949b95590a981dfc569ef3a  git diff --binary (the nine files above)
+```
+
+Three pre-receipt diagnostics are deliberately not credited as passing evidence. An Apple
+wrapper attempt in retained container
+`22148fee6442d387ca283247ee9df6ce8c1817c7b8927564cafae48784dae1b6`
+stopped at the wrapper boundary because the deliberately locked inner container
+had no Docker client; it exited 1 without OOM or product/gate findings and was
+inspected before exact removal. An earlier Apple embedded attempt rejected a
+non-unique mutation fixture; the fixture was narrowed before the final passing
+Apple matrix. The first 5,927-case catalog attempt, retained as
+`a169b8df78ed307177ab36b4f527cedb2f184cd329b406739f3bd277723c40a4`,
+correctly rejected the non-destroying-cleanup product mutation but reported the
+broader ordered-flow verdict before that fixture's intended cleanup/revocation
+verdict. It ran from `2026-09-05T20:03:50.444620078Z` through
+`2026-09-05T20:27:33.916282479Z`, exited 1 without OOM/container error, and was
+inspected before exact removal. Moving the already-enforced forbidden-defaults
+check before the ordered-flow assertion changed no product predicate, made the
+diagnostic exact, passed the independent baseline, and preceded the final full
+restart from mutation one. The older 5,914-case passing catalog in container
+`436e8fb0e5463b2fc04c1bac43e30781e82eb5096134b2b9eba5d4a469518dc6`
+also remains valid only for its earlier frozen source: it ran from
+`2026-09-04T07:03:27.755804107Z` through
+`2026-09-04T10:53:17.242321484Z` and exited 0 without OOM/error, but it is
+superseded rather than credited for the current tree because the subsequently
+found unchecked `AuthorizationFree` result required product, requirement, and
+mutation additions.
+
+Only this receipt/status text was added after the complete catalog. Bounded
+parsing, digest, focused, shared, independent, native-watch, and diff checks are
+rerun below against the receipt-bearing tree; no recursive claim is made that a
+catalog can verify its own subsequently written receipt bytes. The first
+receipt-bearing native-watch pass correctly rejected a duplicated exact
+requirements-identity line introduced by the receipt itself; labeling the
+catalog-frozen copy restored one canonical identity line, and the affected
+receipt-bearing checks then passed. One intervening shell command had unmatched
+quoting and produced no gate verdict; it is not credited as verification.
+
+No exact-current signed macOS compilation/execution, installed LaunchDaemon or
+real Authorization Services allow/deny/missing/cleanup/drift/race behavior,
+adversarial requester exit/PID reuse/UID/audit-token/argv/descriptor-handoff/socket races,
+sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10
+artifact equality, independent reproduction, or external review is claimed. The
+persistent Android service, cross-platform reconnect/focus flow, display-only
+delay, complete connection-flow correctness/performance request, and every other
+explicit open hardening item remain active.
+
 ### R-S11im/R-S11e-276 — typed macOS password-right policy-write authority
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

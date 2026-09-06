@@ -15035,6 +15035,7 @@ def validate_linux_credential_runtime_prs_receiver_contract(sources):
 def validate_macos_service_owned_password_requester_contract(sources):
     ipc = sources["ipc_source"]
     auth = sources["ipc_auth_source"]
+    macos_platform = sources["macos_platform_source"]
     focused = sources["linux_password_ipc_validator"]
 
     require_text(
@@ -15610,12 +15611,16 @@ def validate_macos_service_owned_password_requester_contract(sources):
     require_order(
         admission_grant,
         (
-            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right()",
             "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization)",
             "if !macos_service_owned_password_requester_is_live(&requester)",
             "Some(MacosServiceOwnedPasswordAdmission { requester })",
         ),
-        "right definition, Authorization Services proof, requester replay, and typed grant",
+        "read-only Authorization Services proof, requester replay, and typed grant",
+    )
+    require_absent(
+        admission_grant,
+        "ensure_service_owned_unattended_password_authorization_right()",
+        "policy mutation during macOS password authorization verification",
     )
     require_text(
         ipc,
@@ -15624,6 +15629,153 @@ def validate_macos_service_owned_password_requester_contract(sources):
         "    authorization: &[u8],\n"
         ") -> Option<MacosServiceOwnedPasswordAdmission> {",
         "typed macOS password admission result",
+    )
+
+    native_right_write = extract_braced_item(
+        macos_platform,
+        "static bool EnsureRustDeskSetUnattendedPasswordRight()",
+        "macOS password-right policy writer",
+    )
+    native_authorization_verify = extract_braced_item(
+        macos_platform,
+        'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm',
+        "macOS external authorization verifier",
+    )
+    require_text(
+        native_authorization_verify,
+        "RustDeskSetUnattendedPasswordRightMatchesExpected()",
+        "read-only exact right-definition check before external-form verification",
+    )
+    require_exact_count(
+        native_authorization_verify,
+        "RustDeskSetUnattendedPasswordRightMatchesExpected()",
+        2,
+        "bracketing exact right-definition checks around external-form verification",
+    )
+    require_exact_count(
+        native_authorization_verify,
+        "AuthorizationFree(",
+        1,
+        "one checked Authorization Services verifier cleanup",
+    )
+    require_absent(
+        native_authorization_verify,
+        "AuthorizationFree(authRef, kAuthorizationFlagDefaults)",
+        "password verifier cleanup without rights revocation",
+    )
+    require_order(
+        native_authorization_verify,
+        (
+            "if (!RustDeskSetUnattendedPasswordRightMatchesExpected())",
+            "AuthorizationCreateFromExternalForm",
+            "AuthorizationCopyRights",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);",
+            "bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();",
+            "return status == errAuthorizationSuccess &&\n"
+            "           freeStatus == errAuthorizationSuccess &&\n"
+            "           rightStillMatches;",
+        ),
+        "read-only exact policy around evaluation with checked rights revocation",
+    )
+    require_absent(
+        native_authorization_verify,
+        "EnsureRustDeskSetUnattendedPasswordRight()",
+        "verification-side Authorization Services policy normalization",
+    )
+    require_absent(
+        native_authorization_verify,
+        "AuthorizationRightSet(",
+        "verification-side direct Authorization Services policy write",
+    )
+    require_text(
+        native_right_write,
+        "AuthorizationRightSet(",
+        "dedicated macOS password-right policy writer",
+    )
+    require_exact_count(
+        macos_platform,
+        "AuthorizationRightSet(",
+        1,
+        "sole native macOS password-right policy-write site",
+    )
+    require_text(
+        focused,
+        '"policy mutation during macOS authorization verification"',
+        "focused non-mutating macOS password verification contract",
+    )
+    require_text(
+        focused,
+        '"macOS password admission reintroduces policy mutation before authorization verification"',
+        "focused macOS verification-side policy-write mutation",
+    )
+    require_text(
+        sources["verify"],
+        '"macos-password-verification-mutates-authorization-policy"',
+        "shared non-mutating macOS password verification source gate",
+    )
+    require_text(
+        sources["verify"],
+        'macos_native_authorization_verify.count(\n'
+        '        "RustDeskSetUnattendedPasswordRightMatchesExpected()"\n'
+        "    )\n"
+        "    == 2",
+        "shared bracketing macOS policy-read check",
+    )
+    require_text(
+        sources["verify"],
+        'macos_native_authorization_verify.count("AuthorizationFree(") == 1',
+        "shared checked macOS authorization cleanup cardinality",
+    )
+    require_text(
+        sources["verify"],
+        '"OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);"',
+        "shared checked macOS rights-revocation result",
+    )
+    require_text(
+        sources["apple"],
+        'native_verify.count("RustDeskSetUnattendedPasswordRightMatchesExpected()") == 2',
+        "Apple bracketing macOS policy-read check",
+    )
+    require_text(
+        sources["apple"],
+        'native_verify.count("AuthorizationFree(") == 1',
+        "Apple checked macOS authorization cleanup cardinality",
+    )
+    require_text(
+        sources["apple"],
+        '"OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);"',
+        "Apple checked macOS rights-revocation result",
+    )
+    for source_name, prefix, label in (
+        ("verify", "", "shared"),
+        ("apple", '"$REPO/', "Apple"),
+    ):
+        suffix = '"' if prefix else ""
+        for text, obligation in (
+            (
+                "call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed",
+                "checked authorization cleanup requirement binding",
+            ),
+            (
+                "then repeat the exact read-only right-definition check",
+                "final policy-after-cleanup requirement binding",
+            ),
+            (
+                "return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed",
+                "three-result conjunction requirement binding",
+            ),
+        ):
+            target = f"grep -Fq '{text}' {prefix}requirements.html{suffix}"
+            require_text(sources[source_name], target, f"{label} {obligation}")
+    require_text(
+        sources["workspace_verifier"],
+        'macos_platform = sources["macos_platform_source"]',
+        "independent native macOS password-verifier source binding",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        '"bracketing exact right-definition checks around external-form verification"',
+        "independent bracketing macOS policy-read contract",
     )
 
     admission_capability = extract_braced_item(
@@ -16202,6 +16354,46 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "Apple macOS password-right typed-action bypass mutation",
         ),
         (
+            '"macos-password-verification-mutates-authorization-policy"',
+            "Apple read-only macOS password verification verdict",
+        ),
+        (
+            'scoped_mutation("macos-password-admission-policy-write"',
+            "Apple Rust verification-side policy-write mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-policy-write"',
+            "Apple native verification-side policy-write mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-final-policy-check"',
+            "Apple native final-policy-check mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-destroy-rights"',
+            "Apple native destroy-rights mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-free-result"',
+            "Apple native authorization-free result mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-final-policy-order"',
+            "Apple native final-policy ordering mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-final-policy-result"',
+            "Apple native final-policy-result mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-free-result-ignored"',
+            "Apple native ignored authorization-free result mutation",
+        ),
+        (
+            'scoped_mutation("native-password-verification-policy-disjunction"',
+            "Apple native policy-result disjunction mutation",
+        ),
+        (
             'grep -Fq \'<span class="id">R-S11id</span>\' "$REPO/requirements.html"',
             "Apple typed macOS password admission requirement binding",
         ),
@@ -16261,6 +16453,11 @@ def validate_macos_service_owned_password_requester_contract(sources):
             '"macos-password-right-policy-write-requester-authority-not-exact"',
             13,
             "Apple macOS password-right policy-write authority verdict",
+        ),
+        (
+            '"macos-password-verification-mutates-authorization-policy"',
+            10,
+            "Apple read-only macOS password verification verdict",
         ),
         (
             '"snapshot-requester-not-installed-launchd-plist-proven"',
@@ -16340,6 +16537,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11im and Appendix C #398.",
             "typed macOS password-right action identity binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11in</span>',
+            "read-only macOS password verification requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>399</td>",
+            "read-only macOS password verification Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11in/R-S11e-277 — read-only macOS password authorization verification",
+            "read-only macOS password verification hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11in and Appendix C #399.",
+            "read-only macOS password verification identity binding",
         ),
         (
             sources["requirements"],
@@ -22479,6 +22696,10 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "<tr><td>398</td>",
             "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
             "The same identity additionally binds R-S11im and Appendix C #398.",
+            '<span class="id">R-S11in</span>',
+            "<tr><td>399</td>",
+            "R-S11in/R-S11e-277 — read-only macOS password authorization verification",
+            "The same identity additionally binds R-S11in and Appendix C #399.",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -22631,6 +22852,46 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "native_watch",
             "The same identity additionally binds R-S11im and Appendix C #398.",
             "macOS typed password-right action native-watch binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11in</span>',
+            "macOS read-only password verification requirement-ledger-digest binding",
+        ),
+        (
+            "requirements",
+            "<tr><td>399</td>",
+            "macOS read-only password verification Appendix C binding",
+        ),
+        (
+            "requirements",
+            "Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code> may reach the native <code>AuthorizationRightSet</code> writer.",
+            "normative readiness-only macOS policy writer",
+        ),
+        (
+            "requirements",
+            "call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed",
+            "normative checked macOS authorization cleanup",
+        ),
+        (
+            "requirements",
+            "then repeat the exact read-only right-definition check",
+            "normative final macOS policy-definition check",
+        ),
+        (
+            "requirements",
+            "return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed",
+            "normative macOS authorization/policy conjunction",
+        ),
+        (
+            "hardening",
+            "R-S11in/R-S11e-277 — read-only macOS password authorization verification",
+            "macOS read-only password verification hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11in and Appendix C #399.",
+            "macOS read-only password verification native-watch binding",
         ),
     ):
         require_text(sources[source_name], text, label)
@@ -71708,15 +71969,125 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "if !crate::platform::ensure_service_owned_unattended_password_authorization_right() {",
-            "if false && !crate::platform::ensure_service_owned_unattended_password_authorization_right() {",
-            "right definition, Authorization Services proof, requester replay, and typed grant",
+            "    if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
+            "    if !crate::platform::ensure_service_owned_unattended_password_authorization_right() { return None; }\n"
+            "    if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
+            "policy mutation during macOS password authorization verification",
+        ),
+        (
+            "macos_platform_source",
+            "    if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {\n"
+            "        return false;\n"
+            "    }\n\n"
+            "    AuthorizationExternalForm externalForm = {};",
+            "    if (!EnsureRustDeskSetUnattendedPasswordRight()) {\n"
+            "        return false;\n"
+            "    }\n\n"
+            "    AuthorizationExternalForm externalForm = {};",
+            "bracketing exact right-definition checks around external-form verification",
+        ),
+        (
+            "macos_platform_source",
+            "bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();",
+            "bool rightStillMatches = true;",
+            "bracketing exact right-definition checks around external-form verification",
+        ),
+        (
+            "macos_platform_source",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+            "password verifier cleanup without rights revocation",
+        ),
+        (
+            "macos_platform_source",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);",
+            "AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);\n"
+            "    OSStatus freeStatus = errAuthorizationSuccess;",
+            "read-only exact policy around evaluation with checked rights revocation",
+        ),
+        (
+            "macos_platform_source",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);\n"
+            "    bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();",
+            "bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();\n"
+            "    OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);",
+            "read-only exact policy around evaluation with checked rights revocation",
+        ),
+        (
+            "macos_platform_source",
+            "return status == errAuthorizationSuccess &&\n"
+            "           freeStatus == errAuthorizationSuccess &&\n"
+            "           rightStillMatches;",
+            "return status == errAuthorizationSuccess &&\n"
+            "           freeStatus == errAuthorizationSuccess;",
+            "read-only exact policy around evaluation with checked rights revocation",
+        ),
+        (
+            "macos_platform_source",
+            "return status == errAuthorizationSuccess &&\n"
+            "           freeStatus == errAuthorizationSuccess &&\n"
+            "           rightStillMatches;",
+            "return status == errAuthorizationSuccess &&\n"
+            "           rightStillMatches;",
+            "read-only exact policy around evaluation with checked rights revocation",
+        ),
+        (
+            "macos_platform_source",
+            "return status == errAuthorizationSuccess &&\n"
+            "           freeStatus == errAuthorizationSuccess &&\n"
+            "           rightStillMatches;",
+            "return status == errAuthorizationSuccess ||\n"
+            "           freeStatus == errAuthorizationSuccess ||\n"
+            "           rightStillMatches;",
+            "read-only exact policy around evaluation with checked rights revocation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"policy mutation during macOS authorization verification"',
+            '"policy mutation during macOS authorization verification disabled"',
+            "focused non-mutating macOS password verification contract",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"macOS password admission reintroduces policy mutation before authorization verification"',
+            '"macOS password admission policy mutation is accepted"',
+            "focused macOS verification-side policy-write mutation",
+        ),
+        (
+            "verify",
+            'macos_native_authorization_verify.count(\n'
+            '        "RustDeskSetUnattendedPasswordRightMatchesExpected()"\n'
+            "    )\n"
+            "    == 2",
+            'macos_native_authorization_verify.count(\n'
+            '        "RustDeskSetUnattendedPasswordRightMatchesExpected()"\n'
+            "    )\n"
+            "    >= 1",
+            "shared bracketing macOS policy-read check",
+        ),
+        (
+            "verify",
+            'macos_native_authorization_verify.count("AuthorizationFree(") == 1',
+            'macos_native_authorization_verify.count("AuthorizationFree(") >= 1',
+            "shared checked macOS authorization cleanup cardinality",
+        ),
+        (
+            "apple",
+            'native_verify.count("RustDeskSetUnattendedPasswordRightMatchesExpected()") == 2',
+            'native_verify.count("RustDeskSetUnattendedPasswordRightMatchesExpected()") >= 1',
+            "Apple bracketing macOS policy-read check",
+        ),
+        (
+            "apple",
+            'native_verify.count("AuthorizationFree(") == 1',
+            'native_verify.count("AuthorizationFree(") >= 1',
+            "Apple checked macOS authorization cleanup cardinality",
         ),
         (
             "ipc_source",
             "if !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
             "if false && !crate::platform::verify_service_owned_unattended_password_authorization(authorization) {",
-            "right definition, Authorization Services proof, requester replay, and typed grant",
+            "read-only Authorization Services proof, requester replay, and typed grant",
         ),
         (
             "ipc_source",
@@ -71726,7 +72097,7 @@ def run_source_mutations(sources):
             "if false && !macos_service_owned_password_requester_is_live(&requester) {\n"
             "        log::warn!(\n"
             "            \"Rejected macOS service-owned unattended password change: requester changed during authorization\"",
-            "right definition, Authorization Services proof, requester replay, and typed grant",
+            "read-only Authorization Services proof, requester replay, and typed grant",
         ),
         (
             "ipc_source",
@@ -73085,6 +73456,102 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11im and Appendix C #398.",
             "The same identity no longer binds R-S11im and Appendix C #398.",
             "typed macOS password-right action identity binding",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11in</span>\' requirements.html',
+            "true # read-only macOS password verification requirement binding disabled",
+            "shared macOS raw credential gate: <span class=\"id\">R-S11in</span>",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11in</span>\' "$REPO/requirements.html"',
+            "true # Apple read-only macOS password verification requirement binding disabled",
+            "Apple macOS raw credential gate: <span class=\"id\">R-S11in</span>",
+        ),
+        (
+            "verify",
+            "grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' requirements.html",
+            "true # shared checked authorization cleanup requirement binding disabled",
+            "shared checked authorization cleanup requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' \"$REPO/requirements.html\"",
+            "true # Apple checked authorization cleanup requirement binding disabled",
+            "Apple checked authorization cleanup requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'then repeat the exact read-only right-definition check' requirements.html",
+            "true # shared final policy-after-cleanup requirement binding disabled",
+            "shared final policy-after-cleanup requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'then repeat the exact read-only right-definition check' \"$REPO/requirements.html\"",
+            "true # Apple final policy-after-cleanup requirement binding disabled",
+            "Apple final policy-after-cleanup requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' requirements.html",
+            "true # shared three-result conjunction requirement binding disabled",
+            "shared three-result conjunction requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' \"$REPO/requirements.html\"",
+            "true # Apple three-result conjunction requirement binding disabled",
+            "Apple three-result conjunction requirement binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11in</span>',
+            '<span class="id">R-S11in-disabled</span>',
+            "read-only macOS password verification requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>399</td>",
+            "<tr><td>399-disabled</td>",
+            "read-only macOS password verification Appendix C row",
+        ),
+        (
+            "requirements",
+            "Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code> may reach the native <code>AuthorizationRightSet</code> writer.",
+            "Any password transaction may reach the native policy writer.",
+            "normative readiness-only macOS policy writer",
+        ),
+        (
+            "requirements",
+            "call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed",
+            "ignore the authorization cleanup status",
+            "normative checked macOS authorization cleanup",
+        ),
+        (
+            "requirements",
+            "then repeat the exact read-only right-definition check",
+            "skip the final right-definition check",
+            "normative final macOS policy-definition check",
+        ),
+        (
+            "requirements",
+            "return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed",
+            "return success when any authorization, cleanup, or policy result succeeds",
+            "normative macOS authorization/policy conjunction",
+        ),
+        (
+            "hardening",
+            "R-S11in/R-S11e-277 — read-only macOS password authorization verification",
+            "R-S11in-disabled/R-S11e-277 — read-only macOS password authorization verification",
+            "read-only macOS password verification hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11in and Appendix C #399.",
+            "The same identity no longer binds R-S11in and Appendix C #399.",
+            "read-only macOS password verification identity binding",
         ),
         (
             "workspace_verifier",
@@ -102614,6 +103081,9 @@ def main():
             "smoke_typed_probe": (repo / "examples/smoke_readiness.rs").read_text(encoding="utf-8"),
             "session_probe": (repo / "examples/probe_client.rs").read_text(encoding="utf-8"),
             "ipc_source": (repo / "src/ipc.rs").read_text(encoding="utf-8"),
+            "macos_platform_source": (repo / "src/platform/macos.mm").read_text(
+                encoding="utf-8"
+            ),
             "ipc_password_source": (repo / "src/ipc/password.rs").read_text(
                 encoding="utf-8"
             ),

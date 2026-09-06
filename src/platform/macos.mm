@@ -256,7 +256,7 @@ extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm
     if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
         return false;
     }
-    if (!EnsureRustDeskSetUnattendedPasswordRight()) {
+    if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {
         return false;
     }
 
@@ -274,8 +274,11 @@ extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm
     AuthorizationRights authRights = {1, &authItem};
     status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment,
                                      kAuthorizationFlagDefaults, NULL);
-    AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);
-    return status == errAuthorizationSuccess;
+    OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);
+    bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();
+    return status == errAuthorizationSuccess &&
+           freeStatus == errAuthorizationSuccess &&
+           rightStillMatches;
 }
 
 // https://gist.github.com/briankc/025415e25900750f402235dbf1b74e42

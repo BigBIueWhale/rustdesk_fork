@@ -67,7 +67,6 @@ extern "C" {
     fn InputMonitoringAuthStatus(_: BOOL) -> BOOL;
     fn IsCanScreenRecording(_: BOOL) -> BOOL;
     fn CanUseNewApiForScreenCaptureCheck() -> BOOL;
-    fn MacCheckAdminAuthorization() -> BOOL;
     fn MacAuthorizationExternalFormLength() -> usize;
     fn MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() -> BOOL;
     fn MacDeclareRemoteUserActivity() -> BOOL;
@@ -1350,10 +1349,6 @@ pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> Re
         }
     }
     Ok(())
-}
-
-pub fn check_super_user_permission() -> ResultType<bool> {
-    unsafe { Ok(MacCheckAdminAuthorization() == YES) }
 }
 
 fn authorization_external_form_len() -> ResultType<usize> {

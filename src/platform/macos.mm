@@ -95,25 +95,6 @@ extern "C" bool InputMonitoringAuthStatus(bool prompt) {
     #endif
 }
 
-extern "C" bool MacCheckAdminAuthorization() {
-    AuthorizationRef authRef;
-    OSStatus status = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment,
-                                kAuthorizationFlagDefaults, &authRef);
-    if (status != errAuthorizationSuccess) {
-        return false;
-    }
-
-    AuthorizationItem authItem = {kAuthorizationRightExecute, 0, NULL, 0};
-    AuthorizationRights authRights = {1, &authItem};
-    AuthorizationFlags flags = kAuthorizationFlagDefaults |
-                                kAuthorizationFlagInteractionAllowed |
-                                kAuthorizationFlagPreAuthorize |
-                                kAuthorizationFlagExtendRights;
-    status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
-    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
-    return status == errAuthorizationSuccess;
-}
-
 extern "C" size_t MacAuthorizationExternalFormLength() {
     return sizeof(AuthorizationExternalForm);
 }

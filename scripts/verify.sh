@@ -12432,9 +12432,10 @@ fi
 # + the core_main --elevate/--run-as-system/--quick_support dispatch + the CM DataPortableService::
 # RequestStart trigger + the portable_service_running sender are gone; impersonate_system (token-theft)
 # + shared_memory (capture shmem) deps removed. The installed LocalSystem service (launch_privileged_
-# process / CreateProcessAsUserW, KEPT) is the SOLE controlled entry. check_super_user_permission is
-# KEPT (R-X11 UI) but converted to a passive is_elevated() check — no UAC self-relaunch. (Patterns are
-# code-specific; the "...excised" // comments the removal left are stripped by ra6_clean's `grep -v //`.)
+# process / CreateProcessAsUserW, KEPT) is the SOLE controlled entry. The later R-S11ip closure
+# deletes the zero-caller generic super-user bridge rather than preserving a passive UI probe.
+# (Patterns are code-specific; the "...excised" // comments the removal left are stripped by
+# ra6_clean's `grep -v //`.)
 # NOTE: the orphaned portable-service IPC PEER-AUTH + LISTENER [ipc/auth.rs + ipc.rs `_portable_service`
 # branch + windows.rs portable_service_logon_helper_paths] is now removed + gated just below. The
 # former Layer-2 token handshake, DataPortableService data-enum, and shmem-ACL follow-ups are gated
@@ -12467,6 +12468,67 @@ fi
 # ever passed `_portable_service`). The token-handshake, DataPortableService, and shmem-ACL follow-ups
 # are gated by the adjacent R-X9 clauses.
 ra6_clean 'fn portable_service_listener_security_attributes|fn authorize_windows_portable_service_ipc_connection|fn is_allowed_windows_portable_service_peer|fn portable_service_helper_is_trusted|fn windows_portable_service_ipc_allows_logon_helper_executable|fn portable_service_authorization_status_for_session|fn portable_service_logon_helper_paths|postfix == "_portable_service"' 'R-X9 orphaned portable-service IPC peer-auth + listener (slices 2-4 follow-on)' || rc=1
+
+# R-S11ip/R-S11e-279: after the final desktop service-card helper disappeared,
+# the generic super-user query had no authored caller but remained exported through
+# every native bridge. On macOS it still opened an interactive generic execute-right
+# authorization ceremony. Delete the whole unused protocol; keep only the typed,
+# exact-right service-owned password authorization and purpose-specific root/elevation
+# helpers. The bridge checks use this run's freshly generated, canonical FRB outputs.
+echo "== (5a-ix) R-S11e-279 orphaned generic desktop privilege probe excised =="
+r_s11e279=
+generic_privilege_sources=(
+  src/platform/macos.mm
+  src/platform/macos.rs
+  src/platform/linux.rs
+  src/platform/windows.rs
+  src/ui_interface.rs
+  src/flutter_ffi.rs
+  flutter/lib/web/bridge.dart
+)
+for token in \
+  'MacCheckAdminAuthorization' \
+  'check_super_user_permission' \
+  'main_check_super_user_permission' \
+  'mainCheckSuperUserPermission'; do
+  if grep -nF "$token" "${generic_privilege_sources[@]}" >/dev/null; then
+    r_s11e279="$r_s11e279 retired-generic-privilege-source-present:$token"
+  fi
+  if grep -RInF "$token" \
+    "$VERIFY_FRB_OUTPUT/src/bridge_generated.rs" \
+    "$VERIFY_FRB_OUTPUT/src/bridge_generated.io.rs" \
+    "$VERIFY_FRB_OUTPUT/flutter/lib/generated_bridge.dart" \
+    "$VERIFY_FRB_OUTPUT/flutter/lib/generated_bridge.freezed.dart" >/dev/null; then
+    r_s11e279="$r_s11e279 retired-generic-privilege-generated-bridge-present:$token"
+  fi
+done
+grep -qF 'kAuthorizationRightExecute' src/platform/macos.mm \
+  && r_s11e279="$r_s11e279 retired-generic-macos-execute-right-present"
+for typed_symbol in \
+  'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' \
+  'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm'; do
+  [ "$(grep -cF "$typed_symbol" src/platform/macos.mm)" -eq 1 ] \
+    || r_s11e279="$r_s11e279 typed-macos-password-native-symbol-drift:$typed_symbol"
+  [ "$(grep -cF "$typed_symbol" src/platform/macos.rs)" -eq 2 ] \
+    || r_s11e279="$r_s11e279 typed-macos-password-rust-symbol-drift:$typed_symbol"
+done
+grep -qF 'pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool>' src/platform/windows.rs \
+  || r_s11e279="$r_s11e279 purpose-specific-windows-elevation-query-missing"
+grep -qF 'pub fn is_root() -> bool' src/ui_interface.rs \
+  || r_s11e279="$r_s11e279 purpose-specific-root-query-missing"
+grep -Fq '<span class="id">R-S11ip</span>' requirements.html \
+  || r_s11e279="$r_s11e279 normative-requirement-missing"
+grep -Fq '<tr><td>401</td>' requirements.html \
+  || r_s11e279="$r_s11e279 appendix-row-missing"
+grep -Fq 'R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision' HARDENING_STATUS.md \
+  || r_s11e279="$r_s11e279 hardening-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ip and Appendix C #401.' docs/NATIVE-CODEC-WATCH.md \
+  || r_s11e279="$r_s11e279 native-watch-binding-missing"
+if [ -n "$r_s11e279" ]; then
+  echo "  FAIL R-S11e-279 orphaned generic desktop privilege probe:$r_s11e279"; rc=1
+else
+  echo "  ok  R-S11e-279 the zero-caller generic privilege probe is absent through fresh native/FRB/web surfaces; exact typed password authorization and purpose-specific queries remain"
+fi
 # R-X9 (slices 2-4 follow-on, Layer 2a): the orphaned portable-service IPC TOKEN-HANDSHAKE cluster is
 # excised — the portable SYSTEM helper that did the one-time-token handshake over the `_portable_service`
 # pipe is deleted, so generate_one_time_ipc_token + constant_time_ipc_token_eq + the IPC_TOKEN_LEN/

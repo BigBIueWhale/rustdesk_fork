@@ -30474,6 +30474,305 @@ cross-platform reconnect/focus flow, display-only delay, complete connection-flo
 correctness/performance request, and every other explicit open hardening item
 remain active.
 
+### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision
+
+**Status:** SOURCE EXCISION / REVISED PATH-COMPLETE APPLE AND 5,987-CASE
+INDEPENDENT MUTATION EVIDENCE PASS / FRESH GENERATED, NATIVE, AND DEPLOYED
+EVIDENCE OPEN
+
+This adjacent audit traced the generic `check_super_user_permission` surface from
+every platform implementation through `src/ui_interface.rs`, the Flutter FFI
+export, generated bridge surface, and authored web parity method. History makes
+the ownership error precise: `b1c243c` removed the desktop security elevation
+lock while retaining a then-live macOS service-start check, and `4f492c8`
+subsequently removed the desktop service card and its last authored Dart call
+without deleting the remaining cross-language API. No authored caller remained.
+Linux and Windows implementations only queried the privilege state of the
+current process, but the macOS implementation could initiate an interactive
+generic execute-right Authorization Services ceremony and discarded the result
+of `AuthorizationFree`. This is source-proven dead API, misleading
+privilege-protocol, prompt, and cleanup-return debt. It is not evidence that the
+function ran, that it granted or used root authority, that it was remotely
+reachable, or that it caused a deployed or host failure.
+
+The smallest correction deletes `MacCheckAdminAuthorization`, the macOS, Linux,
+and Windows generic platform wrappers, the shared UI wrapper, the Flutter FFI
+export, and the authored web parity method. It also corrects one stale desktop
+settings comment that named the retired API. No replacement abstraction or
+compatibility stub was added: a zero-caller generic privilege prompt is not a
+valid protocol to preserve. The purpose-specific shared `is_root` query,
+Windows `is_elevated(process_id)`, and the macOS
+`MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm` /
+`MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm` typed
+service-owned-password flow remain unchanged and load-bearing.
+
+R-S11ip and Appendix C #401 require the retired names and macOS generic execute
+right to be absent from all seven authored source surfaces and from freshly
+generated Rust, IO, Dart, and Freezed bridges. The shared gate, Apple source gate
+and embedded mutation analyzer, and independently implemented workspace
+validator now bind that absence while also requiring the surviving
+purpose-specific queries and exact typed macOS creator/verifier cardinalities.
+The independent mutation catalog contains direct reintroductions at every
+authored layer plus mutations of every exact authored/generated shared-gate
+path, the Apple analyzer, independent dispatch, normative requirement, ledger,
+and digest binding. The locked source-only executions recorded below passed on
+the exact revised pre-receipt bytes. Those results do not substitute for fresh
+bridge generation, target-native compilation or execution, installed-artifact
+evidence, device behavior, or the other explicitly open release evidence.
+
+The normative identity for this pre-verification source state is:
+
+```text
+c474b29a7fa54aa21822d44df2523f92c02669861803cc22776eaf2e4183aa5c  requirements.html
+```
+
+**Superseded pre-review verification receipt — 2026-09-06.** A locked semantic baseline passed, and a
+focused driver then extracted exactly the first 16 literal R-S11ip mutations
+from `run_source_mutations` and required every current runtime occurrence to be
+rejected by its intended diagnostic. That driver was itself outside the source
+tree, mounted read-only, and changed the actual `main` function's globals rather
+than the copied mapping returned by `runpy`; its retained container
+`74442f9ae51dad7fad3d09fc9005369cccb0eb8e6bed007f0727a0fe066781ce`
+exited 0/non-OOM with terminal `verify-verifier-workspace: ok` before removal.
+The complete Apple embedded analyzer and all of its embedded source mutations
+also passed. They bind native/Rust Apple excision and preservation of the exact
+typed password-authorization creator/verifier; they are source evidence, not
+native macOS compilation or Authorization Services execution.
+
+The pre-review production-path independent catalog subsequently ran unsliced
+from mutation one over the frozen pre-receipt tree. A separate locked AST read
+proved that its one literal tuple contains 5,977 well-formed four-string
+mutations. The retained catalog evidence is:
+
+```text
+container: r-s11ip-full-mutations-20260906
+id:        deb59b3ec2588fcf3673f278dea01053efb9bf201b5c3c5dff4759fddee056d1
+started:   2026-09-06T10:21:31.523142328Z
+finished:  2026-09-06T14:27:30.590642539Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    verify-verifier-workspace: ok
+```
+
+Final inspection proved the exact immutable image, UID/GID 1000, network none,
+read-only root and repository, all capabilities dropped, no added capability,
+`no-new-privileges`, private IPC, no privileged mode, 64 PIDs, 2 CPUs, 2 GiB
+memory with no additional swap, no ports or devices, and no Docker socket or
+host namespace. Live snapshots repeatedly showed one CPU-bound process, roughly
+298–358 MiB, and zero network and block I/O. The exact stopped container was
+removed after inspection. An earlier driver-wiring mistake modified only the
+copied `runpy` result mapping, accidentally entered the entire catalog, and was
+interrupted by a goal-continuation boundary after roughly 2 hours 43 minutes;
+its stopped container was exit 137 but non-OOM. That incomplete attempt was
+inspected, removed, and is not credited. The detached run above restarted from
+mutation one and is the sole complete-catalog pass for those frozen pre-review
+bytes. It is not current evidence after the path-completeness correction
+recorded below.
+
+Locked container checks also passed Bash parsing of both edited shell gates,
+in-memory Python AST parsing, HTML parsing, unique digest synchronization,
+`git diff --check`, the independent semantic baseline, and native-codec normal
+and complete mutation-self-test modes. The exact pinned FRB/Debian builder image
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`
+and the ignored `online/` input closure are absent from the machine after the
+earlier requested storage cleanup. Consequently no fresh generated Rust, IO,
+Dart, or Freezed bridge, exact Rust compile, or full shared `verify.sh` result is
+claimed. Nothing was pulled, rebuilt, substituted from an unrelated image, or
+accepted from stale ignored output. The release gate remains fail-closed because
+it requires all four freshly generated nonempty bridge outputs before reaching
+the R-S11e-279 check.
+
+Exact frozen pre-receipt identities were:
+
+```text
+31c7a7bf3e9652f858d2e033aa416f99f0dcd23d5c5ebd13ae05742d9f005bbe  src/platform/macos.mm
+1498f33231782f478f29e692e4665e28debcb759cb1c7b09b02f11db7649bd0b  src/platform/macos.rs
+44bf421711665b0fd75447baa36a106edf70bcb23a9301bd6f2caa2514fb95e2  src/platform/linux.rs
+0693be5d2fd03e319800994ce9b860997e5b4bb47ace9fbe50df8e1fc9cee433  src/platform/windows.rs
+c908e63dc1d49f3c654d1763173a2adc6e1e1986ee1759d0bce26ae23d198176  src/ui_interface.rs
+0eb74ada3d34f304b4c8c9d91363b78c979447c9547eb644255692a0786ac895  src/flutter_ffi.rs
+73af3b0f5c867e9ca92d13d173a0c24af4bb395564c43532f23b90d547faa447  flutter/lib/web/bridge.dart
+462cfeaacf3bc3502a5b5441c0759f7da68fa54ca06089427b4ebb4036b695f0  flutter/lib/desktop/pages/desktop_setting_page.dart
+5b513467bf98d2086d0bd7cb51963cd90a744819785e2a82fcf1e76e603b0a2c  scripts/verify.sh
+b1291fa7f9d8c14e465a20c3ac605d867b3811dd99a3112f97fe4a0832e32457  scripts/apple-conform-check.sh
+60f0d682549c43fd6ff02114b6cd0f59314f8776c1339aa39aae0540d58e2c7a  scripts/verify-verifier-workspace.py
+snapshot 92ddb1fea2c4ff4699c3c6acfa748c1203bf68324e340990d15ebd02832842de  requirements.html
+f45f1e0355729cfc23b7ffc540891a2c0ac3eaa2f589d90fd29a2be4d244f6d5  docs/NATIVE-CODEC-WATCH.md
+d183b1b40a7c0676d36d289ca1847b41f5169c463f6fb5ee6dcbe82ae86e08d3  HARDENING_STATUS.md
+```
+
+The corresponding pre-receipt binary Git diff SHA-256 is
+`c74fd1dd477973973d732e1c7520eb672b56e859e2133eadbcc30d46b7a313d1`.
+Only this receipt changed immediately after that complete run. Final-tree
+focused, independent-baseline, syntax/digest/native-watch, and diff checks then
+passed. The subsequent full-diff review found that the shared gate correctly
+enumerated all seven authored sources and all four fresh generated outputs, but
+the independent validator explicitly bound only the generated Dart path. The
+review therefore supersedes the 5,977-mutation result for current bytes: the
+validator now extracts the exact shared-gate block, requires every authored and
+generated path once, and mutation-tests each path. R-S11ip also now names Rust,
+Rust IO, Dart, and Dart Freezed outputs without ambiguity. No recursive or
+inherited green claim is made from that superseded run.
+
+**Current revised source-verification receipt — 2026-09-06.** A locked baseline
+passed on the corrected validator and a separate locked AST read proved that the
+one literal source-mutation tuple now contains exactly 5,987 well-formed
+four-string cases. A corrected focused driver selected all 26 current R-S11ip
+mutations: eight direct source reintroductions across the seven authored layers
+(the macOS Rust layer has separate declaration and wrapper cases), one shared
+source-inventory-operation mutation, seven exact authored-path bindings, four
+generated-path bindings, the Apple analyzer and independent-validator dispatch,
+the normative requirement and Appendix row, and the ledger and digest bindings.
+Every mutation was rejected by its intended diagnostic. The retained
+focused container evidence before removal was:
+
+```text
+container: r-s11ip-path-focused-20260906
+id:        d7e6f4bda0ecf2b1eda4a70504ba06206468feaf8d51d7b01628b146db6bf2e2
+started:   2026-09-06T14:36:44.977Z
+finished:  2026-09-06T14:36:51.676Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    verify-verifier-workspace: ok
+```
+
+The complete embedded Apple password/authority analyzer and all of its
+deliberate source mutations were then rerun after the revised normative wording.
+Only the self-contained read-only Python analyzer was extracted from
+`apple-conform-check.sh`; the outer Docker/build wrapper was not invoked. Its
+three finding files were empty. The retained Apple container evidence before
+removal was:
+
+```text
+container: r-s11ip-apple-revised-20260906
+id:        4ac114f28f456a640ad39bae8d8622fe9989374091318dfcacb9d6975b8330a6
+started:   2026-09-06T14:39:59.14939011Z
+finished:  2026-09-06T14:51:50.546528223Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    apple-password-embedded-analyzer-and-mutations: ok
+```
+
+Finally, the corrected independent catalog ran unsliced from mutation one over
+the frozen pre-receipt tree. It completed all 5,987 cases rather than resuming,
+sampling, or inheriting the superseded 5,977-case result. The retained complete
+catalog evidence before removal was:
+
+```text
+container: r-s11ip-path-full-mutations-20260906
+id:        1f67bd5153666001225d8ee9cab61829b3ad55114d8a14717a4f081491973562
+started:   2026-09-06T14:52:26.739183509Z
+finished:  2026-09-06T19:07:15.615379958Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    verify-verifier-workspace: ok
+```
+
+Inspection of both current complete runs proved the exact immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+UID/GID 1000, network none, read-only root and repository, all capabilities
+dropped, `no-new-privileges`, private IPC, no privileged mode, no host PID or
+user namespace, 64 PIDs, 2 CPUs, 2 GiB memory with no additional swap, private
+512 MiB no-exec tmpfs, no ports or devices, and no Docker socket. Live catalog
+snapshots repeatedly showed one CPU-bound process, roughly 298–358 MiB, and
+zero network and block I/O. Post-run inspection showed exit 0, non-OOM state,
+and an empty Docker error for both runs. Their exact stopped containers were
+removed after inspection.
+
+The frozen current pre-receipt identities shared by the Apple and complete
+catalog runs were:
+
+```text
+31c7a7bf3e9652f858d2e033aa416f99f0dcd23d5c5ebd13ae05742d9f005bbe  src/platform/macos.mm
+1498f33231782f478f29e692e4665e28debcb759cb1c7b09b02f11db7649bd0b  src/platform/macos.rs
+44bf421711665b0fd75447baa36a106edf70bcb23a9301bd6f2caa2514fb95e2  src/platform/linux.rs
+0693be5d2fd03e319800994ce9b860997e5b4bb47ace9fbe50df8e1fc9cee433  src/platform/windows.rs
+c908e63dc1d49f3c654d1763173a2adc6e1e1986ee1759d0bce26ae23d198176  src/ui_interface.rs
+0eb74ada3d34f304b4c8c9d91363b78c979447c9547eb644255692a0786ac895  src/flutter_ffi.rs
+73af3b0f5c867e9ca92d13d173a0c24af4bb395564c43532f23b90d547faa447  flutter/lib/web/bridge.dart
+462cfeaacf3bc3502a5b5441c0759f7da68fa54ca06089427b4ebb4036b695f0  flutter/lib/desktop/pages/desktop_setting_page.dart
+5b513467bf98d2086d0bd7cb51963cd90a744819785e2a82fcf1e76e603b0a2c  scripts/verify.sh
+40e0f19b21022f971aff9a8f1bed16ed9fccee6a790769e3adcbd1d962cd29ed  scripts/apple-conform-check.sh
+bba649107fd030e59486dfc4c8111de2ba0e019bd20b7d512e81589f51c75ae5  scripts/verify-verifier-workspace.py
+snapshot c474b29a7fa54aa21822d44df2523f92c02669861803cc22776eaf2e4183aa5c  requirements.html
+edf87984381da1c22537a2f5de1b2a9d96ea9841b4d1ba601fa270852b9e7ab5  docs/NATIVE-CODEC-WATCH.md
+342975f6eff6744f7c5fbbef004bae0762358372e2965e3d140208d776ae4019  HARDENING_STATUS.md
+```
+
+The corresponding current pre-receipt binary Git diff SHA-256 is
+`11e5284349a2488a11d12dff2fba5da7bbd2dd538f1885f91d93f3f6dd1f4711`.
+Only this R-S11ip receipt changed after the complete run; the complete catalog
+is not recursively rerun merely because its own exact evidence was appended.
+
+The first receipt-bearing focused rerun correctly rejected an ambiguous receipt:
+the current requirements hash appeared on two exact canonical lines, so a
+requirements mutation could not synchronize its derived hardening hash exactly
+once. Container
+`c1114afded8701540d317004fb02386a5526bece8fcefd1680fad079ae10cc6c`
+exited 1/non-OOM with that diagnostic, was inspected and removed, and is not
+credited. The evidence-list copy gained the same `snapshot` prefix already used
+by the superseded receipt while the one normative identity remained canonical;
+no product, gate, or requirement byte changed. A clean restart over binary diff
+SHA-256 `822ef01c02886c5a5179fa7e3fdda70895862f260e5077d98c81732fe07110c1`
+then selected exactly 26 of 5,987 mutations and passed the independent baseline
+and every focused diagnostic:
+
+```text
+container: r-s11ip-final-focused-20260906
+id:        537ffaacb07dac8bd6aef9f17faee2b3bf64e5126073bbbe89855a72681ed5de
+started:   2026-09-06T19:14:00.875812056Z
+finished:  2026-09-06T19:14:25.439003347Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    r-s11ip-focused-source-mutations: 26 of 5987
+           verify-verifier-workspace: ok
+```
+
+The same receipt-bearing diff then passed Bash parsing of the shared, Apple,
+and native-watch gates; the independent semantic baseline; AST parsing and the
+exact 5,987 well-formed-case count; HTML parsing; unique requirement-digest
+synchronization; the exact 14-file scope; authored-source absence; typed-symbol
+cardinality and purpose-specific-query preservation; native-codec normal and
+complete mutation-self-test modes; and `git diff --check`:
+
+```text
+container: r-s11ip-final-preflight-20260906
+id:        338465b4affddcfa25b38688b15beae2277079b0e9efec2e5dae43020cd3acfc
+started:   2026-09-06T19:16:26.081375067Z
+finished:  2026-09-06T19:16:35.225151698Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    verify-verifier-workspace: ok
+           source-mutation-catalog: 5987 well-formed cases
+           requirements-html-and-digest: ok c474b29a7fa54aa21822d44df2523f92c02669861803cc22776eaf2e4183aa5c
+           native-codec-watch: ok
+           native-codec-watch: self-test ok
+           r-s11ip-final-preflight: ok
+```
+
+Both final containers used the same locked profile and were removed after
+inspection; both temporary drivers were deleted. Commit-preparation baseline,
+syntax/digest/source-absence, and diff checks must pass again after this
+evidence-only paragraph and are not used to recursively rewrite their own
+receipt.
+
+No host RustDesk process, service, configuration, listener, firewall, network
+namespace, Android device, Windows VM, Haggai/Desktop_Haggai_computer workload,
+or unrelated Docker object is in scope or touched by this source repair. The
+current Linux host cannot provide exact-current signed macOS or Windows native
+execution, installed-artifact evidence, or Authorization Services prompt-path
+execution. The persistent Android service, cross-platform reconnect/focus flow,
+display-only delay, complete connection-flow correctness and performance
+request, native resource/latency soaks, clean release artifact equality,
+independent reproduction, external review, and every other explicit open
+hardening item remain active.
+
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

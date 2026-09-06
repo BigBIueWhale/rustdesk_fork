@@ -60772,6 +60772,204 @@ def validate_cm_command_lifetime_contract(sources):
     )
 
 
+def validate_generic_desktop_privilege_probe_excision_contract(sources):
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    source_dispatch = extract_python_definition(
+        sources["workspace_verifier"],
+        workspace_module,
+        "validate_sources",
+        "generic desktop privilege-probe validator dispatch",
+    )
+    require_exact_count(
+        source_dispatch,
+        "validate_generic_desktop_privilege_probe_excision_contract(sources)",
+        1,
+        "independent generic privilege-probe validator dispatch",
+    )
+
+    retired = {
+        "macOS native generic administrator probe": (
+            sources["macos_platform_source"],
+            ("MacCheckAdminAuthorization", "kAuthorizationRightExecute"),
+        ),
+        "macOS Rust generic administrator wrapper": (
+            sources["macos_source"],
+            ("MacCheckAdminAuthorization", "check_super_user_permission"),
+        ),
+        "Linux generic privilege wrapper": (
+            sources["linux_source"],
+            ("check_super_user_permission",),
+        ),
+        "Windows generic privilege wrapper": (
+            sources["windows_source"],
+            ("check_super_user_permission",),
+        ),
+        "shared UI generic privilege wrapper": (
+            sources["ui_interface_source"],
+            ("check_super_user_permission",),
+        ),
+        "Flutter FFI generic privilege export": (
+            sources["flutter_ffi_source"],
+            ("main_check_super_user_permission", "check_super_user_permission"),
+        ),
+        "web generic privilege parity method": (
+            sources["web_bridge_source"],
+            ("mainCheckSuperUserPermission",),
+        ),
+    }
+    for surface, (source, tokens) in retired.items():
+        for token in tokens:
+            require_absent(source, token, surface)
+
+    require_exact_count(
+        sources["macos_platform_source"],
+        "MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm",
+        1,
+        "surviving typed native macOS authorization creator",
+    )
+    require_exact_count(
+        sources["macos_platform_source"],
+        "MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm",
+        1,
+        "surviving typed native macOS authorization verifier",
+    )
+    require_exact_count(
+        sources["macos_source"],
+        "MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm",
+        2,
+        "surviving typed Rust macOS authorization creator",
+    )
+    require_exact_count(
+        sources["macos_source"],
+        "MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm",
+        2,
+        "surviving typed Rust macOS authorization verifier",
+    )
+    require_text(
+        sources["windows_source"],
+        "pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool>",
+        "purpose-specific Windows elevation query",
+    )
+    require_text(
+        sources["ui_interface_source"],
+        "pub fn is_root() -> bool",
+        "purpose-specific shared root query",
+    )
+
+    shared_gate = extract_between(
+        sources["verify"],
+        "# R-S11ip/R-S11e-279:",
+        "# R-X9 (slices 2-4 follow-on, Layer 2a):",
+        "shared generic desktop privilege-probe excision gate",
+    )
+    for token, label in (
+        (
+            "generic_privilege_sources=(",
+            "shared exact generic-privilege source inventory",
+        ),
+        (
+            'if grep -RInF "$token"',
+            "shared fresh generated-bridge absence operation",
+        ),
+        (
+            'retired-generic-privilege-generated-bridge-present:$token',
+            "shared generated-bridge failure diagnostic",
+        ),
+        (
+            "purpose-specific-windows-elevation-query-missing",
+            "shared purpose-specific Windows query preservation gate",
+        ),
+    ):
+        require_text(shared_gate, token, label)
+    for path, label in (
+        ("src/platform/macos.mm", "shared authored macOS native source inventory"),
+        ("src/platform/macos.rs", "shared authored macOS Rust source inventory"),
+        ("src/platform/linux.rs", "shared authored Linux source inventory"),
+        ("src/platform/windows.rs", "shared authored Windows source inventory"),
+        ("src/ui_interface.rs", "shared authored UI source inventory"),
+        ("src/flutter_ffi.rs", "shared authored Flutter FFI source inventory"),
+        ("flutter/lib/web/bridge.dart", "shared authored web bridge source inventory"),
+    ):
+        require_exact_count(shared_gate, f"  {path}\n", 1, label)
+    for path, label in (
+        ("src/bridge_generated.rs", "shared fresh generated Rust bridge input"),
+        ("src/bridge_generated.io.rs", "shared fresh generated Rust IO bridge input"),
+        ("flutter/lib/generated_bridge.dart", "shared fresh generated Dart bridge input"),
+        (
+            "flutter/lib/generated_bridge.freezed.dart",
+            "shared fresh generated Dart Freezed bridge input",
+        ),
+    ):
+        require_exact_count(shared_gate, f'"$VERIFY_FRB_OUTPUT/{path}"', 1, label)
+    for token, label in (
+        (
+            "'R-S11ip orphaned generic desktop privilege probe'",
+            "Apple generic-privilege source absence gate",
+        ),
+        (
+            'need("b2", "generic-desktop-privilege-probe-present"',
+            "Apple independent embedded generic-privilege analyzer",
+        ),
+        (
+            'mutation("generic-admin-native-reintroduced"',
+            "Apple native generic-privilege reintroduction mutation",
+        ),
+        (
+            'mutation("generic-admin-rust-declaration-reintroduced"',
+            "Apple Rust declaration reintroduction mutation",
+        ),
+        (
+            'mutation("generic-admin-rust-wrapper-reintroduced"',
+            "Apple Rust wrapper reintroduction mutation",
+        ),
+    ):
+        require_text(sources["apple"], token, label)
+
+    require_exact_count(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11ip</span>',
+        1,
+        "R-S11ip normative requirement",
+    )
+    require_exact_count(
+        sources["requirements"],
+        "<tr><td>401</td>",
+        1,
+        "Appendix C #401",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11ip",
+        "generic desktop privilege-probe excision requirement",
+    )
+    for token, label in (
+        (
+            "Fresh generated Rust, Rust IO, Dart, and Dart Freezed bridges",
+            "normative fresh bridge absence",
+        ),
+        (
+            "Purpose-specific <code>is_root</code> and Windows <code>is_elevated</code> queries remain available",
+            "normative purpose-specific query preservation",
+        ),
+        (
+            "The typed macOS service-owned-password flow remains unchanged and load-bearing",
+            "normative typed macOS authorization preservation",
+        ),
+    ):
+        require_text(requirement, token, label)
+    require_exact_count(
+        sources["hardening"],
+        "### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision",
+        1,
+        "R-S11ip hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11ip and Appendix C #401.",
+        "R-S11ip native-watch identity binding",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -60784,6 +60982,7 @@ def validate_sources(sources):
     validate_docs(sources)
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
+    validate_generic_desktop_privilege_probe_excision_contract(sources)
     validate_desktop_lock_screen_mechanism_contract(sources)
     validate_windows_viewer_keyboard_authority_contract(sources)
     validate_windows_dormant_fixed_temp_diagnostic_contract(sources)
@@ -64782,6 +64981,187 @@ def python_mutation_scopes(source, offsets):
 
 def run_source_mutations(sources):
     mutations = (
+        (
+            "macos_platform_source",
+            'extern "C" size_t MacAuthorizationExternalFormLength() {',
+            'extern "C" bool MacCheckAdminAuthorization() {\n'
+            "    AuthorizationRef authRef;\n"
+            "    return AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment, kAuthorizationFlagDefaults, &authRef) == errAuthorizationSuccess;\n"
+            "}\n\n"
+            'extern "C" size_t MacAuthorizationExternalFormLength() {',
+            "macOS native generic administrator probe",
+        ),
+        (
+            "macos_source",
+            "    fn MacAuthorizationExternalFormLength() -> usize;",
+            "    fn MacCheckAdminAuthorization() -> BOOL;\n"
+            "    fn MacAuthorizationExternalFormLength() -> usize;",
+            "macOS Rust generic administrator wrapper",
+        ),
+        (
+            "macos_source",
+            "fn authorization_external_form_len() -> ResultType<usize> {",
+            "pub fn check_super_user_permission() -> ResultType<bool> {\n"
+            "    unsafe { Ok(MacCheckAdminAuthorization() == YES) }\n"
+            "}\n\n"
+            "fn authorization_external_form_len() -> ResultType<usize> {",
+            "macOS Rust generic administrator wrapper",
+        ),
+        (
+            "linux_source",
+            "type GtkSettingsPtr = *mut c_void;",
+            "pub fn check_super_user_permission() -> ResultType<bool> {\n"
+            "    Ok(is_root())\n"
+            "}\n\n"
+            "type GtkSettingsPtr = *mut c_void;",
+            "Linux generic privilege wrapper",
+        ),
+        (
+            "windows_source",
+            "pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool> {",
+            "pub fn check_super_user_permission() -> ResultType<bool> {\n"
+            "    is_elevated(None)\n"
+            "}\n\n"
+            "pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool> {",
+            "Windows generic privilege wrapper",
+        ),
+        (
+            "ui_interface_source",
+            '#[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]\n'
+            "pub fn check_zombie() {",
+            "pub fn check_super_user_permission() -> bool {\n"
+            "    crate::platform::check_super_user_permission().unwrap_or(false)\n"
+            "}\n\n"
+            '#[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]\n'
+            "pub fn check_zombie() {",
+            "shared UI generic privilege wrapper",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_create_shortcut(_id: String) {",
+            "pub fn main_check_super_user_permission() -> bool {\n"
+            "    check_super_user_permission()\n"
+            "}\n\n"
+            "pub fn main_create_shortcut(_id: String) {",
+            "Flutter FFI generic privilege export",
+        ),
+        (
+            "web_bridge_source",
+            "  Future<void> mainCreateShortcut({required String id, dynamic hint}) {",
+            "  Future<bool> mainCheckSuperUserPermission({dynamic hint}) async {\n"
+            "    return false;\n"
+            "  }\n\n"
+            "  Future<void> mainCreateShortcut({required String id, dynamic hint}) {",
+            "web generic privilege parity method",
+        ),
+        (
+            "verify",
+            "generic_privilege_sources=(",
+            "generic_privilege_sources_disabled=(",
+            "shared exact generic-privilege source inventory",
+        ),
+        (
+            "verify",
+            "  src/platform/macos.mm\n",
+            "  src/platform/macos-disabled.mm\n",
+            "shared authored macOS native source inventory",
+        ),
+        (
+            "verify",
+            "  src/platform/macos.rs\n",
+            "  src/platform/macos-disabled.rs\n",
+            "shared authored macOS Rust source inventory",
+        ),
+        (
+            "verify",
+            "  src/platform/linux.rs\n",
+            "  src/platform/linux-disabled.rs\n",
+            "shared authored Linux source inventory",
+        ),
+        (
+            "verify",
+            "  src/platform/windows.rs\n",
+            "  src/platform/windows-disabled.rs\n",
+            "shared authored Windows source inventory",
+        ),
+        (
+            "verify",
+            "  src/ui_interface.rs\n",
+            "  src/ui_interface-disabled.rs\n",
+            "shared authored UI source inventory",
+        ),
+        (
+            "verify",
+            "  src/flutter_ffi.rs\n",
+            "  src/flutter_ffi-disabled.rs\n",
+            "shared authored Flutter FFI source inventory",
+        ),
+        (
+            "verify",
+            "  flutter/lib/web/bridge.dart\n",
+            "  flutter/lib/web/bridge-disabled.dart\n",
+            "shared authored web bridge source inventory",
+        ),
+        (
+            "verify",
+            '"$VERIFY_FRB_OUTPUT/src/bridge_generated.rs"',
+            '"$VERIFY_FRB_OUTPUT/src/bridge_generated-disabled.rs"',
+            "shared fresh generated Rust bridge input",
+        ),
+        (
+            "verify",
+            '"$VERIFY_FRB_OUTPUT/src/bridge_generated.io.rs"',
+            '"$VERIFY_FRB_OUTPUT/src/bridge_generated-disabled.io.rs"',
+            "shared fresh generated Rust IO bridge input",
+        ),
+        (
+            "verify",
+            '"$VERIFY_FRB_OUTPUT/flutter/lib/generated_bridge.dart"',
+            '"$VERIFY_FRB_OUTPUT/flutter/lib/generated_bridge-disabled.dart"',
+            "shared fresh generated Dart bridge input",
+        ),
+        (
+            "verify",
+            '"$VERIFY_FRB_OUTPUT/flutter/lib/generated_bridge.freezed.dart"',
+            '"$VERIFY_FRB_OUTPUT/flutter/lib/generated_bridge-disabled.freezed.dart"',
+            "shared fresh generated Dart Freezed bridge input",
+        ),
+        (
+            "apple",
+            'need("b2", "generic-desktop-privilege-probe-present"',
+            'need("b2", "generic-desktop-privilege-probe-disabled"',
+            "Apple independent embedded generic-privilege analyzer",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_generic_desktop_privilege_probe_excision_contract(sources)\n",
+            "    validate_generic_desktop_privilege_probe_excision_contract_disabled(sources)\n",
+            "independent generic privilege-probe validator dispatch",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ip</span>',
+            '<div class="req"><span class="id">R-S11ip-disabled</span>',
+            "R-S11ip normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>401</td>",
+            "<tr><td>401-disabled</td>",
+            "Appendix C #401",
+        ),
+        (
+            "hardening",
+            "### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision",
+            "### R-S11ip-disabled/R-S11e-279 — orphaned generic desktop privilege-probe excision",
+            "R-S11ip hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ip and Appendix C #401.",
+            "The same identity additionally binds R-S11ip-disabled and Appendix C #401.",
+            "R-S11ip native-watch identity binding",
+        ),
         (
             "terminal_helper",
             "let mut cancellation_accepted = false;",

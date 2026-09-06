@@ -670,9 +670,9 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     super.build(context);
     // R-S11 / R-S16 / R-G1 (T2): the inherited "Unlock Security Settings" elevation gate is REMOVED
     // (not rewired to another gate). The fork excised the active elevation ceremonies (R-X9 Windows
-    // run_uac/elevate, R-X11 Linux gtk_sudo), which left check_super_user_permission() a passive
-    // "am I already root/elevated?" probe — always false for the never-elevated desktop GUI — so the
-    // lock silently swallowed every click and stranded the sole-authenticator "Set permanent password"
+    // run_uac/elevate, R-X11 Linux gtk_sudo); the inherited privilege probe could not unlock the
+    // never-elevated desktop GUI, so the lock silently swallowed every click and stranded the
+    // sole-authenticator "Set permanent password"
     // (and 5 legitimate non-pinned prefs) behind it. The gate defended nothing: the controlled-side
     // config write is already SO_PEERCRED/uid-gated at the IPC layer (R-S11), and the pinned policy
     // stays immutable at the config funnel regardless of any UI (R-S16: is_option_can_save rejects

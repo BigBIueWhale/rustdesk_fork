@@ -566,6 +566,8 @@ apple_absent 'fn update_me\b|update_from_dmg|extract_update_dmg|fn update_to\b' 
   'R-X1 macOS DMG self-updater'
 apple_absent 'fn elevate\b|bool Elevate\b|AuthorizationExecuteWithPrivileges' \
   'R-X9/X11 in-process root-exec (osascript elevate / Authorization Elevate)'
+apple_absent 'MacCheckAdminAuthorization|check_super_user_permission|kAuthorizationRightExecute' \
+  'R-S11ip orphaned generic desktop privilege probe'
 apple_absent 'libpam|pam_authenticate|\bpam::' \
   'R-X14 PAM (absent-by-construction on Apple)'
 
@@ -962,6 +964,17 @@ def analyze(sources):
     macos_rs = sources["macos_rs"]
     macos_mm = sources["macos_mm"]
     windows = sources["windows"]
+
+    need("b2", "generic-desktop-privilege-probe-present",
+         not any(token in macos_rs + macos_mm for token in [
+             "MacCheckAdminAuthorization",
+             "check_super_user_permission",
+             "kAuthorizationRightExecute",
+         ])
+         and macos_mm.count("MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm") == 1
+         and macos_mm.count("MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm") == 1
+         and macos_rs.count("MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm") == 2
+         and macos_rs.count("MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm") == 2)
 
     try:
         service_request = item(ipc, "pub(crate) enum ServiceIpcRequest")
@@ -2624,6 +2637,9 @@ scoped_mutation("native-password-creator-output-free-result-ignored", "macos_mm"
 scoped_mutation("native-password-creator-return-free-result-ignored", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;", "return status == errAuthorizationSuccess;", "b2", "macos-password-authorization-creator-cleanup-not-final")
 scoped_mutation("native-password-creator-result-disjunction", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;", "return status == errAuthorizationSuccess || freeStatus == errAuthorizationSuccess;", "b2", "macos-password-authorization-creator-cleanup-not-final")
 scoped_mutation("native-password-creator-duplicate-output", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "memcpy(buffer, &externalForm, sizeof(externalForm));", "memcpy(buffer, &externalForm, sizeof(externalForm));\n        memcpy(buffer, &externalForm, sizeof(externalForm));", "b2", "macos-password-authorization-creator-cleanup-not-final")
+mutation("generic-admin-native-reintroduced", "macos_mm", 'extern "C" size_t MacAuthorizationExternalFormLength() {', 'extern "C" bool MacCheckAdminAuthorization() {\n    AuthorizationRef authRef;\n    return AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment, kAuthorizationFlagDefaults, &authRef) == errAuthorizationSuccess;\n}\n\nextern "C" size_t MacAuthorizationExternalFormLength() {', "b2", "generic-desktop-privilege-probe-present")
+mutation("generic-admin-rust-declaration-reintroduced", "macos_rs", "    fn MacAuthorizationExternalFormLength() -> usize;", "    fn MacCheckAdminAuthorization() -> BOOL;\n    fn MacAuthorizationExternalFormLength() -> usize;", "b2", "generic-desktop-privilege-probe-present")
+mutation("generic-admin-rust-wrapper-reintroduced", "macos_rs", "fn authorization_external_form_len() -> ResultType<usize> {", "pub fn check_super_user_permission() -> ResultType<bool> {\n    unsafe { Ok(MacCheckAdminAuthorization() == YES) }\n}\n\nfn authorization_external_form_len() -> ResultType<usize> {", "b2", "generic-desktop-privilege-probe-present")
 scoped_mutation("native-password-verification-policy-write", "macos_mm", 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm', "if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {\n        return false;\n    }\n\n    AuthorizationExternalForm externalForm = {};", "if (!EnsureRustDeskSetUnattendedPasswordRight()) {\n        return false;\n    }\n\n    AuthorizationExternalForm externalForm = {};", "b2", "macos-password-verification-mutates-authorization-policy")
 scoped_mutation("native-password-verification-final-policy-check", "macos_mm", 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm', "bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();", "bool rightStillMatches = true;", "b2", "macos-password-verification-mutates-authorization-policy")
 scoped_mutation("native-password-verification-destroy-rights", "macos_mm", 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm', "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);", "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);", "b2", "macos-password-verification-mutates-authorization-policy")
@@ -2816,6 +2832,11 @@ grep -Fq 'clear the validated caller buffer before any fallible policy or Author
 grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-default-cleanup-norm-missing"
 grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-commit-norm-missing"
 grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-conjunction-norm-missing"
+grep -Fq '<span class="id">R-S11ip</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-requirement-missing"
+grep -Fq '<tr><td>401</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-appendix-missing"
+grep -Fq 'R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ip and Appendix C #401.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-digest-binding-missing"
+grep -Fq 'Fresh generated Rust, Rust IO, Dart, and Dart Freezed bridges <span class="kw">MUST NOT</span> contain either naming form.' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-generated-bridge-norm-missing"
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
 grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"
 grep -Fq 'compose only bounded exact-requester authentication, consuming admission grant, and consuming action' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-closed-proof-norm-missing"

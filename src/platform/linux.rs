@@ -5025,14 +5025,6 @@ pub fn quit_gui() {
     unsafe { gtk_main_quit() };
 }
 
-pub fn check_super_user_permission() -> ResultType<bool> {
-    // R-X11: no in-process interactive elevation — the GTK sudo/su
-    // password-driver front-end is excised. The sanctioned model is the installed root
-    // systemd service (R-D1/R-D3/R-X10), so "super-user permission" is whether
-    // this process already holds root, never an elevation prompt.
-    Ok(is_root())
-}
-
 type GtkSettingsPtr = *mut c_void;
 type GObjectPtr = *mut c_void;
 #[link(name = "gtk-3")]

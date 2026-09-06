@@ -1207,10 +1207,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainSetPermanentPasswordWithResult");
   }
 
-  Future<bool> mainCheckSuperUserPermission({dynamic hint}) {
-    throw UnimplementedError("mainCheckSuperUserPermission");
-  }
-
   Future<void> mainCreateShortcut({required String id, dynamic hint}) {
     throw UnimplementedError("mainCreateShortcut");
   }

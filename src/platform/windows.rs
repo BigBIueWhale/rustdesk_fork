@@ -5245,14 +5245,9 @@ pub fn get_user_token(session_id: u32, as_user: bool) -> HANDLE {
 // --portable-service run-mode dispatch that started the portable SYSTEM helper) are
 // excised. On the installed-service fork the sole controlled entry is the installed
 // LocalSystem service (`--service` -> CreateProcessAsUserW -> `--server` -> `--tray`);
-// there is no interactive UAC elevation and no
-// peer-OS-credential / token-theft escalation. `check_super_user_permission` (still used
-// by the R-X11 UI via ui_interface / flutter_ffi::main_check_super_user_permission) is
-// converted to a PASSIVE elevation check: it reports whether this process is already
-// elevated, and never relaunches anything via UAC.
-pub fn check_super_user_permission() -> ResultType<bool> {
-    is_elevated(None)
-}
+// there is no interactive UAC elevation and no peer-OS-credential / token-theft
+// escalation. The orphaned cross-platform super-user probe was deleted with its
+// Flutter/native bridge surface; purpose-specific callers use `is_elevated` directly.
 
 pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool> {
     use hbb_common::platform::windows::RAIIHandle;

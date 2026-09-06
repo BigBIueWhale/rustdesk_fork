@@ -1871,10 +1871,6 @@ pub fn main_get_data_dir_ios(app_dir: String) -> SyncReturn<String> {
     SyncReturn(data_dir.to_string_lossy().to_string())
 }
 
-pub fn main_check_super_user_permission() -> bool {
-    check_super_user_permission()
-}
-
 pub fn main_create_shortcut(_id: String) {
     #[cfg(windows)]
     create_shortcut(_id);

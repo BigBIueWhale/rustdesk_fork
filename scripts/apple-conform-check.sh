@@ -2020,6 +2020,24 @@ def analyze(sources):
         ]) and ordered(native_verify, [
             "AuthorizationExternalForm externalForm = {};", "memcpy(&externalForm", "AuthorizationCreateFromExternalForm", "explicit_bzero(&externalForm",
         ]))
+        need("b2", "macos-password-authorization-creator-cleanup-not-final",
+             native_create.count("AuthorizationFree(") == 1
+             and native_create.count("memcpy(buffer") == 1
+             and native_create.count("explicit_bzero(buffer, len);") == 1
+             and native_create.count("explicit_bzero(&externalForm, sizeof(externalForm));") == 1
+             and "kAuthorizationFlagDestroyRights" not in native_create
+             and ordered(native_create, [
+                 "explicit_bzero(buffer, len);",
+                 "if (!RustDeskSetUnattendedPasswordRightMatchesExpected())",
+                 "AuthorizationCreate",
+                 "AuthorizationCopyRights",
+                 "AuthorizationMakeExternalForm",
+                 "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+                 "if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess)",
+                 "memcpy(buffer, &externalForm, sizeof(externalForm));",
+                 "explicit_bzero(&externalForm, sizeof(externalForm));",
+                 "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;",
+             ]))
         right_match = item(macos_mm, "static bool RustDeskSetUnattendedPasswordRightMatchesExpected")
         right_write = item(macos_mm, "static bool EnsureRustDeskSetUnattendedPasswordRight")
         need("b2", "macos-authorization-right-not-exact", all(token in right_match for token in [
@@ -2598,6 +2616,14 @@ scoped_mutation("macos-runtime-prs-client-bypass", "ipc", "pub async fn refresh_
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
+scoped_mutation("native-password-creator-output-zero", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "explicit_bzero(buffer, len);", "memset(buffer, 0, len);", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-destroy-rights", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);", "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-free-result", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);", "AuthorizationFree(authRef, kAuthorizationFlagDefaults);\n    OSStatus freeStatus = errAuthorizationSuccess;", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-output-before-free", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);\n    if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess) {\n        memcpy(buffer, &externalForm, sizeof(externalForm));\n    }", "if (status == errAuthorizationSuccess) {\n        memcpy(buffer, &externalForm, sizeof(externalForm));\n    }\n    OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-output-free-result-ignored", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess) {", "if (status == errAuthorizationSuccess) {", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-return-free-result-ignored", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;", "return status == errAuthorizationSuccess;", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-result-disjunction", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;", "return status == errAuthorizationSuccess || freeStatus == errAuthorizationSuccess;", "b2", "macos-password-authorization-creator-cleanup-not-final")
+scoped_mutation("native-password-creator-duplicate-output", "macos_mm", 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm', "memcpy(buffer, &externalForm, sizeof(externalForm));", "memcpy(buffer, &externalForm, sizeof(externalForm));\n        memcpy(buffer, &externalForm, sizeof(externalForm));", "b2", "macos-password-authorization-creator-cleanup-not-final")
 scoped_mutation("native-password-verification-policy-write", "macos_mm", 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm', "if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {\n        return false;\n    }\n\n    AuthorizationExternalForm externalForm = {};", "if (!EnsureRustDeskSetUnattendedPasswordRight()) {\n        return false;\n    }\n\n    AuthorizationExternalForm externalForm = {};", "b2", "macos-password-verification-mutates-authorization-policy")
 scoped_mutation("native-password-verification-final-policy-check", "macos_mm", 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm', "bool rightStillMatches = RustDeskSetUnattendedPasswordRightMatchesExpected();", "bool rightStillMatches = true;", "b2", "macos-password-verification-mutates-authorization-policy")
 scoped_mutation("native-password-verification-destroy-rights", "macos_mm", 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm', "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);", "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);", "b2", "macos-password-verification-mutates-authorization-policy")
@@ -2782,6 +2808,14 @@ grep -Fq 'Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code
 grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-checked-cleanup-norm-missing"
 grep -Fq 'then repeat the exact read-only right-definition check' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-final-policy-check-norm-missing"
 grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-conjunction-norm-missing"
+grep -Fq '<span class="id">R-S11io</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-requirement-missing"
+grep -Fq '<tr><td>400</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-appendix-missing"
+grep -Fq 'R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11io and Appendix C #400.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-digest-binding-missing"
+grep -Fq 'clear the validated caller buffer before any fallible policy or Authorization Services operation' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-preclear-norm-missing"
+grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-default-cleanup-norm-missing"
+grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-commit-norm-missing"
+grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-conjunction-norm-missing"
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
 grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"
 grep -Fq 'compose only bounded exact-requester authentication, consuming admission grant, and consuming action' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-closed-proof-norm-missing"

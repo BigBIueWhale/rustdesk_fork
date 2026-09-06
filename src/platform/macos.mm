@@ -220,6 +220,7 @@ extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm
     if (buffer == NULL || len != sizeof(AuthorizationExternalForm)) {
         return false;
     }
+    explicit_bzero(buffer, len);
     if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {
         return false;
     }
@@ -238,17 +239,17 @@ extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm
                                 kAuthorizationFlagPreAuthorize |
                                 kAuthorizationFlagExtendRights;
     status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
+    AuthorizationExternalForm externalForm = {};
     if (status == errAuthorizationSuccess) {
-        AuthorizationExternalForm externalForm = {};
         status = AuthorizationMakeExternalForm(authRef, &externalForm);
-        if (status == errAuthorizationSuccess) {
-            memcpy(buffer, &externalForm, sizeof(externalForm));
-        }
-        explicit_bzero(&externalForm, sizeof(externalForm));
     }
 
-    AuthorizationFree(authRef, kAuthorizationFlagDefaults);
-    return status == errAuthorizationSuccess;
+    OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);
+    if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess) {
+        memcpy(buffer, &externalForm, sizeof(externalForm));
+    }
+    explicit_bzero(&externalForm, sizeof(externalForm));
+    return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;
 }
 
 extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm(const uint8_t *buffer,

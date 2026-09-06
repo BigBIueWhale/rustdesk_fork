@@ -30474,6 +30474,191 @@ cross-platform reconnect/focus flow, display-only delay, complete connection-flo
 correctness/performance request, and every other explicit open hardening item
 remain active.
 
+### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
+
+**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
+SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
+PENDING.
+
+**Platform, action, and boundary.** This slice is limited to the macOS UI-side
+creation of the external Authorization Services form used by the existing
+service-owned unattended-password transaction. The boundary is exact current
+administrator-only right definition -> local preauthorization and external form
+-> release of only the creator's `AuthorizationRef` -> caller-owned
+self-wiping `SensitiveAuthorization`. It does not change the separately typed
+LaunchDaemon readiness writer or the helper-side noninteractive verification and
+rights destruction from R-S11in.
+
+**Source-proven defect.** Read-only tracing found that
+`MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm` correctly
+required the exact right definition, created and preauthorized one
+`AuthorizationRef`, made an external form, wiped its local stack copy, and
+called `AuthorizationFree` with `kAuthorizationFlagDefaults`. That default flag
+is load-bearing: the authorization is deliberately externalized for later
+helper import, so creator-side `kAuthorizationFlagDestroyRights` would revoke
+the transferred capability prematurely. The function nevertheless copied the
+external form into the caller buffer before releasing its creator reference,
+discarded `AuthorizationFree`'s returned `OSStatus`, and returned only the
+earlier operation status. Release failure could therefore be reported as a
+successfully completed creation transaction while native resource ownership was
+ambiguous and capability bytes had already escaped. The root helper still had
+to import and noninteractively verify the exact right, destroy the imported
+rights, replay the exact requester, and obtain typed credential-ledger
+admission. This is source-proven creator-side resource, return-value, and output
+commit finality debt, not evidence of authorization bypass, unauthorized
+password mutation, exploitation, host RustDesk/service/configuration/network
+mutation, public exposure, operational failure, or deployed-artifact causation.
+
+**Cleanup and output correction.** After validating pointer and exact external
+form length, the native creator explicitly clears the caller buffer before any
+fallible policy or Authorization Services operation. It keeps the external form
+in a zero-initialized local object while it creates the authorization, requests
+the exact right with the unchanged interactive/preauthorize/extend flags, and
+externalizes the result. It then calls `AuthorizationFree` exactly once with
+`kAuthorizationFlagDefaults` and retains the returned status. Only when both the
+preauthorization/externalization status and creator-reference release status are
+successful does it copy the form to the caller, exactly once. It wipes the local
+form after that conditional commit and returns the conjunction of the two
+statuses. Every policy, creation, authorization, externalization, or cleanup
+failure therefore leaves no published capability in the caller buffer and
+returns failure. The existing Rust wrapper returns its bounded zeroed
+`SensitiveAuthorization` only on native success and zeroizes the allocation on
+failure/drop.
+
+This changes no right name or dictionary, readiness action, prompt or retry
+semantics, external-form representation, endpoint, wire frame or payload kind,
+requester role or identity proof, credential value, mutation ledger, persistence
+sink, listener, socket mode, port, network behavior, timeout, capacity,
+task/runtime/process/service lifecycle, display/control path, Android/Windows
+behavior, dependency, or artifact. The separately observed macOS recovery path
+may still repeat the complete readiness-and-prompt flow after delivery
+uncertainty, as explicitly permitted by the existing R-S11g complete-operation
+replay contract; this slice neither redesigns nor claims to validate that user
+experience. Exact-current signed macOS compilation/execution, real
+Authorization Services release-failure/resource behavior, installed
+LaunchDaemon behavior, sustained latency/CPU/memory/resource soak, clean
+committed cold R-B2/R-B10 artifact equality, independent reproduction, and
+external review remain open.
+
+The normative requirements identity verified for this source slice is:
+
+```text
+b3539935b020163723d1e75873d04eee6f31eaa16643dc5cd48c7ef92daa712a  requirements.html
+```
+
+**Verification receipt — 2026-09-06.** Every credited executable check in this
+receipt ran as UID/GID 1000:1000 inside a temporary Docker container with
+network mode `none`, a read-only root filesystem, the repository mounted
+read-only at `/repo`, all capabilities dropped, `no-new-privileges`, private IPC
+and cgroup namespaces, finite PID/memory/no-extra-swap/CPU limits, a bounded
+private `nosuid,nodev,noexec` tmpfs, and no port binding, device, host namespace,
+Docker socket, or added capability. No build, package installation, listener,
+service start/stop/restart, native macOS execution, or host-privilege operation
+occurred.
+
+The locked fast set passed Bash syntax for the shared and Apple gates, isolated
+Python AST parsing for the independent verifier, HTML parsing, focused password
+IPC baseline and complete deliberate-mutation self-test, direct execution of the
+shared raw-password architecture analyzer, the complete Apple embedded password
+matrix including all eight new R-S11io mutations, the independently implemented
+workspace baseline, and native-codec-watch baseline/self-test. A separate
+targeted independent run passed all eight new native mutations through the
+normal verifier entry point without changing the repository: output-preclear
+removal, creator-side rights destruction, synthesized release success,
+publication before release, release-result omission from the publication guard,
+release-result omission from the return, disjunctive return, and duplicate
+publication were each rejected with their exact intended diagnostic.
+
+The first complete-catalog attempt correctly rejected output-preclear removal,
+but the fixture expected the broader ordered-flow diagnostic while the
+independent verifier emitted its earlier and more precise exact-cardinality
+diagnostic. This was a test-of-the-test label mismatch, not a product or source
+gate failure. The expected label alone was narrowed, all eight new mutations
+were then exercised directly, and the independent baseline passed again. The
+failed run is not credited:
+
+```text
+container: 6ee7caae6ba92aea3e7eda997586c16754cb2bef0bf953a689745af01e4e57c0
+started:   2026-09-06T00:49:26.740357019Z
+finished:  2026-09-06T01:14:40.357920723Z
+exit:      1
+OOMKilled: false
+error:     ""
+```
+
+The corrected complete in-memory semantic source-mutation catalog restarted
+from mutation one and evaluated all 5,961 AST-counted tuples before reaching its
+sole terminal success line:
+
+```text
+container: ab2e7a9fd27e140dd8654f625182c8dec39ca5773b46ef72844c2ecfe5c91185
+image:     sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
+started:   2026-09-06T01:18:00.226801445Z
+finished:  2026-09-06T05:06:24.182200319Z
+exit:      0
+OOMKilled: false
+error:     ""
+output:    verify-verifier-workspace: ok
+```
+
+That retained container was inspected before execution and after exit. It used
+numeric user `1000:1000`, workdir `/repo`, network `none`, read-only root and
+read-only source bind, `CapAdd=null`, `CapDrop=["ALL"]`,
+`SecurityOpt=["no-new-privileges"]`, 64 PIDs, 2 GiB memory with memory-swap
+equal to memory, two CPUs, private IPC/cgroup namespaces, no host PID/UTS
+namespace, no ports or devices, and one 512 MiB
+`rw,nosuid,nodev,noexec` `/tmp`. Its exact command was
+`/usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .
+--source-mutations-only`. Live inspection showed one process, roughly 310 MiB
+memory, and zero block/network I/O. It was removed by exact name after its final
+state and log were captured; the failed named attempt was likewise inspected
+and removed. No `rustdesk-rs11io*` container residue remained.
+
+One procedural command before the credited runs attempted to combine a
+host-side read-only Bash syntax parse with a Python parse/cleanup command. The
+Python command was rejected before execution because of its cleanup operation;
+the Bash parse may have executed on the host. It had no write, privilege,
+network, listener, build, service, or product-runtime effect. Its result is not
+credited anywhere in this receipt, and every listed parse and verification
+result was rerun inside the locked container profile. This disclosure preserves
+the user's Docker-only execution requirement rather than silently treating that
+attempt as evidence.
+
+Exact pre-receipt identities were:
+
+```text
+88debfadcf7fca1b146dff16d9ffd7359f05b042194f09b415f794d39c95c7d7  src/platform/macos.mm
+fd28686595dea7bccdcb3f176223581cd652c2905dcdde639e68b3eb2fd1da00  scripts/verify.sh
+537984b24c44c59d780bb6d5cf4591b3b8e8c7e817f31ac13e4c2f51c4598bed  scripts/apple-conform-check.sh
+459f4a53d3e774e7070f9302298977a2d323a1c161d1e4f02fd7aa11412ca0b5  scripts/verify-verifier-workspace.py
+snapshot b3539935b020163723d1e75873d04eee6f31eaa16643dc5cd48c7ef92daa712a  requirements.html
+23e1f456280b091f22de9a833dbde49417dfdbaae71d48a62b3ee0396a43ade1  docs/NATIVE-CODEC-WATCH.md
+3f9f328de14bb7ecab63ccc8a23d05b29f86cc8df6fa31f6ffd27b660600ea56  HARDENING_STATUS.md
+```
+
+The corresponding pre-receipt binary Git diff SHA-256 was
+`cde30611fee3293472efe720f5e004e1db7d4da6d5a2f18ec3c0252f563f1bcd`.
+This evidence-ledger update changes only `HARDENING_STATUS.md`; it is followed
+by locked reruns of the focused, shared, Apple, independent-baseline,
+native-watch, syntax/HTML/hash, and diff-hygiene gates. The complete 5,961-tuple
+catalog is not rerun after this receipt because the catalogued product,
+normative requirements, native-watch ledger, shared/Apple gates, and independent
+verifier bytes identified above remain unchanged.
+
+The immutable verifier image does not contain this repository's exact-current
+signed macOS SDK/build closure. No exact-current native compile/unit test,
+installed LaunchDaemon/Authorization Services execution, real cleanup-failure
+injection, prompt/retry behavior, adversarial policy/resource race,
+latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact
+equality, independent reproduction, or external review claim is made. No host
+RustDesk process, service, configuration, listener, firewall/UFW/nftables/
+iptables state, network namespace, Android device, VM,
+Haggai/Desktop_Haggai_computer workload, or unrelated Docker object was
+inspected, stopped, restarted, modified, or connected to. The persistent
+Android service, cross-platform reconnect/focus flow, display-only delay,
+complete connection-flow correctness/performance request, and every other
+explicit open hardening item remain active.
+
 ### R-S11in/R-S11e-277 — read-only macOS password authorization verification
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

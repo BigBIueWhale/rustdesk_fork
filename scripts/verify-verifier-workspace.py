@@ -15636,6 +15636,56 @@ def validate_macos_service_owned_password_requester_contract(sources):
         "static bool EnsureRustDeskSetUnattendedPasswordRight()",
         "macOS password-right policy writer",
     )
+    native_authorization_create = extract_braced_item(
+        macos_platform,
+        'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm',
+        "macOS external authorization creator",
+    )
+    require_exact_count(
+        native_authorization_create,
+        "AuthorizationFree(",
+        1,
+        "one checked Authorization Services creator-reference release",
+    )
+    require_exact_count(
+        native_authorization_create,
+        "memcpy(buffer, &externalForm, sizeof(externalForm));",
+        1,
+        "one conditional external-authorization output commit",
+    )
+    require_exact_count(
+        native_authorization_create,
+        "explicit_bzero(buffer, len);",
+        1,
+        "one fail-closed external-authorization output preclear",
+    )
+    require_exact_count(
+        native_authorization_create,
+        "explicit_bzero(&externalForm, sizeof(externalForm));",
+        1,
+        "one local external-authorization wipe",
+    )
+    require_absent(
+        native_authorization_create,
+        "kAuthorizationFlagDestroyRights",
+        "creator-side revocation of the transferable authorization",
+    )
+    require_order(
+        native_authorization_create,
+        (
+            "explicit_bzero(buffer, len);",
+            "if (!RustDeskSetUnattendedPasswordRightMatchesExpected())",
+            "AuthorizationCreate",
+            "AuthorizationCopyRights",
+            "AuthorizationMakeExternalForm",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+            "if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess)",
+            "memcpy(buffer, &externalForm, sizeof(externalForm));",
+            "explicit_bzero(&externalForm, sizeof(externalForm));",
+            "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;",
+        ),
+        "precleared output, checked creator-reference release, conditional commit, and local wipe",
+    )
     native_authorization_verify = extract_braced_item(
         macos_platform,
         'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm',
@@ -15746,6 +15796,66 @@ def validate_macos_service_owned_password_requester_contract(sources):
         '"OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);"',
         "Apple checked macOS rights-revocation result",
     )
+    require_text(
+        sources["verify"],
+        '"macos-password-authorization-creator-cleanup-not-final"',
+        "shared checked macOS authorization creator cleanup source gate",
+    )
+    require_text(
+        sources["verify"],
+        'macos_native_authorization_create.count("AuthorizationFree(") == 1',
+        "shared macOS authorization creator cleanup cardinality",
+    )
+    require_text(
+        sources["verify"],
+        'macos_native_authorization_create.count("memcpy(buffer") == 1',
+        "shared macOS authorization creator output cardinality",
+    )
+    require_text(
+        sources["verify"],
+        'macos_native_authorization_create.count("explicit_bzero(buffer, len);") == 1',
+        "shared macOS authorization creator output-preclear cardinality",
+    )
+    require_text(
+        sources["verify"],
+        '"kAuthorizationFlagDestroyRights" not in macos_native_authorization_create',
+        "shared macOS authorization creator non-revocation rule",
+    )
+    require_text(
+        sources["verify"],
+        '"OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);"',
+        "shared checked macOS authorization creator release result",
+    )
+    require_text(
+        sources["apple"],
+        '"macos-password-authorization-creator-cleanup-not-final"',
+        "Apple checked macOS authorization creator cleanup source gate",
+    )
+    require_text(
+        sources["apple"],
+        'native_create.count("AuthorizationFree(") == 1',
+        "Apple macOS authorization creator cleanup cardinality",
+    )
+    require_text(
+        sources["apple"],
+        'native_create.count("memcpy(buffer") == 1',
+        "Apple macOS authorization creator output cardinality",
+    )
+    require_text(
+        sources["apple"],
+        'native_create.count("explicit_bzero(buffer, len);") == 1',
+        "Apple macOS authorization creator output-preclear cardinality",
+    )
+    require_text(
+        sources["apple"],
+        '"kAuthorizationFlagDestroyRights" not in native_create',
+        "Apple macOS authorization creator non-revocation rule",
+    )
+    require_text(
+        sources["apple"],
+        '"OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);"',
+        "Apple checked macOS authorization creator release result",
+    )
     for source_name, prefix, label in (
         ("verify", "", "shared"),
         ("apple", '"$REPO/', "Apple"),
@@ -15763,6 +15873,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
             (
                 "return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed",
                 "three-result conjunction requirement binding",
+            ),
+        ):
+            target = f"grep -Fq '{text}' {prefix}requirements.html{suffix}"
+            require_text(sources[source_name], target, f"{label} {obligation}")
+        for text, obligation in (
+            (
+                "clear the validated caller buffer before any fallible policy or Authorization Services operation",
+                "authorization creator output-preclear requirement binding",
+            ),
+            (
+                "call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>",
+                "authorization creator default-release requirement binding",
+            ),
+            (
+                "copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed",
+                "authorization creator conditional-output requirement binding",
+            ),
+            (
+                "return the conjunction of externalization/preauthorization status and cleanup status",
+                "authorization creator conjunctive-result requirement binding",
             ),
         ):
             target = f"grep -Fq '{text}' {prefix}requirements.html{suffix}"
@@ -16362,6 +16492,38 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "Apple Rust verification-side policy-write mutation",
         ),
         (
+            'scoped_mutation("native-password-creator-output-zero"',
+            "Apple native authorization-creator output-preclear mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-destroy-rights"',
+            "Apple native authorization-creator release-flag mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-free-result"',
+            "Apple native authorization-creator release-result mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-output-before-free"',
+            "Apple native authorization-creator early-output mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-output-free-result-ignored"',
+            "Apple native authorization-creator output-condition mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-return-free-result-ignored"',
+            "Apple native authorization-creator return-result mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-result-disjunction"',
+            "Apple native authorization-creator disjunction mutation",
+        ),
+        (
+            'scoped_mutation("native-password-creator-duplicate-output"',
+            "Apple native authorization-creator duplicate-output mutation",
+        ),
+        (
             'scoped_mutation("native-password-verification-policy-write"',
             "Apple native verification-side policy-write mutation",
         ),
@@ -16458,6 +16620,11 @@ def validate_macos_service_owned_password_requester_contract(sources):
             '"macos-password-verification-mutates-authorization-policy"',
             10,
             "Apple read-only macOS password verification verdict",
+        ),
+        (
+            '"macos-password-authorization-creator-cleanup-not-final"',
+            9,
+            "Apple checked macOS password authorization creator verdict",
         ),
         (
             '"snapshot-requester-not-installed-launchd-plist-proven"',
@@ -16557,6 +16724,26 @@ def validate_macos_service_owned_password_requester_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11in and Appendix C #399.",
             "read-only macOS password verification identity binding",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11io</span>',
+            "checked macOS password authorization creator requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>400</td>",
+            "checked macOS password authorization creator Appendix C row",
+        ),
+        (
+            sources["hardening"],
+            "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
+            "checked macOS password authorization creator hardening ledger",
+        ),
+        (
+            sources["native_watch"],
+            "The same identity additionally binds R-S11io and Appendix C #400.",
+            "checked macOS password authorization creator identity binding",
         ),
         (
             sources["requirements"],
@@ -22700,6 +22887,10 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "<tr><td>399</td>",
             "R-S11in/R-S11e-277 — read-only macOS password authorization verification",
             "The same identity additionally binds R-S11in and Appendix C #399.",
+            '<span class="id">R-S11io</span>',
+            "<tr><td>400</td>",
+            "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
+            "The same identity additionally binds R-S11io and Appendix C #400.",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -22892,6 +23083,46 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "native_watch",
             "The same identity additionally binds R-S11in and Appendix C #399.",
             "macOS read-only password verification native-watch binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11io</span>',
+            "macOS password authorization creator requirement-ledger-digest binding",
+        ),
+        (
+            "requirements",
+            "<tr><td>400</td>",
+            "macOS password authorization creator Appendix C binding",
+        ),
+        (
+            "requirements",
+            "clear the validated caller buffer before any fallible policy or Authorization Services operation",
+            "normative macOS password authorization creator output preclear",
+        ),
+        (
+            "requirements",
+            "call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>",
+            "normative macOS password authorization creator default release",
+        ),
+        (
+            "requirements",
+            "copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed",
+            "normative macOS password authorization creator conditional output",
+        ),
+        (
+            "requirements",
+            "return the conjunction of externalization/preauthorization status and cleanup status",
+            "normative macOS password authorization creator conjunctive result",
+        ),
+        (
+            "hardening",
+            "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
+            "macOS password authorization creator hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11io and Appendix C #400.",
+            "macOS password authorization creator native-watch binding",
         ),
     ):
         require_text(sources[source_name], text, label)
@@ -71976,6 +72207,63 @@ def run_source_mutations(sources):
         ),
         (
             "macos_platform_source",
+            "    explicit_bzero(buffer, len);\n"
+            "    if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {",
+            "    if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {",
+            "one fail-closed external-authorization output preclear",
+        ),
+        (
+            "macos_platform_source",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);",
+            "creator-side revocation of the transferable authorization",
+        ),
+        (
+            "macos_platform_source",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+            "AuthorizationFree(authRef, kAuthorizationFlagDefaults);\n"
+            "    OSStatus freeStatus = errAuthorizationSuccess;",
+            "precleared output, checked creator-reference release, conditional commit, and local wipe",
+        ),
+        (
+            "macos_platform_source",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);\n"
+            "    if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess) {\n"
+            "        memcpy(buffer, &externalForm, sizeof(externalForm));\n"
+            "    }",
+            "if (status == errAuthorizationSuccess) {\n"
+            "        memcpy(buffer, &externalForm, sizeof(externalForm));\n"
+            "    }\n"
+            "    OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+            "precleared output, checked creator-reference release, conditional commit, and local wipe",
+        ),
+        (
+            "macos_platform_source",
+            "if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess) {",
+            "if (status == errAuthorizationSuccess) {",
+            "precleared output, checked creator-reference release, conditional commit, and local wipe",
+        ),
+        (
+            "macos_platform_source",
+            "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;",
+            "return status == errAuthorizationSuccess;",
+            "precleared output, checked creator-reference release, conditional commit, and local wipe",
+        ),
+        (
+            "macos_platform_source",
+            "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;",
+            "return status == errAuthorizationSuccess || freeStatus == errAuthorizationSuccess;",
+            "precleared output, checked creator-reference release, conditional commit, and local wipe",
+        ),
+        (
+            "macos_platform_source",
+            "        memcpy(buffer, &externalForm, sizeof(externalForm));",
+            "        memcpy(buffer, &externalForm, sizeof(externalForm));\n"
+            "        memcpy(buffer, &externalForm, sizeof(externalForm));",
+            "one conditional external-authorization output commit",
+        ),
+        (
+            "macos_platform_source",
             "    if (!RustDeskSetUnattendedPasswordRightMatchesExpected()) {\n"
             "        return false;\n"
             "    }\n\n"
@@ -72082,6 +72370,54 @@ def run_source_mutations(sources):
             'native_verify.count("AuthorizationFree(") == 1',
             'native_verify.count("AuthorizationFree(") >= 1',
             "Apple checked macOS authorization cleanup cardinality",
+        ),
+        (
+            "verify",
+            'macos_native_authorization_create.count("AuthorizationFree(") == 1',
+            'macos_native_authorization_create.count("AuthorizationFree(") >= 1',
+            "shared macOS authorization creator cleanup cardinality",
+        ),
+        (
+            "verify",
+            'macos_native_authorization_create.count("memcpy(buffer") == 1',
+            'macos_native_authorization_create.count("memcpy(buffer") >= 1',
+            "shared macOS authorization creator output cardinality",
+        ),
+        (
+            "verify",
+            'macos_native_authorization_create.count("explicit_bzero(buffer, len);") == 1',
+            'macos_native_authorization_create.count("explicit_bzero(buffer, len);") >= 1',
+            "shared macOS authorization creator output-preclear cardinality",
+        ),
+        (
+            "verify",
+            '"kAuthorizationFlagDestroyRights" not in macos_native_authorization_create',
+            '"kAuthorizationFlagDestroyRights" in macos_native_authorization_create',
+            "shared macOS authorization creator non-revocation rule",
+        ),
+        (
+            "apple",
+            'native_create.count("AuthorizationFree(") == 1',
+            'native_create.count("AuthorizationFree(") >= 1',
+            "Apple macOS authorization creator cleanup cardinality",
+        ),
+        (
+            "apple",
+            'native_create.count("memcpy(buffer") == 1',
+            'native_create.count("memcpy(buffer") >= 1',
+            "Apple macOS authorization creator output cardinality",
+        ),
+        (
+            "apple",
+            'native_create.count("explicit_bzero(buffer, len);") == 1',
+            'native_create.count("explicit_bzero(buffer, len);") >= 1',
+            "Apple macOS authorization creator output-preclear cardinality",
+        ),
+        (
+            "apple",
+            '"kAuthorizationFlagDestroyRights" not in native_create',
+            '"kAuthorizationFlagDestroyRights" in native_create',
+            "Apple macOS authorization creator non-revocation rule",
         ),
         (
             "ipc_source",
@@ -73552,6 +73888,114 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11in and Appendix C #399.",
             "The same identity no longer binds R-S11in and Appendix C #399.",
             "read-only macOS password verification identity binding",
+        ),
+        (
+            "verify",
+            'grep -Fq \'<span class="id">R-S11io</span>\' requirements.html',
+            "true # checked macOS authorization creator requirement binding disabled",
+            "shared macOS raw credential gate: <span class=\"id\">R-S11io</span>",
+        ),
+        (
+            "apple",
+            'grep -Fq \'<span class="id">R-S11io</span>\' "$REPO/requirements.html"',
+            "true # Apple checked macOS authorization creator requirement binding disabled",
+            "Apple macOS raw credential gate: <span class=\"id\">R-S11io</span>",
+        ),
+        (
+            "verify",
+            "grep -Fq 'clear the validated caller buffer before any fallible policy or Authorization Services operation' requirements.html",
+            "true # shared authorization creator output-preclear requirement binding disabled",
+            "shared authorization creator output-preclear requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'clear the validated caller buffer before any fallible policy or Authorization Services operation' \"$REPO/requirements.html\"",
+            "true # Apple authorization creator output-preclear requirement binding disabled",
+            "Apple authorization creator output-preclear requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' requirements.html",
+            "true # shared authorization creator default-release requirement binding disabled",
+            "shared authorization creator default-release requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' \"$REPO/requirements.html\"",
+            "true # Apple authorization creator default-release requirement binding disabled",
+            "Apple authorization creator default-release requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' requirements.html",
+            "true # shared authorization creator output-commit requirement binding disabled",
+            "shared authorization creator conditional-output requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' \"$REPO/requirements.html\"",
+            "true # Apple authorization creator output-commit requirement binding disabled",
+            "Apple authorization creator conditional-output requirement binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' requirements.html",
+            "true # shared authorization creator conjunction requirement binding disabled",
+            "shared authorization creator conjunctive-result requirement binding",
+        ),
+        (
+            "apple",
+            "grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' \"$REPO/requirements.html\"",
+            "true # Apple authorization creator conjunction requirement binding disabled",
+            "Apple authorization creator conjunctive-result requirement binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11io</span>',
+            '<span class="id">R-S11io-disabled</span>',
+            "checked macOS password authorization creator requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>400</td>",
+            "<tr><td>400-disabled</td>",
+            "checked macOS password authorization creator Appendix C row",
+        ),
+        (
+            "requirements",
+            "clear the validated caller buffer before any fallible policy or Authorization Services operation",
+            "leave the caller buffer unchanged on failure",
+            "normative macOS password authorization creator output preclear",
+        ),
+        (
+            "requirements",
+            "call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>",
+            "ignore creator-reference cleanup",
+            "normative macOS password authorization creator default release",
+        ),
+        (
+            "requirements",
+            "copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed",
+            "copy the external form before creator-reference release",
+            "normative macOS password authorization creator conditional output",
+        ),
+        (
+            "requirements",
+            "return the conjunction of externalization/preauthorization status and cleanup status",
+            "return only externalization status",
+            "normative macOS password authorization creator conjunctive result",
+        ),
+        (
+            "hardening",
+            "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
+            "R-S11io-disabled/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
+            "checked macOS password authorization creator hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11io and Appendix C #400.",
+            "The same identity no longer binds R-S11io and Appendix C #400.",
+            "checked macOS password authorization creator identity binding",
         ),
         (
             "workspace_verifier",

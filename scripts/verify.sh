@@ -3020,6 +3020,14 @@ grep -Fq 'Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code
 grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-checked-cleanup-norm-missing"
 grep -Fq 'then repeat the exact read-only right-definition check' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-final-policy-check-norm-missing"
 grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-conjunction-norm-missing"
+grep -Fq '<span class="id">R-S11io</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-requirement-missing"
+grep -Fq '<tr><td>400</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-appendix-missing"
+grep -Fq 'R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11io and Appendix C #400.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-digest-binding-missing"
+grep -Fq 'clear the validated caller buffer before any fallible policy or Authorization Services operation' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-preclear-norm-missing"
+grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-default-cleanup-norm-missing"
+grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-commit-norm-missing"
+grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-conjunction-norm-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -4528,10 +4536,41 @@ macos_native_right_write = between(
     "static bool EnsureRustDeskSetUnattendedPasswordRight()",
     'extern "C" bool MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight()',
 )
+macos_native_authorization_create = between(
+    macos_mm,
+    'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm',
+    'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm',
+)
 macos_native_authorization_verify = between(
     macos_mm,
     'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm',
     "// https://gist.github.com/briankc/025415e25900750f402235dbf1b74e42",
+)
+need(
+    "macos-password-authorization-creator-cleanup-not-final",
+    macos_native_authorization_create.count("AuthorizationFree(") == 1
+    and macos_native_authorization_create.count("memcpy(buffer") == 1
+    and macos_native_authorization_create.count("explicit_bzero(buffer, len);") == 1
+    and macos_native_authorization_create.count(
+        "explicit_bzero(&externalForm, sizeof(externalForm));"
+    )
+    == 1
+    and "kAuthorizationFlagDestroyRights" not in macos_native_authorization_create
+    and ordered(
+        macos_native_authorization_create,
+        (
+            "explicit_bzero(buffer, len);",
+            "if (!RustDeskSetUnattendedPasswordRightMatchesExpected())",
+            "AuthorizationCreate",
+            "AuthorizationCopyRights",
+            "AuthorizationMakeExternalForm",
+            "OSStatus freeStatus = AuthorizationFree(authRef, kAuthorizationFlagDefaults);",
+            "if (status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess)",
+            "memcpy(buffer, &externalForm, sizeof(externalForm));",
+            "explicit_bzero(&externalForm, sizeof(externalForm));",
+            "return status == errAuthorizationSuccess && freeStatus == errAuthorizationSuccess;",
+        ),
+    ),
 )
 need(
     "macos-password-verification-mutates-authorization-policy",

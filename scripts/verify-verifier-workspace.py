@@ -22302,9 +22302,9 @@ def validate_service_ipc_protocol_authority_contract(sources):
 
     share_rdp_client = extract_between(
         ipc,
-        "async fn set_service_owned_share_rdp_with_ack(",
+        "async fn execute_windows_service_owned_share_rdp_change(",
         "\n\n#[cfg(target_os = \"windows\")]\n"
-        "pub(crate) async fn request_windows_service_owned_sas(",
+        "async fn run_windows_share_rdp_client(",
         "Windows service-owned share-RDP client",
     )
     for text, label in (
@@ -22321,8 +22321,12 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "typed Windows share-RDP response reader",
         ),
         (
-            "ServiceIpcResponse::ShareRdpSet { accepted }",
-            "typed Windows share-RDP response",
+            "ServiceIpcResponse::ShareRdpSet { accepted: true }",
+            "typed accepted Windows share-RDP response",
+        ),
+        (
+            "Some(ServiceIpcResponse::ShareRdpSet { accepted: false }) | None",
+            "typed refused Windows share-RDP response",
         ),
     ):
         require_text(share_rdp_client, text, label)
@@ -23473,6 +23477,263 @@ def validate_windows_service_channel_protocol_contract(sources):
         "future: bind.mainCanRequestShareRdpChange()",
         "purpose-specific desktop RDP-sharing availability query",
     )
+    for token, label in (
+        (
+            "const WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY: usize = 1;",
+            "bounded Windows RDP-sharing queue",
+        ),
+        (
+            "std::time::Duration::from_secs(8);",
+            "bounded Windows RDP-sharing final-result deadline",
+        ),
+        (
+            "static WINDOWS_SHARE_RDP_CLIENT: OnceLock<",
+            "single Windows RDP-sharing client owner",
+        ),
+    ):
+        require_text(ipc, token, label)
+    share_rdp_owner = extract_braced_item(
+        ipc,
+        "struct WindowsShareRdpClientOwner",
+        "Windows RDP-sharing client owner state",
+    )
+    require_order(
+        share_rdp_owner,
+        (
+            "requests: mpsc::Sender<WindowsShareRdpClientRequest>",
+            "thread: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>",
+        ),
+        "retained Windows RDP-sharing queue and thread ownership",
+    )
+    share_rdp_owner_impl = extract_braced_item(
+        ipc,
+        "impl WindowsShareRdpClientOwner",
+        "Windows RDP-sharing client owner implementation",
+    )
+    share_rdp_start = extract_braced_item(
+        share_rdp_owner_impl,
+        "fn start() -> std::result::Result<Self, String>",
+        "Windows RDP-sharing client startup",
+    )
+    require_order(
+        share_rdp_start,
+        (
+            "mpsc::channel(WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY)",
+            "std::sync::mpsc::sync_channel(1)",
+            "std::thread::Builder::new()",
+            '.name("rustdesk-share-rdp-client".to_owned())',
+            "tokio::runtime::Builder::new_current_thread()",
+            ".enable_all()",
+            ".build()",
+            ".send(Err(format!(",
+            "if started.send(Ok(())).is_err()",
+            "runtime.block_on(run_windows_share_rdp_client(receiver))",
+            "match startup.recv()",
+            "thread: std::sync::Mutex::new(Some(thread))",
+        ),
+        "one explicit Windows RDP-sharing runtime and readiness handshake",
+    )
+    require_exact_count(
+        share_rdp_start,
+        "match thread.join()",
+        2,
+        "failed-start Windows RDP-sharing thread joins",
+    )
+    require_text(
+        share_rdp_start,
+        "Windows RDP-sharing client owner stopped waiting for runtime startup failure",
+        "abandoned runtime-start failure observation",
+    )
+    for token, label in (
+        ("unwrap()", "unchecked Windows RDP-sharing startup"),
+        ("expect(", "unchecked Windows RDP-sharing startup"),
+        ("#[tokio::main", "per-call hidden Windows RDP-sharing runtime"),
+        ("let _ = started.send", "silently ignored Windows RDP-sharing startup result"),
+    ):
+        require_absent(share_rdp_start, token, label)
+    share_rdp_liveness = extract_braced_item(
+        share_rdp_owner_impl,
+        "fn require_running(&self) -> ResultType<()>",
+        "Windows RDP-sharing client liveness and reaping",
+    )
+    require_order(
+        share_rdp_liveness,
+        (
+            ".thread",
+            ".lock()",
+            "let Some(worker) = thread.as_ref()",
+            "if !worker.is_finished()",
+            "thread.take()",
+            "drop(thread)",
+            "worker.join()",
+        ),
+        "retained Windows RDP-sharing thread terminal ownership",
+    )
+    share_rdp_reap = extract_braced_item(
+        share_rdp_owner_impl,
+        "fn reap_unavailable_worker(",
+        "Windows RDP-sharing unavailable-worker reaping",
+    )
+    require_order(
+        share_rdp_reap,
+        (
+            ".thread",
+            ".lock()",
+            "thread.take()",
+            "drop(thread)",
+            "unavailable_worker.join()",
+            "Ok(()) => bail!(stopped)",
+            "Err(_) => bail!(panicked)",
+        ),
+        "closed or disconnected Windows RDP-sharing worker terminal join",
+    )
+    for token, label in (
+        ("unwrap()", "unchecked unavailable Windows RDP-sharing worker ownership"),
+        ("expect(", "unchecked unavailable Windows RDP-sharing worker ownership"),
+        ("is_finished()", "racy unavailable Windows RDP-sharing worker precheck"),
+    ):
+        require_absent(share_rdp_reap, token, label)
+    share_rdp_request = extract_braced_item(
+        share_rdp_owner_impl,
+        "fn request(&self, enabled: bool) -> ResultType<()>",
+        "Windows RDP-sharing bounded request",
+    )
+    require_order(
+        share_rdp_request,
+        (
+            "self.require_running()?;",
+            "std::sync::mpsc::sync_channel(1)",
+            "self.requests.try_send(WindowsShareRdpClientRequest",
+            "mpsc::error::TrySendError::Full(_)",
+            "mpsc::error::TrySendError::Closed(_)",
+            '"Windows RDP-sharing client worker stopped before request admission"',
+            "completion.recv_timeout(WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT)",
+            "Ok(Ok(())) => Ok(())",
+            "Ok(Err(err))",
+            "RecvTimeoutError::Timeout",
+            "RecvTimeoutError::Disconnected",
+            '"Windows RDP-sharing client worker ended without reporting a result"',
+        ),
+        "nonblocking bounded request and explicit final-result classification",
+    )
+    require_exact_count(
+        share_rdp_request,
+        ".reap_unavailable_worker(",
+        2,
+        "closed-admission and disconnected-result Windows RDP-sharing worker reaping",
+    )
+    for token, label in (
+        ("blocking_send", "blocking Windows RDP-sharing queue admission"),
+        ("completion.recv()", "unbounded Windows RDP-sharing completion"),
+    ):
+        require_absent(share_rdp_request, token, label)
+    share_rdp_facade = extract_braced_item(
+        ipc,
+        "pub fn set_service_owned_share_rdp(enable: bool) -> ResultType<()>",
+        "Windows RDP-sharing client facade",
+    )
+    require_order(
+        share_rdp_facade,
+        (
+            "if !crate::platform::is_installed()",
+            "WINDOWS_SHARE_RDP_CLIENT.get_or_init(WindowsShareRdpClientOwner::start)",
+            "Ok(client) => client.request(enable)",
+        ),
+        "installed ownership before process-owned RDP-sharing submission",
+    )
+    share_rdp_transaction = extract_braced_item(
+        ipc,
+        "async fn execute_windows_service_owned_share_rdp_change(",
+        "Windows RDP-sharing typed async transaction",
+    )
+    require_order(
+        share_rdp_transaction,
+        (
+            "connect_service(ms_timeout).await?",
+            "send_service_request_timeout(",
+            "ServiceIpcRequest::SetShareRdp { enabled: enable }",
+            "next_service_response_timeout(ms_timeout)",
+            "ServiceIpcResponse::ShareRdpSet { accepted: true }",
+            "Some(ServiceIpcResponse::ShareRdpSet { accepted: false }) | None",
+            'bail!("RDP-sharing change was not accepted")',
+        ),
+        "typed RDP-sharing request and exact accepted/refused response",
+    )
+    share_rdp_runner = extract_braced_item(
+        ipc,
+        "async fn run_windows_share_rdp_client(",
+        "Windows RDP-sharing serial runner",
+    )
+    require_order(
+        share_rdp_runner,
+        (
+            "while let Some(request) = requests.recv().await",
+            "execute_windows_service_owned_share_rdp_change(request.enabled)",
+            ".await",
+            "request.completed.send(result)",
+        ),
+        "serial RDP-sharing execution and exact caller completion",
+    )
+    require_absent(share_rdp_runner, "tokio::spawn", "detached RDP-sharing transaction")
+    require_absent(
+        ipc,
+        "set_service_owned_share_rdp_with_ack",
+        "retired per-call RDP-sharing runtime helper",
+    )
+    require_absent(
+        ipc,
+        '#[tokio::main(flavor = "current_thread")]\n'
+        "async fn execute_windows_service_owned_share_rdp_change",
+        "per-invocation RDP-sharing runtime",
+    )
+    ui_share_rdp = extract_braced_item(
+        ui,
+        "pub fn set_share_rdp(_enable: bool) -> hbb_common::ResultType<()>",
+        "shared result-bearing RDP-sharing request",
+    )
+    require_text(
+        ui_share_rdp,
+        "return crate::ipc::set_service_owned_share_rdp(_enable)",
+        "unmodified RDP-sharing result propagation",
+    )
+    require_absent(ui_share_rdp, "if let Err", "discarded RDP-sharing action result")
+    ffi_share_rdp = extract_braced_item(
+        flutter_ffi,
+        "pub fn main_set_share_rdp(enable: bool) -> Result<()>",
+        "result-bearing RDP-sharing bridge action",
+    )
+    require_text(ffi_share_rdp, "set_share_rdp(enable)", "bridged RDP-sharing result")
+    require_text(
+        desktop_settings,
+        "bool _shareRdpChangePending = false;",
+        "RDP-sharing UI transaction latch",
+    )
+    require_order(
+        desktop_share_rdp,
+        (
+            "if (_shareRdpChangePending) return;",
+            "setState(() => _shareRdpChangePending = true);",
+            "await bind.mainSetShareRdp(enable: b);",
+            "catch (e)",
+            "showToast(\"${translate('Failed')}: $e\")",
+            "finally",
+            "if (mounted)",
+            "setState(() => _shareRdpChangePending = false);",
+            "final enabled = data.data == true && !_shareRdpChangePending;",
+        ),
+        "single visible RDP-sharing UI transaction",
+    )
+    require_text(
+        sources["requirements"],
+        "A closed admission channel or disconnected admitted-request completion "
+        '<span class="kw">MUST</span> consume and join',
+        "unavailable Windows RDP-sharing worker terminal-join requirement",
+    )
+    require_text(
+        sources["apple"],
+        "share-rdp-client-unavailable-worker-reap-norm-missing",
+        "Apple unavailable-worker terminal-join normative binding",
+    )
     web_availability = extract_braced_item(
         web_bridge,
         "Future<bool> mainCanRequestShareRdpChange({dynamic hint})",
@@ -23492,6 +23753,50 @@ def validate_windows_service_channel_protocol_contract(sources):
         ('"local presentation current-token elevation proof"', "focused elevation mutation"),
         ('"logged local presentation proof failure"', "focused fail-closed logging mutation"),
         ('"purpose-specific desktop presentation query"', "focused desktop-query mutation"),
+        ('"single queued RDP-sharing transaction"', "focused bounded-queue mutation"),
+        ('"bounded RDP-sharing result wait"', "focused result-deadline mutation"),
+        ('"single process-owned RDP-sharing client"', "focused single-owner mutation"),
+        ('"retained reapable RDP-sharing thread"', "focused retained-thread mutation"),
+        ('"named RDP-sharing client thread"', "focused named-thread mutation"),
+        ('"single current-thread RDP-sharing runtime"', "focused runtime-kind mutation"),
+        ('"RDP-sharing runtime IO and time drivers"', "focused runtime-driver mutation"),
+        ('"RDP-sharing runtime failure publication"', "focused runtime-failure mutation"),
+        ('"RDP-sharing runtime readiness publication"', "focused readiness mutation"),
+        ('"RDP-sharing runtime execution ownership"', "focused runtime-execution mutation"),
+        ('"RDP-sharing failed-runtime thread join"', "focused failed-runtime join mutation"),
+        ('"RDP-sharing lost-startup thread join"', "focused lost-startup join mutation"),
+        ('"RDP-sharing worker terminal liveness"', "focused terminal-liveness mutation"),
+        ('"RDP-sharing worker join ownership consumption"', "focused join-ownership mutation"),
+        ('"RDP-sharing finished-worker reap"', "focused finished-worker reap mutation"),
+        ('"RDP-sharing unavailable-worker reaper"', "focused unavailable-worker reaper mutation"),
+        ('"RDP-sharing unavailable-worker ownership consumption"', "focused unavailable-worker ownership mutation"),
+        ('"RDP-sharing unavailable-worker terminal join"', "focused unavailable-worker join mutation"),
+        ('"RDP-sharing live-owner admission"', "focused live-owner mutation"),
+        ('"nonblocking RDP-sharing queue admission"', "focused nonblocking-admission mutation"),
+        ('"full RDP-sharing queue classification"', "focused full-queue mutation"),
+        ('"closed-admission RDP-sharing worker reap"', "focused closed-admission reap mutation"),
+        ('"bounded exact RDP-sharing completion"', "focused completion-bound mutation"),
+        ('"RDP-sharing result-timeout classification"', "focused timeout-classification mutation"),
+        ('"disconnected-result RDP-sharing worker reap"', "focused disconnected-result reap mutation"),
+        ('"installed ownership before RDP-sharing worker"', "focused installed-owner mutation"),
+        ('"single cached RDP-sharing owner selection"', "focused cached-owner mutation"),
+        ('"per-call RDP-sharing runtime absence"', "focused per-call-runtime mutation"),
+        ('"refused RDP-sharing result remains failure"', "focused refusal-result mutation"),
+        ('"serial persistent RDP-sharing runner"', "focused serial-runner mutation"),
+        ('"no detached RDP-sharing transaction"', "focused detached-transaction mutation"),
+        ('"shared RDP-sharing result propagation"', "focused shared-result mutation"),
+        ('"Flutter RDP-sharing result propagation"', "focused bridge-result mutation"),
+        ('"RDP-sharing UI in-flight state"', "focused UI-state mutation"),
+        ('"RDP-sharing duplicate UI refusal"', "focused duplicate-UI mutation"),
+        ('"RDP-sharing UI admission latch"', "focused UI-admission mutation"),
+        ('"visible RDP-sharing failure"', "focused visible-failure mutation"),
+        ('"mounted RDP-sharing UI finality"', "focused mounted-finality mutation"),
+        ('"disabled RDP-sharing tap surfaces while pending"', "focused disabled-taps mutation"),
+        ('"bounded RDP-sharing client normative requirement"', "focused normative mutation"),
+        ('"unavailable RDP-sharing worker terminal-join norm"', "focused unavailable-worker norm mutation"),
+        ('"bounded RDP-sharing client Appendix C row"', "focused Appendix mutation"),
+        ('"bounded RDP-sharing client hardening ledger"', "focused ledger mutation"),
+        ('"bounded RDP-sharing client digest binding"', "focused digest mutation"),
     ):
         require_text(focused, token, label)
     shared_presentation_gate = extract_between(
@@ -23522,6 +23827,35 @@ def validate_windows_service_channel_protocol_contract(sources):
         ("flutter/lib/generated_bridge.freezed.dart", "fresh generated Dart Freezed presentation bridge"),
     ):
         require_text(shared_presentation_gate, f'"${{VERIFY_FRB_OUTPUT}}/{path}"', label)
+    shared_transaction_gate = extract_between(
+        sources["verify"],
+        "# R-S11ir/R-S11e-281:",
+        "# R-X9 (slices 2-4 follow-on, Layer 2a):",
+        "shared bounded Windows RDP-sharing client transaction gate",
+    )
+    for token, label in (
+        ("WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY", "shared bounded queue check"),
+        ("WindowsShareRdpClientOwner", "shared client owner check"),
+        ("Mutex<Option<std::thread::JoinHandle", "shared retained thread check"),
+        ("Builder::new_current_thread", "shared explicit runtime check"),
+        ("send(Err(format", "shared runtime-failure publication check"),
+        ("reap_unavailable_worker", "shared unavailable-worker reaper check"),
+        ("unavailable_worker.join", "shared unavailable-worker terminal-join check"),
+        ("try_send(WindowsShareRdpClientRequest", "shared nonblocking admission check"),
+        ("stopped before request admission", "shared closed-admission reaping check"),
+        ("recv_timeout(WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT)", "shared result bound check"),
+        ("ended without reporting a result", "shared disconnected-result reaping check"),
+        ("unavailable-worker-reap-call-count", "shared exact reaper-call count check"),
+        ("per-call-runtime-helper-present", "shared old-runtime refusal"),
+        ("shared-result-propagation-missing", "shared result-return check"),
+        ("ffi-result-propagation-missing", "shared FFI result check"),
+        ("dart-transaction-contract-missing", "shared Dart finality check"),
+        ("result-action-generated-rust-missing", "shared generated Rust action check"),
+        ("result-action-generated-dart-missing", "shared generated Dart action check"),
+        ('<span class="id">R-S11ir</span>', "shared normative requirement check"),
+        ("<tr><td>403</td>", "shared Appendix C check"),
+    ):
+        require_text(shared_transaction_gate, token, label)
     require_text(
         ipc,
         "#[serde(deny_unknown_fields)]\n"
@@ -24097,6 +24431,56 @@ def validate_windows_service_channel_protocol_contract(sources):
         ("Exact-current Windows bridge generation", "normative open native Windows evidence"),
     ):
         require_text(presentation_requirement, token, label)
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ir</span>',
+        "bounded Windows RDP-sharing client transaction requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>403</td>",
+        "bounded Windows RDP-sharing client transaction Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership",
+        "bounded Windows RDP-sharing client transaction hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11ir and Appendix C #403.",
+        "bounded Windows RDP-sharing client transaction identity binding",
+    )
+    client_transaction_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11ir",
+        "bounded Windows RDP-sharing client transaction requirement",
+    )
+    for token, label in (
+        ("Exactly one lazy process-lifetime", "normative single client owner"),
+        ("one-slot Tokio channel", "normative bounded request queue"),
+        ("never block a bridge worker waiting to enqueue", "normative nonblocking admission"),
+        ("execute requests serially without per-request spawn", "normative serial execution"),
+        ("wait no more than eight seconds", "normative result deadline"),
+        ("MUST NOT</span> cancel or detach an admitted request", "normative admitted-work ownership"),
+        ("return <code>Result&lt;()&gt;</code>", "normative exact result propagation"),
+        ("release the latch in a mounted-only", "normative UI finality"),
+        ("Fresh generated-bridge compilation", "normative open generated bridge evidence"),
+    ):
+        require_text(client_transaction_requirement, token, label)
+    for token, label in (
+        ('<span class="id">R-S11ir</span>', "Apple normative binding"),
+        ("<tr><td>403</td>", "Apple Appendix binding"),
+        (
+            "R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership",
+            "Apple hardening-ledger binding",
+        ),
+        (
+            "The same identity additionally binds R-S11ir and Appendix C #403.",
+            "Apple digest binding",
+        ),
+    ):
+        require_text(sources["apple"], token, label)
     require_text(
         sources["workspace_verifier"],
         '            "windows_service_channel_protocol_verifier": (\n'
@@ -70362,8 +70746,10 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "let thread = std::thread::Builder::new()",
-            "let thread = std::thread::spawn(move || {}); //",
+            "let thread = std::thread::Builder::new()\n"
+            '        .name("rustdesk-desktop-ipc".to_owned())',
+            "let thread = std::thread::spawn(move || {}); // "
+            '.name("rustdesk-desktop-ipc".to_owned())',
             "fallible desktop IPC thread builder",
         ),
         (
@@ -82803,6 +83189,356 @@ def run_source_mutations(sources):
             "The same identity additionally binds R-S11iq and Appendix C #402.",
             "The same identity no longer binds R-S11iq and Appendix C #402.",
             "purpose-specific Windows RDP-sharing presentation identity binding",
+        ),
+        (
+            "ipc_source",
+            "const WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY: usize = 1;",
+            "const WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY: usize = 16;",
+            "bounded Windows RDP-sharing queue",
+        ),
+        (
+            "ipc_source",
+            "const WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT: std::time::Duration =\n"
+            "    std::time::Duration::from_secs(8);",
+            "const WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT: std::time::Duration =\n"
+            "    std::time::Duration::from_secs(80);",
+            "bounded Windows RDP-sharing final-result deadline",
+        ),
+        (
+            "ipc_source",
+            "static WINDOWS_SHARE_RDP_CLIENT: OnceLock<",
+            "static WINDOWS_SHARE_RDP_CLIENT_DISABLED: OnceLock<",
+            "single Windows RDP-sharing client owner",
+        ),
+        (
+            "ipc_source",
+            "thread: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>",
+            "thread: ()",
+            "retained Windows RDP-sharing queue and thread ownership",
+        ),
+        (
+            "ipc_source",
+            '.name("rustdesk-share-rdp-client".to_owned())',
+            '.name("rustdesk-share-rdp-client-ephemeral".to_owned())',
+            "one explicit Windows RDP-sharing runtime and readiness handshake",
+        ),
+        (
+            "ipc_source",
+            "tokio::runtime::Builder::new_current_thread()",
+            "tokio::runtime::Builder::new_multi_thread()",
+            "one explicit Windows RDP-sharing runtime and readiness handshake",
+        ),
+        (
+            "ipc_source",
+            ".enable_all()\n                    .build()",
+            ".build()",
+            "one explicit Windows RDP-sharing runtime and readiness handshake",
+        ),
+        (
+            "ipc_source",
+            ".send(Err(format!(",
+            ".send(Ok(format!(",
+            "one explicit Windows RDP-sharing runtime and readiness handshake",
+        ),
+        (
+            "ipc_source",
+            "if started.send(Ok(())).is_err() {",
+            "if false && started.send(Ok(())).is_err() {",
+            "one explicit Windows RDP-sharing runtime and readiness handshake",
+        ),
+        (
+            "ipc_source",
+            "Windows RDP-sharing client owner stopped waiting for runtime startup failure",
+            "Windows RDP-sharing client runtime startup failure was discarded",
+            "abandoned runtime-start failure observation",
+        ),
+        (
+            "ipc_source",
+            "runtime.block_on(run_windows_share_rdp_client(receiver));",
+            "let _ = run_windows_share_rdp_client(receiver);",
+            "one explicit Windows RDP-sharing runtime and readiness handshake",
+        ),
+        (
+            "ipc_source",
+            "match thread.join()",
+            "match Ok(())",
+            "failed-start Windows RDP-sharing thread joins",
+        ),
+        (
+            "ipc_source",
+            "if !worker.is_finished() {",
+            "if worker.is_finished() {",
+            "retained Windows RDP-sharing thread terminal ownership",
+        ),
+        (
+            "ipc_source",
+            "let worker = thread.take().ok_or_else(|| {",
+            "let worker = thread.as_ref().ok_or_else(|| {",
+            "retained Windows RDP-sharing thread terminal ownership",
+        ),
+        (
+            "ipc_source",
+            "match worker.join() {\n"
+            '            Ok(()) => bail!("Windows RDP-sharing client worker stopped unexpectedly")',
+            "match worker.is_finished() {\n"
+            '            false => bail!("Windows RDP-sharing client worker stopped unexpectedly")',
+            "retained Windows RDP-sharing thread terminal ownership",
+        ),
+        (
+            "ipc_source",
+            "fn reap_unavailable_worker(\n",
+            "fn ignore_unavailable_worker(\n",
+            "Windows RDP-sharing unavailable-worker reaping",
+        ),
+        (
+            "ipc_source",
+            "let unavailable_worker = thread.take().ok_or_else(|| {",
+            "let unavailable_worker = thread.as_ref().ok_or_else(|| {",
+            "closed or disconnected Windows RDP-sharing worker terminal join",
+        ),
+        (
+            "ipc_source",
+            "match unavailable_worker.join() {",
+            "match Ok(()) {",
+            "closed or disconnected Windows RDP-sharing worker terminal join",
+        ),
+        (
+            "ipc_source",
+            "self.require_running()?;",
+            "let _ = &self.thread;",
+            "nonblocking bounded request and explicit final-result classification",
+        ),
+        (
+            "ipc_source",
+            "self.requests.try_send(WindowsShareRdpClientRequest {",
+            "self.requests.blocking_send(WindowsShareRdpClientRequest {",
+            "nonblocking bounded request and explicit final-result classification",
+        ),
+        (
+            "ipc_source",
+            "Err(mpsc::error::TrySendError::Full(_)) => {",
+            "Err(mpsc::error::TrySendError::Closed(_)) => {",
+            "nonblocking bounded request and explicit final-result classification",
+        ),
+        (
+            "ipc_source",
+            "Err(mpsc::error::TrySendError::Closed(_)) => {\n"
+            "                return self.reap_unavailable_worker(",
+            "Err(mpsc::error::TrySendError::Closed(_)) => {\n"
+            '                bail!("Windows RDP-sharing client worker is unavailable")',
+            "closed-admission and disconnected-result Windows RDP-sharing worker reaping",
+        ),
+        (
+            "ipc_source",
+            "completion.recv_timeout(WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT)",
+            "completion.recv()",
+            "nonblocking bounded request and explicit final-result classification",
+        ),
+        (
+            "ipc_source",
+            "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => bail!(",
+            "Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => bail!(",
+            "nonblocking bounded request and explicit final-result classification",
+        ),
+        (
+            "ipc_source",
+            "Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => self\n"
+            "                .reap_unavailable_worker(",
+            "Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => bail!(",
+            "closed-admission and disconnected-result Windows RDP-sharing worker reaping",
+        ),
+        (
+            "ipc_source",
+            "if !crate::platform::is_installed() {\n"
+            '        bail!("Changing RDP session sharing requires an installed service");',
+            "if false && !crate::platform::is_installed() {\n"
+            '        bail!("Changing RDP session sharing requires an installed service");',
+            "installed ownership before process-owned RDP-sharing submission",
+        ),
+        (
+            "ipc_source",
+            "WINDOWS_SHARE_RDP_CLIENT.get_or_init(WindowsShareRdpClientOwner::start)",
+            "WINDOWS_SHARE_RDP_CLIENT.get()",
+            "installed ownership before process-owned RDP-sharing submission",
+        ),
+        (
+            "ipc_source",
+            '#[cfg(target_os = "windows")]\n'
+            "async fn execute_windows_service_owned_share_rdp_change",
+            '#[cfg(target_os = "windows")]\n'
+            '#[tokio::main(flavor = "current_thread")]\n'
+            "async fn execute_windows_service_owned_share_rdp_change",
+            "per-invocation RDP-sharing runtime",
+        ),
+        (
+            "ipc_source",
+            "Some(ServiceIpcResponse::ShareRdpSet { accepted: false }) | None => {\n"
+            '            bail!("RDP-sharing change was not accepted")',
+            "Some(ServiceIpcResponse::ShareRdpSet { accepted: false }) | None => Ok(())",
+            "typed RDP-sharing request and exact accepted/refused response",
+        ),
+        (
+            "ipc_source",
+            "while let Some(request) = requests.recv().await {",
+            "if let Some(request) = requests.recv().await {",
+            "serial RDP-sharing execution and exact caller completion",
+        ),
+        (
+            "ipc_source",
+            "let result = execute_windows_service_owned_share_rdp_change(request.enabled)\n"
+            "            .await",
+            "let result = tokio::spawn(execute_windows_service_owned_share_rdp_change(request.enabled))\n"
+            "            .await",
+            "detached RDP-sharing transaction",
+        ),
+        (
+            "ui_interface_source",
+            "return crate::ipc::set_service_owned_share_rdp(_enable);",
+            "let _ = crate::ipc::set_service_owned_share_rdp(_enable);\n"
+            "        return Ok(());",
+            "unmodified RDP-sharing result propagation",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_set_share_rdp(enable: bool) -> Result<()> {",
+            "pub fn main_set_share_rdp(enable: bool) {",
+            "result-bearing RDP-sharing bridge action",
+        ),
+        (
+            "desktop_settings_source",
+            "bool _shareRdpChangePending = false;",
+            "bool _shareRdpChangePendingDisabled = false;",
+            "RDP-sharing UI transaction latch",
+        ),
+        (
+            "desktop_settings_source",
+            "if (_shareRdpChangePending) return;",
+            "if (false && _shareRdpChangePending) return;",
+            "single visible RDP-sharing UI transaction",
+        ),
+        (
+            "desktop_settings_source",
+            "setState(() => _shareRdpChangePending = true);",
+            "setState(() {});",
+            "single visible RDP-sharing UI transaction",
+        ),
+        (
+            "desktop_settings_source",
+            "showToast(\"${translate('Failed')}: $e\");",
+            "debugPrint(\"RDP sharing failed: $e\");",
+            "single visible RDP-sharing UI transaction",
+        ),
+        (
+            "desktop_settings_source",
+            "if (mounted) {\n"
+            "          setState(() => _shareRdpChangePending = false);",
+            "if (true) {\n"
+            "          setState(() => _shareRdpChangePending = false);",
+            "single visible RDP-sharing UI transaction",
+        ),
+        (
+            "desktop_settings_source",
+            "final enabled = data.data == true && !_shareRdpChangePending;",
+            "final enabled = data.data == true;",
+            "single visible RDP-sharing UI transaction",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"single queued RDP-sharing transaction"',
+            '"single queued RDP-sharing transaction disabled"',
+            "focused bounded-queue mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"RDP-sharing unavailable-worker reaper"',
+            '"RDP-sharing unavailable-worker reaper disabled"',
+            "focused unavailable-worker reaper mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"RDP-sharing unavailable-worker ownership consumption"',
+            '"RDP-sharing unavailable-worker ownership consumption disabled"',
+            "focused unavailable-worker ownership mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"RDP-sharing unavailable-worker terminal join"',
+            '"RDP-sharing unavailable-worker terminal join disabled"',
+            "focused unavailable-worker join mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"closed-admission RDP-sharing worker reap"',
+            '"closed-admission RDP-sharing worker reap disabled"',
+            "focused closed-admission reap mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"disconnected-result RDP-sharing worker reap"',
+            '"disconnected-result RDP-sharing worker reap disabled"',
+            "focused disconnected-result reap mutation",
+        ),
+        (
+            "verify",
+            "# R-S11ir/R-S11e-281:",
+            "# R-S11ir-disabled/R-S11e-281:",
+            "shared bounded Windows RDP-sharing client transaction gate",
+        ),
+        (
+            "verify",
+            "unavailable-worker-reap-call-count",
+            "worker-reap-count-check-disabled",
+            "shared exact reaper-call count check",
+        ),
+        (
+            "apple",
+            '<span class="id">R-S11ir</span>',
+            '<span class="id">R-S11ir-disabled</span>',
+            "Apple normative binding",
+        ),
+        (
+            "apple",
+            "share-rdp-client-unavailable-worker-reap-norm-missing",
+            "share-rdp-client-unavailable-worker-reap-norm-disabled",
+            "Apple unavailable-worker terminal-join normative binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ir</span>',
+            '<span class="id">R-S11ir-disabled</span>',
+            "bounded Windows RDP-sharing client transaction requirement",
+        ),
+        (
+            "requirements",
+            "one-slot Tokio channel",
+            "unbounded Tokio channel",
+            "normative bounded request queue",
+        ),
+        (
+            "requirements",
+            "A closed admission channel or disconnected admitted-request completion "
+            '<span class="kw">MUST</span> consume and join',
+            "A closed admission channel or disconnected admitted-request completion "
+            '<span class="kw">MAY</span> consume and join',
+            "unavailable Windows RDP-sharing worker terminal-join requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>403</td>",
+            "<tr><td>403-disabled</td>",
+            "bounded Windows RDP-sharing client transaction Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership",
+            "R-S11ir-disabled/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership",
+            "bounded Windows RDP-sharing client transaction hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ir and Appendix C #403.",
+            "The same identity no longer binds R-S11ir and Appendix C #403.",
+            "bounded Windows RDP-sharing client transaction identity binding",
         ),
         (
             "ipc_source",

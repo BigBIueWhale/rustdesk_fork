@@ -288,6 +288,166 @@ static MAIN_IPC_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
 static SERVICE_IPC_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
 #[cfg(target_os = "windows")]
 static WINDOWS_SERVICE_MAIN_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
+#[cfg(target_os = "windows")]
+const WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY: usize = 1;
+#[cfg(target_os = "windows")]
+const WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(8);
+#[cfg(target_os = "windows")]
+static WINDOWS_SHARE_RDP_CLIENT: OnceLock<
+    std::result::Result<WindowsShareRdpClientOwner, String>,
+> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+struct WindowsShareRdpClientRequest {
+    enabled: bool,
+    completed: std::sync::mpsc::SyncSender<std::result::Result<(), String>>,
+}
+
+/// One process-lifetime owner serializes the Flutter client's rare machine-policy requests.
+/// It retains the only native thread and Tokio runtime instead of constructing a runtime in each
+/// bridge worker. The one-slot queue rejects excess work rather than occupying the bridge pool.
+#[cfg(target_os = "windows")]
+struct WindowsShareRdpClientOwner {
+    requests: mpsc::Sender<WindowsShareRdpClientRequest>,
+    thread: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+#[cfg(target_os = "windows")]
+impl WindowsShareRdpClientOwner {
+    fn start() -> std::result::Result<Self, String> {
+        let (requests, receiver) = mpsc::channel(WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY);
+        let (started, startup) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::Builder::new()
+            .name("rustdesk-share-rdp-client".to_owned())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(err) => {
+                        if started
+                            .send(Err(format!(
+                                "failed to create Windows RDP-sharing client runtime: {err}"
+                            )))
+                            .is_err()
+                        {
+                            log::warn!(
+                                "Windows RDP-sharing client owner stopped waiting for runtime startup failure"
+                            );
+                        }
+                        return;
+                    }
+                };
+                if started.send(Ok(())).is_err() {
+                    return;
+                }
+                runtime.block_on(run_windows_share_rdp_client(receiver));
+            })
+            .map_err(|err| format!("failed to start Windows RDP-sharing client thread: {err}"))?;
+
+        match startup.recv() {
+            Ok(Ok(())) => Ok(Self {
+                requests,
+                thread: std::sync::Mutex::new(Some(thread)),
+            }),
+            Ok(Err(err)) => match thread.join() {
+                Ok(()) => Err(err),
+                Err(_) => Err(format!("{err}; the client thread also panicked")),
+            },
+            Err(err) => match thread.join() {
+                Ok(()) => Err(format!(
+                    "Windows RDP-sharing client ended before startup completed: {err}"
+                )),
+                Err(_) => Err(
+                    "Windows RDP-sharing client panicked before startup completed".to_owned(),
+                ),
+            },
+        }
+    }
+
+    fn require_running(&self) -> ResultType<()> {
+        let mut thread = self
+            .thread
+            .lock()
+            .map_err(|_| hbb_common::anyhow::anyhow!(
+                "Windows RDP-sharing client thread ownership was poisoned"
+            ))?;
+        let Some(worker) = thread.as_ref() else {
+            bail!("Windows RDP-sharing client worker was already reaped");
+        };
+        if !worker.is_finished() {
+            return Ok(());
+        }
+        let worker = thread.take().ok_or_else(|| {
+            hbb_common::anyhow::anyhow!(
+                "Windows RDP-sharing client worker ownership was already consumed"
+            )
+        })?;
+        drop(thread);
+        match worker.join() {
+            Ok(()) => bail!("Windows RDP-sharing client worker stopped unexpectedly"),
+            Err(_) => bail!("Windows RDP-sharing client worker panicked"),
+        }
+    }
+
+    fn reap_unavailable_worker(
+        &self,
+        stopped: &'static str,
+        panicked: &'static str,
+    ) -> ResultType<()> {
+        let mut thread = self
+            .thread
+            .lock()
+            .map_err(|_| hbb_common::anyhow::anyhow!(
+                "Windows RDP-sharing client thread ownership was poisoned"
+            ))?;
+        let unavailable_worker = thread.take().ok_or_else(|| {
+            hbb_common::anyhow::anyhow!(
+                "Windows RDP-sharing client worker was already reaped"
+            )
+        })?;
+        drop(thread);
+        match unavailable_worker.join() {
+            Ok(()) => bail!(stopped),
+            Err(_) => bail!(panicked),
+        }
+    }
+
+    fn request(&self, enabled: bool) -> ResultType<()> {
+        self.require_running()?;
+        let (completed, completion) = std::sync::mpsc::sync_channel(1);
+        match self.requests.try_send(WindowsShareRdpClientRequest {
+            enabled,
+            completed,
+        }) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                bail!("A Windows RDP-sharing change is already in progress")
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return self.reap_unavailable_worker(
+                    "Windows RDP-sharing client worker stopped before request admission",
+                    "Windows RDP-sharing client worker panicked before request admission",
+                )
+            }
+        }
+
+        match completion.recv_timeout(WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(err)) => bail!("Windows RDP-sharing change failed: {err}"),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => bail!(
+                "Windows RDP-sharing change did not reach a known result before the client deadline"
+            ),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => self
+                .reap_unavailable_worker(
+                    "Windows RDP-sharing client worker ended without reporting a result",
+                    "Windows RDP-sharing client worker panicked without reporting a result",
+                ),
+        }
+    }
+}
 
 /// The desktop controlled-server's one native local-IPC worker. The worker owns its
 /// current-thread Tokio runtime; the async controlled-server owner retains readiness,
@@ -8515,16 +8675,14 @@ pub fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
     if !crate::platform::is_installed() {
         bail!("Changing RDP session sharing requires an installed service");
     }
-    if set_service_owned_share_rdp_with_ack(enable)? {
-        Ok(())
-    } else {
-        bail!("Changing RDP session sharing was rejected by service");
+    match WINDOWS_SHARE_RDP_CLIENT.get_or_init(WindowsShareRdpClientOwner::start) {
+        Ok(client) => client.request(enable),
+        Err(err) => bail!("Windows RDP-sharing client could not start: {err}"),
     }
 }
 
 #[cfg(target_os = "windows")]
-#[tokio::main(flavor = "current_thread")]
-async fn set_service_owned_share_rdp_with_ack(enable: bool) -> ResultType<bool> {
+async fn execute_windows_service_owned_share_rdp_change(enable: bool) -> ResultType<()> {
     let ms_timeout = 1_000;
     let mut c = connect_service(ms_timeout).await?;
     c.send_service_request_timeout(
@@ -8533,9 +8691,27 @@ async fn set_service_owned_share_rdp_with_ack(enable: bool) -> ResultType<bool> 
     )
     .await?;
     match c.next_service_response_timeout(ms_timeout).await? {
-        Some(ServiceIpcResponse::ShareRdpSet { accepted }) => Ok(accepted),
+        Some(ServiceIpcResponse::ShareRdpSet { accepted: true }) => Ok(()),
+        Some(ServiceIpcResponse::ShareRdpSet { accepted: false }) | None => {
+            bail!("RDP-sharing change was not accepted")
+        }
         Some(other) => bail!("Unexpected RDP session-sharing response: {:?}", other),
-        None => Ok(false),
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn run_windows_share_rdp_client(
+    mut requests: mpsc::Receiver<WindowsShareRdpClientRequest>,
+) {
+    while let Some(request) = requests.recv().await {
+        let result = execute_windows_service_owned_share_rdp_change(request.enabled)
+            .await
+            .map_err(|err| err.to_string());
+        if request.completed.send(result).is_err() {
+            log::warn!(
+                "Windows RDP-sharing transaction completed after its caller stopped waiting"
+            );
+        }
     }
 }
 

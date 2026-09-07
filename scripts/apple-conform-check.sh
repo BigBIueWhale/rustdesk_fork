@@ -1077,12 +1077,13 @@ def analyze(sources):
             "next_service_response_timeout(",
             "ServiceIpcResponse::PasswordRightReady { ready }",
         ]) and "send_json_timeout(" not in readiness_client and "next_timeout(" not in readiness_client)
-        share_rdp_client = item(ipc, "async fn set_service_owned_share_rdp_with_ack")
+        share_rdp_client = item(ipc, "async fn execute_windows_service_owned_share_rdp_change")
         need("b1", "windows-service-share-rdp-client-not-typed", all(token in share_rdp_client for token in [
             "send_service_request_timeout(",
             "ServiceIpcRequest::SetShareRdp { enabled: enable }",
             "next_service_response_timeout(ms_timeout)",
-            "ServiceIpcResponse::ShareRdpSet { accepted }",
+            "ServiceIpcResponse::ShareRdpSet { accepted: true }",
+            "Some(ServiceIpcResponse::ShareRdpSet { accepted: false }) | None",
         ]) and "send_json_timeout(" not in share_rdp_client and "next_timeout(" not in share_rdp_client)
         sas_client = item(ipc, "pub(crate) async fn request_windows_service_owned_sas")
         need("b1", "windows-service-sas-client-not-typed", all(token in sas_client for token in [
@@ -2840,6 +2841,15 @@ grep -Fq '<span class="id">R-S11iq</span>' "$REPO/requirements.html" || r_s11b2=
 grep -Fq '<tr><td>402</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-presentation-authority-appendix-missing"
 grep -Fq 'R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 share-rdp-presentation-authority-ledger-missing"
 grep -Fq 'The same identity additionally binds R-S11iq and Appendix C #402.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 share-rdp-presentation-authority-digest-binding-missing"
+grep -Fq '<span class="id">R-S11ir</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-transaction-requirement-missing"
+grep -Fq '<tr><td>403</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-transaction-appendix-missing"
+grep -Fq 'R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 share-rdp-client-transaction-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ir and Appendix C #403.' "$REPO/docs/NATIVE-CODEC-WATCH.md" || r_s11b2="$r_s11b2 share-rdp-client-transaction-digest-binding-missing"
+grep -Fq 'Exactly one lazy process-lifetime <code>WindowsShareRdpClientOwner</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-single-owner-norm-missing"
+grep -Fq 'admit through a one-slot Tokio channel with <code>try_send</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-bounded-admission-norm-missing"
+grep -Fq 'A closed admission channel or disconnected admitted-request completion <span class="kw">MUST</span> consume and join' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-unavailable-worker-reap-norm-missing"
+grep -Fq 'wait no more than eight seconds for the exact completion channel' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-result-deadline-norm-missing"
+grep -Fq 'A caller deadline <span class="kw">MUST NOT</span> cancel or detach an admitted request' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-client-post-timeout-ownership-norm-missing"
 grep -Fq 'Fresh generated Rust, Rust IO, Dart, and Dart Freezed bridges <span class="kw">MUST NOT</span> contain either naming form.' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-generated-bridge-norm-missing"
 grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
 grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"

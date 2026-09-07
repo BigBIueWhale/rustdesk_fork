@@ -409,11 +409,15 @@ pub fn is_share_rdp() -> bool {
 }
 
 #[inline]
-pub fn set_share_rdp(_enable: bool) {
+pub fn set_share_rdp(_enable: bool) -> hbb_common::ResultType<()> {
     #[cfg(windows)]
-    if let Err(err) = crate::ipc::set_service_owned_share_rdp(_enable) {
-        log::warn!("Failed to set RDP session sharing through Windows service: {err}");
+    {
+        return crate::ipc::set_service_owned_share_rdp(_enable);
     }
+    #[cfg(not(windows))]
+    Err(hbb_common::anyhow::anyhow!(
+        "RDP session sharing is available only on Windows"
+    ))
 }
 
 #[inline]

@@ -12578,6 +12578,79 @@ if [ -n "$r_s11e280" ]; then
 else
   echo "  ok  R-S11e-280 exact local RDP-sharing availability is purpose-specific through fresh bridges; retained service authority remains final"
 fi
+
+# R-S11ir/R-S11e-281: one process-owned, explicitly started current-thread runtime
+# serializes the Windows RDP-sharing service request. Admission and completion are
+# bounded, the old per-bridge-call #[tokio::main] helper is absent, and Rust/Dart
+# propagate one visible result while the UI latch disables both tap surfaces. A
+# closed admission or disconnected completion consumes and joins the failed worker.
+echo "== (5a-y) R-S11e-281 bounded Windows RDP-sharing client transaction ownership =="
+r_s11e281=
+for source_token in \
+  'const WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY: usize = 1;' \
+  'static WINDOWS_SHARE_RDP_CLIENT: OnceLock<' \
+  'struct WindowsShareRdpClientOwner {' \
+  'thread: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>' \
+  'tokio::runtime::Builder::new_current_thread()' \
+  '.send(Err(format!(' \
+  'Windows RDP-sharing client owner stopped waiting for runtime startup failure' \
+  'runtime.block_on(run_windows_share_rdp_client(receiver))' \
+  'fn reap_unavailable_worker(' \
+  'unavailable_worker.join()' \
+  'self.requests.try_send(WindowsShareRdpClientRequest {' \
+  'Windows RDP-sharing client worker stopped before request admission' \
+  'completion.recv_timeout(WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT)' \
+  'Windows RDP-sharing client worker ended without reporting a result' \
+  'async fn execute_windows_service_owned_share_rdp_change(' \
+  'async fn run_windows_share_rdp_client('; do
+  grep -Fq "$source_token" src/ipc.rs \
+    || r_s11e281="$r_s11e281 ipc-owner-contract-missing:$source_token"
+done
+share_rdp_reap_calls=$(grep -Fc '.reap_unavailable_worker(' src/ipc.rs)
+if [ "$share_rdp_reap_calls" -ne 2 ]; then
+  r_s11e281="$r_s11e281 unavailable-worker-reap-call-count:$share_rdp_reap_calls"
+fi
+if grep -Fq 'let _ = started.send' src/ipc.rs; then
+  r_s11e281="$r_s11e281 silently-ignored-runtime-start-result"
+fi
+if grep -Fq 'set_service_owned_share_rdp_with_ack' src/ipc.rs; then
+  r_s11e281="$r_s11e281 per-call-runtime-helper-present"
+fi
+grep -Fq 'pub fn set_share_rdp(_enable: bool) -> hbb_common::ResultType<()>' src/ui_interface.rs \
+  || r_s11e281="$r_s11e281 shared-result-propagation-missing"
+grep -Fq 'pub fn main_set_share_rdp(enable: bool) -> Result<()>' src/flutter_ffi.rs \
+  || r_s11e281="$r_s11e281 ffi-result-propagation-missing"
+for dart_token in \
+  'bool _shareRdpChangePending = false;' \
+  'if (_shareRdpChangePending) return;' \
+  'setState(() => _shareRdpChangePending = true);' \
+  'showToast("${translate('\''Failed'\'')}: $e");' \
+  'setState(() => _shareRdpChangePending = false);' \
+  'final enabled = data.data == true && !_shareRdpChangePending;'; do
+  grep -Fq "$dart_token" flutter/lib/desktop/pages/desktop_setting_page.dart \
+    || r_s11e281="$r_s11e281 dart-transaction-contract-missing:$dart_token"
+done
+for generated_rust in \
+  "${VERIFY_FRB_OUTPUT}/src/bridge_generated.rs" \
+  "${VERIFY_FRB_OUTPUT}/src/bridge_generated.io.rs"; do
+  grep -qF 'main_set_share_rdp' "$generated_rust" \
+    || r_s11e281="$r_s11e281 result-action-generated-rust-missing:$generated_rust"
+done
+grep -qF 'mainSetShareRdp' "${VERIFY_FRB_OUTPUT}/flutter/lib/generated_bridge.dart" \
+  || r_s11e281="$r_s11e281 result-action-generated-dart-missing"
+grep -Fq '<span class="id">R-S11ir</span>' requirements.html \
+  || r_s11e281="$r_s11e281 normative-requirement-missing"
+grep -Fq '<tr><td>403</td>' requirements.html \
+  || r_s11e281="$r_s11e281 appendix-row-missing"
+grep -Fq 'R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership' HARDENING_STATUS.md \
+  || r_s11e281="$r_s11e281 hardening-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11ir and Appendix C #403.' docs/NATIVE-CODEC-WATCH.md \
+  || r_s11e281="$r_s11e281 native-watch-binding-missing"
+if [ -n "$r_s11e281" ]; then
+  echo "  FAIL R-S11e-281 Windows RDP-sharing client transaction:$r_s11e281"; rc=1
+else
+  echo "  ok  R-S11e-281 one retained runtime serializes bounded typed RDP-sharing work and exact results remain visible through the UI latch"
+fi
 # R-X9 (slices 2-4 follow-on, Layer 2a): the orphaned portable-service IPC TOKEN-HANDSHAKE cluster is
 # excised — the portable SYSTEM helper that did the one-time-token handshake over the `_portable_service`
 # pipe is deleted, so generate_one_time_ipc_token + constant_time_ipc_token_eq + the IPC_TOKEN_LEN/

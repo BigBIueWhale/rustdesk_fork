@@ -2038,7 +2038,7 @@ pub fn main_can_request_share_rdp_change() -> bool {
     can_request_share_rdp_change()
 }
 
-pub fn main_set_share_rdp(enable: bool) {
+pub fn main_set_share_rdp(enable: bool) -> Result<()> {
     set_share_rdp(enable)
 }
 

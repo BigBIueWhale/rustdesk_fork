@@ -661,6 +661,8 @@ class _Safety extends StatefulWidget {
 }
 
 class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
+  bool _shareRdpChangePending = false;
+
   @override
   bool get wantKeepAlive => true;
   final scrollController = ScrollController();
@@ -778,8 +780,17 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
 
   shareRdp(BuildContext context) {
     onChanged(bool b) async {
-      await bind.mainSetShareRdp(enable: b);
-      setState(() {});
+      if (_shareRdpChangePending) return;
+      setState(() => _shareRdpChangePending = true);
+      try {
+        await bind.mainSetShareRdp(enable: b);
+      } catch (e) {
+        showToast("${translate('Failed')}: $e");
+      } finally {
+        if (mounted) {
+          setState(() => _shareRdpChangePending = false);
+        }
+      }
     }
 
     if (!(isWindows && bind.mainIsInstalled())) {
@@ -789,7 +800,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     return FutureBuilder<bool>(
       future: bind.mainCanRequestShareRdpChange(),
       builder: (_, data) {
-        final enabled = data.data == true;
+        final enabled = data.data == true && !_shareRdpChangePending;
         return GestureDetector(
           child: Row(
             children: [

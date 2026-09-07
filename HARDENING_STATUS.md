@@ -30976,6 +30976,241 @@ Fresh Rust, Rust IO, Dart, and Dart Freezed generation, Windows
 compilation/execution, installed administrative UI behavior, SCM service
 mutation, and the other status-header evidence therefore remain open.
 
+### R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership
+
+**Status:** SOURCE VERIFIED / FOCUSED, APPLE-EMBEDDED, AND INDEPENDENT COMPLETE
+SOURCE-MUTATION GATES PASS / SHARED FULL-GATE, FRESH GENERATED-BRIDGE,
+EXACT-CURRENT WINDOWS, INSTALLED, PERFORMANCE, ARTIFACT,
+INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN
+
+**Platform, action, and boundary.** This slice is limited to the Windows Flutter
+client which asks the already-hardened LocalSystem service to change the installed
+machine's `share_rdp` policy. The boundary is the ordinary Flutter-Rust-Bridge
+worker -> one process-owned async client transaction -> the existing typed
+`SetShareRdp`/`ShareRdpSet` service exchange. The separate service-side
+`WindowsServiceOwnedShareRdpRequester` remains the sole authority which can reach
+the HKLM writer after final exact process-generation, image, role, token,
+elevation, liveness, and pipe revalidation.
+
+**Source-proven old path.** The settings callback at
+`flutter/lib/desktop/pages/desktop_setting_page.dart::shareRdp` awaited
+`bind.mainSetShareRdp`, then unconditionally rebuilt the widget. It held no
+in-flight state, disabled neither its checkbox callback nor the wrapping row tap,
+and caught no failure. `src/flutter_ffi.rs::main_set_share_rdp` and
+`src/ui_interface.rs::set_share_rdp` returned `()`: the shared wrapper logged and
+discarded every error from `src/ipc.rs::set_service_owned_share_rdp`. The latter
+called `set_service_owned_share_rdp_with_ack`, an internal synchronous function
+created by placing `#[tokio::main(flavor = "current_thread")]` on an async body.
+Each invocation therefore built a new Tokio runtime and blocked its caller until
+that one request ended. Concurrent taps could start overlapping machine-policy
+transactions on multiple bridge workers; runtime construction failure panicked
+inside the macro expansion; service refusal or transport failure was invisible
+to Dart; and a widget rebuild did not prove completion.
+
+Primary-source review was performed before redesign. The pinned
+`flutter_rust_bridge` v1.80.1 documentation says async Rust APIs are not yet
+supported, ordinary functions execute in its worker pool, and only `SyncReturn`
+executes inline on Dart's main thread. Its `frb_rust/src/handler.rs` implements
+that default pool dispatch. Tokio tag `tokio-1.44.2`, matching `Cargo.lock`, shows
+that the entry macro rewrites the function to
+`Builder::new_current_thread().enable_all().build().expect(...).block_on(body)`;
+the runtime builder separately documents fallible construction and that
+`enable_all` enables the I/O/time drivers used here. The source files inspected
+were upstream `book/src/feature/async_rust.md`,
+`book/src/feature/sync_dart.md`, `book/src/feature/handler.md`,
+`frb_rust/src/handler.rs`, Tokio `tokio-macros/src/entry.rs`,
+`tokio/src/runtime/builder.rs`, and `tokio/src/runtime/runtime.rs`, at those exact
+tags. Read-only acquisition ran in two disposable nonroot, capability-free,
+read-only-root containers with no repository mount or published port. Their only
+network was an outbound Docker bridge used to read those public upstream sources;
+both used the pinned verifier image and `--rm`. This research was not a product or
+verification run.
+
+**Correct client ownership.** `src/ipc.rs` now gives the action one lazy
+process-lifetime `WindowsShareRdpClientOwner`. Its `OnceLock` stores an explicit
+startup success or failure, so a failed runtime does not trigger repeated thread
+creation. Startup creates a capacity-one Tokio channel, starts exactly one named
+plain OS thread, fallibly constructs one current-thread runtime with I/O/time
+enabled, and completes a synchronous readiness handshake before the owner is
+published. Both runtime-build failure and readiness-channel loss synchronously
+join the started thread. The live owner retains its join handle in a
+mutex-protected `Option`; every request first checks that the retained worker is
+still running, and a finished thread is consumed and joined before the failure
+is returned. A channel-closed admission or disconnected admitted-request result
+also consumes and joins the unavailable generation before returning its distinct
+failure; it does not depend on a racy `is_finished` precheck. No successful,
+failed-start, or observably failed live generation is detached.
+
+Request admission uses `try_send`, distinguishes a full queue from a closed
+worker, and never blocks a bridge worker merely to enqueue. Capacity is one queued
+request in addition to the transaction currently executing. The sole async runner
+receives requests serially and awaits the existing service transaction directly;
+it does not spawn per-request tasks. Only an exact `accepted: true` response is
+success. False, missing, unexpected, connect, send, and response failures are
+explicit errors. The former per-call `#[tokio::main]` helper is deleted. The
+installed-service check still precedes lazy worker construction, and the typed
+service request and receiver authorization are unchanged.
+
+After admission, the ordinary FRB worker waits on that request's private
+capacity-one completion channel for at most eight seconds. This covers the fixed
+one-second connect/send/response bounds for one executing and one queued
+transaction plus scheduling margin. Success, transaction failure, deadline
+uncertainty, and completion-channel loss remain distinct. Completion-channel loss
+is terminal worker evidence, so the caller takes and joins that generation before
+reporting it. Timing out the caller does not cancel or detach admitted service
+work: the retained serial owner continues the transaction and logs if the
+completion receiver is gone. A later request cannot bypass the queue and a dead
+worker is not silently replaced.
+
+`ui_interface::set_share_rdp` and
+`flutter_ffi::main_set_share_rdp` now return the exact `Result<()>`; non-Windows
+direct invocation returns an explicit unsupported-platform error. The Dart state
+sets `_shareRdpChangePending` synchronously before awaiting, refuses duplicate
+checkbox/row callbacks and disables both tap surfaces while it is true, visibly
+reports the bridge error, and releases the latch only from a mounted `finally`
+block. The rebuild then reads the service-owned registry value rather than
+optimistically claiming the requested value.
+
+This correction adds one lazy process-owned client thread/runtime and one bounded
+in-process queue. It adds no IPC endpoint, listener, frame, payload, authorization
+rule, registry writer/value, elevation path, process launch, public port, network
+behavior, service lifecycle transition, retry/reconnect policy, display/control
+path, Android lifecycle behavior, dependency, or artifact. It neither proves nor
+attempts to fix the reported Android persistent-service stale screen state or the
+Windows focus/minimize display-only delay.
+
+The current open R-S11b/R-S11c and user-requested closure remains explicit. Exact
+physical Android task-swipe/background/Force-Stop/reopen/reconnect and resource
+soak remains STOP-SHIP. Native Windows same-connection focus/minimize
+capture-through-presentation latency reproduction remains STOP-SHIP. Complete CM
+file-operation/result finality, protected service-IPC and installed Linux/macOS/
+Windows artifact execution, current signed mobile/native artifacts, clean cold
+R-B2/R-B10 double-build equality, separately performed independent reproduction,
+and external review remain open. Source-only evidence for this slice will not be
+used to close any of those items.
+
+Current normative identity for this slice:
+
+```text
+a42e3d352b7f7589cffc03e332b10df92a276fb2b07258df4aca5c537505ca0d  requirements.html
+```
+
+**Source verification receipt (2026-09-07).** Final review of the first frozen
+candidate found one additional ownership edge before commit: if the queue closed
+between the initial liveness check and `try_send`, or the admitted request's only
+completion sender disappeared because the worker terminated, the caller returned
+an error while the process-lifetime owner still retained the finished join handle.
+That handle was not detached or lost, and a later request would reap it, but the
+current caller had already observed conclusive worker failure. This did not meet
+the normative rule that every observably terminal generation be joined before the
+failure returns. `reap_unavailable_worker` now takes the handle without a racy
+`is_finished` precheck, releases the mutex, and joins it. Closed admission and
+disconnected completion call that primitive with purpose-distinct stopped/panic
+errors. Six focused mutations cover the reaper, handle consumption, join, both
+call sites, and the normative rule; separately authored workspace mutations cover
+the same source, focused, shared, Apple, and requirement surfaces.
+
+The corrected frozen pre-receipt candidate had binary-diff SHA-256
+`c0853be9bb2f61c366e095bd23d51cdb4fc82def902aabd7b1b1420f0c0409b8`.
+The focused Windows service-channel verifier rejected all 190 deliberate
+mutations. The independent workspace baseline passed. Strict shell parsing,
+Python AST parsing, HTML parsing and exact R-S11ir/#403/new-norm cardinality,
+the exact requirements SHA-256 above, normal and self-test native-codec watch,
+Rust 1.75 parser acceptance for all three changed Rust files, and
+`git diff --check` passed. The exact Rust toolchain was mounted read-only as a
+complete tree and executed only in the confined container. A disposable
+diagnostic subset additionally proved all 13 new independent mutation fixtures
+were effective before the full restart; it is preflight, not a substitute for
+the complete result.
+
+After this receipt was inserted, the current self-contained Apple password and
+authority analyzer plus every embedded deliberate source mutation completed with
+all three finding files empty and terminal
+`apple-password-embedded-analyzer-and-mutations: ok`. This was the embedded
+Python source analyzer only; the outer Apple build wrapper, Xcode, signed native
+artifact, Authorization Services, LaunchDaemon, and any host service did not run.
+
+The receipt-bearing staged tree then passed the strict final preflight with
+binary-diff SHA-256
+`5dfeb689cf5e1b2e0a104394e9e3beb6cfbca3cdfd9a80ce6727058b0ca880b0`.
+Container `dd547f615701f7e437362f2fc86f4ec2f196f6a5edd1c3c8f6cf634ec67e3bb9`
+(`r-s11ir-final-preflight-20260907`) ran from
+`2026-09-07T15:49:48.207680367Z` through
+`2026-09-07T15:49:57.893133189Z`, exited zero, was not OOM-killed, had an
+empty Docker error, and ended `r-s11ir-final-preflight: ok`. It rechecked the
+exact 11-file inventory, unchanged `Cargo.lock`, Bash/Python/HTML/Rust parsing,
+requirements identity/cardinality, 6,067-case catalog cardinality, all 190
+focused mutations, independent baseline, native-codec normal/self-test, and
+`git diff --check` under the same confinement. The full Rust 1.75 toolchain was
+an additional read-only bind; the container was inspected and removed.
+
+One subsequent post-receipt invocation mistyped the immutable image digest and
+omitted `--pull=never`; Docker attempted a registry lookup, received access
+denied, and exited 125 before creating a container or executing any check. No
+image was downloaded, tagged, created, or changed. That invocation is a policy
+and harness mistake and is uncredited. The corrected `--pull=never` invocation
+used the exact local image, again rejected all 190 focused mutations, passed the
+independent baseline and `git diff --check`, and ended
+`r-s11ir-post-receipt-check: ok`; the then-current binary diff SHA-256 was
+`3c25e1eb17e92751c11d6a71e4f2d6865eee5e96af955b55c8f2e45f7067a022`.
+
+The complete unsliced independent source-mutation catalog then ran from mutation
+one through exit zero against exactly that frozen candidate:
+
+```text
+container:  r-s11ir-independent-source-catalog-20260907-v5
+id:         ba9f8dd0f3ba03624cd0f51691008da3056945a0d73b264fe4f4a555cba2e803
+image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
+started:    2026-09-07T11:02:47.785158146Z
+finished:   2026-09-07T15:30:30.902587221Z
+exit:       0
+OOMKilled:  false
+error:      empty
+catalog:    6067 source mutations
+output:     verify-verifier-workspace: ok
+candidate:  c0853be9bb2f61c366e095bd23d51cdb4fc82def902aabd7b1b1420f0c0409b8
+```
+
+That named container used numeric UID/GID 1000:1000, `--network=none`, a
+read-only root and repository bind, all capabilities dropped,
+`no-new-privileges`, private IPC, a 64-PID limit, 2-GiB equal memory/swap limit,
+two CPUs, and a 512-MiB `nosuid,nodev,noexec` private `/tmp`. It had no published
+port, host namespace, device, Docker socket, or writable repository mount. The
+stopped container was inspected and removed only after its result and confinement
+were captured. The catalog covers the exact production, requirement, and gate
+bytes before this evidence-only receipt was inserted; no production, requirement,
+or verifier semantic is changed by the receipt.
+
+Excluded attempts remain explicit. Before the machine crash, two launch mistakes
+(shell quoting and omitted interactive stdin), one direct host `bash -n` despite
+the Docker-only execution rule, one read-only Python bytecode/HTML preflight
+mistake, and an overbroad Rustfmt check were uncredited. Catalog v1 was
+intentionally stopped when runtime-start failure publication lacked a mutation;
+v2 failed closed on an overbroad pre-existing desktop-IPC builder fixture; and v3
+was intentionally stopped after 4 hours 26 minutes when source review found the
+unavailable-worker join gap above. After correction, the first focused preflight
+used an independent-only exact-count helper and failed with `NameError`; the next
+counted a formatting-sensitive `self.` prefix; the next correctly stopped on the
+not-yet-synchronized requirement digest; one shell heredoc was misquoted; and one
+non-strict preflight mounted the Rustfmt executable without its adjacent shared
+libraries. All were changed-nothing diagnostics and are uncredited. Catalog v4
+ran for 1 hour 56 minutes and correctly rejected the new reaper-name mutation,
+but its fixture expected a later diagnostic rather than the earlier missing-item
+diagnostic; it exited one and is uncredited. A first 13-case diagnostic then found
+that a suffixed replacement retained the shared-gate marker as a substring. The
+replacement was made disjoint, all 13 new fixtures passed, and only then did the
+credited complete v5 catalog begin.
+
+No root, sudo, privileged container, host RustDesk process/service/binary/config,
+host listener, firewall/UFW/nftables/iptables state, or host network setting was
+inspected or changed. No image was built, pulled, tagged, or modified. The four
+unrelated running containers were not entered, stopped, reconfigured, or cleaned.
+This remains source evidence: fresh generated bridge output, Windows compilation
+and UI execution, a real installed SCM mutation, refusal/timeout/worker-panic
+races, sustained thread/CPU/memory/resource behavior, current signed artifacts,
+cold R-B2/R-B10 equality, independent reproduction, and external review remain
+open exactly as listed above.
+
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

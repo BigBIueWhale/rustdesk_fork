@@ -5249,6 +5249,18 @@ pub fn get_user_token(session_id: u32, as_user: bool) -> HANDLE {
 // escalation. The orphaned cross-platform super-user probe was deleted with its
 // Flutter/native bridge surface; purpose-specific callers use `is_elevated` directly.
 
+/// Reports whether this process has the local prerequisites to request the
+/// service-owned RDP-session-sharing change. This is presentation state only;
+/// the service reauthenticates the exact requester generation before mutation.
+pub fn can_request_service_owned_share_rdp_change() -> ResultType<bool> {
+    if std::env::args_os().nth(1).is_some() {
+        return Ok(false);
+    }
+    installed_package_executable()?;
+    require_current_exe_is_fixed_service_runtime()?;
+    is_elevated(None)
+}
+
 pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool> {
     use hbb_common::platform::windows::RAIIHandle;
     unsafe {

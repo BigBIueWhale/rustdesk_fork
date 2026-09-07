@@ -61,6 +61,11 @@ def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "ipc": "src/ipc.rs",
         "auth": "src/ipc/auth.rs",
+        "windows": "src/platform/windows.rs",
+        "ui": "src/ui_interface.rs",
+        "flutter_ffi": "src/flutter_ffi.rs",
+        "desktop_settings": "flutter/lib/desktop/pages/desktop_setting_page.dart",
+        "web_bridge": "flutter/lib/web/bridge.dart",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
         "requirements": "requirements.html",
@@ -763,6 +768,104 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(regression, needle, label)
 
+    windows = sources["windows"]
+    ui = sources["ui"]
+    flutter_ffi = sources["flutter_ffi"]
+    desktop_settings = sources["desktop_settings"]
+    web_bridge = sources["web_bridge"]
+    for source, needle, label in (
+        (ui, "pub fn is_root()", "shared generic root query"),
+        (flutter_ffi, "main_is_root", "generic root Flutter FFI query"),
+        (desktop_settings, "mainIsRoot", "generic root desktop setting query"),
+        (web_bridge, "mainIsRoot", "generic root web parity query"),
+    ):
+        forbid(source, needle, label)
+
+    local_availability = extract_braced(
+        windows,
+        "pub fn can_request_service_owned_share_rdp_change()",
+        "Windows service-owned RDP-sharing local availability proof",
+    )
+    require(
+        local_availability,
+        "-> ResultType<bool>",
+        "fallible Windows RDP-sharing local availability result",
+    )
+    require_order(
+        local_availability,
+        (
+            "if std::env::args_os().nth(1).is_some()",
+            "return Ok(false)",
+            "installed_package_executable()?;",
+            "require_current_exe_is_fixed_service_runtime()?;",
+            "is_elevated(None)",
+        ),
+        "exact-role installed-image elevated RDP-sharing presentation proof",
+    )
+    for forbidden, label in (
+        ("is_root()", "LocalSystem presentation predicate"),
+        ("unwrap_or", "silently defaulted local proof"),
+        ("unwrap()", "infallibly unwrapped local proof"),
+    ):
+        forbid(local_availability, forbidden, label)
+
+    ui_availability = extract_braced(
+        ui,
+        "pub fn can_request_share_rdp_change()",
+        "shared RDP-sharing local availability wrapper",
+    )
+    require_order(
+        ui_availability,
+        (
+            '#[cfg(windows)]',
+            "can_request_service_owned_share_rdp_change()",
+            "Ok(available) => available",
+            "Err(err) =>",
+            "log::warn!",
+            "false",
+            '#[cfg(not(windows))]',
+            "false",
+        ),
+        "logged fail-closed cross-platform RDP-sharing presentation wrapper",
+    )
+    forbid(ui_availability, "is_root", "generic root presentation fallback")
+
+    ffi_availability = extract_braced(
+        flutter_ffi,
+        "pub fn main_can_request_share_rdp_change()",
+        "purpose-specific RDP-sharing Flutter FFI query",
+    )
+    require(
+        ffi_availability,
+        "can_request_share_rdp_change()",
+        "purpose-specific shared RDP-sharing presentation call",
+    )
+    forbid(ffi_availability, "is_root", "generic root Flutter FFI fallback")
+
+    desktop_share_rdp = extract_braced(
+        desktop_settings,
+        "shareRdp(BuildContext context)",
+        "desktop RDP-sharing settings presentation",
+    )
+    require(
+        desktop_share_rdp,
+        "future: bind.mainCanRequestShareRdpChange()",
+        "purpose-specific desktop RDP-sharing availability query",
+    )
+    forbid(desktop_share_rdp, "mainIsRoot", "generic root desktop availability query")
+
+    web_availability = extract_braced(
+        web_bridge,
+        "Future<bool> mainCanRequestShareRdpChange({dynamic hint})",
+        "purpose-specific web RDP-sharing parity query",
+    )
+    require(
+        web_availability,
+        'throw UnimplementedError("mainCanRequestShareRdpChange")',
+        "purpose-specific web RDP-sharing parity failure",
+    )
+    forbid(web_availability, "mainIsRoot", "generic root web parity fallback")
+
     gate = (
         "python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test"
     )
@@ -830,6 +933,26 @@ def validate(sources: Dict[str, str]) -> None:
             "native_watch",
             "The same identity additionally binds R-S11ic and Appendix C #388.",
             "retained Windows service-main requester identity binding",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11iq</span>',
+            "purpose-specific RDP-sharing presentation requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>402</td>",
+            "purpose-specific RDP-sharing presentation Appendix C row",
+        ),
+        (
+            "hardening",
+            "### R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority",
+            "purpose-specific RDP-sharing presentation hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11iq and Appendix C #402.",
+            "purpose-specific RDP-sharing presentation identity binding",
         ),
         (
             "workspace",
@@ -909,6 +1032,20 @@ def validate(sources: Dict[str, str]) -> None:
 Mutation = Tuple[str, str, str, str]
 
 MUTATIONS: Tuple[Mutation, ...] = (
+    ("windows", "if std::env::args_os().nth(1).is_some() {", "if false && std::env::args_os().nth(1).is_some() {", "local presentation exact interactive role"),
+    ("windows", "    installed_package_executable()?;", "", "local presentation registered package proof"),
+    ("windows", "    require_current_exe_is_fixed_service_runtime()?;", "", "local presentation fixed running image proof"),
+    ("windows", "    is_elevated(None)\n}", "    Ok(is_root())\n}", "local presentation current-token elevation proof"),
+    ("ui", "crate::platform::windows::can_request_service_owned_share_rdp_change()", "Ok(crate::platform::windows::is_root())", "shared purpose-specific presentation delegation"),
+    ("ui", "                log::warn!(\n                    \"Failed to prove local availability of the Windows RDP-sharing request: {err}\"\n                );\n                false", "                let _ = err;\n                false", "logged local presentation proof failure"),
+    ("ui", '#[cfg(not(windows))]\n    false\n}', '#[cfg(not(windows))]\n    true\n}', "non-Windows presentation refusal"),
+    ("flutter_ffi", "pub fn main_can_request_share_rdp_change() -> bool {\n    can_request_share_rdp_change()\n}", "pub fn main_is_root() -> bool {\n    is_root()\n}", "purpose-specific Flutter FFI presentation query"),
+    ("desktop_settings", "future: bind.mainCanRequestShareRdpChange()", "future: bind.mainIsRoot()", "purpose-specific desktop presentation query"),
+    ("web_bridge", "Future<bool> mainCanRequestShareRdpChange({dynamic hint})", "Future<bool> mainIsRoot({dynamic hint})", "purpose-specific web presentation query"),
+    ("requirements", '<div class="req"><span class="id">R-S11iq</span>', '<div class="req"><span class="id">R-S11iq-disabled</span>', "purpose-specific presentation normative requirement"),
+    ("requirements", "<tr><td>402</td>", "<tr><td>402-disabled</td>", "purpose-specific presentation Appendix C row"),
+    ("hardening", "### R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority", "### R-S11iq-disabled/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority", "purpose-specific presentation hardening ledger"),
+    ("native_watch", "The same identity additionally binds R-S11iq and Appendix C #402.", "The same identity no longer binds R-S11iq and Appendix C #402.", "purpose-specific presentation digest binding"),
     ("ipc", "requester.commit_share_rdp_change(stream, enable)", "crate::platform::windows::set_service_owned_share_rdp(enable)", "retained requester capability before RDP policy mutation"),
     ("auth", "let _token_guard = WindowsHandle(token);\n            windows_live_token_proof(token)\n        })\n    }\n\n    fn windows_pipe_client_authority", "let _token_guard = WindowsHandle(token);\n            windows_token_authority(token)\n        })\n    }\n\n    fn windows_pipe_client_authority", "complete named-pipe token identity proof"),
     ("auth", "fn windows_pipe_client_authority(&self)", "fn windows_pipe_client_token_is_elevated(&self)", "detached Boolean pipe-elevation helper absence"),

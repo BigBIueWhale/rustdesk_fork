@@ -23183,6 +23183,11 @@ def validate_service_ipc_protocol_authority_contract(sources):
 def validate_windows_service_channel_protocol_contract(sources):
     ipc = sources["ipc_source"]
     auth = sources["ipc_auth_source"]
+    windows = sources["windows_source"]
+    ui = sources["ui_interface_source"]
+    flutter_ffi = sources["flutter_ffi_source"]
+    desktop_settings = sources["desktop_settings_source"]
+    web_bridge = sources["web_bridge_source"]
     focused = sources["windows_service_channel_protocol_verifier"]
     expected = (
         (
@@ -23393,6 +23398,130 @@ def validate_windows_service_channel_protocol_contract(sources):
         ('&["--unexpected"][..]', "arbitrary-role refusal"),
     ):
         require_text(share_rdp_regression, text, label)
+
+    for source, token, label in (
+        (ui, "pub fn is_root()", "shared generic root query"),
+        (flutter_ffi, "main_is_root", "generic root Flutter FFI query"),
+        (desktop_settings, "mainIsRoot", "generic root desktop setting query"),
+        (web_bridge, "mainIsRoot", "generic root web parity query"),
+    ):
+        require_absent(source, token, label)
+    local_availability = extract_braced_item(
+        windows,
+        "pub fn can_request_service_owned_share_rdp_change()",
+        "Windows service-owned RDP-sharing local availability proof",
+    )
+    require_text(
+        local_availability,
+        "-> ResultType<bool>",
+        "fallible Windows RDP-sharing local availability result",
+    )
+    require_order(
+        local_availability,
+        (
+            "if std::env::args_os().nth(1).is_some()",
+            "return Ok(false)",
+            "installed_package_executable()?;",
+            "require_current_exe_is_fixed_service_runtime()?;",
+            "is_elevated(None)",
+        ),
+        "exact-role installed-image elevated RDP-sharing presentation proof",
+    )
+    for token, label in (
+        ("is_root()", "LocalSystem presentation predicate"),
+        ("unwrap_or", "silently defaulted local proof"),
+        ("unwrap()", "infallibly unwrapped local proof"),
+    ):
+        require_absent(local_availability, token, label)
+    ui_availability = extract_braced_item(
+        ui,
+        "pub fn can_request_share_rdp_change()",
+        "shared RDP-sharing local availability wrapper",
+    )
+    require_order(
+        ui_availability,
+        (
+            '#[cfg(windows)]',
+            "can_request_service_owned_share_rdp_change()",
+            "Ok(available) => available",
+            "Err(err) =>",
+            "log::warn!",
+            "false",
+            '#[cfg(not(windows))]',
+            "false",
+        ),
+        "logged fail-closed cross-platform RDP-sharing presentation wrapper",
+    )
+    require_absent(ui_availability, "is_root", "generic root presentation fallback")
+    ffi_availability = extract_braced_item(
+        flutter_ffi,
+        "pub fn main_can_request_share_rdp_change()",
+        "purpose-specific RDP-sharing Flutter FFI query",
+    )
+    require_text(
+        ffi_availability,
+        "can_request_share_rdp_change()",
+        "purpose-specific shared RDP-sharing presentation call",
+    )
+    desktop_share_rdp = extract_braced_item(
+        desktop_settings,
+        "shareRdp(BuildContext context)",
+        "desktop RDP-sharing settings presentation",
+    )
+    require_text(
+        desktop_share_rdp,
+        "future: bind.mainCanRequestShareRdpChange()",
+        "purpose-specific desktop RDP-sharing availability query",
+    )
+    web_availability = extract_braced_item(
+        web_bridge,
+        "Future<bool> mainCanRequestShareRdpChange({dynamic hint})",
+        "purpose-specific web RDP-sharing parity query",
+    )
+    require_text(
+        web_availability,
+        'throw UnimplementedError("mainCanRequestShareRdpChange")',
+        "purpose-specific web RDP-sharing parity failure",
+    )
+    for token, label in (
+        ('"windows": "src/platform/windows.rs"', "focused Windows source binding"),
+        ('"desktop_settings": "flutter/lib/desktop/pages/desktop_setting_page.dart"', "focused desktop-settings source binding"),
+        ('"local presentation exact interactive role"', "focused exact-role mutation"),
+        ('"local presentation registered package proof"', "focused installed-package mutation"),
+        ('"local presentation fixed running image proof"', "focused running-image mutation"),
+        ('"local presentation current-token elevation proof"', "focused elevation mutation"),
+        ('"logged local presentation proof failure"', "focused fail-closed logging mutation"),
+        ('"purpose-specific desktop presentation query"', "focused desktop-query mutation"),
+    ):
+        require_text(focused, token, label)
+    shared_presentation_gate = extract_between(
+        sources["verify"],
+        "# R-S11iq/R-S11e-280:",
+        "# R-X9 (slices 2-4 follow-on, Layer 2a):",
+        "shared Windows RDP-sharing presentation gate",
+    )
+    for token, label in (
+        ("rdp_presentation_sources=(", "shared authored presentation-source inventory"),
+        ("for token in 'main_is_root' 'mainIsRoot'; do", "shared generic-root naming refusal"),
+        ("generic-root-presentation-generated-bridge-present:$token", "shared generated generic-root refusal"),
+        ("purpose-specific-generated-rust-query-missing:$generated_rust", "shared generated Rust purpose-specific query"),
+        ("purpose-specific-generated-dart-query-missing", "shared generated Dart purpose-specific query"),
+    ):
+        require_text(shared_presentation_gate, token, label)
+    for path, label in (
+        ("./src/ui_interface.rs", "shared UI presentation source"),
+        ("./src/flutter_ffi.rs", "shared Flutter FFI presentation source"),
+        ("./flutter/lib/desktop/pages/desktop_setting_page.dart", "shared desktop presentation source"),
+        ("./flutter/lib/web/bridge.dart", "shared web presentation source"),
+    ):
+        require_exact_count(shared_presentation_gate, f"  {path}\n", 1, label)
+    for path, label in (
+        ("src/bridge_generated.rs", "fresh generated Rust presentation bridge"),
+        ("src/bridge_generated.io.rs", "fresh generated Rust IO presentation bridge"),
+        ("flutter/lib/generated_bridge.dart", "fresh generated Dart presentation bridge"),
+        ("flutter/lib/generated_bridge.freezed.dart", "fresh generated Dart Freezed presentation bridge"),
+    ):
+        require_text(shared_presentation_gate, f'"${{VERIFY_FRB_OUTPUT}}/{path}"', label)
     require_text(
         ipc,
         "#[serde(deny_unknown_fields)]\n"
@@ -23934,11 +24063,53 @@ def validate_windows_service_channel_protocol_contract(sources):
         "retained Windows service-main requester identity binding",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11iq</span>',
+        "purpose-specific Windows RDP-sharing presentation requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>402</td>",
+        "purpose-specific Windows RDP-sharing presentation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority",
+        "purpose-specific Windows RDP-sharing presentation hardening ledger",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11iq and Appendix C #402.",
+        "purpose-specific Windows RDP-sharing presentation identity binding",
+    )
+    presentation_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11iq",
+        "purpose-specific Windows RDP-sharing presentation requirement",
+    )
+    for token, label in (
+        ("current process has exact empty argv", "normative exact local UI role"),
+        ("fixed installed package executable", "normative fixed installed package image"),
+        ("current token is elevated", "normative current-token elevation"),
+        ("propagate as an error and be logged once", "normative logged fail-closed proof errors"),
+        ("The Boolean is presentation state only", "normative presentation-only result"),
+        ("retain that capability across request handling", "normative retained service authority"),
+        ("Exact-current Windows bridge generation", "normative open native Windows evidence"),
+    ):
+        require_text(presentation_requirement, token, label)
+    require_text(
         sources["workspace_verifier"],
         '            "windows_service_channel_protocol_verifier": (\n'
         '                repo / "scripts/verify-windows-service-channel-protocols.py"\n'
         '            ).read_text(encoding="utf-8"),',
         "Windows service focused-verifier source binding",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        '            "desktop_settings_source": (\n'
+        '                repo / "flutter/lib/desktop/pages/desktop_setting_page.dart"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "independent desktop-settings source binding",
     )
     require_text(
         sources["workspace_verifier"],
@@ -60850,16 +61021,17 @@ def validate_generic_desktop_privilege_probe_excision_contract(sources):
         "pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool>",
         "purpose-specific Windows elevation query",
     )
-    require_text(
-        sources["ui_interface_source"],
-        "pub fn is_root() -> bool",
-        "purpose-specific shared root query",
-    )
+    for source_key, label in (
+        ("macos_source", "purpose-specific macOS root query"),
+        ("linux_source", "purpose-specific Linux root query"),
+        ("windows_source", "purpose-specific Windows LocalSystem query"),
+    ):
+        require_text(sources[source_key], "pub fn is_root() -> bool", label)
 
     shared_gate = extract_between(
         sources["verify"],
         "# R-S11ip/R-S11e-279:",
-        "# R-X9 (slices 2-4 follow-on, Layer 2a):",
+        "# R-S11iq/R-S11e-280:",
         "shared generic desktop privilege-probe excision gate",
     )
     for token, label in (
@@ -60948,7 +61120,7 @@ def validate_generic_desktop_privilege_probe_excision_contract(sources):
             "normative fresh bridge absence",
         ),
         (
-            "Purpose-specific <code>is_root</code> and Windows <code>is_elevated</code> queries remain available",
+            "Platform-internal <code>is_root</code> and Windows <code>is_elevated</code> queries remain available",
             "normative purpose-specific query preservation",
         ),
         (
@@ -82469,6 +82641,168 @@ def run_source_mutations(sources):
             "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
             "R-S11fe/R-S11e-192 unbounded macOS launchd proof-child resources",
             "bounded macOS launchd proof-child hardening ledger",
+        ),
+        (
+            "windows_source",
+            "if std::env::args_os().nth(1).is_some() {",
+            "if false && std::env::args_os().nth(1).is_some() {",
+            "exact-role installed-image elevated RDP-sharing presentation proof",
+        ),
+        (
+            "windows_source",
+            "    installed_package_executable()?;",
+            "",
+            "exact-role installed-image elevated RDP-sharing presentation proof",
+        ),
+        (
+            "windows_source",
+            "    require_current_exe_is_fixed_service_runtime()?;",
+            "",
+            "exact-role installed-image elevated RDP-sharing presentation proof",
+        ),
+        (
+            "windows_source",
+            "    is_elevated(None)\n}",
+            "    Ok(is_root())\n}",
+            "exact-role installed-image elevated RDP-sharing presentation proof",
+        ),
+        (
+            "ui_interface_source",
+            "crate::platform::windows::can_request_service_owned_share_rdp_change()",
+            "Ok(crate::platform::windows::is_root())",
+            "logged fail-closed cross-platform RDP-sharing presentation wrapper",
+        ),
+        (
+            "ui_interface_source",
+            "                log::warn!(\n"
+            '                    "Failed to prove local availability of the Windows RDP-sharing request: {err}"\n'
+            "                );\n"
+            "                false",
+            "                let _ = err;\n"
+            "                false",
+            "logged fail-closed cross-platform RDP-sharing presentation wrapper",
+        ),
+        (
+            "ui_interface_source",
+            '#[cfg(not(windows))]\n    false\n}',
+            '#[cfg(not(windows))]\n    true\n}',
+            "logged fail-closed cross-platform RDP-sharing presentation wrapper",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_can_request_share_rdp_change() -> bool {\n"
+            "    can_request_share_rdp_change()\n"
+            "}",
+            "pub fn main_is_root() -> bool {\n"
+            "    is_root()\n"
+            "}",
+            "generic root Flutter FFI query",
+        ),
+        (
+            "desktop_settings_source",
+            "future: bind.mainCanRequestShareRdpChange()",
+            "future: bind.mainIsRoot()",
+            "generic root desktop setting query",
+        ),
+        (
+            "web_bridge_source",
+            "Future<bool> mainCanRequestShareRdpChange({dynamic hint})",
+            "Future<bool> mainIsRoot({dynamic hint})",
+            "generic root web parity query",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"local presentation exact interactive role"',
+            '"local presentation role unchecked"',
+            "focused exact-role mutation",
+        ),
+        (
+            "windows_service_channel_protocol_verifier",
+            '"logged local presentation proof failure"',
+            '"ignored local presentation proof failure"',
+            "focused fail-closed logging mutation",
+        ),
+        (
+            "verify",
+            "# R-S11iq/R-S11e-280:",
+            "# R-S11iq-disabled/R-S11e-280:",
+            "shared generic desktop privilege-probe excision gate",
+        ),
+        (
+            "verify",
+            "for token in 'main_is_root' 'mainIsRoot'; do",
+            "for token in 'main_is_root_disabled' 'mainIsRootDisabled'; do",
+            "shared generic-root naming refusal",
+        ),
+        (
+            "verify",
+            "purpose-specific-generated-rust-query-missing:$generated_rust",
+            "purpose-specific-generated-rust-query-disabled:$generated_rust",
+            "shared generated Rust purpose-specific query",
+        ),
+        (
+            "verify",
+            "purpose-specific-generated-dart-query-missing",
+            "purpose-specific-generated-dart-query-disabled",
+            "shared generated Dart purpose-specific query",
+        ),
+        (
+            "workspace_verifier",
+            '            "desktop_settings_source": (\n'
+            '                repo / "flutter/lib/desktop/pages/desktop_setting_page.dart"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "desktop_settings_source_disabled": (\n'
+            '                repo / "flutter/lib/desktop/pages/desktop_setting_page.dart"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent desktop-settings source binding",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11iq</span>',
+            '<span class="id">R-S11iq-disabled</span>',
+            "purpose-specific Windows RDP-sharing presentation requirement",
+        ),
+        (
+            "requirements",
+            "current process has exact empty argv",
+            "current process accepts arbitrary argv",
+            "normative exact local UI role",
+        ),
+        (
+            "requirements",
+            "propagate as an error and be logged once",
+            "be silently treated as success",
+            "normative logged fail-closed proof errors",
+        ),
+        (
+            "requirements",
+            "The Boolean is presentation state only",
+            "The Boolean is reusable authorization",
+            "normative presentation-only result",
+        ),
+        (
+            "requirements",
+            "retain that capability across request handling",
+            "discard that capability before request handling",
+            "normative retained service authority",
+        ),
+        (
+            "requirements",
+            "<tr><td>402</td>",
+            "<tr><td>402-disabled</td>",
+            "purpose-specific Windows RDP-sharing presentation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority",
+            "R-S11iq-disabled/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority",
+            "purpose-specific Windows RDP-sharing presentation hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11iq and Appendix C #402.",
+            "The same identity no longer binds R-S11iq and Appendix C #402.",
+            "purpose-specific Windows RDP-sharing presentation identity binding",
         ),
         (
             "ipc_source",
@@ -104013,6 +104347,9 @@ def main():
             "ui_session_source": (repo / "src/ui_session_interface.rs").read_text(encoding="utf-8"),
             "flutter_source": (repo / "src/flutter.rs").read_text(encoding="utf-8"),
             "flutter_ffi_source": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8"),
+            "desktop_settings_source": (
+                repo / "flutter/lib/desktop/pages/desktop_setting_page.dart"
+            ).read_text(encoding="utf-8"),
             "desktop_render_texture_source": (
                 repo / "flutter/lib/models/desktop_render_texture.dart"
             ).read_text(encoding="utf-8"),

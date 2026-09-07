@@ -1656,10 +1656,6 @@ pub fn main_remove_peer(id: String) {
 // The obsolete hardware-capability queries and ui_interface wrapper go with it; scrap's
 // Decoder::supported_decodings — the live protocol decode-ability path — is untouched.
 
-pub fn main_is_root() -> bool {
-    is_root()
-}
-
 pub fn get_double_click_time() -> SyncReturn<i32> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -2036,6 +2032,10 @@ pub fn main_is_can_input_monitoring(prompt: bool) -> SyncReturn<bool> {
 
 pub fn main_is_share_rdp() -> SyncReturn<bool> {
     SyncReturn(is_share_rdp())
+}
+
+pub fn main_can_request_share_rdp_change() -> bool {
+    can_request_share_rdp_change()
 }
 
 pub fn main_set_share_rdp(enable: bool) {

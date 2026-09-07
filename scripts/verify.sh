@@ -5283,7 +5283,7 @@ grep -q 'ServiceIpcRequest::SetShareRdp { enabled }' src/platform/windows.rs    
 grep -q 'handle_windows_service_owned_share_rdp_request' src/platform/windows.rs       || r_s11b3="$r_s11b3 windows-service-share-rdp-handler-missing"
 grep -qF 'KEY_SET_VALUE | KEY_WOW64_64KEY' src/platform/windows.rs                     || r_s11b3="$r_s11b3 windows-share-rdp-direct-registry-write-missing"
 grep -q 'crate::ipc::set_service_owned_share_rdp(_enable)' src/ui_interface.rs         || r_s11b3="$r_s11b3 ui-share-rdp-not-service-typed"
-grep -q 'future: bind.mainIsRoot()' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b3="$r_s11b3 ui-share-rdp-not-elevation-gated"
+grep -q 'future: bind.mainCanRequestShareRdpChange()' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b3="$r_s11b3 ui-share-rdp-not-purpose-specific"
 if grep -Eq 'reg add .*share_rdp|run_cmds\([^)]*share_rdp|pub fn set_share_rdp' src/platform/windows.rs; then
   r_s11b3="$r_s11b3 windows-share-rdp-direct-shell-writer-present"
 fi
@@ -12514,8 +12514,10 @@ for typed_symbol in \
 done
 grep -qF 'pub fn is_elevated(process_id: Option<DWORD>) -> ResultType<bool>' src/platform/windows.rs \
   || r_s11e279="$r_s11e279 purpose-specific-windows-elevation-query-missing"
-grep -qF 'pub fn is_root() -> bool' src/ui_interface.rs \
-  || r_s11e279="$r_s11e279 purpose-specific-root-query-missing"
+for root_source in src/platform/macos.rs src/platform/linux.rs src/platform/windows.rs; do
+  grep -qF 'pub fn is_root() -> bool' "$root_source" \
+    || r_s11e279="$r_s11e279 purpose-specific-platform-root-query-missing:$root_source"
+done
 grep -Fq '<span class="id">R-S11ip</span>' requirements.html \
   || r_s11e279="$r_s11e279 normative-requirement-missing"
 grep -Fq '<tr><td>401</td>' requirements.html \
@@ -12528,6 +12530,53 @@ if [ -n "$r_s11e279" ]; then
   echo "  FAIL R-S11e-279 orphaned generic desktop privilege probe:$r_s11e279"; rc=1
 else
   echo "  ok  R-S11e-279 the zero-caller generic privilege probe is absent through fresh native/FRB/web surfaces; exact typed password authorization and purpose-specific queries remain"
+fi
+
+# R-S11iq/R-S11e-280: the installed Windows RDP-sharing settings control must ask
+# whether this exact elevated installed no-argument UI can request the typed service
+# action. The former mainIsRoot bridge meant LocalSystem on Windows and therefore
+# disabled the intended administrative GUI. This Boolean is presentation only; the
+# service's retained same-generation requester capability remains authoritative.
+echo "== (5a-x) R-S11e-280 purpose-specific Windows RDP-sharing presentation authority =="
+r_s11e280=
+rdp_presentation_sources=(
+  ./src/ui_interface.rs
+  ./src/flutter_ffi.rs
+  ./flutter/lib/desktop/pages/desktop_setting_page.dart
+  ./flutter/lib/web/bridge.dart
+)
+for token in 'main_is_root' 'mainIsRoot'; do
+  if grep -nF "$token" "${rdp_presentation_sources[@]}" >/dev/null; then
+    r_s11e280="$r_s11e280 generic-root-presentation-source-present:$token"
+  fi
+  if grep -RInF "$token" \
+    "${VERIFY_FRB_OUTPUT}/src/bridge_generated.rs" \
+    "${VERIFY_FRB_OUTPUT}/src/bridge_generated.io.rs" \
+    "${VERIFY_FRB_OUTPUT}/flutter/lib/generated_bridge.dart" \
+    "${VERIFY_FRB_OUTPUT}/flutter/lib/generated_bridge.freezed.dart" >/dev/null; then
+    r_s11e280="$r_s11e280 generic-root-presentation-generated-bridge-present:$token"
+  fi
+done
+for generated_rust in \
+  "${VERIFY_FRB_OUTPUT}/src/bridge_generated.rs" \
+  "${VERIFY_FRB_OUTPUT}/src/bridge_generated.io.rs"; do
+  grep -qF 'main_can_request_share_rdp_change' "$generated_rust" \
+    || r_s11e280="$r_s11e280 purpose-specific-generated-rust-query-missing:$generated_rust"
+done
+grep -qF 'mainCanRequestShareRdpChange' "${VERIFY_FRB_OUTPUT}/flutter/lib/generated_bridge.dart" \
+  || r_s11e280="$r_s11e280 purpose-specific-generated-dart-query-missing"
+grep -Fq '<span class="id">R-S11iq</span>' requirements.html \
+  || r_s11e280="$r_s11e280 normative-requirement-missing"
+grep -Fq '<tr><td>402</td>' requirements.html \
+  || r_s11e280="$r_s11e280 appendix-row-missing"
+grep -Fq 'R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority' HARDENING_STATUS.md \
+  || r_s11e280="$r_s11e280 hardening-ledger-missing"
+grep -Fq 'The same identity additionally binds R-S11iq and Appendix C #402.' docs/NATIVE-CODEC-WATCH.md \
+  || r_s11e280="$r_s11e280 native-watch-binding-missing"
+if [ -n "$r_s11e280" ]; then
+  echo "  FAIL R-S11e-280 Windows RDP-sharing presentation authority:$r_s11e280"; rc=1
+else
+  echo "  ok  R-S11e-280 exact local RDP-sharing availability is purpose-specific through fresh bridges; retained service authority remains final"
 fi
 # R-X9 (slices 2-4 follow-on, Layer 2a): the orphaned portable-service IPC TOKEN-HANDSHAKE cluster is
 # excised — the portable SYSTEM helper that did the one-time-token handshake over the `_portable_service`

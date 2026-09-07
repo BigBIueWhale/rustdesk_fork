@@ -383,6 +383,24 @@ pub fn is_installed() -> bool {
 }
 
 #[inline]
+pub fn can_request_share_rdp_change() -> bool {
+    #[cfg(windows)]
+    {
+        return match crate::platform::windows::can_request_service_owned_share_rdp_change() {
+            Ok(available) => available,
+            Err(err) => {
+                log::warn!(
+                    "Failed to prove local availability of the Windows RDP-sharing request: {err}"
+                );
+                false
+            }
+        };
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+#[inline]
 pub fn is_share_rdp() -> bool {
     #[cfg(windows)]
     return crate::platform::windows::is_share_rdp();
@@ -733,18 +751,6 @@ pub fn video_save_directory(root: bool) -> String {
 // sole caller. The hardware-capability query wrappers are also absent. hwcodec/vram/mediacodec are
 // compiled out and AV1/libaom is absent. scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
 // is deliberately retained; only this UI-only wrapper is gone.
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[inline]
-pub fn is_root() -> bool {
-    crate::platform::is_root()
-}
-
-#[cfg(any(target_os = "android", target_os = "ios"))]
-#[inline]
-pub fn is_root() -> bool {
-    false
-}
 
 #[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
 pub fn check_zombie() {

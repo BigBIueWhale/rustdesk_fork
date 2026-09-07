@@ -1138,8 +1138,8 @@ class RustdeskImpl {
         () => js.context.callMethod('setByName', ['remove_peer', id]));
   }
 
-  Future<bool> mainIsRoot({dynamic hint}) {
-    throw UnimplementedError("mainIsRoot");
+  Future<bool> mainCanRequestShareRdpChange({dynamic hint}) {
+    throw UnimplementedError("mainCanRequestShareRdpChange");
   }
 
   int getDoubleClickTime({dynamic hint}) {

@@ -787,7 +787,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     }
     bool value = bind.mainIsShareRdp();
     return FutureBuilder<bool>(
-      future: bind.mainIsRoot(),
+      future: bind.mainCanRequestShareRdpChange(),
       builder: (_, data) {
         final enabled = data.data == true;
         return GestureDetector(

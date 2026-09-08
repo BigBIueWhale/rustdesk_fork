@@ -534,7 +534,6 @@ struct IpcTaskRunner<T: InvokeUiCM> {
     tx: CmEgressSender,
     rx: CmEgressReceiver,
     close: bool,
-    running: bool,
     conn_id: i32,
     file_authority: CmFileAuthority,
     cm_auth_token: String,
@@ -763,17 +762,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         self.ui_handler.add_connection(&client);
     }
 
-    #[inline]
-    #[cfg(target_os = "windows")]
-    fn is_authorized(&self, id: i32) -> bool {
-        CLIENTS
-            .read()
-            .unwrap()
-            .get(&id)
-            .map(|c| c.authorized)
-            .unwrap_or(false)
-    }
-
     fn remove_connection(&self, id: i32, close: bool) {
         if close {
             CLIENTS.write().unwrap().remove(&id);
@@ -898,42 +886,14 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
             crate::rustdesk_interval(time::interval_at(Instant::now() + SEC30, SEC30));
 
         #[cfg(target_os = "windows")]
-        let is_authorized = self.cm.is_authorized(self.conn_id);
-
-        #[cfg(target_os = "windows")]
-        let (_tx_clip, mut rx_clip, _cliprdr_route) = if self.conn_id > 0 && is_authorized {
-            log::debug!("Clipboard is enabled from client peer: type 1");
-            match clipboard::register_cliprdr_controlled(self.conn_id) {
-                Ok((receiver, route)) => (None, receiver, Some(route)),
-                Err(error) => {
-                    log::error!(
-                        "failed to register exact CM file-clipboard route for {}: {}",
-                        self.conn_id,
-                        error
-                    );
-                    return;
-                }
-            }
-        } else {
-            log::debug!("Clipboard is enabled from client peer, actually useless: type 2");
+        let (mut _idle_clip_sender, mut rx_clip) = {
             let (sender, receiver) = clipboard::clipboard_file_egress_channel();
-            (Some(sender), receiver, None)
+            (Some(sender), receiver)
         };
+        #[cfg(target_os = "windows")]
+        let mut _cliprdr_route = None;
         #[cfg(not(target_os = "windows"))]
         let (_tx_clip, mut rx_clip) = clipboard::clipboard_file_egress_channel();
-
-        #[cfg(target_os = "windows")]
-        {
-            if ContextSend::is_enabled() {
-                log::debug!("Clipboard is enabled");
-                allow_err!(
-                    self.stream
-                        .send(&Data::ClipboardFile(clipboard::ClipboardFile::MonitorReady))
-                        .await
-                );
-            }
-        }
-        self.running = false;
         loop {
             tokio::select! {
                 res = self.stream.next() => {
@@ -946,6 +906,14 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                             match data {
                                 Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, cm_auth_token} => {
                                     log::debug!("conn_id: {}", id);
+                                    if self.conn_id != 0 {
+                                        log::warn!(
+                                            "Rejected repeated CM login on connection {}: requested conn_id={}",
+                                            self.conn_id,
+                                            id
+                                        );
+                                        break;
+                                    }
                                     let connection_authority = match ipc::validate_cm_connection_authority(
                                         id,
                                         conn_type,
@@ -977,16 +945,45 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         file,
                                         connection_authority,
                                     );
-                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, self.tx.clone());
+                                    #[cfg(target_os = "windows")]
+                                    let (controlled_clip_receiver, controlled_clip_route) =
+                                        match clipboard::register_cliprdr_controlled(id) {
+                                            Ok(route) => route,
+                                            Err(error) => {
+                                                log::error!(
+                                                    "failed to register exact CM file-clipboard route for {}: {}",
+                                                    id,
+                                                    error
+                                                );
+                                                break;
+                                            }
+                                        };
+                                    #[cfg(target_os = "windows")]
+                                    if ContextSend::is_enabled() {
+                                        log::debug!("Clipboard is enabled");
+                                        if let Err(error) = self
+                                            .stream
+                                            .send(&Data::ClipboardFile(clipboard::ClipboardFile::MonitorReady))
+                                            .await
+                                        {
+                                            log::error!(
+                                                "failed to publish CM file-clipboard readiness: {error}"
+                                            );
+                                            break;
+                                        }
+                                    }
                                     self.conn_id = id;
                                     self.file_authority = file_authority;
                                     self.cm_auth_token = cm_auth_token;
                                     #[cfg(target_os = "windows")]
                                     {
                                         self.file_transfer_enabled = _file_transfer_enabled;
+                                        _idle_clip_sender = None;
+                                        rx_clip = controlled_clip_receiver;
+                                        _cliprdr_route = Some(controlled_clip_route);
                                     }
-                                    self.running = true;
-                                    break;
+                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, self.tx.clone());
+                                    continue;
                                 }
                                 Data::Close => {
                                     log::info!("cm ipc connection closed from connection request");
@@ -1091,7 +1088,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     if stop {
                                         ContextSend::set_is_stopped();
                                     } else {
-                                        if !is_authorized {
+                                        if self.conn_id <= 0 {
                                             log::debug!("Clipboard message from client peer, but not authorized");
                                             continue;
                                         }
@@ -1202,7 +1199,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 }
                             }
                         }
-                        _ => {}
+                        Ok(None) => {
+                            log::warn!("Rejected malformed data on CM IPC stream");
+                            break;
+                        }
                     }
                 }
                 Some(item) = self.rx.recv() => {
@@ -1290,6 +1290,11 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                 }
             }
         }
+        if self.conn_id > 0 {
+            self.cm.remove_connection(self.conn_id, self.close);
+        }
+        #[cfg(target_os = "windows")]
+        drop(_cliprdr_route);
     }
 
     async fn ipc_task(stream: Connection, cm: ConnectionManager<T>) {
@@ -1301,7 +1306,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
             tx,
             rx,
             close: true,
-            running: true,
             conn_id: 0,
             file_authority: CmFileAuthority::absent(),
             cm_auth_token: String::new(),
@@ -1312,14 +1316,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
             read_jobs: Vec::new(),
         };
 
-        while task_runner.running {
-            task_runner.run().await;
-        }
-        if task_runner.conn_id > 0 {
-            task_runner
-                .cm
-                .remove_connection(task_runner.conn_id, task_runner.close);
-        }
+        task_runner.run().await;
         log::debug!("ipc task end");
     }
 }

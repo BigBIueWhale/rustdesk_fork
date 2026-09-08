@@ -33963,7 +33963,9 @@ def validate_clipboard_route_budget_contract(sources):
         ("ClipboardFileRouteLease", "focused exact route lease"),
         ("register_cliprdr_viewer", "focused fresh viewer route"),
         ("register_cliprdr_controlled", "focused controlled route"),
+        ("task_runner.run().await;", "focused single CM stream owner"),
         ("R-S11gz", "focused normative binding"),
+        ("R-S11it", "focused CM setup-finality binding"),
     ):
         require_text(focused_contract, marker, label)
     require_text(
@@ -34164,15 +34166,154 @@ def validate_clipboard_route_budget_contract(sources):
         "pub fn register_cliprdr_controlled(",
         "independent controlled route",
     )
+    for marker in (
+        "if conn_id <= 0",
+        "routes.iter().any(|route| route.conn_id == conn_id)",
+    ):
+        require_text(
+            controlled_route,
+            marker,
+            "independent positive exclusive controlled route",
+        )
     require_order(
         controlled_route,
         (
             "if conn_id <= 0",
+            "let mut routes = CLIPBOARD_FILE_ROUTES.write().unwrap();",
             "routes.iter().any(|route| route.conn_id == conn_id)",
+            "next_route_generation()",
+            "clipboard_file_egress_channel()",
+            "routes.push(ClipboardFileRoute {",
             "ClipboardFileRouteOwner::Controlled",
+            "drop(routes);",
+            "Ok((",
             "ClipboardFileRouteLease",
         ),
-        "independent positive exclusive controlled route",
+        "independent locked vacancy-before-resource controlled route admission",
+    )
+    runner_state = extract_braced_item(
+        ui_cm, "struct IpcTaskRunner", "independent desktop CM IPC runner state"
+    )
+    require_absent(
+        runner_state, "running: bool", "independent ambiguous CM run/retry Boolean"
+    )
+    require_text(
+        ui_cm,
+        "async fn run(&mut self) {",
+        "independent single CM stream lifecycle signature",
+    )
+    runner = extract_braced_item(
+        ui_cm,
+        "async fn run(&mut self)",
+        "independent desktop CM IPC stream lifecycle",
+    )
+    require_text(
+        runner, "if self.conn_id != 0", "independent repeated CM login refusal"
+    )
+    require_text(
+        runner,
+        '"failed to register exact CM file-clipboard route for {}: {}",\n'
+        "                                                    id,\n"
+        "                                                    error\n"
+        "                                                );\n"
+        "                                                break;",
+        "independent route-setup terminal finality",
+    )
+    require_text(
+        runner,
+        '"failed to publish CM file-clipboard readiness: {error}"\n'
+        "                                            );\n"
+        "                                            break;",
+        "independent readiness-send terminal finality",
+    )
+    require_text(
+        runner,
+        'Ok(None) => {\n'
+        '                            log::warn!("Rejected malformed data on CM IPC stream");\n'
+        "                            break;\n"
+        "                        }",
+        "independent malformed CM frame terminal finality",
+    )
+    if runner.count("self.cm.add_connection(") != 1:
+        raise VerificationError(
+            "independent single client-registry commit: expected exactly one"
+        )
+    if runner.count("clipboard::register_cliprdr_controlled(id)") != 1:
+        raise VerificationError(
+            "independent Windows CM controlled-route ownership and finality: expected exactly one admission"
+        )
+    require_text(
+        runner,
+        "_cliprdr_route = Some(controlled_clip_route);",
+        "independent route lease through terminal client cleanup",
+    )
+    require_text(
+        runner,
+        "privacy_mode, self.tx.clone());\n                                    continue;",
+        "independent validated Login activation",
+    )
+    require_text(
+        runner,
+        "        if self.conn_id > 0 {\n"
+        "            self.cm.remove_connection(self.conn_id, self.close);\n"
+        "        }\n"
+        "        #[cfg(target_os = \"windows\")]\n"
+        "        drop(_cliprdr_route);",
+        "independent client cleanup before route-lease release",
+    )
+    require_order(
+        runner,
+        (
+            "let (mut _idle_clip_sender, mut rx_clip)",
+            "let mut _cliprdr_route = None;",
+            "loop {",
+            "Data::Login",
+            "if self.conn_id != 0",
+            '"Rejected repeated CM login on connection {}: requested conn_id={}"',
+            "validate_cm_connection_authority(",
+            "if !authorized || !connection_authority.valid",
+            "match clipboard::register_cliprdr_controlled(id)",
+            '"failed to register exact CM file-clipboard route for {}: {}"',
+            "break;",
+            "send(&Data::ClipboardFile(clipboard::ClipboardFile::MonitorReady))",
+            '"failed to publish CM file-clipboard readiness: {error}"',
+            "break;",
+            "self.conn_id = id;",
+            "_cliprdr_route = Some(controlled_clip_route);",
+            "self.cm.add_connection(",
+            "continue;",
+            "if self.conn_id > 0",
+            "self.cm.remove_connection(self.conn_id, self.close);",
+            "drop(_cliprdr_route);",
+        ),
+        "independent single-stream CM admission and terminal ownership",
+    )
+    require_absent(runner, "self.running", "independent mutable CM run/retry state")
+    require_absent(
+        runner, "CmIpcRunDisposition", "independent restartable CM run disposition"
+    )
+    ipc_task = extract_braced_item(
+        ui_cm, "async fn ipc_task(", "independent desktop CM IPC generation owner"
+    )
+    require_order(
+        ipc_task,
+        (
+            "let mut task_runner = Self {",
+            "task_runner.run().await;",
+            'log::debug!("ipc task end");',
+        ),
+        "independent single CM stream lifecycle owner",
+    )
+    require_absent(
+        ipc_task, "while task_runner.running", "independent implicit CM retry loop"
+    )
+    require_absent(
+        ipc_task,
+        "match task_runner.run().await",
+        "independent restartable CM disposition loop",
+    )
+    require_absent(
+        ipc_task, "loop {", "independent single CM stream lifecycle owner"
     )
     sender_lookup = extract_braced_item(
         clipboard, "fn send_data_to_channel(", "independent sender snapshot"
@@ -34223,7 +34364,7 @@ def validate_clipboard_route_budget_contract(sources):
     require_order(
         ui_cm,
         (
-            "clipboard::register_cliprdr_controlled(self.conn_id)",
+            "clipboard::register_cliprdr_controlled(id)",
             "ClipboardFileEgressItem::Failed(failure)",
             "break;",
         ),
@@ -34251,6 +34392,9 @@ def validate_clipboard_route_budget_contract(sources):
         ("requirements", '<div class="req"><span class="id">R-S11gz</span>', "R-S11gz requirement"),
         ("requirements", "<tr><td>361</td>", "Appendix C #361"),
         ("hardening", "### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership", "R-S11gz ledger"),
+        ("requirements", '<div class="req"><span class="id">R-S11it</span>', "R-S11it requirement"),
+        ("requirements", "<tr><td>405</td>", "Appendix C #405"),
+        ("hardening", "### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership", "R-S11it ledger"),
     ):
         require_text(sources[key], text, label)
     require_text(
@@ -88483,9 +88627,9 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
-            "        self.running = false;",
+            "        let mut write_jobs: Vec<CmTransferJob> = Vec::new();",
             "        let (_tx_log, mut rx_log) = mpsc::unbounded_channel::<String>();\n"
-            "        self.running = false;",
+            "        let mut write_jobs: Vec<CmTransferJob> = Vec::new();",
             "independent unbounded CM file-job log queue",
         ),
         (
@@ -90009,6 +90153,30 @@ def run_source_mutations(sources):
             "independent positive exclusive controlled route",
         ),
         (
+            "clipboard_source",
+            "    let mut routes = CLIPBOARD_FILE_ROUTES.write().unwrap();\n"
+            "    if routes.iter().any(|route| route.conn_id == conn_id) {\n"
+            "        return Err(CliprdrError::InvalidRequest {\n"
+            "            description: format!(\n"
+            "                \"controlled file-clipboard route already exists for connection {conn_id}\"\n"
+            "            ),\n"
+            "        });\n"
+            "    }\n"
+            "    let route_generation = next_route_generation();\n"
+            "    let (sender, receiver) = clipboard_file_egress_channel();",
+            "    let route_generation = next_route_generation();\n"
+            "    let (sender, receiver) = clipboard_file_egress_channel();\n"
+            "    let mut routes = CLIPBOARD_FILE_ROUTES.write().unwrap();\n"
+            "    if routes.iter().any(|route| route.conn_id == conn_id) {\n"
+            "        return Err(CliprdrError::InvalidRequest {\n"
+            "            description: format!(\n"
+            "                \"controlled file-clipboard route already exists for connection {conn_id}\"\n"
+            "            ),\n"
+            "        });\n"
+            "    }",
+            "independent locked vacancy-before-resource controlled route admission",
+        ),
+        (
             "client_io_loop",
             "clipboard::register_cliprdr_viewer(&self.handler.get_id())",
             "clipboard::current_cliprdr_viewer_id(&self.handler.get_id())",
@@ -90024,9 +90192,101 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
-            "clipboard::register_cliprdr_controlled(self.conn_id)",
+            "clipboard::register_cliprdr_controlled(id)",
             "clipboard::clipboard_file_egress_channel()",
             "independent Windows CM controlled-route ownership and finality",
+        ),
+        (
+            "ui_cm_source",
+            "    close: bool,\n    conn_id: i32,",
+            "    close: bool,\n    running: bool,\n    conn_id: i32,",
+            "independent ambiguous CM run/retry Boolean",
+        ),
+        (
+            "ui_cm_source",
+            "async fn run(&mut self) {",
+            "async fn run(&mut self) -> bool {",
+            "independent single CM stream lifecycle",
+        ),
+        (
+            "ui_cm_source",
+            "if self.conn_id != 0",
+            "if false",
+            "independent repeated CM login refusal",
+        ),
+        (
+            "ui_cm_source",
+            '"failed to register exact CM file-clipboard route for {}: {}",\n'
+            "                                                    id,\n"
+            "                                                    error\n"
+            "                                                );\n"
+            "                                                break;",
+            '"failed to register exact CM file-clipboard route for {}: {}",\n'
+            "                                                    id,\n"
+            "                                                    error\n"
+            "                                                );\n"
+            "                                                continue;",
+            "independent route-setup terminal finality",
+        ),
+        (
+            "ui_cm_source",
+            '"failed to publish CM file-clipboard readiness: {error}"\n'
+            "                                            );\n"
+            "                                            break;",
+            '"failed to publish CM file-clipboard readiness: {error}"\n'
+            "                                            );\n"
+            "                                            continue;",
+            "independent readiness-send terminal finality",
+        ),
+        (
+            "ui_cm_source",
+            'Ok(None) => {\n'
+            '                            log::warn!("Rejected malformed data on CM IPC stream");\n'
+            "                            break;\n"
+            "                        }",
+            'Ok(None) => {\n'
+            '                            log::warn!("Rejected malformed data on CM IPC stream");\n'
+            "                            continue;\n"
+            "                        }",
+            "independent malformed CM frame terminal finality",
+        ),
+        (
+            "ui_cm_source",
+            "_cliprdr_route = Some(controlled_clip_route);",
+            "drop(controlled_clip_route);",
+            "independent route lease through terminal client cleanup",
+        ),
+        (
+            "ui_cm_source",
+            "self.cm.add_connection(id, is_file_transfer",
+            "self.cm.add_connection_bypassed(id, is_file_transfer",
+            "independent single client-registry commit",
+        ),
+        (
+            "ui_cm_source",
+            "privacy_mode, self.tx.clone());\n                                    continue;",
+            "privacy_mode, self.tx.clone());\n                                    break;",
+            "independent validated Login activation",
+        ),
+        (
+            "ui_cm_source",
+            "        if self.conn_id > 0 {\n"
+            "            self.cm.remove_connection(self.conn_id, self.close);\n"
+            "        }\n"
+            "        #[cfg(target_os = \"windows\")]\n"
+            "        drop(_cliprdr_route);",
+            "        #[cfg(target_os = \"windows\")]\n"
+            "        drop(_cliprdr_route);\n"
+            "        if self.conn_id > 0 {\n"
+            "            self.cm.remove_connection(self.conn_id, self.close);\n"
+            "        }",
+            "independent client cleanup before route-lease release",
+        ),
+        (
+            "ui_cm_source",
+            "task_runner.run().await;",
+            "loop { task_runner.run().await; }",
+            "independent single CM stream lifecycle owner",
         ),
         (
             "clipboard_windows_source",
@@ -90039,6 +90299,16 @@ def run_source_mutations(sources):
             '        ("const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling"),',
             '        ("const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES_DISABLED: usize = 256;", "message-count ceiling"),',
             "focused file-clipboard message-count assertion",
+        ),
+        (
+            "clipboard_route_budget_verifier",
+            '            "let mut task_runner = Self {",\n'
+            '            "task_runner.run().await;",\n'
+            "            'log::debug!(\"ipc task end\");',",
+            '            "let mut task_runner = Self {",\n'
+            '            "task_runner.run_disabled().await;",\n'
+            "            'log::debug!(\"ipc task end\");',",
+            "focused single CM stream owner",
         ),
         (
             "verify",
@@ -90069,6 +90339,24 @@ def run_source_mutations(sources):
             "### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership",
             "### R-S11gz-disabled/R-S11e-238 — exact bounded file-clipboard route ownership",
             "R-S11gz ledger",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11it</span>',
+            '<div class="req"><span class="id">R-S11it-disabled</span>',
+            "R-S11it requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>405</td>",
+            "<tr><td>405-disabled</td>",
+            "Appendix C #405",
+        ),
+        (
+            "hardening",
+            "### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership",
+            "### R-S11it-disabled/R-S11e-283 — terminal CM stream and route-setup ownership",
+            "R-S11it ledger",
         ),
         (
             "workspace_verifier",

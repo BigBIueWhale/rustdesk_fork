@@ -606,8 +606,6 @@ pub fn register_cliprdr_controlled(
             description: "controlled file-clipboard connection id must be positive".to_owned(),
         });
     }
-    let route_generation = next_route_generation();
-    let (sender, receiver) = clipboard_file_egress_channel();
     let mut routes = CLIPBOARD_FILE_ROUTES.write().unwrap();
     if routes.iter().any(|route| route.conn_id == conn_id) {
         return Err(CliprdrError::InvalidRequest {
@@ -616,6 +614,8 @@ pub fn register_cliprdr_controlled(
             ),
         });
     }
+    let route_generation = next_route_generation();
+    let (sender, receiver) = clipboard_file_egress_channel();
     routes.push(ClipboardFileRoute {
         owner: ClipboardFileRouteOwner::Controlled,
         conn_id,

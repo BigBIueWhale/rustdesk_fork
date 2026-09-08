@@ -31412,6 +31412,242 @@ task-swipe/reopen/Force-Stop/reconnect/resource soak and native Windows
 same-connection focus/minimize capture-through-presentation latency reproduction
 remain STOP-SHIP.
 
+### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
+
+**Status:** SOURCE VERIFIED / FOCUSED, INDEPENDENT, AND COMPLETE SOURCE-MUTATION
+GATES PASS / SHARED-AND-APPLE WIRING PLUS APPLE EMBEDDED AUTHORITY ANALYZER PASS /
+EXACT-CURRENT WINDOWS RUST/NATIVE, INSTALLED-CM, PERFORMANCE, ARTIFACT,
+INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+
+**Platform, action, and boundary.** This slice covers the Windows desktop
+connection manager's per-stream Login/route setup and the shared controlled
+file-clipboard route registry used by Windows CM and Unix file clipboard. The
+boundary is one authenticated CM IPC stream -> at most one validated Login ->
+one exact controlled clipboard route/readiness publication/client commit ->
+terminal client cleanup while that route lease remains live. R-S11c-4a/4b connection-token
+authority, R-S11c-4c Login-before-filesystem ordering, R-S11c-4d bounded command
+publication, R-S11gz exact route leases, and R-S11is exact file-response finality
+remain unchanged.
+
+**Source-proven old path.** The imported `IpcTaskRunner` represented both task
+liveness and its post-Login reconfiguration edge with `running: bool`. Its
+outer owner executed `while task_runner.running { task_runner.run().await; }`,
+while `run` cleared the Boolean only after Windows clipboard setup. Commit
+`943856a13b08605f8f3155c9a8ca79a57bb9ea11` then made controlled route setup
+fallible and returned directly on duplicate-route refusal before that clear.
+The unchanged `true` made the current-thread owner invoke the same setup again
+without an intervening await. `register_cliprdr_controlled` also called
+`next_route_generation` and allocated a bounded egress channel before taking the
+route write lock and discovering the duplicate, so every spin iteration burned
+one checked process-lifetime generation and transient allocation; eventual
+generation exhaustion aborts by design. The adjacent `MonitorReady` stream send
+was logged and ignored rather than treated as setup failure.
+The stream result match also ignored `Ok(None)`, even though the IPC decoder
+uses that result for a non-UTF-8 or invalid-JSON frame, and consequently allowed
+later frames on a stream after malformed input.
+
+Deeper review of the entire collision transaction found two coupled identity
+errors that the initial explicit-disposition draft did not close. Login called
+`ConnectionManager::add_connection` before the next runner invocation attempted
+route admission; because `CLIENTS` replaces by bare connection ID, a colliding
+candidate could replace the incumbent entry and then remove that ID when its
+setup terminated. Conversely, an active runner returned and dropped its route
+lease before `ipc_task` called bare-ID client cleanup, so a new same-ID route
+could be admitted in that release/cleanup gap. Merely replacing the Boolean with
+a restart enum would stop the spin but retain incorrect ownership, so that draft
+was discarded before publication. These are concrete source-level Windows CM
+CPU/log/allocation, client-identity, and process-availability mechanisms.
+It is not evidence that an unidentified operational artifact reached the
+collision, not a network/session authorization bypass, privilege escalation,
+public-listener change, host/service/firewall/network/container mutation,
+compromise, or cause claim for the separately reported display-only delay.
+
+**Correct ownership.** The ambiguous Boolean, outer runner loop, and proposed
+run-disposition protocol are absent. `ipc_task` invokes `run` exactly once; that
+invocation owns the complete stream. It begins with one inert bounded clipboard
+receiver kept pending by its local sender. The first `Data::Login` must pass the
+existing server-side connection-authority validation. A repeated Login is
+terminal because the current producer emits one Login and a second identity
+commit has no valid lifecycle meaning.
+
+On Windows, the validated Login next admits its positive controlled route and,
+when the clipboard context is enabled, successfully publishes `MonitorReady`;
+only then does it commit `conn_id`, file authority/token, the controlled
+receiver/lease, and the client registry entry.
+Route collision or readiness failure therefore terminates with `conn_id == 0`
+and cannot replace or remove an incumbent client. Successful activation stays
+inside the same receive loop rather than returning or restarting. Every later
+terminal edge converges below the loop, where the committed client is removed or
+disconnected before the exact route lease is explicitly dropped. A non-UTF-8
+or invalid-JSON frame is `Ok(None)` at the IPC decoder and now logs and takes
+that same terminal path instead of allowing later frames on the stream. The route
+continues to exclude same-ID admission across client cleanup. No delay, backoff,
+retry, recovery timer, or second lifecycle mechanism is added.
+
+Controlled route registration now takes the route-registry write lock and proves
+that the positive connection ID is vacant before it calls
+`next_route_generation` or allocates the egress channel. Only an admitted route
+therefore consumes identity and channel resources. The same critical section
+commits its sender before releasing the lock, and `ClipboardFileRouteLease::drop` still removes only exact
+`(conn_id, route_generation)` identity. Viewer allocation and the Unix
+connection-side terminal response remain unchanged.
+
+The existing focused `scripts/verify-clipboard-route-budget.py` contract now
+binds vacancy-before-resource ordering under the commit lock, the single stream
+owner, first-Login-only activation, terminal malformed-frame/route/readiness
+failures, setup before client commit, same-loop activation, client cleanup
+before lease release, and complete absence of `running: bool`/`self.running`/an
+outer runner loop or restart disposition.
+Its deliberate mutations move resource allocation before duplicate admission,
+restore the Boolean, permit repeated Login, erase single-run ownership, invert
+setup/activation/cleanup ordering, and remove the normative or ledger bindings. The independently
+implemented workspace contract and mutation catalog inspect the same production
+invariants separately. Existing shared and Apple entrypoints already invoke the
+focused gate, so no duplicate gate runner is added.
+
+Current normative identity for this slice:
+
+```text
+46d89af345ab2801fd043bb3e45536bd342199ba951993b64024d91d67a52bac  requirements.html
+```
+
+**Source-verification receipt — 2026-09-08.** Pinned Rust 1.75 `rustfmt`
+parsing of both changed Rust files, Python AST parsing of both changed verifier
+files, Bash parsing of the shared and Apple gates, HTML parsing, the exact
+requirements identity and unique R-S11it/Appendix C #405 cardinalities,
+unchanged `Cargo.lock`, native-codec-watch normal and hostile-self-test modes,
+and `git diff --check` passed in the locked verifier profile. The focused
+file-clipboard route verifier passed normally and rejected all 53 deliberate
+mutations. The independently implemented workspace baseline passed, and a
+separate in-memory targeted driver proved the new malformed-frame fixture is
+live and rejected. Earlier targeted runs against the pre-correction candidate
+had already exercised its affected CM route/setup family; the complete current
+catalog below supersedes those partial results.
+
+The independent source-mutation catalog restarted at mutation one and completed
+all 6,102 cases against the frozen pre-receipt candidate. It was one direct
+invocation of `verify-verifier-workspace.py --repo /repo
+--source-mutations-only`, with no wrapper-side filtering, sharding, resume, or
+parallel duplicate:
+
+```text
+container:  r-s11it-independent-source-catalog-20260908-v3
+id:         555d1c75d015a24a51bbea0e3d5bfd8d144d07fac7abb180ff316aec0ecc6f5e
+image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
+started:    2026-09-08T06:50:50.153594992Z
+finished:   2026-09-08T11:28:59.182335842Z
+duration:   4h 38m 09.028740850s
+exit:       0
+OOMKilled:  false
+restart:    0
+error:      empty
+catalog:    6102 source mutations
+output:     verify-verifier-workspace: ok
+candidate:  b0212ef644996918b5211e52eb68a235c6fa1fdc8be6d94c3ea431f15a0de330
+```
+
+Repeated live inspection showed exactly one CPU-bound Python PID, approximately
+316-357 MiB across sampled observations, and zero network and block I/O. Final
+inspection proved numeric UID/GID 1000:1000, network none, a read-only root and
+read-only `/repo` bind, all capabilities dropped, `no-new-privileges`, private
+IPC, no host PID or user namespace, 64 PIDs, two CPUs, 2 GiB memory with no
+additional swap, one private 512 MiB `nosuid,nodev,noexec` tmpfs, no published
+port or device, and no Docker socket. Its writable layer was 8 KiB; its roughly
+1.22 GiB virtual root was the pre-existing immutable image. The exact seven-path
+inventory, unchanged `Cargo.lock`, and frozen binary Git diff matched before and
+after the run. The stopped container was removed only after its result and
+confinement were captured.
+
+The established self-contained Apple password/authority Python heredoc and all
+of its embedded source mutations also passed with all three finding files empty:
+
+```text
+container:  r-s11it-apple-embedded-20260908-v1
+id:         48f67e6222f5e7b77eef979f74f74349d14b27ab2704ac1dd62dc2001cba6693
+started:    2026-09-08T11:30:17.272668114Z
+finished:   2026-09-08T11:42:31.477717589Z
+exit:       0
+OOMKilled:  false
+restart:    0
+error:      empty
+output:     apple-password-embedded-analyzer-and-mutations: ok
+```
+
+That stopped container used the same exact immutable image and locked profile
+and was inspected and removed. This was the general embedded Apple source
+analyzer, not the outer Apple Docker/build wrapper, Xcode, a signed artifact,
+Authorization Services, LaunchDaemon behavior, or a direct analyzer of the two
+changed CM production files. Current-slice Apple coverage is the existing Apple
+entrypoint's exact focused-verifier invocation, which both the focused and
+independent validators bind and deliberately mutate.
+
+The failure trail is explicit. The first complete-catalog attempt stopped during
+its up-front fixture audit because one pre-existing CM log-queue mutation still
+targeted the deleted `self.running = false;` anchor; that fixture was re-anchored
+to live Android CM state, then its isolated case and the entire fixture inventory
+passed. Catalog v2 ran for 2h 59m 34s before read-only review found that the
+candidate still ignored decoder `Ok(None)` malformed frames and that its new
+readiness prose was unconditionally worded despite the existing conditional
+clipboard context. It was deliberately stopped, exited 137/non-OOM with empty
+Docker error, inspected, removed, and is uncredited. The source, normative text,
+focused and independent assertions, deliberate mutations, digest, and watch
+identity were corrected before the credited v3 restart. One short preflight then
+correctly rejected an impossible textual order between sibling `Ok(Some(...))`
+and `Ok(None)` match arms; only that cross-arm ordering assertion was removed,
+while the exact terminal arm and its mutation stayed. A first targeted-driver
+invocation omitted Docker stdin attachment, executed an empty Python program,
+and is uncredited; its corrected one-case run passed. An earlier Rustfmt attempt
+traversed unrelated child modules and exposed pre-existing formatting drift; all
+credited Rustfmt checks use `skip_children=true` on only the changed Rust files.
+The first receipt-preflight shell string contained an unescaped HTML single quote;
+the host shell rejected it before creating a container, and the stdin-driven
+replacement below passed.
+No failed, stopped, partial, malformed, superseded, or stale attempt is credited
+as current proof.
+
+The complete catalog is not recursively rerun after this evidence-only status
+and receipt insertion: every catalogued production, normative requirement,
+native-watch, focused/shared/Apple gate, and independent-verifier byte in the
+frozen seven-path candidate remains unchanged except this ledger evidence. The
+strict receipt-bearing preflight then rechecked the exact seven-path inventory,
+unchanged `Cargo.lock`, Rustfmt 1.75, Python/Bash/HTML parsing, requirements
+identity and cardinalities, exact 53/6,102 mutation-catalog cardinalities, all 53
+focused mutations, the independent baseline, native-codec normal and complete
+self-test modes, and `git diff --check`. It passed on the literal receipt-bearing
+binary Git diff SHA-256
+`7a5041f4bc26624785b7ebd8c8f8d60fbbbd553bec00563ca9a779c110e22ce1`:
+
+```text
+container:  r-s11it-final-preflight-20260908-v2
+id:         ea7e567d93774c261bf9d883c25db3041b72a5c02ae0fb031005276a73be375d
+started:    2026-09-08T11:48:19.290559541Z
+finished:   2026-09-08T11:48:29.027757858Z
+exit:       0
+OOMKilled:  false
+restart:    0
+error:      empty
+output:     r-s11it-final-preflight-v2-ok
+```
+
+The Rust toolchain tree was one additional read-only bind; the stopped container
+otherwise used the same locked profile, had a 12 KiB writable layer, and was
+inspected and removed. This final receipt paragraph alone changes ledger bytes;
+a bounded literal-ledger check follows before staging rather than recursively
+rerunning the four-hour catalog.
+
+No Rust crate, Flutter application, native target, installed artifact, service,
+or physical device has yet been compiled or executed for this slice. Exact
+Windows/native build and installed collision/readiness-failure behavior,
+cross-platform exact-generation ownership for the separate bare-ID `CLIENTS`
+registry, complete Windows/Linux/macOS/Android file-operation transactions, cross-version
+behavior, sustained throughput/latency/CPU/memory/resource soak, current signed
+artifacts, clean committed cold R-B2/R-B10 equality, independent reproduction,
+external review, causation, and proof that the complete connection flow is
+correct and performant remain open. The physical Android task-swipe/reopen/
+Force-Stop/reconnect/resource soak and native Windows same-connection focus/
+minimize capture-through-presentation display-latency reproduction remain
+STOP-SHIP.
+
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

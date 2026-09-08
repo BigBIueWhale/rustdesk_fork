@@ -31627,6 +31627,9 @@ def validate_cm_egress_budget_contract(sources):
         ("return_job_log: bool", "focused direct CM file-job log result"),
         ("r_s11ha_cm_file_job_log_is_returned", "focused direct-log regression"),
         ("R-S11ha", "focused direct-log normative binding"),
+        ("CmEgressAdmissionError", "focused fallible CM file response admission"),
+        ("r_s11is_cm_file_response_refusal_is_returned", "focused response-refusal regression"),
+        ("R-S11is", "focused file-response-finality normative binding"),
     ):
         require_text(focused_contract, marker, label)
     require_text(
@@ -31643,6 +31646,11 @@ def validate_cm_egress_budget_contract(sources):
         focused_contract,
         '("mpsc::unbounded_channel::<String>()", "unbounded CM file-job log queue")',
         "focused unbounded file-job log absence assertion",
+    )
+    require_text(
+        focused_contract,
+        '("requirements", \'<div class="req"><span class="id">R-S11is</span>\', "normative CM file-response finality requirement")',
+        "focused file-response-finality normative binding",
     )
 
     ui_cm = sources["ui_cm_source"]
@@ -31860,6 +31868,30 @@ def validate_cm_egress_budget_contract(sources):
         "async fn handle_fs(",
         "independent exact-command CM file handler",
     )
+    responder = extract_braced_item(
+        ui_cm,
+        "impl CmFileResponder<'_>",
+        "independent exact CM file response admission",
+    )
+    require_order(
+        responder,
+        (
+            "fn send(self, response: ipc::CmFileResponseKind)",
+            "-> Result<(), CmEgressAdmissionError>",
+            "self.tx.send(Data::CmFileResponse",
+        ),
+        "independent fallible exact CM file response admission",
+    )
+    require_absent(
+        responder,
+        "let _ =",
+        "independent discarded exact CM file response admission",
+    )
+    require_absent(
+        responder,
+        "log::",
+        "independent log-only exact CM file response failure",
+    )
     if file_handler.count("\n    return_job_log: bool,\n") != 1:
         raise VerificationError(
             "independent CM file handler lacks one explicit direct-log policy"
@@ -31868,16 +31900,30 @@ def validate_cm_egress_budget_contract(sources):
         file_handler,
         (
             "return_job_log: bool,",
-            ") -> Option<String>",
+            ") -> Result<Option<String>, CmEgressAdmissionError>",
             "let mut job_log = None;",
             "match fs {",
-            "job_log",
+            "Ok(job_log)",
         ),
-        "independent direct optional file-job log result",
+        "independent fallible direct file-command result",
     )
     if file_handler.count("if return_job_log {") != 4:
         raise VerificationError(
             "independent CM file handler does not bind all four direct terminal-log paths"
+        )
+    for marker, label in (
+        ("read_empty_dirs(&dir, include_hidden, request_id, responder).await?;", "empty-directory response"),
+        ("read_dir(&dir, include_hidden, request_id, responder).await?;", "directory response"),
+        ("remove_dir(path, request_id, recursive, responder).await?;", "remove-directory response"),
+        ("remove_file(path, request_id, responder).await?;", "remove-file response"),
+        ("create_dir(path, request_id, responder).await?;", "create-directory response"),
+        ("rename_file(path, new_name, request_id, responder).await?;", "rename response"),
+        ("read_all_files(path, include_hidden, id, request_id, responder).await?;", "recursive-list response"),
+    ):
+        require_text(
+            file_handler,
+            marker,
+            f"independent {label} admission propagation",
         )
     if file_handler.count(
         'job_log = Some(serialize_transfer_job(&job.job, false, true, ""));'
@@ -31911,10 +31957,17 @@ def validate_cm_egress_budget_contract(sources):
     require_order(
         desktop_file_commands,
         (
-            "let job_log = if let ipc::FS::WriteBlock",
+            "let result = if let ipc::FS::WriteBlock",
+            "self.stream.next_raw().await",
+            'log::error!("failed to receive CM file block: {error}");',
+            "break;",
             "handle_fs(",
             "true,",
             ".await",
+            "let job_log = match result",
+            "Err(error)",
+            'log::error!("failed to publish CM file response: {error}");',
+            "break;",
             "if let Some(job_log) = job_log",
             'self.cm.ui_handler.file_transfer_log("transfer", &job_log);',
             "if !self.read_jobs.is_empty()",
@@ -31925,24 +31978,95 @@ def validate_cm_egress_budget_contract(sources):
         raise VerificationError(
             "independent desktop file-command branch lacks exactly two handler calls"
         )
-    if desktop_file_commands.count("\n                                                true,\n") != 1:
+    if desktop_file_commands.count("\n                                            true,\n") != 2:
         raise VerificationError(
-            "independent desktop raw-block command does not request its direct log"
-        )
-    if desktop_file_commands.count("\n                                            true,\n") != 1:
-        raise VerificationError(
-            "independent desktop ordinary command does not request its direct log"
+            "independent desktop file-command paths do not both request their direct log"
         )
     require_absent(
         desktop_file_commands,
         "\n                                            false,\n",
         "independent desktop file-command log omission",
     )
+    file_tick = extract_between(
+        ipc_runner,
+        "_ = file_timer.tick() => {",
+        "\n                }\n            }\n        }",
+        "independent desktop CM read-job tick",
+    )
+    require_order(
+        file_tick,
+        (
+            "if let Err(error) = handle_read_jobs_tick(",
+            ".await",
+            'log::error!("failed to publish CM read-job response: {error}");',
+            "break;",
+        ),
+        "independent desktop read-job response refusal finality",
+    )
     require_absent(
         ipc_runner,
         "rx_log.recv()",
         "independent select-driven file-job log drain",
     )
+
+    start_read_job = extract_braced_item(
+        ui_cm,
+        "async fn start_read_job(",
+        "independent CM read-job initialization",
+    )
+    require_order(
+        start_read_job,
+        (
+            ") -> Result<(), CmEgressAdmissionError>",
+            "let respond = |result|",
+            "responder.send(ipc::CmFileResponseKind::ReadJobInit",
+            "respond(Ok(directory))?;",
+            "job.conn_id = conn_id;",
+            "read_jobs.push(CmTransferJob { generation, job });",
+        ),
+        "independent read-job response-before-commit order",
+    )
+    if start_read_job.count("respond(") != 9:
+        raise VerificationError(
+            "independent CM read-job initialization response vocabulary is incomplete"
+        )
+    for marker, expected in (
+        ('respond(Err("read job connection authority mismatch".to_owned()))?;', 1),
+        ('respond(Err(format!("duplicate read job id {}", id)))?;', 1),
+        ("respond(Err(msg))?;", 2),
+        ("respond(Err(error))?;", 1),
+        ("respond(Ok(directory))?;", 1),
+        ('respond(Err(format!("validation failed: {}", e)))?;', 1),
+        ('respond(Err(format!("validation task failed: {}", e)))?;', 1),
+    ):
+        if start_read_job.count(marker) != expected:
+            raise VerificationError(
+                "independent CM read-job response admission is not fully propagated"
+            )
+
+    read_tick = extract_braced_item(
+        ui_cm,
+        "async fn handle_read_jobs_tick(",
+        "independent CM read-job response tick",
+    )
+    require_text(
+        read_tick,
+        ") -> Result<(), CmEgressAdmissionError>",
+        "independent fallible CM read-job tick result",
+    )
+    require_order(
+        read_tick,
+        (
+            "match init_read_job_for_cm(job, generation).await",
+            "Ok(Some(response)) => responder.send(response)?",
+            "job.read().await",
+        ),
+        "independent read-digest admission before later read progress",
+    )
+    if read_tick.count("responder.send(") != 6 or read_tick.count("})?;") != 5:
+        raise VerificationError(
+            "independent CM read-job response admission is not fully propagated"
+        )
 
     connection_start = extract_braced_item(
         connection, "pub async fn start(", "independent controlled connection loop"
@@ -32014,12 +32138,14 @@ def validate_cm_egress_budget_contract(sources):
         android_file_commands,
         (
             "Some(Data::FS(fs))",
-            "let _ = handle_fs(",
+            "if let Err(error) = handle_fs(",
             "CmFileResponder {",
             "false,",
-            ".await;",
+            ".await",
+            'log::error!("failed to publish Android CM file response: {error}");',
+            "break;",
         ),
-        "independent Android direct-log omission",
+        "independent Android response-refusal finality",
     )
     if android_file_commands.count("handle_fs(") != 1:
         raise VerificationError(
@@ -32043,6 +32169,8 @@ def validate_cm_egress_budget_contract(sources):
         "r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes",
         "r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner",
         "r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job",
+        "r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner",
+        "r_s11is_read_job_commits_only_after_initial_response_admission",
     ):
         require_text(ui_cm, test, f"independent {test} regression")
     for marker, label in (
@@ -32053,6 +32181,7 @@ def validate_cm_egress_budget_contract(sources):
         ("Err(CmEgressAdmissionError::ReceiverGone)", "independent stale-sender regression"),
         ('terminal_log.get("cancel")', "independent direct terminal-log regression"),
         ("assert!(write_jobs.is_empty());", "independent terminal job-retirement regression"),
+        ("assert!(read_jobs.is_empty());", "independent unpublished read-job noncommit regression"),
     ):
         require_text(ui_cm, marker, label)
 
@@ -32060,6 +32189,7 @@ def validate_cm_egress_budget_contract(sources):
         ("verify", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "shared CM-egress focused gate"),
         ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never", "shared CM-egress behavior gate"),
         ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never", "shared direct-log behavior gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never", "shared file-response finality behavior gate"),
         ("apple", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "Apple CM-egress focused gate"),
         ("requirements", '<div class="req"><span class="id">R-S11gy</span>', "R-S11gy requirement"),
         ("requirements", "<tr><td>360</td>", "Appendix C #360"),
@@ -32067,6 +32197,10 @@ def validate_cm_egress_budget_contract(sources):
         ("requirements", '<div class="req"><span class="id">R-S11ha</span>', "R-S11ha requirement"),
         ("requirements", "<tr><td>362</td>", "Appendix C #362"),
         ("hardening", "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership", "R-S11ha ledger"),
+        ("requirements", '<div class="req"><span class="id">R-S11is</span>', "R-S11is requirement"),
+        ("requirements", "<tr><td>404</td>", "Appendix C #404"),
+        ("hardening", "### R-S11is/R-S11e-282 — exact-command CM file-response admission finality", "R-S11is ledger"),
+        ("native_watch", "The same identity additionally binds R-S11is and Appendix C #404.", "R-S11is native-watch binding"),
     ):
         require_text(sources[key], text, label)
     require_text(
@@ -88210,6 +88344,80 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
+            "fn send(self, response: ipc::CmFileResponseKind) -> Result<(), CmEgressAdmissionError>",
+            "fn send(self, response: ipc::CmFileResponseKind)",
+            "independent fallible exact CM file response admission",
+        ),
+        (
+            "ui_cm_source",
+            "        self.tx.send(Data::CmFileResponse(ipc::CmFileResponse {",
+            "        let _ = self.tx.send(Data::CmFileResponse(ipc::CmFileResponse {",
+            "independent discarded exact CM file response admission",
+        ),
+        (
+            "ui_cm_source",
+            ") -> Result<Option<String>, CmEgressAdmissionError> {",
+            ") -> Option<String> {",
+            "independent fallible direct file-command result",
+        ),
+        (
+            "ui_cm_source",
+            "            read_dir(&dir, include_hidden, request_id, responder).await?;",
+            "            let _ = read_dir(&dir, include_hidden, request_id, responder).await;",
+            "independent directory response admission propagation",
+        ),
+        (
+            "ui_cm_source",
+            '                                                log::error!("failed to receive CM file block: {error}");\n'
+            "                                                break;",
+            '                                                log::debug!("failed to receive CM file block: {error}");\n'
+            "                                                continue;",
+            "independent exact desktop command-to-log ordering",
+        ),
+        (
+            "ui_cm_source",
+            '                                            log::error!("failed to publish CM file response: {error}");\n'
+            "                                            break;",
+            '                                            log::debug!("failed to publish CM file response: {error}");\n'
+            "                                            continue;",
+            "independent exact desktop command-to-log ordering",
+        ),
+        (
+            "ui_cm_source",
+            '                            log::error!("failed to publish CM read-job response: {error}");\n'
+            "                            break;",
+            '                            log::debug!("failed to publish CM read-job response: {error}");\n'
+            "                            continue;",
+            "independent desktop read-job response refusal finality",
+        ),
+        (
+            "ui_cm_source",
+            "            respond(Ok(directory))?;\n\n            // Attach connection id",
+            "            let response = Ok(directory);\n\n            // Attach connection id",
+            "independent read-job response-before-commit order",
+        ),
+        (
+            "ui_cm_source",
+            "            job.conn_id = conn_id;\n            read_jobs.push(CmTransferJob { generation, job });",
+            "            read_jobs.push(CmTransferJob { generation, job });\n            job.conn_id = conn_id;",
+            "independent read-job response-before-commit order",
+        ),
+        (
+            "ui_cm_source",
+            "            Ok(Some(response)) => responder.send(response)?,",
+            "            Ok(Some(_response)) => {},",
+            "independent read-digest admission before later read progress",
+        ),
+        (
+            "ui_cm_source",
+            '                    log::error!("failed to publish Android CM file response: {error}");\n'
+            "                    break;",
+            '                    log::debug!("failed to publish Android CM file response: {error}");\n'
+            "                    continue;",
+            "independent Android response-refusal finality",
+        ),
+        (
+            "ui_cm_source",
             "structured_only + 64",
             "structured_only",
             "independent raw-byte regression",
@@ -88290,7 +88498,7 @@ def run_source_mutations(sources):
             "ui_cm_source",
             "    let mut job_log = None;",
             "    let job_log = None;",
-            "independent direct optional file-job log result",
+            "independent fallible direct file-command result",
         ),
         (
             "ui_cm_source",
@@ -88322,11 +88530,13 @@ def run_source_mutations(sources):
             "ui_cm_source",
             "                    false,\n"
             "                )\n"
-            "                .await;",
+            "                .await\n"
+            "                {",
             "                    true,\n"
             "                )\n"
-            "                .await;",
-            "independent Android direct-log omission",
+            "                .await\n"
+            "                {",
+            "independent Android response-refusal finality",
         ),
         (
             "ui_cm_source",
@@ -88341,6 +88551,18 @@ def run_source_mutations(sources):
             "independent r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job regression",
         ),
         (
+            "ui_cm_source",
+            "fn r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner",
+            "fn cm_file_response_refusal_may_be_discarded",
+            "independent r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner regression",
+        ),
+        (
+            "ui_cm_source",
+            "fn r_s11is_read_job_commits_only_after_initial_response_admission",
+            "fn read_job_may_commit_before_response",
+            "independent r_s11is_read_job_commits_only_after_initial_response_admission regression",
+        ),
+        (
             "cm_egress_budget_verifier",
             '("mpsc::unbounded_channel::<String>()", "unbounded CM file-job log queue")',
             '("mpsc::unbounded_channel::<String>_disabled()", "unbounded CM file-job log queue")',
@@ -88351,6 +88573,12 @@ def run_source_mutations(sources):
             "cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never",
             "true # direct CM file-log tests disabled",
             "shared direct-log behavior gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never",
+            "true # CM file-response finality tests disabled",
+            "shared file-response finality behavior gate",
         ),
         (
             "requirements",
@@ -88369,6 +88597,36 @@ def run_source_mutations(sources):
             "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership",
             "### R-S11ha-disabled/R-S11e-239 — exact-command CM file-job log ownership",
             "R-S11ha ledger",
+        ),
+        (
+            "cm_egress_budget_verifier",
+            '("requirements", \'<div class="req"><span class="id">R-S11is</span>\', "normative CM file-response finality requirement")',
+            '("requirements", \'<div class="req"><span class="id">R-S11is-disabled</span>\', "normative CM file-response finality requirement")',
+            "focused file-response-finality normative binding",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11is</span>',
+            '<div class="req"><span class="id">R-S11is-disabled</span>',
+            "R-S11is requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>404</td>",
+            "<tr><td>404-disabled</td>",
+            "Appendix C #404",
+        ),
+        (
+            "hardening",
+            "### R-S11is/R-S11e-282 — exact-command CM file-response admission finality",
+            "### R-S11is-disabled/R-S11e-282 — exact-command CM file-response admission finality",
+            "R-S11is ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11is and Appendix C #404.",
+            "The same identity no longer binds R-S11is and Appendix C #404.",
+            "R-S11is native-watch binding",
         ),
         (
             "native_clipboard_source",

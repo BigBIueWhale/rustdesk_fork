@@ -11209,6 +11209,7 @@ fi
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11gx_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hp_ --color never
@@ -11247,9 +11248,9 @@ else
   rc=1
 fi
 if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
-  echo "  ok  R-S11gy connection-manager results have closed count-and-byte ownership at both desktop hops and Android"
+  echo "  ok  R-S11gy/R-S11is connection-manager results are bounded and every CM file response is exact-command-final"
 else
-  echo "  FAIL R-S11gy: connection-manager results regained an unbounded hop, incomplete raw-byte accounting, or nonterminal refusal"
+  echo "  FAIL R-S11gy/R-S11is: connection-manager results regained an unbounded hop, incomplete raw-byte accounting, discarded file response, or nonterminal refusal"
   rc=1
 fi
 if python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test; then

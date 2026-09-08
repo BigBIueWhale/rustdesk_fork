@@ -338,6 +338,20 @@ def validate(sources: Dict[str, str]) -> None:
     handle_fs = extract_braced_item(
         ui_cm, "async fn handle_fs(", "exact-command CM file handler"
     )
+    responder = extract_braced_item(
+        ui_cm, "impl CmFileResponder<'_>", "exact CM file response admission"
+    )
+    require_order(
+        responder,
+        (
+            "fn send(self, response: ipc::CmFileResponseKind)",
+            "-> Result<(), CmEgressAdmissionError>",
+            "self.tx.send(Data::CmFileResponse",
+        ),
+        "fallible exact CM file response admission",
+    )
+    forbid(responder, "let _ =", "discarded exact CM file response admission")
+    forbid(responder, "log::", "log-only exact CM file response failure")
     if handle_fs.count("\n    return_job_log: bool,\n") != 1:
         raise VerificationError(
             "exact-command CM file handler must expose one explicit direct-log policy"
@@ -346,17 +360,27 @@ def validate(sources: Dict[str, str]) -> None:
         handle_fs,
         (
             "return_job_log: bool,",
-            ") -> Option<String>",
+            ") -> Result<Option<String>, CmEgressAdmissionError>",
             "let mut job_log = None;",
             "match fs {",
-            "job_log",
+            "Ok(job_log)",
         ),
-        "direct optional CM file-job log result",
+        "fallible direct CM file-command result",
     )
     if handle_fs.count("if return_job_log {") != 4:
         raise VerificationError(
             "every and only four terminal CM file-job paths must construct a direct log"
         )
+    for marker, label in (
+        ("read_empty_dirs(&dir, include_hidden, request_id, responder).await?;", "empty-directory response"),
+        ("read_dir(&dir, include_hidden, request_id, responder).await?;", "directory response"),
+        ("remove_dir(path, request_id, recursive, responder).await?;", "remove-directory response"),
+        ("remove_file(path, request_id, responder).await?;", "remove-file response"),
+        ("create_dir(path, request_id, responder).await?;", "create-directory response"),
+        ("rename_file(path, new_name, request_id, responder).await?;", "rename response"),
+        ("read_all_files(path, include_hidden, id, request_id, responder).await?;", "recursive-list response"),
+    ):
+        require(handle_fs, marker, f"{label} admission propagation")
     for needle, label in (
         (
             'job_log = Some(serialize_transfer_job(&job.job, false, true, ""));',
@@ -391,10 +415,17 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         desktop_file_commands,
         (
-            "let job_log = if let ipc::FS::WriteBlock",
+            "let result = if let ipc::FS::WriteBlock",
+            "self.stream.next_raw().await",
+            'log::error!("failed to receive CM file block: {error}");',
+            "break;",
             "handle_fs(",
             "true,",
             ".await",
+            "let job_log = match result",
+            "Err(error)",
+            'log::error!("failed to publish CM file response: {error}");',
+            "break;",
             "if let Some(job_log) = job_log",
             'self.cm.ui_handler.file_transfer_log("transfer", &job_log);',
             "if !self.read_jobs.is_empty()",
@@ -405,16 +436,85 @@ def validate(sources: Dict[str, str]) -> None:
         raise VerificationError(
             "desktop authorized file-command branch must have exactly two direct handler calls"
         )
-    if desktop_file_commands.count("\n                                                true,\n") != 1:
-        raise VerificationError("desktop raw-block command must request its direct log")
-    if desktop_file_commands.count("\n                                            true,\n") != 1:
-        raise VerificationError("desktop ordinary file command must request its direct log")
+    if desktop_file_commands.count("\n                                            true,\n") != 2:
+        raise VerificationError("both desktop file-command paths must request their direct log")
     forbid(
         desktop_file_commands,
         "\n                                            false,\n",
         "desktop file-command log omission",
     )
+    file_tick = extract_between(
+        ipc_runner,
+        "_ = file_timer.tick() => {",
+        "\n                }\n            }\n        }",
+        "desktop CM read-job tick",
+    )
+    require_order(
+        file_tick,
+        (
+            "if let Err(error) = handle_read_jobs_tick(",
+            ".await",
+            'log::error!("failed to publish CM read-job response: {error}");',
+            "break;",
+        ),
+        "desktop read-job response refusal retires the exact IPC task",
+    )
     forbid(ipc_runner, "rx_log.recv()", "select-driven CM file-job log drain")
+
+    start_read_job = extract_braced_item(
+        ui_cm, "async fn start_read_job(", "CM read-job initialization"
+    )
+    require_order(
+        start_read_job,
+        (
+            ") -> Result<(), CmEgressAdmissionError>",
+            "let respond = |result|",
+            "responder.send(ipc::CmFileResponseKind::ReadJobInit",
+            "respond(Ok(directory))?;",
+            "job.conn_id = conn_id;",
+            "read_jobs.push(CmTransferJob { generation, job });",
+        ),
+        "read job commits only after initial response admission",
+    )
+    if start_read_job.count("respond(") != 9:
+        raise VerificationError(
+            "CM read-job initialization response vocabulary is incomplete"
+        )
+    for marker, expected in (
+        ('respond(Err("read job connection authority mismatch".to_owned()))?;', 1),
+        ('respond(Err(format!("duplicate read job id {}", id)))?;', 1),
+        ("respond(Err(msg))?;", 2),
+        ("respond(Err(error))?;", 1),
+        ("respond(Ok(directory))?;", 1),
+        ('respond(Err(format!("validation failed: {}", e)))?;', 1),
+        ('respond(Err(format!("validation task failed: {}", e)))?;', 1),
+    ):
+        if start_read_job.count(marker) != expected:
+            raise VerificationError(
+                "every CM read-job initialization response must propagate admission failure"
+            )
+
+    read_tick = extract_braced_item(
+        ui_cm, "async fn handle_read_jobs_tick(", "CM read-job response tick"
+    )
+    require(
+        read_tick,
+        ") -> Result<(), CmEgressAdmissionError>",
+        "fallible CM read-job tick result",
+    )
+    require_order(
+        read_tick,
+        (
+            "match init_read_job_for_cm(job, generation).await",
+            "Ok(Some(response)) => responder.send(response)?",
+            "job.read().await",
+        ),
+        "read digest admission precedes later read progress",
+    )
+    if read_tick.count("responder.send(") != 6 or read_tick.count("})?;") != 5:
+        raise VerificationError(
+            "every CM read-job response must propagate admission failure"
+        )
 
     start = extract_braced_item(connection, "pub async fn start(", "controlled connection loop")
     require(
@@ -494,12 +594,14 @@ def validate(sources: Dict[str, str]) -> None:
         android_file_commands,
         (
             "Some(Data::FS(fs))",
-            "let _ = handle_fs(",
+            "if let Err(error) = handle_fs(",
             "CmFileResponder {",
             "false,",
-            ".await;",
+            ".await",
+            'log::error!("failed to publish Android CM file response: {error}");',
+            "break;",
         ),
-        "Android drops the direct optional log without a queue",
+        "Android omits the direct log but retires on response refusal",
     )
     if android_file_commands.count("handle_fs(") != 1:
         raise VerificationError(
@@ -521,6 +623,8 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes",
         "r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner",
         "r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job",
+        "r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner",
+        "r_s11is_read_job_commits_only_after_initial_response_admission",
     ):
         require(ui_cm, test, f"deterministic {test} regression")
     for needle, label in (
@@ -533,6 +637,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("Err(CmEgressAdmissionError::ReceiverGone)", "stale-sender regression"),
         ('terminal_log.get("cancel")', "direct terminal-log regression"),
         ("assert!(write_jobs.is_empty());", "terminal job-retirement regression"),
+        ("assert!(read_jobs.is_empty());", "unpublished read-job noncommit regression"),
     ):
         require(ui_cm, needle, label)
 
@@ -541,6 +646,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("verify", gate_command, "shared focused gate"),
         ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never", "shared Rust behavior gate"),
         ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never", "shared direct-log behavior gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never", "shared file-response finality behavior gate"),
         ("apple", gate_command, "Apple/shared focused gate"),
         ("requirements", '<div class="req"><span class="id">R-S11gy</span>', "normative CM egress requirement"),
         ("requirements", "<tr><td>360</td>", "Appendix C CM egress row"),
@@ -548,6 +654,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", "<tr><td>362</td>", "Appendix C direct-log row"),
         ("hardening", "### R-S11gy/R-S11e-237 — bounded connection-manager result ownership", "hardening ledger entry"),
         ("hardening", "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership", "direct-log hardening ledger entry"),
+        ("requirements", '<div class="req"><span class="id">R-S11is</span>', "normative CM file-response finality requirement"),
+        ("requirements", "<tr><td>404</td>", "Appendix C CM file-response finality row"),
+        ("hardening", "### R-S11is/R-S11e-282 — exact-command CM file-response admission finality", "CM file-response finality hardening ledger entry"),
+        ("native_watch", "The same identity additionally binds R-S11is and Appendix C #404.", "CM file-response finality digest binding"),
         ("workspace", "def validate_cm_egress_budget_contract(sources):", "independent workspace contract"),
         ("workspace", "validate_cm_egress_budget_contract(sources)", "independent workspace dispatch"),
     ):
@@ -632,6 +742,17 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("connection", "tx_from_cm.send(ipc::Data::CmFileResponse(envelope))?;", "let _ = tx_from_cm.send(ipc::Data::CmFileResponse(envelope));", "raw result failure propagation"),
     ("connection", "tx_from_cm.send(data)?;", "let _ = tx_from_cm.send(data);", "ordinary result failure propagation"),
     ("flutter", "tx: crate::ui_cm_interface::CmEgressSender,", "tx: UnboundedSender<crate::ipc::Data>,", "Android bounded sender"),
+    ("ui_cm", "fn send(self, response: ipc::CmFileResponseKind) -> Result<(), CmEgressAdmissionError>", "fn send(self, response: ipc::CmFileResponseKind)", "fallible file-response admission"),
+    ("ui_cm", "        self.tx.send(Data::CmFileResponse(ipc::CmFileResponse {", "        let _ = self.tx.send(Data::CmFileResponse(ipc::CmFileResponse {", "file-response result propagation"),
+    ("ui_cm", ") -> Result<Option<String>, CmEgressAdmissionError> {", ") -> Option<String> {", "fallible file-command result"),
+    ("ui_cm", "            read_dir(&dir, include_hidden, request_id, responder).await?;", "            let _ = read_dir(&dir, include_hidden, request_id, responder).await;", "directory response propagation"),
+    ("ui_cm", '                                                log::error!("failed to receive CM file block: {error}");\n                                                break;', '                                                log::debug!("failed to receive CM file block: {error}");\n                                                continue;', "raw file-block terminal failure"),
+    ("ui_cm", '                                            log::error!("failed to publish CM file response: {error}");\n                                            break;', '                                            log::debug!("failed to publish CM file response: {error}");\n                                            continue;', "desktop file-response terminal failure"),
+    ("ui_cm", '                            log::error!("failed to publish CM read-job response: {error}");\n                            break;', '                            log::debug!("failed to publish CM read-job response: {error}");\n                            continue;', "desktop read-tick terminal failure"),
+    ("ui_cm", "            respond(Ok(directory))?;\n\n            // Attach connection id", "            let response = Ok(directory);\n\n            // Attach connection id", "read-job response before commit"),
+    ("ui_cm", "            job.conn_id = conn_id;\n            read_jobs.push(CmTransferJob { generation, job });", "            read_jobs.push(CmTransferJob { generation, job });\n            job.conn_id = conn_id;", "read-job commit ordering"),
+    ("ui_cm", "            Ok(Some(response)) => responder.send(response)?,", "            Ok(Some(_response)) => {},", "read-digest response propagation"),
+    ("ui_cm", '                    log::error!("failed to publish Android CM file response: {error}");\n                    break;', '                    log::debug!("failed to publish Android CM file response: {error}");\n                    continue;', "Android file-response terminal failure"),
     ("ui_cm", "fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive", "fn cm_results_may_reorder", "FIFO regression"),
     ("ui_cm", "fn r_s11gy_cm_egress_capacity_and_wrong_class_are_terminal", "fn capacity_is_advisory", "terminal regression"),
     ("ui_cm", "structured_only + 64", "structured_only", "raw-byte regression"),
@@ -644,11 +765,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("ui_cm", 'job_log = Some(serialize_transfer_job(&job.job, true, false, ""));', 'let _ = serialize_transfer_job(&job.job, true, false, "");', "completion log ownership"),
     ("ui_cm", "job_log = Some(serialize_transfer_job(&job.job, false, false, &err));", "let _ = serialize_transfer_job(&job.job, false, false, &err);", "error log ownership"),
     ("ui_cm", "if let Some(job_log) = job_log {\n                                        self.cm.ui_handler.file_transfer_log(\"transfer\", &job_log);", "if false && job_log.is_some() {\n                                        self.cm.ui_handler.file_transfer_log(\"transfer\", job_log.as_deref().unwrap_or_default());", "desktop direct-log consumption"),
-    ("ui_cm", "                    false,\n                )\n                .await;", "                    true,\n                )\n                .await;", "Android log omission"),
+    ("ui_cm", "                    false,\n                )\n                .await\n                {", "                    true,\n                )\n                .await\n                {", "Android log omission"),
     ("ui_cm", "fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner", "fn direct_log_may_detach", "direct-log regression"),
     ("ui_cm", "fn r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job", "fn omitted_log_may_retain_job", "omitted-log regression"),
+    ("ui_cm", "fn r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner", "fn cm_file_response_refusal_may_be_discarded", "file-response refusal regression"),
+    ("ui_cm", "fn r_s11is_read_job_commits_only_after_initial_response_admission", "fn read_job_may_commit_before_response", "read-job noncommit regression"),
     ("verify", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "true # CM egress gate disabled", "shared gate wiring"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never", "true # direct CM file-log tests disabled", "direct-log behavior gate wiring"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never", "true # CM file-response finality tests disabled", "file-response behavior gate wiring"),
     ("apple", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "true # CM egress gate disabled", "Apple gate wiring"),
     ("requirements", '<div class="req"><span class="id">R-S11gy</span>', '<div class="req"><span class="id">R-S11gy-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>360</td>", "<tr><td>360-disabled</td>", "Appendix disposition"),
@@ -656,6 +780,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>362</td>", "<tr><td>362-disabled</td>", "direct-log Appendix disposition"),
     ("hardening", "### R-S11gy/R-S11e-237 — bounded connection-manager result ownership", "### R-S11gy-disabled/R-S11e-237 — bounded connection-manager result ownership", "hardening ledger"),
     ("hardening", "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership", "### R-S11ha-disabled/R-S11e-239 — exact-command CM file-job log ownership", "direct-log hardening ledger"),
+    ("requirements", '<div class="req"><span class="id">R-S11is</span>', '<div class="req"><span class="id">R-S11is-disabled</span>', "file-response normative requirement"),
+    ("requirements", "<tr><td>404</td>", "<tr><td>404-disabled</td>", "file-response Appendix disposition"),
+    ("hardening", "### R-S11is/R-S11e-282 — exact-command CM file-response admission finality", "### R-S11is-disabled/R-S11e-282 — exact-command CM file-response admission finality", "file-response hardening ledger"),
+    ("native_watch", "The same identity additionally binds R-S11is and Appendix C #404.", "The same identity no longer binds R-S11is and Appendix C #404.", "file-response digest binding"),
     ("workspace", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract_disabled(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
 )
 

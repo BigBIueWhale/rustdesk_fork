@@ -31211,6 +31211,207 @@ races, sustained thread/CPU/memory/resource behavior, current signed artifacts,
 cold R-B2/R-B10 equality, independent reproduction, and external review remain
 open exactly as listed above.
 
+### R-S11is/R-S11e-282 — exact-command CM file-response admission finality
+
+**Status:** SOURCE VERIFIED / FOCUSED, APPLE-EMBEDDED, INDEPENDENT, AND COMPLETE
+SOURCE-MUTATION GATES PASS / EXACT RUST/NATIVE, INSTALLED DESKTOP, PHYSICAL
+ANDROID, PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
+EVIDENCE OPEN.
+
+**Platform, action, and boundary.** This slice covers the filesystem-response
+producer inside the desktop connection manager on Windows, Linux, and macOS and
+the same in-process handler on Android. The boundary is one authorized CM
+filesystem command or read-job tick -> one typed, bounded
+`CmFileResponse` admission -> the exact controlled `Connection` which owns the
+corresponding session/generation/request/job state. R-S11c-4a/4b connection-token
+authority, R-S11c-4c Login-before-filesystem ordering, R-S11c-4d command-queue
+ownership, and R-S11gy's bounded result mailbox remain unchanged.
+
+**Source-proven old path.** `src/ui_cm_interface.rs::CmFileResponder::send`
+called `CmEgressSender::send`, logged its error, and returned `()`. Every
+response-producing branch of `handle_fs`, every directory/operation helper,
+read-job initialization, and the periodic read tick therefore continued after a
+response that the bounded mailbox had terminally refused. Desktop and Android
+callers erased the handler result; the desktop read-tick caller logged and kept
+the IPC loop alive. The read-job success path was a concrete commit-order defect:
+`start_read_job` called the void responder with `ReadJobInit`, then
+unconditionally assigned `conn_id` and pushed the job, leaving live work after
+its initial result/authority could no longer reach the owning connection. The
+desktop `AuthorizedFS(WriteBlock)` path also converted failure to read the
+following raw block into `None` and resumed the command loop despite losing
+frame synchronization. This is shared source-proven operation-result and
+resource-finality debt. It is not evidence that the unidentified weeks-old
+Android, Windows, or Debian artifacts exercised it; not proof of the reported
+display-only delay or a file-operation failure; and not evidence of compromise,
+public exposure, privilege escalation, or any host RustDesk/service/firewall/
+network/container change.
+
+**Correct ownership.** `CmFileResponder::send` now returns the exact
+`CmEgressAdmissionError`. `handle_fs` and every response-producing helper return
+and propagate that typed result across directory/recursive enumeration,
+create/remove/rename, write rejection/finalization/digest, and read
+initialization/digest/block/done/error. The responder contains no log-only or
+ignored-result branch. `start_read_job` admits its exact successful
+`ReadJobInit` before assigning and pushing the live job. Read-stream
+initialization returns an optional typed digest to the exact periodic tick,
+which admits it before reading further. The first response refusal makes the
+desktop command branch, desktop periodic tick, or Android listener break its
+exact session path; it cannot retry, redirect, infer success, or execute later
+CM work. Failure to receive a framed raw write block is independently terminal.
+An operation whose filesystem effect completed before result refusal is not
+rolled back or mislabeled; exact session teardown is the only safe disposition.
+
+Two current-thread Rust regressions configure zero response capacity. One proves
+that the exact `handle_fs` caller receives `MessageCapacity` while the receiver
+observes the identical terminal cause. The other constructs a real read job and
+proves it is not inserted after `ReadJobInit` refusal. The existing focused
+`scripts/verify-cm-egress-budget.py` gate is extended to bind the fallible
+responder, complete producer/caller propagation, raw-frame and periodic-tick
+termination, publish-before-job-commit order, both regressions, R-S11is,
+Appendix C #404, this ledger, the requirements digest, shared/Apple wiring, and
+independent workspace validation.
+
+Current normative identity for this slice:
+
+```text
+523fce2cd0aed40262f3d4d7433522b96856781cdf59d7382a26264518357ff7  requirements.html
+```
+
+**Source-verification receipt — 2026-09-08.** Rustfmt 1.75 parsing of the changed
+Rust source, Python AST parsing of both changed verifiers, Bash parsing of both
+changed shell gates, HTML parsing, the requirements identity and unique
+R-S11is/#404 cardinalities, `git diff --check`, and normal plus hostile-self-test
+native-codec-watch modes passed in the locked verifier profile. The focused CM
+egress verifier passed normally and rejected all 82 deliberate mutations. The
+independently implemented workspace baseline passed. A targeted independent
+driver then exercised the 19 new R-S11is fixtures plus both pre-existing CM
+fixtures whose expected diagnostic precedence changed; all 21 passed. A broader
+driver selected the complete contiguous 69-fixture R-S11gy/R-S11ha/R-S11is CM
+result and direct-log block, and every case passed. Both temporary drivers were
+deleted after their stopped containers were inspected and removed. The Linux
+nondumpable/CM verifier separately passed all 71 deliberate mutations.
+
+The complete independent catalog then restarted at mutation one and completed
+all 6,086 source mutations against the frozen pre-receipt candidate rather than
+resuming at either earlier failure:
+
+```text
+container:  r-s11is-independent-source-catalog-20260908-v3
+id:         c30f54e038a85eb3bcbccb5a455803dcf7c3ac8c61bf1ee39b0c577f300681a7
+image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
+started:    2026-09-07T21:13:27.745919396Z
+finished:   2026-09-08T01:51:45.435949200Z
+exit:       0
+OOMKilled:  false
+error:      empty
+catalog:    6086 source mutations
+output:     verify-verifier-workspace: ok
+candidate:  a5ee050d9c9f545738b18bd589e34dd748d1e220bc8f9b0b5be513bbd07c1023
+```
+
+Repeated inspection showed one CPU-bound Python process, approximately
+298–362 MiB across the sampled observations, one PID, and zero network and block
+I/O. Final inspection proved numeric UID/GID 1000:1000, network none, read-only
+root and repository, all capabilities dropped, `no-new-privileges`, private IPC,
+64 PIDs, two CPUs, 2 GiB memory with no additional swap, a private 512 MiB
+`nosuid,nodev,noexec` tmpfs, no ports or devices, and no Docker socket or host
+namespace. Its writable layer was 8.19 KiB; the 1.22 GiB virtual size was the
+pre-existing immutable image. The exact eight-path inventory and frozen binary
+Git diff matched before and after the run. The stopped container was removed
+only after its result and confinement were captured.
+
+The self-contained Apple password/authority Python analyzer and all of its
+embedded source mutations also passed after this slice, with all three required
+finding files empty:
+
+```text
+container: r-s11is-apple-embedded-20260907-v1
+id:        052c5549733639556ef918cbd80e0f668d556de7a2fe2c4c0167deacca984909
+started:   2026-09-07T17:04:53.511394433Z
+finished:  2026-09-07T17:17:11.078699449Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    apple-password-embedded-analyzer-and-mutations: ok
+```
+
+That stopped container used the same immutable image and locked confinement and
+was removed after inspection. This was the embedded source analyzer only: the
+outer Apple build wrapper, Xcode, a signed artifact, Authorization Services, and
+LaunchDaemon execution did not run.
+
+The failure trail is explicit. Catalog v1 ran for 2 hours 9 minutes and rejected
+a pre-existing direct-log mutation because it still expected the older
+`independent direct optional file-job log result` diagnostic; the strengthened
+fallible handler contract rejected the same effective mutation earlier. After
+that expectation alone was synchronized, catalog v2 ran for 2 hours 13 minutes
+and likewise rejected the pre-existing Android direct-log mutation because the
+new response-finality ordering emitted its earlier diagnostic. That expectation
+alone was synchronized. Two temporary targeted-driver attempts first asserted
+20 while selecting 19 cases and then still omitted the distinct Android log
+spelling; each refused before executing a mutation and is uncredited. The
+corrected 20-case driver passed before v2 exposed the second stale expectation;
+the final 21-case driver and the 69-case whole-CM-block driver then passed before
+the credited v3 restart. One adjacent checker invocation used an unsupported
+`--repo` option and is uncredited. Two older standalone source checkers remain
+stale against later authored source: `verify-cm-process-ownership.py` expects
+`timerCallback() async`, and `verify-viewer-file-finality.py` expects an obsolete
+`await bind.sessionReadRemoteDir(` call. Their failures are not credited as
+product evidence and were not hidden or weakened in this slice.
+
+The receipt-bearing strict preflight then rechecked the exact eight-path
+inventory, unchanged `Cargo.lock`, Bash/Python/HTML parsing, requirements
+identity and cardinality, exact 6,086-case independent and 82-case focused AST
+catalogs, all 82 focused mutations, the independent baseline, native-codec
+normal and hostile-self-test modes, Rustfmt 1.75 parsing of the changed Rust
+file, and `git diff --check`. It passed on binary Git diff SHA-256
+`d6b3513f350ca6c0852518566e4049caae0f832ef21522762b88cc79d9d301d2`:
+
+```text
+container: r-s11is-final-preflight-20260908-v2
+id:        3b679be39cd033d8a85a27ae20b7bdc4d66e2f5767ed79e092510bb71bc68d25
+started:   2026-09-08T02:02:10.791893612Z
+finished:  2026-09-08T02:02:20.413394587Z
+exit:      0
+OOMKilled: false
+error:     empty
+output:    r-s11is-final-preflight: ok
+```
+
+The full Rust 1.75 toolchain tree was an additional read-only bind; the stopped
+container otherwise used the same locked profile and was inspected and removed.
+The immediately preceding preflight attempt exited one before running the
+repository gates because its temporary AST counter accepted only a plain
+assignment while the focused catalog uses an annotated assignment. The helper
+was corrected to require that actual syntax; the attempt is uncredited and made
+no repository change. This evidence-only receipt does not recursively require
+rerunning the four-hour catalog; the literal receipt-bearing bytes are checked
+again by the final focused/independent/digest/diff publication check.
+
+No Rust crate, Flutter application, native target, installed artifact, service,
+or physical device was compiled or executed for this source receipt. The full
+shared release gate is not claimed: its exact pinned FRB/Debian builder image,
+ignored `online/` input closure, and fresh generated outputs remain absent after
+the earlier user-requested storage cleanup. Nothing was pulled, rebuilt, or
+substituted. No root, sudo, privileged container, host RustDesk process/service/
+binary/configuration, listener, firewall, host network state, Android device,
+VM, Haggai/Desktop_Haggai_computer workload, or unrelated Docker object was
+inspected or changed.
+
+This slice adds no retry, reconnect, acknowledgement, alternate protocol,
+worker, task, thread, runtime, listener, port, service transition, Android
+activity/service kill, weakening of the persistent foreground service,
+privilege, dependency, network behavior, or artifact. Exact Rust/native
+compilation and execution, complete installed Windows/Linux/macOS and physical
+Android file-operation/refusal/interruption transactions, cross-version
+behavior, sustained throughput/latency/CPU/memory/resource soak, current signed
+artifacts, clean cold R-B2/R-B10 equality, separately performed independent
+reproduction, R-V3 external review, causation, and proof that the complete
+connection flow is correct and performant remain open. The physical Android
+task-swipe/reopen/Force-Stop/reconnect/resource soak and native Windows
+same-connection focus/minimize capture-through-presentation latency reproduction
+remain STOP-SHIP.
+
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

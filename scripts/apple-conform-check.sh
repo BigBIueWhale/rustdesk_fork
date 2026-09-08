@@ -4904,11 +4904,11 @@ else
   rc=1
 fi
 
-echo "== (2g-c2ad) R-S11gy bounded connection-manager result ownership =="
+echo "== (2g-c2ad) R-S11gy/R-S11is bounded connection-manager result and exact file-response ownership =="
 if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
-  note "ok  R-S11gy Apple/shared connection-manager results have closed count-and-byte ownership at every in-process hop"
+  note "ok  R-S11gy/R-S11is Apple/shared connection-manager results are bounded and every CM file response is exact-command-final"
 else
-  echo "  FAIL R-S11gy Apple/shared connection-manager results regained an unbounded hop, incomplete raw-byte accounting, or nonterminal refusal"
+  echo "  FAIL R-S11gy/R-S11is Apple/shared connection-manager results regained an unbounded hop, incomplete raw-byte accounting, discarded file response, or nonterminal refusal"
   rc=1
 fi
 

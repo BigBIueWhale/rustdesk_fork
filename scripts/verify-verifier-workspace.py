@@ -33964,6 +33964,8 @@ def validate_clipboard_route_budget_contract(sources):
         ("register_cliprdr_viewer", "focused fresh viewer route"),
         ("register_cliprdr_controlled", "focused controlled route"),
         ("task_runner.run().await;", "focused single CM stream owner"),
+        ("CmClientRegistry", "focused exact CM client registry"),
+        ("ownsClientGeneration", "focused exact-generation Dart filter"),
         ("R-S11gz", "focused normative binding"),
         ("R-S11it", "focused CM setup-finality binding"),
     ):
@@ -34249,13 +34251,18 @@ def validate_clipboard_route_budget_contract(sources):
     )
     require_text(
         runner,
-        "privacy_mode, self.tx.clone());\n                                    continue;",
-        "independent validated Login activation",
+        "let client_owner = match self.cm.add_connection(",
+        "independent checked client-registry activation",
     )
     require_text(
         runner,
-        "        if self.conn_id > 0 {\n"
-        "            self.cm.remove_connection(self.conn_id, self.close);\n"
+        "Ok(owner) => owner,",
+        "independent checked client-registry activation",
+    )
+    require_text(
+        runner,
+        "        if let Some(owner) = self.client_owner.take() {\n"
+        "            self.cm.remove_connection(owner, self.close);\n"
         "        }\n"
         "        #[cfg(target_os = \"windows\")]\n"
         "        drop(_cliprdr_route);",
@@ -34278,12 +34285,15 @@ def validate_clipboard_route_budget_contract(sources):
             "send(&Data::ClipboardFile(clipboard::ClipboardFile::MonitorReady))",
             '"failed to publish CM file-clipboard readiness: {error}"',
             "break;",
+            "let client_owner = match self.cm.add_connection(",
+            '"Rejected CM client-registry admission for connection {}: {}"',
+            "break;",
             "self.conn_id = id;",
+            "self.client_owner = Some(client_owner);",
             "_cliprdr_route = Some(controlled_clip_route);",
-            "self.cm.add_connection(",
             "continue;",
-            "if self.conn_id > 0",
-            "self.cm.remove_connection(self.conn_id, self.close);",
+            "if let Some(owner) = self.client_owner.take()",
+            "self.cm.remove_connection(owner, self.close);",
             "drop(_cliprdr_route);",
         ),
         "independent single-stream CM admission and terminal ownership",
@@ -34315,6 +34325,342 @@ def validate_clipboard_route_budget_contract(sources):
     require_absent(
         ipc_task, "loop {", "independent single CM stream lifecycle owner"
     )
+
+    for marker, label in (
+        ("pub registry_generation: i64,", "independent serialized client generation"),
+        ("struct CmClientOwner {", "independent CM client lease"),
+        ("struct CmClientRegistry {", "independent CM client registry"),
+        (
+            "static ref CLIENTS: RwLock<CmClientRegistry>",
+            "independent typed process-global client registry",
+        ),
+        (
+            "#[serde(skip)]\n    source_generation: u64,",
+            "independent nonserialized source generation",
+        ),
+    ):
+        require_text(ui_cm, marker, label)
+    require_absent(
+        ui_cm,
+        "static ref CLIENTS: RwLock<HashMap<i32, Client>>",
+        "independent bare-ID client registry",
+    )
+    registry_scope = extract_braced_item(
+        ui_cm, "impl CmClientRegistry", "independent CM registry implementation"
+    )
+    registry_admit = extract_braced_item(
+        registry_scope, "fn admit(", "independent CM registry admission"
+    )
+    require_order(
+        registry_admit,
+        (
+            "if client.id <= 0",
+            "source_generation < current.source_generation",
+            "return Err(CmClientAdmissionError::StaleSourceGeneration);",
+            "source_generation == current.source_generation && !current.disconnected",
+            "return Err(CmClientAdmissionError::ActiveIdCollision);",
+            ".checked_add(1)",
+            ".ok_or(CmClientAdmissionError::GenerationExhausted)?",
+            "self.generation = generation;",
+            "client.registry_generation = generation;",
+            "client.source_generation = source_generation;",
+            "self.clients.insert(client.id, client.clone())",
+        ),
+        "independent checked source-qualified CM registry transaction",
+    )
+    if registry_admit.count("self.clients.insert(client.id, client.clone())") != 1:
+        raise VerificationError(
+            "independent CM client admission does not have exactly one commit"
+        )
+    exact_current = extract_braced_item(
+        registry_scope, "fn is_current(", "independent CM exact-owner check"
+    )
+    require_text(
+        exact_current,
+        "client.registry_generation == owner.generation",
+        "independent registry generation equality",
+    )
+    registry_retire = extract_braced_item(
+        registry_scope, "fn retire(", "independent CM registry retirement"
+    )
+    require_order(
+        registry_retire,
+        (
+            "if !self.is_current(owner)",
+            "return false;",
+            "self.clients.remove(&owner.id);",
+            "client.disconnected = true;",
+        ),
+        "independent stale-owner refusal before client retirement",
+    )
+
+    manager_scope = extract_braced_item(
+        ui_cm,
+        "impl<T: InvokeUiCM> ConnectionManager<T>",
+        "independent CM lifecycle manager",
+    )
+    lifecycle_add = extract_braced_item(
+        manager_scope, "fn add_connection(", "independent CM lifecycle admission"
+    )
+    require_order(
+        lifecycle_add,
+        (
+            ".admit(&mut client, self.source_generation)?",
+            "replaced.filter(|client| !client.disconnected)",
+            "replaced.tx.send(Data::Close)",
+            "self.ui_handler.add_connection(&client);",
+            "Ok(owner)",
+        ),
+        "independent supersession close and exact-owner publication",
+    )
+    lifecycle_remove = extract_braced_item(
+        manager_scope,
+        "fn remove_connection(",
+        "independent CM lifecycle retirement",
+    )
+    require_order(
+        lifecycle_remove,
+        (
+            "if !CLIENTS.write().unwrap().retire(owner, close)",
+            "return;",
+            "try_empty_clipboard_files(ClipboardSide::Host, owner.id)",
+            ".remove_connection(owner.id, owner.generation, close)",
+        ),
+        "independent exact cleanup before clipboard and UI side effects",
+    )
+    lifecycle_chat = extract_braced_item(
+        manager_scope, "fn new_message(", "independent CM chat publication"
+    )
+    require_order(
+        lifecycle_chat,
+        ("is_current(owner)", "owner.id, owner.generation, text"),
+        "independent exact-generation chat event",
+    )
+    lifecycle_voice = extract_braced_item(
+        manager_scope, "fn update_voice_call(", "independent CM voice mutation"
+    )
+    require_order(
+        lifecycle_voice,
+        (
+            "current_mut(owner)",
+            "client.incoming_voice_call = incoming;",
+            "client.in_voice_call = active;",
+            "client.clone()",
+            "update_voice_call_state(&client)",
+        ),
+        "independent exact-generation voice update",
+    )
+    public_remove = extract_braced_item(
+        ui_cm, "pub fn remove(id: i32)", "independent disconnected-card removal"
+    )
+    require_order(
+        public_remove,
+        ("client.disconnected", "clients.clients.remove(&id);"),
+        "independent disconnected-only bare-ID removal",
+    )
+
+    require_text(
+        runner_state,
+        "client_owner: Option<CmClientOwner>",
+        "independent desktop client-owner lease",
+    )
+    for marker, label in (
+        ("self.cm.new_message(owner, text);", "independent desktop exact chat"),
+        ("self.cm.voice_call_started(owner);", "independent desktop exact voice start"),
+        ("self.cm.voice_call_incoming(owner);", "independent desktop exact incoming voice"),
+        (
+            "self.cm.voice_call_closed(owner, reason.as_str());",
+            "independent desktop exact voice close",
+        ),
+    ):
+        require_text(runner, marker, label)
+    android_cm = extract_braced_item(
+        ui_cm,
+        "pub async fn start_listen<T: InvokeUiCM>(",
+        "independent Android CM lifecycle",
+    )
+    require_order(
+        android_cm,
+        (
+            "let mut current_owner = None;",
+            "if current_owner.is_some()",
+            '"Rejected repeated Android CM login',
+            "if !authorized || !connection_authority.valid",
+            '"Rejected Android CM login without matching authorized connection',
+            "let owner = match cm.add_connection(",
+            "current_owner = Some(owner);",
+            "cm.new_message(owner, text);",
+            "cm.voice_call_started(owner);",
+            "cm.voice_call_incoming(owner);",
+            "cm.voice_call_closed(owner, reason.as_str());",
+            "if let Some(owner) = current_owner",
+            "cm.remove_connection(owner, true);",
+        ),
+        "independent Android exact-owner admission and cleanup",
+    )
+    require_text(
+        android_cm,
+        "Ok(owner) => owner,",
+        "independent checked client-registry activation",
+    )
+    require_absent(
+        android_cm,
+        "cm.remove_connection(current_id, true)",
+        "independent Android bare-ID cleanup",
+    )
+
+    flutter_bridge = sources["flutter_source"]
+    remove_event = extract_braced_item(
+        flutter_bridge,
+        "fn remove_connection(&self, id: i32,",
+        "independent Flutter CM removal event",
+    )
+    require_order(
+        remove_event,
+        (
+            "registry_generation: i64",
+            "let registry_generation = registry_generation.to_string();",
+            "Some(&registry_generation)",
+            '"registry_generation"',
+            "registry_generation.to_string()",
+        ),
+        "independent generation-bearing Flutter removal",
+    )
+    chat_event = extract_braced_item(
+        flutter_bridge,
+        "fn new_message(&self, id: i32,",
+        "independent Flutter CM chat event",
+    )
+    require_order(
+        chat_event,
+        ("registry_generation: i64", '"registry_generation"', "registry_generation.to_string()"),
+        "independent generation-bearing Flutter chat",
+    )
+    android_channel = extract_braced_item(
+        flutter_bridge,
+        "pub fn start_channel(",
+        "independent Android CM source-generation handoff",
+    )
+    require_order(
+        android_channel,
+        (
+            "if service_generation == 0",
+            "return;",
+            "ConnectionManager::new(",
+            "FlutterHandler { service_generation }",
+            "service_generation,",
+        ),
+        "independent nonzero Android service generation binding",
+    )
+    desktop_cm = extract_braced_item(
+        flutter_bridge,
+        "fn start_listen_ipc(new_thread: bool)",
+        "independent desktop CM startup",
+    )
+    require_order(
+        desktop_cm,
+        ("ConnectionManager::new(", "FlutterHandler {", "},\n            0,\n        );"),
+        "independent desktop process-local source generation",
+    )
+    require_text(
+        sources["windows_cm_lifecycle_probe_source"],
+        "ConnectionManager::new(NoopConnectionManager, 0)",
+        "independent Windows probe process-local source generation",
+    )
+
+    server_model = sources["server_model_dart"]
+    dart_add = extract_braced_item(
+        server_model, "void addConnection(", "independent Dart client reconciliation"
+    )
+    require_order(
+        dart_add,
+        (
+            "client.registryGeneration < _clients[index].registryGeneration",
+            "return;",
+            "dismissByTag(getLoginDialogTag(client.id))",
+            "client.registryGeneration == current.registryGeneration",
+            "_clients.removeAt(index);",
+            "tabController.remove(index);",
+            "_clients.add(client);",
+            "_addTab(client);",
+        ),
+        "independent stale add refusal and aligned client/tab replacement",
+    )
+    dart_remove = extract_braced_item(
+        server_model, "void onClientRemove(", "independent Dart client removal"
+    )
+    require_text(
+        dart_remove,
+        "client.registryGeneration == registryGeneration",
+        "independent Dart exact-generation client query",
+    )
+    require_order(
+        dart_remove,
+        (
+            "client.id == id &&",
+            "client.registryGeneration == registryGeneration",
+            "if (index < 0)",
+            "return;",
+            "_clients.removeAt(index);",
+            "dismissByTag(getLoginDialogTag(id))",
+        ),
+        "independent Dart stale removal refusal before UI effects",
+    )
+    dart_generation_query = extract_between(
+        server_model,
+        "bool ownsClientGeneration(",
+        "\n\n  void androidUpdatekeepScreenOn",
+        "independent Dart client-generation query",
+    )
+    require_text(
+        dart_generation_query,
+        "client.registryGeneration == registryGeneration",
+        "independent Dart exact-generation client query",
+    )
+    dart_voice = extract_braced_item(
+        server_model,
+        "void updateVoiceCallState(",
+        "independent Dart voice update",
+    )
+    require_text(
+        dart_voice,
+        "element.registryGeneration == client.registryGeneration",
+        "independent Dart exact-generation voice filter",
+    )
+    for marker, label in (
+        ("int registryGeneration = 0;", "independent Dart client generation field"),
+        (
+            "registryGeneration = json['registry_generation'];",
+            "independent Dart client generation decode",
+        ),
+        (
+            "data['registry_generation'] = registryGeneration;",
+            "independent Dart client generation encode",
+        ),
+        (
+            "bool ownsClientGeneration(int id, int registryGeneration)",
+            "independent Dart exact-generation query",
+        ),
+    ):
+        require_text(server_model, marker, label)
+    require_text(
+        sources["model_dart"],
+        ".ownsClientGeneration(id, registryGeneration)",
+        "independent Dart exact-generation chat filter",
+    )
+    require_text(
+        sources["server_model_test"],
+        "expect(serialized['registry_generation'], 19);",
+        "independent Dart client generation regression",
+    )
+    for regression in (
+        "r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id",
+        "r_s11iu_registry_rejects_stale_and_same_source_active_collisions",
+        "r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement",
+        "r_s11iu_generation_exhaustion_does_not_commit_a_client",
+    ):
+        require_text(ui_cm, regression, f"independent {regression} regression")
+
     sender_lookup = extract_braced_item(
         clipboard, "fn send_data_to_channel(", "independent sender snapshot"
     )
@@ -34395,6 +34741,10 @@ def validate_clipboard_route_budget_contract(sources):
         ("requirements", '<div class="req"><span class="id">R-S11it</span>', "R-S11it requirement"),
         ("requirements", "<tr><td>405</td>", "Appendix C #405"),
         ("hardening", "### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership", "R-S11it ledger"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never", "shared R-S11iu Rust behavior gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11iu</span>', "R-S11iu requirement"),
+        ("requirements", "<tr><td>406</td>", "Appendix C #406"),
+        ("hardening", "### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership", "R-S11iu ledger"),
     ):
         require_text(sources[key], text, label)
     require_text(
@@ -39980,7 +40330,8 @@ def validate_android_voice_call_ownership_contract(sources):
             'screenshot-not-source-keyed"',
             "grep -qF 'val requiresDesktopCapture: Boolean' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
             "grep -qF 'get() = this == REMOTE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
-            "grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "grep -qF 'controlledCaptureOwners.upsert(' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "grep -qF 'jsonObject.getLong(\"registry_generation\")' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
             "grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
             'android-kotlin-no-typed-remote-capture-gate"',
             "if grep -qF 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then",
@@ -41932,12 +42283,13 @@ def validate_android_voice_call_ownership_contract(sources):
         input_owner,
         "internal data class ControlledInputOwner(\n"
         "    val serviceGeneration: Long,\n"
-        "    val connectionId: Int,",
+        "    val connectionId: Int,\n"
+        "    val registryGeneration: Long,",
         "independent exact controlled-input owner source",
     )
     require_text(
         input_owner,
-        "serviceGeneration > 0 && connectionId > 0",
+        "serviceGeneration > 0 && connectionId > 0 && registryGeneration > 0",
         "independent controlled-input owner validity source",
     )
     input_queue = sources["android_controlled_input_queue"]
@@ -41960,8 +42312,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["android_controlled_capture_owner_state"],
-        "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)",
-        "independent service-owned Remote input authority source",
+        "fun remoteInputRegistryGeneration(connectionId: Int): Long?",
+        "independent service-owned exact-generation Remote input authority source",
     )
 
     android_service = sources["android_main_service"]
@@ -42011,18 +42363,32 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             "!acceptingControlledConnections",
             "nativeServerGeneration <= 0L",
-            "!controlledCaptureOwners.ownsRemoteInput(connectionId)",
             "return null",
-            "ControlledInputOwner(nativeServerGeneration, connectionId)",
+            "controlledCaptureOwners.remoteInputRegistryGeneration(connectionId) ?: return null",
+            "ControlledInputOwner(nativeServerGeneration, connectionId, registryGeneration)",
         ),
-        "independent live generation/Remote input authority source",
+        "independent live service/client generation and Remote input authority source",
     )
     require_order(
         android_service,
         (
-            "controlledCaptureOwners.unregister(id)",
+            "val previousRegistryGeneration =",
+            "controlledCaptureOwners.registryGeneration(id)",
+            "controlledCaptureOwners.upsert(",
+            "if (previousRegistryGeneration != null)",
             "InputService.ctx?.retireInputOwner(",
-            "ControlledInputOwner(nativeServerGeneration, id)",
+            "previousRegistryGeneration",
+        ),
+        "independent exact predecessor input retirement source",
+    )
+    require_order(
+        android_service,
+        (
+            "controlledCaptureOwners.unregister(id, registryGeneration)",
+            '"Rejected stale controlled connection removal',
+            "} else {",
+            "InputService.ctx?.retireInputOwner(",
+            "ControlledInputOwner(nativeServerGeneration, id, registryGeneration)",
         ),
         "independent connection-removal input retirement source",
     )
@@ -42164,6 +42530,11 @@ def validate_android_voice_call_ownership_contract(sources):
         "independent controlled-input generation-ABA behavior source",
     )
     require_text(
+        sources["android_controlled_input_owner_test"],
+        "nonpositive registry generation was admitted",
+        "independent controlled-input registry-generation validity source",
+    )
+    require_text(
         sources["requirements"],
         '<span class="id">R-S11ei</span>',
         "independent controlled-input normative requirement source",
@@ -42180,7 +42551,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="',
         "independent shared controlled-input/audio generation gate label source",
     )
 
@@ -52981,7 +53352,7 @@ def validate_android_media_projection_finality_contract(sources):
     shared_gate = extract_between(
         verify,
         'echo "== Android MediaProjection/input lifecycle finality '
-        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
+        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="',
         "# R-X7a / R-G1",
         "shared Android MediaProjection/input lifecycle gate",
     )
@@ -53052,14 +53423,29 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         add_connection,
         (
+            'jsonObject.getLong("registry_generation")',
             'val authorized = jsonObject["authorized"] as Boolean',
             'jsonObject.getJSONObject("conn_type").getString("t")',
             "if (connectionType == null)",
             "return",
-            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
+            "val previousRegistryGeneration =",
+            "controlledCaptureOwners.registryGeneration(id)",
+            "controlledCaptureOwners.upsert(",
+            "registryGeneration",
+            "authorized",
+            "connectionType",
+            "if (previousRegistryGeneration != null)",
+            "InputService.ctx?.retireInputOwner(",
+            "previousRegistryGeneration",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(",
+            "nativeServerGeneration",
+            "id",
+            "previousRegistryGeneration",
+            "cancelNotification(id)",
             "VoiceCallAudioCoordinator.registerControlledConnection(",
             "nativeServerGeneration",
             "id",
+            "registryGeneration",
             "reconcileControlledCaptureDemand()",
         ),
         "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
@@ -53123,6 +53509,20 @@ def validate_android_media_projection_finality_contract(sources):
             "connectionType.allowsVoiceCall ==",
             "complete voice-call-policy behavior assertion",
         ),
+        ("!owners.unregister(41, 10)", "stale same-ID cleanup assertion"),
+        (
+            "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+            "duplicate same-ID refusal assertion",
+        ),
+        (
+            "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+            "stale same-ID replacement assertion",
+        ),
+        ("owners.isCurrent(41, 11)", "exact current same-ID assertion"),
+        (
+            "owners.remoteInputRegistryGeneration(41) == 11L",
+            "exact Remote input-generation assertion",
+        ),
     ):
         require_text(
             connection_type_test,
@@ -53136,24 +53536,25 @@ def validate_android_media_projection_finality_contract(sources):
         "Android controlled capture-owner state",
     )
     for text, label in (
-        ("private val owners = mutableSetOf<Int>()", "exact connection-ID owner set"),
-        ("get() = owners.isNotEmpty()", "owner-set-derived capture demand"),
-        ("if (connectionId <= 0)", "positive connection-ID admission"),
+        ("val registryGeneration: Long", "exact registry-generation owner"),
+        ("private val owners = mutableMapOf<Int, Owner>()", "exact connection-ID owner map"),
+        ("owners.values.any { it.requiresDesktopCapture }", "owner-map-derived capture demand"),
         (
-            "if (authorized && connectionType.requiresDesktopCapture)",
+            "owners[connectionId]?.registryGeneration == registryGeneration",
+            "exact current-owner equality",
+        ),
+        ("connectionId <= 0 || registryGeneration <= 0", "positive exact-owner admission"),
+        (
+            "authorized && connectionType.requiresDesktopCapture",
             "authorized exact-Remote admission",
         ),
-        ("owners.add(connectionId)", "exact capture-owner insertion"),
+        ("registryGeneration <= current.registryGeneration", "stale/duplicate generation refusal"),
+        ("owners[connectionId] = Owner(", "exact capture-owner insertion"),
+        ("if (!isCurrent(connectionId, registryGeneration))", "exact retirement guard"),
         ("owners.remove(connectionId)", "exact capture-owner retirement"),
         ("owners.clear()", "complete capture-owner teardown"),
     ):
         require_text(capture_owner_state, text, f"Android capture state {label}")
-    require_count(
-        capture_owner_state,
-        "owners.remove(connectionId)",
-        2,
-        "Android exact capture-owner retirement paths",
-    )
     for text, label in (
         (
             "one Remote teardown cleared another live owner",
@@ -53170,6 +53571,14 @@ def validate_android_media_projection_finality_contract(sources):
         (
             "non-Remote replacement retained capture demand",
             "same-ID exact-type replacement",
+        ),
+        (
+            "non-Remote replacement retained Remote input authority",
+            "same-ID exact-type input-authority replacement",
+        ),
+        (
+            "stale same-ID operations changed the current owner",
+            "same-ID exact-generation input-authority preservation",
         ),
         ("owner clear retained capture demand", "service teardown"),
     ):
@@ -53198,10 +53607,13 @@ def validate_android_media_projection_finality_contract(sources):
         remove_connection,
         (
             "val id = arg1.toIntOrNull()",
-            "controlledCaptureOwners.unregister(id)",
+            "val registryGeneration = arg2.toLongOrNull()",
+            "controlledCaptureOwners.unregister(id, registryGeneration)",
+            '"Rejected stale controlled connection removal',
             "VoiceCallAudioCoordinator.unregisterControlledConnection(",
             "nativeServerGeneration",
             "id",
+            "registryGeneration",
             "reconcileControlledCaptureDemand()",
             "cancelNotification(id)",
         ),
@@ -53217,10 +53629,14 @@ def validate_android_media_projection_finality_contract(sources):
         update_voice,
         (
             'val id = jsonObject["id"] as Int',
+            'jsonObject.getLong("registry_generation")',
             'val inVoiceCall = jsonObject["in_voice_call"] as Boolean',
+            "if (!controlledCaptureOwners.isCurrent(id, registryGeneration))",
+            "return",
             "VoiceCallAudioCoordinator.setControlledVoiceCallActive(",
             "nativeServerGeneration",
             "id",
+            "registryGeneration",
             "inVoiceCall",
         ),
         "Android exact-generation controlled voice update",
@@ -53565,6 +53981,10 @@ def validate_android_media_projection_finality_contract(sources):
     )
     for text, label in (
         (
+            "private val controlledConnections = mutableMapOf<Int, Long>()",
+            "exact registry-generation controlled-owner map",
+        ),
+        (
             "private var greatestControlledServiceGeneration = 0L",
             "monotonic controlled-service generation",
         ),
@@ -53627,11 +54047,16 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         owner_register,
         (
-            "if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "connectionId <= 0",
+            "registryGeneration <= 0",
             "return false",
-            "controlledConnections.add(connectionId)",
+            "val current = controlledConnections[connectionId]",
+            "registryGeneration <= current",
+            "return false",
+            "controlledConnections[connectionId] = registryGeneration",
+            "activeControlledConnections.remove(connectionId)",
         ),
-        "Android voice owner generation-bound controlled registration",
+        "Android voice owner service-and-registry-generation-bound controlled registration",
     )
     owner_set = extract_between(
         voice_owners,
@@ -53643,12 +54068,13 @@ def validate_android_media_projection_finality_contract(sources):
         owner_set,
         (
             "if (!isControlledServiceGeneration(generation)",
-            "!controlledConnections.contains(connectionId)",
+            "registryGeneration <= 0",
+            "controlledConnections[connectionId] != registryGeneration",
             "return false",
             "activeControlledConnections.add(connectionId)",
             "activeControlledConnections.remove(connectionId)",
         ),
-        "Android voice owner generation-and-registration-bound controlled update",
+        "Android voice owner service-and-registry-generation-bound controlled update",
     )
     owner_unregister = extract_between(
         voice_owners,
@@ -53659,12 +54085,16 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         owner_unregister,
         (
-            "if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "connectionId <= 0",
+            "registryGeneration <= 0",
+            "return false",
+            "val current = controlledConnections[connectionId] ?: return true",
+            "if (current != registryGeneration)",
             "return false",
             "controlledConnections.remove(connectionId)",
             "activeControlledConnections.remove(connectionId)",
         ),
-        "Android voice owner generation-bound controlled retirement",
+        "Android voice owner service-and-registry-generation-bound controlled retirement",
     )
     owner_clear = extract_between(
         voice_owners,
@@ -53716,8 +54146,8 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         coordinator_register,
-        "owners.registerControlledConnection(generation, connectionId)",
-        "Android audio coordinator exact-generation controlled registration",
+        "owners.registerControlledConnection(generation, connectionId, registryGeneration)",
+        "Android audio coordinator exact service-and-registry-generation controlled registration",
     )
     coordinator_set = extract_between(
         voice_coordinator,
@@ -53727,8 +54157,8 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         coordinator_set,
-        "owners.setControlledVoiceCallActive(generation, connectionId, active)",
-        "Android audio coordinator exact-generation controlled update",
+        "registryGeneration,\n                active,",
+        "Android audio coordinator exact service-and-registry-generation controlled update",
     )
     coordinator_unregister = extract_between(
         voice_coordinator,
@@ -53738,8 +54168,8 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         coordinator_unregister,
-        "owners.unregisterControlledConnection(generation, connectionId)",
-        "Android audio coordinator exact-generation controlled retirement",
+        "registryGeneration,\n            )",
+        "Android audio coordinator exact service-and-registry-generation controlled retirement",
     )
     coordinator_clear = extract_between(
         voice_coordinator,
@@ -53782,6 +54212,26 @@ def validate_android_media_projection_finality_contract(sources):
         (
             "stale generation cleared replacement controlled owners",
             "stale-generation teardown refusal",
+        ),
+        (
+            "same-ID replacement retained predecessor voice state",
+            "same-ID registry-generation replacement",
+        ),
+        (
+            "duplicate same-ID registry generation was admitted",
+            "same-ID duplicate registry-generation refusal",
+        ),
+        (
+            "stale same-ID registry generation was admitted",
+            "same-ID stale registry-generation refusal",
+        ),
+        (
+            "stale same-ID owner changed replacement voice state",
+            "same-ID stale voice update refusal",
+        ),
+        (
+            "stale same-ID owner retired replacement voice state",
+            "same-ID stale voice retirement refusal",
         ),
         (
             "current generation idempotent begin cleared live owners",
@@ -53941,8 +54391,8 @@ def validate_android_media_projection_finality_contract(sources):
     )
     flutter_remove = extract_between(
         flutter,
-        "fn remove_connection(&self, id: i32, close: bool)",
-        "fn new_message(&self, id: i32, text: String)",
+        "fn remove_connection(&self, id: i32, registry_generation: i64, close: bool)",
+        "fn new_message(&self, id: i32, registry_generation: i64, text: String)",
         "Android generation-bound connection removal",
     )
     require_order(
@@ -54169,7 +54619,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4)",
+        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4)",
         "Android MediaProjection shared source gate",
     )
     require_text(
@@ -90258,27 +90708,27 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
-            "self.cm.add_connection(id, is_file_transfer",
-            "self.cm.add_connection_bypassed(id, is_file_transfer",
+            "let client_owner = match self.cm.add_connection(",
+            "let client_owner = match self.cm.add_connection_bypassed(",
             "independent single client-registry commit",
         ),
         (
             "ui_cm_source",
-            "privacy_mode, self.tx.clone());\n                                    continue;",
-            "privacy_mode, self.tx.clone());\n                                    break;",
-            "independent validated Login activation",
+            "Ok(owner) => owner,",
+            "Ok(_owner) => return,",
+            "independent checked client-registry activation",
         ),
         (
             "ui_cm_source",
-            "        if self.conn_id > 0 {\n"
-            "            self.cm.remove_connection(self.conn_id, self.close);\n"
+            "        if let Some(owner) = self.client_owner.take() {\n"
+            "            self.cm.remove_connection(owner, self.close);\n"
             "        }\n"
             "        #[cfg(target_os = \"windows\")]\n"
             "        drop(_cliprdr_route);",
             "        #[cfg(target_os = \"windows\")]\n"
             "        drop(_cliprdr_route);\n"
-            "        if self.conn_id > 0 {\n"
-            "            self.cm.remove_connection(self.conn_id, self.close);\n"
+            "        if let Some(owner) = self.client_owner.take() {\n"
+            "            self.cm.remove_connection(owner, self.close);\n"
             "        }",
             "independent client cleanup before route-lease release",
         ),
@@ -90287,6 +90737,228 @@ def run_source_mutations(sources):
             "task_runner.run().await;",
             "loop { task_runner.run().await; }",
             "independent single CM stream lifecycle owner",
+        ),
+        (
+            "ui_cm_source",
+            "pub registry_generation: i64,",
+            "pub registry_generation_disabled: i64,",
+            "independent serialized client generation",
+        ),
+        (
+            "ui_cm_source",
+            "#[serde(skip)]\n    source_generation: u64,",
+            "source_generation: u64,",
+            "independent nonserialized source generation",
+        ),
+        (
+            "ui_cm_source",
+            "static ref CLIENTS: RwLock<CmClientRegistry>",
+            "static ref CLIENTS: RwLock<HashMap<i32, Client>>",
+            "independent typed process-global client registry",
+        ),
+        (
+            "ui_cm_source",
+            "source_generation < current.source_generation",
+            "source_generation > current.source_generation",
+            "independent checked source-qualified CM registry transaction",
+        ),
+        (
+            "ui_cm_source",
+            "source_generation == current.source_generation && !current.disconnected",
+            "source_generation == current.source_generation && false",
+            "independent checked source-qualified CM registry transaction",
+        ),
+        (
+            "ui_cm_source",
+            ".generation\n            .checked_add(1)",
+            ".generation\n            .wrapping_add(1)",
+            "independent checked source-qualified CM registry transaction",
+        ),
+        (
+            "ui_cm_source",
+            "client.registry_generation = generation;",
+            "client.registry_generation = 0;",
+            "independent checked source-qualified CM registry transaction",
+        ),
+        (
+            "ui_cm_source",
+            "client.source_generation = source_generation;",
+            "client.source_generation = 0;",
+            "independent checked source-qualified CM registry transaction",
+        ),
+        (
+            "ui_cm_source",
+            "if !self.is_current(owner) {",
+            "if false {",
+            "independent stale-owner refusal before client retirement",
+        ),
+        (
+            "ui_cm_source",
+            ".admit(&mut client, self.source_generation)?",
+            ".admit(&mut client, 0)?",
+            "independent supersession close and exact-owner publication",
+        ),
+        (
+            "ui_cm_source",
+            "replaced.tx.send(Data::Close)",
+            "replaced.tx.send(Data::ClickTime(0))",
+            "independent supersession close and exact-owner publication",
+        ),
+        (
+            "ui_cm_source",
+            "if !CLIENTS.write().unwrap().retire(owner, close) {",
+            "if false {",
+            "independent exact cleanup before clipboard and UI side effects",
+        ),
+        (
+            "ui_cm_source",
+            "if CLIENTS.read().unwrap().is_current(owner) {",
+            "if true {",
+            "independent exact-generation chat event",
+        ),
+        (
+            "ui_cm_source",
+            "CLIENTS.write().unwrap().current_mut(owner)",
+            "CLIENTS.write().unwrap().clients.get_mut(&owner.id)",
+            "independent exact-generation voice update",
+        ),
+        (
+            "ui_cm_source",
+            ".map(|client| client.disconnected)",
+            ".map(|_client| true)",
+            "independent disconnected-only bare-ID removal",
+        ),
+        (
+            "ui_cm_source",
+            "client_owner: Option<CmClientOwner>,",
+            "client_owner: Option<i32>,",
+            "independent desktop client-owner lease",
+        ),
+        (
+            "ui_cm_source",
+            "if current_owner.is_some() {",
+            "if false {",
+            "independent Android exact-owner admission and cleanup",
+        ),
+        (
+            "ui_cm_source",
+            "Rejected Android CM login without matching authorized connection",
+            "Accepted Android CM login without matching authorized connection",
+            "independent Android exact-owner admission and cleanup",
+        ),
+        (
+            "ui_cm_source",
+            "if let Some(owner) = current_owner {\n        cm.remove_connection(owner, true);",
+            "if current_id > 0 {\n        cm.remove_connection_by_id(current_id, true);",
+            "independent Android exact-owner admission and cleanup",
+        ),
+        (
+            "flutter_source",
+            "fn remove_connection(&self, id: i32, registry_generation: i64, close: bool)",
+            "fn remove_connection(&self, id: i32, registry_generation: i32, close: bool)",
+            "independent generation-bearing Flutter removal",
+        ),
+        (
+            "flutter_source",
+            "Some(&registry_generation)",
+            "None",
+            "independent generation-bearing Flutter removal",
+        ),
+        (
+            "flutter_source",
+            "fn new_message(&self, id: i32, registry_generation: i64, text: String)",
+            "fn new_message(&self, id: i32, registry_generation: i32, text: String)",
+            "independent generation-bearing Flutter chat",
+        ),
+        (
+            "flutter_source",
+            "if service_generation == 0 {",
+            "if false {",
+            "independent nonzero Android service generation binding",
+        ),
+        (
+            "flutter_source",
+            "FlutterHandler { service_generation },\n            service_generation,",
+            "FlutterHandler { service_generation },\n            0,",
+            "independent nonzero Android service generation binding",
+        ),
+        (
+            "flutter_source",
+            "},\n            0,\n        );",
+            "},\n            1,\n        );",
+            "independent desktop process-local source generation",
+        ),
+        (
+            "windows_cm_lifecycle_probe_source",
+            "ConnectionManager::new(NoopConnectionManager, 0)",
+            "ConnectionManager::new(NoopConnectionManager, 1)",
+            "independent Windows probe process-local source generation",
+        ),
+        (
+            "server_model_dart",
+            "client.registryGeneration < _clients[index].registryGeneration",
+            "client.registryGeneration > _clients[index].registryGeneration",
+            "independent stale add refusal and aligned client/tab replacement",
+        ),
+        (
+            "server_model_dart",
+            "_clients.removeAt(index);\n          tabController.remove(index);\n          _clients.add(client);",
+            "_clients[index] = client;\n          tabController.remove(index);\n          _clients.add(client);",
+            "independent stale add refusal and aligned client/tab replacement",
+        ),
+        (
+            "server_model_dart",
+            "client.registryGeneration == registryGeneration",
+            "client.registryGeneration != registryGeneration",
+            "independent Dart exact-generation client query",
+        ),
+        (
+            "server_model_dart",
+            "element.registryGeneration == client.registryGeneration",
+            "true",
+            "independent Dart exact-generation voice filter",
+        ),
+        (
+            "model_dart",
+            ".ownsClientGeneration(id, registryGeneration)",
+            ".ownsClientGeneration(id, 0)",
+            "independent Dart exact-generation chat filter",
+        ),
+        (
+            "server_model_dart",
+            "registryGeneration = json['registry_generation'];",
+            "registryGeneration = 0;",
+            "independent Dart client generation decode",
+        ),
+        (
+            "server_model_test",
+            "expect(serialized['registry_generation'], 19);",
+            "expect(serialized['registry_generation'], 0);",
+            "independent Dart client generation regression",
+        ),
+        (
+            "ui_cm_source",
+            "r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id",
+            "r_s11iu_disabled_stale_owner_cannot_mutate_or_retire_a_reused_client_id",
+            "independent r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id regression",
+        ),
+        (
+            "ui_cm_source",
+            "r_s11iu_registry_rejects_stale_and_same_source_active_collisions",
+            "r_s11iu_disabled_registry_rejects_stale_and_same_source_active_collisions",
+            "independent r_s11iu_registry_rejects_stale_and_same_source_active_collisions regression",
+        ),
+        (
+            "ui_cm_source",
+            "r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement",
+            "r_s11iu_disabled_disconnected_owner_can_be_replaced_but_cannot_retire_replacement",
+            "independent r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement regression",
+        ),
+        (
+            "ui_cm_source",
+            "r_s11iu_generation_exhaustion_does_not_commit_a_client",
+            "r_s11iu_disabled_generation_exhaustion_does_not_commit_a_client",
+            "independent r_s11iu_generation_exhaustion_does_not_commit_a_client regression",
         ),
         (
             "clipboard_windows_source",
@@ -90357,6 +91029,30 @@ def run_source_mutations(sources):
             "### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership",
             "### R-S11it-disabled/R-S11e-283 — terminal CM stream and route-setup ownership",
             "R-S11it ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never",
+            "true # R-S11iu Rust behavior gate disabled",
+            "shared R-S11iu Rust behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11iu</span>',
+            '<div class="req"><span class="id">R-S11iu-disabled</span>',
+            "R-S11iu requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>406</td>",
+            "<tr><td>406-disabled</td>",
+            "Appendix C #406",
+        ),
+        (
+            "hardening",
+            "### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership",
+            "### R-S11iu-disabled/R-S11e-284 — exact-generation CM client-registry ownership",
+            "R-S11iu ledger",
         ),
         (
             "workspace_verifier",
@@ -92663,8 +93359,8 @@ def run_source_mutations(sources):
         ),
         (
             "android_controlled_input_owner",
+            "serviceGeneration > 0 && connectionId > 0 && registryGeneration > 0",
             "serviceGeneration > 0 && connectionId > 0",
-            "serviceGeneration >= 0 && connectionId > 0",
             "independent controlled-input owner validity source",
         ),
         (
@@ -92681,15 +93377,35 @@ def run_source_mutations(sources):
         ),
         (
             "android_controlled_capture_owner_state",
-            "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)",
-            "fun ownsRemoteInput(connectionId: Int): Boolean = true",
-            "independent service-owned Remote input authority source",
+            "fun remoteInputRegistryGeneration(connectionId: Int): Long?",
+            "fun remoteInputRegistryGenerationDisabled(connectionId: Int): Long?",
+            "independent service-owned exact-generation Remote input authority source",
         ),
         (
             "android_main_service",
-            "!controlledCaptureOwners.ownsRemoteInput(connectionId)",
-            "false",
-            "independent live generation/Remote input authority source",
+            "controlledCaptureOwners.remoteInputRegistryGeneration(connectionId) ?: return null",
+            "controlledCaptureOwners.registryGeneration(connectionId) ?: return null",
+            "independent live service/client generation and Remote input authority source",
+        ),
+        (
+            "android_main_service",
+            "ControlledInputOwner(nativeServerGeneration, connectionId, registryGeneration)",
+            "ControlledInputOwner(nativeServerGeneration, connectionId, 1)",
+            "independent live service/client generation and Remote input authority source",
+        ),
+        (
+            "android_main_service",
+            "if (previousRegistryGeneration != null) {\n"
+            "                        InputService.ctx?.retireInputOwner(",
+            "if (false) {\n"
+            "                        InputService.ctx?.retireInputOwner(",
+            "independent exact predecessor input retirement source",
+        ),
+        (
+            "android_main_service",
+            "ControlledInputOwner(nativeServerGeneration, id, registryGeneration)",
+            "ControlledInputOwner(nativeServerGeneration, id, 1)",
+            "independent connection-removal input retirement source",
         ),
         (
             "android_main_service",
@@ -92744,6 +93460,12 @@ def run_source_mutations(sources):
             "independent controlled-input generation-ABA behavior source",
         ),
         (
+            "android_controlled_input_owner_test",
+            "nonpositive registry generation was admitted",
+            "zero registry generation passed",
+            "independent controlled-input registry-generation validity source",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11ei</span>',
             '<span class="id">R-S11ei-disabled</span>',
@@ -92763,8 +93485,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="',
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -94332,7 +95054,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "grep -qF 'controlledCaptureOwners.upsert(' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
             "grep -qF 'true' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
             "current R-S19 edge ownership/type gate",
         ),
@@ -100806,26 +101528,62 @@ def run_source_mutations(sources):
         ),
         (
             "android_controlled_capture_owner_state",
-            "get() = owners.isNotEmpty()",
-            "get() = false",
-            "Android capture state owner-set-derived capture demand",
+            "get() = owners.values.any { it.requiresDesktopCapture }",
+            "get() = owners.values.isNotEmpty()",
+            "Android capture state owner-map-derived capture demand",
         ),
         (
             "android_controlled_capture_owner_state",
-            "if (authorized && connectionType.requiresDesktopCapture)",
-            "if (connectionType != ControlledConnectionType.FILE_TRANSFER)",
+            "authorized && connectionType.requiresDesktopCapture,",
+            "connectionType != ControlledConnectionType.FILE_TRANSFER,",
             "Android capture state authorized exact-Remote admission",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "owners[connectionId]?.registryGeneration == registryGeneration",
+            "owners.containsKey(connectionId)",
+            "Android capture state exact current-owner equality",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "connectionId <= 0 || registryGeneration <= 0",
+            "connectionId <= 0",
+            "Android capture state positive exact-owner admission",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "registryGeneration <= current.registryGeneration",
+            "registryGeneration < current.registryGeneration",
+            "Android capture state stale/duplicate generation refusal",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "if (!isCurrent(connectionId, registryGeneration))",
+            "if (false)",
+            "Android capture state exact retirement guard",
         ),
         (
             "android_controlled_capture_owner_state",
             "owners.remove(connectionId)",
             "// capture owner retained",
-            "Android exact capture-owner retirement paths",
+            "Android capture state exact capture-owner retirement",
         ),
         (
             "android_main_service",
-            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
-            "true",
+            "controlledCaptureOwners.upsert(",
+            "controlledCaptureOwners.upsert_disabled(",
+            "independent exact predecessor input retirement source",
+        ),
+        (
+            "android_main_service",
+            'val registryGeneration = jsonObject.getLong("registry_generation")\n'
+            '                    val username = jsonObject["name"] as String\n'
+            '                    val peerId = jsonObject["peer_id"] as String\n'
+            '                    val authorized = jsonObject["authorized"] as Boolean',
+            'val registryGeneration = 1L\n'
+            '                    val username = jsonObject["name"] as String\n'
+            '                    val peerId = jsonObject["peer_id"] as String\n'
+            '                    val authorized = jsonObject["authorized"] as Boolean',
             "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
         ),
         (
@@ -100836,9 +101594,63 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "controlledCaptureOwners.unregister(id)",
-            "true",
+            "controlledCaptureOwners.unregister(id, registryGeneration)",
+            "true /* exact owner unchecked */",
             "independent connection-removal input retirement source",
+        ),
+        (
+            "android_main_service",
+            "val registryGeneration = arg2.toLongOrNull()",
+            "val registryGeneration = arg1.toLongOrNull()",
+            "Android exact-generation capture/audio-owner retirement and reconciliation",
+        ),
+        (
+            "android_main_service",
+            'val registryGeneration = jsonObject.getLong("registry_generation")\n'
+            '                    val username = jsonObject["name"] as String\n'
+            '                    val peerId = jsonObject["peer_id"] as String\n'
+            '                    val inVoiceCall = jsonObject["in_voice_call"] as Boolean',
+            'val registryGeneration = 1L\n'
+            '                    val username = jsonObject["name"] as String\n'
+            '                    val peerId = jsonObject["peer_id"] as String\n'
+            '                    val inVoiceCall = jsonObject["in_voice_call"] as Boolean',
+            "Android exact-generation controlled voice update",
+        ),
+        (
+            "android_main_service",
+            "if (!controlledCaptureOwners.isCurrent(id, registryGeneration))",
+            "if (false)",
+            "Android exact-generation controlled voice update",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            "!owners.unregister(41, 10)",
+            "owners.unregister(41, 10)",
+            "Android controlled connection type stale same-ID cleanup assertion",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+            "owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+            "Android controlled connection type duplicate same-ID refusal assertion",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+            "owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+            "Android controlled connection type stale same-ID replacement assertion",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            "owners.isCurrent(41, 11)",
+            "owners.isCurrent(41, 10)",
+            "Android controlled connection type exact current same-ID assertion",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            "owners.remoteInputRegistryGeneration(41) == 11L",
+            "owners.remoteInputRegistryGeneration(41) == 10L",
+            "Android controlled connection type exact Remote input-generation assertion",
         ),
         (
             "android_main_service",
@@ -100880,6 +101692,30 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
+            "VoiceCallAudioCoordinator.registerControlledConnection(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,\n"
+            "                            registryGeneration,",
+            "VoiceCallAudioCoordinator.registerControlledConnection(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,\n"
+            "                            1L,",
+            "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
+            "                                nativeServerGeneration,\n"
+            "                                id,\n"
+            "                                previousRegistryGeneration,",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
+            "                                nativeServerGeneration,\n"
+            "                                id,\n"
+            "                                registryGeneration,",
+            "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
+        ),
+        (
+            "android_main_service",
             "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
             "                            nativeServerGeneration,\n"
             "                            id,",
@@ -100890,12 +101726,36 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,\n"
+            "                            registryGeneration,",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,\n"
+            "                            1L,",
+            "Android exact-generation capture/audio-owner retirement and reconciliation",
+        ),
+        (
+            "android_main_service",
             "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n"
             "                            nativeServerGeneration,\n"
             "                            id,",
             "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n"
             "                            1,\n"
             "                            id,",
+            "Android exact-generation controlled voice update",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,\n"
+            "                            registryGeneration,",
+            "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,\n"
+            "                            1L,",
             "Android exact-generation controlled voice update",
         ),
         (
@@ -100973,26 +101833,47 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_owner_state",
-            "fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
-            "        if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
-            "fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
-            "        if (connectionId <= 0)",
-            "Android voice owner generation-bound controlled registration",
+            "private val controlledConnections = mutableMapOf<Int, Long>()",
+            "private val controlledConnections = mutableSetOf<Int>()",
+            "Android voice owner exact registry-generation controlled-owner map",
         ),
         (
             "android_voice_call_owner_state",
-            "if (!isControlledServiceGeneration(generation) ||\n"
-            "            !controlledConnections.contains(connectionId)",
-            "if (!controlledConnections.contains(connectionId)",
-            "Android voice owner generation-and-registration-bound controlled update",
+            "connectionId <= 0 ||\n"
+            "            registryGeneration <= 0",
+            "connectionId <= 0",
+            "Android voice owner service-and-registry-generation-bound controlled",
         ),
         (
             "android_voice_call_owner_state",
-            "fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
-            "        if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
-            "fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
-            "        if (connectionId <= 0)",
-            "Android voice owner generation-bound controlled retirement",
+            "if (current != null && registryGeneration <= current)",
+            "if (current != null && registryGeneration < current)",
+            "Android voice owner service-and-registry-generation-bound controlled registration",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "controlledConnections[connectionId] = registryGeneration",
+            "controlledConnections.remove(connectionId)",
+            "Android voice owner service-and-registry-generation-bound controlled registration",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "registryGeneration <= 0 ||\n"
+            "            controlledConnections[connectionId] != registryGeneration",
+            "false",
+            "Android voice owner service-and-registry-generation-bound controlled update",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "val current = controlledConnections[connectionId] ?: return true",
+            "val current = registryGeneration",
+            "Android voice owner service-and-registry-generation-bound controlled retirement",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "if (current != registryGeneration)",
+            "if (false)",
+            "Android voice owner service-and-registry-generation-bound controlled retirement",
         ),
         (
             "android_voice_call_owner_state",
@@ -101020,21 +101901,25 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_coordinator",
-            "owners.registerControlledConnection(generation, connectionId)",
-            "owners.registerControlledConnection(1, connectionId)",
-            "Android audio coordinator exact-generation controlled registration",
+            "owners.registerControlledConnection(generation, connectionId, registryGeneration)",
+            "owners.registerControlledConnection(generation, connectionId, 1)",
+            "Android audio coordinator exact service-and-registry-generation controlled registration",
         ),
         (
             "android_voice_call_coordinator",
-            "owners.setControlledVoiceCallActive(generation, connectionId, active)",
-            "owners.setControlledVoiceCallActive(1, connectionId, active)",
-            "Android audio coordinator exact-generation controlled update",
+            "registryGeneration,\n"
+            "                active,",
+            "1,\n"
+            "                active,",
+            "Android audio coordinator exact service-and-registry-generation controlled update",
         ),
         (
             "android_voice_call_coordinator",
-            "owners.unregisterControlledConnection(generation, connectionId)",
-            "owners.unregisterControlledConnection(1, connectionId)",
-            "Android audio coordinator exact-generation controlled retirement",
+            "registryGeneration,\n"
+            "            )",
+            "1,\n"
+            "            )",
+            "Android audio coordinator exact service-and-registry-generation controlled retirement",
         ),
         (
             "android_voice_call_coordinator",
@@ -101065,6 +101950,36 @@ def run_source_mutations(sources):
             "stale generation cleared replacement controlled owners",
             "stale generation clear passed",
             "Android controlled-audio generation-ABA behavior source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "same-ID replacement retained predecessor voice state",
+            "same-ID replacement passed",
+            "Android audio behavior same-ID registry-generation replacement",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "duplicate same-ID registry generation was admitted",
+            "duplicate same-ID registry generation passed",
+            "Android audio behavior same-ID duplicate registry-generation refusal",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "stale same-ID registry generation was admitted",
+            "stale same-ID registry generation passed",
+            "Android audio behavior same-ID stale registry-generation refusal",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "stale same-ID owner changed replacement voice state",
+            "stale same-ID update passed",
+            "Android audio behavior same-ID stale voice update refusal",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "stale same-ID owner retired replacement voice state",
+            "stale same-ID retirement passed",
+            "Android audio behavior same-ID stale voice retirement refusal",
         ),
         (
             "android_voice_call_owner_test",
@@ -101314,8 +102229,11 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
-            "        self.ui_handler.remove_connection(id, close);",
-            "        let _ = scrap::android::call_main_service_set_by_name(\"stop_capture\", None, None);\n        self.ui_handler.remove_connection(id, close);",
+            "        self.ui_handler\n"
+            "            .remove_connection(owner.id, owner.generation, close);",
+            "        let _ = scrap::android::call_main_service_set_by_name(\"stop_capture\", None, None);\n"
+            "        self.ui_handler\n"
+            "            .remove_connection(owner.id, owner.generation, close);",
             "Rust detached global capture-stop edge",
         ),
         (
@@ -101857,7 +102775,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4)",
+            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4)",
             "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4)",
             "independent shared controlled-input/audio generation gate label source",
         ),

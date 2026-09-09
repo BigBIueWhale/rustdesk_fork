@@ -564,8 +564,14 @@ class FfiModel with ChangeNotifier {
       parent.target?.chatModel
           .receive(ChatModel.clientModeID, evt['text'] ?? '');
     } else if (name == 'chat_server_mode') {
-      parent.target?.chatModel
-          .receive(int.parse(evt['id'] as String), evt['text'] ?? '');
+      final id = int.parse(evt['id'] as String);
+      final registryGeneration =
+          int.parse(evt['registry_generation'] as String);
+      if (parent.target?.serverModel
+              .ownsClientGeneration(id, registryGeneration) ==
+          true) {
+        parent.target?.chatModel.receive(id, evt['text'] ?? '');
+      }
     } else if (name == 'terminal_response') {
       parent.target?.routeTerminalResponse(evt);
     } else if (name == 'file_dir') {

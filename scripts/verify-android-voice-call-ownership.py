@@ -195,7 +195,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     state = extract_item(owners, "internal class VoiceCallOwnerState", "voice-call owner state")
     for needle, label in (
-        ("private val controlledConnections = mutableSetOf<Int>()", "registered controlled-owner set"),
+        ("private val controlledConnections = mutableMapOf<Int, Long>()", "exact registered controlled-owner map"),
         ("private val activeControlledConnections = mutableSetOf<Int>()", "active controlled-owner set"),
         (
             "private var greatestControlledServiceGeneration = 0L",
@@ -262,11 +262,16 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         register_controlled,
         (
-            "if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "connectionId <= 0",
+            "registryGeneration <= 0",
             "return false",
-            "controlledConnections.add(connectionId)",
+            "val current = controlledConnections[connectionId]",
+            "registryGeneration <= current",
+            "return false",
+            "controlledConnections[connectionId] = registryGeneration",
+            "activeControlledConnections.remove(connectionId)",
         ),
-        "generation-bound positive exact controlled-owner registration",
+        "service-and-registry-generation-bound controlled-owner registration",
     )
     set_controlled = extract_item(
         state, "fun setControlledVoiceCallActive", "controlled-owner state update"
@@ -275,13 +280,14 @@ def validate(sources: Dict[str, str]) -> None:
         set_controlled,
         (
             "if (!isControlledServiceGeneration(generation)",
-            "!controlledConnections.contains(connectionId)",
+            "registryGeneration <= 0",
+            "controlledConnections[connectionId] != registryGeneration",
             "return false",
             "if (active)",
             "activeControlledConnections.add(connectionId)",
             "activeControlledConnections.remove(connectionId)",
         ),
-        "generation-and-registration-bound exact controlled-owner update",
+        "service-and-registry-generation-bound exact controlled-owner update",
     )
     unregister_controlled = extract_item(
         state, "fun unregisterControlledConnection", "controlled-owner retirement"
@@ -289,12 +295,16 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         unregister_controlled,
         (
-            "if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "connectionId <= 0",
+            "registryGeneration <= 0",
+            "return false",
+            "val current = controlledConnections[connectionId] ?: return true",
+            "if (current != registryGeneration)",
             "return false",
             "controlledConnections.remove(connectionId)",
             "activeControlledConnections.remove(connectionId)",
         ),
-        "generation-bound controlled-owner registration-and-activity retirement",
+        "service-and-registry-generation-bound controlled-owner retirement",
     )
     clear_controlled = extract_item(
         state, "fun clearControlledConnections", "controlled-owner service teardown"
@@ -440,8 +450,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         coordinator_register,
-        "owners.registerControlledConnection(generation, connectionId)",
-        "coordinator exact-generation registration",
+        "owners.registerControlledConnection(generation, connectionId, registryGeneration)",
+        "coordinator exact service-and-registry-generation registration",
     )
     coordinator_set = extract_item(
         coordinator,
@@ -450,8 +460,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         coordinator_set,
-        "owners.setControlledVoiceCallActive(generation, connectionId, active)",
-        "coordinator exact-generation update",
+        "registryGeneration,\n                active,",
+        "coordinator exact service-and-registry-generation update",
     )
     coordinator_unregister = extract_item(
         coordinator,
@@ -460,8 +470,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         coordinator_unregister,
-        "owners.unregisterControlledConnection(generation, connectionId)",
-        "coordinator exact-generation retirement",
+        "registryGeneration,\n            )",
+        "coordinator exact service-and-registry-generation retirement",
     )
     coordinator_clear = extract_item(
         coordinator,
@@ -637,37 +647,44 @@ def validate(sources: Dict[str, str]) -> None:
         "controlled capture-owner state",
     )
     for needle, label in (
-        ("private val owners = mutableSetOf<Int>()", "exact capture-owner set"),
-        ("get() = owners.isNotEmpty()", "aggregate capture demand"),
+        ("private data class Owner(", "exact capture-owner record"),
+        ("val registryGeneration: Long", "capture-owner registry generation"),
+        ("private val owners = mutableMapOf<Int, Owner>()", "exact capture-owner map"),
+        ("get() = owners.values.any { it.requiresDesktopCapture }", "aggregate capture demand"),
+        ("owners[connectionId]?.registryGeneration == registryGeneration", "exact current capture owner"),
+        ("fun registryGeneration(connectionId: Int): Long?", "exact predecessor lookup"),
+        ("fun remoteInputRegistryGeneration(connectionId: Int): Long?", "Remote input generation lookup"),
     ):
         require(capture_owners, needle, label)
-    require_count(
-        capture_owners,
-        "owners.remove(connectionId)",
-        2,
-        "both exact capture-owner retirement paths",
-    )
     capture_upsert = extract_item(
         capture_owners, "fun upsert(", "controlled capture-owner upsert"
     )
     require_order(
         capture_upsert,
         (
-            "if (connectionId <= 0)",
+            "registryGeneration: Long",
+            "if (connectionId <= 0 || registryGeneration <= 0)",
             "return false",
-            "if (authorized && connectionType.requiresDesktopCapture)",
-            "owners.add(connectionId)",
-            "owners.remove(connectionId)",
+            "val current = owners[connectionId]",
+            "registryGeneration <= current.registryGeneration",
+            "return false",
+            "owners[connectionId] = Owner(",
+            "authorized && connectionType.requiresDesktopCapture",
         ),
-        "authorized exact-type capture-owner admission",
+        "monotonic exact-generation capture-owner admission",
     )
     capture_unregister = extract_item(
         capture_owners, "fun unregister(", "controlled capture-owner retirement"
     )
     require_order(
         capture_unregister,
-        ("if (connectionId <= 0)", "return false", "owners.remove(connectionId)"),
-        "exact capture-owner retirement",
+        (
+            "registryGeneration: Long",
+            "if (!isCurrent(connectionId, registryGeneration))",
+            "return false",
+            "owners.remove(connectionId)",
+        ),
+        "exact-generation capture-owner retirement",
     )
     require(
         extract_item(capture_owners, "fun clear()", "capture-owner teardown"),
@@ -687,14 +704,29 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if (!acceptingControlledConnections)",
             "return",
+            'jsonObject.getLong("registry_generation")',
             'jsonObject.getJSONObject("conn_type").getString("t")',
             "if (connectionType == null)",
             "return",
-            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
+            "val previousRegistryGeneration =",
+            "controlledCaptureOwners.registryGeneration(id)",
+            "controlledCaptureOwners.upsert(",
+            "registryGeneration",
+            "authorized",
+            "connectionType",
+            "if (previousRegistryGeneration != null)",
+            "InputService.ctx?.retireInputOwner(",
+            "previousRegistryGeneration",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(",
+            "nativeServerGeneration",
+            "id",
+            "previousRegistryGeneration",
+            "cancelNotification(id)",
             "if (connectionType.allowsVoiceCall",
             "VoiceCallAudioCoordinator.registerControlledConnection(",
             "nativeServerGeneration",
             "id",
+            "registryGeneration",
             "reconcileControlledCaptureDemand()",
         ),
         "serialized generation-and-AuthConnType-bound controlled-resource admission",
@@ -742,6 +774,19 @@ def validate(sources: Dict[str, str]) -> None:
             "connectionType.allowsVoiceCall ==",
             "complete voice-call authority behavior assertion",
         ),
+        (
+            "!owners.unregister(41, 10)",
+            "stale same-ID capture-owner cleanup regression",
+        ),
+        (
+            "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+            "duplicate same-ID capture-owner replacement regression",
+        ),
+        (
+            "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+            "stale same-ID capture-owner replacement regression",
+        ),
+        ("owners.isCurrent(41, 11)", "current same-ID capture-owner regression"),
     ):
         require(connection_type_test, needle, label)
     remove_connection = extract_item(service, '"remove_connection" ->', "controlled connection removal")
@@ -749,10 +794,13 @@ def validate(sources: Dict[str, str]) -> None:
         remove_connection,
         (
             "val id = arg1.toIntOrNull()",
-            "controlledCaptureOwners.unregister(id)",
+            "val registryGeneration = arg2.toLongOrNull()",
+            "controlledCaptureOwners.unregister(id, registryGeneration)",
+            '"Rejected stale controlled connection removal',
             "VoiceCallAudioCoordinator.unregisterControlledConnection(",
             "nativeServerGeneration",
             "id",
+            "registryGeneration",
             "reconcileControlledCaptureDemand()",
             "cancelNotification(id)",
         ),
@@ -778,13 +826,17 @@ def validate(sources: Dict[str, str]) -> None:
         update_voice,
         (
             'val id = jsonObject["id"] as Int',
+            'jsonObject.getLong("registry_generation")',
             'val inVoiceCall = jsonObject["in_voice_call"] as Boolean',
+            "if (!controlledCaptureOwners.isCurrent(id, registryGeneration))",
+            "return",
             "VoiceCallAudioCoordinator.setControlledVoiceCallActive(",
             "nativeServerGeneration",
             "id",
+            "registryGeneration",
             "inVoiceCall",
         ),
-        "service-generation-and-connection-ID-bound controlled voice update",
+        "service-and-registry-generation-bound controlled voice update",
     )
     forbid(service, "AudioRecordHandle(", "service-local recorder")
     forbid(service, "fun onVoiceCallStarted", "service binding-time voice start")
@@ -1297,7 +1349,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         flutter_ffi,
         "client_owner_id: SessionID,",
-        10,
+        9,
         "all authored Rust dual-identity bridge entries",
     )
     require(
@@ -2338,16 +2390,18 @@ def validate(sources: Dict[str, str]) -> None:
 
     remove_rust = extract_item(
         flutter,
-        "fn remove_connection(&self, id: i32, close: bool)",
+        "fn remove_connection(&self, id: i32, registry_generation: i64, close: bool)",
         "Rust connection-removal dispatch",
     )
     require_order(
         remove_rust,
         (
             '#[cfg(target_os = "android")]',
+            "let registry_generation = registry_generation.to_string();",
             "call_main_service_set_by_name_for_generation(",
             "self.service_generation",
             '"remove_connection"',
+            "Some(&registry_generation)",
             'self.push_event(\n                "on_client_remove"',
         ),
         "native owner retirement before UI connection removal",
@@ -2695,6 +2749,26 @@ def validate(sources: Dict[str, str]) -> None:
         ("unregistered controlled owner was activated", "unregistered rejection"),
         ("invalid outgoing owner was admitted", "invalid outgoing rejection"),
         ("one controlled teardown cleared another owner", "controlled aggregation"),
+        (
+            "same-ID replacement retained predecessor voice state",
+            "same-ID registry-generation replacement",
+        ),
+        (
+            "duplicate same-ID registry generation was admitted",
+            "same-ID duplicate registry-generation refusal",
+        ),
+        (
+            "stale same-ID registry generation was admitted",
+            "same-ID stale registry-generation refusal",
+        ),
+        (
+            "stale same-ID owner changed replacement voice state",
+            "same-ID stale voice update refusal",
+        ),
+        (
+            "stale same-ID owner retired replacement voice state",
+            "same-ID stale voice retirement refusal",
+        ),
         ("stale outgoing owner changed live state", "stale outgoing refusal"),
         ("same-generation resume was rejected", "idempotent resume"),
         ("lost-response resume retry was rejected", "lost-response retry idempotence"),
@@ -2715,6 +2789,14 @@ def validate(sources: Dict[str, str]) -> None:
         ("remove-then-add ordering lost new Remote demand", "remove-before-add convergence"),
         ("add-then-remove ordering lost new Remote demand", "add-before-remove convergence"),
         ("non-Remote replacement retained capture demand", "exact-type owner replacement"),
+        (
+            "non-Remote replacement retained Remote input authority",
+            "exact-type input-authority replacement",
+        ),
+        (
+            "stale same-ID operations changed the current owner",
+            "exact-generation input-authority preservation",
+        ),
         ("owner clear retained capture demand", "service owner teardown"),
     ):
         require(capture_behavior, needle, f"capture behavior regression {label}")
@@ -4901,12 +4983,13 @@ def validate(sources: Dict[str, str]) -> None:
         input_owner,
         "internal data class ControlledInputOwner(\n"
         "    val serviceGeneration: Long,\n"
-        "    val connectionId: Int,",
+        "    val connectionId: Int,\n"
+        "    val registryGeneration: Long,",
         "exact Android controlled-input owner",
     )
     require(
         input_owner,
-        "get() = serviceGeneration > 0 && connectionId > 0",
+        "get() = serviceGeneration > 0 && connectionId > 0 && registryGeneration > 0",
         "controlled-input owner validity",
     )
 
@@ -4942,8 +5025,8 @@ def validate(sources: Dict[str, str]) -> None:
     capture_owner_state = sources["capture_owners"]
     require(
         capture_owner_state,
-        "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)",
-        "Remote-only service-owned input authority lookup",
+        "fun remoteInputRegistryGeneration(connectionId: Int): Long?",
+        "Remote-only exact-generation input authority lookup",
     )
 
     main_service = sources["service"]
@@ -4992,27 +5075,33 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "!acceptingControlledConnections",
             "nativeServerGeneration <= 0L",
-            "!controlledCaptureOwners.ownsRemoteInput(connectionId)",
             "return null",
-            "return ControlledInputOwner(nativeServerGeneration, connectionId)",
+            "controlledCaptureOwners.remoteInputRegistryGeneration(connectionId) ?: return null",
+            "return ControlledInputOwner(nativeServerGeneration, connectionId, registryGeneration)",
         ),
-        "live generation and authenticated Remote input authority",
+        "live service/client generation and authenticated Remote input authority",
     )
     require_order(
         main_service,
         (
-            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
-            "if (!controlledCaptureOwners.ownsRemoteInput(id))",
-            "InputService.ctx?.retireInputOwner(inputOwner)",
-        ),
-        "authorization/type replacement input retirement",
-    )
-    require_order(
-        main_service,
-        (
-            "val captureOwnerRemoved = controlledCaptureOwners.unregister(id)",
+            "controlledCaptureOwners.upsert(",
+            "registryGeneration",
+            "authorized",
+            "connectionType",
+            "if (previousRegistryGeneration != null)",
             "InputService.ctx?.retireInputOwner(",
-            "ControlledInputOwner(nativeServerGeneration, id)",
+            "previousRegistryGeneration",
+        ),
+        "exact predecessor input retirement before replacement publication",
+    )
+    require_order(
+        main_service,
+        (
+            "if (!controlledCaptureOwners.unregister(id, registryGeneration))",
+            '"Rejected stale controlled connection removal',
+            "} else {",
+            "InputService.ctx?.retireInputOwner(",
+            "ControlledInputOwner(nativeServerGeneration, id, registryGeneration)",
         ),
         "connection-removal exact input retirement",
     )
@@ -5461,6 +5550,10 @@ def validate(sources: Dict[str, str]) -> None:
             "old generation retirement selected the replacement owner",
             "generation-ABA behavior proof",
         ),
+        (
+            "nonpositive registry generation was admitted",
+            "registry-generation validity behavior proof",
+        ),
         ("invalid owner reached the bounded queue", "invalid-owner behavior proof"),
     ):
         require(input_test, behavior, label)
@@ -5481,7 +5574,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="',
         "shared Android controlled-input/audio/status generation ownership gate label",
     )
     require(
@@ -5501,10 +5594,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("owners", "if (activeControlledServiceGeneration == generation)", "if (false)", "current generation idempotence"),
     ("owners", "activeControlledServiceGeneration = generation", "activeControlledServiceGeneration = null", "controlled generation publication"),
     ("owners", "activeControlledServiceGeneration = generation\n        controlledConnections.clear()\n        activeControlledConnections.clear()", "activeControlledServiceGeneration = generation\n        controlledConnections.clear()\n        activeControlledConnections.clear()\n        outgoingOwner = null", "controlled replacement preserves outgoing ownership"),
-    ("owners", "if (!isControlledServiceGeneration(generation) || connectionId <= 0)", "if (connectionId <= 0)", "generation-bound controlled registration"),
-    ("owners", "!controlledConnections.contains(connectionId)", "false", "registered controlled update"),
-    ("owners", "if (!isControlledServiceGeneration(generation) ||\n            !controlledConnections.contains(connectionId)", "if (!controlledConnections.contains(connectionId)", "generation-bound controlled update"),
-    ("owners", "fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {\n        if (!isControlledServiceGeneration(generation) || connectionId <= 0)", "fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {\n        if (connectionId <= 0)", "generation-bound controlled retirement"),
+    ("owners", "private val controlledConnections = mutableMapOf<Int, Long>()", "private val controlledConnections = mutableSetOf<Int>()", "exact registered controlled-owner map"),
+    ("owners", "connectionId <= 0 ||\n            registryGeneration <= 0", "connectionId <= 0", "service-and-registry-generation-bound controlled-owner registration"),
+    ("owners", "if (current != null && registryGeneration <= current)", "if (current != null && registryGeneration < current)", "service-and-registry-generation-bound controlled-owner registration"),
+    ("owners", "controlledConnections[connectionId] = registryGeneration", "controlledConnections.remove(connectionId)", "service-and-registry-generation-bound controlled-owner registration"),
+    ("owners", "registryGeneration <= 0 ||\n            controlledConnections[connectionId] != registryGeneration", "false", "service-and-registry-generation-bound exact controlled-owner update"),
+    ("owners", "val current = controlledConnections[connectionId] ?: return true", "val current = registryGeneration", "service-and-registry-generation-bound controlled-owner retirement"),
+    ("owners", "if (current != registryGeneration)", "if (false)", "service-and-registry-generation-bound controlled-owner retirement"),
     ("owners", "activeControlledConnections.remove(connectionId)", "// active owner retained", "exact controlled retirement"),
     ("owners", "if (!isControlledServiceGeneration(generation)) {\n            return false\n        }\n        controlledConnections.clear()", "if (false) {\n            return false\n        }\n        controlledConnections.clear()", "exact-generation controlled service teardown"),
     ("owners", "activeControlledConnections.clear()\n        activeControlledServiceGeneration = null", "// active owners and generation retained", "controlled service teardown"),
@@ -5519,9 +5615,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("coordinator", "@Synchronized\n    fun setOutgoingVoiceCallActive", "    fun setOutgoingVoiceCallActive", "outgoing serialization"),
     ("coordinator", "val alreadyCurrent = owners.isControlledServiceGeneration(generation)", "val alreadyCurrent = false", "idempotent generation playback preservation"),
     ("coordinator", "if (!owners.beginControlledServiceGeneration(generation))", "if (false)", "controlled generation admission"),
-    ("coordinator", "owners.registerControlledConnection(generation, connectionId)", "owners.registerControlledConnection(1, connectionId)", "controlled registration generation"),
-    ("coordinator", "owners.setControlledVoiceCallActive(generation, connectionId, active)", "owners.setControlledVoiceCallActive(1, connectionId, active)", "controlled update generation"),
-    ("coordinator", "owners.unregisterControlledConnection(generation, connectionId)", "owners.unregisterControlledConnection(1, connectionId)", "controlled retirement generation"),
+    ("coordinator", "owners.registerControlledConnection(generation, connectionId, registryGeneration)", "owners.registerControlledConnection(generation, connectionId, 1)", "coordinator exact service-and-registry-generation registration"),
+    ("coordinator", "registryGeneration,\n                active,", "1,\n                active,", "coordinator exact service-and-registry-generation update"),
+    ("coordinator", "registryGeneration,\n            )", "1,\n            )", "coordinator exact service-and-registry-generation retirement"),
     ("coordinator", "if (!owners.clearControlledConnections(generation))", "if (false)", "controlled teardown generation"),
     ("coordinator", "if (playbackProjection?.first == generation)", "if (playbackProjection != null)", "playback teardown generation"),
     ("coordinator", "if (!owners.isControlledServiceGeneration(generation))", "if (false)", "playback update generation"),
@@ -5540,19 +5636,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("connection_type", '                "PortForward" -> PORT_FORWARD', '                "PortForward" -> REMOTE', "PortForward exact type"),
     ("connection_type", "get() = this == REMOTE || this == VIEW_CAMERA", "get() = this != FILE_TRANSFER", "Remote-or-ViewCamera voice authority"),
     ("connection_type", "else -> null", "else -> REMOTE", "unknown connection-type refusal"),
-    ("capture_owners", "get() = owners.isNotEmpty()", "get() = false", "capture-owner aggregation"),
-    ("capture_owners", "if (authorized && connectionType.requiresDesktopCapture)", "if (connectionType != ControlledConnectionType.FILE_TRANSFER)", "authorized exact-type capture admission"),
+    ("capture_owners", "get() = owners.values.any { it.requiresDesktopCapture }", "get() = false", "capture-owner aggregation"),
+    ("capture_owners", "private val owners = mutableMapOf<Int, Owner>()", "private val owners = mutableMapOf<Int, Long>()", "exact capture-owner map"),
+    ("capture_owners", "registryGeneration > 0 && owners[connectionId]?.registryGeneration == registryGeneration", "owners.containsKey(connectionId)", "exact current capture owner"),
+    ("capture_owners", "if (connectionId <= 0 || registryGeneration <= 0)", "if (connectionId <= 0)", "valid capture-owner generation"),
+    ("capture_owners", "registryGeneration <= current.registryGeneration", "registryGeneration < current.registryGeneration", "strictly monotonic capture-owner generation"),
+    ("capture_owners", "authorized && connectionType.requiresDesktopCapture", "connectionType != ControlledConnectionType.FILE_TRANSFER", "authorized exact-type capture admission"),
+    ("capture_owners", "if (!isCurrent(connectionId, registryGeneration))", "if (false)", "exact-generation capture-owner retirement"),
     ("capture_owners", "owners.remove(connectionId)", "// capture owner retained", "exact capture-owner retirement"),
     ("service", "@Keep\n    @Synchronized\n    fun rustSetByName", "@Keep\n    fun rustSetByName", "controlled-resource dispatch serialization"),
-    ("service", "controlledCaptureOwners.upsert(id, authorized, connectionType)", "true", "capture-owner admission"),
+    ("service", "controlledCaptureOwners.upsert(", "controlledCaptureOwners.upsert_disabled(", "capture-owner admission"),
+    ("service", "val registryGeneration = jsonObject.getLong(\"registry_generation\")", "val registryGeneration = 1L", "serialized capture-owner generation"),
     ("service", "captureRequested = controlledCaptureOwners.requiresDesktopCapture", "captureRequested = false", "owner-set capture reconciliation"),
-    ("service", "controlledCaptureOwners.unregister(id)", "true", "capture-owner retirement"),
+    ("service", "controlledCaptureOwners.unregister(id, registryGeneration)", "true", "capture-owner retirement"),
+    ("service", "if (!controlledCaptureOwners.isCurrent(id, registryGeneration))", "if (false)", "exact-generation voice update"),
     ("service", "private fun releaseControlledConnectionResources() {\n        acceptingControlledConnections = false", "private fun releaseControlledConnectionResources() {\n        acceptingControlledConnections = true", "resource admission closure"),
     ("service", "VoiceCallAudioCoordinator.registerControlledConnection(\n                            nativeServerGeneration,\n                            id,", "VoiceCallAudioCoordinator.registerControlledConnection(\n                            1,\n                            id,", "controlled registration generation"),
+    ("service", "VoiceCallAudioCoordinator.registerControlledConnection(\n                            nativeServerGeneration,\n                            id,\n                            registryGeneration,", "VoiceCallAudioCoordinator.registerControlledConnection(\n                            nativeServerGeneration,\n                            id,\n                            1L,", "controlled registration registry generation"),
     ("service", "if (connectionType.allowsVoiceCall &&", "if (true &&", "typed controlled voice-call admission"),
     ("service", '"remove_connection" ->', '"remove_connection_disabled" ->', "controlled removal dispatch"),
+    ("service", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                                nativeServerGeneration,\n                                id,\n                                previousRegistryGeneration,", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                                nativeServerGeneration,\n                                id,\n                                registryGeneration,", "superseded controlled retirement registry generation"),
     ("service", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                            nativeServerGeneration,\n                            id,", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                            1,\n                            id,", "controlled retirement generation"),
+    ("service", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                            nativeServerGeneration,\n                            id,\n                            registryGeneration,", "VoiceCallAudioCoordinator.unregisterControlledConnection(\n                            nativeServerGeneration,\n                            id,\n                            1L,", "controlled retirement registry generation"),
     ("service", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n                            nativeServerGeneration,\n                            id,", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n                            1,\n                            id,", "controlled update generation"),
+    ("service", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n                            nativeServerGeneration,\n                            id,\n                            registryGeneration,", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n                            nativeServerGeneration,\n                            id,\n                            1L,", "controlled update registry generation"),
     ("service", "VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)", "true", "service generation owner teardown"),
     ("service", "val generation = FFI.startServer(this, configPath, \"\")", "val generation = FFI.startServer(configPath, \"\")", "exact-object service generation ownership"),
     ("service", "VoiceCallAudioCoordinator.beginControlledServiceGeneration(generation)", "VoiceCallAudioCoordinator.beginControlledServiceGeneration(1)", "audio coordinator generation binding"),
@@ -5562,6 +5669,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("service", "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n                nativeServerGeneration,\n                null,", "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n                1,\n                null,", "playback-stop generation"),
     ("test", "controlled-service replacement cleared the outgoing owner", "controlled-service replacement passed", "controlled replacement preserves outgoing ownership"),
     ("test", "superseded controlled generation was reactivated", "superseded controlled generation passed", "superseded controlled generation behavior proof"),
+    ("connection_type_test", "!owners.unregister(41, 10)", "owners.unregister(41, 10)", "stale same-ID capture-owner cleanup regression"),
+    ("connection_type_test", "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)", "owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)", "duplicate same-ID capture-owner replacement regression"),
+    ("connection_type_test", "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)", "owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)", "stale same-ID capture-owner replacement regression"),
+    ("connection_type_test", "owners.isCurrent(41, 11)", "owners.isCurrent(41, 10)", "current same-ID capture-owner regression"),
     ("service", "FFI.stopServer(this, retirement.generation)", "FFI.stopServer(this, 0)", "exact service generation stop"),
     ("service", "FFI.releaseService(this)", "true", "exact service callback-owner release"),
     ("service", "VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "true", "task-removal owner teardown"),
@@ -5576,8 +5687,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("activity", "val retiredUnreconciledOwner =\n                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "val retiredUnreconciledOwner = true", "unreconciled resume exact recorder cleanup"),
     ("activity", "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(owner.generation, owner.sessionId)", "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(resumedOwner.generation, resumedOwner.sessionId)", "unreconciled resume cannot retire replacement Rust owner"),
     ("flutter", 'call_main_service_set_by_name_for_generation(\n                    self.service_generation,\n                    "remove_connection"', 'call_main_service_set_by_name(\n                    "remove_connection"', "generation-bound controlled callback"),
+    ("flutter", "Some(&registry_generation)", "None", "registry-generation-bound controlled callback"),
     ("flutter", "service_generation: u64", "service_generation: i64", "connection-manager callback generation"),
-    ("ui_cm", "        self.ui_handler.remove_connection(id, close);", '        let _ = scrap::android::call_main_service_set_by_name("stop_capture", None, None);\n        self.ui_handler.remove_connection(id, close);', "detached global capture-stop edge"),
+    ("ui_cm", "        self.ui_handler\n            .remove_connection(owner.id, owner.generation, close);", '        let _ = scrap::android::call_main_service_set_by_name("stop_capture", None, None);\n        self.ui_handler\n            .remove_connection(owner.id, owner.generation, close);', "detached global capture-stop edge"),
     ("ffi_kt", "external fun init(service: Context, applicationContext: Context): Boolean", "external fun init(service: Context): Boolean", "separate service/application JNI initialization"),
     ("ffi_kt", "external fun releaseService(service: Context): Boolean", "external fun releaseService(service: Context)", "service callback-owner release result"),
     ("ffi_kt", "external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long", "external fun startServer(app_dir: String, custom_client_config: String): Long", "native server exact-object generation return"),
@@ -5980,11 +6092,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11eh/R-S11e-152", "R-S11eh-disabled/R-S11e-152", "bounded audio egress hardening ledger"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1", "true # shared bounded audio behavior gate disabled", "shared bounded audio behavior gate"),
     ("dart_verify", "server::connection::audio_egress_tests::r_s11eh_", "server::connection::audio_egress_tests::disabled_", "generated-bridge bounded audio behavior gate"),
-    ("input_owner", "serviceGeneration > 0 && connectionId > 0", "serviceGeneration >= 0 && connectionId > 0", "controlled-input owner validity"),
+    ("input_owner", "serviceGeneration > 0 && connectionId > 0 && registryGeneration > 0", "serviceGeneration > 0 && connectionId > 0", "controlled-input owner validity"),
     ("input_queue", "if (!owner.isValid || entries.size >= capacity)", "if (!owner.isValid)", "controlled-input queue capacity"),
     ("input_queue", "if (iterator.next().owner == owner)", "if (iterator.next().owner.connectionId == owner.connectionId)", "controlled-input exact generation retirement"),
-    ("capture_owners", "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)", "fun ownsRemoteInput(connectionId: Int): Boolean = true", "controlled-input Remote authority lookup"),
-    ("service", "!controlledCaptureOwners.ownsRemoteInput(connectionId)", "false", "controlled-input service authority"),
+    ("capture_owners", "fun remoteInputRegistryGeneration(connectionId: Int): Long?", "fun remoteInputRegistryGenerationDisabled(connectionId: Int): Long?", "Remote-only exact-generation input authority lookup"),
+    ("service", "controlledCaptureOwners.remoteInputRegistryGeneration(connectionId) ?: return null", "controlledCaptureOwners.registryGeneration(connectionId) ?: return null", "live service/client generation and authenticated Remote input authority"),
+    ("service", "ControlledInputOwner(nativeServerGeneration, connectionId, registryGeneration)", "ControlledInputOwner(nativeServerGeneration, connectionId, 1)", "live service/client generation and authenticated Remote input authority"),
+    ("service", "if (previousRegistryGeneration != null) {\n                        InputService.ctx?.retireInputOwner(", "if (false) {\n                        InputService.ctx?.retireInputOwner(", "exact predecessor input retirement before replacement publication"),
+    ("service", "ControlledInputOwner(nativeServerGeneration, id, registryGeneration)", "ControlledInputOwner(nativeServerGeneration, id, 1)", "connection-removal exact input retirement"),
     ("service", "InputService.ctx?.retireServiceGeneration(nativeServerGeneration)", "// input generation retained", "controlled-input service-generation teardown"),
     ("input_service", "private const val MAX_PENDING_WHEEL_ACTIONS = 32", "private const val MAX_PENDING_WHEEL_ACTIONS = Int.MAX_VALUE", "controlled-input wheel capacity"),
     ("input_service", "if (destroyed || owner !in activeInputOwners)", "if (destroyed)", "controlled-input active-owner admission"),
@@ -5997,10 +6112,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("android_ffi", "\"(I[B)Z\"", "\"([B)Z\"", "controlled-input key JNI identity"),
     ("server_connection", "call_main_service_key_event_for_generation(\n                                self.android_server_generation,\n                                self.inner.id(),", "call_main_service_key_event_for_generation(\n                                self.android_server_generation,\n                                0,", "controlled-input Rust connection identity"),
     ("input_owner_test", "old generation retirement selected the replacement owner", "old generation retirement passed", "controlled-input generation-ABA behavior proof"),
+    ("input_owner_test", "nonpositive registry generation was admitted", "zero registry generation passed", "registry-generation validity behavior proof"),
+    ("test", "same-ID replacement retained predecessor voice state", "same-ID replacement passed", "same-ID registry-generation replacement"),
+    ("test", "duplicate same-ID registry generation was admitted", "duplicate same-ID registry generation passed", "same-ID duplicate registry-generation refusal"),
+    ("test", "stale same-ID registry generation was admitted", "stale same-ID registry generation passed", "same-ID stale registry-generation refusal"),
+    ("test", "stale same-ID owner changed replacement voice state", "stale same-ID update passed", "same-ID stale voice update refusal"),
+    ("test", "stale same-ID owner retired replacement voice state", "stale same-ID retirement passed", "same-ID stale voice retirement refusal"),
     ("requirements", '<span class="id">R-S11ei</span>', '<span class="id">R-S11ei-disabled</span>', "controlled-input ownership requirement"),
     ("requirements", "<tr><td>288</td>", "<tr><td>288-disabled</td>", "controlled-input ownership disposition"),
     ("hardening", "R-S11ei/R-S11e-153", "R-S11ei-disabled/R-S11e-153", "controlled-input ownership hardening ledger"),
-    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
+    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
     ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
     ("verify", "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),

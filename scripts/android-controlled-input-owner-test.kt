@@ -5,17 +5,45 @@ private fun requireState(condition: Boolean, message: String) {
 }
 
 fun main() {
-    val first = ControlledInputOwner(serviceGeneration = 7, connectionId = 11)
-    val second = ControlledInputOwner(serviceGeneration = 7, connectionId = 12)
-    val replacement = ControlledInputOwner(serviceGeneration = 8, connectionId = 11)
+    val first = ControlledInputOwner(
+        serviceGeneration = 7,
+        connectionId = 11,
+        registryGeneration = 12,
+    )
+    val second = ControlledInputOwner(
+        serviceGeneration = 7,
+        connectionId = 12,
+        registryGeneration = 13,
+    )
+    val replacement = ControlledInputOwner(
+        serviceGeneration = 7,
+        connectionId = 11,
+        registryGeneration = 14,
+    )
     requireState(first.isValid, "valid exact Android input owner was rejected")
     requireState(
-        !ControlledInputOwner(serviceGeneration = 0, connectionId = 11).isValid,
+        !ControlledInputOwner(
+            serviceGeneration = 0,
+            connectionId = 11,
+            registryGeneration = 12,
+        ).isValid,
         "zero service generation was admitted",
     )
     requireState(
-        !ControlledInputOwner(serviceGeneration = 7, connectionId = 0).isValid,
+        !ControlledInputOwner(
+            serviceGeneration = 7,
+            connectionId = 0,
+            registryGeneration = 12,
+        ).isValid,
         "nonpositive connection ID was admitted",
+    )
+    requireState(
+        !ControlledInputOwner(
+            serviceGeneration = 7,
+            connectionId = 11,
+            registryGeneration = 0,
+        ).isValid,
+        "nonpositive registry generation was admitted",
     )
 
     val queue = ExactOwnerBoundedQueue<String>(3)
@@ -43,7 +71,7 @@ fun main() {
 
     requireState(
         !queue.offer(
-            ControlledInputOwner(serviceGeneration = 0, connectionId = 1),
+            ControlledInputOwner(serviceGeneration = 0, connectionId = 1, registryGeneration = 1),
             "invalid",
         ),
         "invalid owner reached the bounded queue",

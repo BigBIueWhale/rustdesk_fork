@@ -8,7 +8,7 @@ internal data class OutgoingVoiceCallOwner(
 }
 
 internal class VoiceCallOwnerState {
-    private val controlledConnections = mutableSetOf<Int>()
+    private val controlledConnections = mutableMapOf<Int, Long>()
     private val activeControlledConnections = mutableSetOf<Int>()
     private var greatestControlledServiceGeneration = 0L
     private var activeControlledServiceGeneration: Long? = null
@@ -40,21 +40,35 @@ internal class VoiceCallOwnerState {
         return generation > 0 && activeControlledServiceGeneration == generation
     }
 
-    fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {
-        if (!isControlledServiceGeneration(generation) || connectionId <= 0) {
+    fun registerControlledConnection(
+        generation: Long,
+        connectionId: Int,
+        registryGeneration: Long,
+    ): Boolean {
+        if (!isControlledServiceGeneration(generation) ||
+            connectionId <= 0 ||
+            registryGeneration <= 0
+        ) {
             return false
         }
-        controlledConnections.add(connectionId)
+        val current = controlledConnections[connectionId]
+        if (current != null && registryGeneration <= current) {
+            return false
+        }
+        controlledConnections[connectionId] = registryGeneration
+        activeControlledConnections.remove(connectionId)
         return true
     }
 
     fun setControlledVoiceCallActive(
         generation: Long,
         connectionId: Int,
+        registryGeneration: Long,
         active: Boolean,
     ): Boolean {
         if (!isControlledServiceGeneration(generation) ||
-            !controlledConnections.contains(connectionId)
+            registryGeneration <= 0 ||
+            controlledConnections[connectionId] != registryGeneration
         ) {
             return false
         }
@@ -66,8 +80,19 @@ internal class VoiceCallOwnerState {
         return true
     }
 
-    fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {
-        if (!isControlledServiceGeneration(generation) || connectionId <= 0) {
+    fun unregisterControlledConnection(
+        generation: Long,
+        connectionId: Int,
+        registryGeneration: Long,
+    ): Boolean {
+        if (!isControlledServiceGeneration(generation) ||
+            connectionId <= 0 ||
+            registryGeneration <= 0
+        ) {
+            return false
+        }
+        val current = controlledConnections[connectionId] ?: return true
+        if (current != registryGeneration) {
             return false
         }
         controlledConnections.remove(connectionId)

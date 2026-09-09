@@ -29,25 +29,48 @@ internal object VoiceCallAudioCoordinator {
     }
 
     @Synchronized
-    fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {
-        return owners.registerControlledConnection(generation, connectionId)
-    }
-
-    @Synchronized
-    fun setControlledVoiceCallActive(
+    fun registerControlledConnection(
         generation: Long,
         connectionId: Int,
-        active: Boolean,
+        registryGeneration: Long,
     ): Boolean {
-        if (!owners.setControlledVoiceCallActive(generation, connectionId, active)) {
+        if (!owners.registerControlledConnection(generation, connectionId, registryGeneration)) {
             return false
         }
         return reconcileRecorder()
     }
 
     @Synchronized
-    fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {
-        if (!owners.unregisterControlledConnection(generation, connectionId)) {
+    fun setControlledVoiceCallActive(
+        generation: Long,
+        connectionId: Int,
+        registryGeneration: Long,
+        active: Boolean,
+    ): Boolean {
+        if (!owners.setControlledVoiceCallActive(
+                generation,
+                connectionId,
+                registryGeneration,
+                active,
+            )
+        ) {
+            return false
+        }
+        return reconcileRecorder()
+    }
+
+    @Synchronized
+    fun unregisterControlledConnection(
+        generation: Long,
+        connectionId: Int,
+        registryGeneration: Long,
+    ): Boolean {
+        if (!owners.unregisterControlledConnection(
+                generation,
+                connectionId,
+                registryGeneration,
+            )
+        ) {
             return false
         }
         return reconcileRecorder()

@@ -69,6 +69,14 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "client": "src/client/io_loop.rs",
         "connection": "src/server/connection.rs",
         "ui_cm": "src/ui_cm_interface.rs",
+        "flutter_bridge": "src/flutter.rs",
+        "windows_probe": "src/windows_cm_lifecycle_probe.rs",
+        "server_model": "flutter/lib/models/server_model.dart",
+        "model": "flutter/lib/models/model.dart",
+        "server_model_test": "flutter/test/server_model_test.dart",
+        "android_service": "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+        "android_capture_owners": "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt",
+        "android_capture_test": "scripts/android-controlled-connection-type-test.kt",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
         "native_watch": "docs/NATIVE-CODEC-WATCH.md",
@@ -87,6 +95,11 @@ def validate(sources: Dict[str, str]) -> None:
     client = sources["client"]
     connection = sources["connection"]
     ui_cm = sources["ui_cm"]
+    flutter_bridge = sources["flutter_bridge"]
+    server_model = sources["server_model"]
+    model = sources["model"]
+    android_service = sources["android_service"]
+    android_capture_owners = sources["android_capture_owners"]
 
     for source, needle, label in (
         (clipboard, "UnboundedSender<ClipboardFile>", "unbounded file-clipboard sender"),
@@ -359,12 +372,16 @@ def validate(sources: Dict[str, str]) -> None:
             "send(&Data::ClipboardFile(clipboard::ClipboardFile::MonitorReady))",
             '"failed to publish CM file-clipboard readiness: {error}"',
             "break;",
+            "let client_owner = match self.cm.add_connection(",
+            "Ok(owner) => owner,",
+            '"Rejected CM client-registry admission for connection {}: {}"',
+            "break;",
             "self.conn_id = id;",
+            "self.client_owner = Some(client_owner);",
             "_cliprdr_route = Some(controlled_clip_route);",
-            "self.cm.add_connection(",
             "continue;",
-            "if self.conn_id > 0",
-            "self.cm.remove_connection(self.conn_id, self.close);",
+            "if let Some(owner) = self.client_owner.take()",
+            "self.cm.remove_connection(owner, self.close);",
             "drop(_cliprdr_route);",
         ),
         "single-stream CM admission, active ownership, and terminal cleanup",
@@ -376,8 +393,8 @@ def validate(sources: Dict[str, str]) -> None:
         raise VerificationError("CM stream must have one client-registry commit")
     require(
         runner,
-        "privacy_mode, self.tx.clone());\n                                    continue;",
-        "validated Login activation",
+        "Ok(owner) => owner,",
+        "checked client-registry admission",
     )
     forbid(runner, "self.running", "mutable CM run/retry state")
     forbid(runner, "CmIpcRunDisposition", "restartable CM run disposition")
@@ -394,6 +411,395 @@ def validate(sources: Dict[str, str]) -> None:
     forbid(ipc_task, "while task_runner.running", "implicit CM retry loop")
     forbid(ipc_task, "match task_runner.run().await", "restartable CM disposition loop")
     forbid(ipc_task, "loop {", "CM stream lifecycle restart loop")
+
+    for needle, label in (
+        ("pub registry_generation: i64,", "serialized CM client registry generation"),
+        ("struct CmClientOwner {", "task-owned CM client lease"),
+        ("struct CmClientRegistry {", "generation-owning CM client registry"),
+        ("static ref CLIENTS: RwLock<CmClientRegistry>", "typed CM client registry"),
+        ("#[serde(skip)]\n    source_generation: u64,", "nonserialized source generation"),
+    ):
+        require(ui_cm, needle, label)
+    forbid(
+        ui_cm,
+        "static ref CLIENTS: RwLock<HashMap<i32, Client>>",
+        "bare-ID process-global CM client registry",
+    )
+    registry = extract_braced_item(
+        ui_cm, "impl CmClientRegistry", "CM client registry authority"
+    )
+    admission = extract_braced_item(
+        registry, "fn admit(", "checked CM client registry admission"
+    )
+    require_order(
+        admission,
+        (
+            "if client.id <= 0",
+            "source_generation < current.source_generation",
+            "CmClientAdmissionError::StaleSourceGeneration",
+            "source_generation == current.source_generation && !current.disconnected",
+            "CmClientAdmissionError::ActiveIdCollision",
+            ".checked_add(1)",
+            "CmClientAdmissionError::GenerationExhausted",
+            "self.generation = generation;",
+            "client.registry_generation = generation;",
+            "client.source_generation = source_generation;",
+            ".retain(|_, current| !(current.disconnected && current.peer_id == client.peer_id))",
+            "self.clients.insert(client.id, client.clone())",
+            "CmClientOwner {",
+        ),
+        "source-qualified checked CM client admission before exact-owner commit",
+    )
+    if admission.count("self.clients.insert(client.id, client.clone())") != 1:
+        raise VerificationError("CM client admission must have one registry commit")
+    retirement = extract_braced_item(
+        registry, "fn retire(", "exact CM client retirement"
+    )
+    require_order(
+        retirement,
+        (
+            "if !self.is_current(owner)",
+            "return false;",
+            "if close",
+            "self.clients.remove(&owner.id);",
+            "client.disconnected = true;",
+        ),
+        "stale-owner refusal before CM client retirement",
+    )
+
+    manager = extract_braced_item(
+        ui_cm,
+        "impl<T: InvokeUiCM> ConnectionManager<T>",
+        "CM client lifecycle manager",
+    )
+    manager_add = extract_braced_item(
+        manager, "fn add_connection(", "CM client lifecycle admission"
+    )
+    require_order(
+        manager_add,
+        (
+            ".admit(&mut client, self.source_generation)?",
+            "replaced.filter(|client| !client.disconnected)",
+            "replaced.tx.send(Data::Close)",
+            "self.ui_handler.add_connection(&client);",
+            "Ok(owner)",
+        ),
+        "exact admission and displaced-owner close before UI publication",
+    )
+    manager_remove = extract_braced_item(
+        manager, "fn remove_connection(", "exact CM client lifecycle cleanup"
+    )
+    require_order(
+        manager_remove,
+        (
+            "if !CLIENTS.write().unwrap().retire(owner, close)",
+            "return;",
+            "try_empty_clipboard_files(ClipboardSide::Host, owner.id)",
+            ".remove_connection(owner.id, owner.generation, close)",
+        ),
+        "stale cleanup refusal before client-scoped side effects",
+    )
+    manager_message = extract_braced_item(
+        manager, "fn new_message(", "exact CM chat publication"
+    )
+    require_order(
+        manager_message,
+        (
+            "is_current(owner)",
+            ".new_message(owner.id, owner.generation, text)",
+        ),
+        "generation-bound CM chat publication",
+    )
+    manager_voice = extract_braced_item(
+        manager, "fn update_voice_call(", "exact CM voice-state mutation"
+    )
+    require_order(
+        manager_voice,
+        (
+            "current_mut(owner)",
+            "client.incoming_voice_call = incoming;",
+            "client.in_voice_call = active;",
+            "client.clone()",
+            "self.ui_handler.update_voice_call_state(&client);",
+        ),
+        "generation-bound CM voice-state mutation and unlocked publication",
+    )
+    disconnected_remove = extract_braced_item(
+        ui_cm, "pub fn remove(id: i32)", "UI disconnected-client removal"
+    )
+    require_order(
+        disconnected_remove,
+        (
+            ".map(|client| client.disconnected)",
+            "clients.clients.remove(&id);",
+        ),
+        "bare-ID UI removal limited to disconnected entries",
+    )
+
+    require(runner_state, "client_owner: Option<CmClientOwner>", "desktop exact client owner")
+    for needle, label in (
+        ("self.cm.new_message(owner, text);", "desktop owner-bound chat"),
+        ("self.cm.voice_call_started(owner);", "desktop owner-bound voice start"),
+        ("self.cm.voice_call_incoming(owner);", "desktop owner-bound incoming voice"),
+        ("self.cm.voice_call_closed(owner, reason.as_str());", "desktop owner-bound voice close"),
+    ):
+        require(runner, needle, label)
+    android_listener = extract_braced_item(
+        ui_cm,
+        "pub async fn start_listen<T: InvokeUiCM>(",
+        "Android CM client lifecycle owner",
+    )
+    require_order(
+        android_listener,
+        (
+            "let mut current_owner = None;",
+            "if current_owner.is_some()",
+            '"Rejected repeated Android CM login',
+            "if !authorized || !connection_authority.valid",
+            '"Rejected Android CM login without matching authorized connection',
+            "let owner = match cm.add_connection(",
+            "Ok(owner) => owner,",
+            "current_owner = Some(owner);",
+            "cm.new_message(owner, text);",
+            "cm.voice_call_started(owner);",
+            "cm.voice_call_incoming(owner);",
+            "cm.voice_call_closed(owner, reason.as_str());",
+            "if let Some(owner) = current_owner",
+            "cm.remove_connection(owner, true);",
+        ),
+        "Android exact client owner from admission through terminal cleanup",
+    )
+    forbid(
+        android_listener,
+        "cm.remove_connection(current_id, true)",
+        "Android bare-ID terminal cleanup",
+    )
+
+    capture_state = extract_braced_item(
+        android_capture_owners,
+        "internal class ControlledCaptureOwnerState",
+        "Android exact-generation controlled-resource registry",
+    )
+    for needle, label in (
+        ("val registryGeneration: Long", "Android registry-generation owner field"),
+        ("private val owners = mutableMapOf<Int, Owner>()", "Android exact owner map"),
+        ("owners.values.any { it.requiresDesktopCapture }", "Android derived capture demand"),
+        ("owners[connectionId]?.registryGeneration == registryGeneration", "Android exact current owner"),
+    ):
+        require(capture_state, needle, label)
+    capture_admit = extract_braced_item(
+        capture_state, "fun upsert(", "Android controlled-resource admission"
+    )
+    require_order(
+        capture_admit,
+        (
+            "registryGeneration: Long",
+            "connectionId <= 0 || registryGeneration <= 0",
+            "registryGeneration <= current.registryGeneration",
+            "return false",
+            "owners[connectionId] = Owner(",
+            "authorized && connectionType.requiresDesktopCapture",
+        ),
+        "Android monotonic exact-generation resource admission",
+    )
+    capture_retire = extract_braced_item(
+        capture_state, "fun unregister(", "Android controlled-resource retirement"
+    )
+    require_order(
+        capture_retire,
+        (
+            "if (!isCurrent(connectionId, registryGeneration))",
+            "return false",
+            "owners.remove(connectionId)",
+        ),
+        "Android exact-generation resource retirement",
+    )
+    kotlin_add = extract_braced_item(
+        android_service, '"add_connection" ->', "Android service client admission"
+    )
+    require_order(
+        kotlin_add,
+        (
+            'jsonObject.getLong("registry_generation")',
+            "controlledCaptureOwners.upsert(",
+            "registryGeneration",
+            "VoiceCallAudioCoordinator.registerControlledConnection(",
+            "onClientAuthorizedNotification",
+        ),
+        "Android registry generation before controlled-resource publication",
+    )
+    kotlin_remove = extract_braced_item(
+        android_service, '"remove_connection" ->', "Android service client cleanup"
+    )
+    require_order(
+        kotlin_remove,
+        (
+            "val registryGeneration = arg2.toLongOrNull()",
+            "controlledCaptureOwners.unregister(id, registryGeneration)",
+            '"Rejected stale controlled connection removal',
+            "InputService.ctx?.retireInputOwner(",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(",
+            "reconcileControlledCaptureDemand()",
+            "cancelNotification(id)",
+        ),
+        "Android stale cleanup refusal before all controlled-resource side effects",
+    )
+    kotlin_voice = extract_braced_item(
+        android_service, '"update_voice_call_state" ->', "Android service voice update"
+    )
+    require_order(
+        kotlin_voice,
+        (
+            'jsonObject.getLong("registry_generation")',
+            "if (!controlledCaptureOwners.isCurrent(id, registryGeneration))",
+            "return",
+            "VoiceCallAudioCoordinator.setControlledVoiceCallActive(",
+        ),
+        "Android stale voice refusal before audio and notification side effects",
+    )
+
+    bridge_remove = extract_braced_item(
+        flutter_bridge, "fn remove_connection(", "generation-bearing CM removal event"
+    )
+    require_order(
+        bridge_remove,
+        (
+            "registry_generation: i64",
+            "let registry_generation = registry_generation.to_string();",
+            "Some(&registry_generation)",
+            '"registry_generation"',
+            "registry_generation.to_string()",
+        ),
+        "CM removal generation publication",
+    )
+    bridge_message = extract_braced_item(
+        flutter_bridge,
+        "fn new_message(&self, id: i32,",
+        "generation-bearing CM chat event",
+    )
+    require_order(
+        bridge_message,
+        (
+            "registry_generation: i64",
+            '"registry_generation"',
+            "registry_generation.to_string()",
+        ),
+        "CM chat generation publication",
+    )
+    android_channel = extract_braced_item(
+        flutter_bridge, "pub fn start_channel(", "Android generation-bound CM channel"
+    )
+    require_order(
+        android_channel,
+        (
+            "if service_generation == 0",
+            "return;",
+            "ConnectionManager::new(",
+            "FlutterHandler { service_generation }",
+            "service_generation,",
+        ),
+        "Android MainService generation becomes CM source authority",
+    )
+    require(
+        sources["windows_probe"],
+        "ConnectionManager::new(NoopConnectionManager, 0)",
+        "desktop Windows probe source-generation isolation",
+    )
+    desktop_cm = extract_braced_item(
+        flutter_bridge, "fn start_listen_ipc(new_thread: bool)", "desktop CM startup"
+    )
+    require_order(
+        desktop_cm,
+        (
+            "let cm = ConnectionManager::new(",
+            "FlutterHandler {",
+            "},\n            0,\n        );",
+        ),
+        "desktop process-local CM source generation",
+    )
+
+    dart_add = extract_braced_item(
+        server_model, "void addConnection(", "Dart CM client admission reconciliation"
+    )
+    require_order(
+        dart_add,
+        (
+            "client.registryGeneration < _clients[index].registryGeneration",
+            "return;",
+            "dismissByTag(getLoginDialogTag(client.id))",
+            "client.registryGeneration == current.registryGeneration",
+            "_clients.removeAt(index);",
+            "tabController.remove(index);",
+            "_clients.add(client);",
+            "_addTab(client);",
+        ),
+        "stale-event refusal and aligned newer-generation client/tab replacement",
+    )
+    dart_remove = extract_braced_item(
+        server_model, "void onClientRemove(", "Dart exact-generation CM removal"
+    )
+    require_order(
+        dart_remove,
+        (
+            "client.id == id &&",
+            "client.registryGeneration == registryGeneration",
+            "if (index < 0)",
+            "return;",
+            "_clients.removeAt(index);",
+            "dismissByTag(getLoginDialogTag(id))",
+        ),
+        "Dart stale removal refusal before client and UI side effects",
+    )
+    dart_voice = extract_braced_item(
+        server_model, "void updateVoiceCallState(", "Dart exact-generation CM voice update"
+    )
+    require(
+        dart_voice,
+        "element.registryGeneration == client.registryGeneration",
+        "Dart exact-generation voice filter",
+    )
+    require(
+        server_model,
+        "bool ownsClientGeneration(int id, int registryGeneration)",
+        "Dart current-generation query",
+    )
+    require(
+        model,
+        ".ownsClientGeneration(id, registryGeneration)",
+        "Dart exact-generation chat filter",
+    )
+    for needle, label in (
+        ("int registryGeneration = 0;", "Dart CM client generation field"),
+        ("registryGeneration = json['registry_generation'];", "Dart CM generation decode"),
+        ("data['registry_generation'] = registryGeneration;", "Dart CM generation encode"),
+    ):
+        require(server_model, needle, label)
+    for test in (
+        "r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id",
+        "r_s11iu_registry_rejects_stale_and_same_source_active_collisions",
+        "r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement",
+        "r_s11iu_generation_exhaustion_does_not_commit_a_client",
+    ):
+        require(ui_cm, test, f"{test} regression")
+    require(
+        sources["server_model_test"],
+        "expect(serialized['registry_generation'], 19);",
+        "Dart CM generation serialization regression",
+    )
+    for needle, label in (
+        ("!owners.unregister(41, 10)", "Android stale same-ID cleanup regression"),
+        (
+            "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+            "Android duplicate same-ID replacement regression",
+        ),
+        (
+            "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+            "Android stale same-ID replacement regression",
+        ),
+        ("owners.isCurrent(41, 11)", "Android exact current-owner regression"),
+    ):
+        require(sources["android_capture_test"], needle, label)
+
     sender_lookup = extract_braced_item(
         clipboard, "fn send_data_to_channel(", "sender snapshot before admission"
     )
@@ -495,6 +901,14 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", '<div class="req"><span class="id">R-S11it</span>', "CM route-setup finality requirement"),
         ("requirements", "<tr><td>405</td>", "CM route-setup Appendix C row"),
         ("hardening", "### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership", "CM route-setup hardening ledger"),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never",
+            "shared CM registry Rust behavior gate",
+        ),
+        ("requirements", '<div class="req"><span class="id">R-S11iu</span>', "CM registry-generation requirement"),
+        ("requirements", "<tr><td>406</td>", "CM registry-generation Appendix C row"),
+        ("hardening", "### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership", "CM registry-generation hardening ledger"),
         ("workspace", "def validate_clipboard_route_budget_contract(sources):", "independent contract"),
         ("workspace", "validate_clipboard_route_budget_contract(sources)", "independent dispatch"),
     ):
@@ -656,27 +1070,27 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "ui_cm",
-        "self.cm.add_connection(id, is_file_transfer",
-        "self.cm.add_connection_bypassed(id, is_file_transfer",
+        "let client_owner = match self.cm.add_connection(",
+        "let client_owner = match self.cm.add_connection_bypassed(",
         "single client-registry commit",
     ),
     (
         "ui_cm",
-        "privacy_mode, self.tx.clone());\n                                    continue;",
-        "privacy_mode, self.tx.clone());\n                                    break;",
-        "validated Login activation",
+        "Ok(owner) => owner,",
+        "Ok(_owner) => return,",
+        "checked client-registry activation",
     ),
     (
         "ui_cm",
-        "        if self.conn_id > 0 {\n"
-        "            self.cm.remove_connection(self.conn_id, self.close);\n"
+        "        if let Some(owner) = self.client_owner.take() {\n"
+        "            self.cm.remove_connection(owner, self.close);\n"
         "        }\n"
         "        #[cfg(target_os = \"windows\")]\n"
         "        drop(_cliprdr_route);",
         "        #[cfg(target_os = \"windows\")]\n"
         "        drop(_cliprdr_route);\n"
-        "        if self.conn_id > 0 {\n"
-        "            self.cm.remove_connection(self.conn_id, self.close);\n"
+        "        if let Some(owner) = self.client_owner.take() {\n"
+        "            self.cm.remove_connection(owner, self.close);\n"
         "        }",
         "client cleanup before route-lease release",
     ),
@@ -686,6 +1100,312 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "loop { task_runner.run().await; }",
         "single CM stream lifecycle owner",
     ),
+    (
+        "ui_cm",
+        "pub registry_generation: i64,",
+        "pub registry_generation_disabled: i64,",
+        "serialized CM client generation",
+    ),
+    (
+        "ui_cm",
+        "#[serde(skip)]\n    source_generation: u64,",
+        "source_generation: u64,",
+        "nonserialized client source generation",
+    ),
+    (
+        "ui_cm",
+        "static ref CLIENTS: RwLock<CmClientRegistry>",
+        "static ref CLIENTS: RwLock<HashMap<i32, Client>>",
+        "typed CM client registry",
+    ),
+    (
+        "ui_cm",
+        "source_generation < current.source_generation",
+        "source_generation > current.source_generation",
+        "stale Android service-source refusal",
+    ),
+    (
+        "ui_cm",
+        "source_generation == current.source_generation && !current.disconnected",
+        "source_generation == current.source_generation && false",
+        "same-source active ID collision refusal",
+    ),
+    (
+        "ui_cm",
+        ".generation\n            .checked_add(1)",
+        ".generation\n            .wrapping_add(1)",
+        "checked CM client generation",
+    ),
+    (
+        "ui_cm",
+        "client.registry_generation = generation;",
+        "client.registry_generation = 0;",
+        "CM client generation commit",
+    ),
+    (
+        "ui_cm",
+        "client.source_generation = source_generation;",
+        "client.source_generation = 0;",
+        "CM client source-generation commit",
+    ),
+    (
+        "ui_cm",
+        "if !self.is_current(owner) {",
+        "if false {",
+        "exact-owner CM client retirement",
+    ),
+    (
+        "ui_cm",
+        ".admit(&mut client, self.source_generation)?",
+        ".admit(&mut client, 0)?",
+        "source-qualified CM client admission",
+    ),
+    (
+        "ui_cm",
+        "replaced.tx.send(Data::Close)",
+        "replaced.tx.send(Data::ClickTime(0))",
+        "displaced active client closure",
+    ),
+    (
+        "ui_cm",
+        "if !CLIENTS.write().unwrap().retire(owner, close) {",
+        "if false {",
+        "stale terminal cleanup refusal",
+    ),
+    (
+        "ui_cm",
+        "if CLIENTS.read().unwrap().is_current(owner) {",
+        "if true {",
+        "exact-generation CM chat publication",
+    ),
+    (
+        "ui_cm",
+        "CLIENTS.write().unwrap().current_mut(owner)",
+        "CLIENTS.write().unwrap().clients.get_mut(&owner.id)",
+        "exact-generation CM voice mutation",
+    ),
+    (
+        "ui_cm",
+        ".map(|client| client.disconnected)",
+        ".map(|_client| true)",
+        "disconnected-only bare-ID UI removal",
+    ),
+    (
+        "ui_cm",
+        "client_owner: Option<CmClientOwner>,",
+        "client_owner: Option<i32>,",
+        "desktop task-owned CM client lease",
+    ),
+    (
+        "ui_cm",
+        "if current_owner.is_some() {",
+        "if false {",
+        "Android repeated Login refusal",
+    ),
+    (
+        "ui_cm",
+        "Rejected Android CM login without matching authorized connection",
+        "Accepted Android CM login without matching authorized connection",
+        "Android unauthorized Login refusal",
+    ),
+    (
+        "ui_cm",
+        "if let Some(owner) = current_owner {\n        cm.remove_connection(owner, true);",
+        "if current_id > 0 {\n        cm.remove_connection_by_id(current_id, true);",
+        "Android exact-owner terminal cleanup",
+    ),
+    (
+        "android_capture_owners",
+        "private val owners = mutableMapOf<Int, Owner>()",
+        "private val owners = mutableMapOf<Int, Long>()",
+        "Android exact controlled-resource owner map",
+    ),
+    (
+        "android_capture_owners",
+        "owners[connectionId]?.registryGeneration == registryGeneration",
+        "owners.containsKey(connectionId)",
+        "Android exact current controlled-resource owner",
+    ),
+    (
+        "android_capture_owners",
+        "connectionId <= 0 || registryGeneration <= 0",
+        "connectionId <= 0",
+        "Android valid controlled-resource generation",
+    ),
+    (
+        "android_capture_owners",
+        "registryGeneration <= current.registryGeneration",
+        "registryGeneration < current.registryGeneration",
+        "Android stale controlled-resource admission",
+    ),
+    (
+        "android_capture_owners",
+        "if (!isCurrent(connectionId, registryGeneration))",
+        "if (false)",
+        "Android exact controlled-resource retirement",
+    ),
+    (
+        "android_service",
+        "val registryGeneration = jsonObject.getLong(\"registry_generation\")",
+        "val registryGeneration = 1L",
+        "Android serialized client generation",
+    ),
+    (
+        "android_service",
+        "controlledCaptureOwners.upsert(",
+        "controlledCaptureOwners.upsert_disabled(",
+        "Android controlled-resource admission",
+    ),
+    (
+        "android_service",
+        "val registryGeneration = arg2.toLongOrNull()",
+        "val registryGeneration = arg1.toLongOrNull()",
+        "Android exact cleanup generation input",
+    ),
+    (
+        "android_service",
+        "controlledCaptureOwners.unregister(id, registryGeneration)",
+        "true",
+        "Android exact controlled-resource cleanup",
+    ),
+    (
+        "android_service",
+        "if (!controlledCaptureOwners.isCurrent(id, registryGeneration))",
+        "if (false)",
+        "Android exact voice-state update",
+    ),
+    (
+        "flutter_bridge",
+        "fn remove_connection(&self, id: i32, registry_generation: i64, close: bool)",
+        "fn remove_connection(&self, id: i32, registry_generation: i32, close: bool)",
+        "generation-bearing Flutter removal callback",
+    ),
+    (
+        "flutter_bridge",
+        "Some(&registry_generation)",
+        "None",
+        "registry-generation-bearing Android removal callback",
+    ),
+    (
+        "flutter_bridge",
+        "fn new_message(&self, id: i32, registry_generation: i64, text: String)",
+        "fn new_message(&self, id: i32, registry_generation: i32, text: String)",
+        "generation-bearing Flutter chat callback",
+    ),
+    (
+        "flutter_bridge",
+        "if service_generation == 0 {",
+        "if false {",
+        "Android zero service-generation refusal",
+    ),
+    (
+        "flutter_bridge",
+        "FlutterHandler { service_generation },\n            service_generation,",
+        "FlutterHandler { service_generation },\n            0,",
+        "Android CM source-generation binding",
+    ),
+    (
+        "flutter_bridge",
+        "},\n            0,\n        );",
+        "},\n            1,\n        );",
+        "desktop process-local CM generation",
+    ),
+    (
+        "windows_probe",
+        "ConnectionManager::new(NoopConnectionManager, 0)",
+        "ConnectionManager::new(NoopConnectionManager, 1)",
+        "Windows CM probe process-local generation",
+    ),
+    (
+        "server_model",
+        "client.registryGeneration < _clients[index].registryGeneration",
+        "client.registryGeneration > _clients[index].registryGeneration",
+        "Dart stale client-add refusal",
+    ),
+    (
+        "server_model",
+        "_clients.removeAt(index);\n          tabController.remove(index);\n          _clients.add(client);",
+        "_clients[index] = client;\n          tabController.remove(index);\n          _clients.add(client);",
+        "Dart client/tab replacement alignment",
+    ),
+    (
+        "server_model",
+        "client.registryGeneration == registryGeneration",
+        "client.registryGeneration != registryGeneration",
+        "Dart exact-generation client removal",
+    ),
+    (
+        "server_model",
+        "element.registryGeneration == client.registryGeneration",
+        "true",
+        "Dart exact-generation voice update",
+    ),
+    (
+        "model",
+        ".ownsClientGeneration(id, registryGeneration)",
+        ".ownsClientGeneration(id, 0)",
+        "Dart exact-generation chat update",
+    ),
+    (
+        "server_model",
+        "registryGeneration = json['registry_generation'];",
+        "registryGeneration = 0;",
+        "Dart CM generation decode",
+    ),
+    (
+        "server_model_test",
+        "expect(serialized['registry_generation'], 19);",
+        "expect(serialized['registry_generation'], 0);",
+        "Dart CM generation serialization regression",
+    ),
+    (
+        "android_capture_test",
+        "!owners.unregister(41, 10)",
+        "owners.unregister(41, 10)",
+        "Android stale same-ID cleanup regression",
+    ),
+    (
+        "android_capture_test",
+        "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+        "owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
+        "Android duplicate same-ID replacement regression",
+    ),
+    (
+        "android_capture_test",
+        "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+        "owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
+        "Android stale same-ID replacement regression",
+    ),
+    (
+        "android_capture_test",
+        "owners.isCurrent(41, 11)",
+        "owners.isCurrent(41, 10)",
+        "Android current same-ID owner regression",
+    ),
+    (
+        "ui_cm",
+        "r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id",
+        "r_s11iu_disabled_stale_owner_cannot_mutate_or_retire_a_reused_client_id",
+        "stale CM owner regression",
+    ),
+    (
+        "ui_cm",
+        "r_s11iu_registry_rejects_stale_and_same_source_active_collisions",
+        "r_s11iu_disabled_registry_rejects_stale_and_same_source_active_collisions",
+        "CM source collision regression",
+    ),
+    (
+        "ui_cm",
+        "r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement",
+        "r_s11iu_disabled_disconnected_owner_can_be_replaced_but_cannot_retire_replacement",
+        "disconnected CM owner replacement regression",
+    ),
+    (
+        "ui_cm",
+        "r_s11iu_generation_exhaustion_does_not_commit_a_client",
+        "r_s11iu_disabled_generation_exhaustion_does_not_commit_a_client",
+        "CM registry generation-exhaustion regression",
+    ),
     ("verify", "python3 scripts/verify-clipboard-route-budget.py --repo . --self-test", "true # file-clipboard route gate disabled", "shared gate"),
     ("apple", "python3 scripts/verify-clipboard-route-budget.py --repo . --self-test", "true # file-clipboard route gate disabled", "Apple gate"),
     ("requirements", '<div class="req"><span class="id">R-S11gz</span>', '<div class="req"><span class="id">R-S11gz-disabled</span>', "normative requirement"),
@@ -694,6 +1414,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11it</span>', '<div class="req"><span class="id">R-S11it-disabled</span>', "CM route-setup requirement"),
     ("requirements", "<tr><td>405</td>", "<tr><td>405-disabled</td>", "CM route-setup Appendix disposition"),
     ("hardening", "### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership", "### R-S11it-disabled/R-S11e-283 — terminal CM stream and route-setup ownership", "CM route-setup ledger"),
+    (
+        "verify",
+        "cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never",
+        "true # CM registry Rust gate disabled",
+        "shared CM registry Rust behavior gate",
+    ),
+    ("requirements", '<div class="req"><span class="id">R-S11iu</span>', '<div class="req"><span class="id">R-S11iu-disabled</span>', "CM registry-generation requirement"),
+    ("requirements", "<tr><td>406</td>", "<tr><td>406-disabled</td>", "CM registry-generation Appendix disposition"),
+    ("hardening", "### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership", "### R-S11iu-disabled/R-S11e-284 — exact-generation CM client-registry ownership", "CM registry-generation ledger"),
     ("workspace", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
 )
 

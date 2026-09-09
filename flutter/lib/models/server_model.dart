@@ -493,18 +493,30 @@ class ServerModel with ChangeNotifier {
       final client = Client.fromJson(jsonDecode(evt["client"]));
       // R-A2/R-G7: approve-mode is pinned "password", so every incoming client arrives already
       // authorized (post-PAKE). There is no unauthorized / click-to-accept state to render.
-      parent.target?.dialogManager.dismissByTag(getLoginDialogTag(client.id));
       final index = _clients.indexWhere((c) => c.id == client.id);
+      if (index >= 0 &&
+          client.registryGeneration < _clients[index].registryGeneration) {
+        return;
+      }
+      parent.target?.dialogManager.dismissByTag(getLoginDialogTag(client.id));
       if (index < 0) {
         _clients.add(client);
       } else {
-        if (_clients[index].authorized) {
-          _clients[index].privacyMode = client.privacyMode;
+        final current = _clients[index];
+        if (client.registryGeneration == current.registryGeneration &&
+            current.authorized) {
+          current.privacyMode = client.privacyMode;
           notifyListeners();
           return;
         }
-        _clients[index].authorized = true;
-        _clients[index].privacyMode = client.privacyMode;
+        if (client.registryGeneration == current.registryGeneration) {
+          current.authorized = true;
+          current.privacyMode = client.privacyMode;
+        } else {
+          _clients.removeAt(index);
+          tabController.remove(index);
+          _clients.add(client);
+        }
       }
       _addTab(client);
       // remove disconnected
@@ -623,20 +635,23 @@ class ServerModel with ChangeNotifier {
   void onClientRemove(Map<String, dynamic> evt) {
     try {
       final id = int.parse(evt['id'] as String);
+      final registryGeneration =
+          int.parse(evt['registry_generation'] as String);
       final close = (evt['close'] as String) == 'true';
-      if (_clients.any((c) => c.id == id)) {
-        final index = _clients.indexWhere((client) => client.id == id);
-        if (index >= 0) {
-          if (close) {
-            _clients.removeAt(index);
-            tabController.remove(index);
-          } else {
-            _clients[index].disconnected = true;
-          }
-        }
-        parent.target?.dialogManager.dismissByTag(getLoginDialogTag(id));
-        parent.target?.invokeMethod("cancel_notification", id);
+      final index = _clients.indexWhere((client) =>
+          client.id == id &&
+          client.registryGeneration == registryGeneration);
+      if (index < 0) {
+        return;
       }
+      if (close) {
+        _clients.removeAt(index);
+        tabController.remove(index);
+      } else {
+        _clients[index].disconnected = true;
+      }
+      parent.target?.dialogManager.dismissByTag(getLoginDialogTag(id));
+      parent.target?.invokeMethod("cancel_notification", id);
       if (desktopType == DesktopType.cm && _clients.isEmpty) {
         hideCmWindow();
       }
@@ -663,7 +678,9 @@ class ServerModel with ChangeNotifier {
   void updateVoiceCallState(Map<String, dynamic> evt) {
     try {
       final client = Client.fromJson(jsonDecode(evt["client"]));
-      final index = _clients.indexWhere((element) => element.id == client.id);
+      final index = _clients.indexWhere((element) =>
+          element.id == client.id &&
+          element.registryGeneration == client.registryGeneration);
       if (index != -1) {
         _clients[index].inVoiceCall = client.inVoiceCall;
         _clients[index].incomingVoiceCall = client.incomingVoiceCall;
@@ -683,6 +700,10 @@ class ServerModel with ChangeNotifier {
       debugPrint("updateVoiceCallState failed: $e");
     }
   }
+
+  bool ownsClientGeneration(int id, int registryGeneration) => _clients.any(
+      (client) =>
+          client.id == id && client.registryGeneration == registryGeneration);
 
   void androidUpdatekeepScreenOn() async {
     if (!isAndroid) return;
@@ -713,6 +734,7 @@ enum ClientType {
 
 class Client {
   int id = 0; // client connections inner count id
+  int registryGeneration = 0;
   bool authorized = false;
   bool isFileTransfer = false;
   bool isViewCamera = false;
@@ -737,6 +759,7 @@ class Client {
 
   Client.fromJson(Map<String, dynamic> json) {
     id = json['id'];
+    registryGeneration = json['registry_generation'];
     authorized = json['authorized'];
     isFileTransfer = json['is_file_transfer'];
     // TODO: no entry then default.
@@ -759,6 +782,7 @@ class Client {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
+    data['registry_generation'] = registryGeneration;
     data['authorized'] = authorized;
     data['is_file_transfer'] = isFileTransfer;
     data['is_view_camera'] = isViewCamera;

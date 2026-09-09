@@ -33,9 +33,9 @@ struct NoopConnectionManager;
 impl crate::ui_cm_interface::InvokeUiCM for NoopConnectionManager {
     fn add_connection(&self, _client: &crate::ui_cm_interface::Client) {}
 
-    fn remove_connection(&self, _id: i32, _close: bool) {}
+    fn remove_connection(&self, _id: i32, _registry_generation: i64, _close: bool) {}
 
-    fn new_message(&self, _id: i32, _text: String) {}
+    fn new_message(&self, _id: i32, _registry_generation: i64, _text: String) {}
 
     fn change_theme(&self, _dark: String) {}
 
@@ -270,9 +270,7 @@ fn run_server_worker() -> ResultType<()> {
 }
 
 fn run_cm_child() -> ResultType<()> {
-    let cm = crate::ui_cm_interface::ConnectionManager {
-        ui_handler: NoopConnectionManager,
-    };
+    let cm = crate::ui_cm_interface::ConnectionManager::new(NoopConnectionManager, 0);
     crate::ui_cm_interface::start_ipc(cm);
     bail!("connection-manager listener returned unexpectedly")
 }

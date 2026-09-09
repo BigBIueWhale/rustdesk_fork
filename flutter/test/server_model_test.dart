@@ -5,6 +5,7 @@ void main() {
   test('controlled clients ignore retired role-swap state', () {
     final client = Client.fromJson(<String, dynamic>{
       'id': 7,
+      'registry_generation': 19,
       'authorized': true,
       'is_file_transfer': false,
       'is_view_camera': false,
@@ -25,6 +26,7 @@ void main() {
 
     final serialized = client.toJson();
     expect(serialized['id'], 7);
+    expect(serialized['registry_generation'], 19);
     expect(serialized, isNot(contains('from_switch')));
   });
 }

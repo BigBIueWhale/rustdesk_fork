@@ -106,12 +106,13 @@ class MainService : Service() {
 
     private fun controlledInputOwner(connectionId: Int): ControlledInputOwner? {
         if (!acceptingControlledConnections ||
-            nativeServerGeneration <= 0L ||
-            !controlledCaptureOwners.ownsRemoteInput(connectionId)
+            nativeServerGeneration <= 0L
         ) {
             return null
         }
-        return ControlledInputOwner(nativeServerGeneration, connectionId)
+        val registryGeneration =
+            controlledCaptureOwners.remoteInputRegistryGeneration(connectionId) ?: return null
+        return ControlledInputOwner(nativeServerGeneration, connectionId, registryGeneration)
     }
 
     @Keep
@@ -126,6 +127,7 @@ class MainService : Service() {
                 try {
                     val jsonObject = JSONObject(arg1)
                     val id = jsonObject["id"] as Int
+                    val registryGeneration = jsonObject.getLong("registry_generation")
                     val username = jsonObject["name"] as String
                     val peerId = jsonObject["peer_id"] as String
                     val authorized = jsonObject["authorized"] as Boolean
@@ -136,13 +138,35 @@ class MainService : Service() {
                         Log.e(logTag, "Rejected unknown controlled connection type")
                         return
                     }
-                    if (!controlledCaptureOwners.upsert(id, authorized, connectionType)) {
+                    val previousRegistryGeneration =
+                        controlledCaptureOwners.registryGeneration(id)
+                    if (!controlledCaptureOwners.upsert(
+                            id,
+                            registryGeneration,
+                            authorized,
+                            connectionType,
+                        )
+                    ) {
                         Log.e(logTag, "Rejected invalid controlled capture owner: $id")
                         return
                     }
-                    val inputOwner = ControlledInputOwner(nativeServerGeneration, id)
-                    if (!controlledCaptureOwners.ownsRemoteInput(id)) {
-                        InputService.ctx?.retireInputOwner(inputOwner)
+                    if (previousRegistryGeneration != null) {
+                        InputService.ctx?.retireInputOwner(
+                            ControlledInputOwner(
+                                nativeServerGeneration,
+                                id,
+                                previousRegistryGeneration,
+                            )
+                        )
+                        if (!VoiceCallAudioCoordinator.unregisterControlledConnection(
+                                nativeServerGeneration,
+                                id,
+                                previousRegistryGeneration,
+                            )
+                        ) {
+                            Log.e(logTag, "Failed to retire superseded controlled voice owner: $id")
+                        }
+                        cancelNotification(id)
                     }
                     // R-S14/R-S19: resource authority comes from the exact AuthConnType carried
                     // by Rust, never by reconstructing Remote from parallel presentation fields.
@@ -150,6 +174,7 @@ class MainService : Service() {
                         !VoiceCallAudioCoordinator.registerControlledConnection(
                             nativeServerGeneration,
                             id,
+                            registryGeneration,
                         )
                     ) {
                         Log.e(logTag, "Rejected invalid controlled voice-call owner: $id")
@@ -171,20 +196,29 @@ class MainService : Service() {
             }
             "remove_connection" -> {
                 val id = arg1.toIntOrNull()
-                if (id == null) {
-                    Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
+                val registryGeneration = arg2.toLongOrNull()
+                if (id == null || registryGeneration == null) {
+                    Log.e(
+                        logTag,
+                        "Rejected invalid controlled connection removal: $arg1:$arg2",
+                    )
+                } else if (!controlledCaptureOwners.unregister(id, registryGeneration)) {
+                    Log.e(
+                        logTag,
+                        "Rejected stale controlled connection removal: $id:$registryGeneration",
+                    )
                 } else {
-                    val captureOwnerRemoved = controlledCaptureOwners.unregister(id)
                     InputService.ctx?.retireInputOwner(
-                        ControlledInputOwner(nativeServerGeneration, id)
+                        ControlledInputOwner(nativeServerGeneration, id, registryGeneration)
                     )
                     val voiceOwnerRemoved =
                         VoiceCallAudioCoordinator.unregisterControlledConnection(
                             nativeServerGeneration,
                             id,
+                            registryGeneration,
                         )
-                    if (!captureOwnerRemoved || !voiceOwnerRemoved) {
-                        Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
+                    if (!voiceOwnerRemoved) {
+                        Log.e(logTag, "Failed to retire controlled voice owner: $id")
                     }
                     reconcileControlledCaptureDemand()
                     cancelNotification(id)
@@ -198,13 +232,22 @@ class MainService : Service() {
                 try {
                     val jsonObject = JSONObject(arg1)
                     val id = jsonObject["id"] as Int
+                    val registryGeneration = jsonObject.getLong("registry_generation")
                     val username = jsonObject["name"] as String
                     val peerId = jsonObject["peer_id"] as String
                     val inVoiceCall = jsonObject["in_voice_call"] as Boolean
                     val incomingVoiceCall = jsonObject["incoming_voice_call"] as Boolean
+                    if (!controlledCaptureOwners.isCurrent(id, registryGeneration)) {
+                        Log.e(
+                            logTag,
+                            "Rejected stale controlled voice update: $id:$registryGeneration",
+                        )
+                        return
+                    }
                     if (!VoiceCallAudioCoordinator.setControlledVoiceCallActive(
                             nativeServerGeneration,
                             id,
+                            registryGeneration,
                             inVoiceCall,
                         )
                     ) {

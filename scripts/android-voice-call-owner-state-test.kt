@@ -12,28 +12,86 @@ fun main() {
         "invalid controlled service generation was admitted",
     )
     requireState(
-        !state.registerControlledConnection(10, 11),
+        !state.registerControlledConnection(10, 11, 1),
         "controlled owner without a live service generation was admitted",
     )
     requireState(
         state.beginControlledServiceGeneration(10),
         "first controlled service generation was rejected",
     )
-    requireState(!state.registerControlledConnection(10, 0), "invalid controlled owner was admitted")
     requireState(
-        !state.setControlledVoiceCallActive(10, 11, true),
+        !state.registerControlledConnection(10, 0, 1),
+        "invalid controlled owner was admitted",
+    )
+    requireState(
+        !state.registerControlledConnection(10, 11, 0),
+        "invalid controlled registry generation was admitted",
+    )
+    requireState(
+        !state.setControlledVoiceCallActive(10, 11, 1, true),
         "unregistered controlled owner was activated",
     )
 
-    requireState(state.registerControlledConnection(10, 11), "first controlled owner registration failed")
-    requireState(state.registerControlledConnection(10, 12), "second controlled owner registration failed")
-    requireState(state.setControlledVoiceCallActive(10, 11, true), "first controlled owner activation failed")
-    requireState(state.setControlledVoiceCallActive(10, 12, true), "second controlled owner activation failed")
+    requireState(
+        state.registerControlledConnection(10, 11, 1),
+        "first controlled owner registration failed",
+    )
+    requireState(
+        state.registerControlledConnection(10, 12, 2),
+        "second controlled owner registration failed",
+    )
+    requireState(
+        state.setControlledVoiceCallActive(10, 11, 1, true),
+        "first controlled owner activation failed",
+    )
+    requireState(
+        state.setControlledVoiceCallActive(10, 12, 2, true),
+        "second controlled owner activation failed",
+    )
     requireState(state.requiresVoiceCapture, "controlled owners did not require voice capture")
-    requireState(state.unregisterControlledConnection(10, 11), "first controlled owner removal failed")
+    requireState(state.unregisterControlledConnection(10, 11, 1), "first controlled owner removal failed")
     requireState(state.requiresVoiceCapture, "one controlled teardown cleared another owner")
-    requireState(state.unregisterControlledConnection(10, 12), "final controlled owner removal failed")
+    requireState(state.unregisterControlledConnection(10, 12, 2), "final controlled owner removal failed")
     requireState(!state.requiresVoiceCapture, "final controlled teardown retained voice capture")
+
+    requireState(
+        state.registerControlledConnection(10, 13, 3),
+        "same-ID predecessor registration failed",
+    )
+    requireState(
+        state.setControlledVoiceCallActive(10, 13, 3, true),
+        "same-ID predecessor activation failed",
+    )
+    requireState(
+        !state.registerControlledConnection(10, 13, 3),
+        "duplicate same-ID registry generation was admitted",
+    )
+    requireState(
+        !state.registerControlledConnection(10, 13, 2),
+        "stale same-ID registry generation was admitted",
+    )
+    requireState(
+        state.registerControlledConnection(10, 13, 4),
+        "same-ID replacement registration failed",
+    )
+    requireState(!state.requiresVoiceCapture, "same-ID replacement retained predecessor voice state")
+    requireState(
+        !state.setControlledVoiceCallActive(10, 13, 3, true),
+        "stale same-ID owner changed replacement voice state",
+    )
+    requireState(
+        !state.unregisterControlledConnection(10, 13, 3),
+        "stale same-ID owner retired replacement voice state",
+    )
+    requireState(
+        state.setControlledVoiceCallActive(10, 13, 4, true),
+        "same-ID replacement activation failed",
+    )
+    requireState(
+        state.unregisterControlledConnection(10, 13, 4),
+        "same-ID replacement removal failed",
+    )
+    requireState(!state.requiresVoiceCapture, "same-ID replacement teardown retained voice capture")
 
     requireState(
         !state.registerOutgoingOwner(OutgoingVoiceCallOwner(0, "")),
@@ -79,17 +137,17 @@ fun main() {
     requireState(state.unregisterOutgoingOwner(resumed), "resumed owner teardown failed")
     requireState(!state.requiresVoiceCapture, "resumed owner teardown retained voice capture")
 
-    requireState(state.registerControlledConnection(10, 21), "overlap controlled registration failed")
-    requireState(state.setControlledVoiceCallActive(10, 21, true), "overlap controlled activation failed")
+    requireState(state.registerControlledConnection(10, 21, 5), "overlap controlled registration failed")
+    requireState(state.setControlledVoiceCallActive(10, 21, 5, true), "overlap controlled activation failed")
     requireState(state.registerOutgoingOwner(replacement), "overlap outgoing registration failed")
     requireState(state.setOutgoingVoiceCallActive(replacement, true), "overlap outgoing activation failed")
-    requireState(state.unregisterControlledConnection(10, 21), "overlap controlled teardown failed")
+    requireState(state.unregisterControlledConnection(10, 21, 5), "overlap controlled teardown failed")
     requireState(state.requiresVoiceCapture, "controlled teardown cleared an outgoing owner")
     state.invalidateOutgoingOwner()
     requireState(!state.requiresVoiceCapture, "outgoing invalidation retained voice capture")
 
-    requireState(state.registerControlledConnection(10, 22), "clear controlled registration failed")
-    requireState(state.setControlledVoiceCallActive(10, 22, true), "clear controlled activation failed")
+    requireState(state.registerControlledConnection(10, 22, 6), "clear controlled registration failed")
+    requireState(state.setControlledVoiceCallActive(10, 22, 6, true), "clear controlled activation failed")
     requireState(
         state.beginControlledServiceGeneration(11),
         "replacement controlled service generation was rejected",
@@ -99,19 +157,19 @@ fun main() {
         "replacement generation retained the prior controlled voice owner",
     )
     requireState(
-        !state.registerControlledConnection(10, 22),
+        !state.registerControlledConnection(10, 22, 7),
         "stale generation registered a same-number controlled owner",
     )
     requireState(
-        !state.setControlledVoiceCallActive(10, 22, true),
+        !state.setControlledVoiceCallActive(10, 22, 6, true),
         "stale generation changed controlled voice state",
     )
     requireState(
-        state.registerControlledConnection(11, 22),
+        state.registerControlledConnection(11, 22, 7),
         "replacement generation same-number owner registration failed",
     )
     requireState(
-        state.setControlledVoiceCallActive(11, 22, true),
+        state.setControlledVoiceCallActive(11, 22, 7, true),
         "replacement generation same-number owner activation failed",
     )
     requireState(

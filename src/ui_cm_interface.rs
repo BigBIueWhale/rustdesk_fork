@@ -505,6 +505,7 @@ pub fn check_file_count_limit(file_count: usize) -> Result<(), String> {
 #[derive(Serialize, Clone)]
 pub struct Client {
     pub id: i32,
+    pub registry_generation: i64,
     pub authorized: bool,
     pub disconnected: bool,
     pub is_file_transfer: bool,
@@ -523,8 +524,104 @@ pub struct Client {
     pub in_voice_call: bool,
     pub incoming_voice_call: bool,
     #[serde(skip)]
+    source_generation: u64,
+    #[serde(skip)]
     #[cfg(not(any(target_os = "ios")))]
     tx: CmEgressSender,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CmClientOwner {
+    id: i32,
+    generation: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CmClientAdmissionError {
+    InvalidConnectionId,
+    GenerationExhausted,
+    StaleSourceGeneration,
+    ActiveIdCollision,
+}
+
+impl fmt::Display for CmClientAdmissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reason = match self {
+            Self::InvalidConnectionId => "connection ID is not positive",
+            Self::GenerationExhausted => "client registry generation is exhausted",
+            Self::StaleSourceGeneration => "client source generation is stale",
+            Self::ActiveIdCollision => "connection ID is owned by an active peer generation",
+        };
+        write!(f, "{reason}")
+    }
+}
+
+#[derive(Default)]
+struct CmClientRegistry {
+    clients: HashMap<i32, Client>,
+    generation: i64,
+}
+
+impl CmClientRegistry {
+    fn admit(
+        &mut self,
+        client: &mut Client,
+        source_generation: u64,
+    ) -> Result<(CmClientOwner, Option<Client>), CmClientAdmissionError> {
+        if client.id <= 0 {
+            return Err(CmClientAdmissionError::InvalidConnectionId);
+        }
+        if let Some(current) = self.clients.get(&client.id) {
+            if source_generation < current.source_generation {
+                return Err(CmClientAdmissionError::StaleSourceGeneration);
+            }
+            if source_generation == current.source_generation && !current.disconnected {
+                return Err(CmClientAdmissionError::ActiveIdCollision);
+            }
+        }
+        let generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(CmClientAdmissionError::GenerationExhausted)?;
+        self.generation = generation;
+        client.registry_generation = generation;
+        client.source_generation = source_generation;
+        self.clients
+            .retain(|_, current| !(current.disconnected && current.peer_id == client.peer_id));
+        let replaced = self.clients.insert(client.id, client.clone());
+        Ok((
+            CmClientOwner {
+                id: client.id,
+                generation,
+            },
+            replaced,
+        ))
+    }
+
+    fn is_current(&self, owner: CmClientOwner) -> bool {
+        self.clients
+            .get(&owner.id)
+            .map(|client| client.registry_generation == owner.generation)
+            .unwrap_or(false)
+    }
+
+    fn current_mut(&mut self, owner: CmClientOwner) -> Option<&mut Client> {
+        self.clients
+            .get_mut(&owner.id)
+            .filter(|client| client.registry_generation == owner.generation)
+    }
+
+    fn retire(&mut self, owner: CmClientOwner, close: bool) -> bool {
+        if !self.is_current(owner) {
+            return false;
+        }
+        if close {
+            self.clients.remove(&owner.id);
+        } else if let Some(client) = self.clients.get_mut(&owner.id) {
+            client.disconnected = true;
+        }
+        true
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -535,6 +632,7 @@ struct IpcTaskRunner<T: InvokeUiCM> {
     rx: CmEgressReceiver,
     close: bool,
     conn_id: i32,
+    client_owner: Option<CmClientOwner>,
     file_authority: CmFileAuthority,
     cm_auth_token: String,
     #[cfg(target_os = "windows")]
@@ -643,7 +741,7 @@ fn cm_file_directory(directory: FileDirectory) -> Result<ipc::CmFileDirectory, S
 }
 
 lazy_static::lazy_static! {
-    static ref CLIENTS: RwLock<HashMap<i32, Client>> = Default::default();
+    static ref CLIENTS: RwLock<CmClientRegistry> = Default::default();
 }
 
 static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
@@ -655,6 +753,7 @@ fn cm_egress_sender(id: i32) -> Option<CmEgressSender> {
     CLIENTS
         .read()
         .unwrap()
+        .clients
         .get(&id)
         .map(|client| client.tx.clone())
 }
@@ -663,9 +762,14 @@ fn cm_egress_sender(id: i32) -> Option<CmEgressSender> {
 fn cm_egress_senders(id: i32) -> Vec<CmEgressSender> {
     let clients = CLIENTS.read().unwrap();
     if id == 0 {
-        clients.values().map(|client| client.tx.clone()).collect()
+        clients
+            .clients
+            .values()
+            .map(|client| client.tx.clone())
+            .collect()
     } else {
         clients
+            .clients
             .get(&id)
             .map(|client| vec![client.tx.clone()])
             .unwrap_or_default()
@@ -680,14 +784,15 @@ pub fn set_exit_on_idle(exit_on_idle: bool) {
 #[derive(Clone)]
 pub struct ConnectionManager<T: InvokeUiCM> {
     pub ui_handler: T,
+    source_generation: u64,
 }
 
 pub trait InvokeUiCM: Send + Clone + 'static + Sized {
     fn add_connection(&self, client: &Client);
 
-    fn remove_connection(&self, id: i32, close: bool);
+    fn remove_connection(&self, id: i32, registry_generation: i64, close: bool);
 
-    fn new_message(&self, id: i32, text: String);
+    fn new_message(&self, id: i32, registry_generation: i64, text: String);
 
     fn change_theme(&self, dark: String);
 
@@ -713,6 +818,13 @@ impl<T: InvokeUiCM> DerefMut for ConnectionManager<T> {
 }
 
 impl<T: InvokeUiCM> ConnectionManager<T> {
+    pub fn new(ui_handler: T, source_generation: u64) -> Self {
+        Self {
+            ui_handler,
+            source_generation,
+        }
+    }
+
     fn add_connection(
         &self,
         id: i32,
@@ -731,9 +843,10 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         file: bool,
         privacy_mode: bool,
         #[cfg(not(any(target_os = "ios")))] tx: CmEgressSender,
-    ) {
-        let client = Client {
+    ) -> Result<CmClientOwner, CmClientAdmissionError> {
+        let mut client = Client {
             id,
+            registry_generation: 0,
             authorized,
             disconnected: false,
             is_file_transfer,
@@ -741,9 +854,9 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             is_terminal,
             port_forward,
             conn_type,
-            name: name.clone(),
+            name,
             avatar,
-            peer_id: peer_id.clone(),
+            peer_id,
             keyboard,
             clipboard,
             audio,
@@ -753,65 +866,82 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             tx,
             in_voice_call: false,
             incoming_voice_call: false,
+            source_generation: 0,
         };
-        CLIENTS
+        let (owner, replaced) = CLIENTS
             .write()
             .unwrap()
-            .retain(|_, c| !(c.disconnected && c.peer_id == client.peer_id));
-        CLIENTS.write().unwrap().insert(id, client.clone());
+            .admit(&mut client, self.source_generation)?;
+        #[cfg(not(any(target_os = "ios")))]
+        if let Some(replaced) = replaced.filter(|client| !client.disconnected) {
+            if let Err(error) = replaced.tx.send(Data::Close) {
+                log::debug!(
+                    "superseded CM client {} was already terminal: {}",
+                    replaced.id,
+                    error
+                );
+            }
+        }
         self.ui_handler.add_connection(&client);
+        Ok(owner)
     }
 
-    fn remove_connection(&self, id: i32, close: bool) {
-        if close {
-            CLIENTS.write().unwrap().remove(&id);
-        } else {
-            CLIENTS
-                .write()
-                .unwrap()
-                .get_mut(&id)
-                .map(|c| c.disconnected = true);
+    fn remove_connection(&self, owner: CmClientOwner, close: bool) {
+        if !CLIENTS.write().unwrap().retire(owner, close) {
+            log::debug!(
+                "ignored stale CM client cleanup for {}:{}",
+                owner.id,
+                owner.generation
+            );
+            return;
         }
 
         #[cfg(target_os = "windows")]
         {
-            crate::clipboard::try_empty_clipboard_files(ClipboardSide::Host, id);
+            crate::clipboard::try_empty_clipboard_files(ClipboardSide::Host, owner.id);
         }
 
-        self.ui_handler.remove_connection(id, close);
+        self.ui_handler
+            .remove_connection(owner.id, owner.generation, close);
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if EXIT_ON_IDLE.load(Ordering::SeqCst) && CLIENTS.read().unwrap().is_empty() {
+        if EXIT_ON_IDLE.load(Ordering::SeqCst) && CLIENTS.read().unwrap().clients.is_empty() {
             log::info!("R-T4: no-ui connection manager idle after last IPC client; exiting");
             quit_cm();
         }
     }
 
-    #[cfg(not(target_os = "ios"))]
-    fn voice_call_started(&self, id: i32) {
-        if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
-            client.incoming_voice_call = false;
-            client.in_voice_call = true;
-            self.ui_handler.update_voice_call_state(client);
+    fn new_message(&self, owner: CmClientOwner, text: String) {
+        if CLIENTS.read().unwrap().is_current(owner) {
+            self.ui_handler
+                .new_message(owner.id, owner.generation, text);
+        }
+    }
+
+    fn update_voice_call(&self, owner: CmClientOwner, incoming: bool, active: bool) {
+        let client = CLIENTS.write().unwrap().current_mut(owner).map(|client| {
+            client.incoming_voice_call = incoming;
+            client.in_voice_call = active;
+            client.clone()
+        });
+        if let Some(client) = client {
+            self.ui_handler.update_voice_call_state(&client);
         }
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn voice_call_incoming(&self, id: i32) {
-        if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
-            client.incoming_voice_call = true;
-            client.in_voice_call = false;
-            self.ui_handler.update_voice_call_state(client);
-        }
+    fn voice_call_started(&self, owner: CmClientOwner) {
+        self.update_voice_call(owner, false, true);
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn voice_call_closed(&self, id: i32, _reason: &str) {
-        if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
-            client.incoming_voice_call = false;
-            client.in_voice_call = false;
-            self.ui_handler.update_voice_call_state(client);
-        }
+    fn voice_call_incoming(&self, owner: CmClientOwner) {
+        self.update_voice_call(owner, true, false);
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn voice_call_closed(&self, owner: CmClientOwner, _reason: &str) {
+        self.update_voice_call(owner, false, false);
     }
 }
 
@@ -838,7 +968,15 @@ pub fn close(id: i32) {
 
 #[inline]
 pub fn remove(id: i32) {
-    CLIENTS.write().unwrap().remove(&id);
+    let mut clients = CLIENTS.write().unwrap();
+    if clients
+        .clients
+        .get(&id)
+        .map(|client| client.disconnected)
+        .unwrap_or(false)
+    {
+        clients.clients.remove(&id);
+    }
 }
 
 // server mode send chat to peer
@@ -854,21 +992,21 @@ pub fn send_chat(id: i32, text: String) {
 #[inline]
 pub fn get_clients_state() -> String {
     let clients = CLIENTS.read().unwrap();
-    let res = Vec::from_iter(clients.values().cloned());
+    let res = Vec::from_iter(clients.clients.values().cloned());
     serde_json::to_string(&res).unwrap_or("".into())
 }
 
 #[inline]
 pub fn get_clients_length() -> usize {
     let clients = CLIENTS.read().unwrap();
-    clients.len()
+    clients.clients.len()
 }
 
 #[inline]
 #[cfg(target_os = "android")]
 pub fn has_active_clients() -> bool {
     let clients = CLIENTS.read().unwrap();
-    clients.values().any(|c| !c.disconnected)
+    clients.clients.values().any(|c| !c.disconnected)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -972,7 +1110,36 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                             break;
                                         }
                                     }
+                                    let client_owner = match self.cm.add_connection(
+                                        id,
+                                        is_file_transfer,
+                                        is_view_camera,
+                                        is_terminal,
+                                        port_forward,
+                                        conn_type,
+                                        peer_id,
+                                        name,
+                                        avatar,
+                                        authorized,
+                                        keyboard,
+                                        clipboard,
+                                        audio,
+                                        file,
+                                        privacy_mode,
+                                        self.tx.clone(),
+                                    ) {
+                                        Ok(owner) => owner,
+                                        Err(error) => {
+                                            log::warn!(
+                                                "Rejected CM client-registry admission for connection {}: {}",
+                                                id,
+                                                error
+                                            );
+                                            break;
+                                        }
+                                    };
                                     self.conn_id = id;
+                                    self.client_owner = Some(client_owner);
                                     self.file_authority = file_authority;
                                     self.cm_auth_token = cm_auth_token;
                                     #[cfg(target_os = "windows")]
@@ -982,7 +1149,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         rx_clip = controlled_clip_receiver;
                                         _cliprdr_route = Some(controlled_clip_route);
                                     }
-                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, self.tx.clone());
                                     continue;
                                 }
                                 Data::Close => {
@@ -1002,7 +1168,11 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     CLICK_TIME.store(ms, Ordering::SeqCst);
                                 }
                                 Data::ChatMessage { text } => {
-                                    self.cm.new_message(self.conn_id, text);
+                                    let Some(owner) = self.client_owner else {
+                                        log::warn!("Rejected CM chat before client-registry admission");
+                                        break;
+                                    };
+                                    self.cm.new_message(owner, text);
                                 }
                                 Data::AuthorizedFS { cm_auth_token, mut fs } => {
                                     if !self.file_authority.allows_fs(cm_auth_token == self.cm_auth_token) {
@@ -1106,13 +1276,25 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     }
                                 }
                                 Data::StartVoiceCall => {
-                                    self.cm.voice_call_started(self.conn_id);
+                                    let Some(owner) = self.client_owner else {
+                                        log::warn!("Rejected CM voice-call start before client-registry admission");
+                                        break;
+                                    };
+                                    self.cm.voice_call_started(owner);
                                 }
                                 Data::VoiceCallIncoming => {
-                                    self.cm.voice_call_incoming(self.conn_id);
+                                    let Some(owner) = self.client_owner else {
+                                        log::warn!("Rejected CM incoming voice call before client-registry admission");
+                                        break;
+                                    };
+                                    self.cm.voice_call_incoming(owner);
                                 }
                                 Data::CloseVoiceCall(reason) => {
-                                    self.cm.voice_call_closed(self.conn_id, reason.as_str());
+                                    let Some(owner) = self.client_owner else {
+                                        log::warn!("Rejected CM voice-call close before client-registry admission");
+                                        break;
+                                    };
+                                    self.cm.voice_call_closed(owner, reason.as_str());
                                 }
                                 #[cfg(target_os = "windows")]
                                 Data::AuthorizedClipboardNonFile { id, conn_type, cm_auth_token } => {
@@ -1290,8 +1472,8 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                 }
             }
         }
-        if self.conn_id > 0 {
-            self.cm.remove_connection(self.conn_id, self.close);
+        if let Some(owner) = self.client_owner.take() {
+            self.cm.remove_connection(owner, self.close);
         }
         #[cfg(target_os = "windows")]
         drop(_cliprdr_route);
@@ -1307,6 +1489,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
             rx,
             close: true,
             conn_id: 0,
+            client_owner: None,
             file_authority: CmFileAuthority::absent(),
             cm_auth_token: String::new(),
             #[cfg(target_os = "windows")]
@@ -1381,6 +1564,7 @@ pub async fn start_listen<T: InvokeUiCM>(
     tx: CmEgressSender,
 ) {
     let mut current_id = 0;
+    let mut current_owner = None;
     let mut current_cm_auth_token = String::new();
     let mut file_authority = CmFileAuthority::absent();
     let mut write_jobs: Vec<CmTransferJob> = Vec::new();
@@ -1415,21 +1599,34 @@ pub async fn start_listen<T: InvokeUiCM>(
                 cm_auth_token,
                 ..
             }) => {
+                if current_owner.is_some() {
+                    log::warn!(
+                        "Rejected repeated Android CM login: current conn_id={}, requested conn_id={}",
+                        current_id,
+                        id
+                    );
+                    break;
+                }
                 let connection_authority = ipc::CmConnectionAuthority {
                     valid: !cm_auth_token.is_empty(),
                     file,
                     clipboard: clipboard && conn_type.allows_clipboard_authority(),
                 };
-                file_authority = CmFileAuthority::from_login(
+                if !authorized || !connection_authority.valid {
+                    log::warn!(
+                        "Rejected Android CM login without matching authorized connection: conn_id={}",
+                        id
+                    );
+                    break;
+                }
+                let admitted_file_authority = CmFileAuthority::from_login(
                     id,
                     authorized,
                     conn_type,
                     file,
                     connection_authority,
                 );
-                current_id = id;
-                current_cm_auth_token = cm_auth_token;
-                cm.add_connection(
+                let owner = match cm.add_connection(
                     id,
                     is_file_transfer,
                     is_view_camera,
@@ -1446,10 +1643,28 @@ pub async fn start_listen<T: InvokeUiCM>(
                     file,
                     privacy_mode,
                     tx.clone(),
-                );
+                ) {
+                    Ok(owner) => owner,
+                    Err(error) => {
+                        log::warn!(
+                            "Rejected Android CM client-registry admission for connection {}: {}",
+                            id,
+                            error
+                        );
+                        break;
+                    }
+                };
+                current_id = id;
+                current_owner = Some(owner);
+                current_cm_auth_token = cm_auth_token;
+                file_authority = admitted_file_authority;
             }
             Some(Data::ChatMessage { text }) => {
-                cm.new_message(current_id, text);
+                let Some(owner) = current_owner else {
+                    log::warn!("Rejected Android CM chat before client-registry admission");
+                    break;
+                };
+                cm.new_message(owner, text);
             }
             Some(Data::FS(fs)) => {
                 if !file_authority.allows_fs(true) {
@@ -1482,13 +1697,31 @@ pub async fn start_listen<T: InvokeUiCM>(
                 break;
             }
             Some(Data::StartVoiceCall) => {
-                cm.voice_call_started(current_id);
+                let Some(owner) = current_owner else {
+                    log::warn!(
+                        "Rejected Android CM voice-call start before client-registry admission"
+                    );
+                    break;
+                };
+                cm.voice_call_started(owner);
             }
             Some(Data::VoiceCallIncoming) => {
-                cm.voice_call_incoming(current_id);
+                let Some(owner) = current_owner else {
+                    log::warn!(
+                        "Rejected Android CM incoming voice call before client-registry admission"
+                    );
+                    break;
+                };
+                cm.voice_call_incoming(owner);
             }
             Some(Data::CloseVoiceCall(reason)) => {
-                cm.voice_call_closed(current_id, reason.as_str());
+                let Some(owner) = current_owner else {
+                    log::warn!(
+                        "Rejected Android CM voice-call close before client-registry admission"
+                    );
+                    break;
+                };
+                cm.voice_call_closed(owner, reason.as_str());
             }
             None => {
                 break;
@@ -1496,7 +1729,9 @@ pub async fn start_listen<T: InvokeUiCM>(
             _ => {}
         }
     }
-    cm.remove_connection(current_id, true);
+    if let Some(owner) = current_owner {
+        cm.remove_connection(owner, true);
+    }
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -2446,7 +2681,7 @@ pub fn close_voice_call(id: i32) {
 pub fn quit_cm() {
     // in case of std::process::exit not work
     log::info!("quit cm");
-    CLIENTS.write().unwrap().clear();
+    CLIENTS.write().unwrap().clients.clear();
     crate::platform::quit_gui();
 }
 
@@ -3012,6 +3247,7 @@ mod tests {
         let (tx, _rx) = cm_egress_channel();
         let client = Client {
             id: 7,
+            registry_generation: 1,
             authorized: true,
             disconnected: false,
             is_file_transfer: false,
@@ -3029,6 +3265,7 @@ mod tests {
             privacy_mode: true,
             in_voice_call: false,
             incoming_voice_call: false,
+            source_generation: 0,
             tx,
         };
         let client_json = serde_json::to_value(client).unwrap();
@@ -3053,6 +3290,116 @@ mod tests {
             );
         }
         assert!(!client_payload.contains_key("from_switch"));
+    }
+
+    #[cfg(not(any(target_os = "ios")))]
+    fn registry_test_client(id: i32, peer_id: &str) -> Client {
+        let (tx, _rx) = cm_egress_channel();
+        Client {
+            id,
+            registry_generation: 0,
+            authorized: true,
+            disconnected: false,
+            is_file_transfer: false,
+            is_view_camera: false,
+            is_terminal: false,
+            port_forward: String::new(),
+            conn_type: ipc::CmAuthConnType::Remote,
+            name: "owner".to_owned(),
+            avatar: String::new(),
+            peer_id: peer_id.to_owned(),
+            keyboard: true,
+            clipboard: true,
+            audio: true,
+            file: true,
+            privacy_mode: true,
+            in_voice_call: false,
+            incoming_voice_call: false,
+            source_generation: 0,
+            tx,
+        }
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id() {
+        let mut registry = CmClientRegistry::default();
+        let mut first = registry_test_client(7, "first");
+        let (first_owner, replaced) = registry.admit(&mut first, 11).unwrap();
+        assert!(replaced.is_none());
+
+        let mut second = registry_test_client(7, "second");
+        let (second_owner, replaced) = registry.admit(&mut second, 12).unwrap();
+        assert_eq!(
+            replaced.map(|client| client.peer_id),
+            Some("first".to_owned())
+        );
+        assert_ne!(first_owner, second_owner);
+        assert!(!registry.retire(first_owner, true));
+        assert!(registry.current_mut(first_owner).is_none());
+
+        let current = registry.current_mut(second_owner).unwrap();
+        current.in_voice_call = true;
+        assert!(registry
+            .clients
+            .get(&second_owner.id)
+            .map(|client| client.in_voice_call)
+            .unwrap_or(false));
+        assert!(registry.retire(second_owner, true));
+        assert!(registry.clients.is_empty());
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn r_s11iu_registry_rejects_stale_and_same_source_active_collisions() {
+        let mut registry = CmClientRegistry::default();
+        let mut current = registry_test_client(7, "current");
+        let (owner, _) = registry.admit(&mut current, 12).unwrap();
+        let generation = registry.generation;
+
+        let mut stale = registry_test_client(7, "stale");
+        assert!(matches!(
+            registry.admit(&mut stale, 11),
+            Err(CmClientAdmissionError::StaleSourceGeneration)
+        ));
+        let mut duplicate = registry_test_client(7, "duplicate");
+        assert!(matches!(
+            registry.admit(&mut duplicate, 12),
+            Err(CmClientAdmissionError::ActiveIdCollision)
+        ));
+        assert_eq!(registry.generation, generation);
+        assert!(registry.is_current(owner));
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement() {
+        let mut registry = CmClientRegistry::default();
+        let mut first = registry_test_client(7, "peer");
+        let (first_owner, _) = registry.admit(&mut first, 12).unwrap();
+        assert!(registry.retire(first_owner, false));
+
+        let mut replacement = registry_test_client(7, "peer");
+        let (replacement_owner, replaced) = registry.admit(&mut replacement, 12).unwrap();
+        assert!(replaced.is_none());
+        assert!(!registry.retire(first_owner, true));
+        assert!(registry.is_current(replacement_owner));
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn r_s11iu_generation_exhaustion_does_not_commit_a_client() {
+        let mut registry = CmClientRegistry {
+            clients: HashMap::new(),
+            generation: i64::MAX,
+        };
+        let mut client = registry_test_client(7, "peer");
+        assert!(matches!(
+            registry.admit(&mut client, 12),
+            Err(CmClientAdmissionError::GenerationExhausted)
+        ));
+        assert!(registry.clients.is_empty());
+        assert_eq!(client.registry_generation, 0);
     }
 
     #[test]

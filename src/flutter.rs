@@ -3064,29 +3064,38 @@ pub mod connection_manager {
             self.push_event("add_connection", &[("client", &client_json)]);
         }
 
-        fn remove_connection(&self, id: i32, close: bool) {
+        fn remove_connection(&self, id: i32, registry_generation: i64, close: bool) {
             #[cfg(target_os = "android")]
             {
                 let id = id.to_string();
+                let registry_generation = registry_generation.to_string();
                 if let Err(e) = call_main_service_set_by_name_for_generation(
                     self.service_generation,
                     "remove_connection",
                     Some(&id),
-                    None,
+                    Some(&registry_generation),
                 ) {
                     log::debug!("call_main_service_set_by_name fail,{}", e);
                 }
             }
             self.push_event(
                 "on_client_remove",
-                &[("id", &id.to_string()), ("close", &close.to_string())],
+                &[
+                    ("id", &id.to_string()),
+                    ("registry_generation", &registry_generation.to_string()),
+                    ("close", &close.to_string()),
+                ],
             );
         }
 
-        fn new_message(&self, id: i32, text: String) {
+        fn new_message(&self, id: i32, registry_generation: i64, text: String) {
             self.push_event(
                 "chat_server_mode",
-                &[("id", &id.to_string()), ("text", &text)],
+                &[
+                    ("id", &id.to_string()),
+                    ("registry_generation", &registry_generation.to_string()),
+                    ("text", &text),
+                ],
             );
         }
 
@@ -3160,12 +3169,13 @@ pub mod connection_manager {
         #[cfg(target_os = "linux")]
         std::thread::spawn(crate::ipc::start_pa);
 
-        let cm = ConnectionManager {
-            ui_handler: FlutterHandler {
+        let cm = ConnectionManager::new(
+            FlutterHandler {
                 #[cfg(target_os = "android")]
                 service_generation: 0,
             },
-        };
+            0,
+        );
         if new_thread {
             std::thread::spawn(move || start_ipc(cm));
         } else {
@@ -3192,9 +3202,14 @@ pub mod connection_manager {
         service_generation: u64,
     ) {
         use crate::ui_cm_interface::start_listen;
-        let cm = crate::ui_cm_interface::ConnectionManager {
-            ui_handler: FlutterHandler { service_generation },
-        };
+        if service_generation == 0 {
+            log::error!("refusing to start Android CM channel without a service generation");
+            return;
+        }
+        let cm = crate::ui_cm_interface::ConnectionManager::new(
+            FlutterHandler { service_generation },
+            service_generation,
+        );
         std::thread::spawn(move || start_listen(cm, rx, terminal, tx));
     }
 }

@@ -11210,6 +11210,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hp_ --color never
@@ -11302,9 +11303,9 @@ else
   rc=1
 fi
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
-  echo "  ok  R-S11gz file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"
+  echo "  ok  R-S11gz/R-S11it/R-S11iu file-clipboard routes and CM client lifecycle are bounded and exact-generation-owned"
 else
-  echo "  FAIL R-S11gz: file-clipboard routing regained a shared receiver, colliding identity, stale cleanup, unbounded retention, or nonterminal refusal"
+  echo "  FAIL R-S11gz/R-S11it/R-S11iu: file-clipboard or CM client routing regained shared, bare-ID, stale-generation, unbounded, or nonterminal behavior"
   rc=1
 fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
@@ -14923,7 +14924,8 @@ if grep -B1 'send_to_cm(ipc::Data::ClipboardFile(clip))' src/server/connection.r
 grep -q 'isViewCamera' flutter/lib/models/server_model.dart                                                  || rs19e="$rs19e android-dart-no-viewcamera-gate"
 if grep -qF 'val requiresDesktopCapture: Boolean' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt \
   && grep -qF 'get() = this == REMOTE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt \
-  && grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt \
+  && grep -qF 'controlledCaptureOwners.upsert(' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt \
+  && grep -qF 'jsonObject.getLong("registry_generation")' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt \
   && grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then
   :
 else
@@ -16224,7 +16226,7 @@ fi
 # replacement MainService or stop its listener. Process-wide controlled voice and playback
 # ownership retains that exact generation too, so obsolete service teardown cannot clear a
 # replacement service's same-number owner or projection.
-echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="
+echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_activity_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
 r_s14_status_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt
@@ -16320,17 +16322,24 @@ printf '%s\n' "$virtual_display_block" | grep -qF 'virtualDisplay != null' || r_
 printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: SecurityException)' || r_s14_missing="$r_s14_missing revoked-projection-not-failed"
 printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: IllegalStateException)' || r_s14_missing="$r_s14_missing stopped-projection-not-failed"
 printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getJSONObject("conn_type").getString("t")' || r_s14_missing="$r_s14_missing exact-connection-type-not-decoded"
+printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getLong("registry_generation")' || r_s14_missing="$r_s14_missing exact-client-generation-not-decoded"
 printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType == null)' || r_s14_missing="$r_s14_missing unknown-connection-type-not-rejected"
-printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-upserted"
+printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.upsert(' || r_s14_missing="$r_s14_missing exact-capture-owner-not-upserted"
+printf '%s\n' "$add_connection_block" | grep -qF 'registryGeneration' || r_s14_missing="$r_s14_missing capture-owner-generation-not-bound"
+printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.registryGeneration(id)' || r_s14_missing="$r_s14_missing predecessor-client-generation-not-retained"
+printf '%s\n' "$add_connection_block" | grep -qF 'previousRegistryGeneration' || r_s14_missing="$r_s14_missing predecessor-resources-not-retired"
 printf '%s\n' "$add_connection_block" | grep -qF 'VoiceCallAudioCoordinator.registerControlledConnection(' || r_s14_missing="$r_s14_missing controlled-voice-owner-not-registered"
 printf '%s\n' "$add_connection_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-registration-not-generation-bound"
 printf '%s\n' "$add_connection_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-admission"
-printf '%s\n' "$remove_connection_kt_block" | grep -qF 'controlledCaptureOwners.unregister(id)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-retired"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'val registryGeneration = arg2.toLongOrNull()' || r_s14_missing="$r_s14_missing removal-generation-not-decoded"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'controlledCaptureOwners.unregister(id, registryGeneration)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-retired"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'Rejected stale controlled connection removal' || r_s14_missing="$r_s14_missing stale-capture-owner-removal-not-refused"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'VoiceCallAudioCoordinator.unregisterControlledConnection(' || r_s14_missing="$r_s14_missing controlled-voice-owner-not-retired"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-retirement-not-generation-bound"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-retirement"
 printf '%s\n' "$update_voice_block" | grep -qF 'VoiceCallAudioCoordinator.setControlledVoiceCallActive(' || r_s14_missing="$r_s14_missing controlled-voice-state-not-updated"
 printf '%s\n' "$update_voice_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-update-not-generation-bound"
+printf '%s\n' "$update_voice_block" | grep -qF 'controlledCaptureOwners.isCurrent(id, registryGeneration)' || r_s14_missing="$r_s14_missing controlled-voice-update-not-client-generation-bound"
 awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ && $0 ~ /^[[:space:]]*fun rustSetByName\(/ { serialized = 1 } { previous = $0 } END { exit serialized ? 0 : 1 }' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-resource-dispatch-not-serialized"
 if printf '%s\n' "$add_connection_block" | grep -qE 'isFileTransfer|isViewCamera|isTerminal|portForward'; then
   r_s14_missing="$r_s14_missing reconstructed-connection-type"
@@ -16342,14 +16351,17 @@ grep -qF 'else -> null' "$r_s14_type_kt" || r_s14_missing="$r_s14_missing unknow
 grep -qF '"PortForward" to ControlledConnectionType.PORT_FORWARD' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing port-forward-kotlin-regression-missing"
 grep -qF 'connectionType.requiresDesktopCapture ==' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing complete-kotlin-capture-policy-regression-missing"
 grep -qF 'internal class ControlledCaptureOwnerState' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing service-capture-owner-state-missing"
-grep -qF 'private val owners = mutableSetOf<Int>()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-capture-owner-set-missing"
+grep -qF 'private val owners = mutableMapOf<Int, Owner>()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-capture-owner-map-missing"
 grep -qF 'authorized && connectionType.requiresDesktopCapture' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing owner-admission-not-authorized-remote-only"
-grep -qF 'get() = owners.isNotEmpty()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing capture-demand-not-derived-from-owner-set"
-grep -qF 'fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-remote-input-owner-lookup"
-[ "$(grep -cF 'owners.remove(connectionId)' "$r_s14_owners_kt")" -eq 2 ] || r_s14_missing="$r_s14_missing exact-capture-owner-retirement-paths-incomplete"
+grep -qF 'get() = owners.values.any { it.requiresDesktopCapture }' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing capture-demand-not-derived-from-owner-map"
+grep -qF 'fun remoteInputRegistryGeneration(connectionId: Int): Long?' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-remote-input-owner-lookup"
+grep -qF 'owners[connectionId]?.registryGeneration == registryGeneration' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-client-generation-owner-lookup"
+[ "$(grep -cF 'owners.remove(connectionId)' "$r_s14_owners_kt")" -eq 1 ] || r_s14_missing="$r_s14_missing exact-capture-owner-retirement-path-incoherent"
 grep -qF 'one Remote teardown cleared another live owner' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing concurrent-owner-regression-missing"
 grep -qF 'remove-then-add ordering lost new Remote demand' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing remove-then-add-regression-missing"
 grep -qF 'add-then-remove ordering lost new Remote demand' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing add-then-remove-regression-missing"
+grep -qF 'stale same-ID generation retired its replacement' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing stale-same-id-cleanup-regression-missing"
+grep -qF 'stale same-ID generation replaced the current owner' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing stale-same-id-admission-regression-missing"
 grep -qF 'pub conn_type: ipc::CmAuthConnType' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-client-exact-connection-type-missing"
 if grep -qF '"stop_capture"' src/ui_cm_interface.rs "$r_s14_kt"; then
   r_s14_missing="$r_s14_missing detached-global-stop-edge-retained"
@@ -16394,7 +16406,7 @@ grep -qF 'android_server_generation: u64' "$r_s14_connection" || r_s14_missing="
 grep -qF 'call_main_service_pointer_input_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing pointer-input-not-generation-bound"
 grep -qF 'call_main_service_key_event_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing key-input-not-generation-bound"
 grep -qF 'internal data class ControlledInputOwner' "$r_s14_input_owner_kt" || r_s14_missing="$r_s14_missing exact-input-owner-type"
-grep -qF 'serviceGeneration > 0 && connectionId > 0' "$r_s14_input_owner_kt" || r_s14_missing="$r_s14_missing exact-input-owner-validity"
+grep -qF 'serviceGeneration > 0 && connectionId > 0 && registryGeneration > 0' "$r_s14_input_owner_kt" || r_s14_missing="$r_s14_missing exact-input-owner-validity"
 grep -qF 'internal class ExactOwnerBoundedQueue' "$r_s14_input_queue_kt" || r_s14_missing="$r_s14_missing bounded-input-queue-type"
 grep -qF 'entries.size >= capacity' "$r_s14_input_queue_kt" || r_s14_missing="$r_s14_missing bounded-input-queue-capacity"
 grep -qF 'private const val MAX_PENDING_WHEEL_ACTIONS = 32' "$r_s14_input_kt" || r_s14_missing="$r_s14_missing bounded-wheel-capacity"
@@ -16406,12 +16418,17 @@ if grep -qF 'Timer()' "$r_s14_input_kt" \
   r_s14_missing="$r_s14_missing retired-unbounded-input-timer-path"
 fi
 grep -qF 'old generation retirement selected the replacement owner' "$r_s14_input_test" || r_s14_missing="$r_s14_missing exact-input-generation-aba-regression"
+grep -qF 'nonpositive registry generation was admitted' "$r_s14_input_test" || r_s14_missing="$r_s14_missing exact-input-registry-generation-regression"
+grep -qF 'private val controlledConnections = mutableMapOf<Int, Long>()' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing exact-controlled-voice-owner-map"
 grep -qF 'private var greatestControlledServiceGeneration = 0L' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing monotonic-controlled-audio-generation"
 grep -qF 'private var activeControlledServiceGeneration: Long? = null' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing exact-active-controlled-audio-generation"
 grep -qF 'private var playbackProjection: Pair<Long, MediaProjection>? = null' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-projection-generation-owner"
 grep -qF 'if (!owners.clearControlledConnections(generation))' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing stale-controlled-audio-clear-not-rejected"
 grep -qF 'if (playbackProjection?.first == generation)' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-clear-not-exact-generation"
 grep -qF 'stale generation cleared replacement controlled owners' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-generation-aba-regression"
+grep -qF 'same-ID replacement retained predecessor voice state' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-registry-generation-aba-regression"
+grep -qF 'duplicate same-ID registry generation was admitted' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-duplicate-registry-generation-regression"
+grep -qF 'stale same-ID registry generation was admitted' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-stale-registry-generation-regression"
 grep -qF '"(IIIII)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing pointer-jni-connection-id-or-result"
 grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-connection-id-or-result"
 grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-input-ledger"

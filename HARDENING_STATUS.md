@@ -31648,6 +31648,206 @@ Force-Stop/reconnect/resource soak and native Windows same-connection focus/
 minimize capture-through-presentation display-latency reproduction remain
 STOP-SHIP.
 
+### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership (2026-09-08)
+
+**Status:** SOURCE VERIFIED / FOCUSED AND INDEPENDENT SOURCE-MUTATION GATES
+PASS / EXACT RUST, DART, NATIVE, INSTALLED-PLATFORM, PERFORMANCE, ARTIFACT,
+INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+
+**Platform, action, and boundary.** This slice covers the shared desktop and
+Android connection-manager client registry from one authorized Login admission
+through terminal remove/disconnect, chat publication, voice-state mutation, and
+native-to-Dart presentation. The authority boundary is one exact desktop CM
+stream or Android MainService-owned accepted connection -> one checked
+process-lifetime client-registry generation -> only that task's client state and
+UI events. The intentionally persistent Android foreground service and its
+existing exact MainService generation remain intact. User-originated operations
+that intentionally select the currently displayed client by ID remain current-
+entry selectors rather than task-lifecycle authority.
+
+**Source-proven old path.** `src/ui_cm_interface.rs` stored all clients in a
+process-global `RwLock<HashMap<i32, Client>>`. `ConnectionManager::add_connection`
+unconditionally inserted by the server-assigned ID after retaining disconnected
+same-peer cards. Desktop terminal cleanup and Android listener cleanup then
+called `remove_connection` with only that ID; chat and voice state did the same.
+The Android listener retained `current_id`, not the admission it created, and
+accepted another Login on the same task. The Flutter bridge's remove and chat
+events carried only the ID, and Dart removal, chat, and voice selection likewise
+matched only the ID. Android's synchronized service-side capture-owner set and
+remove callback also keyed input, audio, capture reconciliation, and notification
+cleanup only by that ID. A reused ID could therefore let an older draining task
+mutate or remove a newer entry or retire the replacement's Android resources
+after Rust had correctly admitted it. This is especially relevant to Android because a
+new exact MainService generation can supersede an older generation without
+weakening the requested task-swipe-persistent service, but the same bare-ID flaw
+also existed in desktop process state. A desktop same-ID candidate could replace
+an incumbent before its terminal cleanup; an old UI event could select a newer
+card. This is source-level identity/lifecycle-finality debt. It is not evidence
+that a deployed artifact reached the collision, an authorization or privilege
+bypass, public exposure, host/service/firewall/network/container mutation,
+compromise, or causation/reproduction of the separately reported Android task-
+swipe or Windows focus/minimize display-only delay.
+
+**Correct ownership.** `CmClientRegistry` now owns both entries and a checked
+monotonic generation which survives entry clearing. Its single-lock `admit`
+transaction rejects nonpositive IDs, a source generation older than the current
+entry, and an active same-source collision before checked generation allocation
+or commit. It stamps both the private source generation and serialized registry
+generation and inserts exactly once. Exhaustion returns without changing the
+registry or candidate. A disconnected entry can be replaced. A strictly newer
+Android MainService source generation may supersede an active older entry; the
+new manager takes ownership and nonblockingly sends `Data::Close` to the
+displaced egress owner before publishing the replacement. Desktop managers and
+the native Windows probe use process-local source generation zero, so an active
+desktop same-ID collision fails closed instead of superseding.
+
+`ConnectionManager::add_connection` returns the private `CmClientOwner`
+`(id, generation)` minted by that transaction. The desktop whole-stream runner
+commits it only after route/readiness and registry admission succeed; the Android
+listener commits it only after the existing authorized, nonempty connection
+token and registry admission succeed. Both retain the owner through terminal
+cleanup. Repeated Android Login and pre-admission chat/voice are terminal. Chat,
+voice, remove, and disconnect all check the exact owner. If it is stale, cleanup
+returns before clipboard cleanup, UI callback, idle-exit evaluation, or any
+registry mutation. Voice state is cloned while locked and published only after
+the registry guard leaves the statement. The public bare-ID UI removal helper
+can remove only a disconnected entry; it cannot retire an active task owner.
+No registry lock is held across async work, JNI, UI, or clipboard callbacks.
+
+The Android bridge rejects source generation zero and constructs the manager
+with the exact service generation already carried by the server connection.
+Generation-bound Java callbacks continue to reject an older MainService object.
+Serialized clients and native remove/chat events now carry the signed registry
+generation across Rust, JSON, Kotlin `Long`, and Dart `int` representations. The
+synchronized Android resource mirror retains one exact generation and capture
+classification for every connection ID and returns Remote input authority with
+that generation. `ControlledInputOwner` carries service, connection, and registry
+generations, so the existing owner-bound queues, delayed actions, and pointer
+sequence cannot inherit same-ID predecessor work. Controlled voice registration
+and activity now use a connection-to-registry-generation map rather than an ID
+set. An existing ID admits only a strictly newer generation; a stale or duplicate
+add returns before input/audio/capture/notification publication. A valid newer
+add retires the predecessor's exact input owner, voice registration/activity and
+recorder demand, and notification before publishing replacement resource effects.
+Remove and voice callbacks likewise prove the exact current generation before
+any controlled-resource side effect. This closes the second same-service callback
+race without weakening MainService persistence.
+Dart rejects a lower-generation add before dialog or tab mutation; a newer
+generation removes the old client and tab together and appends their replacement
+together. Remove, chat, and voice events apply only to the matching current
+generation. This preserves the persistent service rather than using Activity/
+task removal as cleanup.
+
+Four pure Rust registry regressions cover stale-owner mutation/retirement after ID
+reuse, stale-source and active same-source collision refusal without generation
+consumption, disconnected same-source replacement with stale cleanup refusal,
+and generation exhaustion without commit. Android controlled-connection,
+controlled-input, and controlled-voice fixtures cover invalid, duplicate, stale,
+and exact same-ID generations; preserve multi-owner capture/voice demand; prove
+Remote-only input-generation lookup; and prove predecessor queued input and voice
+activity are not inherited. The existing Dart serialization regression binds the
+field. The focused route-budget verifier and independently
+implemented workspace validator bind the production, bridge, Dart, test,
+shared/Apple wiring, normative, digest, and ledger surfaces with deliberate
+mutations. The focused Android ownership verifier passed normally and rejected
+all 573 deliberate mutations. The focused route-budget verifier passed normally
+and rejected all 108 deliberate mutations. The independent workspace baseline,
+a widened targeted audit of all 270 selected mutation tuples at 282 duplicate
+runtime targets, and the complete 6,173-case independent source-mutation catalog
+passed. The exact receipts and evidence limits follow.
+
+Current normative identity for this slice:
+
+```text
+2a5e975fca589eee85f3c5b2bc050ce07907ac4b70a766dccc1d3462967713e9  requirements.html
+```
+
+**Source-verification receipt — 2026-09-09.** The frozen candidate passed
+Python AST parsing of all three changed Python gates, `requirements.html`
+parsing, Bash parsing of `scripts/verify.sh` and
+`scripts/native-codec-watch.sh`, the exact requirements SHA-256 above,
+`git diff --check`, the focused Android ownership and route-budget normal and
+self-test modes, the independent workspace baseline, and native-codec-watch
+normal and hostile-self-test modes. Pinned Rust 1.75 `rustfmt --check --config
+skip_children=true` passed for `src/ui_cm_interface.rs` and
+`src/windows_cm_lifecycle_probe.rs`. `src/flutter.rs` parses, but whole-file
+format checking remains unavailable as slice evidence because that pre-existing
+file has unrelated format drift outside this diff.
+
+The complete independent catalog restarted at mutation one and ran all 6,173
+source mutations against one frozen read-only repository bind. It was one direct
+invocation with no shard, resume, filter, parallel duplicate, host listener,
+published port, or product process:
+
+```text
+container:  r-s11iu-independent-source-catalog-20260908-v5
+id:         83313ea60e7cc228ee812d7d738b0b2c8625ee8bbfeadc2ea729149d585ba251
+image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
+command:    /usr/bin/python3 -I -S /repo/scripts/verify-verifier-workspace.py --repo . --source-mutations-only
+started:    2026-09-08T20:28:41.309213361Z
+finished:   2026-09-09T01:04:21.685352728Z
+duration:   4h 35m 40.376139367s
+exit:       0
+OOMKilled:  false
+restart:    0
+error:      empty
+catalog:    6173 source mutations
+output:     verify-verifier-workspace: ok
+SizeRw:     8192 bytes
+SizeRootFs: 1215995904 bytes
+```
+
+Terminal inspection proved UID/GID 1000:1000, network `none`, read-only root,
+read-only `/repo`, `CapDrop=[ALL]`, no added capability,
+`no-new-privileges`, private IPC, a 64-PID limit, two CPUs, 2 GiB memory with no
+additional swap, and one private 512 MiB `nosuid,nodev,noexec` `/tmp`. There was
+no port binding, publish-all-ports setting, device, Docker socket, host
+namespace, or writable repository mount. Live observations showed exactly one
+CPU-bound Python PID, approximately 315-363 MiB memory, no OOM, no restart, and
+no container error. The 8 KiB writable layer was the only per-container
+residue; the approximately 1.22 GiB root was the pre-existing immutable image.
+The exited container was removed only after its result and confinement receipt
+were captured.
+
+The failure trail is retained rather than credited. Catalog v1
+(`f26d82a412c44caf6b03c0ce6383e05cac892223454467fc67c4ce0f1d2beadd`,
+`2026-09-08T13:03:53.280672779Z` to `2026-09-08T13:05:30.380576780Z`)
+was interrupted with exit 130.
+Catalog v2
+(`00d95717af3e3e4387a1bbfb519122f7db69f13357935266ac161bc66b1b8a97`,
+`2026-09-08T14:31:17.190428269Z` to `2026-09-08T14:36:42.516780850Z`)
+exited 1 on a stale mutation fixture. Catalog v3
+(`5de4115e57e021b6dbdd3275f6070d24d3c0744193aea1709c0a4f9fb6b279c9`,
+`2026-09-08T14:38:12.460202462Z` to `2026-09-08T17:00:45.742203195Z`)
+exited 1 because the desktop admission success-arm mutation survived. Catalog v4
+(`073c5f6e5a60162f11e6f37b365e35c8aaf57c3ddd5bebaca1bc4dacaeaa9654`,
+`2026-09-08T17:03:41.234076966Z` to `2026-09-08T19:27:06.680234600Z`)
+exited 1 because a mutation was rejected under a different diagnostic contract than its fixture required. All
+four were non-OOM, had zero restarts and empty Docker errors, used the same
+locked profile, had 8 KiB writable layers, were removed after inspection, and
+are uncredited. The success-arm and diagnostic-fixture defects were corrected;
+the widened targeted audit then passed all 270 selected tuples at 282 runtime
+targets before the successful full v5 restart.
+
+The locked image contains no `cargo`, `rustc`, `dart`, `flutter`, `kotlinc`,
+`kotlin`, or `java`, and this read-only checkout has no offline Cargo vendor
+tree. Consequently the wired four Rust behavior tests, Dart test, and Android
+Kotlin behavior fixtures were source- and mutation-verified but not compiled or
+executed here. No full release build was run. Those limitations are not converted
+into passing runtime evidence.
+
+This slice adds no retry, reconnect, timer, task, worker, thread, runtime,
+listener, port, endpoint, network behavior, protocol wire field, privilege,
+service stop, Activity kill, persistence weakening, capture/display behavior,
+dependency, or artifact. Exact Rust/Dart/native compilation and execution,
+physical Android task-swipe/reopen/Force-Stop behavior, exact-current Windows
+same-connection focus/minimize capture-through-presentation latency, installed
+collision/supersession behavior, complete cross-platform file transactions,
+cross-version behavior, sustained latency/CPU/memory/resource soak, signed
+artifacts, clean committed cold R-B2/R-B10 equality, independent reproduction,
+causation, external review, and proof that the complete connection flow is
+correct and performant remain open and STOP-SHIP where already designated.
+
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 
 **Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE

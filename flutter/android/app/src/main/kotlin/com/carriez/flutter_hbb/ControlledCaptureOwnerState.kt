@@ -1,31 +1,48 @@
 package com.carriez.flutter_hbb
 
 internal class ControlledCaptureOwnerState {
-    private val owners = mutableSetOf<Int>()
+    private data class Owner(
+        val registryGeneration: Long,
+        val requiresDesktopCapture: Boolean,
+    )
+
+    private val owners = mutableMapOf<Int, Owner>()
 
     val requiresDesktopCapture: Boolean
-        get() = owners.isNotEmpty()
+        get() = owners.values.any { it.requiresDesktopCapture }
 
-    fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)
+    fun remoteInputRegistryGeneration(connectionId: Int): Long? =
+        owners[connectionId]
+            ?.takeIf { it.requiresDesktopCapture }
+            ?.registryGeneration
+
+    fun registryGeneration(connectionId: Int): Long? = owners[connectionId]?.registryGeneration
+
+    fun isCurrent(connectionId: Int, registryGeneration: Long): Boolean =
+        registryGeneration > 0 && owners[connectionId]?.registryGeneration == registryGeneration
 
     fun upsert(
         connectionId: Int,
+        registryGeneration: Long,
         authorized: Boolean,
         connectionType: ControlledConnectionType,
     ): Boolean {
-        if (connectionId <= 0) {
+        if (connectionId <= 0 || registryGeneration <= 0) {
             return false
         }
-        if (authorized && connectionType.requiresDesktopCapture) {
-            owners.add(connectionId)
-        } else {
-            owners.remove(connectionId)
+        val current = owners[connectionId]
+        if (current != null && registryGeneration <= current.registryGeneration) {
+            return false
         }
+        owners[connectionId] = Owner(
+            registryGeneration,
+            authorized && connectionType.requiresDesktopCapture,
+        )
         return true
     }
 
-    fun unregister(connectionId: Int): Boolean {
-        if (connectionId <= 0) {
+    fun unregister(connectionId: Int, registryGeneration: Long): Boolean {
+        if (!isCurrent(connectionId, registryGeneration)) {
             return false
         }
         owners.remove(connectionId)

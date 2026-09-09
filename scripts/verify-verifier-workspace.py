@@ -28595,7 +28595,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
     exact_owner_renderer_size = extract_between(
         sources["flutter_source"],
         "fn set_exact_owned_display_size(",
-        "\n    fn with_exact_ui_owner_renderer",
+        "\n    fn update_pixelbuffer_texture(",
         "independent exact-owner renderer sizing",
     )
     require_order(
@@ -30863,7 +30863,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
         wrapper = extract_between(
             sources[key],
             "bool takeCursorPosition(",
-            "\n  void registerPixelbufferTexture(",
+            "\n  bool registerPixelbufferTexture(",
             f"independent {key} cursor wrapper",
         )
         coordinate_label = (
@@ -35077,12 +35077,41 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "desktop texture exact release contract",
         ),
         (
-            '"await retiring.retire();"',
+            '"if (!wanted)",\n            "_requestCurrentRetirement();"',
+            "desktop texture synchronous withdrawal contract",
+        ),
+        (
+            '"Future<void>? _currentRetirement;"',
+            "desktop texture retained retirement-finality contract",
+        ),
+        (
+            '"await _finishCurrentRetirement(retiring);"',
             "desktop texture predecessor-finality contract",
         ),
         (
-            '"_wanted ? _current != null || _creationFailed : _current == null"',
+            '"if (retiring != null && _currentRetirement != null)",\n'
+            '            "await _finishCurrentRetirement(retiring);",',
+            "desktop texture in-flight predecessor drain contract",
+        ),
+        (
+            '"? (_current != null && _currentRetirement == null) || _creationFailed"',
             "desktop texture failed-creation bound",
+        ),
+        (
+            '"bool _nativePublished = false;"',
+            "desktop native publication-ownership contract",
+        ),
+        (
+            '"if register && !handler.displays.contains(&display)"',
+            "native selected-display publication contract",
+        ),
+        (
+            '"info.texture_rgba_ptr == ptr"',
+            "native exact-pointer publication contract",
+        ),
+        (
+            '"fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact()"',
+            "native exact-pointer publication regression contract",
         ),
         (
             '"if (_retired || !selected) return;"',
@@ -35514,8 +35543,9 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "Linux texture-plugin fresh-bridge behavior gate",
     )
 
+    lifecycle_source = sources["desktop_texture_lifecycle_source"]
     require_order(
-        sources["desktop_texture_lifecycle_source"],
+        lifecycle_source,
         (
             "abstract class RetirableDesktopTexture",
             "Future<bool> activate();",
@@ -35530,13 +35560,87 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "await _activationFuture;",
             "class LatestDesktopTextureSlot",
             "int _demandRevision = 0;",
+            "Future<void>? _currentRetirement;",
+        ),
+        "independent result-bearing desktop texture activation ownership",
+    )
+    texture_slot = extract_braced_item(
+        lifecycle_source,
+        "class LatestDesktopTextureSlot",
+        "independent serialized desktop texture slot",
+    )
+    require_order(
+        extract_braced_item(
+            texture_slot,
+            "void setWanted(bool wanted)",
+            "independent desktop texture demand transition",
+        ),
+        (
+            "_demandRevision += 1;",
+            "if (!wanted)",
+            "_requestCurrentRetirement();",
+            "_ensureReconcile();",
+        ),
+        "independent synchronous display-withdrawal invalidation",
+    )
+    require_order(
+        extract_braced_item(
+            texture_slot,
+            "void _requestCurrentRetirement()",
+            "independent exact texture retirement request",
+        ),
+        (
+            "final current = _current;",
+            "if (current == null || _currentRetirement != null)",
+            "final retirement = current.retire();",
+            "_currentRetirement = _observeRetirement(retirement);",
+            "_onError('retire', error, stackTrace);",
+            "_currentRetirement = Future<void>.value();",
+        ),
+        "independent one-shot retained texture retirement request",
+    )
+    require_order(
+        extract_braced_item(
+            texture_slot,
+            "Future<void> _finishCurrentRetirement(T current)",
+            "independent exact texture retirement finality",
+        ),
+        (
+            "final retirement = _currentRetirement;",
+            "await retirement;",
+            "if (identical(_current, current))",
+            "_current = null;",
+            "_currentRetirement = null;",
+        ),
+        "independent exact predecessor clearance after retirement finality",
+    )
+    slot_reconcile = extract_braced_item(
+        texture_slot,
+        "Future<void> _reconcile()",
+        "independent desktop texture reconciliation",
+    )
+    require_order(
+        slot_reconcile,
+        (
+            "if (retiring != null && _currentRetirement != null)",
+            "await _finishCurrentRetirement(retiring);",
             "final demandRevision = _demandRevision;",
             "activated = await candidate.activate();",
-            "await candidate.retire();",
+            "if (_currentRetirement != null)",
+            "await _finishCurrentRetirement(candidate);",
+            "if (!activated)",
+            "_requestCurrentRetirement();",
+            "await _finishCurrentRetirement(candidate);",
             "if (_wanted && _demandRevision == demandRevision)",
-            "await retiring.retire();",
+            "_requestCurrentRetirement();",
+            "await _finishCurrentRetirement(retiring);",
         ),
-        "independent result-bearing desktop texture activation finality",
+        "independent activation cancellation and replacement after exact retirement",
+    )
+    require_text(
+        texture_slot,
+        "? (_current != null && _currentRetirement == null) || _creationFailed",
+        "independent settled texture demand excludes retiring predecessors",
     )
     require_absent(
         sources["desktop_render_texture_source"],
@@ -35548,10 +35652,153 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "Future<bool> activate() => _lifecycle.activate();",
         "independent slot-owned pixelbuffer activation",
     )
+    pixelbuffer_texture = extract_braced_item(
+        sources["desktop_render_texture_source"],
+        "class _PixelbufferTexture",
+        "independent pixelbuffer texture owner",
+    )
+    require_order(
+        pixelbuffer_texture,
+        (
+            "bool _nativePublished = false;",
+            "throw StateError('Pixelbuffer texture publication state is incomplete');",
+            "final published = platformFFI.registerPixelbufferTexture(",
+            "_sessionId, _clientOwnerId, _display, ptr, true",
+            "if (!published)",
+            "throw StateError('Pixelbuffer texture publication was refused');",
+            "_nativePublished = true;",
+            "_ffi.textureModel.setTextureId",
+            "final nativePublished = _nativePublished;",
+            "_nativePublished = false;",
+            "_sessionId, _clientOwnerId, _display, ptr, false",
+            "throw StateError('Pixelbuffer texture unpublication was refused');",
+            "_ffi.textureModel.clearTextureId(display: _display, id: id);",
+            "await textureRenderer.closeTexture(_textureKey);",
+        ),
+        "independent result-bearing exact-pointer pixelbuffer lifetime",
+    )
+    renderer_texture_update = extract_braced_item(
+        sources["flutter_source"],
+        "fn update_pixelbuffer_texture(&self, display:",
+        "independent native pixelbuffer pointer operation",
+    )
+    require_order(
+        renderer_texture_update,
+        (
+            "if ptr == 0",
+            "if !register",
+            "info.texture_rgba_ptr == ptr",
+            "if !exact",
+            "sessions_lock.remove(&display);",
+            "if info.texture_rgba_ptr == ptr",
+            "if info.texture_rgba_ptr != usize::default()",
+            "return false;",
+            "info.texture_rgba_ptr = ptr;",
+            "true",
+        ),
+        "independent nonzero exact-pointer register/unregister semantics",
+    )
+    handler_texture_update = extract_braced_item(
+        sources["flutter_source"],
+        "fn update_pixelbuffer_texture(\n        &self,\n        session_id:",
+        "independent native pixelbuffer owner admission",
+    )
+    require_order(
+        handler_texture_update,
+        (
+            "let handler = handlers.get(session_id)?;",
+            "if handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return Some(false);",
+            "if register && !handler.displays.contains(&display)",
+            "return Some(false);",
+            ".update_pixelbuffer_texture(display, ptr, register)",
+        ),
+        "independent exact owner and selected-display publication admission",
+    )
+    exported_texture_update = extract_braced_item(
+        sources["flutter_source"],
+        "pub fn session_register_pixelbuffer_texture(",
+        "independent native pixelbuffer export",
+    )
+    require_order(
+        exported_texture_update,
+        (
+            "client_owner_id: SessionID,",
+            "register: bool,",
+            ") -> bool",
+            ".update_pixelbuffer_texture(",
+            "&session_id,",
+            "&client_owner_id,",
+            "ptr,",
+            "register,",
+            "return admitted;",
+            "false",
+        ),
+        "independent result-bearing exact-pointer native export",
+    )
+    ffi_texture_update = extract_braced_item(
+        sources["flutter_ffi_source"],
+        "pub fn session_register_pixelbuffer_texture(",
+        "independent pixelbuffer FFI wrapper",
+    )
+    require_order(
+        ffi_texture_update,
+        (
+            "client_owner_id: SessionID,",
+            "register: bool,",
+            ") -> SyncReturn<bool>",
+            "session_id,",
+            "client_owner_id,",
+            "display,",
+            "ptr,",
+            "register,",
+        ),
+        "independent result-bearing exact-pointer FFI propagation",
+    )
+    for key in ("native_model_source", "web_model_source"):
+        dart_texture_update = extract_between(
+            sources[key],
+            "bool registerPixelbufferTexture(",
+            "Future<void> init(",
+            f"independent {key} pixelbuffer wrapper",
+        )
+        require_order(
+            dart_texture_update,
+            (
+                "SessionID clientOwnerId, int display, int ptr, bool register",
+                "clientOwnerId: clientOwnerId",
+                "display: display",
+                "ptr: ptr",
+                "register: register",
+            ),
+            f"independent {key} exact-pointer operation propagation",
+        )
+    web_texture_update = extract_between(
+        sources["web_bridge_source"],
+        "bool sessionRegisterPixelbufferTexture(",
+        "\n  // Dup to the function",
+        "independent web pixelbuffer compatibility stub",
+    )
+    require_order(
+        web_texture_update,
+        (
+            "required UuidValue clientOwnerId,",
+            "required int ptr,",
+            "required bool register,",
+            "return false;",
+        ),
+        "independent result-bearing web pixelbuffer parity",
+    )
+    require_text(
+        sources["flutter_source"],
+        "fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact()",
+        "independent exact display/pointer publication regression",
+    )
     for test in (
         "rejected initialization is reported and the allocation is released",
         "failed asynchronous activation is retired and retry is bounded",
         "new demand during failed activation receives a fresh exact attempt",
+        "withdrawal during successful activation retires before replacement",
     ):
         require_text(
             sources["desktop_texture_lifecycle_test"],
@@ -35577,6 +35824,22 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "desktop texture awaited-activation mutation",
         ),
         (
+            '"false demand synchronously requests retirement"',
+            "desktop texture synchronous-withdrawal mutation",
+        ),
+        (
+            '"one retained current retirement future"',
+            "desktop texture retained-retirement mutation",
+        ),
+        (
+            '"exact current retirement invocation"',
+            "desktop texture exact-retirement invocation mutation",
+        ),
+        (
+            '"activation observes requested retirement finality"',
+            "desktop texture activation-crossing-withdrawal mutation",
+        ),
+        (
             '"failed candidate retirement finality"',
             "desktop texture failed-candidate finality mutation",
         ),
@@ -35593,6 +35856,38 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "desktop texture newer-demand test mutation",
         ),
         (
+            '"successful in-flight withdrawal behavior regression"',
+            "desktop texture successful-withdrawal test mutation",
+        ),
+        (
+            '"native publication refusal is activation failure"',
+            "desktop texture native-publication result mutation",
+        ),
+        (
+            '"native publication ownership commit"',
+            "desktop texture native-publication ownership mutation",
+        ),
+        (
+            '"pixel owner publication"',
+            "desktop texture publication owner mutation",
+        ),
+        (
+            '"pixel owner unpublication"',
+            "desktop texture unpublication owner mutation",
+        ),
+        (
+            '"native selected-display publication admission"',
+            "desktop texture selected-display mutation",
+        ),
+        (
+            '"native exact-pointer unpublication"',
+            "desktop texture exact-pointer mutation",
+        ),
+        (
+            '"exact-pointer native behavior regression"',
+            "desktop texture exact-pointer regression mutation",
+        ),
+        (
             '("lifecycle", "return _retireFuture ??= _retire();", '
             '"return _retire();", "exact retirement finality"),',
             "desktop texture exact-finality mutation",
@@ -35603,8 +35898,7 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "desktop texture exact-release mutation",
         ),
         (
-            '("lifecycle", "await retiring.retire();", '
-            '"retiring.retire();", "predecessor finality"),',
+            '"predecessor finality"',
             "desktop texture predecessor-finality mutation",
         ),
         (
@@ -36000,6 +36294,27 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
     ):
         require_text(mutation_inventory, text, label)
+
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11iv</span>',
+        "exact texture withdrawal/publication requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>407</td>",
+        "exact texture withdrawal/publication Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication",
+        "exact texture withdrawal/publication hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11iv_ --color never",
+        "exact texture withdrawal/publication shared behavior gate",
+    )
 
     require_text(
         sources["requirements"],
@@ -91254,11 +91569,11 @@ def run_source_mutations(sources):
         ),
         (
             "desktop_texture_lifecycle_verifier",
-            '"await retiring.retire();",\n'
-            '            "if (identical(_current, retiring))",',
-            '"retiring.retire();",\n'
-            '            "if (identical(_current, retiring))",',
-            "desktop texture predecessor-finality contract",
+            '"if (retiring != null && _currentRetirement != null)",\n'
+            '            "await _finishCurrentRetirement(retiring);",',
+            '"if (retiring != null && _currentRetirement != null)",\n'
+            '            "_finishCurrentRetirement(retiring);",',
+            "desktop texture in-flight predecessor drain contract",
         ),
         (
             "desktop_texture_lifecycle_verifier",
@@ -91502,19 +91817,85 @@ def run_source_mutations(sources):
             "desktop_texture_lifecycle_source",
             "activated = await candidate.activate();",
             "activated = true;",
-            "independent result-bearing desktop texture activation finality",
+            "independent activation cancellation and replacement after exact retirement",
         ),
         (
             "desktop_texture_lifecycle_source",
             "if (_wanted && _demandRevision == demandRevision)",
             "if (_wanted)",
-            "independent result-bearing desktop texture activation finality",
+            "independent activation cancellation and replacement after exact retirement",
+        ),
+        (
+            "desktop_texture_lifecycle_source",
+            "if (!wanted) {\n      _requestCurrentRetirement();\n    }",
+            "if (!wanted) {\n      _ensureReconcile();\n    }",
+            "independent synchronous display-withdrawal invalidation",
+        ),
+        (
+            "desktop_texture_lifecycle_source",
+            "Future<void>? _currentRetirement;",
+            "Future<void>? ignoredRetirement;",
+            "independent result-bearing desktop texture activation ownership",
+        ),
+        (
+            "desktop_texture_lifecycle_source",
+            "final retirement = current.retire();",
+            "final retirement = Future<void>.value();",
+            "independent one-shot retained texture retirement request",
+        ),
+        (
+            "desktop_texture_lifecycle_source",
+            "await _finishCurrentRetirement(candidate);",
+            "_current = null;",
+            "independent activation cancellation and replacement after exact retirement",
         ),
         (
             "desktop_render_texture_source",
             "Future<bool> activate() => _lifecycle.activate();",
             "Future<bool> activate() async => true;",
             "independent slot-owned pixelbuffer activation",
+        ),
+        (
+            "desktop_render_texture_source",
+            "if (!published)",
+            "if (false)",
+            "independent result-bearing exact-pointer pixelbuffer lifetime",
+        ),
+        (
+            "desktop_render_texture_source",
+            "_sessionId, _clientOwnerId, _display, ptr, false",
+            "_sessionId, _sessionId, _display, ptr, false",
+            "independent result-bearing exact-pointer pixelbuffer lifetime",
+        ),
+        (
+            "flutter_source",
+            "if register && !handler.displays.contains(&display)",
+            "if false",
+            "independent exact owner and selected-display publication admission",
+        ),
+        (
+            "flutter_source",
+            "info.texture_rgba_ptr == ptr",
+            "info.texture_rgba_ptr != ptr",
+            "independent nonzero exact-pointer register/unregister semantics",
+        ),
+        (
+            "flutter_ffi_source",
+            ") -> SyncReturn<bool> {\n    SyncReturn(super::flutter::session_register_pixelbuffer_texture(",
+            ") -> SyncReturn<()> {\n    SyncReturn(super::flutter::session_register_pixelbuffer_texture(",
+            "independent result-bearing exact-pointer FFI propagation",
+        ),
+        (
+            "native_model_source",
+            "int ptr, bool register) =>",
+            "int ptr, bool ignoredRegister) =>",
+            "independent native_model_source exact-pointer operation propagation",
+        ),
+        (
+            "web_bridge_source",
+            "required bool register,\n      dynamic hint}) {\n    return false;",
+            "required bool register,\n      dynamic hint}) {\n    return true;",
+            "independent result-bearing web pixelbuffer parity",
         ),
         (
             "desktop_texture_lifecycle_test",
@@ -91533,6 +91914,18 @@ def run_source_mutations(sources):
             "new demand during failed activation receives a fresh exact attempt",
             "new demand during failed activation is discarded",
             "independent desktop texture regression: new demand during failed activation receives a fresh exact attempt",
+        ),
+        (
+            "desktop_texture_lifecycle_test",
+            "withdrawal during successful activation retires before replacement",
+            "withdrawal during successful activation reuses predecessor",
+            "independent desktop texture regression: withdrawal during successful activation retires before replacement",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact()",
+            "fn pixelbuffer_publication_is_not_pointer_exact()",
+            "independent exact display/pointer publication regression",
         ),
         (
             "client_io_loop",
@@ -92554,6 +92947,30 @@ def run_source_mutations(sources):
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "desktop texture lifecycle hardening ledger",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11iv</span>',
+            '<div class="req"><span class="id">R-S11iv-disabled</span>',
+            "exact texture withdrawal/publication requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>407</td>",
+            "<tr><td>407-disabled</td>",
+            "exact texture withdrawal/publication Appendix C row",
+        ),
+        (
+            "hardening",
+            "### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication",
+            "### R-S11iv-disabled/R-S11e-285 — exact desktop texture withdrawal and native pointer publication",
+            "exact texture withdrawal/publication hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11iv_ --color never",
+            "true # exact-pointer publication behavior gate disabled",
+            "exact texture withdrawal/publication shared behavior gate",
         ),
         (
             "requirements",

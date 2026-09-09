@@ -46,6 +46,7 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
   final textureRenderer = TextureRgbaRenderer();
   late final DesktopTextureLifecycle _lifecycle;
   int? _ptr;
+  bool _nativePublished = false;
 
   Future<bool> _initialize() async {
     final id = await textureRenderer.createTexture(_textureKey);
@@ -62,19 +63,31 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
     final id = _id;
     final ptr = _ptr;
     if (id == null || id == -1 || ptr == null || ptr == 0) {
-      return;
+      throw StateError('Pixelbuffer texture publication state is incomplete');
     }
+    final published = platformFFI.registerPixelbufferTexture(
+        _sessionId, _clientOwnerId, _display, ptr, true);
+    if (!published) {
+      throw StateError('Pixelbuffer texture publication was refused');
+    }
+    _nativePublished = true;
     _ffi.textureModel.setTextureId(display: _display, id: id);
-    platformFFI.registerPixelbufferTexture(
-        _sessionId, _clientOwnerId, _display, ptr);
     debugPrint(
         "create pixelbuffer texture: peerId: ${_ffi.id} display:$_display, textureId:$id, texturePtr:$ptr");
   }
 
   void _unpublish() {
+    final ptr = _ptr;
+    final nativePublished = _nativePublished;
+    _nativePublished = false;
     try {
-      platformFFI.registerPixelbufferTexture(
-          _sessionId, _clientOwnerId, _display, 0);
+      if (nativePublished &&
+          (ptr == null ||
+              ptr == 0 ||
+              !platformFFI.registerPixelbufferTexture(
+                  _sessionId, _clientOwnerId, _display, ptr, false))) {
+        throw StateError('Pixelbuffer texture unpublication was refused');
+      }
     } finally {
       final id = _id;
       if (id != null && id != -1) {

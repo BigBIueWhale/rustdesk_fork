@@ -1276,12 +1276,15 @@ class RustdeskImpl {
     return false;
   }
 
-  void sessionRegisterPixelbufferTexture(
+  bool sessionRegisterPixelbufferTexture(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,
       required int display,
       required int ptr,
-      dynamic hint}) {}
+      required bool register,
+      dynamic hint}) {
+    return false;
+  }
 
   // Dup to the function in hbb_common, lib.rs
   // Maybe we need to move this function to js part.

@@ -1983,12 +1983,14 @@ pub fn session_register_pixelbuffer_texture(
     client_owner_id: SessionID,
     display: usize,
     ptr: usize,
-) -> SyncReturn<()> {
+    register: bool,
+) -> SyncReturn<bool> {
     SyncReturn(super::flutter::session_register_pixelbuffer_texture(
         session_id,
         client_owner_id,
         display,
         ptr,
+        register,
     ))
 }
 

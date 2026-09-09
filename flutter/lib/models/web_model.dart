@@ -95,13 +95,14 @@ class PlatformFFI {
           revision: revision,
           publication: publication,
           accepted: accepted);
-  void registerPixelbufferTexture(
-          SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
+  bool registerPixelbufferTexture(SessionID sessionId,
+          SessionID clientOwnerId, int display, int ptr, bool register) =>
       _ffiBind.sessionRegisterPixelbufferTexture(
           sessionId: sessionId,
           clientOwnerId: clientOwnerId,
           display: display,
-          ptr: ptr);
+          ptr: ptr,
+          register: register);
 
   Future<void> init(String appType) async {
     Completer completer = Completer();

@@ -278,6 +278,51 @@ void main() {
     expect(created.last.retireCalls, 1);
   });
 
+  test('withdrawal during successful activation retires before replacement',
+      () async {
+    final firstActivation = Completer<bool>();
+    final firstRetirement = Completer<void>();
+    final created = <_FakeTexture>[];
+    final errors = <String>[];
+    final slot = LatestDesktopTextureSlot<_FakeTexture>(
+      create: () {
+        final texture = _FakeTexture(
+          activationBarrier: created.isEmpty ? firstActivation : null,
+          retirementBarrier: created.isEmpty ? firstRetirement : null,
+        );
+        created.add(texture);
+        return texture;
+      },
+      onError: (operation, error, stackTrace) => errors.add(operation),
+    );
+
+    slot.setWanted(true);
+    await Future<void>.delayed(Duration.zero);
+    expect(created, hasLength(1));
+
+    slot.setWanted(false);
+    expect(created.single.retireCalls, 1,
+        reason: 'withdrawal must synchronously invalidate in-flight activation');
+    slot.setWanted(true);
+    firstActivation.complete(true);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(created, hasLength(1),
+        reason: 'replacement must wait for exact predecessor retirement');
+    firstRetirement.complete();
+    await slot.drain();
+
+    expect(created, hasLength(2));
+    expect(created.first.retireCalls, 1);
+    expect(created.last.activateCalls, 1);
+    expect(created.last.retireCalls, 0);
+    expect(slot.hasCurrent, isTrue);
+    expect(errors, isEmpty);
+
+    await slot.dispose();
+    expect(created.last.retireCalls, 1);
+  });
+
   test('replacement waits for exact predecessor retirement', () async {
     final predecessorBarrier = Completer<void>();
     final created = <_FakeTexture>[];

@@ -30474,6 +30474,111 @@ cross-platform reconnect/focus flow, display-only delay, complete connection-flo
 correctness/performance request, and every other explicit open hardening item
 remain active.
 
+### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication (2026-09-09)
+
+**Status:** SOURCE CORRECTION / FOCUSED 267-MUTATION AND COMPLETE 6,190-ENTRY
+INDEPENDENT SOURCE-MUTATION EVIDENCE PASS / SHARED, APPLE, EXACT
+RUST/DART/NATIVE, INSTALLED-PLATFORM, PERFORMANCE, ARTIFACT,
+INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING.
+
+**Platform, action, and boundary.** This slice is limited to Windows, Linux,
+and macOS outgoing-viewer software texture ownership from one Dart display-demand
+transition through asynchronous plugin creation, exact Rust renderer publication,
+matching unpublication, and plugin release. Android and iOS do not use this native
+desktop texture path; their bounded software-RGBA publication and lifecycle recovery
+remain governed by R-S11ew/R-S11fr. The authority is one exact connection-session
+UUID, UI-owner UUID, selected display, nonzero native pointer, and explicit
+publish/unpublish operation.
+
+**Source-proven old path.** `LatestDesktopTextureSlot.setWanted(false)` changed
+only desired state. If its current candidate was awaiting `activate()`, reconciliation
+could not call `retire()` until activation returned. Successful asynchronous native
+creation could therefore publish after deselection or disposal had requested
+retirement. A false/true demand transition during that wait could leave the old
+candidate current rather than retire it before one replacement. Separately,
+`registerPixelbufferTexture` returned void across Dart, generated-bridge input, FFI,
+and Rust. The Rust owner check logged and discarded refusal; it did not require the
+display to belong to that owner, replaced a different live pointer, and used pointer
+zero as an unowned removal sentinel. Dart treated that call as successful publication
+regardless and the display slot could latch a texture that native code had never
+accepted. A late same-owner teardown did not name its pointer and could clear a newer
+one. This is current source-level presentation-liveness and resource-finality debt.
+It is not native reproduction, proof that an older deployed artifact reached the
+race, a causation claim for the reported Windows focus delay, or an Android service
+defect; it is not evidence of compromise, public exposure, privilege escalation, or
+host/service/firewall/network/container mutation.
+
+**Correct ownership.** Every false demand and terminal slot disposal now requests
+the current candidate's retirement synchronously. The slot retains one retirement
+future, shares it with activation and reconciliation, and does not clear or replace
+the candidate before exact finality. Returning demand cannot turn a retirement-
+requested candidate into settled current even if a test double reports successful
+activation; one successor starts only after the predecessor future completes.
+Activation failure, repeated reconciliation, and disposal reuse that one request
+rather than calling retirement twice or spinning.
+
+Native publication now returns a Boolean and carries the exact session, UI owner,
+display, nonzero pointer, and explicit register flag. Registration requires the
+current exact owner and one of its selected displays; it accepts only a vacant slot
+or the same pointer. Unregistration permits cleanup after the display leaves the
+selection but removes only the exact matching pointer once. A zero, missing, wrong,
+colliding, stale-owner, or unowned-display operation is refusal without mutation.
+Dart requires publication success before exposing the Flutter texture ID, records
+that native publication committed, and supplies the same pointer to one matching
+unpublication before release. Refusal feeds the existing result-bearing lifecycle,
+which reports it and retires the candidate instead of latching healthy state.
+
+A deterministic Dart regression covers false/true demand while a candidate later
+reports successful activation: retirement is requested before the activation barrier
+opens, no replacement is created before retirement completes, and each predecessor
+is retired once. A deterministic Rust regression covers unowned-display refusal,
+live-pointer collision refusal, wrong-pointer removal refusal with state preserved,
+exact single-use removal, and the existing retired-owner replacement case. The
+focused semantic verifier and independently implemented workspace validator now
+bind these transitions: the focused verifier passed its 267 deliberate mutations,
+the independent validator passed its live baseline and complete 6,190-entry
+source-mutation catalog, and targeted independent probes first proved the corrected
+activation-ownership and retirement-finality diagnostics at all three affected
+source locations.
+
+Current normative identity for this slice:
+
+```text
+cec235a1a1324012fb48067f64c85d9b04604e358b8dc942d7457170cee2d497  requirements.html
+```
+
+**Verification receipt.** All executable verification used immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+as UID/GID 1000:1000 with no network, a read-only recursively disabled repository
+bind, read-only root, all capabilities dropped, `no-new-privileges`, private IPC,
+64-PID, 2-GiB memory/no-swap-growth, two-CPU, and private 512-MiB noexec tmpfs
+limits. `verify-desktop-texture-lifecycle.py --self-test` passed 267 mutations.
+The independently implemented `verify-verifier-workspace.py` passed its ordinary
+live baseline, targeted the two previously stale diagnostic expectations at three
+effective source locations, and then passed the complete 6,190-entry
+`--source-mutations-only` catalog in one uninterrupted 4:42:39 run (exit 0,
+OOM false, restart zero, 8-KiB writable layer). Python AST parsing of both changed
+verifiers, `bash -n scripts/verify.sh`, `git diff --check`, exact requirement/row/
+ledger uniqueness, the SHA-256 identity above, and native-watch identity all
+passed. Pinned Rust 1.75 `rustfmt --check` parsed `src/flutter.rs` and
+`src/flutter_ffi.rs` but reported whole-file layout differences; the unmodified
+`HEAD` versions independently return the same status, so no unrelated formatting-
+only sweep was made. The locked image has no Cargo, Rust compiler, Dart, Flutter,
+Kotlin, or Java toolchain and the checkout has no complete offline vendor closure,
+so this receipt does not claim native or generated-bridge compilation/execution.
+
+This correction adds no retry, reconnect, timer, poller, task, worker, thread,
+isolate, runtime, service or Activity transition, listener, port, endpoint, network
+behavior, protocol field, privilege, dependency, GPU path, or artifact. Exact
+generated-bridge/Dart/Rust compilation and execution, native Windows/macOS plugin
+execution, physical focus/minimize/display-switch/window-transfer stress, current
+Android task-swipe/reopen/Force-Stop behavior under its separate presentation path,
+capture-through-compositor timestamps and explicit latency/queue/CPU/memory budgets,
+cross-version behavior, sustained resource soak, current signed artifacts, clean
+committed cold R-B2/R-B10 equality, independent reproduction, causation, external
+review, and proof that the whole connection flow is correct and performant remain
+open. No source-only result from this slice closes those STOP-SHIP items.
+
 ### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision
 
 **Status:** SOURCE EXCISION / REVISED PATH-COMPLETE APPLE AND 5,987-CASE

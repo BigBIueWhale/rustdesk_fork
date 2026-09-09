@@ -11321,6 +11321,7 @@ else
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iv_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never
@@ -11333,9 +11334,9 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fj_ --color never
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs/R-S11gf desktop Flutter texture finality, presentation resumption including pointer-evidenced missing-focus recovery, first-image admission, viewer refresh, and Linux plugin loading have exact bounded owners"
+  echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs/R-S11gf/R-S11iv desktop Flutter texture finality, presentation resumption including pointer-evidenced missing-focus recovery, first-image admission, viewer refresh, Linux plugin loading, and exact pointer publication have exact bounded owners"
 else
-  echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs/R-S11gf: Flutter texture lifecycle, exact presentation-resume recovery including pointer-evidenced missing-focus recovery, first-image admission, viewer refresh admission, or Linux plugin load authority regressed"
+  echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs/R-S11gf/R-S11iv: Flutter texture lifecycle, exact presentation-resume recovery including pointer-evidenced missing-focus recovery, first-image admission, viewer refresh admission, Linux plugin load authority, or exact pointer publication regressed"
   rc=1
 fi
 if /usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test; then

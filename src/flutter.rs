@@ -1296,41 +1296,48 @@ impl VideoRenderer {
         }
     }
 
-    fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
-        let mut sessions_lock = self.map_display_sessions.write().unwrap();
+    fn update_pixelbuffer_texture(&self, display: usize, ptr: usize, register: bool) -> bool {
         if ptr == 0 {
-            if let Some(info) = sessions_lock.get_mut(&display) {
-                if info.texture_rgba_ptr != usize::default() {
-                    info.texture_rgba_ptr = usize::default();
-                }
+            return false;
+        }
+        let mut sessions_lock = self.map_display_sessions.write().unwrap();
+        if !register {
+            let exact = sessions_lock
+                .get(&display)
+                .map_or(false, |info| info.texture_rgba_ptr == ptr);
+            if !exact {
+                return false;
             }
             sessions_lock.remove(&display);
-        } else {
-            if let Some(info) = sessions_lock.get_mut(&display) {
-                if info.texture_rgba_ptr != usize::default()
-                    && info.texture_rgba_ptr != ptr as TextureRgbaPtr
-                {
-                    log::warn!(
-                        "texture_rgba_ptr is not null and not equal to ptr, replace {} to {}",
-                        info.texture_rgba_ptr,
-                        ptr
-                    );
-                }
-                info.texture_rgba_ptr = ptr as _;
-                info.render_notified = false;
-            } else {
-                if ptr != 0 {
-                    sessions_lock.insert(
-                        display,
-                        DisplaySessionInfo {
-                            texture_rgba_ptr: ptr as _,
-                            size: (0, 0),
-                            render_notified: false,
-                        },
-                    );
-                }
-            }
+            return true;
         }
+
+        if let Some(info) = sessions_lock.get_mut(&display) {
+            if info.texture_rgba_ptr == ptr {
+                return true;
+            }
+            if info.texture_rgba_ptr != usize::default() {
+                log::error!(
+                    "refusing pixelbuffer texture replacement from {} to {} for display {}",
+                    info.texture_rgba_ptr,
+                    ptr,
+                    display
+                );
+                return false;
+            }
+            info.texture_rgba_ptr = ptr;
+            info.render_notified = false;
+        } else {
+            sessions_lock.insert(
+                display,
+                DisplaySessionInfo {
+                    texture_rgba_ptr: ptr,
+                    size: (0, 0),
+                    render_notified: false,
+                },
+            );
+        }
+        true
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1437,34 +1444,27 @@ impl FlutterHandler {
         Some(handler.set_owned_display_size(display, width, height))
     }
 
-    fn with_exact_ui_owner_renderer<F>(
-        &self,
-        session_id: &SessionID,
-        client_owner_id: &SessionID,
-        operation: F,
-    ) -> Option<bool>
-    where
-        F: FnOnce(&VideoRenderer),
-    {
-        let handlers = self.session_handlers.read().unwrap();
-        let handler = handlers.get(session_id)?;
-        if handler.client_owner_id.as_ref() != Some(client_owner_id) {
-            return Some(false);
-        }
-        operation(&handler.renderer);
-        Some(true)
-    }
-
-    fn register_pixelbuffer_texture(
+    fn update_pixelbuffer_texture(
         &self,
         session_id: &SessionID,
         client_owner_id: &SessionID,
         display: usize,
         ptr: usize,
+        register: bool,
     ) -> Option<bool> {
-        self.with_exact_ui_owner_renderer(session_id, client_owner_id, |renderer| {
-            renderer.register_pixelbuffer_texture(display, ptr);
-        })
+        let handlers = self.session_handlers.read().unwrap();
+        let handler = handlers.get(session_id)?;
+        if handler.client_owner_id.as_ref() != Some(client_owner_id) {
+            return Some(false);
+        }
+        if register && !handler.displays.contains(&display) {
+            return Some(false);
+        }
+        Some(
+            handler
+                .renderer
+                .update_pixelbuffer_texture(display, ptr, register),
+        )
     }
 }
 
@@ -3368,20 +3368,28 @@ pub fn session_register_pixelbuffer_texture(
     client_owner_id: SessionID,
     display: usize,
     ptr: usize,
-) {
+    register: bool,
+) -> bool {
     for s in sessions::get_sessions() {
         if let Some(admitted) =
             s.ui_handler
-                .register_pixelbuffer_texture(&session_id, &client_owner_id, display, ptr)
+                .update_pixelbuffer_texture(
+                    &session_id,
+                    &client_owner_id,
+                    display,
+                    ptr,
+                    register,
+                )
         {
             if !admitted {
                 log::debug!(
-                    "Ignoring pixelbuffer texture operation from a retired UI owner for session {session_id}"
+                    "Refusing pixelbuffer texture operation for session {session_id}"
                 );
             }
-            break;
+            return admitted;
         }
     }
+    false
 }
 
 #[inline]
@@ -4803,7 +4811,9 @@ mod mobile_session_lifecycle_tests {
             .read()
             .unwrap()
             .is_empty());
-        handler.renderer.register_pixelbuffer_texture(4, 41);
+        assert!(handler
+            .renderer
+            .update_pixelbuffer_texture(4, 41, true));
         let handlers = HashMap::from([(session_id, handler)]);
 
         assert_eq!(
@@ -5658,12 +5668,13 @@ mod mobile_session_lifecycle_tests {
                 session_id,
                 SessionHandler {
                     client_owner_id: Some(old_owner),
+                    displays: vec![0],
                     ..Default::default()
                 },
             );
         }
         assert_eq!(
-            handler.register_pixelbuffer_texture(&session_id, &old_owner, 0, 41),
+            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 41, true),
             Some(true)
         );
 
@@ -5675,21 +5686,28 @@ mod mobile_session_lifecycle_tests {
                 session_id,
                 SessionHandler {
                     client_owner_id: Some(replacement_owner),
+                    displays: vec![0],
                     ..Default::default()
                 },
             );
         }
         assert_eq!(
-            handler.register_pixelbuffer_texture(&session_id, &replacement_owner, 0, 84),
+            handler.update_pixelbuffer_texture(
+                &session_id,
+                &replacement_owner,
+                0,
+                84,
+                true,
+            ),
             Some(true)
         );
         assert_eq!(
-            handler.register_pixelbuffer_texture(&session_id, &old_owner, 0, 99),
+            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 99, true),
             Some(false),
             "a late old create must not replace the new texture"
         );
         assert_eq!(
-            handler.register_pixelbuffer_texture(&session_id, &old_owner, 0, 0),
+            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 41, false),
             Some(false),
             "a late old teardown must not clear the new texture"
         );
@@ -5698,6 +5716,56 @@ mod mobile_session_lifecycle_tests {
         let current = handlers.get(&session_id).unwrap();
         let displays = current.renderer.map_display_sessions.read().unwrap();
         assert_eq!(displays.get(&0).unwrap().texture_rgba_ptr, 84);
+    }
+
+    #[test]
+    fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact() {
+        let handler = FlutterHandler::default();
+        let session_id = SessionID::new_v4();
+        let owner = SessionID::new_v4();
+        handler.session_handlers.write().unwrap().insert(
+            session_id,
+            SessionHandler {
+                client_owner_id: Some(owner),
+                displays: vec![4],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            handler.update_pixelbuffer_texture(&session_id, &owner, 5, 41, true),
+            Some(false),
+            "publication cannot create presentation state for an unowned display"
+        );
+        assert_eq!(
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, true),
+            Some(true)
+        );
+        assert_eq!(
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 84, true),
+            Some(false),
+            "a live exact pointer cannot be replaced"
+        );
+        assert_eq!(
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 84, false),
+            Some(false),
+            "a stale pointer cannot unpublish the current texture"
+        );
+        {
+            let handlers = handler.session_handlers.read().unwrap();
+            let renderer = handlers.get(&session_id).unwrap();
+            let displays = renderer.renderer.map_display_sessions.read().unwrap();
+            assert_eq!(displays.get(&4).unwrap().texture_rgba_ptr, 41);
+        }
+        assert_eq!(
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, false),
+            Some(true)
+        );
+        assert_eq!(
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, false),
+            Some(false),
+            "exact unpublication is single-use"
+        );
     }
 
     #[test]

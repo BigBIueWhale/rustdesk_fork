@@ -929,9 +929,11 @@ def validate(sources: Dict[str, str]) -> None:
             "_wanted = wanted;",
             "_creationFailed = false;",
             "_demandRevision += 1;",
+            "if (!wanted)",
+            "_requestCurrentRetirement();",
             "_ensureReconcile();",
         ),
-        "one revision per distinct display demand transition",
+        "one revision and synchronous retirement per false demand transition",
     )
     require_order(
         slot,
@@ -939,8 +941,43 @@ def validate(sources: Dict[str, str]) -> None:
             "bool _creationFailed = false;",
             "int _demandRevision = 0;",
             "T? _current;",
+            "Future<void>? _currentRetirement;",
         ),
         "explicit display-slot activation state",
+    )
+    request_retirement = extract_braced_item(
+        slot,
+        "void _requestCurrentRetirement()",
+        "synchronous current texture retirement request",
+    )
+    require_order(
+        request_retirement,
+        (
+            "final current = _current;",
+            "if (current == null || _currentRetirement != null)",
+            "final retirement = current.retire();",
+            "_currentRetirement = _observeRetirement(retirement);",
+            "_onError('retire', error, stackTrace);",
+            "_currentRetirement = Future<void>.value();",
+        ),
+        "one retained and failure-visible current retirement request",
+    )
+    finish_retirement = extract_braced_item(
+        slot,
+        "Future<void> _finishCurrentRetirement(T current)",
+        "exact current texture retirement finality",
+    )
+    require_order(
+        finish_retirement,
+        (
+            "final retirement = _currentRetirement;",
+            "if (retirement == null)",
+            "await retirement;",
+            "if (identical(_current, current))",
+            "_current = null;",
+            "_currentRetirement = null;",
+        ),
+        "clear exact candidate only after retained retirement finality",
     )
     reconcile = extract_braced_item(
         slot, "Future<void> _reconcile()", "serialized replacement transition"
@@ -948,6 +985,9 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         reconcile,
         (
+            "final retiring = _current;",
+            "if (retiring != null && _currentRetirement != null)",
+            "await _finishCurrentRetirement(retiring);",
             "if (_wanted)",
             "final demandRevision = _demandRevision;",
             "late final T candidate;",
@@ -959,18 +999,18 @@ def validate(sources: Dict[str, str]) -> None:
             "var activated = false;",
             "activated = await candidate.activate();",
             "_onError('activate', error, stackTrace);",
+            "if (_currentRetirement != null)",
+            "await _finishCurrentRetirement(candidate);",
             "if (!activated)",
-            "await candidate.retire();",
-            "if (identical(_current, candidate))",
-            "_current = null;",
+            "_requestCurrentRetirement();",
+            "await _finishCurrentRetirement(candidate);",
             "if (_wanted && _demandRevision == demandRevision)",
             "_creationFailed = true;",
             "final retiring = _current;",
-            "await retiring.retire();",
-            "if (identical(_current, retiring))",
-            "_current = null;",
+            "_requestCurrentRetirement();",
+            "await _finishCurrentRetirement(retiring);",
         ),
-        "replacement only after exact predecessor retirement",
+        "activation cancellation and replacement only after exact predecessor retirement",
     )
     require(
         slot,
@@ -979,12 +1019,18 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         slot,
-        "_wanted ? _current != null || _creationFailed : _current == null",
+        "? (_current != null && _currentRetirement == null) || _creationFailed",
         "failed creation settles one demand transition without retry spin",
     )
     require_order(
         extract_braced_item(slot, "Future<void> dispose()", "slot disposal"),
-        ("_disposed = true;", "_wanted = false;", "_ensureReconcile();", "return drain();"),
+        (
+            "_disposed = true;",
+            "_wanted = false;",
+            "_requestCurrentRetirement();",
+            "_ensureReconcile();",
+            "return drain();",
+        ),
         "slot terminal retirement",
     )
 
@@ -1004,6 +1050,11 @@ def validate(sources: Dict[str, str]) -> None:
     pixel = extract_braced_item(
         render, "class _PixelbufferTexture", "pixelbuffer texture owner"
     )
+    require(
+        pixel,
+        "bool _nativePublished = false;",
+        "explicit native pixelbuffer publication ownership",
+    )
     require_order(
         pixel,
         (
@@ -1014,16 +1065,23 @@ def validate(sources: Dict[str, str]) -> None:
             "release: _release,",
             "await textureRenderer.createTexture(_textureKey);",
             "await textureRenderer.getTexturePtr(_textureKey);",
+            "throw StateError('Pixelbuffer texture publication state is incomplete');",
+            "final published = platformFFI.registerPixelbufferTexture(",
+            "_sessionId, _clientOwnerId, _display, ptr, true",
+            "if (!published)",
+            "throw StateError('Pixelbuffer texture publication was refused');",
+            "_nativePublished = true;",
             "_ffi.textureModel.setTextureId",
-            "platformFFI.registerPixelbufferTexture(",
-            "_sessionId, _clientOwnerId, _display, ptr",
-            "_sessionId, _clientOwnerId, _display, 0",
+            "final nativePublished = _nativePublished;",
+            "_nativePublished = false;",
+            "_sessionId, _clientOwnerId, _display, ptr, false",
+            "throw StateError('Pixelbuffer texture unpublication was refused');",
             "_ffi.textureModel.clearTextureId(display: _display, id: id);",
             "await textureRenderer.closeTexture(_textureKey);",
             "Future<bool> activate() => _lifecycle.activate();",
             "Future<void> retire() => _lifecycle.retire();",
         ),
-        "pixelbuffer lifecycle wiring",
+        "result-bearing exact-pointer pixelbuffer lifecycle wiring",
     )
     forbid(pixel, "_lifecycle.start();", "detached constructor activation")
     texture_model = extract_braced_item(
@@ -1170,7 +1228,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     admission = extract_braced_item(
         flutter,
-        "fn with_exact_ui_owner_renderer",
+        "fn update_pixelbuffer_texture(\n        &self,\n        session_id:",
         "exact desktop UI-owner renderer admission",
     )
     require_order(
@@ -1179,10 +1237,32 @@ def validate(sources: Dict[str, str]) -> None:
             "let handler = handlers.get(session_id)?;",
             "if handler.client_owner_id.as_ref() != Some(client_owner_id)",
             "return Some(false);",
-            "operation(&handler.renderer);",
-            "Some(true)",
+            "if register && !handler.displays.contains(&display)",
+            "return Some(false);",
+            ".update_pixelbuffer_texture(display, ptr, register)",
         ),
-        "owner check before renderer mutation",
+        "owner and selected-display checks before renderer mutation",
+    )
+    renderer_update = extract_braced_item(
+        flutter,
+        "fn update_pixelbuffer_texture(&self, display:",
+        "exact desktop native pointer publication",
+    )
+    require_order(
+        renderer_update,
+        (
+            "if ptr == 0",
+            "if !register",
+            "info.texture_rgba_ptr == ptr",
+            "if !exact",
+            "sessions_lock.remove(&display);",
+            "if info.texture_rgba_ptr == ptr",
+            "if info.texture_rgba_ptr != usize::default()",
+            "return false;",
+            "info.texture_rgba_ptr = ptr;",
+            "true",
+        ),
+        "nonzero exact-pointer register and unregister semantics",
     )
     exported_pixel = extract_braced_item(
         flutter,
@@ -1193,17 +1273,28 @@ def validate(sources: Dict[str, str]) -> None:
         exported_pixel,
         (
             "client_owner_id: SessionID,",
-            ".register_pixelbuffer_texture(",
+            "register: bool,",
+            ") -> bool",
+            ".update_pixelbuffer_texture(",
             "&session_id,",
             "&client_owner_id,",
+            "ptr,",
+            "register,",
             "if !admitted",
+            "return admitted;",
+            "false",
         ),
-        "exact-owner pixelbuffer export",
+        "result-bearing exact-owner pixelbuffer export",
     )
     require(
         flutter,
         "fn r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture()",
         "native same-session owner-replacement regression",
+    )
+    require(
+        flutter,
+        "fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact()",
+        "native exact display/pointer publication regression",
     )
     notification_commit = extract_braced_item(
         flutter,
@@ -1614,20 +1705,28 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_order(
         wrapper,
-        ("session_id,", "client_owner_id,", "display,", "ptr,"),
-        "pixelbuffer bridge wrapper exact argument propagation",
+        (
+            "register: bool,",
+            ") -> SyncReturn<bool>",
+            "session_id,",
+            "client_owner_id,",
+            "display,",
+            "ptr,",
+            "register,",
+        ),
+        "pixelbuffer bridge wrapper exact result and argument propagation",
     )
 
     for key in ("native_model", "web_model"):
         wrapper = sources[key]
-        pixel_start = wrapper.find("void registerPixelbufferTexture(")
+        pixel_start = wrapper.find("bool registerPixelbufferTexture(")
         init_start = wrapper.find("Future<void> init(", pixel_start + 1)
         if min(pixel_start, init_start) < 0:
             raise VerificationError(f"{key} texture wrapper boundaries are missing")
         pixel_wrapper = wrapper[pixel_start:init_start]
         require(
             pixel_wrapper,
-            "SessionID clientOwnerId, int display, int ptr",
+            "SessionID clientOwnerId, int display, int ptr, bool register",
             f"{key} pixelbuffer owner signature",
         )
         require(
@@ -1635,17 +1734,23 @@ def validate(sources: Dict[str, str]) -> None:
             "clientOwnerId: clientOwnerId",
             f"{key} pixelbuffer generated-bridge owner propagation",
         )
+        require(
+            pixel_wrapper,
+            "register: register",
+            f"{key} pixelbuffer operation propagation",
+        )
     web_bridge = sources["web_bridge"]
-    stub = extract_braced_item(
-        web_bridge,
-        "void sessionRegisterPixelbufferTexture(",
-        "web texture stub",
-    )
+    stub_start = web_bridge.find("bool sessionRegisterPixelbufferTexture(")
+    stub_end = web_bridge.find("\n  // Dup to the function", stub_start + 1)
+    if min(stub_start, stub_end) < 0:
+        raise VerificationError("web texture stub boundaries are missing")
+    stub = web_bridge[stub_start:stub_end]
     require(
         stub,
         "required UuidValue clientOwnerId,",
         "web exact UI-owner parity",
     )
+    require(stub, "return false;", "web pixelbuffer result parity")
 
     for key in (
         "render",
@@ -2634,6 +2739,7 @@ def validate(sources: Dict[str, str]) -> None:
         "failed slot creation is bounded and a later demand can retry",
         "failed asynchronous activation is retired and retry is bounded",
         "new demand during failed activation receives a fresh exact attempt",
+        "withdrawal during successful activation retires before replacement",
         "replacement waits for exact predecessor retirement",
     ):
         require(tests, f"test('{test}'", f"{test} behavior regression")
@@ -2700,6 +2806,11 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11gf</span>',
             "R-S11gf Linux texture-plugin load-authority requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11iv</span>',
+            "R-S11iv exact texture withdrawal/publication requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
@@ -2711,6 +2822,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", "<tr><td>326</td>", "Appendix C #326"),
         ("requirements", "<tr><td>327</td>", "Appendix C #327"),
         ("requirements", "<tr><td>341</td>", "Appendix C #341"),
+        ("requirements", "<tr><td>407</td>", "Appendix C #407"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -2767,9 +2879,19 @@ def validate(sources: Dict[str, str]) -> None:
             "Linux texture-plugin load-authority hardening ledger",
         ),
         (
+            "hardening",
+            "### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication",
+            "exact texture withdrawal/publication hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never",
             "shared native behavior gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11iv_ --color never",
+            "shared exact-pointer publication behavior gate",
         ),
         (
             "verify",
@@ -3348,19 +3470,53 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("lifecycle", "_demandRevision += 1;", "_demandRevision += 0;", "distinct demand revision"),
     (
         "lifecycle",
+        "if (!wanted) {\n      _requestCurrentRetirement();\n    }",
+        "if (!wanted) {\n      _ensureReconcile();\n    }",
+        "false demand synchronously requests retirement",
+    ),
+    (
+        "lifecycle",
+        "Future<void>? _currentRetirement;",
+        "Future<void>? ignoredRetirement;",
+        "one retained current retirement future",
+    ),
+    (
+        "lifecycle",
+        "final retirement = current.retire();",
+        "final retirement = Future<void>.value();",
+        "exact current retirement invocation",
+    ),
+    (
+        "lifecycle",
+        "await _finishCurrentRetirement(candidate);",
+        "_current = null;",
+        "activation observes requested retirement finality",
+    ),
+    (
+        "lifecycle",
         "activated = await candidate.activate();",
         "activated = true;",
         "awaited candidate activation",
     ),
-    ("lifecycle", "await candidate.retire();", "candidate.retire();", "failed candidate retirement finality"),
+    (
+        "lifecycle",
+        "_requestCurrentRetirement();\n          await _finishCurrentRetirement(candidate);",
+        "_requestCurrentRetirement();",
+        "failed candidate retirement finality",
+    ),
     (
         "lifecycle",
         "if (_wanted && _demandRevision == demandRevision)",
         "if (_wanted)",
         "newer demand preservation",
     ),
-    ("lifecycle", "await retiring.retire();", "retiring.retire();", "predecessor finality"),
-    ("lifecycle", "if (identical(_current, retiring))", "if (_current != null)", "exact predecessor removal"),
+    (
+        "lifecycle",
+        "await _finishCurrentRetirement(retiring);",
+        "_current = null;",
+        "predecessor finality",
+    ),
+    ("lifecycle", "if (identical(_current, current))", "if (_current != null)", "exact predecessor removal"),
     ("lifecycle", "if (_disposed && wanted)", "if (false)", "post-dispose refusal"),
     (
         "render",
@@ -3386,8 +3542,26 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "new demand during failed activation is discarded",
         "newer demand behavior regression",
     ),
-    ("render", "_sessionId, _clientOwnerId, _display, ptr", "_sessionId, _sessionId, _display, ptr", "pixel owner publication"),
-    ("render", "_sessionId, _clientOwnerId, _display, 0", "_sessionId, _sessionId, _display, 0", "pixel owner unpublication"),
+    (
+        "tests",
+        "withdrawal during successful activation retires before replacement",
+        "withdrawal during successful activation reuses predecessor",
+        "successful in-flight withdrawal behavior regression",
+    ),
+    ("render", "_sessionId, _clientOwnerId, _display, ptr, true", "_sessionId, _sessionId, _display, ptr, true", "pixel owner publication"),
+    ("render", "_sessionId, _clientOwnerId, _display, ptr, false", "_sessionId, _sessionId, _display, ptr, false", "pixel owner unpublication"),
+    (
+        "render",
+        "if (!published)",
+        "if (false)",
+        "native publication refusal is activation failure",
+    ),
+    (
+        "render",
+        "_nativePublished = true;",
+        "_nativePublished = false;",
+        "native publication ownership commit",
+    ),
     ("render", "control?.nativeTextureId == id", "control != null", "exact software UI-ID clearing"),
     ("render", "await textureRenderer.closeTexture(_textureKey);", "textureRenderer.closeTexture(_textureKey);", "pixel release finality"),
     ("render", "Map<int, LatestDesktopTextureSlot<_PixelbufferTexture>>", "Map<int, _PixelbufferTexture>", "serialized display slots"),
@@ -3442,8 +3616,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "ui_interface",
-        "pub fn is_root() -> bool {",
-        "pub fn has_vram() -> bool { false }\n\npub fn is_root() -> bool {",
+        "pub fn check_hwcodec() {}",
+        "pub fn has_vram() -> bool { false }\n\npub fn check_hwcodec() {}",
         "retired VRAM capability query",
     ),
     (
@@ -3486,7 +3660,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("remote", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "RemoteDesktop texture finality"),
     ("camera", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "ViewCamera texture finality"),
     ("flutter", "if handler.client_owner_id.as_ref() != Some(client_owner_id)", "if false", "native exact owner admission"),
-    ("flutter", ".register_pixelbuffer_texture(&session_id, &client_owner_id, display, ptr)", ".register_pixelbuffer_texture(&session_id, &session_id, display, ptr)", "native owner propagation"),
+    (
+        "flutter",
+        "if register && !handler.displays.contains(&display)",
+        "if false",
+        "native selected-display publication admission",
+    ),
+    (
+        "flutter",
+        "info.texture_rgba_ptr == ptr",
+        "info.texture_rgba_ptr != ptr",
+        "native exact-pointer unpublication",
+    ),
+    (
+        "flutter",
+        ".update_pixelbuffer_texture(\n                    &session_id,\n                    &client_owner_id,",
+        ".update_pixelbuffer_texture(\n                    &session_id,\n                    &session_id,",
+        "native owner propagation",
+    ),
+    (
+        "flutter",
+        "fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact()",
+        "fn pixelbuffer_publication_is_not_pointer_exact()",
+        "exact-pointer native behavior regression",
+    ),
     (
         "flutter",
         "if !frame_admitted || *render_notified || !notify()",
@@ -3621,10 +3818,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "web_bridge",
-        "void sessionRegisterPixelbufferTexture(\n"
+        "bool sessionRegisterPixelbufferTexture(\n"
         "      {required UuidValue sessionId,\n"
         "      required UuidValue clientOwnerId,",
-        "void sessionRegisterPixelbufferTexture(\n"
+        "bool sessionRegisterPixelbufferTexture(\n"
         "      {required UuidValue sessionId,\n"
         "      required int clientOwnerId,",
         "web owner parity",
@@ -3986,6 +4183,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "software-RGBA recovery normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fs</span>', '<div class="req"><span class="id">R-S11fs-disabled</span>', "pointer-evidenced presentation recovery normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11gf</span>', '<div class="req"><span class="id">R-S11gf-disabled</span>', "Linux texture-plugin load-authority normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11iv</span>', '<div class="req"><span class="id">R-S11iv-disabled</span>', "exact texture withdrawal/publication normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
@@ -3996,6 +4194,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>324</td>", "<tr><td>324-disabled</td>", "pending-texture re-notification Appendix disposition"),
     ("requirements", "<tr><td>327</td>", "<tr><td>327-disabled</td>", "pointer-evidenced presentation recovery Appendix disposition"),
     ("requirements", "<tr><td>341</td>", "<tr><td>341-disabled</td>", "Linux texture-plugin load-authority Appendix disposition"),
+    ("requirements", "<tr><td>407</td>", "<tr><td>407-disabled</td>", "exact texture withdrawal/publication Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
@@ -4014,7 +4213,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership", "### R-S11gt-disabled/R-S11e-232 — explicit initial and ongoing native display ownership", "explicit native display-owner hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "explicit native display-owner behavior gate"),
     ("hardening", "**R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority", "**R-S11gf-disabled/R-S11e-218 Linux Flutter texture-plugin load authority", "Linux texture-plugin load-authority hardening ledger"),
+    ("hardening", "### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication", "### R-S11iv-disabled/R-S11e-285 — exact desktop texture withdrawal and native pointer publication", "exact texture withdrawal/publication hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11iv_ --color never", "true # exact-pointer publication behavior gate disabled", "shared exact-pointer publication behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never", "true # Linux texture-plugin path tests disabled", "shared Linux texture-plugin path behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
     ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),

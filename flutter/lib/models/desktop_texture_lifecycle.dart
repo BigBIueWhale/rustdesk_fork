@@ -136,6 +136,7 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
   bool _creationFailed = false;
   int _demandRevision = 0;
   T? _current;
+  Future<void>? _currentRetirement;
   Future<void>? _reconcileFuture;
 
   bool get wanted => _wanted;
@@ -151,7 +152,44 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
     _wanted = wanted;
     _creationFailed = false;
     _demandRevision += 1;
+    if (!wanted) {
+      _requestCurrentRetirement();
+    }
     _ensureReconcile();
+  }
+
+  void _requestCurrentRetirement() {
+    final current = _current;
+    if (current == null || _currentRetirement != null) {
+      return;
+    }
+    try {
+      final retirement = current.retire();
+      _currentRetirement = _observeRetirement(retirement);
+    } catch (error, stackTrace) {
+      _onError('retire', error, stackTrace);
+      _currentRetirement = Future<void>.value();
+    }
+  }
+
+  Future<void> _observeRetirement(Future<void> retirement) async {
+    try {
+      await retirement;
+    } catch (error, stackTrace) {
+      _onError('retire', error, stackTrace);
+    }
+  }
+
+  Future<void> _finishCurrentRetirement(T current) async {
+    final retirement = _currentRetirement;
+    if (retirement == null) {
+      return;
+    }
+    await retirement;
+    if (identical(_current, current)) {
+      _current = null;
+      _currentRetirement = null;
+    }
   }
 
   void _ensureReconcile() {
@@ -179,11 +217,18 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
     }
   }
 
-  bool get _isSettled =>
-      _wanted ? _current != null || _creationFailed : _current == null;
+  bool get _isSettled => _wanted
+      ? (_current != null && _currentRetirement == null) || _creationFailed
+      : _current == null;
 
   Future<void> _reconcile() async {
     while (!_isSettled) {
+      final retiring = _current;
+      if (retiring != null && _currentRetirement != null) {
+        await _finishCurrentRetirement(retiring);
+        continue;
+      }
+
       if (_wanted) {
         final demandRevision = _demandRevision;
         late final T candidate;
@@ -205,11 +250,13 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
         } catch (error, stackTrace) {
           _onError('activate', error, stackTrace);
         }
+        if (_currentRetirement != null) {
+          await _finishCurrentRetirement(candidate);
+          continue;
+        }
         if (!activated) {
-          await candidate.retire();
-          if (identical(_current, candidate)) {
-            _current = null;
-          }
+          _requestCurrentRetirement();
+          await _finishCurrentRetirement(candidate);
           // A stable failed demand is terminal until demand changes. If the
           // display was independently removed and wanted again while this
           // activation was pending, that newer demand owns a fresh attempt.
@@ -224,10 +271,8 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
       if (retiring == null) {
         continue;
       }
-      await retiring.retire();
-      if (identical(_current, retiring)) {
-        _current = null;
-      }
+      _requestCurrentRetirement();
+      await _finishCurrentRetirement(retiring);
     }
   }
 
@@ -254,6 +299,7 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
       _demandRevision += 1;
     }
     _creationFailed = false;
+    _requestCurrentRetirement();
     _ensureReconcile();
     return drain();
   }

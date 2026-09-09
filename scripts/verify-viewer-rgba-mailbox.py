@@ -279,18 +279,35 @@ def validate(sources: Dict[str, str]) -> None:
         "exact promotion notification and failed-stream retirement",
     )
 
-    replay = extract_braced_item(
-        flutter, "fn replay_ready_rgba", "event-stream publication replay"
+    stream_replacement = extract_braced_item(
+        flutter,
+        "fn rearm_rgba_for_stream_replacement<F>(",
+        "event-stream publication replacement",
     )
     require_order(
-        replay,
+        stream_replacement,
         (
-            "let publications = self.ready_rgba_publications(session_id);",
-            ".get(session_id)",
-            "EventToUI::Rgba(display, publication)",
+            "let mut mailboxes = self.display_rgbas.write().unwrap();",
+            "for ((owner, display), mailbox) in mailboxes.iter_mut()",
+            "if owner != session_id",
+            "mailbox.rearm(|| self.next_rgba_publication())",
+            "RgbaRearm::Rearmed(publication)",
+            "publications.len() >= MAX_PEER_VIDEO_DISPLAYS",
+            "publications.push((*display, publication));",
+            "RgbaRearm::Exhausted",
+            "if let Some(error) = failure",
+            "mailboxes.retain(|(owner, _), _| owner != session_id);",
+            "publications.sort_unstable_by_key(|(display, _)| *display);",
+            "if !notify(display, publication)",
+            "mailboxes.retain(|(owner, _), _| owner != session_id);",
+            'bail!("software RGBA stream replacement was rejected by its exact UI stream")',
+            "Ok(())",
         ),
-        "exact display/token replay",
+        "fresh-token bounded exact-session stream replacement",
     )
+    forbid(stream_replacement, ".take(", "truncated stream-replacement mailbox walk")
+    forbid(flutter, "fn replay_ready_rgba", "same-token RGBA stream replay")
+    forbid(flutter, "fn ready_rgba_publications", "unbound ready-publication snapshot")
 
     recovery_rearm = extract_braced_item(
         flutter,
@@ -417,6 +434,10 @@ def validate(sources: Dict[str, str]) -> None:
             "start_failure = Some(error);",
             "try_send_close_event(&h.event_stream);",
             "h.event_stream = Some(event_stream);",
+            "if start_failure.is_none()",
+            ".rearm_rgba_for_stream_replacement(",
+            "stream.add(EventToUI::Rgba(display, publication))",
+            "start_failure = Some(error);",
             "if start_failure.is_none() && starts_peer_connection && is_video_session",
             "h.awaiting_initial_display = true;",
             "match s.start_io_thread_with_lock(&mut thread_lock)",
@@ -433,16 +454,14 @@ def validate(sources: Dict[str, str]) -> None:
             "if let Some(error) = start_failure",
             "rollback_failed_session_start(session_id, client_owner_id);",
             "return Err(error);",
-            ".replay_ready_rgba(session_id, client_owner_id)",
-            "rollback_failed_session_start(session_id, client_owner_id);",
-            'bail!("Outgoing session event stream rejected pending video")',
+            "Ok(())",
         ),
-        "visible exact-owner failed-start and replay rollback",
+        "visible exact-owner failed-start rollback before successful completion",
     )
     if session_start.count(
         "rollback_failed_session_start(session_id, client_owner_id);"
-    ) != 2:
-        raise VerificationError("session start must have exactly two exact-owner rollback sinks")
+    ) != 1:
+        raise VerificationError("session start must have exactly one exact-owner rollback sink")
     rollback = extract_braced_item(
         flutter,
         "fn rollback_failed_session_start(",
@@ -961,9 +980,54 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame",
         "r_s11fr_rgba_rearm_is_idle_without_a_publication_and_fails_closed_on_exhaustion",
         "r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox",
+        "r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_acknowledgement",
+        "r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session",
         "r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays",
     ):
         require(flutter, f"fn {test}()", f"{test} behavior regression")
+
+    replacement_regression = extract_braced_item(
+        flutter,
+        "fn r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_acknowledgement()",
+        "stream-replacement token regression body",
+    )
+    require_order(
+        replacement_regression,
+        (
+            "offer_rgba_to_sessions(&[session_id], 4, &mut first)",
+            "offer_rgba_to_sessions(&[session_id], 4, &mut newest)",
+            "offer_rgba_to_sessions(&[session_id], 9, &mut stable)",
+            "offer_rgba_to_sessions(&[other_session_id], 7, &mut other)",
+            ".rearm_rgba_for_stream_replacement(&session_id, |display, publication|",
+            "vec![4, 9]",
+            "replacement_publication > first_publication",
+            "copy_rgba(&session_id, 4, first_publication), None",
+            "copy_rgba(&session_id, 4, replacement_publication)",
+            "handler.next_rgba(&session_id, 4, first_publication);",
+            "copy_rgba(&other_session_id, 7, other_publication)",
+            "copy_rgba(&session_id, 9, stable_publication), None",
+            "copy_rgba(&session_id, 9, replacement_stable_publication)",
+        ),
+        "stream replacement rotates both display tokens and rejects predecessor authority",
+    )
+    refusal_regression = extract_braced_item(
+        flutter,
+        "fn r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session()",
+        "stream-replacement refusal regression body",
+    )
+    require_order(
+        refusal_regression,
+        (
+            "offer_rgba_to_sessions(&[session_id], 4, &mut first);",
+            "offer_rgba_to_sessions(&[session_id], 9, &mut second);",
+            "offer_rgba_to_sessions(&[other_session_id], 7, &mut other)",
+            ".rearm_rgba_for_stream_replacement(&session_id, |_, _| false)",
+            ".contains_key(&(session_id, 4))",
+            ".contains_key(&(session_id, 9))",
+            "copy_rgba(&other_session_id, 7, other_publication)",
+        ),
+        "refused stream replacement retires all exact-session mailboxes only",
+    )
 
     for test in (
         "a newer publication invalidates an older asynchronous completion",
@@ -1000,10 +1064,16 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11gt</span>',
             "R-S11gt requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11iw</span>',
+            "R-S11iw requirement",
+        ),
         ("requirements", "<tr><td>305</td>", "Appendix C #305"),
         ("requirements", "<tr><td>326</td>", "Appendix C #326"),
         ("requirements", "<tr><td>354</td>", "Appendix C #354"),
         ("requirements", "<tr><td>355</td>", "Appendix C #355"),
+        ("requirements", "<tr><td>408</td>", "Appendix C #408"),
         (
             "hardening",
             "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
@@ -1025,6 +1095,11 @@ def validate(sources: Dict[str, str]) -> None:
             "explicit native display-owner hardening ledger",
         ),
         (
+            "hardening",
+            "### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement",
+            "exact RGBA stream-replacement hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never",
             "shared behavior-test wiring",
@@ -1033,6 +1108,11 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never",
             "shared recovery behavior-test wiring",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11iw_ --color never",
+            "shared stream-replacement behavior-test wiring",
         ),
         (
             "verify",
@@ -1092,6 +1172,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "fn rearm<F>(&mut self, next_publication: F) -> RgbaRearm", "fn rearm_disabled<F>(&mut self, next_publication: F) -> RgbaRearm", "presentation recovery re-arm"),
     ("flutter", "            self.publication = 0;\n            self.pending = None;\n            return RgbaRearm::Exhausted;", "            self.publication = 0;\n            self.pending.take();\n            return RgbaRearm::Exhausted;", "re-arm exhaustion retirement"),
     ("flutter", "std::mem::swap(&mut self.data, &mut latest);", "self.data = latest;", "re-arm latest-frame promotion"),
+    ("flutter", "if let Some(mut latest) = self.pending.take() {\n            std::mem::swap(&mut self.data, &mut latest);", "if false {\n            let mut latest = Vec::new();\n            std::mem::swap(&mut self.data, &mut latest);", "exact re-arm latest-frame promotion"),
+    ("flutter", "        self.publication = publication;\n        RgbaRearm::Rearmed(publication)\n    }", "        self.publication = 1;\n        RgbaRearm::Rearmed(publication)\n    }", "exact re-arm fresh publication commit"),
     ("flutter", "fn rearm_rgba_for_presentation_recovery(", "fn rearm_rgba_for_presentation_recovery_disabled(", "exact recovery notification"),
     ("flutter", "session.ui_handler.rearm_rgba_for_presentation_recovery(", "session.ui_handler.replay_ready_rgba(", "refresh-owned software re-arm"),
     ("flutter", "if let Some(handler) = handlers.get(session_id) {\n                if handler.client_owner_id.as_ref() != Some(client_owner_id)", "if let Some(handler) = handlers.get(session_id) {\n                if false", "refresh exact UI owner"),
@@ -1143,8 +1225,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", ".and_then(|rgba| rgba.copy(publication))", ".map(|rgba| rgba.data.clone())", "exact public copy"),
     ("flutter", "mailbox.acknowledge(publication", "mailbox.acknowledge(0", "exact acknowledgement"),
     ("flutter", "EventToUI::Rgba(display, next_publication)", "EventToUI::Rgba(display, publication)", "promoted event token"),
-    ("flutter", "EventToUI::Rgba(display, publication)", "EventToUI::Rgba(display, 0)", "initial/replay event token"),
-    ("flutter", ".replay_ready_rgba(session_id, client_owner_id)", ".replay_ready_rgba(session_id, session_id)", "exact-owner stream replay"),
+    ("flutter", "EventToUI::Rgba(display, publication)", "EventToUI::Rgba(display, 0)", "initial/recovery event token"),
+    ("flutter", "fn rearm_rgba_for_stream_replacement<F>(", "fn rearm_rgba_for_stream_replacement_disabled<F>(", "stream-replacement transaction"),
+    ("flutter", "for ((owner, display), mailbox) in mailboxes.iter_mut()", "for ((owner, display), mailbox) in mailboxes.iter_mut().take(1)", "complete exact-session stream replacement"),
+    ("flutter", "if owner != session_id", "if false", "stream-replacement exact session"),
+    ("flutter", "match mailbox.rearm(|| self.next_rgba_publication())", "match RgbaRearm::Idle", "stream-replacement mailbox re-arm"),
+    ("flutter", "publications.len() >= MAX_PEER_VIDEO_DISPLAYS", "false", "stream-replacement display cap"),
+    ("flutter", "        if let Some(error) = failure {\n            mailboxes.retain(|(owner, _), _| owner != session_id);", "        if let Some(error) = failure {\n            mailboxes.clear();", "stream-replacement exact failure retirement"),
+    ("flutter", "publications.sort_unstable_by_key(|(display, _)| *display);", "publications.reverse();", "canonical stream-replacement order"),
+    ("flutter", "if !notify(display, publication)", "if false", "stream-replacement delivery refusal"),
+    ("flutter", "            if !notify(display, publication) {\n                mailboxes.retain(|(owner, _), _| owner != session_id);", "            if !notify(display, publication) {\n                mailboxes.clear();", "stream-replacement exact refusal retirement"),
+    ("flutter", "        Ok(())\n    }\n\n    fn rearm_rgba_for_presentation_recovery(", "        bail!(\"stream replacement success disabled\")\n    }\n\n    fn rearm_rgba_for_presentation_recovery(", "stream-replacement success finality"),
+    ("flutter", "fn rearm_rgba_for_presentation_recovery(", "fn replay_ready_rgba(&self) {}\n\n    fn rearm_rgba_for_presentation_recovery(", "same-token replay API prohibition"),
+    ("flutter", "fn rearm_rgba_for_presentation_recovery(", "fn ready_rgba_publications(&self) {}\n\n    fn rearm_rgba_for_presentation_recovery(", "ready-publication snapshot API prohibition"),
+    ("flutter", ".rearm_rgba_for_stream_replacement(", ".rearm_rgba_for_stream_replacement_disabled(", "guarded stream-replacement wiring"),
     ("flutter", "rollback_failed_session_start(session_id, client_owner_id);", "rollback_failed_session_start(session_id, session_id);", "exact-owner failed-start rollback"),
     ("flutter", "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "failed-start replacement-owner preservation"),
     ("flutter", "retire_rgba_displays_except(&session_id, &value);", "retire_rgba_session(&session_id);", "exact display retirement"),
@@ -1169,6 +1263,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("ios_app", "dummy_method_to_enforce_bundling();", "dummy_method_to_enforce_bundling();\n    session_get_rgba(nil, 0);", "iOS raw pointer"),
     ("flutter", "fn r_s11ew_rgba_publication_exhaustion_fails_closed()", "fn rgba_publication_exhaustion_fails_closed()", "exhaustion regression"),
     ("flutter", "fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "fn rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "re-arm behavior regression"),
+    ("flutter", "fn r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_acknowledgement()", "fn stream_replacement_reuses_predecessor_publication()", "stream-replacement stale-token regression"),
+    ("flutter", "fn r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session()", "fn stream_replacement_refusal_retains_rgba_session()", "stream-replacement refusal regression"),
+    ("flutter", ".rearm_rgba_for_stream_replacement(&session_id, |display, publication|", ".rearm_rgba_for_stream_replacement_disabled(&session_id, |display, publication|", "stream-replacement token regression execution"),
+    ("flutter", ".rearm_rgba_for_stream_replacement(&session_id, |_, _| false)", ".rearm_rgba_for_stream_replacement_disabled(&session_id, |_, _| false)", "stream-replacement refusal regression execution"),
     ("flutter", "fn r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays()", "fn video_refresh_accepts_caller_selected_displays()", "exact-owner display authority behavior regression"),
     ("flutter", "fn r_s11gt_initial_peer_info_binds_one_exact_display_owner_once()", "fn initial_peer_info_implicitly_selects_a_display()", "initial display-owner behavior regression"),
     ("flutter", "fn r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority()", "fn initial_display_binding_accepts_ambiguous_authority()", "initial display-owner refusal regression"),
@@ -1180,16 +1278,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "recovery normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11gs</span>', '<div class="req"><span class="id">R-S11gs-disabled</span>', "refresh-display authority normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11gt</span>', '<div class="req"><span class="id">R-S11gt-disabled</span>', "initial display-owner normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11iw</span>', '<div class="req"><span class="id">R-S11iw-disabled</span>', "stream-replacement normative requirement"),
     ("requirements", "<tr><td>305</td>", "<tr><td>305-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>326</td>", "<tr><td>326-disabled</td>", "recovery Appendix disposition"),
     ("requirements", "<tr><td>354</td>", "<tr><td>354-disabled</td>", "refresh-display authority Appendix disposition"),
     ("requirements", "<tr><td>355</td>", "<tr><td>355-disabled</td>", "initial display-owner Appendix disposition"),
+    ("requirements", "<tr><td>408</td>", "<tr><td>408-disabled</td>", "stream-replacement Appendix disposition"),
     ("hardening", "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication", "**R-S11ew-disabled/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication", "hardening ledger"),
     ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "recovery hardening ledger"),
     ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "### R-S11gs-disabled/R-S11e-231 — exact-owner presentation-refresh display authority", "refresh-display authority hardening ledger"),
     ("hardening", "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership", "### R-S11gt-disabled/R-S11e-232 — explicit initial and ongoing native display ownership", "initial display-owner hardening ledger"),
+    ("hardening", "### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement", "### R-S11iw-disabled/R-S11e-286 — exact software-RGBA event-stream replacement", "stream-replacement hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "shared behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "shared recovery behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11iw_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "stream-replacement behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "initial display-owner behavior gate"),
     ("dart_verify", "flutter test --no-pub test/rgba_publication_order_test.dart", "true # RGBA publication ordering test removed", "Dart behavior gate"),
     ("verify", "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-rgba-mailbox.py --repo .", "shared mutation gate"),

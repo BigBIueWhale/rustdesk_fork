@@ -1638,6 +1638,7 @@ def validate(sources: Dict[str, str]) -> None:
             "start_failure = Some(error);",
             "try_send_close_event(&h.event_stream);",
             "h.event_stream = Some(event_stream);",
+            ".rearm_rgba_for_stream_replacement(",
             "if start_failure.is_none() && starts_peer_connection && is_video_session",
             "h.awaiting_initial_display = true;",
             "match s.start_io_thread_with_lock(&mut thread_lock)",
@@ -1652,10 +1653,9 @@ def validate(sources: Dict[str, str]) -> None:
             "if let Some(error) = start_failure",
             "rollback_failed_session_start(session_id, client_owner_id);",
             "return Err(error);",
-            ".replay_ready_rgba(session_id, client_owner_id)",
-            "rollback_failed_session_start(session_id, client_owner_id);",
+            "Ok(())",
         ),
-        "exact-owner failed-start and replay rollback",
+        "exact-owner failed-start rollback and successful completion",
     )
     require(
         flutter,
@@ -3113,9 +3113,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "flutter",
-        ".replay_ready_rgba(session_id, client_owner_id)",
-        ".replay_ready_rgba(session_id, session_id)",
-        "exact-owner stream replay",
+        ".rearm_rgba_for_stream_replacement(",
+        ".rearm_rgba_for_stream_replacement_disabled(",
+        "exact-owner stream replacement",
     ),
     (
         "flutter",

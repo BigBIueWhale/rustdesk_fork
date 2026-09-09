@@ -30474,6 +30474,119 @@ cross-platform reconnect/focus flow, display-only delay, complete connection-flo
 correctness/performance request, and every other explicit open hardening item
 remain active.
 
+### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement (2026-09-09)
+
+**Status:** SOURCE CORRECTION / FOCUSED 137-MUTATION AND COMPLETE 6,229-ENTRY
+INDEPENDENT SOURCE-MUTATION EVIDENCE PASS / ADJACENT 186- AND 267-MUTATION
+EVIDENCE PASS / EXACT RUST/DART/GENERATED-BRIDGE, NATIVE PLATFORM, DEVICE,
+PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE
+PENDING.
+
+**Platform, action, and boundary.** This slice is limited to the software-RGBA
+presentation path shared by native Flutter Android, iOS, Windows, Linux, and
+macOS viewers. Its authority is one exact outgoing connection-session UUID,
+UI-owner UUID, event-stream replacement transaction, selected display, and
+checked RGBA publication token. Desktop native pixelbuffer textures remain
+separately governed by R-S11iv. The deliberately persistent Android controlled
+service, connection transport, file transfer, and input/control planes are not
+changed.
+
+**Source-proven old path.** `session_start_` closed the predecessor event stream
+and installed the supplied replacement while holding the worker and exact
+handler-owner guards, but then released those guards. `replay_ready_rgba`
+separately snapshotted each live `(session, display, publication)` and reacquired
+whatever stream was current before reposting that same publication token. Dart's
+`ExactRgbaPublicationOrder` deliberately rejects a token that is not strictly
+newer, so a replacement consumer could reject the replay as a duplicate. An
+asynchronous callback already admitted by the predecessor retained the same
+native acknowledgement authority and could copy, drain, or promote that
+publication after replacement. An overlapping start could also replace the
+stream between the first transaction and its later replay. A subsequent focus
+refresh or reconnect minted a new token and could mask the lost handoff. This is
+current-source cross-platform presentation-liveness and exact-consumer-finality
+debt. It is not proof that an older deployed artifact exercised the race, not a
+causation claim for the reported Android task-swipe or Windows focus-delay
+symptom, and not evidence of compromise, public exposure, privilege escalation,
+or host/service/firewall/network/container mutation.
+
+**Correct ownership.** The snapshot/replay functions are deleted. Before an
+event-stream start or replacement can finish, the existing worker slot and exact
+handler-owner write guard now remain held across predecessor close publication,
+installation of the supplied stream, cursor re-arm, and software-RGBA transfer.
+The transfer takes the exact software-mailbox write guard and invokes the
+existing `RgbaData::rearm` transition for every mailbox belonging to that exact
+session. A valid publication receives a fresh checked Dart-compatible token and
+promotes only its one latest pending frame, or retains the stable current bytes
+when no pending frame exists. Invalid mailboxes are idle. Retained replacement
+publications are capped by the existing 16-display limit and sorted by display.
+Their nonblocking posts target the exact supplied stream while the mailbox guard
+is still held, so a predecessor acknowledgement cannot enter between rotation
+and publication. Its old token is thereafter an exact no-op.
+
+Counter exhaustion, excess live state, or one refused post retires all and only
+that session's software-RGBA mailboxes before returning a visible start failure;
+the existing exact-owner rollback then owns handler and last-peer finality.
+Unrelated sessions remain intact. This adds no frame or replay queue, retry,
+reconnect, timer, poller, task, worker, thread, isolate, runtime, Service or
+Activity transition, listener, port, endpoint, network behavior, protocol field,
+privilege, dependency, native-texture path, or artifact.
+
+Two deterministic Rust regressions cover fresh-token stream replacement with
+latest-pending promotion, predecessor copy and acknowledgement refusal, exact
+unrelated-session preservation, and exact-session retirement on replacement
+stream refusal. The focused RGBA verifier and independently implemented
+workspace validator bind the deleted replay path, retained guard order, bounded
+rotation, failure finality, regressions, R-S11iw, Appendix C #408, this ledger,
+shared/Apple wiring, and the exact requirements identity.
+
+Current normative identity for this slice:
+
+```text
+c5499bd1c8267267c91eecc5fa0035b66cfbffec58716ded1a678dc56e523a9a  requirements.html
+```
+
+**Evidence receipt.** On a frozen read-only repository snapshot in the exact
+pinned, unprivileged, capability-free, network-disabled image, the focused RGBA
+verifier rejected all 137 deliberate mutations, the adjacent display-finality
+and desktop-texture verifiers rejected all 186 and 267 deliberate mutations,
+and the independent workspace baseline passed. Targeted preflight then rejected
+97 occurrence mutations across 85 RGBA entries with their intended diagnostics
+and 10 occurrence mutations across 12 documentation entries. The final complete
+independent source-mutation catalog rejected all 6,229 entries and exited zero
+with `verify-verifier-workspace: ok`. Python AST parsing of the four changed
+verifiers, shell syntax checks, and the native-codec watch's normal and self-test
+modes also passed under the same confinement.
+
+The exhaustive gate first exposed a stale test-adjacency fixture after these
+regressions were inserted; the fixture was narrowed to the exact test name. Its
+next run exposed an actual meta-verifier gap where one of two runtime occurrences
+of a focused helper-contract mutation was rejected but the other was accepted.
+The workspace verifier now requires every intended occurrence to fail with the
+contract-specific diagnostic; the targeted occurrence preflights and the final
+6,229-entry pass are after that correction. Rustfmt 1.75 parses `src/flutter.rs`,
+and the lines in this slice were normalized, but its whole-file `--check` remains
+nonzero on broader pre-existing formatting drift. The pinned image contains no
+Cargo, Rust compiler, Dart, Flutter, Kotlin, or Java toolchain, so no exact native
+compile or regression execution is claimed.
+
+One process-boundary mistake occurred before the frozen final run: host
+`python3 -m py_compile` was invoked once on four verifier files. It created
+exactly four `.pyc` files; those four files were identified and removed
+immediately. It did not execute product code, request privilege, access a
+service or device, open a listener, or use the network. All later Python
+execution used the locked image. This mistake is recorded rather than omitted.
+
+No native behavior or release verdict is claimed before the confined gates
+finish. Exact Rust/Dart/generated-bridge compilation and execution, physical
+Android task-swipe/reopen/Force-Stop and Windows focus/minimize/window-transfer
+behavior, iOS/Linux/macOS and cross-version behavior, capture-through-compositor
+timestamps and explicit latency/queue/CPU/memory budgets, sustained
+connection/reconnect/focus/background/file/control/resource/performance soak,
+current signed artifacts, clean committed cold R-B2/R-B10 equality, independent
+reproduction, causation, external review, and proof that the complete connection
+flow is correct and performant remain open STOP-SHIP obligations and explicit
+user requests.
+
 ### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication (2026-09-09)
 
 **Status:** SOURCE CORRECTION / FOCUSED 267-MUTATION AND COMPLETE 6,190-ENTRY

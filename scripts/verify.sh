@@ -11203,6 +11203,7 @@ else
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iw_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gv_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never
@@ -11219,9 +11220,9 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
-  echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
+  echo "  ok  R-S11ew/R-S11fr/R-S11iw Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, stream-replacement-safe, recoverable, commit-ordered, and pointer-free"
 else
-  echo "  FAIL R-S11ew/R-S11fr: Flutter software RGBA publication regained stale, cross-session, cross-stream, unbounded, stranded-recovery, out-of-order-commit, or borrowed-pointer state"
+  echo "  FAIL R-S11ew/R-S11fr/R-S11iw: Flutter software RGBA publication regained stale, same-token-replayed, cross-session, cross-stream, unbounded, stranded-recovery, out-of-order-commit, or borrowed-pointer state"
   rc=1
 fi
 if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then

@@ -1931,43 +1931,54 @@ impl FlutterHandler {
         }
     }
 
-    fn ready_rgba_publications(&self, session_id: &SessionID) -> Vec<(usize, u64)> {
-        self.display_rgbas
-            .read()
-            .unwrap()
-            .iter()
-            .filter_map(|((owner, display), rgba)| {
-                (owner == session_id && rgba.valid).then_some((*display, rgba.publication))
-            })
-            .collect()
-    }
-
-    fn replay_ready_rgba(
+    fn rearm_rgba_for_stream_replacement<F>(
         &self,
         session_id: &SessionID,
-        client_owner_id: &SessionID,
-    ) -> bool {
-        let publications = self.ready_rgba_publications(session_id);
-        if publications.is_empty() {
-            return self
-                .session_handlers
-                .read()
-                .unwrap()
-                .get(session_id)
-                .and_then(|handler| handler.client_owner_id.as_ref())
-                == Some(client_owner_id);
+        mut notify: F,
+    ) -> ResultType<()>
+    where
+        F: FnMut(usize, u64) -> bool,
+    {
+        // The caller retains the exact handler-owner write guard while replacing its stream.
+        // Rotate every live publication before the new stream can observe it, so an asynchronous
+        // acknowledgement from the predecessor stream cannot copy, drain, or promote successor
+        // state. Posting is nonblocking and remains under this mailbox guard until every exact
+        // display has either committed to the replacement stream or the whole session mailbox is
+        // retired on refusal.
+        let mut mailboxes = self.display_rgbas.write().unwrap();
+        let mut publications = Vec::new();
+        let mut failure = None;
+        for ((owner, display), mailbox) in mailboxes.iter_mut() {
+            if owner != session_id {
+                continue;
+            }
+            match mailbox.rearm(|| self.next_rgba_publication()) {
+                RgbaRearm::Idle => {}
+                RgbaRearm::Rearmed(publication) => {
+                    if publications.len() >= MAX_PEER_VIDEO_DISPLAYS {
+                        failure = Some("software RGBA stream replacement exceeded its display cap");
+                        break;
+                    }
+                    publications.push((*display, publication));
+                }
+                RgbaRearm::Exhausted => {
+                    failure = Some("software RGBA stream-replacement publication is exhausted");
+                    break;
+                }
+            }
         }
-        let handlers = self.session_handlers.read().unwrap();
-        let Some(stream) = handlers
-            .get(session_id)
-            .filter(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))
-            .and_then(|handler| handler.event_stream.as_ref())
-        else {
-            return false;
-        };
-        publications
-            .into_iter()
-            .all(|(display, publication)| stream.add(EventToUI::Rgba(display, publication)))
+        if let Some(error) = failure {
+            mailboxes.retain(|(owner, _), _| owner != session_id);
+            bail!(error);
+        }
+        publications.sort_unstable_by_key(|(display, _)| *display);
+        for (display, publication) in publications {
+            if !notify(display, publication) {
+                mailboxes.retain(|(owner, _), _| owner != session_id);
+                bail!("software RGBA stream replacement was rejected by its exact UI stream");
+            }
+        }
+        Ok(())
     }
 
     fn rearm_rgba_for_presentation_recovery(
@@ -2910,6 +2921,20 @@ pub fn session_start_(
                     }
                 }
             }
+            if start_failure.is_none() {
+                if let Some(stream) = h.event_stream.as_ref() {
+                    if let Err(error) = s
+                        .ui_handler
+                        .rearm_rgba_for_stream_replacement(session_id, |display, publication| {
+                            stream.add(EventToUI::Rgba(display, publication))
+                        })
+                    {
+                        start_failure = Some(error);
+                    }
+                } else {
+                    start_failure = Some(anyhow!("Outgoing session event stream is unavailable"));
+                }
+            }
             if start_failure.is_none() && starts_peer_connection && is_video_session {
                 h.awaiting_initial_display = true;
             }
@@ -2945,20 +2970,9 @@ pub fn session_start_(
         return Err(error);
     }
 
-    if let Some(session) = sessions::get_session_by_session_id(session_id) {
-        if !session
-            .ui_handler
-            .replay_ready_rgba(session_id, client_owner_id)
-        {
-            rollback_failed_session_start(session_id, client_owner_id);
-            bail!("Outgoing session event stream rejected pending video");
-        }
-        #[cfg(target_os = "android")]
-        drop(owner_admission);
-        Ok(())
-    } else {
-        bail!("No session with peer id {}", id)
-    }
+    #[cfg(target_os = "android")]
+    drop(owner_admission);
+    Ok(())
 }
 
 fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {
@@ -5566,6 +5580,111 @@ mod mobile_session_lifecycle_tests {
             .read()
             .unwrap()
             .contains_key(&(session_id, 4)));
+    }
+
+    #[test]
+    fn r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_acknowledgement() {
+        let handler = FlutterHandler::default();
+        let session_id = SessionID::new_v4();
+        let other_session_id = SessionID::new_v4();
+        let mut first = vec![1; 8];
+        let first_publication = handler
+            .offer_rgba_to_sessions(&[session_id], 4, &mut first)
+            .first()
+            .expect("the predecessor stream receives one publication")
+            .1;
+        let mut newest = vec![2; 8];
+        assert!(handler
+            .offer_rgba_to_sessions(&[session_id], 4, &mut newest)
+            .is_empty());
+        let mut stable = vec![4; 8];
+        let stable_publication = handler
+            .offer_rgba_to_sessions(&[session_id], 9, &mut stable)
+            .first()
+            .expect("the predecessor stream receives its second display publication")
+            .1;
+        let mut other = vec![3; 8];
+        let other_publication = handler
+            .offer_rgba_to_sessions(&[other_session_id], 7, &mut other)
+            .first()
+            .expect("the unrelated stream receives one publication")
+            .1;
+
+        let mut replacement_publications = Vec::new();
+        handler
+            .rearm_rgba_for_stream_replacement(&session_id, |display, publication| {
+                replacement_publications.push((display, publication));
+                true
+            })
+            .expect("the replacement stream accepts its fresh publication");
+        assert_eq!(replacement_publications.len(), 2);
+        assert_eq!(
+            replacement_publications
+                .iter()
+                .map(|(display, _)| *display)
+                .collect::<Vec<_>>(),
+            vec![4, 9]
+        );
+        let replacement_publication = replacement_publications[0].1;
+        assert_eq!(replacement_publications[0].0, 4);
+        assert!(replacement_publication > first_publication);
+        let replacement_stable_publication = replacement_publications[1].1;
+        assert!(replacement_stable_publication > stable_publication);
+        assert_eq!(handler.copy_rgba(&session_id, 4, first_publication), None);
+        assert_eq!(
+            handler.copy_rgba(&session_id, 4, replacement_publication),
+            Some(vec![2; 8])
+        );
+
+        handler.next_rgba(&session_id, 4, first_publication);
+        assert_eq!(
+            handler.copy_rgba(&session_id, 4, replacement_publication),
+            Some(vec![2; 8])
+        );
+        assert_eq!(
+            handler.copy_rgba(&other_session_id, 7, other_publication),
+            Some(vec![3; 8])
+        );
+        assert_eq!(handler.copy_rgba(&session_id, 9, stable_publication), None);
+        assert_eq!(
+            handler.copy_rgba(&session_id, 9, replacement_stable_publication),
+            Some(vec![4; 8])
+        );
+    }
+
+    #[test]
+    fn r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session() {
+        let handler = FlutterHandler::default();
+        let session_id = SessionID::new_v4();
+        let other_session_id = SessionID::new_v4();
+        let mut first = vec![1; 8];
+        handler.offer_rgba_to_sessions(&[session_id], 4, &mut first);
+        let mut second = vec![3; 8];
+        handler.offer_rgba_to_sessions(&[session_id], 9, &mut second);
+        let mut other = vec![2; 8];
+        let other_publication = handler
+            .offer_rgba_to_sessions(&[other_session_id], 7, &mut other)
+            .first()
+            .expect("the unrelated stream receives one publication")
+            .1;
+
+        assert!(handler
+            .rearm_rgba_for_stream_replacement(&session_id, |_, _| false)
+            .is_err());
+        assert!(!handler
+            .display_rgbas
+            .read()
+            .unwrap()
+            .contains_key(&(session_id, 4)));
+        assert!(!handler
+            .display_rgbas
+            .read()
+            .unwrap()
+            .contains_key(&(session_id, 9)));
+        assert_eq!(
+            handler.copy_rgba(&other_session_id, 7, other_publication),
+            Some(vec![2; 8])
+        );
     }
 
     #[test]

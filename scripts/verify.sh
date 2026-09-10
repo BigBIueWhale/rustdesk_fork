@@ -8595,6 +8595,8 @@ r_s11c4d=
 cm_command_sender=$(awk '/async fn send_to_cm\(/,/fn publish_cm_terminal/' src/server/connection.rs)
 cm_file_sender=$(awk '/async fn send_fs\(/,/async fn send_login_error/' src/server/connection.rs)
 cm_android_bridge=$(awk '/pub async fn start_listen/,/fn get_transfer_job_for_connection/' src/ui_cm_interface.rs)
+cm_ipc_owner=$(awk '/fn try_start_cm_ipc\(/,/async fn on_message/' src/server/connection.rs)
+cm_ipc_bootstrap=$(awk '/async fn start_ipc\(/,/\/\/ in case screen is sleep and blank/' src/server/connection.rs)
 for binding in \
   'const CM_COMMAND_QUEUE_CAPACITY: usize = 2;' \
   'const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs(5);' \
@@ -8655,6 +8657,29 @@ android_command_line=$(grep -nF -m 1 'command = rx.recv() => command' <<<"$cm_an
 if [ -z "$android_terminal_line" ] || [ -z "$android_command_line" ] || [ "$android_terminal_line" -ge "$android_command_line" ]; then
   r_s11c4d="$r_s11c4d android-terminal-not-before-ordinary-command"
 fi
+cm_failure_sender_line=$(grep -nF -m 1 'let tx_from_cm_failure = p.tx_from_cm.clone();' <<<"$cm_ipc_owner" | cut -d: -f1)
+cm_failure_result_line=$(grep -nF -m 1 'if let Some(Err(err)) = result {' <<<"$cm_ipc_owner" | cut -d: -f1)
+cm_failure_publish_line=$(grep -nF -m 1 'tx_from_cm_failure.send(Data::CmErr(err.to_string()))' <<<"$cm_ipc_owner" | cut -d: -f1)
+if [ -z "$cm_failure_sender_line" ] || [ -z "$cm_failure_result_line" ] || [ -z "$cm_failure_publish_line" ] \
+    || [ "$cm_failure_sender_line" -ge "$cm_failure_result_line" ] \
+    || [ "$cm_failure_result_line" -ge "$cm_failure_publish_line" ]; then
+  r_s11c4d="$r_s11c4d exact-cross-desktop-bridge-failure-publication-invalid"
+fi
+for binding in \
+  'Ok(None) => {' \
+  'bail!("authenticated connection-manager IPC stream ended");'; do
+  grep -qF "$binding" <<<"$cm_ipc_bootstrap" || r_s11c4d="$r_s11c4d authenticated-cm-eof-finality-missing"
+done
+for binding in \
+  'if crate::platform::is_prelogin() {' \
+  'if let Err(report_err) =' \
+  'failed to publish connection-manager bridge failure'; do
+  grep -qF "$binding" <<<"$cm_ipc_owner" || r_s11c4d="$r_s11c4d bridge-failure-report-finality-missing"
+done
+if grep -qF 'let tx_from_cm_clone = p.tx_from_cm.clone();' <<<"$cm_ipc_owner" \
+    || grep -qF 'allow_err!(tx_from_cm_failure.send' <<<"$cm_ipc_owner"; then
+  r_s11c4d="$r_s11c4d windows-only-or-swallowed-bridge-failure-publication-present"
+fi
 if grep -qF 'self.tx_to_cm.send(ipc::Data::Close)' src/server/connection.rs; then
   r_s11c4d="$r_s11c4d terminal-still-shares-ordinary-command-queue"
 fi
@@ -8662,8 +8687,14 @@ grep -qF 'finite per-connection CM command queue' requirements.html \
   || r_s11c4d="$r_s11c4d normative-command-budget-missing"
 grep -qF 'R-S11c-4d — bounded exact-owner CM command publication' HARDENING_STATUS.md \
   || r_s11c4d="$r_s11c4d hardening-ledger-missing"
+grep -qF '<span class="id">R-S11iy</span>' requirements.html \
+  || r_s11c4d="$r_s11c4d bridge-failure-requirement-missing"
+grep -qF '<tr><td>410</td>' requirements.html \
+  || r_s11c4d="$r_s11c4d bridge-failure-appendix-missing"
+grep -qF 'R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality' HARDENING_STATUS.md \
+  || r_s11c4d="$r_s11c4d bridge-failure-ledger-missing"
 if [ -n "$r_s11c4d" ]; then echo "  FAIL R-S11c-4d bounded exact-owner CM command publication:$r_s11c4d"; rc=1; else
-  echo "  ok  R-S11c-4d every Connection-to-CM command is finitely queued and deadline-backed; exact terminal ownership preempts queued work on desktop and Android"; fi
+  echo "  ok  R-S11c-4d/R-S11e-288 every Connection-to-CM command is finite and terminal-first; authenticated desktop bridge EOF/failure retires its exact network owner"; fi
 
 echo "== (3b-iii-f0) CM cannot select authenticated peer message types (R-S11e-17) =="
 r_s11e17=

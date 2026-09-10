@@ -6517,7 +6517,9 @@ network configuration was inspected or changed.
   rustfmt, so no current native compile/test is claimed. No installed desktop lifecycle, complete file-operation
   transaction, Android device swipe/force-stop/reconnect sequence, final release build, independent reproduction, or
   external review is claimed. The broader connection-flow, performance, R-B2/R-B10, and release obligations remain
-  **OPEN**.
+  **OPEN**. The 2026-09-10 R-S11iy/R-S11e-288 follow-on additionally makes authenticated desktop CM stream EOF
+  terminal and publishes every genuine bridge failure to the exact owning connection on Linux, macOS, and Windows;
+  its source and evidence boundary are recorded in the dedicated ledger entry below.
 - **R-S11c-22 — Windows CM non-file clipboard authority — CLOSED 2026-07-11.**
   Platform: Windows installed/root server mode. Endpoint/action: the root clipboard service's helper
   request to `_cm` for non-file host clipboard content. Boundary: authenticated helper endpoint proof
@@ -30542,7 +30544,7 @@ shared/Apple wiring, and the exact requirements identity.
 Current normative identity for this slice:
 
 ```text
-1d783c39d4233d41e311b2d0266abb46ae11dea4cac70978727141f2d2c1fa27  requirements.html
+0256ce629d4cdc1bb88391fceb3c834352ba7d92fecc9a07c2990d60acbddad3  requirements.html
 ```
 
 **Evidence receipt.** On a frozen read-only repository snapshot in the exact
@@ -30586,6 +30588,104 @@ current signed artifacts, clean committed cold R-B2/R-B10 equality, independent
 reproduction, causation, external review, and proof that the complete connection
 flow is correct and performant remain open STOP-SHIP obligations and explicit
 user requests.
+
+### R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality (2026-09-10)
+
+**Status:** SOURCE CORRECTION / TARGETED 18-MUTATION AND COMPLETE
+6,286-DEFINITION INDEPENDENT SOURCE-MUTATION EVIDENCE PASS; SHARED/APPLE
+SOURCE-GATE BINDINGS VERIFIED / EXACT RUST, NATIVE PLATFORM, INSTALLED DESKTOP,
+PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE
+PENDING.
+
+**Platform, action, and boundary.** This slice is limited to the controlled-side
+desktop connection-manager bridge shared by Linux, macOS, and Windows. Its owner
+is one authenticated network `Connection`; its local authority path is that
+connection's authenticated CM IPC stream and existing finite `CmEgressSender`.
+Android and iOS use the separate in-process consumer and are unchanged. CM
+launch policy, terminal intent, ordinary command admission, network protocol,
+file semantics, capture, display, input, persistence, and privilege boundaries
+remain unchanged.
+
+**Source-proven old path.** The live bridge selected `stream.next()` but matched
+only transport error and `Ok(Some(data))`; its catch-all ignored `Ok(None)`. An
+orderly authenticated IPC EOF could consequently become an immediately-ready
+future on every loop iteration, hot-repolling while retaining the task and exact
+connection resources. Separately, `try_start_cm_ipc` cloned the bounded
+CM-to-connection sender and reported `Data::CmErr` only under `cfg(windows)`.
+The network connection deliberately retains its own sender so `rx_from_cm.recv()`
+does not burn CPU when a bridge sender disappears. Thus a Linux or macOS bridge
+error or EOF neither closed that receiver nor notified the network owner; the
+session could remain incoherently live until a later ordinary command happened
+to encounter the dropped command receiver. This is current-source desktop
+liveness, resource-finality, and connection-state coherence debt. It is not
+native or field reproduction, proof that deployed bytes exercised the path, or
+causation for the reported Android task-swipe or Windows focus/display-delay
+symptoms. It is not evidence of compromise, public exposure, privilege
+escalation, or host/service/firewall/network/container mutation.
+
+**Correct ownership.** `Ok(None)` from the authenticated CM stream now returns
+one explicit bridge error and cannot be repolled. Before moving the original
+egress sender into `start_ipc`, the exact bridge task retains one clone for
+failure finality on every desktop OS. Only `Some(Err(err))` returned by the
+owner wrapper publishes `Data::CmErr(err.to_string())` through that exact finite
+mailbox. Normal owner cancellation remains `None` and publishes no synthetic
+error. The established Windows pre-login case returns before publication and
+remains Windows-only. Failure-publication refusal is handled and logged rather
+than swallowed; the bounded egress implementation itself clears ordinary queued
+data and installs one terminal failure when capacity or encoding admission is
+refused. The existing ordinary-session and port-forward `CmErr` consumers remain
+the sole teardown authority.
+
+This change adds no reconnect, retry, timer, poller, queue, task, worker, thread,
+runtime, service or Activity transition, listener, port, endpoint, network
+fallback, protocol field, privilege, dependency, process kill, or artifact.
+R-S11c-4d remains the finite command/terminal-lane parent contract. Shared and
+Apple source gates, the independently implemented workspace validator and its
+complete deliberate-mutation catalog, R-S11iy, Appendix C #410, the exact
+requirements identity, and this ledger must bind the correction before its
+source status advances.
+
+**Source verification receipt.** On source bytes frozen before the credited run,
+the targeted independent preflight rejected all 18 new production, consumer,
+requirement, ledger, digest-binding, shared-gate, and Apple-gate mutations with
+their intended diagnostics. The complete independent source-mutation catalog then
+validated and rejected every occurrence of all 6,286 current mutation definitions
+and exited zero with `verify-verifier-workspace: ok`. The committed baseline at
+`HEAD` contains 6,268 definitions; the 18-definition increase is exact and was
+computed from both Python syntax trees without importing or executing the verifier.
+
+The credited catalog and all post-run executable checks used immutable local image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+as UID/GID 1000:1000 with no network, a read-only recursively-disabled repository
+bind, read-only root, all capabilities dropped, `no-new-privileges`, private IPC,
+64-PID, 2-GiB memory/no-swap-growth, two-CPU, and private 512-MiB noexec temporary
+filesystem limits. The independent ordinary baseline, Python AST parsing, shared
+and Apple shell syntax, native-codec/requirements-digest normal gate and its
+self-test, the single ledger-wide exact requirements hash, and `git diff --check`
+pass. The sole repository edit after the complete catalog is this documentary receipt; its
+ordinary independent baseline, syntax, digest, and diff checks were repeated.
+
+Three earlier runs are not credited: the first exposed an expected-diagnostic
+fixture mismatch and was interrupted after that real verifier defect was corrected;
+the second was deliberately interrupted to strengthen occurrence checking and its
+exact leftover verifier container was stopped; the third was stopped because its
+otherwise confined invocation omitted the canonical explicit `--pull=never` and
+equal memory/swap bounds. No unrelated container was inspected or changed. No
+image was built, pulled, loaded, or tagged; no root, sudo, privilege, capability,
+host service, firewall, network, listener, device, or installed RustDesk state was
+used or changed. The pinned image has no Cargo, Rust compiler, rustfmt, Dart,
+Flutter, Kotlin, Java, generated-bridge, or native platform toolchain, so none of
+these source checks is represented as Rust/native compilation, platform execution,
+device evidence, or installed-artifact evidence.
+
+Exact Rust/native compilation and execution, installed Linux/macOS/Windows CM
+EOF/error/pre-login behavior, complete file/control/display transactions,
+cross-version behavior, capture-through-compositor timestamps and explicit
+latency/queue/CPU/memory budgets, sustained connection/reconnect/focus/background
+and resource/performance soak, current signed artifacts, clean committed cold
+R-B2/R-B10 equality, independent reproduction, causation, external review, and
+proof that the complete connection flow is correct and performant remain open
+STOP-SHIP obligations and explicit user requests.
 
 ### R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation (2026-09-09)
 

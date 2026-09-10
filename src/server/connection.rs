@@ -7050,8 +7050,7 @@ impl Connection {
     fn try_start_cm_ipc(&mut self) {
         if let Some(p) = self.start_cm_ipc_para.take() {
             tokio::spawn(async move {
-                #[cfg(windows)]
-                let tx_from_cm_clone = p.tx_from_cm.clone();
+                let tx_from_cm_failure = p.tx_from_cm.clone();
                 let (bootstrap_complete, bootstrap_completed) = oneshot::channel();
                 let result = Self::run_cm_ipc_until_owner_closed(
                     p.owner_closed,
@@ -7072,8 +7071,16 @@ impl Connection {
                     log::warn!("ipc to connection manager exit: {}", err);
                     // https://github.com/rustdesk/rustdesk-server-pro/discussions/382#discussioncomment-10525725, cm may start failed
                     #[cfg(windows)]
-                    if !crate::platform::is_prelogin() {
-                        allow_err!(tx_from_cm_clone.send(Data::CmErr(err.to_string())));
+                    if crate::platform::is_prelogin() {
+                        return;
+                    }
+                    if let Err(report_err) =
+                        tx_from_cm_failure.send(Data::CmErr(err.to_string()))
+                    {
+                        log::warn!(
+                            "failed to publish connection-manager bridge failure: {}",
+                            report_err
+                        );
                     }
                 }
             });
@@ -11835,7 +11842,9 @@ async fn start_ipc(
                             }
                         }
                     }
-                    _ => {}
+                    Ok(None) => {
+                        bail!("authenticated connection-manager IPC stream ended");
+                    }
                 }
             }
             hbb_common::futures::future::Either::Right(res) => {

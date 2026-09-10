@@ -62698,6 +62698,7 @@ def validate_cm_command_lifetime_contract(sources):
     flutter = sources["flutter_source"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
+    native_watch = sources["native_watch"]
 
     for source, text, label in (
         (
@@ -62709,6 +62710,26 @@ def validate_cm_command_lifetime_contract(sources):
             sources["apple"],
             'echo "== (2b-iii-a1) R-S11c-4d bounded exact-owner macOS CM command publication =="',
             "Apple CM command-lifetime source gate",
+        ),
+        (
+            sources["verify"],
+            "exact-cross-desktop-bridge-failure-publication-invalid",
+            "shared desktop CM bridge-failure finality gate",
+        ),
+        (
+            sources["verify"],
+            "authenticated-cm-eof-finality-missing",
+            "shared authenticated CM EOF gate",
+        ),
+        (
+            sources["apple"],
+            "exact-cross-desktop-bridge-failure-publication-invalid",
+            "Apple desktop CM bridge-failure finality gate",
+        ),
+        (
+            sources["apple"],
+            "authenticated-cm-eof-finality-missing",
+            "Apple authenticated CM EOF gate",
         ),
         (
             connection,
@@ -62871,6 +62892,44 @@ def validate_cm_command_lifetime_contract(sources):
         "unbounded post-bootstrap CM bridge drain",
     )
 
+    bridge_owner = extract_braced_item(
+        connection,
+        "fn try_start_cm_ipc(&mut self)",
+        "exact desktop CM bridge owner",
+    )
+    require_order(
+        bridge_owner,
+        (
+            "let tx_from_cm_failure = p.tx_from_cm.clone();",
+            "Self::run_cm_ipc_until_owner_closed(",
+            "p.tx_from_cm,",
+            ".await;",
+            "if let Some(Err(err)) = result {",
+            "#[cfg(windows)]",
+            "if crate::platform::is_prelogin() {",
+            "return;",
+            "if let Err(report_err) =",
+            "tx_from_cm_failure.send(Data::CmErr(err.to_string()))",
+            '"failed to publish connection-manager bridge failure: {}"',
+        ),
+        "exact cross-desktop CM bridge failure finality",
+    )
+    require_text(
+        bridge_owner,
+        "#[cfg(windows)]\n                    if crate::platform::is_prelogin() {\n                        return;\n                    }\n                    if let Err(report_err) =",
+        "Windows-only pre-login report suppression",
+    )
+    require_absent(
+        bridge_owner,
+        "#[cfg(windows)]\n                let tx_from_cm_failure",
+        "Windows-only CM failure sender",
+    )
+    require_absent(
+        bridge_owner,
+        "allow_err!(tx_from_cm_failure.send",
+        "silently ignored CM failure publication",
+    )
+
     desktop_bridge = extract_between(
         connection,
         "async fn start_ipc(",
@@ -62893,6 +62952,54 @@ def validate_cm_command_lifetime_contract(sources):
             "res = rx_to_cm.recv()",
         ),
         "desktop terminal-first bridge finality",
+    )
+    require_order(
+        desktop_bridge,
+        (
+            "res = stream.next()",
+            "hbb_common::futures::future::Either::Left(res) => {",
+            "match res {",
+            "Err(err) => {",
+            "Ok(Some(data)) => {",
+            "Ok(None) => {",
+            'bail!("authenticated connection-manager IPC stream ended");',
+        ),
+        "authenticated desktop CM EOF finality",
+    )
+    require_exact_count(
+        desktop_bridge,
+        'bail!("authenticated connection-manager IPC stream ended");',
+        1,
+        "single authenticated desktop CM EOF outcome",
+    )
+    cm_error_consumer = extract_between(
+        connection,
+        "ipc::Data::CmErr(e) => {",
+        "ipc::Data::ChatMessage{text} => {",
+        "ordinary connection CM failure consumer",
+    )
+    require_order(
+        cm_error_consumer,
+        (
+            'if e != "expected" {',
+            'conn.on_close(&format!("connection manager error: {}", e), false).await;',
+            "break;",
+        ),
+        "ordinary connection teardown on CM bridge failure",
+    )
+    port_forward = extract_braced_item(
+        connection,
+        "async fn try_port_forward_loop(",
+        "port-forward CM failure consumer",
+    )
+    require_order(
+        port_forward,
+        (
+            "ipc::Data::CmErr(e) => {",
+            'log::error!("Connection manager error: {e}");',
+            'bail!("{e}");',
+        ),
+        "port-forward teardown on CM bridge failure",
     )
     write_block = extract_between(
         desktop_bridge,
@@ -62964,6 +63071,34 @@ def validate_cm_command_lifetime_contract(sources):
         hardening,
         "no current native compile/test is claimed",
         "current-source native evidence boundary",
+    )
+    bridge_requirement = extract_html_requirement(
+        requirements, "R-S11iy", "desktop CM bridge failure-finality requirement"
+    )
+    for text, label in (
+        ("authenticated CM stream EOF", "authenticated EOF finality norm"),
+        ("existing bounded <code>CmEgressSender</code>", "exact bounded failure lane norm"),
+        ("If and only if the owner wrapper returns <code>Some(Err(_))</code>", "genuine bridge-failure norm"),
+        ("Owner closure returning <code>None</code> is normal cancellation", "owner-cancellation exclusion norm"),
+        ("exception must apply only to Windows", "Windows-only pre-login exception norm"),
+    ):
+        require_text(bridge_requirement, text, label)
+    require_text(requirements, "<tr><td>410</td>", "CM bridge Appendix C row")
+    require_text(
+        hardening,
+        "R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality",
+        "CM bridge failure-finality hardening ledger",
+    )
+    requirements_digest = hashlib.sha256(requirements.encode("utf-8")).hexdigest()
+    require_text(
+        native_watch,
+        f"Requirements hash: {requirements_digest}",
+        "exact CM bridge requirements digest",
+    )
+    require_text(
+        native_watch,
+        "The same identity additionally binds R-S11iy and Appendix C #410.",
+        "CM bridge requirements-identity binding",
     )
 
 
@@ -67685,6 +67820,60 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
+            "                let tx_from_cm_failure = p.tx_from_cm.clone();",
+            "                #[cfg(windows)]\n                let tx_from_cm_failure = p.tx_from_cm.clone();",
+            "Windows-only CM failure sender",
+        ),
+        (
+            "connection_source",
+            "if let Some(Err(err)) = result {",
+            "if let Some(Ok(())) = result {",
+            "exact cross-desktop CM bridge failure finality",
+        ),
+        (
+            "connection_source",
+            "                    #[cfg(windows)]\n                    if crate::platform::is_prelogin() {\n                        return;\n                    }\n                    if let Err(report_err) =",
+            "                    #[cfg(any(windows, target_os = \"linux\"))]\n                    if crate::platform::is_prelogin() {\n                        return;\n                    }\n                    if let Err(report_err) =",
+            "exact cross-desktop CM bridge failure finality",
+        ),
+        (
+            "connection_source",
+            "tx_from_cm_failure.send(Data::CmErr(err.to_string()))",
+            "tx_from_cm_failure.send(Data::ClickTime(0))",
+            "exact cross-desktop CM bridge failure finality",
+        ),
+        (
+            "connection_source",
+            "                    if let Err(report_err) =\n                        tx_from_cm_failure.send(Data::CmErr(err.to_string()))",
+            "                    allow_err!(tx_from_cm_failure.send(Data::CmErr(err.to_string())))",
+            "exact cross-desktop CM bridge failure finality",
+        ),
+        (
+            "connection_source",
+            "failed to publish connection-manager bridge failure: {}",
+            "discarded connection-manager bridge failure: {}",
+            "exact cross-desktop CM bridge failure finality",
+        ),
+        (
+            "connection_source",
+            "                    Ok(None) => {\n                        bail!(\"authenticated connection-manager IPC stream ended\");\n                    }",
+            "                    _ => {}",
+            "authenticated desktop CM EOF finality",
+        ),
+        (
+            "connection_source",
+            "conn.on_close(&format!(\"connection manager error: {}\", e), false).await;",
+            "log::warn!(\"connection manager error: {}\", e);",
+            "ordinary connection teardown on CM bridge failure",
+        ),
+        (
+            "connection_source",
+            "log::error!(\"Connection manager error: {e}\");\n                                bail!(\"{e}\");",
+            "log::error!(\"Connection manager error ignored: {e}\");",
+            "port-forward teardown on CM bridge failure",
+        ),
+        (
+            "connection_source",
             "timeout(\n                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,\n                                    async {",
             "unbounded_wait(\n                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,\n                                    async {",
             "single deadline for CM WriteBlock metadata and raw payload",
@@ -67726,6 +67915,36 @@ def run_source_mutations(sources):
             "post-terminal work prohibition",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11iy</span>',
+            '<span class="id">R-S11iy-disabled</span>',
+            "desktop CM bridge failure-finality requirement",
+        ),
+        (
+            "requirements",
+            "If and only if the owner wrapper returns <code>Some(Err(_))</code>",
+            "Every owner-wrapper outcome may synthesize a bridge failure",
+            "genuine bridge-failure norm",
+        ),
+        (
+            "requirements",
+            "<tr><td>410</td>",
+            "<tr><td>410-disabled</td>",
+            "CM bridge Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality",
+            "R-S11iy-disabled/R-S11e-288 — exact desktop CM bridge EOF and failure finality",
+            "CM bridge failure-finality hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11iy and Appendix C #410.",
+            "The same identity additionally binds R-S11iy-disabled and Appendix C #410.",
+            "CM bridge requirements-identity binding",
+        ),
+        (
             "hardening",
             "R-S11c-4d — bounded exact-owner CM command publication",
             "R-S11c-4d — unbounded shared CM command publication",
@@ -67748,6 +67967,30 @@ def run_source_mutations(sources):
             'echo "== (2b-iii-a1) R-S11c-4d bounded exact-owner macOS CM command publication =="',
             'echo "== (2b-iii-a1) R-S11c-4d unbounded macOS CM command publication =="',
             "Apple CM command-lifetime source gate",
+        ),
+        (
+            "verify",
+            "exact-cross-desktop-bridge-failure-publication-invalid",
+            "cross-desktop-bridge-failure-gate-disabled",
+            "shared desktop CM bridge-failure finality gate",
+        ),
+        (
+            "verify",
+            "authenticated-cm-eof-finality-missing",
+            "authenticated-cm-eof-gate-disabled",
+            "shared authenticated CM EOF gate",
+        ),
+        (
+            "apple",
+            "exact-cross-desktop-bridge-failure-publication-invalid",
+            "cross-desktop-bridge-failure-gate-disabled",
+            "Apple desktop CM bridge-failure finality gate",
+        ),
+        (
+            "apple",
+            "authenticated-cm-eof-finality-missing",
+            "authenticated-cm-eof-gate-disabled",
+            "Apple authenticated CM EOF gate",
         ),
         (
             "workspace_verifier",

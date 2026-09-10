@@ -3065,6 +3065,7 @@ cm_command_sender=$(awk '/async fn send_to_cm\(/,/fn publish_cm_terminal/' "$REP
 cm_file_sender=$(awk '/async fn send_fs\(/,/async fn send_login_error/' "$REPO/src/server/connection.rs")
 cm_connection_drop=$(awk '/impl Drop for Connection \{/,/struct LinuxHeadlessHandle/' "$REPO/src/server/connection.rs")
 cm_ipc_bootstrap=$(awk '/async fn start_ipc\(/,/\/\/ in case screen is sleep and blank/' "$REPO/src/server/connection.rs")
+cm_ipc_owner=$(awk '/fn try_start_cm_ipc\(/,/async fn on_message/' "$REPO/src/server/connection.rs")
 for binding in \
   'const CM_COMMAND_QUEUE_CAPACITY: usize = 2;' \
   'let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);' \
@@ -3104,15 +3105,44 @@ if [ -z "$drop_terminal_line" ] || [ -z "$drop_owner_line" ] || [ "$drop_termina
     || [ -z "$desktop_terminal_line" ] || [ -z "$desktop_command_line" ] || [ "$desktop_terminal_line" -ge "$desktop_command_line" ]; then
   r_s11c4d="$r_s11c4d terminal-finality-order-invalid"
 fi
+cm_failure_sender_line=$(grep -nF -m 1 'let tx_from_cm_failure = p.tx_from_cm.clone();' <<<"$cm_ipc_owner" | cut -d: -f1 || true)
+cm_failure_result_line=$(grep -nF -m 1 'if let Some(Err(err)) = result {' <<<"$cm_ipc_owner" | cut -d: -f1 || true)
+cm_failure_publish_line=$(grep -nF -m 1 'tx_from_cm_failure.send(Data::CmErr(err.to_string()))' <<<"$cm_ipc_owner" | cut -d: -f1 || true)
+if [ -z "$cm_failure_sender_line" ] || [ -z "$cm_failure_result_line" ] || [ -z "$cm_failure_publish_line" ] \
+    || [ "$cm_failure_sender_line" -ge "$cm_failure_result_line" ] \
+    || [ "$cm_failure_result_line" -ge "$cm_failure_publish_line" ]; then
+  r_s11c4d="$r_s11c4d exact-cross-desktop-bridge-failure-publication-invalid"
+fi
+for binding in \
+  'Ok(None) => {' \
+  'bail!("authenticated connection-manager IPC stream ended");'; do
+  grep -qF "$binding" <<<"$cm_ipc_bootstrap" || r_s11c4d="$r_s11c4d authenticated-cm-eof-finality-missing"
+done
+for binding in \
+  'if crate::platform::is_prelogin() {' \
+  'if let Err(report_err) =' \
+  'failed to publish connection-manager bridge failure'; do
+  grep -qF "$binding" <<<"$cm_ipc_owner" || r_s11c4d="$r_s11c4d bridge-failure-report-finality-missing"
+done
+if grep -qF 'let tx_from_cm_clone = p.tx_from_cm.clone();' <<<"$cm_ipc_owner" \
+    || grep -qF 'allow_err!(tx_from_cm_failure.send' <<<"$cm_ipc_owner"; then
+  r_s11c4d="$r_s11c4d windows-only-or-swallowed-bridge-failure-publication-present"
+fi
 grep -qF 'finite per-connection CM command queue' "$REPO/requirements.html" \
   || r_s11c4d="$r_s11c4d normative-command-budget-missing"
 grep -qF 'R-S11c-4d — bounded exact-owner CM command publication' "$REPO/HARDENING_STATUS.md" \
   || r_s11c4d="$r_s11c4d hardening-ledger-missing"
+grep -qF '<span class="id">R-S11iy</span>' "$REPO/requirements.html" \
+  || r_s11c4d="$r_s11c4d bridge-failure-requirement-missing"
+grep -qF '<tr><td>410</td>' "$REPO/requirements.html" \
+  || r_s11c4d="$r_s11c4d bridge-failure-appendix-missing"
+grep -qF 'R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality' "$REPO/HARDENING_STATUS.md" \
+  || r_s11c4d="$r_s11c4d bridge-failure-ledger-missing"
 if [ -n "$r_s11c4d" ]; then
   echo "  FAIL R-S11c-4d bounded exact-owner macOS CM command publication:$r_s11c4d"
   rc=1
 else
-  note "ok  R-S11c-4d macOS Connection-to-CM commands use bounded deadline-backed publication and an exact terminal lane preempts queued work"
+  note "ok  R-S11c-4d/R-S11e-288 macOS CM commands are finite and terminal-first; authenticated bridge EOF/failure retires its exact network owner"
 fi
 
 echo "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract =="

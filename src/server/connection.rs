@@ -3791,8 +3791,12 @@ struct StartCmIpcPara {
     rx_to_cm: mpsc::Receiver<ipc::Data>,
     cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>,
     tx_from_cm: crate::ui_cm_interface::CmEgressSender,
-    rx_desktop_ready: mpsc::Receiver<()>,
-    tx_cm_stream_ready: mpsc::Sender<()>,
+    #[cfg(target_os = "linux")]
+    rx_desktop_ready: oneshot::Receiver<()>,
+    #[cfg(target_os = "linux")]
+    tx_cm_stream_ready: oneshot::Sender<()>,
+    #[cfg(target_os = "linux")]
+    headless_cm: bool,
     owner_closed: oneshot::Receiver<()>,
 }
 
@@ -5139,15 +5143,20 @@ impl Connection {
             queued_bytes: Arc::new(AtomicUsize::new(0)),
             execution: Arc::clone(&input_execution),
         };
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let (tx_cm_stream_ready, _rx_cm_stream_ready) = mpsc::channel(1);
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let (_tx_desktop_ready, rx_desktop_ready) = mpsc::channel(1);
+        #[cfg(target_os = "linux")]
+        let (tx_cm_stream_ready, rx_cm_stream_ready) = oneshot::channel();
+        #[cfg(target_os = "linux")]
+        let (tx_desktop_ready, rx_desktop_ready) = oneshot::channel();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (cm_ipc_owner, cm_ipc_owner_closed) = oneshot::channel();
         #[cfg(target_os = "linux")]
         let linux_headless_handle =
-            LinuxHeadlessHandle::new(_rx_cm_stream_ready, _tx_desktop_ready);
+            LinuxHeadlessHandle::new(rx_cm_stream_ready, tx_desktop_ready);
+        #[cfg(target_os = "linux")]
+        // Both halves of the readiness handshake must use the same connection-local decision.
+        // Re-sampling desktop state in the spawned bootstrap task could make one half wait while
+        // the other half deliberately omitted the result.
+        let headless_cm = linux_headless_handle.is_headless;
 
         let cm_auth_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
         let mut conn = Self {
@@ -5220,8 +5229,12 @@ impl Connection {
                 rx_to_cm,
                 cm_terminal: cm_terminal_rx,
                 tx_from_cm,
+                #[cfg(target_os = "linux")]
                 rx_desktop_ready,
+                #[cfg(target_os = "linux")]
                 tx_cm_stream_ready,
+                #[cfg(target_os = "linux")]
+                headless_cm,
                 owner_closed: cm_ipc_owner_closed,
             }),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -7059,8 +7072,12 @@ impl Connection {
                         p.rx_to_cm,
                         p.cm_terminal,
                         p.tx_from_cm,
+                        #[cfg(target_os = "linux")]
                         p.rx_desktop_ready,
+                        #[cfg(target_os = "linux")]
                         p.tx_cm_stream_ready,
+                        #[cfg(target_os = "linux")]
+                        p.headless_cm,
                         p.conn_id,
                         p.cm_auth_token,
                         bootstrap_complete,
@@ -7255,7 +7272,16 @@ impl Connection {
 
             if err_msg.is_empty() {
                 #[cfg(target_os = "linux")]
-                self.linux_headless_handle.wait_desktop_cm_ready().await;
+                if let Err(error) = self.linux_headless_handle.wait_desktop_cm_ready().await {
+                    log::error!(
+                        "#{}: Linux headless connection-manager readiness failed: {}",
+                        self.inner.id(),
+                        error
+                    );
+                    self.send_login_error(crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY)
+                        .await;
+                    return false;
+                }
                 let Some(cm_login_followup) =
                     self.send_logon_response_and_keep_alive().await
                 else {
@@ -11282,12 +11308,43 @@ enum LinuxDesktopReadyWait {
 
 #[cfg(target_os = "linux")]
 async fn wait_for_linux_desktop_ready(
-    receiver: &mut mpsc::Receiver<()>,
+    receiver: &mut Option<oneshot::Receiver<()>>,
     ms_timeout: u64,
 ) -> LinuxDesktopReadyWait {
-    match timeout(ms_timeout, receiver.recv()).await {
-        Ok(None) => LinuxDesktopReadyWait::OwnerClosed,
-        Ok(Some(())) | Err(_) => LinuxDesktopReadyWait::Wake,
+    let Some(pending) = receiver.as_mut() else {
+        time::sleep(Duration::from_millis(ms_timeout)).await;
+        return LinuxDesktopReadyWait::Wake;
+    };
+    match timeout(ms_timeout, pending).await {
+        Ok(Err(_)) => {
+            receiver.take();
+            LinuxDesktopReadyWait::OwnerClosed
+        }
+        Ok(Ok(())) => {
+            receiver.take();
+            LinuxDesktopReadyWait::Wake
+        }
+        Err(_) => LinuxDesktopReadyWait::Wake,
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LinuxCmStreamReadyWait {
+    Ready,
+    OwnerClosed,
+    TimedOut,
+}
+
+#[cfg(target_os = "linux")]
+async fn wait_for_linux_cm_stream_ready(
+    receiver: oneshot::Receiver<()>,
+    ms_timeout: u64,
+) -> LinuxCmStreamReadyWait {
+    match timeout(ms_timeout, receiver).await {
+        Ok(Ok(())) => LinuxCmStreamReadyWait::Ready,
+        Ok(Err(_)) => LinuxCmStreamReadyWait::OwnerClosed,
+        Err(_) => LinuxCmStreamReadyWait::TimedOut,
     }
 }
 
@@ -11297,7 +11354,8 @@ mod cm_startup_lifecycle_tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn closed_desktop_readiness_is_terminal() {
-        let (sender, mut receiver) = mpsc::channel(1);
+        let (sender, receiver) = oneshot::channel();
+        let mut receiver = Some(receiver);
         drop(sender);
 
         assert_eq!(
@@ -11308,12 +11366,58 @@ mod cm_startup_lifecycle_tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn desktop_readiness_signal_remains_a_wake_only() {
-        let (sender, mut receiver) = mpsc::channel(1);
-        sender.send(()).await.unwrap();
+        let (sender, receiver) = oneshot::channel();
+        let mut receiver = Some(receiver);
+        sender.send(()).unwrap();
 
         assert_eq!(
             wait_for_linux_desktop_ready(&mut receiver, 5_000).await,
             LinuxDesktopReadyWait::Wake
+        );
+        assert!(receiver.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn desktop_readiness_timeout_preserves_the_pending_wake() {
+        let (_sender, receiver) = oneshot::channel();
+        let mut receiver = Some(receiver);
+
+        assert_eq!(
+            wait_for_linux_desktop_ready(&mut receiver, 1).await,
+            LinuxDesktopReadyWait::Wake
+        );
+        assert!(receiver.is_some());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_stream_ready_requires_the_exact_positive_signal() {
+        let (sender, receiver) = oneshot::channel();
+        sender.send(()).unwrap();
+
+        assert_eq!(
+            wait_for_linux_cm_stream_ready(receiver, 5_000).await,
+            LinuxCmStreamReadyWait::Ready
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn closed_cm_stream_ready_is_terminal() {
+        let (sender, receiver) = oneshot::channel();
+        drop(sender);
+
+        assert_eq!(
+            wait_for_linux_cm_stream_ready(receiver, 5_000).await,
+            LinuxCmStreamReadyWait::OwnerClosed
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_stream_ready_timeout_is_terminal() {
+        let (_sender, receiver) = oneshot::channel();
+
+        assert_eq!(
+            wait_for_linux_cm_stream_ready(receiver, 1).await,
+            LinuxCmStreamReadyWait::TimedOut
         );
     }
 
@@ -11505,8 +11609,9 @@ async fn start_ipc(
     mut rx_to_cm: mpsc::Receiver<ipc::Data>,
     mut cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>,
     tx_from_cm: crate::ui_cm_interface::CmEgressSender,
-    mut _rx_desktop_ready: mpsc::Receiver<()>,
-    tx_stream_ready: mpsc::Sender<()>,
+    #[cfg(target_os = "linux")] rx_desktop_ready: oneshot::Receiver<()>,
+    #[cfg(target_os = "linux")] tx_stream_ready: oneshot::Sender<()>,
+    #[cfg(target_os = "linux")] headless_cm: bool,
     conn_id: i32,
     cm_auth_token: String,
     bootstrap_complete: oneshot::Sender<()>,
@@ -11534,10 +11639,6 @@ async fn start_ipc(
         }
         sleep(1.).await;
     };
-    #[cfg(target_os = "linux")]
-    let headless_cm = crate::is_server()
-        && crate::platform::is_headless_allowed()
-        && linux_desktop_manager::is_headless();
     #[cfg(not(target_os = "linux"))]
     let headless_cm = false;
     let mut stream = None;
@@ -11590,6 +11691,7 @@ async fn start_ipc(
         // Cm run as user, wait until desktop session is ready.
         #[cfg(target_os = "linux")]
         if headless_cm {
+            let mut rx_desktop_ready = Some(rx_desktop_ready);
             let mut username = linux_desktop_manager::get_username();
             loop {
                 if rx_to_cm.is_closed() {
@@ -11598,9 +11700,9 @@ async fn start_ipc(
                 if !username.is_empty() {
                     break;
                 }
-                // `_rx_desktop_ready` is used as a wake-up signal from desktop/session state changes
+                // `rx_desktop_ready` is used as a wake-up signal from desktop/session state changes
                 // (for example wait_desktop_cm_ready paths). It is not itself a proof of CM readiness.
-                if wait_for_linux_desktop_ready(&mut _rx_desktop_ready, 1_000).await
+                if wait_for_linux_desktop_ready(&mut rx_desktop_ready, 1_000).await
                     == LinuxDesktopReadyWait::OwnerClosed
                 {
                     bail!(
@@ -11769,7 +11871,12 @@ async fn start_ipc(
     bootstrap_complete
         .send(())
         .map_err(|_| anyhow!("connection-manager bootstrap owner disappeared"))?;
-    let _res = tx_stream_ready.send(()).await;
+    #[cfg(target_os = "linux")]
+    if headless_cm {
+        tx_stream_ready
+            .send(())
+            .map_err(|_| anyhow!("Linux headless CM readiness receiver disappeared"))?;
+    }
     let mut cm_file_response_enabled = false;
     loop {
         tokio::select! {
@@ -12282,24 +12389,27 @@ impl Drop for Connection {
 
 #[cfg(target_os = "linux")]
 struct LinuxHeadlessHandle {
-    pub is_headless_allowed: bool,
-    pub is_headless: bool,
-    pub wait_ipc_timeout: u64,
-    pub rx_cm_stream_ready: mpsc::Receiver<()>,
-    pub tx_desktop_ready: mpsc::Sender<()>,
+    is_headless_allowed: bool,
+    is_headless: bool,
+    wait_ipc_timeout: u64,
+    rx_cm_stream_ready: Option<oneshot::Receiver<()>>,
+    tx_desktop_ready: Option<oneshot::Sender<()>>,
 }
 
 #[cfg(target_os = "linux")]
 impl LinuxHeadlessHandle {
-    pub fn new(rx_cm_stream_ready: mpsc::Receiver<()>, tx_desktop_ready: mpsc::Sender<()>) -> Self {
+    fn new(
+        rx_cm_stream_ready: oneshot::Receiver<()>,
+        tx_desktop_ready: oneshot::Sender<()>,
+    ) -> Self {
         let is_headless_allowed = crate::is_server() && crate::platform::is_headless_allowed();
         let is_headless = is_headless_allowed && linux_desktop_manager::is_headless();
         Self {
             is_headless_allowed,
             is_headless,
             wait_ipc_timeout: 10_000,
-            rx_cm_stream_ready,
-            tx_desktop_ready,
+            rx_cm_stream_ready: Some(rx_cm_stream_ready),
+            tx_desktop_ready: Some(tx_desktop_ready),
         }
     }
 
@@ -12317,10 +12427,27 @@ impl LinuxHeadlessHandle {
         }
     }
 
-    pub async fn wait_desktop_cm_ready(&mut self) {
-        if self.is_headless {
-            self.tx_desktop_ready.send(()).await.ok();
-            let _res = timeout(self.wait_ipc_timeout, self.rx_cm_stream_ready.recv()).await;
+    async fn wait_desktop_cm_ready(&mut self) -> ResultType<()> {
+        if !self.is_headless {
+            return Ok(());
+        }
+        let Some(sender) = self.tx_desktop_ready.take() else {
+            bail!("Linux headless desktop readiness request was already consumed");
+        };
+        if sender.send(()).is_err() {
+            log::debug!("connection-manager bootstrap no longer awaits the desktop-ready wake");
+        }
+        let Some(receiver) = self.rx_cm_stream_ready.take() else {
+            bail!("Linux headless CM readiness result was already consumed");
+        };
+        match wait_for_linux_cm_stream_ready(receiver, self.wait_ipc_timeout).await {
+            LinuxCmStreamReadyWait::Ready => Ok(()),
+            LinuxCmStreamReadyWait::OwnerClosed => {
+                bail!("Linux headless connection-manager bridge ended before becoming ready")
+            }
+            LinuxCmStreamReadyWait::TimedOut => {
+                bail!("Linux headless connection-manager readiness timed out")
+            }
         }
     }
 }

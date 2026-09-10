@@ -30589,6 +30589,149 @@ reproduction, causation, external review, and proof that the complete connection
 flow is correct and performant remain open STOP-SHIP obligations and explicit
 user requests.
 
+### R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality (2026-09-10)
+
+**Status:** SOURCE CORRECTION / TARGETED 38-DEFINITION (37 NEW PLUS ONE
+REPAIRED PREDECESSOR) AND COMPLETE 6,323-DEFINITION INDEPENDENT
+SOURCE-MUTATION EVIDENCE PASS; SHARED/APPLE SOURCE-GATE BINDINGS VERIFIED /
+EXACT RUST, NATIVE LINUX, INSTALLED HEADLESS, TRANSITION-RACE, PERFORMANCE,
+ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING.
+
+**Platform, action, and boundary.** This slice is limited to the two small
+readiness signals between one controlled-side Linux headless network connection
+and its exact desktop connection-manager bootstrap task. Linux desktop capture,
+authenticated CM IPC, CM launch policy, the persistent Android service, macOS,
+Windows, iOS, peer protocol, file/control/display semantics, retry/reconnect
+policy, ports/listeners, services, persistence, privileges, dependencies, and
+artifacts are otherwise unchanged. The readiness fields and parameters are now
+Linux-only, so non-Linux desktop builds no longer construct or discard dummy
+endpoints for this path.
+
+**Source-proven old path.** The inherited code used two capacity-one MPSC
+channels even though each direction represented at most one event. The
+connection awaited its desktop-to-bootstrap wake and discarded send failure.
+After CM stream establishment, the bootstrap task likewise awaited readiness
+publication and discarded the result. Most critically, the connection wrapped
+the reverse receive in a ten-second timeout but ignored its complete outcome:
+positive ready, sender loss, and deadline expiry all led to the same peer login
+success path. The MPSC channels and deliberately dropped opposite endpoints
+were created on macOS and Windows although only Linux consumed them.
+
+There was also no single owner of the headless decision.
+`LinuxHeadlessHandle::new` sampled headless state for the login side, while the
+later spawned `start_ipc` task independently sampled it for the bootstrap side.
+A desktop transition between those observations could therefore make the
+connection wait for a result which its bootstrap task intentionally omitted, or
+make the task publish a result the connection would never consume. This is
+current-source Linux readiness, connection-coherence, bounded-latency, and
+resource-topology debt. It is not native/field reproduction, proof that deployed
+bytes ran this path, or causation for the reported Android task-swipe or Windows
+focus/display-delay symptoms. It is not evidence of compromise, public exposure,
+privilege escalation, or host/service/firewall/network/container mutation.
+
+**Correct ownership.** Construction now samples one connection-local headless
+Boolean from the same `LinuxHeadlessHandle` which owns login-side readiness and
+passes that exact value into the bootstrap task. Both directions are Linux-only
+Tokio one-shot channels, matching their one-event protocol. The connection's
+desktop-ready send is synchronous and nonblocking. It remains a wake hint, not a
+readiness proof: refusal merely means the bootstrap task has already progressed
+or ended, after which the exact reverse result supplies finality. On the bootstrap
+side, a bounded state-recheck timeout preserves the pending one-shot receiver;
+positive signal and owner closure consume it exactly once.
+
+After the authenticated CM stream is established and its Linux peer identity is
+registered, the bootstrap task first publishes existing bootstrap completion and
+then, only under the shared headless decision, must successfully publish the
+positive readiness result. The connection consumes that result at most once under
+the existing ten-second deadline. Only the positive value permits
+`send_logon_response_and_keep_alive`; sender loss and timeout are distinct errors,
+emit the existing desktop-session-not-ready login result, and terminate that exact
+connection path. Repeated consumption or a missing endpoint fails explicitly.
+No queue, retry, reconnect, additional timer, task, worker, thread, runtime,
+service/Activity transition, process action, listener, port, endpoint, network
+fallback, privilege, dependency, or artifact was added.
+
+Deterministic source regressions cover the wake signal, wake-owner closure,
+timeout-with-receiver-preservation, positive CM readiness, CM sender loss, and CM
+timeout. The existing R-S11c-27t regressions continue to cover connection-owner
+cancellation and bounded post-bootstrap terminal completion. The shared gate,
+Apple Linux-only-exclusion gate, independently implemented workspace validator,
+complete deliberate-mutation catalog, R-S11iz, Appendix C #411, exact requirements
+identity, and this ledger must all bind the correction before its source status
+advances.
+
+The normative requirements identity verified for this slice is:
+
+```text
+058bd2b4486ffeac2d4574262c51f998731e84d1d0e517c9754572b7865616cd  requirements.html
+```
+
+**Source verification receipt.** On the source bytes frozen before the credited
+run, a targeted independent preflight rejected all 37 new topology, decision,
+outcome, ordering, test, requirement, ledger, digest-binding, shared-gate, and
+Apple-gate mutations with their intended diagnostics. The same targeted run also
+rejected the repaired adjacent R-S11c-27t closed-desktop-readiness mutation, for
+38 definitions in that focused set. The uninterrupted complete independent
+source-mutation catalog then validated and rejected every occurrence of all
+6,323 current mutation definitions and exited zero with
+`verify-verifier-workspace: ok`.
+
+The credited full run used the already-present immutable image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
+in container
+`6495bc8aae67748e29ec5a67f8084c67b77c3b8141439b9a0413282c2dd3c9d0`.
+It began at `2026-09-10T18:06:52.781922443Z`, finished at
+`2026-09-10T22:42:30.767210815Z`, and had exit zero, no OOM, no restart, an
+8,192-byte writable layer, and the terminal success marker above. It ran as
+numeric UID/GID 1000:1000 with no network, a read-only recursively-disabled
+repository bind, read-only root, all capabilities dropped, no-new-privileges,
+private IPC, 64 PIDs, two CPUs, 2-GiB memory with an equal memory/swap limit,
+and one private 512-MiB `nosuid,nodev,noexec` temporary filesystem. No port,
+device, Docker socket, host namespace, privileged mode, or writable repository
+mount was supplied. No image was built, pulled, loaded, tagged, or modified.
+Only the exact exited verifier container was removed after its evidence was
+recorded.
+
+The independent ordinary baseline, Python AST parsing, shared and Apple shell
+syntax, isolated shared R-S11iz and Apple R-S11iz gate sections,
+native-codec/requirements-digest normal mode and adversarial self-test, exact
+requirements SHA-256 above, Rust 1.75 rustfmt parsing, HTML parsing, and `git
+diff --check` pass. The sole repository edit after the complete catalog is this
+documentary receipt; the short source-independent baseline, syntax, digest,
+Rust parse, HTML, isolated-gate, and diff checks were repeated afterward. A
+separate `rustfmt --check` invocation correctly reported this long file's
+pre-existing repository-wide formatting differences; no unrelated formatting
+churn was applied, and that invocation is not represented as a failed parse or
+as credited formatting conformance.
+
+One earlier complete-catalog attempt is not credited. The exact slice-local
+container `rustdesk-rs11iz-workspace-mutations-20260910` exited one, without an
+OOM, after approximately 82 seconds because an adjacent predecessor mutation
+still targeted the deleted MPSC `Ok(None)` spelling and therefore could not be
+applied. Its logs and configuration were inspected, that verifier fixture was
+corrected to the exact one-shot `Ok(Err(_))` owner-closure arm, the targeted
+38-definition set passed, and only that exact failed container was removed
+before the credited full run began. No unrelated container was inspected or
+changed.
+
+The exact pinned development/compiler images were not locally present and were
+not pulled or rebuilt. The verifier image has no Cargo/Rust compiler, Dart,
+Flutter, Kotlin, Java, generated-bridge, or native platform toolchain. The
+available read-only Rust 1.75 rustfmt executable proved parsing by successful
+stdout emission only, not formatting conformance. Therefore no Rust regression
+execution, native compilation, installed Linux behavior, device execution, or
+artifact result is claimed.
+
+Exact Rust compilation/test execution, native and installed Linux headless
+login/CM failure behavior, live desktop-transition races, complete
+file/control/display transactions, cross-version behavior,
+capture-through-compositor timestamps and explicit latency/queue/CPU/memory
+budgets, sustained connection/reconnect/focus/background/resource/performance
+soak, signed artifacts, clean committed cold R-B2/R-B10 equality, independent
+reproduction, causation, external review, and proof that the complete connection
+flow is correct and performant remain open STOP-SHIP obligations and explicit
+user requests.
+
 ### R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality (2026-09-10)
 
 **Status:** SOURCE CORRECTION / TARGETED 18-MUTATION AND COMPLETE

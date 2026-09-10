@@ -3145,6 +3145,44 @@ else
   note "ok  R-S11c-4d/R-S11e-288 macOS CM commands are finite and terminal-first; authenticated bridge EOF/failure retires its exact network owner"
 fi
 
+echo "== (2b-iii-a1a) R-S11iz Linux-only headless CM readiness handshake exclusion =="
+r_s11iz=
+cm_ready_para=$(awk '/struct StartCmIpcPara \{/,/^}/' "$REPO/src/server/connection.rs")
+cm_start_signature=$(awk '/async fn start_ipc\(/,/\) -> ResultType<\(\)> \{/' "$REPO/src/server/connection.rs")
+cm_ready_para_compact=$(tr -d '[:space:]' <<<"$cm_ready_para")
+cm_start_signature_compact=$(tr -d '[:space:]' <<<"$cm_start_signature")
+for binding in \
+  '#[cfg(target_os="linux")]rx_desktop_ready:oneshot::Receiver<()>,' \
+  '#[cfg(target_os="linux")]tx_cm_stream_ready:oneshot::Sender<()>,' \
+  '#[cfg(target_os="linux")]headless_cm:bool,'; do
+  grep -qF "$binding" <<<"$cm_ready_para_compact" || r_s11iz="$r_s11iz linux-readiness-field-not-cfg-excluded-from-Apple"
+done
+for binding in \
+  '#[cfg(target_os="linux")]rx_desktop_ready:oneshot::Receiver<()>,' \
+  '#[cfg(target_os="linux")]tx_stream_ready:oneshot::Sender<()>,' \
+  '#[cfg(target_os="linux")]headless_cm:bool,'; do
+  grep -qF "$binding" <<<"$cm_start_signature_compact" || r_s11iz="$r_s11iz linux-readiness-parameter-not-cfg-excluded-from-Apple"
+done
+for forbidden in \
+  'rx_desktop_ready: mpsc::Receiver<()>' \
+  'tx_cm_stream_ready: mpsc::Sender<()>' \
+  '_rx_cm_stream_ready' \
+  '_tx_desktop_ready'; do
+  grep -qF "$forbidden" "$REPO/src/server/connection.rs" && r_s11iz="$r_s11iz obsolete-cross-platform-readiness-endpoint-present"
+done
+grep -qF '<span class="id">R-S11iz</span>' "$REPO/requirements.html" \
+  || r_s11iz="$r_s11iz readiness-requirement-missing"
+grep -qF '<tr><td>411</td>' "$REPO/requirements.html" \
+  || r_s11iz="$r_s11iz readiness-appendix-missing"
+grep -qF 'R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality' "$REPO/HARDENING_STATUS.md" \
+  || r_s11iz="$r_s11iz readiness-ledger-missing"
+if [ -n "$r_s11iz" ]; then
+  echo "  FAIL R-S11iz Linux-only headless CM readiness exclusion:$r_s11iz"
+  rc=1
+else
+  note "ok  R-S11iz/R-S11e-289 the exact headless readiness handshake is Linux-only; macOS/iOS receive no dummy endpoint or wait"
+fi
+
 echo "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract =="
 r_g9=
 cm_login_ipc=$(awk '/^[[:space:]]*Login \{/{capture=1} capture{print} capture && /^[[:space:]]*\},/{exit}' "$REPO/src/ipc.rs")

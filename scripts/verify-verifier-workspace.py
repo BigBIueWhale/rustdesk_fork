@@ -9276,6 +9276,7 @@ def validate_linux_headless_cm_parent_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
+    native_watch = sources["native_watch"]
     common_source = sources["common_source"]
     linux_source = sources["linux_source"]
     connection_source = sources["connection_source"]
@@ -9435,13 +9436,14 @@ def validate_linux_headless_cm_parent_contract(sources):
         ("Wake,", "readiness wake outcome"),
         ("OwnerClosed,", "readiness owner-closed outcome"),
         (
-            "Ok(None) => LinuxDesktopReadyWait::OwnerClosed",
+            "Ok(Err(_)) => {\n            receiver.take();\n            LinuxDesktopReadyWait::OwnerClosed\n        }",
             "closed readiness receiver terminal outcome",
         ),
         (
-            "Ok(Some(())) | Err(_) => LinuxDesktopReadyWait::Wake",
-            "signal-or-timeout wake outcome",
+            "Ok(Ok(())) => {\n            receiver.take();\n            LinuxDesktopReadyWait::Wake\n        }",
+            "desktop readiness positive wake outcome",
         ),
+        ("Err(_) => LinuxDesktopReadyWait::Wake", "desktop readiness timeout recheck"),
         (
             "fn closed_desktop_readiness_is_terminal()",
             "closed-readiness regression",
@@ -9449,6 +9451,10 @@ def validate_linux_headless_cm_parent_contract(sources):
         (
             "fn desktop_readiness_signal_remains_a_wake_only()",
             "readiness-signal regression",
+        ),
+        (
+            "fn desktop_readiness_timeout_preserves_the_pending_wake()",
+            "readiness-timeout preservation regression",
         ),
         (
             "fn connection_owner_closure_cancels_pending_cm_bootstrap()",
@@ -9567,7 +9573,8 @@ def validate_linux_headless_cm_parent_contract(sources):
             "bootstrap_complete",
             ".send(())",
             "connection-manager bootstrap owner disappeared",
-            "tx_stream_ready.send(()).await",
+            "if headless_cm {",
+            "Linux headless CM readiness receiver disappeared",
             "loop {\n        tokio::select! {",
         ),
         "CM bootstrap-complete-before-live-bridge ordering",
@@ -9575,7 +9582,7 @@ def validate_linux_headless_cm_parent_contract(sources):
     prelogin_wait = extract_between(
         startup,
         "let headless_service_user = loop {",
-        "\n    #[cfg(target_os = \"linux\")]\n    let headless_cm",
+        "\n    #[cfg(not(target_os = \"linux\"))]\n    let headless_cm",
         "connection-manager prelogin wait",
     )
     require_order(
@@ -9591,7 +9598,7 @@ def validate_linux_headless_cm_parent_contract(sources):
     )
     headless_user_wait = extract_between(
         startup,
-        "if headless_cm {\n            let mut username",
+        "if headless_cm {\n            let mut rx_desktop_ready = Some(rx_desktop_ready);",
         "\n            let uid = uid_for_username(&username).await?;",
         "headless connection-manager user wait",
     )
@@ -9601,7 +9608,7 @@ def validate_linux_headless_cm_parent_contract(sources):
             "if rx_to_cm.is_closed() {",
             "connection owner closed while waiting for headless connection-manager user",
             "if !username.is_empty() {",
-            "wait_for_linux_desktop_ready(&mut _rx_desktop_ready, 1_000).await",
+            "wait_for_linux_desktop_ready(&mut rx_desktop_ready, 1_000).await",
             "== LinuxDesktopReadyWait::OwnerClosed",
             "desktop readiness owner closed before headless connection-manager startup",
             "username = linux_desktop_manager::get_username();",
@@ -9643,6 +9650,7 @@ def validate_linux_headless_cm_parent_contract(sources):
     )
     for forbidden in (
         "let _res = timeout(1_000, _rx_desktop_ready.recv()).await",
+        "tx_stream_ready.send(()).await",
         "Keep behavior unchanged for now",
     ):
         require_absent(startup, forbidden, "obsolete closed-readiness retry behavior")
@@ -9687,6 +9695,327 @@ def validate_linux_headless_cm_parent_contract(sources):
         "R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership",
         "Linux CM bootstrap cancellation hardening ledger",
     )
+
+    require_text(
+        verify,
+        "Linux headless CM readiness handshake finality (R-S11iz/R-S11e-289)",
+        "Linux headless CM exact-readiness source gate",
+    )
+    require_text(
+        sources["apple"],
+        "R-S11iz Linux-only headless CM readiness handshake exclusion",
+        "Apple Linux-readiness exclusion source gate",
+    )
+    readiness_fields = extract_braced_item(
+        connection_source,
+        "struct StartCmIpcPara {",
+        "connection-manager readiness parameter ownership",
+    )
+    readiness_fields_compact = re.sub(r"\s+", "", readiness_fields)
+    for text, label in (
+        (
+            '#[cfg(target_os="linux")]rx_desktop_ready:oneshot::Receiver<()>,',
+            "Linux-only desktop readiness receiver",
+        ),
+        (
+            '#[cfg(target_os="linux")]tx_cm_stream_ready:oneshot::Sender<()>,',
+            "Linux-only CM readiness sender",
+        ),
+        (
+            '#[cfg(target_os="linux")]headless_cm:bool,',
+            "Linux-only connection-local headless decision",
+        ),
+    ):
+        require_text(readiness_fields_compact, text, label)
+    readiness_signature = extract_between(
+        connection_source,
+        "async fn start_ipc(",
+        ") -> ResultType<()> {",
+        "connection-manager readiness bootstrap signature",
+    )
+    readiness_signature_compact = re.sub(r"\s+", "", readiness_signature)
+    for text, label in (
+        (
+            '#[cfg(target_os="linux")]rx_desktop_ready:oneshot::Receiver<()>,',
+            "Linux-only bootstrap desktop readiness receiver",
+        ),
+        (
+            '#[cfg(target_os="linux")]tx_stream_ready:oneshot::Sender<()>,',
+            "Linux-only bootstrap CM readiness sender",
+        ),
+        (
+            '#[cfg(target_os="linux")]headless_cm:bool,',
+            "Linux-only bootstrap headless decision",
+        ),
+    ):
+        require_text(readiness_signature_compact, text, label)
+
+    readiness_constructor = extract_between(
+        connection_source,
+        "let (tx_cm_stream_ready, rx_cm_stream_ready) = oneshot::channel();",
+        "\n\n        let cm_auth_token =",
+        "connection-manager readiness channel construction",
+    )
+    require_order(
+        readiness_constructor,
+        (
+            "let (tx_cm_stream_ready, rx_cm_stream_ready) = oneshot::channel();",
+            "let (tx_desktop_ready, rx_desktop_ready) = oneshot::channel();",
+            "LinuxHeadlessHandle::new(rx_cm_stream_ready, tx_desktop_ready);",
+            "let headless_cm = linux_headless_handle.is_headless;",
+        ),
+        "single connection-local Linux headless decision and one-shot construction",
+    )
+    for text, label in (
+        ("rx_desktop_ready,", "desktop readiness receiver wiring"),
+        ("tx_cm_stream_ready,", "CM readiness sender wiring"),
+        ("headless_cm,", "connection-local headless decision wiring"),
+        ("p.rx_desktop_ready,", "desktop readiness receiver task handoff"),
+        ("p.tx_cm_stream_ready,", "CM readiness sender task handoff"),
+        ("p.headless_cm,", "headless decision task handoff"),
+    ):
+        require_text(connection_source, text, label)
+    para_initialization = extract_between(
+        connection_source,
+        "start_cm_ipc_para: Some(StartCmIpcPara {",
+        "\n                owner_closed: cm_ipc_owner_closed,",
+        "connection-manager readiness parameter initialization",
+    )
+    para_initialization_compact = re.sub(r"\s+", "", para_initialization)
+    require_text(
+        para_initialization_compact,
+        '#[cfg(target_os="linux")]rx_desktop_ready,#[cfg(target_os="linux")]tx_cm_stream_ready,#[cfg(target_os="linux")]headless_cm,',
+        "Linux-only readiness parameter initialization",
+    )
+    task_start_compact = re.sub(r"\s+", "", task_start)
+    require_text(
+        task_start_compact,
+        '#[cfg(target_os="linux")]p.rx_desktop_ready,#[cfg(target_os="linux")]p.tx_cm_stream_ready,#[cfg(target_os="linux")]p.headless_cm,',
+        "Linux-only readiness task handoff",
+    )
+    require_exact_count(
+        connection_source,
+        "let headless_cm = linux_headless_handle.is_headless;",
+        1,
+        "single Linux headless readiness decision",
+    )
+    for forbidden in (
+        "let headless_cm = crate::is_server()",
+        "rx_desktop_ready: mpsc::Receiver<()>",
+        "tx_cm_stream_ready: mpsc::Sender<()>",
+        "_rx_cm_stream_ready",
+        "_tx_desktop_ready",
+    ):
+        require_absent(
+            connection_source,
+            forbidden,
+            "obsolete split-decision, queue, or dummy readiness endpoint",
+        )
+
+    desktop_ready_wait = extract_braced_item(
+        connection_source,
+        "async fn wait_for_linux_desktop_ready(",
+        "Linux desktop readiness wake helper",
+    )
+    for text, label in (
+        (
+            "receiver: &mut Option<oneshot::Receiver<()>>",
+            "one-shot optional desktop wake receiver",
+        ),
+        ("Ok(Err(_)) => {", "desktop wake owner-closed outcome"),
+        ("Ok(Ok(())) => {", "desktop positive wake outcome"),
+        ("Err(_) => LinuxDesktopReadyWait::Wake", "desktop wake timeout recheck"),
+    ):
+        require_text(desktop_ready_wait, text, label)
+    require_exact_count(
+        desktop_ready_wait,
+        "receiver.take();",
+        2,
+        "desktop wake consumed only by settled one-shot outcomes",
+    )
+    cm_ready_wait = extract_braced_item(
+        connection_source,
+        "async fn wait_for_linux_cm_stream_ready(",
+        "Linux CM stream readiness result helper",
+    )
+    for text, label in (
+        ("receiver: oneshot::Receiver<()>", "exact one-shot CM readiness receiver"),
+        ("Ok(Ok(())) => LinuxCmStreamReadyWait::Ready", "positive CM readiness"),
+        (
+            "Ok(Err(_)) => LinuxCmStreamReadyWait::OwnerClosed",
+            "CM readiness owner-loss finality",
+        ),
+        ("Err(_) => LinuxCmStreamReadyWait::TimedOut", "CM readiness timeout finality"),
+    ):
+        require_text(cm_ready_wait, text, label)
+    for text, label in (
+        (
+            "fn desktop_readiness_timeout_preserves_the_pending_wake()",
+            "desktop wake timeout preservation regression",
+        ),
+        (
+            "fn cm_stream_ready_requires_the_exact_positive_signal()",
+            "positive CM readiness regression",
+        ),
+        ("fn closed_cm_stream_ready_is_terminal()", "closed CM readiness regression"),
+        ("fn cm_stream_ready_timeout_is_terminal()", "CM readiness timeout regression"),
+    ):
+        require_text(startup_lifecycle, text, label)
+
+    headless_handle = extract_between(
+        connection_source,
+        "struct LinuxHeadlessHandle {",
+        '\nextern "C" fn connection_shutdown_hook',
+        "Linux headless readiness owner",
+    )
+    for text, label in (
+        (
+            "rx_cm_stream_ready: Option<oneshot::Receiver<()>>",
+            "single-consumption CM readiness owner",
+        ),
+        (
+            "tx_desktop_ready: Option<oneshot::Sender<()>>",
+            "single-consumption desktop wake owner",
+        ),
+    ):
+        require_text(headless_handle, text, label)
+    require_order(
+        headless_handle,
+        (
+            "async fn wait_desktop_cm_ready(&mut self) -> ResultType<()> {",
+            "if !self.is_headless {",
+            "let Some(sender) = self.tx_desktop_ready.take() else {",
+            "if sender.send(()).is_err() {",
+            "let Some(receiver) = self.rx_cm_stream_ready.take() else {",
+            "match wait_for_linux_cm_stream_ready(receiver, self.wait_ipc_timeout).await {",
+            "LinuxCmStreamReadyWait::Ready => Ok(())",
+            "LinuxCmStreamReadyWait::OwnerClosed => {",
+            "LinuxCmStreamReadyWait::TimedOut => {",
+        ),
+        "one-shot wake followed by exact positive CM readiness",
+    )
+    login_ready = extract_between(
+        connection_source,
+        "if err_msg.is_empty() {\n                #[cfg(target_os = \"linux\")]",
+        "\n                self.try_start_cm(lr.my_id, lr.my_name, self.authorized)",
+        "Linux headless readiness before peer login success",
+    )
+    require_order(
+        login_ready,
+        (
+            "if let Err(error) = self.linux_headless_handle.wait_desktop_cm_ready().await {",
+            "self.send_login_error(crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY)",
+            "return false;",
+            "self.send_logon_response_and_keep_alive().await",
+        ),
+        "positive CM readiness before peer login success",
+    )
+    ready_publication = extract_between(
+        startup,
+        "bootstrap_complete\n        .send(())",
+        "\n    let mut cm_file_response_enabled = false;",
+        "authenticated CM readiness publication",
+    )
+    require_order(
+        ready_publication,
+        (
+            "bootstrap_complete\n        .send(())",
+            "connection-manager bootstrap owner disappeared",
+            "if headless_cm {",
+            "tx_stream_ready\n            .send(())",
+            "Linux headless CM readiness receiver disappeared",
+        ),
+        "checked positive readiness after authenticated bootstrap completion",
+    )
+    for forbidden in (
+        "self.tx_desktop_ready.send(()).await.ok()",
+        "let _res = timeout(self.wait_ipc_timeout, self.rx_cm_stream_ready.recv()).await",
+        "let _res = tx_stream_ready.send(()).await",
+        "tx_stream_ready.send(()).await",
+    ):
+        require_absent(
+            connection_source,
+            forbidden,
+            "ignored or capacity-awaiting readiness publication",
+        )
+
+    readiness_requirement = extract_html_requirement(
+        requirements, "R-S11iz", "Linux headless CM readiness requirement"
+    )
+    for text, label in (
+        ("One connection-local headless decision", "single headless decision norm"),
+        ("one-shot wake hint", "nonblocking one-shot wake norm"),
+        ("positive authenticated-CM-stream readiness result", "positive readiness norm"),
+        ("before peer login success", "pre-login readiness order norm"),
+        ("sender loss and timeout are distinct terminal failures", "terminal outcome norm"),
+    ):
+        require_text(readiness_requirement, text, label)
+    require_text(requirements, "<tr><td>411</td>", "Linux CM readiness Appendix C row")
+    require_text(
+        hardening,
+        "R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality",
+        "Linux CM readiness hardening ledger",
+    )
+    requirements_digest = hashlib.sha256(requirements.encode("utf-8")).hexdigest()
+    require_text(
+        native_watch,
+        f"Requirements hash: {requirements_digest}",
+        "exact Linux CM readiness requirements digest",
+    )
+    require_text(
+        native_watch,
+        "The same identity additionally binds R-S11iz and Appendix C #411.",
+        "Linux CM readiness requirements-identity binding",
+    )
+    shared_readiness_gate = extract_between(
+        verify,
+        'echo "== (3b-iii-d9c3b) Linux headless CM readiness handshake finality',
+        "\n# (3b-iii-d9c4)",
+        "shared Linux CM readiness source gate",
+    )
+    for text, label in (
+        ("cm_ready_compact=$(tr -d '[:space:]'", "shared exact topology extraction"),
+        ("exact-linux-oneshot-topology-missing", "shared exact topology rejection"),
+        (
+            "positive-cm-readiness-not-required-before-peer-login-success",
+            "shared pre-login readiness ordering rejection",
+        ),
+        (
+            "authenticated-bootstrap-ready-publication-order-invalid",
+            "shared authenticated readiness publication rejection",
+        ),
+        (
+            "ignored-or-awaiting-readiness-publication-present",
+            "shared ignored readiness outcome rejection",
+        ),
+    ):
+        require_text(shared_readiness_gate, text, label)
+    apple_readiness_gate = extract_between(
+        sources["apple"],
+        'echo "== (2b-iii-a1a) R-S11iz Linux-only headless CM readiness handshake exclusion',
+        '\necho "== (2b-iii-a2)',
+        "Apple Linux CM readiness exclusion gate",
+    )
+    for text, label in (
+        ("cm_ready_para_compact=$(tr -d '[:space:]'", "Apple readiness field extraction"),
+        (
+            "cm_start_signature_compact=$(tr -d '[:space:]'",
+            "Apple readiness signature extraction",
+        ),
+        (
+            "linux-readiness-field-not-cfg-excluded-from-Apple",
+            "Apple readiness field cfg rejection",
+        ),
+        (
+            "linux-readiness-parameter-not-cfg-excluded-from-Apple",
+            "Apple readiness parameter cfg rejection",
+        ),
+        (
+            "obsolete-cross-platform-readiness-endpoint-present",
+            "Apple obsolete readiness endpoint rejection",
+        ),
+    ):
+        require_text(apple_readiness_gate, text, label)
 
 
 def validate_linux_current_image_lifecycle_contract(sources):
@@ -67945,6 +68274,228 @@ def run_source_mutations(sources):
             "CM bridge requirements-identity binding",
         ),
         (
+            "connection_source",
+            "    #[cfg(target_os = \"linux\")]\n    rx_desktop_ready: oneshot::Receiver<()>,",
+            "    rx_desktop_ready: mpsc::Receiver<()>,",
+            "Linux-only desktop readiness receiver",
+        ),
+        (
+            "connection_source",
+            "    #[cfg(target_os = \"linux\")]\n    tx_cm_stream_ready: oneshot::Sender<()>,",
+            "    tx_cm_stream_ready: mpsc::Sender<()>,",
+            "Linux-only CM readiness sender",
+        ),
+        (
+            "connection_source",
+            "    #[cfg(target_os = \"linux\")]\n    headless_cm: bool,",
+            "    headless_cm: bool,",
+            "Linux-only connection-local headless decision",
+        ),
+        (
+            "connection_source",
+            "let (tx_cm_stream_ready, rx_cm_stream_ready) = oneshot::channel();",
+            "let (tx_cm_stream_ready, rx_cm_stream_ready) = mpsc::channel(1);",
+            "connection-manager readiness channel construction",
+        ),
+        (
+            "connection_source",
+            "let (tx_desktop_ready, rx_desktop_ready) = oneshot::channel();",
+            "let (tx_desktop_ready, rx_desktop_ready) = mpsc::channel(1);",
+            "single connection-local Linux headless decision and one-shot construction",
+        ),
+        (
+            "connection_source",
+            "let headless_cm = linux_headless_handle.is_headless;",
+            "let headless_cm = crate::is_server() && linux_desktop_manager::is_headless();",
+            "single connection-local Linux headless decision and one-shot construction",
+        ),
+        (
+            "connection_source",
+            "Err(_) => LinuxDesktopReadyWait::Wake,",
+            "Err(_) => { receiver.take(); LinuxDesktopReadyWait::Wake },",
+            "desktop readiness timeout recheck",
+        ),
+        (
+            "connection_source",
+            "Ok(Err(_)) => LinuxCmStreamReadyWait::OwnerClosed,",
+            "Ok(Err(_)) => LinuxCmStreamReadyWait::Ready,",
+            "CM readiness owner-loss finality",
+        ),
+        (
+            "connection_source",
+            "Err(_) => LinuxCmStreamReadyWait::TimedOut,",
+            "Err(_) => LinuxCmStreamReadyWait::Ready,",
+            "CM readiness timeout finality",
+        ),
+        (
+            "connection_source",
+            "let Some(sender) = self.tx_desktop_ready.take() else {",
+            "let Some(sender) = self.tx_desktop_ready.as_mut() else {",
+            "one-shot wake followed by exact positive CM readiness",
+        ),
+        (
+            "connection_source",
+            "let Some(receiver) = self.rx_cm_stream_ready.take() else {",
+            "let Some(receiver) = self.rx_cm_stream_ready.as_mut() else {",
+            "one-shot wake followed by exact positive CM readiness",
+        ),
+        (
+            "connection_source",
+            "if let Err(error) = self.linux_headless_handle.wait_desktop_cm_ready().await {",
+            "if let Ok(()) = self.linux_headless_handle.wait_desktop_cm_ready().await {",
+            "positive CM readiness before peer login success",
+        ),
+        (
+            "connection_source",
+            "self.send_login_error(crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY)\n                        .await;\n                    return false;",
+            "self.send_login_error(crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY)\n                        .await;\n                    return true;",
+            "positive CM readiness before peer login success",
+        ),
+        (
+            "connection_source",
+            "tx_stream_ready\n            .send(())\n            .map_err(|_| anyhow!(\"Linux headless CM readiness receiver disappeared\"))?;",
+            "let _ = tx_stream_ready.send(());",
+            "CM bootstrap-complete-before-live-bridge ordering",
+        ),
+        (
+            "connection_source",
+            "fn desktop_readiness_timeout_preserves_the_pending_wake()",
+            "fn desktop_readiness_timeout_discards_the_pending_wake()",
+            "readiness-timeout preservation regression",
+        ),
+        (
+            "connection_source",
+            "fn cm_stream_ready_requires_the_exact_positive_signal()",
+            "fn cm_stream_ready_accepts_an_inferred_signal()",
+            "positive CM readiness regression",
+        ),
+        (
+            "connection_source",
+            "fn closed_cm_stream_ready_is_terminal()",
+            "fn closed_cm_stream_ready_is_a_wake()",
+            "closed CM readiness regression",
+        ),
+        (
+            "connection_source",
+            "fn cm_stream_ready_timeout_is_terminal()",
+            "fn cm_stream_ready_timeout_is_success()",
+            "CM readiness timeout regression",
+        ),
+        (
+            "connection_source",
+            "    #[cfg(target_os = \"linux\")] rx_desktop_ready: oneshot::Receiver<()>,",
+            "    rx_desktop_ready: oneshot::Receiver<()>,",
+            "Linux-only bootstrap desktop readiness receiver",
+        ),
+        (
+            "connection_source",
+            "    #[cfg(target_os = \"linux\")] tx_stream_ready: oneshot::Sender<()>,",
+            "    tx_stream_ready: oneshot::Sender<()>,",
+            "Linux-only bootstrap CM readiness sender",
+        ),
+        (
+            "connection_source",
+            "    #[cfg(target_os = \"linux\")] headless_cm: bool,",
+            "    headless_cm: bool,",
+            "Linux-only bootstrap headless decision",
+        ),
+        (
+            "connection_source",
+            "                #[cfg(target_os = \"linux\")]\n                rx_desktop_ready,",
+            "                rx_desktop_ready,",
+            "Linux-only readiness parameter initialization",
+        ),
+        (
+            "connection_source",
+            "                        #[cfg(target_os = \"linux\")]\n                        p.rx_desktop_ready,",
+            "                        p.rx_desktop_ready,",
+            "Linux-only readiness task handoff",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11iz</span>',
+            '<span class="id">R-S11iz-disabled</span>',
+            "Linux headless CM readiness requirement",
+        ),
+        (
+            "requirements",
+            "Only the positive authenticated-CM-stream readiness result permits <code>send_logon_response_and_keep_alive</code>",
+            "Any inferred readiness result permits <code>send_logon_response_and_keep_alive</code>",
+            "positive readiness norm",
+        ),
+        (
+            "requirements",
+            "<tr><td>411</td>",
+            "<tr><td>411-disabled</td>",
+            "Linux CM readiness Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality",
+            "R-S11iz-disabled/R-S11e-289 — exact Linux headless CM readiness handshake finality",
+            "Linux CM readiness hardening ledger",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11iz and Appendix C #411.",
+            "The same identity additionally binds R-S11iz-disabled and Appendix C #411.",
+            "Linux CM readiness requirements-identity binding",
+        ),
+        (
+            "verify",
+            "Linux headless CM readiness handshake finality (R-S11iz/R-S11e-289)",
+            "Linux headless CM readiness compatibility (R-S11iz/R-S11e-289)",
+            "Linux headless CM exact-readiness source gate",
+        ),
+        (
+            "verify",
+            "exact-linux-oneshot-topology-missing",
+            "exact-linux-oneshot-topology-gate-disabled",
+            "shared exact topology rejection",
+        ),
+        (
+            "verify",
+            "positive-cm-readiness-not-required-before-peer-login-success",
+            "positive-cm-readiness-order-gate-disabled",
+            "shared pre-login readiness ordering rejection",
+        ),
+        (
+            "verify",
+            "authenticated-bootstrap-ready-publication-order-invalid",
+            "authenticated-bootstrap-ready-order-gate-disabled",
+            "shared authenticated readiness publication rejection",
+        ),
+        (
+            "verify",
+            "ignored-or-awaiting-readiness-publication-present",
+            "ignored-readiness-publication-gate-disabled",
+            "shared ignored readiness outcome rejection",
+        ),
+        (
+            "apple",
+            "R-S11iz Linux-only headless CM readiness handshake exclusion",
+            "R-S11iz cross-platform headless CM readiness compatibility",
+            "Apple Linux-readiness exclusion source gate",
+        ),
+        (
+            "apple",
+            "linux-readiness-field-not-cfg-excluded-from-Apple",
+            "linux-readiness-field-cfg-gate-disabled",
+            "Apple readiness field cfg rejection",
+        ),
+        (
+            "apple",
+            "linux-readiness-parameter-not-cfg-excluded-from-Apple",
+            "linux-readiness-parameter-cfg-gate-disabled",
+            "Apple readiness parameter cfg rejection",
+        ),
+        (
+            "apple",
+            "obsolete-cross-platform-readiness-endpoint-present",
+            "obsolete-cross-platform-readiness-gate-disabled",
+            "Apple obsolete readiness endpoint rejection",
+        ),
+        (
             "hardening",
             "R-S11c-4d — bounded exact-owner CM command publication",
             "R-S11c-4d — unbounded shared CM command publication",
@@ -71228,8 +71779,8 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "Ok(None) => LinuxDesktopReadyWait::OwnerClosed",
-            "Ok(None) => LinuxDesktopReadyWait::Wake",
+            "Ok(Err(_)) => {\n            receiver.take();\n            LinuxDesktopReadyWait::OwnerClosed\n        }",
+            "Ok(Err(_)) => {\n            receiver.take();\n            LinuxDesktopReadyWait::Wake\n        }",
             "closed readiness receiver terminal outcome",
         ),
         (

@@ -6166,7 +6166,7 @@ cm_task_owner=$(awk '/async fn run_cm_ipc_until_owner_closed/,/fn try_start_cm_i
 cm_task_start=$(awk '/fn try_start_cm_ipc/,/async fn on_message/' src/server/connection.rs)
 cm_connection_drop=$(awk '/impl Drop for Connection \{/,/struct LinuxHeadlessHandle/' src/server/connection.rs)
 cm_ipc_bootstrap=$(awk '/async fn start_ipc\(/,/\/\/ in case screen is sleep and blank/' src/server/connection.rs)
-cm_prelogin_wait=$(awk '/let headless_service_user = loop \{/,/let headless_cm = crate::is_server\(\)/' src/server/connection.rs)
+cm_prelogin_wait=$(awk '/let headless_service_user = loop \{/,/let headless_cm = false;/' src/server/connection.rs)
 cm_headless_user_wait=$(awk 'index($0, "        if headless_cm {") {capture=1} capture{print} capture && index($0, "let uid = uid_for_username(&username).await?;") {exit}' src/server/connection.rs)
 cm_launch_boundary=$(awk '/if stream.is_none\(\) \{/{capture=1} capture{print} /for _ in 0\.\.20 \{/{exit}' src/server/connection.rs)
 cm_startup_retry=$(awk '/for _ in 0\.\.20 \{/,/if stream.is_none\(\) \{/' src/server/connection.rs)
@@ -6174,10 +6174,12 @@ for binding in \
   'enum LinuxDesktopReadyWait {' \
   'Wake,' \
   'OwnerClosed,' \
-  'Ok(None) => LinuxDesktopReadyWait::OwnerClosed' \
-  'Ok(Some(())) | Err(_) => LinuxDesktopReadyWait::Wake' \
+  'Ok(Err(_)) => {' \
+  'Ok(Ok(())) => {' \
+  'Err(_) => LinuxDesktopReadyWait::Wake' \
   'fn closed_desktop_readiness_is_terminal()' \
   'fn desktop_readiness_signal_remains_a_wake_only()' \
+  'fn desktop_readiness_timeout_preserves_the_pending_wake()' \
   'fn connection_owner_closure_cancels_pending_cm_bootstrap()' \
   'fn live_connection_allows_cm_bootstrap_completion()' \
   'fn completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure()' \
@@ -6228,7 +6230,7 @@ fi
   || r_s11c27t="$r_s11c27t connection-owner-check-count-invalid"
 bootstrap_signal_line=$(grep -nF -m 1 'bootstrap_complete' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
 bootstrap_send_line=$(grep -nF -m 1 '.send(())' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
-stream_ready_line=$(grep -nF -m 1 'tx_stream_ready.send(()).await' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+stream_ready_line=$(grep -nF -m 1 'Linux headless CM readiness receiver disappeared' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
 live_bridge_line=$(grep -nF -m 1 'let mut cm_file_response_enabled = false;' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
 if [ -z "$bootstrap_signal_line" ] || [ -z "$bootstrap_send_line" ] || [ -z "$stream_ready_line" ] || [ -z "$live_bridge_line" ] \
   || [ "$bootstrap_signal_line" -ge "$bootstrap_send_line" ] \
@@ -6251,7 +6253,7 @@ if [ -z "$prelogin_owner_line" ] || [ -z "$prelogin_state_line" ] || [ -z "$prel
   r_s11c27t="$r_s11c27t prelogin-owner-cancellation-order-invalid"
 fi
 headless_owner_line=$(grep -nF -m 1 'if rx_to_cm.is_closed() {' <<<"$cm_headless_user_wait" | cut -d: -f1)
-headless_ready_line=$(grep -nF -m 1 'wait_for_linux_desktop_ready(&mut _rx_desktop_ready, 1_000).await' <<<"$cm_headless_user_wait" | cut -d: -f1)
+headless_ready_line=$(grep -nF -m 1 'wait_for_linux_desktop_ready(&mut rx_desktop_ready, 1_000).await' <<<"$cm_headless_user_wait" | cut -d: -f1)
 headless_refresh_line=$(grep -nF 'username = linux_desktop_manager::get_username();' <<<"$cm_headless_user_wait" | tail -n1 | cut -d: -f1)
 if [ -z "$headless_owner_line" ] || [ -z "$headless_ready_line" ] || [ -z "$headless_refresh_line" ] \
   || [ "$headless_owner_line" -ge "$headless_ready_line" ] \
@@ -6274,6 +6276,7 @@ if [ -z "$retry_owner_line" ] || [ -z "$retry_sleep_line" ] || [ "$retry_owner_l
   r_s11c27t="$r_s11c27t owner-check-not-before-cm-retry"
 fi
 if grep -qF 'let _res = timeout(1_000, _rx_desktop_ready.recv()).await' <<<"$cm_ipc_bootstrap" \
+  || grep -qF 'tx_stream_ready.send(()).await' <<<"$cm_ipc_bootstrap" \
   || grep -qF 'Keep behavior unchanged for now' <<<"$cm_ipc_bootstrap"; then
   r_s11c27t="$r_s11c27t obsolete-closed-readiness-retry-present"
 fi
@@ -6288,6 +6291,103 @@ grep -qF 'R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership
   || r_s11c27t="$r_s11c27t hardening-ledger-missing"
 if [ -n "$r_s11c27t" ]; then echo "  FAIL R-T4/R-S11c-27t Linux CM bootstrap owner-loss cancellation:$r_s11c27t"; rc=1; else
   echo "  ok  R-T4/R-S11c-27t connection-owner loss terminates every CM pre-bridge retry; bounded live commands cannot outrun or starve exact terminal ownership"; fi
+
+# (3b-iii-d9c3b) R-S11iz/R-S11e-289: Linux headless CM readiness is an
+# exact, finite, connection-local handshake. The desktop-state wake is a
+# nonblocking hint; only the bootstrap task's positive authenticated-stream
+# result permits peer login success. Timeout and owner loss fail closed.
+echo "== (3b-iii-d9c3b) Linux headless CM readiness handshake finality (R-S11iz/R-S11e-289) =="
+r_s11iz=
+cm_ready_para=$(awk '/struct StartCmIpcPara \{/,/^}/' src/server/connection.rs)
+cm_ready_constructor=$(awk '/let \(tx_cm_stream_ready, rx_cm_stream_ready\) = oneshot::channel\(\);/,/let cm_auth_token =/' src/server/connection.rs)
+cm_ready_para_init=$(awk '/start_cm_ipc_para: Some\(StartCmIpcPara \{/,/owner_closed: cm_ipc_owner_closed,/' src/server/connection.rs)
+cm_ready_task_handoff=$(awk '/start_ipc\(/,/p\.cm_auth_token,/' src/server/connection.rs)
+cm_ready_lifecycle=$(awk '/enum LinuxDesktopReadyWait \{/,/mod cm_startup_lifecycle_tests \{/' src/server/connection.rs)
+cm_ready_login=$(awk '/if err_msg.is_empty\(\) \{/,/self\.try_start_cm\(lr\.my_id/' src/server/connection.rs)
+cm_ready_handle=$(awk '/struct LinuxHeadlessHandle \{/,/extern "C" fn connection_shutdown_hook/' src/server/connection.rs)
+cm_ready_compact=$(tr -d '[:space:]' <<<"$cm_ready_para$cm_ready_constructor$cm_ready_para_init$cm_ready_task_handoff")
+for binding in \
+  '#[cfg(target_os="linux")]rx_desktop_ready:oneshot::Receiver<()>,' \
+  '#[cfg(target_os="linux")]tx_cm_stream_ready:oneshot::Sender<()>,' \
+  '#[cfg(target_os="linux")]headless_cm:bool,' \
+  'let(tx_cm_stream_ready,rx_cm_stream_ready)=oneshot::channel();' \
+  'let(tx_desktop_ready,rx_desktop_ready)=oneshot::channel();' \
+  'LinuxHeadlessHandle::new(rx_cm_stream_ready,tx_desktop_ready);' \
+  'letheadless_cm=linux_headless_handle.is_headless;' \
+  '#[cfg(target_os="linux")]rx_desktop_ready,#[cfg(target_os="linux")]tx_cm_stream_ready,#[cfg(target_os="linux")]headless_cm,' \
+  '#[cfg(target_os="linux")]p.rx_desktop_ready,#[cfg(target_os="linux")]p.tx_cm_stream_ready,#[cfg(target_os="linux")]p.headless_cm,'; do
+  grep -qF "$binding" <<<"$cm_ready_compact" || r_s11iz="$r_s11iz exact-linux-oneshot-topology-missing"
+done
+for forbidden in \
+  'rx_desktop_ready: mpsc::Receiver<()>' \
+  'tx_cm_stream_ready: mpsc::Sender<()>' \
+  '_rx_cm_stream_ready' \
+  '_tx_desktop_ready'; do
+  grep -qF "$forbidden" src/server/connection.rs && r_s11iz="$r_s11iz obsolete-readiness-queue-or-dummy-cross-platform-endpoint-present"
+done
+for binding in \
+  'receiver: &mut Option<oneshot::Receiver<()>>' \
+  'Err(_) => LinuxDesktopReadyWait::Wake' \
+  'enum LinuxCmStreamReadyWait {' \
+  'Ready,' \
+  'OwnerClosed,' \
+  'TimedOut,' \
+  'receiver: oneshot::Receiver<()>' \
+  'Ok(Ok(())) => LinuxCmStreamReadyWait::Ready' \
+  'Ok(Err(_)) => LinuxCmStreamReadyWait::OwnerClosed' \
+  'Err(_) => LinuxCmStreamReadyWait::TimedOut'; do
+  grep -qF "$binding" <<<"$cm_ready_lifecycle" || r_s11iz="$r_s11iz readiness-outcome-contract-missing"
+done
+for binding in \
+  'fn desktop_readiness_timeout_preserves_the_pending_wake()' \
+  'fn cm_stream_ready_requires_the_exact_positive_signal()' \
+  'fn closed_cm_stream_ready_is_terminal()' \
+  'fn cm_stream_ready_timeout_is_terminal()'; do
+  grep -qF "$binding" src/server/connection.rs || r_s11iz="$r_s11iz readiness-regression-missing"
+done
+ready_wait_line=$(grep -nF -m 1 'wait_desktop_cm_ready().await' <<<"$cm_ready_login" | cut -d: -f1)
+ready_error_line=$(grep -nF -m 1 'send_login_error(crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY)' <<<"$cm_ready_login" | cut -d: -f1)
+ready_return_line=$(grep -nF -m 1 'return false;' <<<"$cm_ready_login" | cut -d: -f1)
+peer_success_line=$(grep -nF -m 1 'self.send_logon_response_and_keep_alive().await' <<<"$cm_ready_login" | cut -d: -f1)
+if [ -z "$ready_wait_line" ] || [ -z "$ready_error_line" ] || [ -z "$ready_return_line" ] || [ -z "$peer_success_line" ] \
+  || [ "$ready_wait_line" -ge "$ready_error_line" ] || [ "$ready_error_line" -ge "$ready_return_line" ] \
+  || [ "$ready_return_line" -ge "$peer_success_line" ]; then
+  r_s11iz="$r_s11iz positive-cm-readiness-not-required-before-peer-login-success"
+fi
+for binding in \
+  'rx_cm_stream_ready: Option<oneshot::Receiver<()>>' \
+  'tx_desktop_ready: Option<oneshot::Sender<()>>' \
+  'let Some(sender) = self.tx_desktop_ready.take() else {' \
+  'if sender.send(()).is_err() {' \
+  'let Some(receiver) = self.rx_cm_stream_ready.take() else {' \
+  'LinuxCmStreamReadyWait::Ready => Ok(())' \
+  'LinuxCmStreamReadyWait::OwnerClosed => {' \
+  'LinuxCmStreamReadyWait::TimedOut => {'; do
+  grep -qF "$binding" <<<"$cm_ready_handle" || r_s11iz="$r_s11iz exact-readiness-owner-finality-missing"
+done
+bootstrap_complete_line=$(grep -nF -m 1 'connection-manager bootstrap owner disappeared' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+bootstrap_ready_guard_line=$(grep -nF 'if headless_cm {' <<<"$cm_ipc_bootstrap" | tail -n1 | cut -d: -f1)
+bootstrap_ready_send_line=$(grep -nF -m 1 'Linux headless CM readiness receiver disappeared' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+bootstrap_live_line=$(grep -nF -m 1 'let mut cm_file_response_enabled = false;' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+if [ -z "$bootstrap_complete_line" ] || [ -z "$bootstrap_ready_guard_line" ] || [ -z "$bootstrap_ready_send_line" ] || [ -z "$bootstrap_live_line" ] \
+  || [ "$bootstrap_complete_line" -ge "$bootstrap_ready_guard_line" ] \
+  || [ "$bootstrap_ready_guard_line" -ge "$bootstrap_ready_send_line" ] \
+  || [ "$bootstrap_ready_send_line" -ge "$bootstrap_live_line" ]; then
+  r_s11iz="$r_s11iz authenticated-bootstrap-ready-publication-order-invalid"
+fi
+for forbidden in \
+  'self.tx_desktop_ready.send(()).await.ok()' \
+  'let _res = timeout(self.wait_ipc_timeout, self.rx_cm_stream_ready.recv()).await' \
+  'let _res = tx_stream_ready.send(()).await' \
+  'tx_stream_ready.send(()).await'; do
+  grep -qF "$forbidden" src/server/connection.rs && r_s11iz="$r_s11iz ignored-or-awaiting-readiness-publication-present"
+done
+grep -qF '<span class="id">R-S11iz</span>' requirements.html || r_s11iz="$r_s11iz normative-requirement-missing"
+grep -qF '<tr><td>411</td>' requirements.html || r_s11iz="$r_s11iz appendix-row-missing"
+grep -qF 'R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality' HARDENING_STATUS.md \
+  || r_s11iz="$r_s11iz hardening-ledger-missing"
+if [ -n "$r_s11iz" ]; then echo "  FAIL R-S11iz/R-S11e-289 Linux headless CM readiness handshake:$r_s11iz"; rc=1; else
+  echo "  ok  R-S11iz/R-S11e-289 one Linux connection-local headless decision owns a finite one-shot wake/result handshake; only positive authenticated CM readiness precedes peer login success"; fi
 
 # (3b-iii-d9c4) R-S11ae/R-S11e-45: the final current-image process-table
 # consumers are deleted. Selected logind state and the retained Child own

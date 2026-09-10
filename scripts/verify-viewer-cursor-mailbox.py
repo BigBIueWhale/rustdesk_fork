@@ -489,8 +489,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if (isWeb)",
             "platformFFI.setRgbaCallback(",
-            "return;",
-            "final cb = ffiModel.startEventListener(",
+            "      });\n      return;\n    }\n\n    final cb = ffiModel.startEventListener(",
             "stream.listen(",
             "message is EventToUI_CursorPosition",
         ),

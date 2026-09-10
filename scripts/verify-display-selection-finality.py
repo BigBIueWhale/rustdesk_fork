@@ -1208,8 +1208,9 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         stream_listener,
         (
-            "final streamOwner = _SessionOwner(activeSessionId, clientOwnerId);",
-            "if (streamOwner != _sessionOwner)",
+            "SessionStreamBinding<_SessionOwner> streamBinding",
+            "final streamOwner = streamBinding.owner;",
+            "if (!_isCurrentSessionStream(streamBinding))",
             "final sessionEvents = _sessionEvents;",
             "final cachedState = sessionEvents.submit(streamOwner, () async {",
             "await ffiModel.handleCachedPeerData(",
@@ -1253,6 +1254,7 @@ def validate(sources: Dict[str, str]) -> None:
             "(rgba) => _handleWebRgba(sessionEvents, streamOwner,",
             "unawaited(frame.then<void>",
             "_reportSessionStreamFailure(activeSessionId, peerId,",
+            "      });\n      return;\n    }\n\n    ",
         ),
         "synchronous buffer ownership before bounded asynchronous presentation",
     )
@@ -1523,7 +1525,7 @@ def validate(sources: Dict[str, str]) -> None:
     startup_dart = extract_between(
         sources["model_dart"],
         "if (!displays.contains(display)",
-        "_listenToSessionStream(stream, activeSessionId, id, tabWindowId, display);",
+        "stream, streamBinding, activeSessionId, id, tabWindowId, display);",
         "existing-window Dart startup",
     )
     require_order(
@@ -1926,7 +1928,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model_dart", "final topologyRevision = _beginDisplayTopologyMutation(sessionId);\n    if (topologyRevision == null) return;\n    final updateData = evt['platform_additions'] as String?;", "const topologyRevision = 0;\n    final updateData = evt['platform_additions'] as String?;", "platform additions invalidate in-flight media"),
     ("model_dart", "final updateJson = json.decode(updateData) as Map<String, dynamic>;", "final updateJson = <String, dynamic>{};", "fallible platform-additions decode"),
     ("model_dart", "await handleFollowCurrentDisplay(evt, sessionId, peerId);", "handleFollowCurrentDisplay(evt, sessionId, peerId);", "awaited follow-display selection"),
-    ("model_dart", "    stream = bind.sessionStart(\n        sessionId: activeSessionId", "    stream = bind.sessionStartWithDisplays(\n        sessionId: activeSessionId", "single startup admission"),
+    ("model_dart", "      stream = bind.sessionStart(\n          sessionId: activeSessionId", "      stream = bind.sessionStartWithDisplays(\n          sessionId: activeSessionId", "single startup admission"),
     ("web_dart", "Future<void> sessionSwitchDisplay(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId,", "Future<void> sessionSwitchDisplay(\n      {required UuidValue sessionId,\n      required bool isDesktop,", "web owner capability"),
     ("web_dart", "Future<bool?> sessionGetRemember", "Stream<EventToUI> sessionStartWithDisplays() => Stream.empty();\n\n  Future<bool?> sessionGetRemember", "web retired startup surface"),
     ("server", "== 1", ">= 1", "exact controlled capture operation"),

@@ -29648,7 +29648,7 @@ def validate_display_selection_finality_contract(sources):
     startup_dart = extract_between(
         sources["model_dart"],
         "if (!displays.contains(display)",
-        "_listenToSessionStream(stream, activeSessionId, id, tabWindowId, display);",
+        "stream, streamBinding, activeSessionId, id, tabWindowId, display);",
         "independent existing-window Dart startup",
     )
     require_order(
@@ -30165,8 +30165,9 @@ def validate_display_selection_finality_contract(sources):
     require_order(
         stream_listener,
         (
-            "final streamOwner = _SessionOwner(activeSessionId, clientOwnerId);",
-            "if (streamOwner != _sessionOwner)",
+            "SessionStreamBinding<_SessionOwner> streamBinding",
+            "final streamOwner = streamBinding.owner;",
+            "if (!_isCurrentSessionStream(streamBinding))",
             "final sessionEvents = _sessionEvents;",
             "final cachedState = sessionEvents.submit(streamOwner, () async {",
             "_observeQueuedSessionState(cachedState, activeSessionId, peerId);",
@@ -30199,6 +30200,7 @@ def validate_display_selection_finality_contract(sources):
         web_callback,
         (
             "platformFFI.setRgbaCallback((int display, Uint8List data) {",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "final ownedData = Uint8List.fromList(data);",
         ),
         "independent synchronous web callback buffer ownership",
@@ -30218,6 +30220,7 @@ def validate_display_selection_finality_contract(sources):
         (
             "final webRgbaFrames = _webRgbaFrames;",
             "platformFFI.setRgbaCallback((int display, Uint8List data) {",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "final ownedData = Uint8List.fromList(data);",
             "final frame = webRgbaFrames.submit(",
             "streamOwner,",
@@ -30226,6 +30229,7 @@ def validate_display_selection_finality_contract(sources):
             "(rgba) => _handleWebRgba(sessionEvents, streamOwner,",
             "unawaited(frame.then<void>",
             "_reportSessionStreamFailure(activeSessionId, peerId,",
+            "      });\n      return;\n    }\n\n    ",
         ),
         "independent synchronous web buffer ownership and bounded presentation",
     )
@@ -30518,6 +30522,11 @@ def validate_viewer_cursor_mailbox_contract(sources):
         focused_contract,
         '"platformFFI.takeCursorPosition("',
         "focused exact cursor-take assertion",
+    )
+    require_text(
+        focused_contract,
+        '"      });\\n      return;\\n    }\\n\\n    final cb = ffiModel.startEventListener("',
+        "focused exact web-return boundary assertion",
     )
     require_text(
         focused,
@@ -31134,8 +31143,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
         (
             "if (isWeb)",
             "platformFFI.setRgbaCallback(",
-            "return;",
-            "final cb = ffiModel.startEventListener(",
+            "      });\n      return;\n    }\n\n    final cb = ffiModel.startEventListener(",
             "stream.listen(",
             "message is EventToUI_CursorPosition",
         ),
@@ -38577,6 +38585,330 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
 
 
+def validate_session_stream_generation_contract(sources):
+    focused = sources["session_stream_generation_verifier"]
+    require_text(
+        sources["workspace_verifier"],
+        '            "session_stream_generation_verifier": (\n'
+        '                repo / "scripts/verify-session-stream-generation.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "independent session-stream generation verifier binding",
+    )
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMUTATIONS = (",
+        "session-stream generation focused validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS = (",
+        "\n)\n\n\ndef run_self_test",
+        "session-stream generation focused mutation inventory",
+    )
+    for text, label in (
+        ("def extract_item(", "focused balanced-item parser"),
+        ("def validate(sources", "focused semantic entry"),
+        (
+            '"one-current monotonic session-stream generation owner"',
+            "focused one-current generation contract",
+        ),
+        (
+            '"mobile pre-native stream-generation reservation"',
+            "focused mobile replacement ordering contract",
+        ),
+        (
+            '"desktop pre-native stream-generation reservation"',
+            "focused desktop replacement ordering contract",
+        ),
+        (
+            '"exact stream binding before every callback and terminal effect"',
+            "focused callback/finality binding contract",
+        ),
+        (
+            '"listener, web, message, error, and done exact-binding checks"',
+            "focused complete callback admission count",
+        ),
+        ("run_self_test(sources)", "focused mutation dispatch"),
+    ):
+        source = focused if text in {"def extract_item(", "def validate(sources", "run_self_test(sources)"} else validation
+        require_text(source, text, label)
+    for text, label in (
+        (
+            '("generation", "identical(_current, binding)", "_current?.owner == binding.owner", "binding identity"),',
+            "focused binding-identity mutation",
+        ),
+        (
+            '("model", "streamBinding = _reserveSessionStream(request.sessionId);\\n      stream = bind.sessionStart(",',
+            "focused mobile pre-native mutation",
+        ),
+        (
+            '("model", "streamBinding = _reserveSessionStream(activeSessionId);\\n      stream = bind.sessionStart(",',
+            "focused desktop pre-native mutation",
+        ),
+        (
+            '"predecessor error refusal"),',
+            "focused predecessor-error mutation",
+        ),
+        (
+            '"predecessor completion refusal"),',
+            "focused predecessor-completion mutation",
+        ),
+        (
+            '"web branch final return"),',
+            "focused web-return mutation",
+        ),
+        (
+            '("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "Appendix disposition"),',
+            "focused normative-disposition mutation",
+        ),
+        (
+            '("native_watch", "Requirements hash: ", "Requirements digest: ", "requirements digest"),',
+            "focused requirements-digest mutation",
+        ),
+    ):
+        require_text(mutation_inventory, text, label)
+
+    binding = extract_braced_item(
+        sources["session_stream_finality_dart"],
+        "class SessionStreamBinding<Owner>",
+        "Dart exact session-stream binding",
+    )
+    require_order(
+        binding,
+        (
+            "const SessionStreamBinding._(this.owner, this.generation);",
+            "final Owner owner;",
+            "final int generation;",
+        ),
+        "immutable session-stream binding",
+    )
+    generation = extract_braced_item(
+        sources["session_stream_finality_dart"],
+        "class SessionStreamGeneration<Owner>",
+        "Dart exact session-stream generation owner",
+    )
+    require_order(
+        generation,
+        (
+            "int _generation = 0;",
+            "SessionStreamBinding<Owner>? _current;",
+            "SessionStreamBinding<Owner> reserve(Owner owner)",
+            "final binding = SessionStreamBinding<Owner>._(owner, ++_generation);",
+            "_current = binding;",
+            "return binding;",
+            "bool isCurrent(SessionStreamBinding<Owner> binding)",
+            "identical(_current, binding)",
+            "bool retireOwner(Owner owner)",
+            "if (current != null && current.owner != owner)",
+            "return false;",
+            "_current = null;",
+            "return true;",
+        ),
+        "one-current monotonic session-stream generation source",
+    )
+    for forbidden in (
+        "List<",
+        "Map<",
+        "Set<",
+        "Queue<",
+        "StreamSubscription",
+        "Timer",
+        "Future",
+        "retry",
+    ):
+        require_absent(
+            generation,
+            forbidden,
+            "session-stream generation history or scheduling owner",
+        )
+
+    model = sources["model_dart"]
+    reserve = extract_braced_item(
+        model,
+        "SessionStreamBinding<_SessionOwner> _reserveSessionStream(",
+        "Dart session-stream reservation",
+    )
+    require_order(
+        reserve,
+        (
+            "final owner = _SessionOwner(expectedSessionId, clientOwnerId);",
+            "owner != _sessionOwner",
+            "!isCurrentSessionOwner(expectedSessionId, clientOwnerId)",
+            "throw StateError('session owner changed before stream reservation');",
+            "return _sessionStreams.reserve(owner);",
+        ),
+        "exact live owner before stream reservation",
+    )
+    current = extract_between(
+        model,
+        "bool _isCurrentSessionStream(",
+        "\n\n  Future<bool> submitDisplaySelection(",
+        "Dart exact current-stream predicate",
+    )
+    require_order(
+        current,
+        (
+            "_sessionStreams.isCurrent(expected)",
+            "expected.owner == _sessionOwner",
+            "isCurrentSessionOwner(",
+            "expected.owner.sessionId, expected.owner.clientOwnerId",
+        ),
+        "binding identity, owner, and live-session conjunction",
+    )
+    retirement = extract_braced_item(
+        model,
+        "void _retireSessionOwner(",
+        "exact session-owner retirement",
+    )
+    require_order(
+        retirement,
+        (
+            "final retiringOwner =",
+            "_SessionOwner(retiringSessionId, clientOwnerId);",
+            "final sessionStreamRetired = _sessionStreams.retireOwner(retiringOwner);",
+            "final sessionEventsRetired = _sessionEvents.retire(retiringOwner);",
+            "if (!sessionStreamRetired ||",
+            "throw StateError('session owner changed before retirement');",
+        ),
+        "stream binding retires with exact session owner",
+    )
+    mobile = extract_between(
+        model,
+        "Future<void> _runMobileSessionStart(",
+        "\n  Future<void> _closeNativeSession(",
+        "mobile session-stream replacement",
+    )
+    require_order(
+        mobile,
+        (
+            "if (!isCurrentSession(request.sessionId))",
+            "streamBinding = _reserveSessionStream(request.sessionId);",
+            "stream = bind.sessionStart(",
+            "_listenToSessionStream(\n        stream, streamBinding, request.sessionId",
+        ),
+        "mobile pre-native stream-generation reservation source",
+    )
+    listener = extract_between(
+        model,
+        "void _listenToSessionStream(",
+        "\n  /// Start with the given [id].",
+        "Dart exact stream listener",
+    )
+    require_order(
+        listener,
+        (
+            "SessionStreamBinding<_SessionOwner> streamBinding",
+            "final streamOwner = streamBinding.owner;",
+            "if (!_isCurrentSessionStream(streamBinding))",
+            "final sessionEvents = _sessionEvents;",
+            "platformFFI.setRgbaCallback((int display, Uint8List data)",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
+            "      });\n      return;\n    }\n\n    final cb = ffiModel.startEventListener(",
+            "stream.listen((message)",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
+            "streamFinality.acceptExpectedClose();",
+            "onError: (Object error, StackTrace stackTrace)",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
+            "sessionEvents.retire(streamOwner);",
+            "onDone: ()",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
+            "sessionEvents.retire(streamOwner);",
+        ),
+        "exact stream binding before every callback and terminal effect source",
+    )
+    require_exact_count(
+        listener,
+        "_isCurrentSessionStream(streamBinding)",
+        5,
+        "listener, web, message, error, and done exact-binding checks",
+    )
+    require_absent(
+        listener,
+        "if (closed || sessionId != activeSessionId) return;",
+        "session-only stream callback admission",
+    )
+    desktop = extract_between(
+        model,
+        "  SessionID start(",
+        "\n  Future<bool> _initializeFirstImage(",
+        "desktop session-stream replacement",
+    )
+    require_order(
+        desktop,
+        (
+            "streamBinding = _reserveSessionStream(activeSessionId);",
+            "stream = bind.sessionStart(",
+            "_listenToSessionStream(\n        stream, streamBinding, activeSessionId",
+        ),
+        "desktop pre-native stream-generation reservation source",
+    )
+    test = sources["session_stream_finality_test"]
+    for text, label in (
+        (
+            "replacement invalidates the predecessor with the same owner",
+            "same-owner replacement behavior source",
+        ),
+        ("expect(predecessor.generation, 1);", "predecessor generation proof source"),
+        ("expect(replacement.generation, 2);", "replacement generation proof source"),
+        (
+            "expect(generations.isCurrent(predecessor), isFalse);",
+            "predecessor invalidation proof source",
+        ),
+        (
+            "owner retirement cannot retire a different current owner",
+            "different-owner retirement behavior source",
+        ),
+        (
+            "expect(generations.retireOwner('session-a'), isFalse);",
+            "different-owner retirement refusal source",
+        ),
+        (
+            "expect(generations.retireOwner('session-b'), isTrue);",
+            "exact-owner retirement source",
+        ),
+    ):
+        require_text(test, text, label)
+    require_exact_count(
+        sources["dart_verify"],
+        "test/session_stream_finality_test.dart",
+        2,
+        "Dart session-stream generation behavior gate source",
+    )
+    for gate in ("verify", "apple"):
+        require_text(
+            sources[gate],
+            "python3 scripts/verify-session-stream-generation.py --repo . --self-test",
+            f"{gate} focused session-stream generation gate source",
+        )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ix</span>',
+        "session-stream generation requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>409</td>",
+        "session-stream generation Appendix C source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
+        "session-stream generation hardening ledger source",
+    )
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(
+        sources["native_watch"],
+        f"Requirements hash: {digest}",
+        "session-stream generation requirements digest source",
+    )
+    require_text(
+        sources["native_watch"],
+        "The same identity additionally binds R-S11ix and Appendix C #409.",
+        "session-stream generation requirements-identity binding source",
+    )
+
+
 def validate_android_voice_call_ownership_contract(sources):
     focused = sources["android_voice_call_ownership_verifier"]
     validation = extract_between(
@@ -38639,7 +38971,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android dual exact-close count contract",
         ),
         (
-            '"admission/start and replay exact-owner session-start rollback"',
+            '"single shared exact-owner session-start rollback"',
             "Android session-start exact-owner rollback contract",
         ),
         (
@@ -38669,6 +39001,14 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             '"expected-close versus unexpected-termination finality"',
             "Android stream-finality discriminator contract",
+        ),
+        (
+            '"class SessionStreamGeneration<Owner>"',
+            "Android exact stream-generation declaration contract",
+        ),
+        (
+            '"exact session-stream generation and queue owner retirement"',
+            "Android exact stream-generation retirement contract",
         ),
         (
             '"off-UI add, stale exact close, stream start, and post-add option read"',
@@ -38996,8 +39336,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android focused close-finality mutation",
         ),
         (
-            '"session stream error handler"',
-            "Android focused stream-error mutation",
+            '"stale predecessor error refusal"',
+            "Android focused predecessor-error mutation",
         ),
         (
             '"generated asynchronous mobile-add gate"',
@@ -39198,8 +39538,13 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "model_dart",
-            "if (closed || sessionId != activeSessionId) return;",
-            "Android stale event-stream refusal source",
+            "streamBinding = _reserveSessionStream(request.sessionId);",
+            "Android pre-native event-stream generation source",
+        ),
+        (
+            "model_dart",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
+            "Android stale event-stream generation refusal source",
         ),
         (
             "model_dart",
@@ -39262,6 +39607,11 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android expected-close stream-finality source",
         ),
         (
+            "session_stream_finality_dart",
+            "class SessionStreamGeneration<Owner>",
+            "Android exact stream-generation owner source",
+        ),
+        (
             "mobile_session_start_queue_test",
             "closing the running request waits while a newer request is pending",
             "Android running-preparation finality behavior source",
@@ -39270,6 +39620,11 @@ def validate_android_voice_call_ownership_contract(sources):
             "session_stream_finality_test",
             "unexpected stream termination is admitted exactly once",
             "Android stream-termination behavior source",
+        ),
+        (
+            "session_stream_finality_test",
+            "replacement invalidates the predecessor with the same owner",
+            "Android same-owner stream-replacement behavior source",
         ),
         (
             "model_dart",
@@ -39682,6 +40037,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "await bind.sessionAddMobile(",
             "if (!isCurrentSession(request.sessionId))",
             "await _closeNativeSession(request.sessionId);",
+            "streamBinding = _reserveSessionStream(request.sessionId);",
             "stream = bind.sessionStart(",
             "_listenToSessionStream(",
             "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)",
@@ -39758,7 +40114,12 @@ def validate_android_voice_call_ownership_contract(sources):
     require_order(
         stream_listener,
         (
+            "SessionStreamBinding<_SessionOwner> streamBinding",
+            "final streamOwner = streamBinding.owner;",
+            "if (!_isCurrentSessionStream(streamBinding))",
             "final streamFinality = SessionStreamFinality();",
+            "stream.listen((message)",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "streamFinality.acceptExpectedClose();",
             "sessionEvents.retire(streamOwner);",
             "if (isCurrentSessionOwner(",
@@ -39766,15 +40127,23 @@ def validate_android_voice_call_ownership_contract(sources):
             "closed = true;",
             "_retireSessionOwner(activeSessionId);",
             "onError:",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "onDone:",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
         ),
-        "Android expected-close versus error/end source",
+        "Android exact-generation expected-close versus error/end source",
     )
     require_exact_count(
         stream_listener,
         "streamFinality.acceptUnexpectedTermination()",
         2,
         "Android one-shot error/end admission source",
+    )
+    require_exact_count(
+        stream_listener,
+        "_isCurrentSessionStream(streamBinding)",
+        5,
+        "Android listener, web, message, error, and done stream-generation admission source",
     )
     mobile_close = extract_between(
         sources["model_dart"],
@@ -39916,6 +40285,21 @@ def validate_android_voice_call_ownership_contract(sources):
         "R-S11eo/R-S11e-176",
         "Android mobile preparation hardening ledger source",
     )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ix</span>',
+        "Android stream-generation normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>409</td>",
+        "Android stream-generation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
+        "Android stream-generation hardening ledger source",
+    )
     require_exact_count(
         sources["dart_verify"],
         "test/mobile_session_start_queue_test.dart",
@@ -39947,7 +40331,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2',
+        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 1',
         "Android shared session-start rollback gate source",
     )
     require_text(
@@ -41661,8 +42045,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("dart_model", "if (closed || sessionId != activeSessionId) return;", "if (closed) return;", "stale event-stream refusal"),',
-        "Android stale event-stream mutation",
+        '("dart_model", "if (!_isCurrentSessionStream(streamBinding)) return;", "if (closed || sessionId != activeSessionId) return;", "exact event-stream generation refusal"),',
+        "Android exact event-stream generation mutation",
     )
     require_text(
         focused,
@@ -62905,6 +63289,7 @@ def validate_sources(sources):
     validate_display_selection_finality_contract(sources)
     validate_viewer_session_registry_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
+    validate_session_stream_generation_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_client_lifecycle_drain_contract(sources)
     validate_android_listener_generation_contract(sources)
@@ -89098,6 +89483,12 @@ def run_source_mutations(sources):
             "focused latest-only cursor mailbox assertion",
         ),
         (
+            "viewer_cursor_mailbox_verifier",
+            '"      });\\n      return;\\n    }\\n\\n    final cb = ffiModel.startEventListener("',
+            '"return;"',
+            "focused exact web-return boundary assertion",
+        ),
+        (
             "verify",
             "python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test",
             "true # cursor mailbox verifier disabled",
@@ -95055,9 +95446,9 @@ def run_source_mutations(sources):
         ),
         (
             "model_dart",
-            "if (closed || sessionId != activeSessionId) return;",
-            "if (closed) return;",
-            "Android stale event-stream refusal source",
+            "if (!_isCurrentSessionStream(streamBinding)) return;\n      if (tabWindowId",
+            "if (closed || sessionId != activeSessionId) return;\n      if (tabWindowId",
+            "exact stream binding before every callback and terminal effect source",
         ),
         (
             "model_dart",
@@ -104079,7 +104470,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"admission/start and replay exact-owner session-start rollback"',
+            '"single shared exact-owner session-start rollback"',
             '"unchecked initial worker-start failure"',
             "Android session-start exact-owner rollback contract",
         ),
@@ -104133,9 +104524,25 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"session stream error handler"',
-            '"session stream error logging"',
-            "Android focused stream-error mutation",
+            '"stale predecessor error refusal"',
+            '"stale predecessor error acceptance"',
+            "Android focused predecessor-error mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'sources["dart_stream_finality"],\n'
+            '        "class SessionStreamGeneration<Owner>",\n'
+            '        "exact session-stream generation owner",',
+            'sources["dart_stream_finality"],\n'
+            '        "class SessionStreamGeneration",\n'
+            '        "exact session-stream generation owner",',
+            "Android exact stream-generation declaration contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"exact session-stream generation and queue owner retirement"',
+            '"ambient session-stream and queue retirement"',
+            "Android exact stream-generation retirement contract",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -104243,12 +104650,14 @@ def run_source_mutations(sources):
         (
             "model_dart",
             "}, onError: (Object error, StackTrace stackTrace) {\n"
+            "      if (!_isCurrentSessionStream(streamBinding)) return;\n"
             "      sessionEvents.retire(streamOwner);\n"
             "      if (!streamFinality.acceptUnexpectedTermination())",
             "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n"
+            "      if (!_isCurrentSessionStream(streamBinding)) return;\n"
             "      sessionEvents.retire(streamOwner);\n"
             "      if (!streamFinality.acceptUnexpectedTermination())",
-            "Android expected-close versus error/end source",
+            "exact stream binding before every callback and terminal effect source",
         ),
         (
             "model_dart",
@@ -104302,6 +104711,226 @@ def run_source_mutations(sources):
             "Android stream-termination behavior source",
         ),
         (
+            "session_stream_finality_dart",
+            "class SessionStreamBinding<Owner>",
+            "class SessionStreamBindingDisabled<Owner>",
+            "Dart exact session-stream binding",
+        ),
+        (
+            "session_stream_finality_dart",
+            "final int generation;",
+            "int generation;",
+            "immutable session-stream binding",
+        ),
+        (
+            "session_stream_finality_dart",
+            "int _generation = 0;",
+            "int _generation = -1;",
+            "one-current monotonic session-stream generation source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "SessionStreamBinding<Owner>? _current;",
+            "final List<SessionStreamBinding<Owner>> _current = [];",
+            "one-current monotonic session-stream generation source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "final binding = SessionStreamBinding<Owner>._(owner, ++_generation);",
+            "final binding = SessionStreamBinding<Owner>._(owner, _generation);",
+            "one-current monotonic session-stream generation source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "_current = binding;\n    return binding;",
+            "return binding;",
+            "one-current monotonic session-stream generation source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "identical(_current, binding)",
+            "_current?.owner == binding.owner",
+            "one-current monotonic session-stream generation source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "if (current != null && current.owner != owner)",
+            "if (false)",
+            "one-current monotonic session-stream generation source",
+        ),
+        (
+            "model_dart",
+            "return _sessionStreams.reserve(owner);",
+            "throw StateError('stream reservation disabled');",
+            "exact live owner before stream reservation",
+        ),
+        (
+            "model_dart",
+            "_sessionStreams.isCurrent(expected) &&",
+            "true &&",
+            "binding identity, owner, and live-session conjunction",
+        ),
+        (
+            "model_dart",
+            "final sessionStreamRetired = _sessionStreams.retireOwner(retiringOwner);",
+            "final sessionStreamRetired = true;",
+            "stream binding retires with exact session owner",
+        ),
+        (
+            "model_dart",
+            "streamBinding = _reserveSessionStream(request.sessionId);\n      stream = bind.sessionStart(",
+            "stream = bind.sessionStart(\n          // stream reservation moved after native replacement\n",
+            "mobile pre-native stream-generation reservation source",
+        ),
+        (
+            "model_dart",
+            "streamBinding = _reserveSessionStream(activeSessionId);\n      stream = bind.sessionStart(",
+            "stream = bind.sessionStart(\n          // stream reservation moved after native replacement\n",
+            "desktop pre-native stream-generation reservation source",
+        ),
+        (
+            "model_dart",
+            "final streamOwner = streamBinding.owner;",
+            "final streamOwner = _SessionOwner(activeSessionId, clientOwnerId);",
+            "independent cached/event/media/terminal stream ordering",
+        ),
+        (
+            "model_dart",
+            "if (!_isCurrentSessionStream(streamBinding)) return;\n      if (tabWindowId",
+            "if (closed || sessionId != activeSessionId) return;\n      if (tabWindowId",
+            "exact stream binding before every callback and terminal effect source",
+        ),
+        (
+            "model_dart",
+            "onDone: () {\n      if (!_isCurrentSessionStream(streamBinding)) return;",
+            "onDone: () {",
+            "exact stream binding before every callback and terminal effect source",
+        ),
+        (
+            "session_stream_finality_test",
+            "replacement invalidates the predecessor with the same owner",
+            "replacement preserves the predecessor with the same owner",
+            "same-owner replacement behavior source",
+        ),
+        (
+            "session_stream_finality_test",
+            "expect(predecessor.generation, 1);",
+            "expect(predecessor.generation, 0);",
+            "predecessor generation proof source",
+        ),
+        (
+            "session_stream_finality_test",
+            "expect(generations.isCurrent(predecessor), isFalse);",
+            "expect(generations.isCurrent(predecessor), isTrue);",
+            "predecessor invalidation proof source",
+        ),
+        (
+            "session_stream_finality_test",
+            "owner retirement cannot retire a different current owner",
+            "owner retirement may retire a different current owner",
+            "different-owner retirement behavior source",
+        ),
+        (
+            "session_stream_finality_test",
+            "expect(generations.retireOwner('session-a'), isFalse);",
+            "expect(generations.retireOwner('session-a'), isTrue);",
+            "different-owner retirement refusal source",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '"one-current monotonic session-stream generation owner"',
+            '"ambient session-stream generation owner"',
+            "focused one-current generation contract",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '"mobile pre-native stream-generation reservation"',
+            '"mobile post-native stream-generation reservation"',
+            "focused mobile replacement ordering contract",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '"desktop pre-native stream-generation reservation"',
+            '"desktop post-native stream-generation reservation"',
+            "focused desktop replacement ordering contract",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '"exact stream binding before every callback and terminal effect"',
+            '"session-only callback and terminal effect"',
+            "focused callback/finality binding contract",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '"predecessor completion refusal"),',
+            '"predecessor completion acceptance"),',
+            "focused predecessor-completion mutation",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '"web branch final return"),',
+            '"web branch fall-through"),',
+            "focused web-return mutation",
+        ),
+        (
+            "session_stream_generation_verifier",
+            '("native_watch", "Requirements hash: ", "Requirements digest: ", "requirements digest"),',
+            '("native_watch", "Requirements hash: ", "Requirements hash: ", "requirements digest disabled"),',
+            "focused requirements-digest mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-session-stream-generation.py --repo . --self-test",
+            "true # session-stream generation shared gate disabled",
+            "verify focused session-stream generation gate source",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-session-stream-generation.py --repo . --self-test",
+            "true # session-stream generation Apple gate disabled",
+            "apple focused session-stream generation gate source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ix</span>',
+            '<span class="id">R-S11ix-disabled</span>',
+            "session-stream generation requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>409</td>",
+            "<tr><td>409-disabled</td>",
+            "session-stream generation Appendix C source",
+        ),
+        (
+            "hardening",
+            "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
+            "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation",
+            "session-stream generation hardening ledger source",
+        ),
+        (
+            "native_watch",
+            "The same identity additionally binds R-S11ix and Appendix C #409.",
+            "The same identity additionally binds R-S11ix-disabled and Appendix C #409.",
+            "session-stream generation requirements-identity binding source",
+        ),
+        (
+            "workspace_verifier",
+            '            "session_stream_generation_verifier": (\n'
+            '                repo / "scripts/verify-session-stream-generation.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "session_stream_generation_verifier_disabled": (\n'
+            '                repo / "scripts/verify-session-stream-generation.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent session-stream generation verifier binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_session_stream_generation_contract(sources)\n",
+            "    validate_session_stream_generation_contract_disabled(sources)\n",
+            "session-stream generation workspace dispatch",
+        ),
+        (
             "mobile_remote_page_dart",
             "gFFI.inputModel.listenToMouse(true);",
             "gFFI.inputModel.listenToMouse(true);\n"
@@ -104331,7 +104960,7 @@ def run_source_mutations(sources):
             "dart_verify",
             "test/session_stream_finality_test.dart",
             "test/session_stream_finality_test_disabled.dart",
-            "Android session-stream finality behavior gate source",
+            "Dart session-stream generation behavior gate source",
         ),
         (
             "dart_verify",
@@ -104367,7 +104996,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2',
+            'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 1',
             'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") >= 0',
             "Android shared session-start rollback gate source",
         ),
@@ -107808,6 +108437,9 @@ def main():
             "viewer_rgba_mailbox_verifier": (
                 repo / "scripts/verify-viewer-rgba-mailbox.py"
             ).read_text(encoding="utf-8"),
+            "session_stream_generation_verifier": (
+                repo / "scripts/verify-session-stream-generation.py"
+            ).read_text(encoding="utf-8"),
             "viewer_cursor_mailbox_verifier": (
                 repo / "scripts/verify-viewer-cursor-mailbox.py"
             ).read_text(encoding="utf-8"),
@@ -108485,6 +109117,12 @@ def validate_workspace_verifier_self_contract(source):
         "validate_cm_command_lifetime_contract(sources)",
         1,
         "CM command-lifetime workspace dispatch",
+    )
+    require_exact_count(
+        source_dispatch,
+        "validate_session_stream_generation_contract(sources)",
+        1,
+        "session-stream generation workspace dispatch",
     )
     readiness_mode_validator = extract_python_definition(
         source,

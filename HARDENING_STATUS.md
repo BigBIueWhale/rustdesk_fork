@@ -30542,7 +30542,7 @@ shared/Apple wiring, and the exact requirements identity.
 Current normative identity for this slice:
 
 ```text
-c5499bd1c8267267c91eecc5fa0035b66cfbffec58716ded1a678dc56e523a9a  requirements.html
+1d783c39d4233d41e311b2d0266abb46ae11dea4cac70978727141f2d2c1fa27  requirements.html
 ```
 
 **Evidence receipt.** On a frozen read-only repository snapshot in the exact
@@ -30581,6 +30581,85 @@ finish. Exact Rust/Dart/generated-bridge compilation and execution, physical
 Android task-swipe/reopen/Force-Stop and Windows focus/minimize/window-transfer
 behavior, iOS/Linux/macOS and cross-version behavior, capture-through-compositor
 timestamps and explicit latency/queue/CPU/memory budgets, sustained
+connection/reconnect/focus/background/file/control/resource/performance soak,
+current signed artifacts, clean committed cold R-B2/R-B10 equality, independent
+reproduction, causation, external review, and proof that the complete connection
+flow is correct and performant remain open STOP-SHIP obligations and explicit
+user requests.
+
+### R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation (2026-09-09)
+
+**Status:** SOURCE CORRECTION / FOCUSED 37-MUTATION AND COMPLETE INDEPENDENT
+SOURCE-MUTATION EVIDENCE PASS / EXACT DART, GENERATED-BRIDGE, NATIVE PLATFORM,
+DEVICE, PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
+EVIDENCE PENDING.
+
+**Platform, action, and boundary.** This slice is limited to the Flutter session
+event consumer shared by Android, iOS, Windows, Linux, macOS, and the web parity
+path. Its authority is one exact outgoing connection-session UUID, UI-owner UUID,
+and process-local event-stream generation. The deliberately persistent Android
+controlled service, peer transport, file transfer, input/control, capture, native
+mailboxes, and desktop texture publication remain unchanged.
+
+**Source-proven old path.** Native `session_start_` deliberately sent `close` to
+an existing handler stream and replaced it under the same session and UI-owner
+identities. Dart's `_listenToSessionStream` reconstructed only that unchanged pair.
+The predecessor and successor listeners therefore both appeared current. A delayed
+predecessor `close` could retire the successor's shared `SessionEventQueue`, mark
+the common FFI model closed, and invoke exact native session retirement after the
+successor had been installed. A late predecessor ordinary event, `onError`, or
+`onDone` had the same missing-generation admission. Reserving only after the Rust
+bridge call would remain racy because predecessor close is published inside that
+call. This is current-source cross-platform consumer-generation and replacement-
+finality debt. It is not native reproduction, proof that older deployed bytes
+exercised the race, or a causation claim for the reported Android task-swipe or
+Windows focus-delay symptoms. It is not evidence of compromise, public exposure,
+privilege escalation, or host/service/firewall/network/container mutation.
+
+**Correct ownership.** `SessionStreamGeneration` retains one strictly advancing
+integer and only its current identity-bearing `SessionStreamBinding`. Reserving a
+successor immediately invalidates its predecessor even when the session/UI owner
+is unchanged. Both mobile and desktop paths reserve before calling native
+`sessionStart`. Listener installation, every native message callback, the web RGBA
+callback, error, and done finality require the exact current binding before any
+session, queue, presentation, failure, or native-close effect. Exact session-owner
+retirement clears the current binding and refuses to clear a binding belonging to
+a different owner. A start error after reservation follows the existing visible
+exact-session failure and native-retirement path.
+
+The generation owner adds no stream history, subscription registry, message/frame
+queue, retry, reconnect, timer, poller, task, worker, thread, isolate, runtime,
+service or Activity transition, listener, port, endpoint, network behavior,
+protocol field, privilege, dependency, or artifact. Work already invoked by a
+predecessor retains the existing bounded event/publication owners and may settle;
+no later predecessor callback can be newly admitted after reservation.
+Deterministic Dart regressions cover same-owner replacement, strict generation
+advance, different-owner retirement refusal, and exact current-owner retirement.
+The shared Android lifecycle gate, Apple source gate, independently implemented
+workspace validator and complete mutation catalog, R-S11ix, Appendix C #409, the
+exact requirements identity, and this ledger must bind the correction before its
+source status advances.
+
+**Source verification receipt.** In the immutable local image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+running as UID/GID 1000 with no network, a read-only recursively-disabled source
+bind, a read-only root filesystem, all capabilities dropped, no-new-privileges,
+private IPC, bounded PIDs/memory/CPU, and a bounded no-exec temporary filesystem:
+the focused R-S11ix validator rejects all 37 deliberate mutations; the broader
+Android ownership validator rejects all 588 deliberate mutations; the adjacent
+display-selection and software-RGBA validators reject all 186 and 137 deliberate
+mutations respectively; the independent workspace baseline passes; the native
+codec/requirements-digest self-test passes; Python AST and shell syntax checks
+pass; and the complete independent source-mutation catalog passes. `git diff
+--check` also passes. The pinned image has no Dart/Flutter, Cargo/Rust, Kotlin,
+Java, generated-bridge, or native platform toolchain, so none of those source
+checks is represented as authored Dart execution, compilation, device evidence,
+or installed-artifact evidence.
+
+Exact Dart/Flutter/generated-bridge/native compilation and execution, physical
+Android task-swipe/reopen/Force-Stop and Windows focus/minimize/window-transfer
+behavior, iOS/Linux/macOS/web and cross-version behavior, capture-through-
+compositor timestamps and explicit latency/queue/CPU/memory budgets, sustained
 connection/reconnect/focus/background/file/control/resource/performance soak,
 current signed artifacts, clean committed cold R-B2/R-B10 equality, independent
 reproduction, causation, external review, and proof that the complete connection

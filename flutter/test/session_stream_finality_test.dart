@@ -17,4 +17,25 @@ void main() {
     expect(finality.acceptUnexpectedTermination(), isTrue);
     expect(finality.acceptUnexpectedTermination(), isFalse);
   });
+
+  test('replacement invalidates the predecessor with the same owner', () {
+    final generations = SessionStreamGeneration<String>();
+    final predecessor = generations.reserve('session-a');
+    final replacement = generations.reserve('session-a');
+
+    expect(predecessor.generation, 1);
+    expect(replacement.generation, 2);
+    expect(generations.isCurrent(predecessor), isFalse);
+    expect(generations.isCurrent(replacement), isTrue);
+  });
+
+  test('owner retirement cannot retire a different current owner', () {
+    final generations = SessionStreamGeneration<String>();
+    final current = generations.reserve('session-b');
+
+    expect(generations.retireOwner('session-a'), isFalse);
+    expect(generations.isCurrent(current), isTrue);
+    expect(generations.retireOwner('session-b'), isTrue);
+    expect(generations.isCurrent(current), isFalse);
+  });
 }

@@ -4968,6 +4968,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2ade) R-S11ix exact Dart session-stream consumer generation =="
+if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
+  note "ok  R-S11ix Apple/shared Flutter event streams reserve exact consumer generations before native replacement"
+else
+  echo "  FAIL R-S11ix Apple/shared Flutter event streams regained same-owner predecessor callback or finality authority"
+  rc=1
+fi
+
 echo "== (2g-c2ae) R-S11gz exact bounded file-clipboard route ownership =="
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   note "ok  R-S11gz Apple/shared file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"

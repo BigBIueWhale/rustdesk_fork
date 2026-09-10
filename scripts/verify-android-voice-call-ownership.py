@@ -1247,8 +1247,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         session_start,
         "rollback_failed_session_start(session_id, client_owner_id);",
-        2,
-        "admission/start and replay exact-owner session-start rollback",
+        1,
+        "single shared exact-owner session-start rollback",
     )
     failed_start_rollback = extract_item(
         flutter,
@@ -1573,6 +1573,53 @@ def validate(sources: Dict[str, str]) -> None:
         "unexpected stream termination is admitted exactly once",
         "one-shot unexpected-termination behavior test",
     )
+    stream_generation = extract_item(
+        sources["dart_stream_finality"],
+        "class SessionStreamGeneration<Owner>",
+        "exact session-stream generation owner",
+    )
+    require_order(
+        stream_generation,
+        (
+            "int _generation = 0;",
+            "SessionStreamBinding<Owner>? _current;",
+            "SessionStreamBinding<Owner> reserve(Owner owner)",
+            "final binding = SessionStreamBinding<Owner>._(owner, ++_generation);",
+            "_current = binding;",
+            "identical(_current, binding)",
+            "bool retireOwner(Owner owner)",
+            "current.owner != owner",
+            "_current = null;",
+        ),
+        "one-current exact session-stream generation policy",
+    )
+    require(
+        stream_finality_test,
+        "replacement invalidates the predecessor with the same owner",
+        "same-owner stream-replacement behavior test",
+    )
+    require(
+        stream_finality_test,
+        "owner retirement cannot retire a different current owner",
+        "different-owner stream-retirement refusal behavior test",
+    )
+    session_owner_retirement = extract_item(
+        dart_model,
+        "  void _retireSessionOwner(",
+        "exact Dart session-owner retirement",
+    )
+    require_order(
+        session_owner_retirement,
+        (
+            "final retiringOwner =",
+            "_SessionOwner(retiringSessionId, clientOwnerId);",
+            "final sessionStreamRetired = _sessionStreams.retireOwner(retiringOwner);",
+            "final sessionEventsRetired = _sessionEvents.retire(retiringOwner);",
+            "if (!sessionStreamRetired ||",
+            "throw StateError('session owner changed before retirement');",
+        ),
+        "exact session-stream generation and queue owner retirement",
+    )
 
     mobile_run = extract_item(
         dart_model,
@@ -1587,6 +1634,7 @@ def validate(sources: Dict[str, str]) -> None:
             "clientOwnerId: clientOwnerId,",
             "if (!isCurrentSession(request.sessionId))",
             "await _closeNativeSession(request.sessionId);",
+            "streamBinding = _reserveSessionStream(request.sessionId);",
             "stream = bind.sessionStart(",
             "_listenToSessionStream(",
             "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)",
@@ -1650,9 +1698,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         stream_listener,
         (
+            "SessionStreamBinding<_SessionOwner> streamBinding",
+            "final streamOwner = streamBinding.owner;",
+            "if (!_isCurrentSessionStream(streamBinding))",
+            "      });\n      return;\n    }\n\n    final cb = ffiModel.startEventListener(",
             "final streamFinality = SessionStreamFinality();",
             "stream.listen((message)",
-            "if (closed || sessionId != activeSessionId) return;",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "if (message.field0 == 'close')",
             "streamFinality.acceptExpectedClose();",
             "sessionEvents.retire(streamOwner);",
@@ -1661,9 +1713,11 @@ def validate(sources: Dict[str, str]) -> None:
             "closed = true;",
             "_retireSessionOwner(activeSessionId);",
             "onError: (Object error, StackTrace stackTrace)",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "streamFinality.acceptUnexpectedTermination()",
             "_reportSessionStreamFailure(",
             "onDone: ()",
+            "if (!_isCurrentSessionStream(streamBinding)) return;",
             "streamFinality.acceptUnexpectedTermination()",
             "_reportSessionStreamFailure(",
         ),
@@ -1674,6 +1728,12 @@ def validate(sources: Dict[str, str]) -> None:
         "streamFinality.acceptUnexpectedTermination()",
         2,
         "error and end unexpected-termination admission",
+    )
+    require_count(
+        stream_listener,
+        "_isCurrentSessionStream(streamBinding)",
+        5,
+        "listener, web, message, error, and done exact stream-generation admission",
     )
 
     dart_start_begin = dart_model.find("  SessionID start(")
@@ -1696,6 +1756,8 @@ def validate(sources: Dict[str, str]) -> None:
             "_scheduleMobileSessionStart(_MobileSessionStartRequest(",
             "return activeSessionId;",
             "sessionId: activeSessionId,\n        clientOwnerId: clientOwnerId,",
+            "streamBinding = _reserveSessionStream(activeSessionId);",
+            "stream = bind.sessionStart(",
             "_listenToSessionStream(",
             "return activeSessionId;",
         ),
@@ -1768,6 +1830,21 @@ def validate(sources: Dict[str, str]) -> None:
         sources["web_bridge"],
         "UnsupportedError('Mobile session preparation is unavailable on web')",
         "web bridge mobile-add refusal",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11ix</span>',
+        "exact Dart stream-generation requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>409</td>",
+        "exact Dart stream-generation disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
+        "exact Dart stream-generation hardening ledger",
     )
     mobile_add_gate_start = sources["dart_verify"].find(
         'mobile_add_line="$(grep -nF "  Future<void> sessionAddMobile("'
@@ -1851,7 +1928,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2',
+        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 1',
         "shared failed-start rollback-count gate",
     )
     require(
@@ -5745,7 +5822,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_model", "final remoteWindowCoords = <RemoteWindowCoords>[];\n      final windowRect =\n          await InputModel.fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);", "final windowRect =\n          await InputModel.fillRemoteCoordsAndGetCurFrame(_remoteWindowCoords);", "cursor coordinate staging"),
     ("dart_model", "_x = -10000;\n    _y = -10000;\n    _id = \"-1\";", "_x = -10000;\n    _x = -10000;\n    _id = \"-1\";", "cursor y-state retirement"),
     ("dart_model", "_edgeScrollFallbackState = null;", "// edge-scroll fallback retained", "canvas fallback retirement"),
-    ("dart_model", "if (closed || sessionId != activeSessionId) return;", "if (closed) return;", "stale event-stream refusal"),
+    ("dart_model", "if (!_isCurrentSessionStream(streamBinding)) return;", "if (closed || sessionId != activeSessionId) return;", "exact event-stream generation refusal"),
     ("dart_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed long-lived model identity"),
     ("dart_model", "sessionId: closingSessionId, clientOwnerId: clientOwnerId", "sessionId: sessionId, clientOwnerId: clientOwnerId", "exact captured native close"),
     ("mobile_files", "await model.close(sessionId);", "await Future<void>.delayed(Duration.zero);", "file-page state persistence before native close"),
@@ -6182,6 +6259,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("mobile_start_queue_test", "a failed running request does not wedge the bounded successor", "a failed running request may wedge the bounded successor", "failed-preparation successor behavior proof"),
     ("dart_stream_finality", "if (_expectedCloseReceived || _unexpectedTerminationReported)", "if (_unexpectedTerminationReported)", "expected-close stream termination suppression"),
     ("stream_finality_test", "an exact normal-close event suppresses later stream termination", "an exact normal-close event permits later stream termination", "expected-close stream behavior proof"),
+    ("dart_stream_finality", "class SessionStreamGeneration<Owner>", "class SessionStreamGenerationDisabled<Owner>", "exact stream-generation owner"),
+    ("dart_stream_finality", "int _generation = 0;", "int _generation = -1;", "stream generation origin"),
+    ("dart_stream_finality", "final binding = SessionStreamBinding<Owner>._(owner, ++_generation);", "final binding = SessionStreamBinding<Owner>._(owner, _generation);", "strict stream generation advance"),
+    ("dart_stream_finality", "_current = binding;\n    return binding;", "return binding;", "stream-generation current publication"),
+    ("dart_stream_finality", "identical(_current, binding)", "_current?.owner == binding.owner", "exact stream-binding identity"),
+    ("dart_stream_finality", "if (current != null && current.owner != owner)", "if (false)", "different-owner stream retirement refusal"),
+    ("dart_stream_finality", "_current = null;\n    return true;", "return true;", "exact stream retirement"),
+    ("stream_finality_test", "replacement invalidates the predecessor with the same owner", "replacement preserves the predecessor with the same owner", "same-owner stream-replacement behavior proof"),
+    ("stream_finality_test", "owner retirement cannot retire a different current owner", "owner retirement may retire a different current owner", "different-owner stream-retirement behavior proof"),
     ("dart_model", "await bind.sessionAddMobile(", "bind.sessionAddSync(", "off-UI mobile session add"),
     ("dart_model", "await _closeNativeSession(request.sessionId);", "await _closeNativeSession(sessionId);", "stale preparation exact close"),
     ("dart_model", "_mobileSessionStarts.cancelPendingOrGetRunning(", "_mobileSessionStarts.cancelPending(", "exact pending-or-running close finality"),
@@ -6190,8 +6276,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_model", "closed = true;\n    _retireSessionOwner(expectedSessionId);", "closed = true;", "stream-failure session-owner retirement"),
     ("dart_model", "closed = true;\n            _retireSessionOwner(activeSessionId);", "closed = true;", "expected-close session-owner retirement"),
     ("dart_model", "streamFinality.acceptExpectedClose();", "// expected close identity erased", "expected exact-close stream marker"),
-    ("dart_model", "}, onError: (Object error, StackTrace stackTrace) {\n      sessionEvents.retire(streamOwner);\n      if (!streamFinality.acceptUnexpectedTermination())", "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n      sessionEvents.retire(streamOwner);\n      if (!streamFinality.acceptUnexpectedTermination())", "session stream error handler"),
-    ("dart_model", "onDone: () {\n      sessionEvents.retire(streamOwner);\n      if (!streamFinality.acceptUnexpectedTermination())", "onDone: () {\n      sessionEvents.retire(streamOwner);\n      if (true)", "session stream end handler"),
+    ("dart_model", "streamBinding = _reserveSessionStream(request.sessionId);\n      stream = bind.sessionStart(", "stream = bind.sessionStart(\n          // stream generation reserved too late\n", "mobile pre-native stream reservation"),
+    ("dart_model", "streamBinding = _reserveSessionStream(activeSessionId);\n      stream = bind.sessionStart(", "stream = bind.sessionStart(\n          // stream generation reserved too late\n", "desktop pre-native stream reservation"),
+    ("dart_model", "final sessionStreamRetired = _sessionStreams.retireOwner(retiringOwner);", "final sessionStreamRetired = true;", "exact owner stream-generation retirement"),
+    ("dart_model", "}, onError: (Object error, StackTrace stackTrace) {\n      if (!_isCurrentSessionStream(streamBinding)) return;\n      sessionEvents.retire(streamOwner);", "}, onError: (Object error, StackTrace stackTrace) {\n      sessionEvents.retire(streamOwner);", "stale predecessor error refusal"),
+    ("dart_model", "onDone: () {\n      if (!_isCurrentSessionStream(streamBinding)) return;\n      sessionEvents.retire(streamOwner);", "onDone: () {\n      sessionEvents.retire(streamOwner);", "stale predecessor end refusal"),
     ("dart_model", "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)", "qualityMonitorModel.checkShowQualityMonitor(sessionId)", "post-add quality-option ordering"),
     ("dart_model", "if (isMobile && isNewPeer)", "if (false && isNewPeer)", "mobile asynchronous start admission"),
     ("mobile_remote", "gFFI.inputModel.listenToMouse(true);", "gFFI.inputModel.listenToMouse(true);\n    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);", "remote pre-add quality-option refusal"),
@@ -6203,12 +6292,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11eo</span>', '<span class="id">R-S11eo-disabled</span>', "mobile preparation requirement"),
     ("requirements", "<tr><td>297</td>", "<tr><td>297-disabled</td>", "mobile preparation disposition"),
     ("hardening", "R-S11eo/R-S11e-176", "R-S11eo-disabled/R-S11e-176", "mobile preparation hardening ledger"),
+    ("requirements", '<span class="id">R-S11ix</span>', '<span class="id">R-S11ix-disabled</span>', "exact Dart stream-generation requirement"),
+    ("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "exact Dart stream-generation disposition"),
+    ("hardening", "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation", "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation", "exact Dart stream-generation hardening ledger"),
     ("requirements", '<span class="id">R-S11eq</span>', '<span class="id">R-S11eq-disabled</span>', "Android lifecycle-drain requirement"),
     ("requirements", "<tr><td>299</td>", "<tr><td>299-disabled</td>", "Android lifecycle-drain disposition"),
     ("hardening", "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement", "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement", "Android lifecycle-drain hardening ledger"),
     ("verify", "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test", "true # Android lifecycle-drain focused gate disabled", "shared Android lifecycle-drain focused gate"),
     ("verify", "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh", "true # mobile preparation shared queue gate disabled", "shared mobile preparation queue gate"),
-    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") == 2", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") >= 0", "shared session-start rollback-count gate"),
+    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") == 1", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") >= 0", "shared session-start rollback-count gate"),
     ("verify", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") == 2", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") >= 0", "shared dual close-preparation finality gate"),
     ("verify", "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test", "true # Android voice-call ownership gate removed", "shared gate wiring"),
 )

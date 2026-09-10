@@ -1384,6 +1384,12 @@ else
   echo "  FAIL R-S11e-84/R-S11e-153/R-S11e-169 Android voice/input regained per-event switching, dual recorders, erased service/connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
   rc=1
 fi
+if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
+  echo "  ok  R-S11e-287 outgoing Flutter event streams reserve exact consumer generations before native replacement"
+else
+  echo "  FAIL R-S11e-287 outgoing Flutter event streams regained same-owner predecessor callback or finality authority"
+  rc=1
+fi
 if python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test; then
   echo "  ok  R-S11e-178 Android component lifecycle retires exact outgoing owners without waiting on native worker finality"
 else
@@ -13210,6 +13216,12 @@ grep -qF '<tr><td>297</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-disposition-missing"
 grep -qF 'R-S11eo/R-S11e-176' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-ledger-missing"
+grep -qF '<span class="id">R-S11ix</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad session-stream-generation-requirement-missing"
+grep -qF '<tr><td>409</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad session-stream-generation-disposition-missing"
+grep -qF 'R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad session-stream-generation-ledger-missing"
 grep -qF '<span class="id">R-S11eq</span>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-requirement-missing"
 grep -qF '<tr><td>299</td>' requirements.html \
@@ -13336,7 +13348,7 @@ ok = (
             session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),
         )
         < session_start.index("drop(owner_admission)")
-    and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2
+    and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 1
     and failed_start_rollback.index("client_owner_id: &SessionID")
         < failed_start_rollback.index("remove_session_by_exact_ui_owner(session_id, client_owner_id)")
         < failed_start_rollback.index("session.close_and_join();")
@@ -13359,6 +13371,7 @@ ok = (
     and mobile_run.index("await bind.sessionAddMobile(")
         < mobile_run.index("if (!isCurrentSession(request.sessionId))")
         < mobile_run.index("await _closeNativeSession(request.sessionId);")
+        < mobile_run.index("streamBinding = _reserveSessionStream(request.sessionId);")
         < mobile_run.index("stream = bind.sessionStart(")
         < mobile_run.index("_listenToSessionStream(")
         < mobile_run.index("qualityMonitorModel.checkShowQualityMonitor(request.sessionId)")
@@ -13370,14 +13383,31 @@ ok = (
         < stream_failure.index("dialogManager.dismissAll();")
         < stream_failure.index("'title': 'Connection Error'")
         < stream_failure.index("_closeNativeSession(expectedSessionId)")
-    and stream_listener.index("SessionStreamFinality()")
+    and stream_listener.index("SessionStreamBinding<_SessionOwner> streamBinding")
+        < stream_listener.index("final streamOwner = streamBinding.owner;")
+        < stream_listener.index("if (!_isCurrentSessionStream(streamBinding))")
+        < stream_listener.index("SessionStreamFinality()")
         < stream_listener.index("streamFinality.acceptExpectedClose()")
         < stream_listener.index("onError:")
         < stream_listener.index("onDone:")
     and stream_listener.count("streamFinality.acceptUnexpectedTermination()") == 2
+    and stream_listener.count("_isCurrentSessionStream(streamBinding)") == 5
+    and "class SessionStreamBinding<Owner>" in stream_finality
+    and "class SessionStreamGeneration<Owner>" in stream_finality
+    and stream_finality.index("int _generation = 0;")
+        < stream_finality.index("SessionStreamBinding<Owner>? _current;")
+        < stream_finality.index("final binding = SessionStreamBinding<Owner>._(owner, ++_generation);")
+        < stream_finality.index("_current = binding;")
+        < stream_finality.index("identical(_current, binding)")
+        < stream_finality.index("bool retireOwner(Owner owner)")
+        < stream_finality.index("current.owner != owner")
+        < stream_finality.index("_current = null;")
     and dart_start.index("if (isMobile && isNewPeer)")
         < dart_start.index("_scheduleMobileSessionStart(")
         < dart_start.index("sessionAddSync(")
+    and dart_start.index("streamBinding = _reserveSessionStream(activeSessionId);")
+        < dart_start.index("stream = bind.sessionStart(")
+        < dart_start.index("_listenToSessionStream(")
     and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") == 2
     and dart_close.count("sessionId: closingSessionId, clientOwnerId: clientOwnerId") == 2
     and start_queue.count("_MobileSessionStartEntry<T>? _running;") == 1

@@ -4063,6 +4063,8 @@ class FFI {
   late _SessionOwner _sessionOwner;
   late DisplaySelectionQueue<_SessionOwner> _displaySelections;
   late SessionEventQueue<_SessionOwner> _sessionEvents;
+  final SessionStreamGeneration<_SessionOwner> _sessionStreams =
+      SessionStreamGeneration<_SessionOwner>();
   late LatestFrameQueue<_SessionOwner, int, Uint8List> _webRgbaFrames;
   late LatestFrameQueue<_SessionOwner, int, _WebCursorPosition>
       _webCursorPositions;
@@ -4083,6 +4085,23 @@ class FFI {
           SessionID expectedSessionId, SessionID expectedClientOwnerId) =>
       isCurrentSession(expectedSessionId) &&
       clientOwnerId == expectedClientOwnerId;
+
+  SessionStreamBinding<_SessionOwner> _reserveSessionStream(
+      SessionID expectedSessionId) {
+    final owner = _SessionOwner(expectedSessionId, clientOwnerId);
+    if (owner != _sessionOwner ||
+        !isCurrentSessionOwner(expectedSessionId, clientOwnerId)) {
+      throw StateError('session owner changed before stream reservation');
+    }
+    return _sessionStreams.reserve(owner);
+  }
+
+  bool _isCurrentSessionStream(
+          SessionStreamBinding<_SessionOwner> expected) =>
+      _sessionStreams.isCurrent(expected) &&
+      expected.owner == _sessionOwner &&
+      isCurrentSessionOwner(
+          expected.owner.sessionId, expected.owner.clientOwnerId);
 
   Future<bool> submitDisplaySelection(
       SessionID expectedSessionId,
@@ -4171,13 +4190,15 @@ class FFI {
   void _retireSessionOwner(SessionID retiringSessionId) {
     final retiringOwner =
         _SessionOwner(retiringSessionId, clientOwnerId);
+    final sessionStreamRetired = _sessionStreams.retireOwner(retiringOwner);
     final sessionEventsRetired = _sessionEvents.retire(retiringOwner);
     final displaySelectionsRetired = _displaySelections.retire(retiringOwner);
     final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);
     final webCursorPositionsRetired =
         _webCursorPositions.retire(retiringOwner);
     final webCursorShapesRetired = _webCursorShapes.retire(retiringOwner);
-    if (!sessionEventsRetired ||
+    if (!sessionStreamRetired ||
+        !sessionEventsRetired ||
         !displaySelectionsRetired ||
         !webRgbaFramesRetired ||
         !webCursorPositionsRetired ||
@@ -4277,7 +4298,9 @@ class FFI {
     }
 
     late final Stream<EventToUI> stream;
+    late final SessionStreamBinding<_SessionOwner> streamBinding;
     try {
+      streamBinding = _reserveSessionStream(request.sessionId);
       stream = bind.sessionStart(
           sessionId: request.sessionId,
           clientOwnerId: clientOwnerId,
@@ -4289,7 +4312,7 @@ class FFI {
       return;
     }
     _listenToSessionStream(
-        stream, request.sessionId, request.peerId, null, null);
+        stream, streamBinding, request.sessionId, request.peerId, null, null);
     if (!request.isFileTransfer &&
         !request.isPortForward &&
         !request.isRdp &&
@@ -4596,21 +4619,21 @@ class FFI {
 
   void _listenToSessionStream(
     Stream<EventToUI> stream,
+    SessionStreamBinding<_SessionOwner> streamBinding,
     SessionID activeSessionId,
     String peerId,
     int? tabWindowId,
     int? display,
   ) {
-    final streamOwner = _SessionOwner(activeSessionId, clientOwnerId);
-    if (streamOwner != _sessionOwner) {
-      _reportSessionStreamFailure(activeSessionId, peerId,
-          'The remote session state became inconsistent');
+    final streamOwner = streamBinding.owner;
+    if (!_isCurrentSessionStream(streamBinding)) {
       return;
     }
     final sessionEvents = _sessionEvents;
     if (isWeb) {
       final webRgbaFrames = _webRgbaFrames;
       platformFFI.setRgbaCallback((int display, Uint8List data) {
+        if (!_isCurrentSessionStream(streamBinding)) return;
         // JS/Wasm may detach or reuse the callback buffer after this returns.
         // Take ownership synchronously, then retain only one running and the
         // latest pending frame for each display while topology work completes.
@@ -4637,7 +4660,7 @@ class FFI {
     final streamFinality = SessionStreamFinality();
     // Preserved for the rgba data.
     stream.listen((message) {
-      if (closed || sessionId != activeSessionId) return;
+      if (!_isCurrentSessionStream(streamBinding)) return;
       if (tabWindowId != null && !isToNewWindowNotified.value) {
         // Session is ready to be moved to a new window.
         // Get the cached data and handle the cached data.
@@ -4748,6 +4771,7 @@ class FFI {
             'Texture presentation');
       }
     }, onError: (Object error, StackTrace stackTrace) {
+      if (!_isCurrentSessionStream(streamBinding)) return;
       sessionEvents.retire(streamOwner);
       if (!streamFinality.acceptUnexpectedTermination()) {
         return;
@@ -4756,6 +4780,7 @@ class FFI {
       _reportSessionStreamFailure(
           activeSessionId, peerId, 'The connection could not be started');
     }, onDone: () {
+      if (!_isCurrentSessionStream(streamBinding)) return;
       sessionEvents.retire(streamOwner);
       if (!streamFinality.acceptUnexpectedTermination()) {
         return;
@@ -4912,9 +4937,19 @@ class FFI {
     // Existing-window display capture was admitted synchronously by
     // sessionAddExistedSync before local currentDisplay state was committed.
     // Stream attachment must not submit a second, independently ordered capture.
-    stream = bind.sessionStart(
-        sessionId: activeSessionId, clientOwnerId: clientOwnerId, id: id);
-    _listenToSessionStream(stream, activeSessionId, id, tabWindowId, display);
+    late final SessionStreamBinding<_SessionOwner> streamBinding;
+    try {
+      streamBinding = _reserveSessionStream(activeSessionId);
+      stream = bind.sessionStart(
+          sessionId: activeSessionId, clientOwnerId: clientOwnerId, id: id);
+    } catch (error) {
+      debugPrint('Session stream failed to start: ${error.runtimeType}');
+      _reportSessionStreamFailure(
+          activeSessionId, id, 'The connection could not be started');
+      return activeSessionId;
+    }
+    _listenToSessionStream(
+        stream, streamBinding, activeSessionId, id, tabWindowId, display);
     return activeSessionId;
   }
 

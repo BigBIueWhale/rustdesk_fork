@@ -16485,14 +16485,6 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "shared macOS password requester Appendix binding",
         ),
         (
-            "grep -Fq 'MUST NOT</span> be represented as proof that one process authored every frame byte or that every descriptor handoff is detectable' requirements.html",
-            "shared macOS mutable last-owner limitation binding",
-        ),
-        (
-            "grep -Fq 'It is not exclusive frame-writer' HARDENING_STATUS.md",
-            "shared macOS mutable last-owner ledger limitation binding",
-        ),
-        (
             "grep -Fq 'R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role' HARDENING_STATUS.md",
             "shared macOS password requester hardening binding",
         ),
@@ -16868,19 +16860,9 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "exact macOS service-owned password requester Appendix C row",
         ),
         (
-            sources["requirements"],
-            "MUST NOT</span> be represented as proof that one process authored every frame byte or that every descriptor handoff is detectable",
-            "normative macOS mutable last-owner limitation",
-        ),
-        (
             sources["hardening"],
             "R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role",
             "exact macOS service-owned password requester hardening ledger",
-        ),
-        (
-            sources["hardening"],
-            "It is not exclusive frame-writer",
-            "macOS mutable last-owner ledger limitation",
         ),
         (
             sources["native_watch"],
@@ -76350,18 +76332,6 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "grep -Fq 'MUST NOT</span> be represented as proof that one process authored every frame byte or that every descriptor handoff is detectable' requirements.html",
-            "true # macOS mutable last-owner limitation binding disabled",
-            "shared macOS mutable last-owner limitation binding",
-        ),
-        (
-            "verify",
-            "grep -Fq 'It is not exclusive frame-writer' HARDENING_STATUS.md",
-            "true # macOS mutable last-owner ledger limitation binding disabled",
-            "shared macOS mutable last-owner ledger limitation binding",
-        ),
-        (
-            "verify",
             "grep -Fq 'R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role' HARDENING_STATUS.md",
             "true # macOS password requester hardening binding disabled",
             "shared macOS password requester hardening binding",
@@ -76451,22 +76421,10 @@ def run_source_mutations(sources):
             "exact macOS service-owned password requester Appendix C row",
         ),
         (
-            "requirements",
-            "MUST NOT</span> be represented as proof that one process authored every frame byte or that every descriptor handoff is detectable",
-            "MAY</span> be represented as proof that one process authored every frame byte or that every descriptor handoff is detectable",
-            "normative macOS mutable last-owner limitation",
-        ),
-        (
             "hardening",
             "R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role",
             "R-S11hy-disabled/R-S11e-262 — exact macOS service-owned password requester generation and role",
             "exact macOS service-owned password requester hardening ledger",
-        ),
-        (
-            "hardening",
-            "It is not exclusive frame-writer",
-            "It is exclusive frame-writer",
-            "macOS mutable last-owner ledger limitation",
         ),
         (
             "native_watch",

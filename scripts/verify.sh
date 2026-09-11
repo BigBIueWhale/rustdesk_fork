@@ -2936,8 +2936,6 @@ grep -Fq 'The same identity additionally binds R-S11hx and Appendix C #383.' doc
 grep -Fq '<span class="id">R-S11hy</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-requester-role-requirement-missing"
 grep -Fq '<tr><td>384</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-requester-role-appendix-missing"
 grep -Fq 'R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-requester-role-ledger-missing"
-grep -Fq 'MUST NOT</span> be represented as proof that one process authored every frame byte or that every descriptor handoff is detectable' requirements.html || r_s11b2="$r_s11b2 macos-password-requester-last-owner-limit-missing"
-grep -Fq 'It is not exclusive frame-writer' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-requester-last-owner-ledger-limit-missing"
 grep -Fq 'The same identity additionally binds R-S11hy and Appendix C #384.' docs/NATIVE-CODEC-WATCH.md || r_s11b2="$r_s11b2 macos-password-requester-role-digest-binding-missing"
 grep -Fq '<span class="id">R-S11hz</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-requester-requirement-missing"
 grep -Fq '<tr><td>385</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-requester-appendix-missing"

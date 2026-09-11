@@ -15,9 +15,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-STATE_NAME = ".rustdesk-gradle-output-state-v3"
+STATE_NAME = ".rustdesk-gradle-output-state-v4"
+LEGACY_REPLACEMENT_STATE_NAME = ".rustdesk-gradle-output-state-v3"
 LEGACY_STATE_NAME = ".rustdesk-gradle-output-state-v2"
-STATE_VERSION = 3
+STATE_VERSION = 4
+LEGACY_REPLACEMENT_STATE_VERSION = 3
 LEGACY_STATE_VERSION = 2
 STAGING_PATTERN = re.compile(r"\.rustdesk-gradle-warm\.[A-Za-z0-9_]{8,}\Z")
 ARCHIVE_PATTERN = re.compile(
@@ -42,6 +44,7 @@ class OutputError(RuntimeError):
 @dataclass(frozen=True)
 class TreeSummary:
     digest: str
+    metadata_digest: str
     files: int
     directories: int
     bytes: int
@@ -233,10 +236,18 @@ def inspect_tree(
     root_device = root_metadata.st_dev
     maximum_files, maximum_directories, maximum_bytes, maximum_file = limits
     digest = hashlib.sha256(b"rustdesk-gradle-output-tree-v1\0")
+    metadata_digest = hashlib.sha256(b"rustdesk-gradle-output-metadata-v1\0")
     files = 0
     directories = 1
     content_bytes = 0
     final_metadata: list[tuple[Path, tuple[int, ...]]] = []
+
+    def record_metadata(kind: bytes, relative: str, metadata: os.stat_result) -> None:
+        metadata_digest.update(kind + b"\0")
+        metadata_digest.update((relative or ".").encode("ascii") + b"\0")
+        metadata_digest.update(str(metadata.st_uid).encode("ascii") + b"\0")
+        metadata_digest.update(str(metadata.st_gid).encode("ascii") + b"\0")
+        metadata_digest.update(f"{stat.S_IMODE(metadata.st_mode):o}".encode("ascii") + b"\0")
 
     def descend(directory: Path, relative: str, depth: int) -> None:
         nonlocal files, directories, content_bytes
@@ -315,6 +326,7 @@ def inspect_tree(
                     + metadata.st_size.to_bytes(8, "big")
                     + content
                 )
+                record_metadata(b"F", child_relative, metadata)
                 final_metadata.append((child, stable_metadata(metadata)))
             elif stat.S_ISLNK(metadata.st_mode):
                 fail(f"output tree contains a symlink: {child_relative}")
@@ -327,13 +339,20 @@ def inspect_tree(
             or not stat.S_ISDIR(after.st_mode)
         ):
             fail(f"output directory changed during traversal: {relative or '.'}")
+        record_metadata(b"D", relative, after)
         final_metadata.append((directory, stable_metadata(after)))
 
     descend(root, "", 0)
     for path, expected in final_metadata:
         if stable_metadata(os.lstat(path)) != expected:
             fail(f"output tree changed after traversal: {path}")
-    return TreeSummary(digest.hexdigest(), files, directories, content_bytes)
+    return TreeSummary(
+        digest.hexdigest(),
+        metadata_digest.hexdigest(),
+        files,
+        directories,
+        content_bytes,
+    )
 
 
 def atomic_write_state(staging: Path, value: dict[str, object]) -> None:
@@ -375,11 +394,16 @@ def validate_semantic_inputs(
         fail("Android compile SDK is malformed")
 
 
-def validate_publication_state(value: dict[str, object]) -> None:
+def validate_publication_state(
+    value: dict[str, object],
+    *,
+    require_replaced_metadata: bool,
+) -> None:
     publication = value.get("publication")
     expected_digest = value.get("expected_gradle_digest")
     replaced_identity = value.get("replaced_gradle_identity")
     replaced_digest = value.get("replaced_gradle_digest")
+    replaced_metadata_digest = value.get("replaced_gradle_metadata_digest")
     retired_root = value.get("retired_root")
     retired_root_identity = value.get("retired_root_identity")
     archive_name = value.get("archive_name")
@@ -391,6 +415,7 @@ def validate_publication_state(value: dict[str, object]) -> None:
                 expected_digest,
                 replaced_identity,
                 replaced_digest,
+                replaced_metadata_digest,
                 retired_root,
                 retired_root_identity,
                 archive_name,
@@ -408,6 +433,7 @@ def validate_publication_state(value: dict[str, object]) -> None:
                 for item in (
                     replaced_identity,
                     replaced_digest,
+                    replaced_metadata_digest,
                     retired_root,
                     retired_root_identity,
                     archive_name,
@@ -424,6 +450,13 @@ def validate_publication_state(value: dict[str, object]) -> None:
         or HEX256.fullmatch(expected_digest) is None
         or not isinstance(replaced_digest, str)
         or HEX256.fullmatch(replaced_digest) is None
+        or (
+            require_replaced_metadata
+            and (
+                not isinstance(replaced_metadata_digest, str)
+                or HEX256.fullmatch(replaced_metadata_digest) is None
+            )
+        )
         or not isinstance(retired_root, str)
         or not isinstance(archive_name, str)
         or ARCHIVE_PATTERN.fullmatch(archive_name) is None
@@ -443,7 +476,11 @@ def load_state(online: Path, staging: Path, uid: int, gid: int) -> dict[str, obj
         fail("Gradle output staging is outside its reserved online namespace")
     state_paths = [
         path
-        for path in (staging / STATE_NAME, staging / LEGACY_STATE_NAME)
+        for path in (
+            staging / STATE_NAME,
+            staging / LEGACY_REPLACEMENT_STATE_NAME,
+            staging / LEGACY_STATE_NAME,
+        )
         if path.exists() or path.is_symlink()
     ]
     if len(state_paths) != 1:
@@ -483,7 +520,7 @@ def load_state(online: Path, staging: Path, uid: int, gid: int) -> dict[str, obj
         "staged_gradle_identity",
         "sdk_source_digest",
     }
-    current_keys = legacy_keys | {
+    legacy_replacement_keys = legacy_keys | {
         "gradle_version",
         "gradle_sha256",
         "build_tools",
@@ -497,12 +534,28 @@ def load_state(online: Path, staging: Path, uid: int, gid: int) -> dict[str, obj
         "archive_name",
         "replacement_name",
     }
+    current_keys = legacy_replacement_keys | {
+        "replaced_gradle_metadata_digest",
+    }
     if not isinstance(value, dict):
         fail("Gradle output state is not an object")
     version = value.get("version")
     if version == LEGACY_STATE_VERSION:
         if state_path.name != LEGACY_STATE_NAME or set(value) != legacy_keys:
             fail("legacy Gradle output state has an unexpected schema")
+    elif version == LEGACY_REPLACEMENT_STATE_VERSION:
+        if (
+            state_path.name != LEGACY_REPLACEMENT_STATE_NAME
+            or set(value) != legacy_replacement_keys
+        ):
+            fail("legacy Gradle replacement state has an unexpected schema")
+        validate_semantic_inputs(
+            str(value.get("gradle_version")),
+            str(value.get("gradle_sha256")),
+            str(value.get("build_tools")),
+            str(value.get("compile_sdk")),
+        )
+        validate_publication_state(value, require_replaced_metadata=False)
     elif version == STATE_VERSION:
         if state_path.name != STATE_NAME or set(value) != current_keys:
             fail("Gradle output state has an unexpected schema")
@@ -512,7 +565,7 @@ def load_state(online: Path, staging: Path, uid: int, gid: int) -> dict[str, obj
             str(value.get("build_tools")),
             str(value.get("compile_sdk")),
         )
-        validate_publication_state(value)
+        validate_publication_state(value, require_replaced_metadata=True)
     else:
         fail("Gradle output state has the wrong version")
     if value.get("online") != os.fspath(online) or value.get("staging") != os.fspath(staging):
@@ -585,6 +638,7 @@ def prepare(
         "expected_gradle_digest": None,
         "replaced_gradle_identity": None,
         "replaced_gradle_digest": None,
+        "replaced_gradle_metadata_digest": None,
         "retired_root": None,
         "retired_root_identity": None,
         "archive_name": None,
@@ -963,6 +1017,7 @@ def record_replacement_publication(
         "expected_gradle_digest": expected_digest,
         "replaced_gradle_identity": encode_identity(replaced_identity),
         "replaced_gradle_digest": replaced.digest,
+        "replaced_gradle_metadata_digest": replaced.metadata_digest,
         "retired_root": os.fspath(retired_root),
         "retired_root_identity": encode_identity(retired_root_identity),
         "archive_name": archive_name,
@@ -1024,6 +1079,7 @@ def validate_displaced_output(
     gid: int,
     expected_identity: tuple[int, int] | None = None,
     expected_digest: str | None = None,
+    expected_metadata_digest: str | None = None,
 ) -> TreeSummary:
     metadata = validate_root(
         output,
@@ -1043,6 +1099,11 @@ def validate_displaced_output(
         fail("displaced Gradle output is empty")
     if expected_digest is not None and summary.digest != expected_digest:
         fail("displaced Gradle output digest changed")
+    if (
+        expected_metadata_digest is not None
+        and summary.metadata_digest != expected_metadata_digest
+    ):
+        fail("displaced Gradle output ownership or mode changed")
     return summary
 
 
@@ -1188,7 +1249,17 @@ def publish(
                 state.get("staged_gradle_identity"), "staged Gradle"
             ),
         )
-        if published_summary != sealed_summary:
+        if (
+            published_summary.digest,
+            published_summary.files,
+            published_summary.directories,
+            published_summary.bytes,
+        ) != (
+            sealed_summary.digest,
+            sealed_summary.files,
+            sealed_summary.directories,
+            sealed_summary.bytes,
+        ):
             fail("published sealed Gradle tree postcondition failed")
         if published_summary.digest != expected_digest:
             fail("published Gradle digest postcondition failed")
@@ -1327,6 +1398,7 @@ def finish_promoted_replacement(
     )
     expected_digest = str(state.get("expected_gradle_digest"))
     replaced_digest = str(state.get("replaced_gradle_digest"))
+    replaced_metadata_digest = str(state.get("replaced_gradle_metadata_digest"))
     online_fd = open_directory(online)
     staging_fd = open_directory(staging)
     exchanged = already_exchanged
@@ -1348,6 +1420,7 @@ def finish_promoted_replacement(
                 gid,
                 replaced_identity,
                 replaced_digest,
+                replaced_metadata_digest,
             )
             if optional_relative_identity(online_fd, replacement_name) != candidate_identity:
                 fail("promoted Gradle candidate identity changed before exchange")
@@ -1398,6 +1471,7 @@ def finish_promoted_replacement(
             gid,
             replaced_identity,
             replaced_digest,
+            replaced_metadata_digest,
         )
         validate_sdk_state(online, state, uid, gid)
     except BaseException as primary:
@@ -1484,12 +1558,14 @@ def replace(
         state.get("replaced_gradle_identity"), "replaced Gradle output"
     )
     replaced_digest = str(state.get("replaced_gradle_digest"))
+    replaced_metadata_digest = str(state.get("replaced_gradle_metadata_digest"))
     validate_displaced_output(
         destination,
         uid,
         gid,
         replaced_identity,
         replaced_digest,
+        replaced_metadata_digest,
     )
     replacement_name = str(state.get("replacement_name"))
     if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
@@ -1645,6 +1721,14 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
     state = load_state(online, staging, uid, gid)
     if state.get("version") == LEGACY_STATE_VERSION:
         return recover_legacy_v2(online, staging, state, uid, gid)
+    if (
+        state.get("version") == LEGACY_REPLACEMENT_STATE_VERSION
+        and state.get("publication") == "replacement"
+    ):
+        fail(
+            "legacy v3 Gradle replacement lacks displaced metadata binding "
+            "and was preserved"
+        )
     validate_sdk_state(online, state, uid, gid)
     candidate = decode_identity(state.get("staged_gradle_identity"), "staged Gradle")
     private_candidate = optional_identity(staging / "gradle-home")
@@ -1656,6 +1740,9 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
         )
         expected_digest = str(state.get("expected_gradle_digest"))
         replaced_digest = str(state.get("replaced_gradle_digest"))
+        replaced_metadata_digest = str(
+            state.get("replaced_gradle_metadata_digest")
+        )
         replacement_name = str(state.get("replacement_name"))
         if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
             fail("replacement Gradle name is malformed")
@@ -1687,6 +1774,7 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
                 gid,
                 replaced,
                 replaced_digest,
+                replaced_metadata_digest,
             )
             return "replacement-prepared"
         if (
@@ -1808,6 +1896,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         state.get("replaced_gradle_identity"), "replaced Gradle output"
     )
     replaced_digest = str(state.get("replaced_gradle_digest"))
+    replaced_metadata_digest = str(state.get("replaced_gradle_metadata_digest"))
     replacement = online / replacement_name
     validate_displaced_output(
         replacement,
@@ -1815,6 +1904,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         gid,
         replaced_identity,
         replaced_digest,
+        replaced_metadata_digest,
     )
     online_fd = open_directory(online)
     retired_fd = open_directory(retired_root)
@@ -1840,6 +1930,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
             gid,
             replaced_identity,
             replaced_digest,
+            replaced_metadata_digest,
         )
     finally:
         os.close(retired_fd)
@@ -2079,6 +2170,30 @@ def self_test() -> None:
         )
         return state
 
+    def downgrade_state_to_v3(
+        staging: Path,
+        state: dict[str, object],
+    ) -> None:
+        legacy_record = dict(state)
+        legacy_record["version"] = LEGACY_REPLACEMENT_STATE_VERSION
+        del legacy_record["replaced_gradle_metadata_digest"]
+        current_state_path = staging / STATE_NAME
+        legacy_state_path = staging / LEGACY_REPLACEMENT_STATE_NAME
+        current_state_path.rename(legacy_state_path)
+        legacy_state_path.write_text(
+            json.dumps(legacy_record, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="ascii",
+        )
+        descriptor = os.open(
+            legacy_state_path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        )
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        fsync_directory(staging)
+
     def promote_replacement(
         online: Path,
         staging: Path,
@@ -2222,6 +2337,30 @@ def self_test() -> None:
             fail("self-test did not recover the post-rename/pre-root-seal state")
         if stat.S_IMODE(os.lstat(online / "gradle-home").st_mode) != 0o500:
             fail("self-test recovery did not seal the published Gradle root")
+        check_complete(
+            online,
+            uid,
+            gid,
+            gradle_version=version,
+            gradle_sha256=archive_hash,
+            build_tools=build_tools,
+            compile_sdk=compile_sdk,
+        )
+        remove_stage(staging)
+
+        online, staging = fixture(base / "legacy-v3-unselected-recovery")
+        legacy_v3_unselected_state = load_state(online, staging, uid, gid)
+        downgrade_state_to_v3(staging, legacy_v3_unselected_state)
+        if recover(online, staging, uid, gid) != "unpublished":
+            fail("self-test did not recover a legacy-v3 unselected publication")
+        remove_stage(staging)
+
+        online, staging = fixture(base / "legacy-v3-new-recovery")
+        move_candidate_before_root_seal(online, staging)
+        legacy_v3_new_state = load_state(online, staging, uid, gid)
+        downgrade_state_to_v3(staging, legacy_v3_new_state)
+        if recover(online, staging, uid, gid) != "published":
+            fail("self-test did not recover a legacy-v3 new publication")
         check_complete(
             online,
             uid,
@@ -2419,6 +2558,93 @@ def self_test() -> None:
         remove_stage(prepared_online / "android-sdk")
         prepared_retired.rmdir()
         prepared_online.rmdir()
+
+        (
+            metadata_online,
+            metadata_retired,
+            metadata_staging,
+            metadata_candidate,
+            _metadata_old,
+            metadata_old_identity,
+        ) = replacement_fixture(base / "displaced-metadata-drift")
+        metadata_state = bind_replacement(
+            metadata_online,
+            metadata_retired,
+            metadata_staging,
+            metadata_candidate,
+        )
+        metadata_old_path = metadata_online / "gradle-home"
+        metadata_old_path.chmod(0o700)
+        try:
+            recover(metadata_online, metadata_staging, uid, gid)
+        except OutputError as error:
+            if "ownership or mode changed" not in str(error):
+                raise
+        else:
+            fail("self-test accepted changed displaced Gradle metadata")
+        if identity(os.lstat(metadata_old_path)) != metadata_old_identity:
+            fail("metadata-drift refusal lost the old live Gradle identity")
+        metadata_candidate_identity = decode_identity(
+            metadata_state.get("staged_gradle_identity"),
+            "metadata-drift Gradle candidate",
+        )
+        if optional_identity(metadata_staging / "gradle-home") != metadata_candidate_identity:
+            fail("metadata-drift refusal moved the prepared Gradle candidate")
+        metadata_residue = metadata_online / str(
+            metadata_state.get("replacement_name")
+        )
+        if metadata_residue.exists() or metadata_residue.is_symlink():
+            fail("metadata-drift refusal created a replacement sibling")
+        metadata_old_path.chmod(0o500)
+        remove_stage(metadata_staging)
+        remove_stage(metadata_old_path)
+        remove_stage(metadata_online / "android-sdk")
+        metadata_retired.rmdir()
+        metadata_online.rmdir()
+
+        (
+            legacy_v3_online,
+            legacy_v3_retired,
+            legacy_v3_staging,
+            legacy_v3_candidate,
+            _legacy_v3_old,
+            legacy_v3_old_identity,
+        ) = replacement_fixture(base / "legacy-v3-replacement")
+        legacy_v3_state = bind_replacement(
+            legacy_v3_online,
+            legacy_v3_retired,
+            legacy_v3_staging,
+            legacy_v3_candidate,
+        )
+        legacy_v3_candidate_identity = decode_identity(
+            legacy_v3_state.get("staged_gradle_identity"),
+            "legacy-v3 Gradle candidate",
+        )
+        downgrade_state_to_v3(legacy_v3_staging, legacy_v3_state)
+        try:
+            recover(legacy_v3_online, legacy_v3_staging, uid, gid)
+        except OutputError as error:
+            if "lacks displaced metadata binding and was preserved" not in str(error):
+                raise
+        else:
+            fail("self-test recovered a legacy-v3 Gradle replacement")
+        if identity(os.lstat(legacy_v3_online / "gradle-home")) != legacy_v3_old_identity:
+            fail("legacy-v3 refusal lost the old live Gradle identity")
+        if (
+            optional_identity(legacy_v3_staging / "gradle-home")
+            != legacy_v3_candidate_identity
+        ):
+            fail("legacy-v3 refusal moved the prepared Gradle candidate")
+        legacy_v3_residue = legacy_v3_online / str(
+            legacy_v3_state.get("replacement_name")
+        )
+        if legacy_v3_residue.exists() or legacy_v3_residue.is_symlink():
+            fail("legacy-v3 refusal created a replacement sibling")
+        remove_stage(legacy_v3_staging)
+        remove_stage(legacy_v3_online / "gradle-home")
+        remove_stage(legacy_v3_online / "android-sdk")
+        legacy_v3_retired.rmdir()
+        legacy_v3_online.rmdir()
 
         (
             promoted_online,

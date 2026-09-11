@@ -3465,7 +3465,6 @@ def validate_docs(sources):
         "XFS, and Btrfs",
         "terminal discard",
         "mode-0600 non-hardlinked transaction",
-        "prepared recovery",
         "canonical ext4 filesystem identity",
     ):
         if forbidden in requirements:

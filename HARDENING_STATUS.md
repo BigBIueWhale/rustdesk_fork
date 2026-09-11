@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-89ad39a5881fc133b26c0791f0d74ce0169b37f33fb02a6fb733f7054fdd3a12  requirements.html
+e8d5bdf7d636e3022b487e507810426dba3dd5de015154b537e6cb1f5de38303  requirements.html
 ```
 
 ## Current Verdict
@@ -99,7 +99,24 @@ documentation/workspace coupling, test-error-string checks, fixture meta-mutatio
 workspace-verifier duplicate lost 873 lines/36,390 bytes: the repeated validator, dispatch, mutation layer,
 and four now-unused source loaders. The actual 2,712-line publication/recovery helper and its executable
 filesystem self-test are unchanged. This is documentation and verification architecture cleanup, not new
-Android device or release evidence; R-S11fz and Appendix C #334 remain a separate later classification slice.
+Android device or release evidence.
+
+R-S11fz and Appendix C #334 now state the timeless stale-cache replacement and preservation contract
+instead of the original failure narrative, `FIX` badge, implementation diary, mutation-catalog
+restarts, raw build transcript, and repeated open-evidence disclaimers, reducing
+`requirements.html` by 1,968 bytes. The two verbose R-S11fz ledger entries were merged into one
+current source disposition with bounded evidence provenance and explicit remaining native/release gaps.
+Review found that the v3 record bound old-tree content and root identity but not the exact ownership/mode
+profile it claimed to preserve. The corrected v4 record adds that deterministic metadata commitment at every
+replacement/recovery/archive boundary; legacy-v3 replacement state is preserved and rejected, and a real
+numeric-nonroot mode-drift regression exercises the refusal. The documentation-coupled workspace duplicate
+was already removed in the preceding R-S11fv slice. One remaining whole-requirements prohibition on the
+words `prepared recovery` was deleted because it blocked this unrelated valid topology; the scoped
+release-publication validator that rejects conflated recovery states remains. No ceremonial replacement test
+was added. This is documentation architecture plus a narrow transaction correction, not a canonical-cache
+mutation, current artifact build, Android lifecycle result, or broad release closure.
+The live ledger moved from 1,084,405 to 1,076,172 bytes and from 361,469 to 358,724 conservative
+tokens in this slice, using the repository's documented `ceil(UTF-8 bytes / 3)` method.
 
 The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk and required
 disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated
@@ -4872,183 +4889,74 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   behavior, focus/task-swipe presentation latency, cross-version sessions, exact current artifacts, cold
   release reproduction, independent reproduction, and external review remain explicit stop-ship gaps.
 
-- **R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority — SOURCE IMPLEMENTED;
-  NON-ROOT SUCCESS/CRASH/ROLLBACK SELF-TEST, 59-MUTATION FOCUSED GATE, AND COMPLETE INDEPENDENT
-  SOURCE-MUTATION CATALOG GREEN; REAL CANONICAL EXECUTION OPEN.** Platform: the unprivileged Linux
-  acquisition host and existing immutable networked/offline Android-builder profiles. Endpoint/action:
-  `scripts/online-fetch.sh::stage_gradle`, the versioned `scripts/online-gradle-output.py` transaction,
-  and occupied `online/gradle-home` publication. Boundary: one stale, potentially root-owned immutable
-  canonical Gradle seed ↔ one current independently checked candidate, with no permission-changing,
-  deletion, cross-parent-move, or recursive cleanup authority over the displaced tree.
+- **R-S11fz/R-S11e-212 — stale occupied canonical Gradle-cache replacement — SOURCE IMPLEMENTED;
+  CURRENT NUMERIC-NONROOT FILESYSTEM SELF-TEST GREEN; OLDER REAL APK AND V3 CANONICAL
+  EVIDENCE RETAINED; CURRENT V4, COLD-RELEASE, AND DEVICE EVIDENCE OPEN.** Platform: the unprivileged Linux
+  acquisition transaction and immutable Android builder. Endpoint/action:
+  `scripts/online-fetch.sh::{stage_gradle,retire_gradle_output_staging}` and
+  `scripts/online-gradle-output.py::{validate_displaced_output,replace,finish_promoted_replacement,
+  rollback_replacement,recover,archive_replaced}`. Boundary: one independently verified private
+  current candidate ↔ an occupied canonical cache that may be immutable or root-owned.
 
-  The prior path treated occupancy as final. Exact sealed-tree and current wrapper/dependency/SDK
-  semantics were checked, but any failure aborted before a candidate was built. This left the maintained
-  canonical 7.6.4 cache unable to satisfy the tracked 8.7 wrapper and blocked the canonical Android gate.
-  That was a fail-closed input-availability defect. It is not evidence that the old cache was malicious,
-  that Docker escaped, that host root was acquired, that a listener was exposed, or that host RustDesk,
-  service, configuration, firewall, display, or network state changed.
+  `stage_gradle` reuses an occupied cache unchanged only after its complete immutable-tree and current
+  wrapper/dependency/SDK semantics pass. A stale result receives no deletion, chmod, chown,
+  normalization, elevation, or cross-parent-move authority. Replacement starts only after producer
+  exit, source and SDK postconditions, independent candidate verification, publisher checksum,
+  semantic validation, and an exact full-tree digest receipt. The occupied tree must be nonempty,
+  bounded, mount/link/type closed, non-group/world-writable, wholly root- or acquisition-owned, and
+  readable without permission changes; an unreadable tree fails closed for explicit operator
+  retirement.
 
-  Existing exact output remains an unchanged fast path. A stale occupied output now permits the same
-  narrowly mounted warmer to build only a private candidate. Independent verification normalizes that
-  candidate, rechecks the read-only Android SDK identity and full-content digest, validates the exact
-  publisher-pinned Gradle 8.7 archive/launcher, dependency module cache, build-tools, and platform, and
-  returns a full-content tree digest. Producer exit, source postcondition, output verdict, and that exact
-  receipt all precede publication authority.
+  The helper seals candidate descendants while retaining the exact candidate root at 0700, rechecks
+  digest and semantics, and synchronizes the tree and staging parent before the v4 journal durably
+  selects replacement. That record binds semantic pins, original SDK identity/digest, candidate and
+  displaced identities/content digests, the displaced tree's exact ownership/mode digest,
+  online/staging/retired-root identities, and deterministic no-clobber names. Legacy-v3 replacement
+  state is preserved and rejected because it lacks that metadata commitment; legacy-v2 state cannot
+  authorize replacement. The SDK and displaced tree are revalidated before promotion.
+  `RENAME_NOREPLACE` promotes the candidate to a reserved sibling under the locked
+  online parent; one same-parent `RENAME_EXCHANGE` installs it without changing the old directory's
+  parent. Only the candidate root is sealed to 0500. The live candidate, SDK, and displaced tree are
+  revalidated before success. Recovery accepts only the recorded prepared, promoted, or exchanged
+  topology; incoherent state is preserved. Failure restores the old live name first and demotes only
+  the candidate. Archival no-clobber moves only the user-owned staging/journal envelope outside
+  `online`; the displaced tree stays at its reserved sibling with unchanged inode, ownership, modes,
+  and full-content digest.
 
-  State v3 durably binds the four semantic pins, original SDK identity/content, online and staging
-  identities, candidate and displaced identities/full-content digests, a same-filesystem private retired-
-  record root, and deterministic no-clobber archive/replacement names. Exact v2 journals remain readable
-  only for their former absent-destination no-clobber recovery; they cannot admit a new producer or stale-
-  cache replacement. Before mutation the occupied tree must be nonempty, bounded, mount/link/type closed,
-  wholly root- or acquisition-identity-owned, non-group/world-writable, and fully readable without any
-  permission change. Unreadable legacy state fails closed and requires operator-authorized retirement; it
-  is never normalized merely to make replacement succeed. The new candidate alone must use the exact
-  0500/0400-or-0500 publication profile.
+  The helper's real-filesystem self-test runs as numeric UID:GID 1000:1000 and covers ordinary
+  publication and replacement, post-selection prepared recovery, promotion recovery,
+  exchange-before-root-seal recovery, sealed-candidate rollback, destination and SDK races, checksum
+  and writable-seed rejection, old-tree identity/content/ownership/mode preservation, displaced-mode
+  drift refusal, legacy-v3 replacement refusal, candidate finality, and record archival. The focused
+  source gate is supplementary and checks the transaction wiring; it has no
+  requirements/status/workspace-document coupling. No duplicate workspace implementation remains.
 
-  Final crash-window review found that the first implementation selected `new` or `replacement` in the
-  durable journal before it sealed the candidate descendants. Termination in that interval therefore left
-  a selected record whose filesystem had not yet reached the prepared invariant. That pre-verdict path is
-  deleted. The candidate's descendants are now sealed while its root remains current-owner mode 0700; the
-  sealed full-content digest and current semantics are revalidated; and the complete tree plus staging
-  parent are synchronized before the journal may durably select a disposition. A crash before selection is
-  unselected and disposable, while a crash after selection exposes the exact prepared topology. Only then
-  does descriptor-relative `RENAME_NOREPLACE` promote it to a reserved sibling under the same locked online
-  parent; after namespace synchronization, same-parent `RENAME_EXCHANGE` atomically swaps that sibling with
-  `gradle-home`, avoiding a `..` update on the immutable old root. Only the exact candidate root is then
-  descriptor-sealed 0500. The live candidate is revalidated against its full digest and current semantics;
-  the displaced tree remains unchanged at the recorded sibling and is revalidated by exact identity,
-  owner/mode profile, and full-content digest. The original SDK's identity and full-content digest are
-  revalidated immediately before the replacement namespace sequence and again before success. The first
-  failure prevents exchange; the second reaches the same old-first rollback and restores the old live cache.
+  Retained evidence is deliberately bounded. A read-only compatibility validation of the then-live
+  stale cache recorded a 4,590,447,012-byte closed tree at SHA-256
+  `074cbfdc08dd721fb93e3413481d50ab7a5e4e626a4d7addf0477595d97132df`; it did not mutate or
+  replace the cache. A later canonical R-B10 acquisition at source commit
+  `66c53ba3286c1636bf76b6a4ac3f5943036722ee` did run the former v3 same-parent exchange:
+  candidate digest `46291a99308d1c8992d22d0bdd6f1c050b51dccbedc18ae46f567e0e7150f8b6`
+  became live, the exact displaced-root inode and the same
+  `074cbfdc08dd721fb93e3413481d50ab7a5e4e626a4d7addf0477595d97132df` content digest
+  remained at the reserved sibling, the SDK digest was rechecked, and the journal was archived.
+  That is real canonical replacement evidence for root identity/content under v3, but cannot prove
+  the ownership/mode commitment that only v4 records. At source commit
+  `226ce5bcb1421cebe76cdf3b66b27ed22589bebc` using retained
+  private inputs from `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`, a real ARM64 JNI/APK build
+  produced stable-key APK SHA-256
+  `031a1f31c74d123b9121b3bb1d8e94aa025373403bb05fc023536ebc079e39b5`, byte-equal to two
+  independently built retained APKs; signature, manifest, mobile-key, and native-inventory checks
+  passed. That artifact neither exercised canonical replacement nor represents current master, and
+  its retained log contained an unresolved severe bridge diagnostic and warnings, so it is not clean
+  release evidence.
 
-  Recovery recognizes only prepared, promoted, exchanged-but-unsealed, and completed identity topologies,
-  rechecking SDK, candidate, and displaced content before it finishes either namespace boundary. Any other
-  arrangement is preserved. Rollback restores the old live name first through same-parent exchange, then
-  descriptor-restores and demotes only the exact candidate. After completion, the user-owned journal
-  envelope is no-clobber archived outside `online`; the displaced immutable cache stays untouched at its
-  reserved sibling because moving it across parents would require authority the transaction deliberately
-  does not possess.
-
-  The helper parses and its synthetic normal publication plus sealed-
-  old replacement, post-journal/pre-promotion recovery, promotion-crash recovery,
-  exchange-before-root-seal recovery, sealed-candidate rollback,
-  displaced identity/full-content preservation, candidate finality, journal archival, SDK mutation,
-  checksum, writable-seed, destination-race, and symlink cases pass as numeric UID/GID 1000:1000 in the
-  immutable networkless verifier image with read-only root/source, dropped capabilities, no-new-privileges,
-  bounded resources, private tmpfs, and no port, device, Docker socket, host namespace, or privileged flag.
-  The focused authority verifier rejects all 59 deliberate weakenings of the stale-output decision, digest
-  receipt, closed state, SDK/semantic binding, displaced full-content validation, same-parent promotion and
-  exchange, candidate sealing and synchronization before journal selection, SDK full-content pre/post closure,
-  old-first rollback, recovery,
-  archival, fixtures, requirements, hardening
-  record, shared wiring, and independent-workspace binding. The ordinary independent workspace baseline and
-  complete independent in-memory source-mutation catalog are green. The first complete catalog invocation is
-  deliberately not counted: adding a second umask-scoped replacement fixture made an older independent
-  mutation target ambiguous between two effective runtime sites. Both live validators rejected the weakening,
-  the fixture was narrowed to the exact original SDK setup block, the independent baseline passed, and the
-  complete catalog then reran from the beginning to exit zero. After the final journal-order correction, the
-  first new complete catalog run is also uncounted: the newly added generic focused-label mutation matched both
-  the shell replacement-dispatch assertion and the production-helper sequence label, so mutating either one
-  left the other string to satisfy the independent verifier's broad presence check. The independent contract and
-  mutation inventory now bind those two exact contexts separately. That restart also remains uncounted: the
-  deliberate helper reordering was correctly rejected by the extracted publication sequence, but its catalog
-  entry expected its descriptive mutation label instead of that exact validator diagnostic. Both journal-order
-  mutation expectations now name the authority check that rejects them. A later first catalog on the SDK-race
-  correction is also uncounted: its focused-label mutation appended ` disabled` to `replacement SDK precondition`,
-  leaving the original substring intact and therefore making no effective authority change. Both SDK-label
-  mutations now use non-overlapping replacement text. That restart is also uncounted: removing the real
-  pre-promotion SDK check was correctly rejected by the earlier extracted replacement-order validator, while
-  the catalog entry expected the later cardinality diagnostic. The entry now names the first exact authority
-  check that fires; the catalog restarted from mutation one.
-
-  A final read-only compatibility check ran only `validate_displaced_output` against the actual stale
-  canonical `online/gradle-home` through the same immutable numeric-nonroot, networkless, read-only-source
-  container. The real tree is wholly UID:GID 1000:1000, non-group/world-writable, contains 21,709 files
-  and 12,818 directories totaling 4,590,447,012 regular-file bytes, and passed mount/link/type/stability
-  plus full-content validation at SHA-256
-  `074cbfdc08dd721fb93e3413481d50ab7a5e4e626a4d7addf0477595d97132df`. Its legacy 0755/0644 profile is
-  intentionally not reusable as an exact immutable seed, but it can be preserved without chmod/chown by
-  the replacement transaction. This read-only check performed no publication, exchange, archive, producer,
-  or semantic-current claim. No `.harness-state`, networked producer, APK, native artifact, installed
-  device/VM/service, capture/decode/presentation session, focus/reconnect latency path, performance/soak,
-  cold exact-commit release, independent reproduction, or external review ran in this slice. Those remain
-  explicit stop-ship evidence gaps.
-
-- **R-S11fz exact-current private-cache Android artifact evidence — REAL JNI/APK BUILD AND STABLE
-  ARTIFACT VALIDATION RECORDED 2026-08-05; CANONICAL CACHE REPLACEMENT, CLEAN R-B2/R-B10,
-  AND DEVICE RUNTIME REMAIN OPEN.** Exact source: clean pushed commit
-  `226ce5bcb1421cebe76cdf3b66b27ed22589bebc`, tree
-  `0bc5fc501d5dcb0199b9e827dcd61288c1f8a39e`, source archive SHA-256
-  `050d243e130a803109dca1bd1cb279e749399aca20e81c79387cfdcb9afc2146`. Boundary: an exact
-  current source snapshot plus one previously produced, separately retained private current Android-input
-  snapshot -> one disposable real-JNI ARM64 APK build and stable-key artifact validation. This did not grant
-  publication authority over canonical `online/`, did not exercise the new replacement transaction, and did
-  not run a full release transaction.
-
-  Before product execution, the retained read-only snapshot's complete 30.3-GB closure reverified as
-  `634b905e1c1ddf859f94649cdd10a62a9ef6159454fc77f8a82586b2f1fecdc1`; the current
-  `online-gradle-output.py check-complete` accepted its pinned Gradle 8.7 wrapper, publisher checksum, build
-  tools 34.0.0, compile SDK 34, and full SDK/content shape; and the current Pub output checker returned
-  `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`. The current
-  `Cargo.lock`, `Cargo.toml`, `flutter/pubspec.lock`, `flutter/pubspec.yaml`, wrapper properties, and Android
-  Gradle declarations are byte-unchanged from product parent `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`,
-  which created that current private cache. The exact Android source comparator passed before building and
-  again after generated outputs existed; complete snapshot provenance, Gradle semantics, and the Pub digest
-  passed again after use.
-
-  The corrected exact-current run generated the Flutter bridge, built the optimized real ARM64 JNI library in
-  2m32s, projected the private Gradle cache at
-  `861cc4a9b48fd685bff2ebaaea006b5323add0894a1b1fc55cb6828081b8661e`, and completed offline
-  `assembleRelease` in 70.1s. The 13,618,656-byte JNI library is
-  `9634c2ec9da4dbc2d5ad3966131d743696142aefb6ea947353d50c35124aa88b`; the 44,971,878-byte
-  transient-signature APK is `1d12c4332fb0cd2c3b5ed5b3d1716c199886e70c76605ec3da829ca310120d71`.
-  Stable-key signing produced a 44,975,902-byte artifact at
-  `031a1f31c74d123b9121b3bb1d8e94aa025373403bb05fc023536ebc079e39b5`. It is byte-identical to
-  both independently built retained stable APKs from `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`; this is
-  cross-time byte-equality evidence, not a substitute for an exact-current canonical A/B release transaction.
-
-  `apksigner -Werr` verified one RSA-4096 signer, the pinned certificate
-  `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`, v1 false, v2/v3 true,
-  and v3.1/v4 false. The maintained manifest and mobile at-rest-key artifact validators both passed. Independent
-  ZIP inspection found exactly `libapp.so`, `libc++_shared.so`, `libflutter.so`, and `librustdesk.so` under
-  `lib/arm64-v8a`; the embedded JNI hash equals the separately retained library. `aapt2` reported package
-  `com.carriez.flutter_hbb`, version 2065/1.4.7, compile/min/target SDK 34/24/33, and only `arm64-v8a` native
-  code.
-
-  Diagnostics remain explicit. The 47,810-byte log at
-  `91ce8986d0d8667fd7929aaa892fcde465d13403d4e7b2006ccf518a5dcd4405` contains the known
-  Flutter-Rust-Bridge `_Dart_Handle` severe typedef diagnostic, 87 Rust-library warnings plus one service
-  warning, the SDK XML-version warning, missing icon-family warning, and a Kotlin daemon startup-attempt-one
-  diagnostic after the daemon announced readiness and exited with code zero. The build retained
-  `kotlin.daemon.useFallbackStrategy=false`. Kotlin's official
-  [compiler-execution documentation](https://kotlinlang.org/docs/compiler-execution-strategy.html) identifies
-  an actual fallback with the separate `Failed to compile with Kotlin daemon` and `Using fallback strategy`
-  messages; neither is present, so this is classified as a daemon-start retry, not proof of silent fallback.
-  The `e:` diagnostic nevertheless keeps the result non-clean.
-
-  The first invocation is uncounted and preserved: it mounted the writable exact source at
-  `/evidence/source`, but the canonical inner builder intentionally addresses `/src`; fixed lookup of
-  `/src/scripts/flutter-offline-shim.sh` therefore stopped before Rust or Gradle. The wrapper's negated command
-  captured a reporting-only zero status even though Docker correctly returned nonzero. A fresh source tree and
-  the required `/src` mount were used for the counted run; no validation was waived.
-
-  On the complete evidence text before this self-recording paragraph, the focused Gradle authority verifier
-  rejected all 59 deliberate mutations, the independent workspace baseline passed, and native-codec normal and
-  adversarial self-test gates passed. The complete independent in-memory source-mutation catalog then ran
-  uninterrupted from mutation one and exited zero with `verify-verifier-workspace: ok`. The final focused gate,
-  independent baseline, native-codec gates, and diff hygiene are rerun after adding this verdict so the eventual
-  committed bytes are covered without recursively rewriting and rerunning the full catalog merely to record its
-  own result.
-
-  All project execution used pre-existing immutable Android-builder image
-  `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`, numeric UID:GID
-  1000:1000, no pull/network/port/device/socket/host namespace, read-only root/source authority/input snapshot,
-  dropped capabilities, no-new-privileges, bounded resources, and one fresh private writable source/output
-  area. Canonical `online/`, retained `.harness-state` inputs, host RustDesk/service/configuration, listeners,
-  display, firewall, and host networking were not changed. No APK was installed or launched. Android
-  Activity/foreground-service/task-swipe/Force-Stop recovery, real peer/display/control, capture/decode/render,
-  Windows focus delay, cross-version behavior, performance/soak, canonical cache replacement, exact current
-  R-B2/R-B10, independent reproduction, and external review remain stop-ship gaps.
+  Still open: a safe real v4 replacement/recovery transaction bound to current source; fresh
+  current-source Gradle/JNI/APK artifacts; cold R-B2/R-B10 A/B equality; installed Android
+  Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; real peer capture/decode/present
+  and reconnect/focus latency; bounded performance/soak/cleanup; independent reproduction; and
+  external review. This documentation slice ran no producer, canonical mutation, APK install, device,
+  VM, service, peer, presentation, or host operation.
 
 - **R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics —
   SOURCE IMPLEMENTED; FRESH PRODUCTION BRIDGE GENERATION AND LOCKED ARM64 RUST CHECK GREEN;
@@ -5524,9 +5432,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   focus/minimize, repeated reconnect/resource soak, file-transfer coexistence, installed service,
   macOS/iOS, cold R-B2 artifacts, independent reproduction, and external review remain release blockers.
 
-- **R-B10 exact-current canonical online-input reconciliation — OPERATIONAL ACQUISITION,
-  PRESERVATION-FIRST REPLACEMENT, AND COMPLETE CLOSURE VERIFICATION GREEN 2026-08-08;
-  COLD RELEASE/DOUBLE-BUILD AND NATIVE DEVICE/VM EVIDENCE OPEN.** Exact source authority:
+- **R-B10 exact-current canonical online-input reconciliation — OPERATIONAL ACQUISITION AND
+  COMPLETE CLOSURE VERIFICATION GREEN FOR THE NAMED V3 TRANSACTION 2026-08-08; CURRENT V4
+  REPLACEMENT, COLD RELEASE/DOUBLE-BUILD, AND NATIVE DEVICE/VM EVIDENCE OPEN.** Exact source authority:
   clean pushed commit `66c53ba3286c1636bf76b6a4ac3f5943036722ee`, tree
   `a34b81db605c31cf1c4352d621dfd01e346a03a4`, and canonical Git-archive SHA-256
   `1a235e8267bc0d574f6055286bc3b269b656907cec856b55601ad813d1283dae`.
@@ -5581,6 +5489,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `60f888eb0a836b5e58fb58a05a3a0823b15b9da57fe72adff70de7cccd067ee5`
   around publication, and archived its durable journal under
   `.harness-state/retired-online-inputs`.
+  That v3 record bound the displaced Gradle root identity and content digest but not its exact
+  ownership/mode profile; it therefore does not establish the current v4 preservation contract.
 
   That invocation next stopped on the preserved root-owned 198,126,354-byte historical
   `flutter-pub-cache.tar.gz` (`2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c`)

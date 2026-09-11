@@ -268,9 +268,17 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     for token, label in (
-        ('STATE_NAME = ".rustdesk-gradle-output-state-v3"', "current state schema"),
+        ('STATE_NAME = ".rustdesk-gradle-output-state-v4"', "current state schema"),
+        (
+            'LEGACY_REPLACEMENT_STATE_NAME = ".rustdesk-gradle-output-state-v3"',
+            "legacy unbound-replacement state schema",
+        ),
         ('LEGACY_STATE_NAME = ".rustdesk-gradle-output-state-v2"', "legacy state schema"),
-        ("STATE_VERSION = 3", "state version"),
+        ("STATE_VERSION = 4", "state version"),
+        (
+            "LEGACY_REPLACEMENT_STATE_VERSION = 3",
+            "legacy unbound-replacement state version",
+        ),
         ("LEGACY_STATE_VERSION = 2", "legacy state version"),
         (
             "GRADLE_LIMITS = (100_000, 100_000, 12 * 1024**3, 2 * 1024**3)",
@@ -281,6 +289,10 @@ def validate(sources: Dict[str, str]) -> None:
             "SDK input bounds",
         ),
         ("set(value) != current_keys", "closed current state schema"),
+        (
+            "set(value) != legacy_replacement_keys",
+            "closed legacy replacement state schema",
+        ),
         ("set(value) != legacy_keys", "closed legacy state schema"),
         ("reject_descendant_mounts(canonical)", "descendant-mount rejection"),
         ("os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW", "no-follow reads"),
@@ -355,6 +367,50 @@ def validate(sources: Dict[str, str]) -> None:
         (
             '        "replaced_gradle_digest": replaced.digest,',
             "displaced full-content digest binding",
+        ),
+        (
+            '        "replaced_gradle_metadata_digest": replaced.metadata_digest,',
+            "displaced ownership/mode digest binding",
+        ),
+        (
+            'metadata_digest = hashlib.sha256(b"rustdesk-gradle-output-metadata-v1\\0")',
+            "displaced metadata digest domain",
+        ),
+        (
+            'metadata_digest.update(str(metadata.st_uid).encode("ascii") + b"\\0")',
+            "displaced owner UID binding",
+        ),
+        (
+            'metadata_digest.update(str(metadata.st_gid).encode("ascii") + b"\\0")',
+            "displaced owner GID binding",
+        ),
+        (
+            'metadata_digest.update(f"{stat.S_IMODE(metadata.st_mode):o}".encode("ascii") + b"\\0")',
+            "displaced exact mode binding",
+        ),
+        (
+            "summary.metadata_digest != expected_metadata_digest",
+            "displaced ownership/mode revalidation",
+        ),
+        (
+            "legacy v3 Gradle replacement lacks displaced metadata binding",
+            "legacy unbound replacement refusal",
+        ),
+        (
+            "self-test did not recover a legacy-v3 unselected publication",
+            "legacy unselected publication recovery regression",
+        ),
+        (
+            "self-test did not recover a legacy-v3 new publication",
+            "legacy new publication recovery regression",
+        ),
+        (
+            "metadata_old_path.chmod(0o700)",
+            "displaced metadata drift trigger",
+        ),
+        (
+            "self-test accepted changed displaced Gradle metadata",
+            "displaced metadata drift filesystem regression",
         ),
         (
             '            renameat2(\n'
@@ -653,7 +709,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "SOURCE_FILE_MODES = {0o600, 0o700}",
         "offline seed file modes",
     ),
-    Mutation("helper", "STATE_VERSION = 3", "STATE_VERSION = 1", "state version"),
+    Mutation("helper", "STATE_VERSION = 4", "STATE_VERSION = 1", "state version"),
     Mutation("helper", "set(value) != current_keys", "False", "closed state schema"),
     Mutation(
         "helper",
@@ -666,6 +722,46 @@ MUTATIONS: Tuple[Mutation, ...] = (
         '        "replaced_gradle_digest": replaced.digest,',
         '        "replaced_gradle_digest": expected_digest,',
         "displaced full-content digest binding",
+    ),
+    Mutation(
+        "helper",
+        '        "replaced_gradle_metadata_digest": replaced.metadata_digest,',
+        '        "replaced_gradle_metadata_digest": replaced.digest,',
+        "displaced ownership/mode digest binding",
+    ),
+    Mutation(
+        "helper",
+        "        and summary.metadata_digest != expected_metadata_digest\n"
+        "    ):\n"
+        '        fail("displaced Gradle output ownership or mode changed")',
+        "        and False\n"
+        "    ):\n"
+        '        fail("displaced Gradle output ownership or mode changed")',
+        "displaced ownership/mode revalidation",
+    ),
+    Mutation(
+        "helper",
+        "        state.get(\"version\") == LEGACY_REPLACEMENT_STATE_VERSION\n"
+        '        and state.get("publication") == "replacement"\n'
+        "    ):\n"
+        "        fail(\n"
+        '            "legacy v3 Gradle replacement lacks displaced metadata binding "\n'
+        '            "and was preserved"\n'
+        "        )",
+        "        False\n"
+        "    ):\n"
+        "        pass # legacy unbound replacement accepted",
+        "legacy unbound replacement refusal",
+    ),
+    Mutation(
+        "helper",
+        "        metadata_old_path.chmod(0o700)\n"
+        "        try:\n"
+        "            recover(metadata_online, metadata_staging, uid, gid)",
+        "        metadata_old_path.chmod(0o500)\n"
+        "        try:\n"
+        "            recover(metadata_online, metadata_staging, uid, gid)",
+        "displaced metadata drift filesystem regression",
     ),
     Mutation(
         "helper",
@@ -814,6 +910,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "            gid,\n"
         "            replaced_identity,\n"
         "            replaced_digest,\n"
+        "            replaced_metadata_digest,\n"
         "        )\n"
         "        validate_sdk_state(online, state, uid, gid)",
         "        validate_displaced_output(\n"
@@ -822,6 +919,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "            gid,\n"
         "            replaced_identity,\n"
         "            replaced_digest,\n"
+        "            replaced_metadata_digest,\n"
         "        )",
         "replacement SDK postcondition",
     ),

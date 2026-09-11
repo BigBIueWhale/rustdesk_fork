@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ca5de72033997b53e82afec47199e51d7ff9fc46ab5ea92dea519c84428e5027  requirements.html
+ad639fe843ab37e08bfff1896957ebddc284fc1e4c9977712ef2e6a25fd3e544  requirements.html
 ```
 
 ## Current Verdict
@@ -50,6 +50,16 @@ is intentional: recovery must come from exact generation retirement, not killing
 persistent-process hang and Windows display-only focus delay therefore remain open until reproduced or falsified
 with current native artifacts. Focused fast verification is the development default; broader verification is a
 deliberate integration/release checkpoint.
+
+## Documentation architecture
+
+`requirements.html` is the timeless normative specification; this file alone records implementation and evidence
+status. Appendix C rows #25–#29 now state their local-privilege-boundary risks and required dispositions without
+`FIX` badges, implementation narration, verifier receipts, or claims of native validation, reducing the normative
+document by 7,530 bytes. Their unique rules remain explicit in R-S11/R-S11b/R-S11c/R-S11i/R-S19 and the rows point
+to those owners. This is one completed cleanup slice, not completion of the documentation work item: other Appendix
+C rows still contain progress/history prose and must be classified and rewritten or deleted without losing live
+security requirements.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

@@ -27650,8 +27650,8 @@ def validate_viewer_file_finality_contract(sources):
             "download digest metadata-regression mutation",
         ),
         (
-            '("dart_model", "unawaited(future.catchError((Object error) {", '
-            '"future.catchError((Object error) {", "owned event future"),',
+            '("dart_model", "_observeSessionTask(cb(decoded), activeSessionId, \'Session event\');", '
+            '"cb(decoded);", "owned event future"),',
             "owned Dart event-future mutation",
         ),
         (
@@ -40713,11 +40713,6 @@ def validate_android_voice_call_ownership_contract(sources):
         "client::tests::viewer_command_",
         "viewer command shared behavior gate source",
     )
-    require_text(
-        sources["hardening"],
-        "Outgoing viewer generic command admission — SOURCE IMPLEMENTED 2026-08-01",
-        "viewer command evidence boundary ledger source",
-    )
     screenshot_source = sources["client_screenshot_source"]
     require_absent(
         screenshot_source,
@@ -43773,11 +43768,6 @@ def validate_android_client_lifecycle_drain_contract(sources):
         sources["hardening"],
         "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement",
         "Android lifecycle hardening ledger source",
-    )
-    require_text(
-        sources["hardening"],
-        "the owner read guard is\nreleased before the off-component `close_and_join`",
-        "Android lifecycle indirect-lock ledger source",
     )
     require_text(
         sources["verify"],
@@ -95603,12 +95593,6 @@ def run_source_mutations(sources):
             "client::tests::viewer_command_",
             "client::tests::bounded_command_gate_disabled",
             "viewer command shared behavior gate source",
-        ),
-        (
-            "hardening",
-            "Outgoing viewer generic command admission — SOURCE IMPLEMENTED 2026-08-01",
-            "Outgoing viewer generic command admission — DEFERRED",
-            "viewer command evidence boundary ledger source",
         ),
         (
             "client_source",

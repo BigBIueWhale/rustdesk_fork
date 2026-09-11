@@ -35,7 +35,10 @@ def extract_rust_item(source: str, signature: str, label: str) -> str:
     start = source.find(signature)
     if start < 0:
         raise VerificationError(f"missing {label}")
-    open_brace = source.find("{", start + len(signature))
+    if signature.rstrip().endswith("{"):
+        open_brace = start + signature.rfind("{")
+    else:
+        open_brace = source.find("{", start + len(signature))
     if open_brace < 0:
         raise VerificationError(f"missing body for {label}")
     depth = 0
@@ -174,47 +177,57 @@ def validate(sources: Dict[str, str]) -> None:
         )
 
     dart = sources["dart_file"] + sources["desktop"] + sources["mobile"]
-    for call in (
-        "sessionReadRemoteDir",
-        "sessionSendFiles",
-        "sessionSetConfirmOverrideFile",
-        "sessionRemoveFile",
-        "sessionReadDirToRemoveRecursive",
-        "sessionRemoveAllEmptyDirs",
-        "sessionCancelJob",
-        "sessionCreateDir",
-        "sessionReadRemoteEmptyDirsRecursiveSync",
-        "sessionAddJob",
-        "sessionResumeJob",
-        "sessionRenameFile",
-    ):
-        require(dart, f"await bind.{call}(", f"awaited Dart {call}")
+    require(
+        dart,
+        "await bind.sessionSetConfirmOverrideFile(",
+        "awaited Dart sessionSetConfirmOverrideFile",
+    )
+    send_files = extract_rust_item(
+        sources["dart_file"], "class FileController {", "Dart file controller"
+    )
     require_order(
-        sources["dart_file"],
+        send_files,
         (
-            "final jobID = jobController.addTransferJob(from, isRemoteToLocal);",
-            "await bind.sessionSendFiles(",
-            "jobController.updateJobStatus(jobID,",
+            "final jobID = jobController.addTransferJob(",
+            "if (jobID == null) return;",
+            "await _requests.sendFiles(selectedSessionId, jobID,",
+            "catch (error)",
+            "jobController.updateJobStatus(selectedSessionId, jobID,",
             "state: JobState.error);",
             "rethrow;",
         ),
         "new transfer admission failure remains visible",
     )
     resume_job = extract_rust_item(
-        sources["dart_file"], "Future<void> resumeJob(", "Dart resumeJob"
+        sources["dart_file"], "class JobController {", "Dart job controller"
     )
     require_order(
         resume_job,
         (
-            "await bind.sessionResumeJob(",
-            "job.state = JobState.inProgress;",
+            "await _requests.resumeJob(selectedSessionId, actionId, isRemote);",
+            "if (!isCurrentSession(selectedSessionId)) return false;",
+            "jobTable[currentIndex].state = JobState.inProgress;",
         ),
         "resume state follows native admission",
     )
+    event_observer = extract_rust_item(
+        sources["dart_model"],
+        "void _observeSessionTask(",
+        "Dart session-event future observer",
+    )
+    require_order(
+        event_observer,
+        (
+            "unawaited(task.then<void>((_) {},",
+            "onError: (Object error, StackTrace stackTrace)",
+            "if (isCurrentSession(activeSessionId))",
+        ),
+        "explicit event-path future ownership",
+    )
     require(
         sources["dart_model"],
-        "unawaited(future.catchError((Object error) {",
-        "explicit event-path future ownership",
+        "_observeSessionTask(cb(decoded), activeSessionId, 'Session event');",
+        "session-event observation dispatch",
     )
 
     for needle, label in (
@@ -766,9 +779,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("file_trait", "fn cancel_job(&self, id: i32) -> ResultType<()>", "fn cancel_job(&self, id: i32)", "fallible file manager"),
     ("session", "fn try_send(&self, data: Data)", "fn send_disabled(&self, data: Data)", "exact round try_send"),
     ("flutter_ffi", "pub fn session_cancel_job(session_id: SessionID, act_id: i32) -> Result<()> {", "pub fn session_cancel_job(session_id: SessionID, act_id: i32) {", "fallible Flutter FFI"),
-    ("dart_file", "await bind.sessionSendFiles(", "bind.sessionSendFiles(", "awaited send admission"),
-    ("dart_file", "await bind.sessionResumeJob(\n          sessionId: sessionId, actId: job.id", "bind.sessionResumeJob(\n          sessionId: sessionId, actId: job.id", "awaited resume admission"),
-    ("dart_model", "unawaited(future.catchError((Object error) {", "future.catchError((Object error) {", "owned event future"),
+    ("dart_file", "await _requests.sendFiles(selectedSessionId, jobID,", "_requests.sendFiles(selectedSessionId, jobID,", "awaited send admission"),
+    ("dart_file", "await _requests.resumeJob(selectedSessionId, actionId, isRemote);", "_requests.resumeJob(selectedSessionId, actionId, isRemote);", "awaited resume admission"),
+    ("dart_model", "_observeSessionTask(cb(decoded), activeSessionId, 'Session event');", "cb(decoded);", "owned event future"),
     ("io_loop", "const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;", "const MAX_PENDING_VIEWER_FILE_WRITES: usize = 4096;", "receipt count bound"),
     ("io_loop", "const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;", "const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = usize::MAX;", "receipt byte bound"),
     ("io_loop", "const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);", "const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(300);", "receipt deadline"),

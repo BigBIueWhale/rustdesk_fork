@@ -350,22 +350,6 @@ def validate(sources: Dict[str, str]) -> None:
             'fail("Gradle publication candidate root is not mode 0700")',
             "renameable candidate-root policy",
         ),
-        (
-            'fail("self-test accepted a writable Gradle seed directory")',
-            "writable seed-directory rejection fixture",
-        ),
-        (
-            'fail("self-test accepted a writable Gradle seed file")',
-            "writable seed-file rejection fixture",
-        ),
-        (
-            'fail("self-test did not recover the post-rename/pre-root-seal state")',
-            "interrupted root-seal recovery fixture",
-        ),
-        (
-            'fail("self-test rollback did not restore unpublished transaction state")',
-            "sealed-root rollback fixture",
-        ),
         ("RENAME_NOREPLACE = 1", "no-clobber primitive"),
         ("RENAME_EXCHANGE = 2", "same-parent exchange primitive"),
         (
@@ -430,50 +414,8 @@ def validate(sources: Dict[str, str]) -> None:
             "ambiguous-state refusal",
         ),
         (
-            "self-test accepted a changed read-only Android SDK",
-            "SDK mutation fixture",
-        ),
-        (
-            "self-test accepted an occupied Gradle publication destination",
-            "destination-race fixture",
-        ),
-        (
-            "self-test accepted a wrong Gradle distribution checksum",
-            "checksum fixture",
-        ),
-        ("self-test accepted a symlinked output", "symlink fixture"),
-        (
-            "self-test did not recover a promoted Gradle replacement",
-            "promotion-crash recovery fixture",
-        ),
-        (
-            "self-test did not recover a prepared Gradle replacement",
-            "prepared-journal recovery fixture",
-        ),
-        (
-            "self-test did not recover an exchanged Gradle replacement",
-            "exchange-before-seal recovery fixture",
-        ),
-        (
-            "self-test Gradle replacement rollback did not restore prepared state",
-            "sealed-candidate rollback fixture",
-        ),
-        (
-            "self-test replacement changed the displaced Gradle output",
-            "displaced-output preservation fixture",
-        ),
-        (
             "retired Gradle archive identity postcondition failed",
             "replacement journal archival",
-        ),
-        (
-            "previous_umask = os.umask(0o077)\n"
-            "        try:\n"
-            '            create_fake_sdk(online / "android-sdk", '
-            "build_tools, compile_sdk)\n"
-            "        finally:\n"
-            "            os.umask(previous_umask)",
-            "private SDK fixture umask scope",
         ),
     ):
         require(helper, token, label)
@@ -577,71 +519,6 @@ def validate(sources: Dict[str, str]) -> None:
         "/usr/bin/python3 -I -S "
         "scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test",
         "shared focused-verifier wiring",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11cl</span>',
-        "R-S11cl requirement",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11cr</span>',
-        "R-S11cr SDK requirement",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11fv</span>',
-        "R-S11fv immutable Gradle seed requirement",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11fz</span>',
-        "R-S11fz stale Gradle replacement requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>245</td>",
-        "Appendix C #245 disposition",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>330</td>",
-        "Appendix C #330 disposition",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>334</td>",
-        "Appendix C #334 disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
-        "hardening-ledger disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
-        "private SDK fixture correction ledger",
-    )
-    require(
-        sources["hardening"],
-        "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
-        "Gradle seed mode-closure ledger",
-    )
-    require(
-        sources["hardening"],
-        "R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority",
-        "stale Gradle replacement ledger",
-    )
-    require(
-        sources["workspace"],
-        '"online_fetch_gradle_output_authority_verifier"',
-        "workspace source ownership",
-    )
-    require(
-        sources["workspace"],
-        "Online-fetch Gradle output authority focused verifier",
-        "workspace semantic binding",
     )
 
 
@@ -998,103 +875,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "publication rollback",
     ),
     Mutation(
-        "helper",
-        "previous_umask = os.umask(0o077)\n"
-        "        try:\n"
-        '            create_fake_sdk(online / "android-sdk", '
-        "build_tools, compile_sdk)\n"
-        "        finally:\n"
-        "            os.umask(previous_umask)",
-        "previous_umask = os.umask(0o002)\n"
-        "        try:\n"
-        '            create_fake_sdk(online / "android-sdk", '
-        "build_tools, compile_sdk)\n"
-        "        finally:\n"
-        "            os.umask(previous_umask)",
-        "private SDK fixture umask",
-    ),
-    Mutation(
-        "helper",
-        "previous_umask = os.umask(0o077)\n"
-        "        try:\n"
-        '            create_fake_sdk(online / "android-sdk", '
-        "build_tools, compile_sdk)\n"
-        "        finally:\n"
-        "            os.umask(previous_umask)",
-        "previous_umask = os.umask(0o077)\n"
-        "        try:\n"
-        '            create_fake_sdk(online / "android-sdk", '
-        "build_tools, compile_sdk)\n"
-        "        finally:\n"
-        "            os.umask(0o077)",
-        "SDK fixture umask restoration",
-    ),
-    Mutation(
         "verify",
         "/usr/bin/python3 -I -S "
         "scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test",
         "true # Gradle output authority gate removed",
         "shared gate",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11cr</span>',
-        '<span class="id">R-S11cr-disabled</span>',
-        "R-S11cr requirement",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11fv</span>',
-        '<span class="id">R-S11fv-disabled</span>',
-        "R-S11fv requirement",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11fz</span>',
-        '<span class="id">R-S11fz-disabled</span>',
-        "R-S11fz requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>245</td>",
-        "<tr><td>245-disabled</td>",
-        "Appendix C #245",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>330</td>",
-        "<tr><td>330-disabled</td>",
-        "Appendix C #330",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>334</td>",
-        "<tr><td>334-disabled</td>",
-        "Appendix C #334",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
-        "R-S11cr/R-S11e-110 — ambient Android SDK authority",
-        "hardening disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
-        "R-S11cl/R-S11e-104 ambient Gradle SDK fixture authority",
-        "private SDK fixture correction ledger",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
-        "R-S11fv/R-S11e-208 — writable Gradle publication mode",
-        "Gradle seed mode-closure ledger",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority",
-        "R-S11fz/R-S11e-212 — destructive Gradle-cache replacement authority",
-        "stale Gradle replacement ledger",
     ),
 )
 
@@ -1116,11 +901,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
             encoding="utf-8"
         ),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(
-            encoding="utf-8"
-        ),
     }
 
 

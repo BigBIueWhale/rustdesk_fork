@@ -6563,1017 +6563,144 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 ## Open residuals (tracked, not regressions)
 
-- **UPCOMING RELEASES — Linux service-child lifecycle ownership — USER-REQUESTED
-  2026-07-16; SOURCE/RUNTIME/RELEASE-GATE IMPLEMENTED THROUGH R-S11c-27s; EXACT COLD
-  ARTIFACT EXECUTION PENDING.** The process-name/text-based server cleanup replacement is
-  implemented in source, runtime, package, and release-gate form by R-S11c-27a–s below:
-  the service-child authority is the init-system-independent ownership protocol, not
-  process-name discovery. The parent release item remains open only because the exact
-  clean committed cold transaction has not yet emitted the bound final `.deb` lifecycle
-  marker and full R-B2 manifest. This item remains explicitly **not authorization to stop,
-  restart, upgrade, reconfigure, or otherwise disturb the currently deployed host service**,
-  which is operationally running an older release.
-
-  - **R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED
-    2026-07-16; PARENT ITEM REMAINS OPEN.** This coherent first slice replaces server process-table authority
-    on the live supervisor path. `try_start_server_()` retains an `OwnedServiceChild` containing the final
-    RustDesk `Child`; there is no `sudo`, `env`, or `run_me` wrapper between the supervisor and server. Root
-    children launch `/proc/self/exe` directly, while active-desktop children use the same descriptor-bound
-    executable object across the credential transition as completed and behavior-tested by R-S11c-27h below.
-    For an active desktop, the parent resolves the exact passwd identity
-    and supplementary groups before `fork`, clears the inherited root environment, supplies only the bounded
-    session environment, and performs raw `setgroups` → `setresgid` → `setresuid` syscalls in the pre-exec
-    hook. It then sets irreversible `PR_SET_NO_NEW_PRIVS`, preventing the final `exec` (and later descendants)
-    from reacquiring setuid/setgid or file-capability privilege. The same hook arms `PR_SET_PDEATHSIG(SIGKILL)`
-    and immediately verifies `getppid()` against the expected supervisor, closing the set-after-parent-exit race.
-    Because Linux may clear the setting while executing a privileged/capability-bearing file, the final
-    service-owned `--server` image re-arms and revalidates it before starting server state. Normal replacement
-    and service shutdown send `SIGTERM` to the retained child and act only on that same `Child`; R-S11c-27c below
-    now bounds both the graceful and forced reap phases. Abnormal supervisor death uses the kernel binding to stop its
-    exact child independently of any init system. Ordinary portable/user-owned `--server` launches do not carry
-    the service marker and do not enter this path. The old `stop_rustdesk_servers()`/`force_stop_server()` global sweep and every
-    `kill_current_exe_processes_with_arg("--server", ...)` call are deleted, so another installation, smoke
-    process, portable server, or container is not selected by visible path text or argv. Verification:
-    `r_s11c27a_linux_service_child_parent_death_kills_owned_child` uses an exec-chained supervisor/worker plus
-    `pidfd` to behavior-test the actual post-exec kernel helper, and `scripts/verify.sh` binds the direct-child,
-    native credential drop, pre/post-exec parent-death checks, bounded exact-child termination, environment
-    clearing, and no-server-sweep source shape.
-
-  - **R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED
-    2026-07-16; PARENT ITEM REMAINS OPEN.** The service now acquires one close-on-exec, nonblocking exclusive
-    `flock` lease in a descriptor-opened `/run/rustdesk` directory whose opened inode must be a root-owned
-    mode-0700 directory. A second installed/manual supervisor fails before it starts IPC or a child. Each
-    supervisor obtains a fresh canonical generation UUID from the kernel and passes it only in the cleared
-    service-child environment. After `Command::spawn()` has completed the real privilege-drop/exec boundary,
-    the supervisor reads the exact child's `/proc` identity and refuses registration unless UID, boot ID,
-    start time, executable device/inode, exact three-element service role, and unique generation entry all
-    agree. It then writes the bounded, versioned, strict-order record to a newly-created root-owned mode-0600
-    temporary inode, `fsync`s it, publishes with `renameat2(RENAME_NOREPLACE)` (atomic `renameat` compatibility
-    fallback under the exclusive lease), and `fsync`s the directory. Existing, malformed, linked, mis-owned,
-    mis-moded, overlong, noncanonical, or wrong-role records are never overwritten. Normal replacement and
-    stop still act only on the retained direct `Child`; record removal occurs only after that child is reaped
-    and only when the parsed record equals the retained identity.
-
-    Crash recovery is a separate pre-loop path. Missing evidence logs and signals nothing. A valid record from
-    another boot or an absent/exited PID is reported stale and removed without signaling. On Linux 5.3+ the
-    new supervisor first opens `pidfd_open(2)`, then immediately before `SIGTERM` revalidates current boot ID,
-    `/proc/<pid>/stat` field 22 both before and after the inspection, `/proc/<pid>` UID, dereferenced
-    `/proc/<pid>/exe` device/inode (so path replacement, deletion, and mount-namespace pathname aliases do not
-    weaken identity), exact role argv, and the generation environment entry. Bounded exit polling occurs on
-    the pidfd itself. A still-live child is fully revalidated again before pidfd-bound `SIGKILL`; any mismatch
-    or unreadable live identity signals nothing further, preserves the record, fails `--service` nonzero, and
-    lets the init supervisor report/retry rather than starting a second child. Pre-5.3 kernels use the same
-    full revalidation immediately before each `kill(2)` and during the bounded waits; the diagnostic explicitly
-    records that the final check-to-kill PID-reuse race cannot be eliminated without pidfds. This is a
-    compatibility fallback, not an assurance-equivalent claim. The systemd unit creates the identical
-    root-only runtime directory, preserves crash evidence across automatic restart, admits the pidfd/atomic
-    publication syscalls through its allowlist, and retains `KillMode=control-group` only as an additional
-    containment layer. The design follows the Linux `pidfd_open(2)`, `pidfd_send_signal(2)`, `proc_pid_stat(5)`,
-    `proc_pid_exe(5)`, `flock(2)`, `openat(2)`, and `renameat2(2)` contracts. Focused tests prove strict record
-    rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
-    removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
-    tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; after the later R-S11e-36 Windows privacy-broker closure, the current machine inventory is 851 across
-    251 tracked Rust files/73 nonzero files, with the added deterministic Windows resource producer containing no
-    lexical unsafe block and per-file-count digest
-    `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
-
-  - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
-    2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
-    `OwnedServiceChild` before it has proof of reap and no longer follows `Child::kill()` with an unbounded
-    `Child::wait()`. It borrows the owning `Option`, sends `SIGTERM` to the retained exact child, polls
-    `try_wait()` for at most eight seconds, then sends `SIGKILL` through that same `Child` and polls for at most
-    a second eight-second interval. The durable record and direct `Child` ownership are released only after
-    successful reap and exact record removal. A wait error, failed KILL followed by an expired wait, or a target
-    still unreaped at the forced deadline preserves both authorities and returns an error. `stop_server()`, the
-    replacement decision, every loop transition, and final shutdown now propagate that error out of
-    `start_os_service()`, so an uncertain old child cannot be followed by a replacement launch or reported as a
-    clean service exit.
-
-    The focused pinned-container behavior test execs the real test image as the retained worker twice: the first
-    child takes the default graceful `SIGTERM` exit, while the second is first placed in a kernel-stopped state so
-    TERM cannot complete and the exact-child KILL/reap branch is required. Both paths must finish inside their
-    explicit test deadlines, release direct ownership, and remove only the matching durable record.
-    `scripts/verify.sh` additionally rejects an unbounded `process.wait()` in this helper, requires ownership to be
-    taken only after exact record removal, and binds error propagation before replacement. This decision follows
-    Rust's `std::process::Child` contract (there is no `Drop` cleanup; `try_wait` is the nonblocking exit/reap
-    observation) and Linux `kill(2)`, `wait(2)`, and `signal(7)` (signal delivery is not reap; `WNOHANG` reports a
-    still-running child without blocking; SIGKILL cannot be caught, blocked, or ignored). It adds no unsafe block
-    and leaves the settled lexical unsafe inventory unchanged.
-
-    This is source and focused behavior closure for the direct-child stop primitive, not the installed release
-    matrix. Real installed/package-managed graceful restart/stop remain mandatory alongside crash/restart,
-    hostile record/file/PID cases, non-root/portable and container noninterference, the actual privilege-drop chain,
-    pre-pidfd runtime exercise, and SysV/OpenRC/runit/manual/non-systemd packaging proof. The parent item and upcoming
-    release therefore remain **OPEN**.
-
-  - **R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior — SOURCE/FOCUSED BEHAVIOR
-    IMPLEMENTED 2026-07-16; PARENT ITEM REMAINS OPEN.** The pinned Linux test now crosses the previously separate
-    parent-death and durable-record paths without using `/run/rustdesk`, root, service IPC, or any pre-existing PID.
-    A mode-0700 private runtime uses the same close-on-exec, nonblocking exclusive `flock` helper as production. One
-    test supervisor launches a post-exec BusyBox `yes` fixture with exactly three kernel-visible argv elements
-    (`yes`, `--server`, `--service-owned-server`), the real generation environment, and the production
-    no-new-privileges/parent-death pre-exec hook; it then publishes the production record. A concurrent contender
-    must fail the live lease. The test kills that supervisor, observes the exact child exit on its retained pidfd,
-    then starts a fresh test process which must acquire the released lease, run the production recovery path, and
-    remove only the exited exact record. BusyBox is a dev-check-image fixture only and is not a runtime or release
-    dependency.
-
-    The same test then behavior-checks the recovery decision in both directions. A live process with exact service
-    argv and generation is left alive and its record preserved when the structurally valid evidence carries a
-    different start time (the PID-reuse shape), a different executable inode despite identical argv, or a different
-    generation; a malformed-role record is likewise preserved byte-for-byte and signals nothing. Finally, the
-    unmodified exact record authorizes pidfd-bound recovery of that one live fixture and exact record removal. The
-    behavior follows the Linux `PR_SET_PDEATHSIG`, `flock(2)`, `pidfd_open(2)`, `pidfd_send_signal(2)`,
-    `proc_pid_stat(5)`, and `proc_pid_exe(5)` contracts. `scripts/verify.sh` runs the test and source-gates its lease
-    conflict, post-exec crash, fresh-process recovery, hostile-evidence survival, and exact-match positive branch.
-    The production syscall shape is unchanged and the settled lexical unsafe inventory remains unchanged.
-
-    This slice by itself is not installed lifecycle or release evidence. At this point in the sequence, the real
-    RustDesk privilege-drop/exec chain, forced PID reuse, cross-mount/container inode cases, non-root/portable
-    coexistence, pre-pidfd runtime fallback, non-systemd packaging, and concurrent Docker survival remained in the
-    parent matrix. Later slices below supply all of those cases except actual forced numeric-PID reuse and the still
-    open packaging/release variants; R-S11c-27n specifically supplies the cross-mount/container case.
-
-  - **R-S11c-27e — executable-object replacement/deletion recovery behavior — SOURCE/FOCUSED BEHAVIOR
-    IMPLEMENTED 2026-07-16; PARENT ITEM REMAINS OPEN.** The pinned Linux test replaces the synthetic changed-inode
-    shape with live filesystem and process evidence in a mode-0700 private runtime. It copies the BusyBox fixture to
-    two distinct regular executable inodes, launches the first with exact service role argv and generation, and
-    records its production `/proc` identity. While that process remains live, the test atomically renames the second
-    inode over the first process's launch pathname. Dereferenced `/proc/<pid>/exe` must retain the original recorded
-    device/inode even though its diagnostic link text now ends in ` (deleted)`.
-
-    The replacement inode is then launched from the same pathname with byte-for-byte identical role argv and
-    generation. A structurally valid record carrying the replacement process's PID/start time/UID/generation but the
-    original process's real device/inode must fail production recovery for executable-identity mismatch, remain on
-    disk, and leave both processes alive. The exact original record must subsequently recover only the original
-    executable object while the replacement process survives. A third exact-role fixture is recorded and directly
-    unlinked; its procfs executable object must retain the recorded device/inode and exact recovery must terminate
-    only that object, again leaving the replacement process alive. This follows the Linux `rename(2)`, `unlink(2)`,
-    procfs magic-link, `proc_pid_exe(5)`, `pidfd_open(2)`, and `pidfd_send_signal(2)` contracts and proves that neither
-    the pathname text nor exact argv is signal authority. `scripts/verify.sh` runs the behavior and source-gates the
-    real replacement, real unlink, cross-object negative record, record preservation, sentinel survival at every
-    recovery decision, and both exact positive branches. No production API/syscall or unsafe inventory changed.
-
-    This slice is same-mount private-runtime behavior, not an installed package-update transaction, cross-mount or
-    mount-namespace proof, an identical in-container pathname case, or forced PID reuse. R-S11c-27n below supplies
-    the cross-mount/mount-namespace and identical-path cases; actual forced numeric-PID reuse and the remaining
-    packaging/release matrix remain **OPEN**.
-
-  - **R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior — SOURCE/RUNTIME IMPLEMENTED
-    2026-07-16; PARENT ITEM REMAINS OPEN.** Baseline execution of the real debug `rustdesk --service` binary in a
-    fresh no-network, no-published-port container exposed a production lifecycle defect that the earlier synthetic
-    child tests could not: normal pidfd-bound `SIGTERM` killed the supervisor itself with status 143. Its
-    `ctrlc::set_handler` covered `SIGINT` only under the prior dependency feature set, so final exact-child
-    termination, reap, durable-record removal, and the service `Exit` record never ran. `PR_SET_PDEATHSIG(SIGKILL)`
-    still prevented an orphan, but that crash containment was not a graceful manual or systemd stop.
-
-    The pinned `ctrlc` dependency now enables its Unix `termination` feature, under which the one supervisor handler
-    receives `SIGINT`, `SIGTERM`, and `SIGHUP`. Handler-registration failure propagates from `start_os_service()`
-    before runtime-directory acquisition instead of being printed and ignored; the handler changes only the owned
-    loop's `AtomicBool`, after which the existing final `terminate_child()` calls remain the sole child authority.
-    The direct `--server` image no longer installs a second process-wide `ctrlc` handler that could preempt its Tokio
-    R-T9 drain. Its modifier/key-release cleanup instead runs inside `finish_graceful_shutdown()`, after the bounded
-    session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
-    introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
-    deterministic Windows resource-producer addition, R-S11e-28 descriptor closure, and R-S11e-29 helper-launch
-    descriptor hook, and the later R-S11e-36 Windows privacy-broker closure, the current inventory is 851 across 251
-    tracked Rust files/73 nonzero files.
-
-    `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
-    source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active
-    root X11 seat and rejects every unknown argv, allowing the unmodified production desktop-discovery and service
-    launch path to run without a test-only production knob. For every generation the stage strictly parses the
-    root-owned mode-0600 record, verifies boot/start/executable/UID/generation fields against procfs, requires exact
-    `/proc/self/exe`, `--server`, `--service-owned-server` argv, launch-parent/generation environment bindings,
-    direct PPID, root UID, `NoNewPrivs: 1`, and a successful typed parked-IPC transaction. Supervisor stop is sent
-    only through its retained PID/start identity and a pidfd. Two complete launches must terminate the child at exit
-    status 0, reap it, remove the exact record, exit the supervisor at status 0, and produce distinct child and
-    generation identities. A third child is placed in the real kernel-stopped state through a pidfd; supervisor
-    `SIGTERM` must then take at least 7.5 seconds but no more than 20 seconds, log the eight-second graceful timeout,
-    send KILL only to its retained child, reap signal 9, remove the record, and exit 0. The clean rerun observed
-    8.156 seconds.
-
-    In the same namespace a copied, root-owned executable is descriptor-execed with neutral argv as UID 4000 after
-    supplementary groups and all inheritable/ambient/bounding capabilities are removed and `NoNewPrivs` is set.
-    Its exact `rd-smoke-server`, `--server` role has no service environment marker and its typed UID-scoped parked
-    IPC remains live through both normal generations and forced escalation, proving the service never selects an
-    unrelated portable server. Readiness failures are now terminal (`exit 1` rather than a return that Bash could
-    continue when the checker is used in a conditional); stable-log pinning and the readiness self-test close the
-    evidence race observed while developing this stage. The production fix follows the pinned crate's termination
-    contract plus Linux `kill(2)`, `wait(2)`, `signal(7)`, and pidfd contracts: signal delivery is not reap, exact
-    child resources are released only by wait, and stopped tasks cannot handle TERM while KILL cannot be caught,
-    blocked, or ignored.
-
-    This closes actual-binary manually supervised normal-stop/restart, real stopped-child escalation, and non-root
-    portable coexistence behavior. This slice is not an installed package transaction, installed
-    systemd/SysV/OpenRC/runit integration, Debian-without-systemd proof, pre-pidfd runtime proof, forced PID reuse,
-    broader malformed/stale-record proof, the non-root active-desktop credential-drop branch,
-    cross-mount/namespace/container inode replacement, or concurrent separate-Docker survival. Later slices below
-    supply all of those cases except actual forced numeric-PID reuse and the still-open OpenRC/runit/manual and
-    release variants; R-S11c-27n specifically supplies the cross-container case.
-
-  - **R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior — SOURCE/RUNTIME IMPLEMENTED
-    2026-07-17; PARENT ITEM REMAINS OPEN.** The same mandatory no-network, read-only-source lifecycle stage now
-    crosses abrupt supervisor death and production recovery with the real debug `rustdesk --service` image. Before
-    the crash it opens pidfds for both the supervisor and its strictly validated service child, rechecks each retained
-    `/proc/<pid>/stat` start identity, then sends `SIGKILL` only through the supervisor pidfd. The child pidfd must
-    become readable within ten seconds and the same PID/start identity must no longer be running; the observed
-    development run completed that kernel parent-death transition in 3 ms. The supervisor must reap from the harness
-    with status 137 rather than reporting a graceful exit.
-
-    The stage captures the root-owned mode-0600 record's device/inode/owner/mode/link-count/size tuple and SHA-256
-    before the crash. After both exact processes exit, that same record identity and byte hash must still exist,
-    proving the abrupt path preserved its durable crash evidence rather than silently cleaning or replacing it. The
-    unrelated capability-free UID-4000 portable server is strictly revalidated before and after the crash. A fresh
-    real supervisor is then launched while the stale bytes still exist. It must acquire the released close-on-exec
-    lease, log production classification of the old child as exited or absent without signaling, remove only the
-    exact stale record, publish a different record hash for a distinct child/start identity tuple and generation, and
-    reach a successful typed parked-IPC transaction. That new generation must subsequently take the normal exact-child graceful
-    shutdown path, while the portable server remains live through recovery and stops cleanly only when the harness
-    explicitly targets its retained identity.
-
-    The behavior matches Linux `PR_SET_PDEATHSIG` (parent-thread death delivers the configured process-directed
-    signal; credential changes or privileged exec can clear it, which is why production arms after the drop and
-    re-arms in the final image), `flock(2)` (the lease is released when all references to its open file description
-    close; `O_CLOEXEC` prevents the service child retaining it), and pidfd polling/signaling (a stable task reference
-    becomes readable on exit and avoids numeric-PID reuse). An initially over-specific harness assertion expected a
-    new durable record to have a different inode number; runtime correctly demonstrated immediate filesystem inode
-    reuse. That invalid assertion was removed. The valid transition proof is unchanged old metadata plus old hash
-    before recovery, followed by a different strict record hash and generation after recovery. This slice changes no
-    production Rust code, dependency, syscall, or lexical unsafe inventory.
-
-    This closes the real-binary manually supervised crash/restart case only. This slice is not installed
-    service-manager or package-update evidence, and it does not cover hostile malformed records, forced PID reuse,
-    the installed privilege-drop chain, pre-pidfd fallback, cross-mount/container namespace identity, Debian
-    non-systemd init integration, or concurrent separate-Docker survival. Later slices below supply those cases
-    other than actual forced numeric-PID reuse and the still-open packaging/release variants; R-S11c-27n supplies the
-    cross-container case. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior — SOURCE/RUNTIME IMPLEMENTED
-    2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory no-network lifecycle stage now changes its trusted fixed
-    `loginctl` fixture from root X11 seat0 to a real passwd-backed `rdseat` X11 seat with UID/GID 4001 and a distinct
-    supplementary group 4101, while the unrelated capability-free UID-4000 portable server remains live. This drives
-    the production `Desktop::refresh()` and `ServiceChildCredentials::resolve()` branch in the actual debug
-    `rustdesk --service` binary rather than substituting a unit helper or a test-only Rust entry point.
-
-    The first baseline execution found a production defect: `Command` runs `pre_exec` before `execve`, and after
-    `setresuid(4001, 4001, 4001)` resets process dumpability, the child could no longer dereference its configured
-    `/proc/self/exe` through procfs's ptrace credential check; every launch failed with `EACCES`. Production now opens
-    the supervisor's exact executable object while still privileged, keeps that descriptor `FD_CLOEXEC` in the
-    multithreaded parent, and names `/proc/self/fd/<N>` only for the credential-dropping child. The fork-only raw
-    pre-exec sequence performs `setgroups` → `setresgid` → `setresuid`, clears `FD_CLOEXEC` on that one descriptor,
-    sets `PR_SET_NO_NEW_PRIVS`, and arms the parent-death signal. The final image validates a dedicated descriptor
-    environment binding and immediately closes the descriptor before re-arming parent liveness. Root children retain
-    the prior `/proc/self/exe` path. This preserves executable device/inode identity across concurrent package-path
-    replacement without a globally inheritable descriptor window or a descriptor leak.
-
-    The root supervisor's existing registration checks intentionally require procfs authority to revalidate the
-    non-root child's executable object and bounded launch environment. Docker root lacks `CAP_SYS_PTRACE` by default,
-    so the isolated stage now adds exactly that capability; the deployed inverse `CapabilityBoundingSet` intentionally
-    retains and documents it. The harness strictly parses the mode-0600 record and procfs state, requires all four UID
-    and GID slots to equal 4001, exact supplementary groups `4001 4101`, `NoNewPrivs: 1`, and zero `CapInh`, `CapPrm`,
-    `CapEff`, and `CapAmb` (the kernel bounding set is not falsely treated as cleared by the UID transition). It
-    requires descriptor-shaped argv bound to the same recorded executable, proves the executable descriptor is no
-    longer open, and accepts only the exact rebuilt environment: fixed `PATH`, passwd `HOME`/`USER`/`LOGNAME`,
-    UID-scoped runtime directory, discovered `DISPLAY`/`XAUTHORITY`, bounded `TERM`, and exact parent/generation/fd
-    bindings. A capability-free probe running as the same UID/GID/groups must complete typed parked IPC. The observed
-    generation `8cb29b16-4a32-431c-91bb-5ed710abb6e3` then shut down gracefully and was reaped with its record removed;
-    the UID-4000 portable server survived and stopped only through its separately retained identity.
-
-    Two subsequent complete-smoke attempts built the corrected binary but stopped before runtime when the host
-    historical-selector monitor enumerated a short-lived unrelated PID and procfs returned `ESRCH` while opening its
-    command line. The guard now treats only `ENOENT`/`ESRCH` as the normal process-exit race and continues to fail on
-    permission or malformed-record errors; its self-test fixes both classifications. This changes no process
-    selection rule and does not admit a new historical `rustdesk --server` match.
-
-    A third complete-smoke attempt reached the corrected non-root branch and exposed a separate fixture mismatch:
-    the build stage's `umask 077` had recreated the root-owned debug binary as mode `0700`. Holding an open descriptor
-    preserves executable-object identity but correctly does not bypass the inode's execute permission, so Linux
-  rejected the UID-4001 exec. At that historical slice the build stage changed only the completed smoke binary to
-  root-owned mode `0755` and the lifecycle required that owner/mode precondition. R-S11cb now keeps the private build
-  output executable for staging but models the installed service image as root-owned mode `0711`. Source inputs and
-  all other private fixture outputs remain under the restrictive umask.
-
-    The corrected complete default smoke then passed. Its integrated lifecycle observed root graceful generation
-    `0cbc0ad2-3ec7-4e61-929d-3c1b372cc244`, restart generation `64097d5d-1e74-4913-87bb-a26914213bb2`, an
-    8.136-second stopped-child escalation, crash generations `eafe5eab-5398-490b-94c2-43e74f218225` →
-    `1e9d4403-08ca-47b4-a41c-f0c16c5ff77d` with exact-child exit observed after 3 ms, and non-root generation
-    `8fec6741-eb22-4cfb-8e7a-c14b8bd0bc6a`. The UID-4000 portable server and the host historical-selector baseline
-    both remained unchanged, and every downstream default socket, IPC, keying, session, transfer, limiter,
-    forged-frame, shutdown, and wire-capture stage passed. Retained log:
-    `/tmp/rustdesk-smoke-rs11c27h-pass.log`, SHA-256
-    `cbc010da4894e98ffd0b12b8e425dccbc6f26c711bf94bf4b7582757df5e4938`.
-
-    The verifier's sealed workspace/source-ordering self-contract now recognizes the split root `/proc/self/exe` and
-    non-root descriptor role, the installed-mode build output, the switchable active seat, the exact dropped
-    capability and typed-IPC assertions, and the lifecycle's explicit `CAP_SYS_PTRACE` procfs authority. Its mutation
-    suite independently makes each of those critical contracts invalid and requires the validator to reject it.
-
-    This closes the actual-binary manually supervised non-root active-seat credential-drop/exec case and fixes the
-    launch defect it exposed. This slice is not installed-package/systemd lifecycle evidence and does not cover
-    installed supervisor crash while owning a non-root child, hostile malformed records, forced PID reuse,
-    pre-pidfd fallback, cross-mount/container namespace identity, Debian non-systemd init integration, or concurrent
-    separate-Docker survival. Later slices below supply those cases other than actual forced numeric-PID reuse and
-    the still-open packaging/release variants; R-S11c-27n supplies the cross-container case. The parent item and
-    upcoming release remain **OPEN**.
-
-  - **R-S11c-27i — actual-binary hostile service-child record rejection behavior — SOURCE/RUNTIME IMPLEMENTED AND
-    BEHAVIOR-TESTED 2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory network-isolated manual lifecycle stage
-    now drives the real root-owned `rustdesk --service` binary over seven durable-record cases before granting it any
-    child-launch or IPC-listener authority. A capability-free UID-4000 BusyBox sentinel deliberately has the exact
-    three-argument service-owned role and one controlled generation while differing from the RustDesk executable;
-    the independently launched real RustDesk portable server remains live under the same UID with its exact portable
-    two-argument role. The decoy is then frozen with a pidfd-bound `SIGSTOP` so it remains inspectable without a
-    BusyBox `yes` CPU loop. Both processes are retained by PID/start-time identity and revalidated after every case.
-
-    The matrix injects: a truncated canonical-schema record; a canonical record with untrusted mode `0644`; the
-    exact-role decoy with a changed recorded start time (a logical reused-PID ambiguity only); that decoy with a
-    changed executable device/inode; a changed UID; a changed generation; and the actual RustDesk portable process
-    with its exact executable identity but no service-owned role marker. Each fixture is created relative to the
-    root-owned mode-0700 runtime-directory descriptor with `O_EXCL|O_NOFOLLOW`, persisted before invocation, and
-    captured by device/inode/owner/mode/link-count/size/time metadata plus SHA-256. The real supervisor must exit
-    exactly status 1 with the common core fail-closed diagnostic and the case-specific parser or identity reason,
-    leave the record metadata and bytes unchanged, publish no temporary record, and leave both exact sentinels live.
-    Only then does the harness reopen the fixed record without following links, recheck its regular/root/single-link
-    identity and full hash, unlink that exact fixture relative to the retained directory descriptor, and fsync the
-    directory before proceeding.
-
-    The focused actual-binary lifecycle passed after the stopped-decoy hardening. The retained final run emitted an individual success marker and
-    SHA-256 for all seven distinct fixture records, then the exact aggregate matrix marker. It subsequently kept all
-    pre-existing lifecycle checks green: root graceful stop/restart, an 8.560-second stopped-child escalation,
-    supervisor-crash recovery from generation `b54c8546-f838-4a11-8c84-3f691cf2420e` to
-    `d4c9d92d-6b4b-41de-b748-3f23d7412494` with exact-child exit observed after 2 ms, real UID/GID-4001 active-seat
-    descriptor exec, and final UID-4000 portable noninterference. Retained 2,204-byte mode-0664 log:
-    `/tmp/rustdesk-lifecycle-rs11c27i-pass2.log`, SHA-256
-    `725a1ec0df92f82de4952fced22414599ba5f804a582eb724f65386744282d4a`. This slice needed no production Rust,
-    dependency, syscall, or unsafe-inventory change because the audited parser/recovery path already enforced the
-    required fail-closed decision; it adds real-image behavior evidence and sealed regression contracts for it.
-
-    The complete default runtime smoke also passed with the new lifecycle matrix integrated before all downstream
-    runtime stages. It observed the same hostile-record aggregate marker, active-seat generation
-    `47bb87ec-e78d-4f42-a28b-5bef38fc07b3`, UID-4000 portable noninterference, and an unchanged three-entry host
-    historical-selector baseline, then completed the default build, socket, IPC/password, keying, session,
-    port-forward, file-transfer, forged-frame, limiter, shutdown, and wire-capture stages. Retained 262,167-byte
-    mode-0664 log: `/tmp/rustdesk-smoke-rs11c27i.log`, SHA-256
-    `9874d87b00cfd1512f4f41a886b6d94802e58e483e57b2141604b31c6cf80019`.
-
-    This slice deliberately does **not** claim actual forced kernel numeric-PID reuse: changing the recorded
-    `/proc/<pid>/stat` start-time field demonstrates fail-closed treatment of ambiguous evidence, not that Linux
-    recycled a PID during the test. Actual forced PID reuse remains open. Later R-S11c-27k supplies the separately
-    tracked forced pre-pidfd compatibility branch, R-S11c-27l/m supply installed SysV/systemd behavior, and
-    R-S11c-27n supplies cross-mount/container-namespace identity. OpenRC/runit/manual packaging integration,
-    exact-commit cold artifact evidence, and external expert R-V3 review also remain open. The parent item and
-    upcoming release remain **OPEN**.
-
-  - **R-S11c-27j — concurrent separate-Docker service noninterference behavior — SOURCE/RUNTIME IMPLEMENTED AND
-    BEHAVIOR-TESTED 2026-07-17; PARENT ITEM REMAINS OPEN.** The default runtime smoke now starts a second Docker
-    container before the manual lifecycle stage runs. That sibling container is not started with a host or joined PID
-    namespace, has `--network none`, receives the repository as read-only, receives only a private `/sibling` control
-    bind as writable, and has no Docker socket or host service authority. Inside that sibling namespace, the mounted
-    `sibling-docker-server` stage runs the exact built RustDesk executable through the existing neutral
-    `smoke-server-launcher`, proves the process identity with `smoke-process-guard.py`, waits for the no-password
-    parked state, publishes `SIBLING_DOCKER_READY`, and then stays alive under repeated PID/start-time checks until
-    the parent smoke writes an exact `stop` control file.
-
-    The main smoke then runs the existing networkless `rustdesk --service` manual lifecycle matrix in a separate
-    container: hostile durable-record rejection, graceful stop/restart, bounded stopped-child escalation, supervisor
-    crash/recovery, non-root active-seat descriptor exec, and UID-4000 portable noninterference. Only after that
-    lifecycle stage finishes does the host smoke require the sibling container still to be running, drain it through
-    its private control file, require `SIBLING_DOCKER_SURVIVED=pass`, remove that exact container, and emit
-    `SIBLING_DOCKER_NONINTERFERENCE=pass`. The capture is written to a private host-guard log file rather than a
-    shell command substitution so the cleanup state mutates in the parent shell; the regression validator rejects the
-    earlier subshell shape, missing network isolation, any sibling `--pid` sharing, missing survivor markers, or loss
-    of the R-S11c-27j stage status.
-
-    The clean default runtime smoke passed with the new sibling integrated before all downstream stages. It observed
-    the seven-case hostile-record aggregate marker, stopped-child forced reap at 8.580 s, crash recovery from
-    `25dbf5c3-373a-46c7-a808-02697d527334` to `bad6ab5b-c604-434f-a3a4-3f5fa884dcdd` with exact-child exit after
-    2 ms, UID/GID-4001 active-seat descriptor exec generation `b2cc8018-8ab0-4ac2-b5de-cdb8a75f1cb2`, UID-4000
-    portable noninterference, sibling identity `pid=7 start=34393775`, sibling survivor container
-    `39be79d274a7`, and the unchanged three-entry host historical-selector baseline. It then completed all default
-    downstream build, socket, IPC/password, keying, session, port-forward, file-transfer, forged-frame, limiter,
-    shutdown, and wire-capture stages. Retained 286,092-byte mode-0664 log:
-    `/tmp/rustdesk-smoke-rs11c27j-pass2.log`, SHA-256
-    `6b117c61bdbc8b937ced2b4836a0388f8aadb328aa542897dec64fcf6bd38855`.
-
-    This slice deliberately proves only concurrent separate-Docker noninterference for the manual lifecycle harness.
-    It is not installed package/service-manager stop/restart evidence, installed supervisor crash/restart evidence
-    over a non-root child, actual forced numeric-PID reuse, or cross-mount/container-namespace identity proof. The
-    later R-S11c-27k slice supplies the forced pre-pidfd compatibility branch, R-S11c-27l/m supply installed
-    SysV/systemd behavior, and R-S11c-27n supplies the cross-container identity case. Actual forced numeric-PID
-    reuse, OpenRC/runit/manual packaging integration, exact-commit cold artifact evidence, and external expert R-V3
-    review remain open. The parent item and upcoming release remain **OPEN**.
-
-    This remains deliberately **partial closure only**. R-S11c-27d–k collectively supply focused hostile-record,
-    real manually supervised lifecycle, non-root privilege-drop, concurrent separate-Docker, and forced pre-pidfd
-    branch behavior. R-S11c-27l/m add installed SysV and systemd transactions, and R-S11c-27n adds the
-    cross-mount/container-namespace identical-path case. Actual forced numeric-PID reuse is still distinct from the
-    logical start-time mismatch and forced compatibility-branch tests. Packaging/service integration for OpenRC,
-    runit, and the packaged manually supervised path, exact-commit cold artifact evidence, and external expert R-V3
-    review also remain mandatory before this parent item or the upcoming release can close.
-
-  - **R-S11c-27k — pre-pidfd fallback recovery behavior — HISTORICAL RUNTIME EVIDENCE FROM 2026-07-17;
-    FALLBACK SUPERSEDED AND EXCISED BY R-S11c-27u/R-S11e-93 ON 2026-07-23; PARENT ITEM REMAINS OPEN.** This section
-    records the behavior of the then-current source and is not a statement of the current recovery contract. Linux
-    service recovery selected a pidfd when available and fell
-    back to numeric-PID `kill(2)` only when `pidfd_open(2)` returned an unsupported-kernel error. The fallback first
-    verifies the complete durable identity (PID/start time/boot/executable device+inode/UID/generation/service-owned
-    argv and environment role), revalidates that identity immediately before each `SIGTERM` or `SIGKILL`, and uses
-    identity-revalidating bounded waits between signals. It explicitly reports that its final identity-check-to-kill
-    race cannot be eliminated and is not assurance-equivalent to the pidfd path. It never uses a name/path sweep or
-    numeric PID alone.
-
-    To exercise that otherwise unreachable branch on the current pidfd-capable test kernel, debug builds now accept
-    `RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1` only while opening a recorded service-child pidfd. The constant and
-    environment read are compiled only under `debug_assertions`; the release branch of the helper is an unconditional
-    `false`. When forced, the ordinary `rustdesk --service` recovery path returns the existing `Unsupported` state,
-    logs a smoke diagnostic, and enters the same production compatibility branch used after an unsupported-kernel
-    result. There is no alternate signal implementation or weakened identity predicate in the test hook.
-
-    The networkless lifecycle fixture starts the actual built RustDesk binary independently with neutral argv
-    `rd-smoke-server --server --service-owned-server`, a canonical generation, and a launch-parent binding to the
-    harness. Before writing a canonical root-owned mode-0600 record, it proves the live PID/start time, exact argv,
-    executable device+inode, all four UID fields, generation, and launch parent. The recovering real service receives
-    the debug-only force flag, must terminate that exact prior child gracefully, must replace the record with a
-    different PID/start-time and generation, and must emit both the forced-unsupported and residual-race diagnostics.
-    The fixture fails if the old child remains live or lacks the real server's graceful-shutdown marker. Cleanup is
-    also bound to the retained exact PID/start-time pair.
-
-    The focused build completed successfully; retained 274,713-byte mode-0664 log
-    `/tmp/rustdesk-build-rs11c27k.log`, SHA-256
-    `fcd9ee1f1f830d881f7bfce828a1658df62e4d1dbca5a37b888cf5c63ae994e2`. The focused networkless lifecycle run
-    passed with forced fallback generation `b5460ea3-4ffc-4ebd-9453-9b1217adad97` recovered to
-    `42178088-d5c1-4d4c-b5d3-1c121b532d92`. The same run retained all seven hostile-record decisions, root graceful
-    stop/restart, an 8.154-second stopped-child escalation, supervisor-crash recovery with exact-child exit after
-    3 ms, UID/GID-4001 active-seat descriptor exec, and UID-4000 portable noninterference. Retained 2,358-byte
-    mode-0664 log `/tmp/rustdesk-lifecycle-rs11c27k.log`, SHA-256
-    `b325d4fd69507bcc3211b8095f21a475612654d0bbaba3fefd68465eb9f29ff1`.
-
-    The complete default runtime smoke then passed with the new fallback case integrated into the mandatory
-    lifecycle stage and the separate sibling-Docker survivor active. It observed fallback generation
-    `a99cdcc5-9528-4ed1-bcf1-1aa6528ba017` recovered to `c06cf01c-acff-4403-a6ac-22ffb552878d`, all seven hostile
-    records, an 8.139-second stopped-child escalation, supervisor-crash recovery with exact-child exit after 2 ms,
-    UID/GID-4001 active-seat generation `f054d164-c7e9-4b48-ac5d-403321e6f16d`, UID-4000 portable
-    noninterference, and sibling survivor container `86ac457cebe1`. The host historical-selector baseline stayed at
-    three entries, and all downstream socket, IPC/password, keying, session, tunnel, file-transfer, forged-frame,
-    limiter, shutdown, and wire-capture stages reached `SMOKE OK`. Retained 286,275-byte mode-0664 log
-    `/tmp/rustdesk-smoke-rs11c27k.log`, SHA-256
-    `5a0069a48f764c5693fd5d04375a68a97d3fe5704355e4e846945c312926d80b`.
-
-    The sealed workspace validator binds the exact debug-only constant, debug and release helper arms, helper call,
-    forced `Unsupported` return, signal revalidation, both bounded revalidating waits, residual-race diagnostic,
-    exact-child fixture, force use, result marker, and top-level stage status. Its mutation suite rejects removal of
-    those contracts, and the dirty-tree validator passed. This is a current-kernel forced compatibility-branch test;
-    it does **not** claim execution on an actually old kernel and does not remove the documented residual race.
-
-    This historical slice closed only the then-retained pre-pidfd fallback runtime checklist item. R-S11c-27u later
-    deleted that compatibility branch rather than accepting its irreducible check-to-signal race. Later
-    R-S11c-27l/m supply installed
-    SysV/systemd stop/restart and supervisor-crash behavior, and R-S11c-27n supplies cross-mount/container-namespace
-    identity. Actual forced numeric-PID reuse, OpenRC/runit/manual packaging integration, exact-commit cold artifact
-    evidence, and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27u — pidfd-unavailable live recovery refusal — SOURCE IMPLEMENTED AND CONFINED
-    SOURCE/MUTATION/COMPILER VERIFICATION PASSED 2026-07-23; UPDATED EXACT-BINARY LIFECYCLE FIXTURE NOT EXECUTED;
-    PARENT ITEM REMAINS OPEN.** The previous unsupported-pidfd branch completely revalidated a durable child identity before
-    every numeric-PID `kill(2)`, but the final check could not bind the later signal to the same process across PID
-    recycling. Current recovery therefore has no raw numeric-PID `SIGTERM`, `SIGKILL`, or revalidating-wait fallback.
-    A live recorded child is signaled only after `pidfd_open(2)` and only through `pidfd_send_signal(2)`, with the
-    existing complete identity checks immediately before each signal.
-
-    `PidFdOpen::Unsupported` now enters a classification-only handler. `Exited` or `Absent` permits removal of the
-    exact stale record without signaling. `Match`, `Mismatch`, or `Unavailable` preserves that record and returns an
-    error; the ordinary service entry reports the lifecycle authority failure and exits before its IPC listener or a
-    replacement child can be created. This is not a blanket Linux-5.3 minimum: no-record startup works without a
-    pidfd, and routine restart/shutdown still uses the supervisor's directly owned Rust `Child`. Only crash recovery
-    of a still-live durable-record target requires the stable process descriptor.
-
-    The renamed debug-only `RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1` hook can force only the existing
-    `Unsupported` classification and is compiled to `false` in release builds. The networkless actual-binary fixture
-    constructs one exact live service-owned child and canonical root-only record, runs the real `--service` entry,
-    requires exact status 1 plus both forced-unavailable and fail-closed diagnostics, and proves unchanged record
-    identity/bytes, absence of the temporary record, and survival of both the exact child and unrelated portable
-    server. Only after the refusal is proven does the fixture remove the exact record and terminate the retained
-    child through its pidfd-bound test authority. R-S11ca, Appendix C #220, the shared source gate, and the independent
-    semantic/mutation verifier bind this contract. Confined evidence is recorded in R-S11e-93 below. The updated
-    fixture itself was not executed because it models the installed UID-0 service lifecycle, while this slice's
-    execution policy required numeric UID/GID 1000 with all capabilities dropped. This source change therefore does
-    not claim current exact-binary refusal behavior, an installed Debian artifact run, old-kernel execution, overall
-    R-B2/R-B10 completion, or external R-V3 review.
-
-  - **R-S11c-27l — installed Debian SysV lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
-    PARENT ITEM REMAINS OPEN.** The sole Linux `.deb` now carries a package-owned mode-0755
-    `/etc/init.d/rustdesk` conffile in addition to the primary hardened systemd unit. Both backends start the same
-    foreground `/usr/bin/rustdesk --service` supervisor. The SysV path uses `start-stop-daemon --background
-    --make-pidfile` to own `/run/rustdesk.pid`, waits for a stable live process before reporting start success, and
-    binds every status/start/stop decision to that PID file plus the exact installed executable, `rustdesk` process
-    name, and root UID. Stop has exactly one authority call with the bounded `TERM/30/KILL/5` schedule and
-    `--remove-pidfile`; it has no executable-only second pass, `pidof`, process-table/name/argv scan, or direct signal
-    fallback. A missing PID file makes repeated stop idempotent, while a symlink or mismatched live PID still reaches
-    the fail-closed `start-stop-daemon` identity check. The misleading systemd `PIDFile=/run/rustdesk.pid` declaration
-    is removed because a `Type=simple` unit owns its main process directly and never created that SysV-owned file.
-
-    Debian maintainer scripts now test the standard running-systemd marker `/run/systemd/system` before any lifecycle
-    action. The systemd branch retains `deb-systemd-helper`, `deb-systemd-invoke`, and the fixed manager reload. The
-    non-systemd branch registers the packaged LSB init script with `update-rc.d` and calls it only through
-    `invoke-rc.d`, including pre-upgrade and prerm stop; no maintainer script executes `/etc/init.d` directly. This
-    follows Debian Policy's init-script maintainer-script contract and `invoke-rc.d` policy layer, while the exact
-    PID+executable+name+UID stop predicate follows `start-stop-daemon`'s warning that a stale PID file alone is not
-    safe. `requirements.html` R-R2a now states the non-contradictory model: `.deb` is the sole Linux package/update
-    authority, systemd is the primary confined deployment, and package-owned init adapters are persistence backends
-    for that same artifact and supervisor rather than alternate package, update, or sandbox models.
-
-    At the recorded R-S11c-27l run, `build.py` staged the init conffile through the then-current exact, link-free,
-    root-normalized package finalizer. That run predates R-S11bz's sole package-owned relative
-    `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk` data symlink; the current finalizer admits exactly that link, and
-    the old run is not current artifact proof. The artifact verifier binds the init path, mode, conffile exclusion from
-    `md5sums`, build-constructor copy, Git executable mode, and negative mutation suite; the maintainer-script verifier
-    separately seals backend selection, legal helper syntax, lifecycle ordering, the singular exact SysV stop, and the
-    absence of rediscovery fallbacks. The
-    release runtime smoke has a mounted `debian-sysv-installed-lifecycle` stage and preserves an explicit
-    R-S11c-27l status.
-
-    The focused runtime test ran the real root-owned mode-0755 debug RustDesk executable in a networkless Debian 12
-    container with a read-only source mount, a private PID namespace, no Docker socket, and no published port. It
-    built two minimal dpkg transactions containing the exact production maintainer scripts, init script, unit, and
-    executable; installed version 1.0 through `dpkg`; proved the package-started root supervisor; started an actual
-    neutral-argv UID-4000 portable RustDesk server; restarted the installed service; upgraded to 2.0; stopped it;
-    substituted a root-owned PID file pointing at an unrelated root `sleep` executable; proved the mismatched process
-    survived the stop; started over that stale record; removed and purged the package; and revalidated the portable
-    RustDesk and wrong-executable sentinels after every lifecycle event. The source mount metadata and hashes remained
-    unchanged. Retained 195-byte mode-0664 log `/tmp/rustdesk-sysv-rs11c27l.log`, SHA-256
-    `678192e21c3598236bad7dba681d0b643df109fc6f4702de805921e97b415982`. The complete default runtime smoke then
-    passed with this installed lifecycle stage in its normal orchestration path. Its host historical-selector monitor
-    retained the three-entry baseline with zero new matches; the build ran inside its build container; runtime stages
-    used networkless containers with read-only source mounts and no published port; the new stage reported the exact
-    Debian-12/UID-4000/wrong-executable-survival marker; and every downstream socket, password, PAKE, authorization,
-    tunnel, file-transfer, limiter, forged-frame, and wire-capture check ended at `SMOKE OK`. Retained 263,015-byte
-    mode-0664 log `/tmp/rustdesk-smoke-rs11c27l.log`, SHA-256
-    `b8f0222db93f3e7648e5a75f05bd4fbab127fd454f97be7e97c19bf07c93d04d`.
-
-    This closes the package-owned SysV adapter and the mandatory Debian-without-systemd lifecycle run. It is not a
-    final-release `.deb` artifact test, not installed systemd stop/restart evidence, not installed supervisor
-    crash/restart evidence over a non-root service child, and not actual forced numeric-PID reuse into another
-    root-owned instance of the same executable. R-S11c-27n below supplies the cross-mount/container-namespace
-    identity case. OpenRC, runit, and manually supervised packaging integration; exact-commit cold artifact evidence;
-    and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27m — installed Debian systemd lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
-    PARENT ITEM REMAINS OPEN.** The release gate now installs the exact production service unit, Debian maintainer
-    scripts, and actual debug RustDesk executable into a disposable Debian 12 guest whose real PID 1 is systemd
-    252. This closes the separately tracked installed-systemd normal stop/restart and installed supervisor
-    crash/restart evidence, including the real active-seat non-root service child. It does not change production
-    service code or the deployed host service: the evidence showed that the R-S11c-27a–l ownership behavior already
-    composes correctly with the packaged systemd unit.
-
-    The host orchestrator runs only as the unprivileged build user and requires user-readable/writable `/dev/kvm`.
-    It verifies a dated Debian genericcloud qcow2 against the publisher-derived SHA-512 pin, rejects links, unexpected
-    ownership/mode/link count, a backing file, a wrong format, or a structurally invalid image, and creates a
-    throwaway qcow2 overlay. QEMU receives `-nic none`: there is no virtual NIC, tap, bridge, host forward, or
-    published port. The source executable, exact service/package fixtures, guest driver, fixed `loginctl` fixture,
-    and runtime libraries are placed on an immutable ISO9660 payload attached read-only; source hashes are compared
-    again after guest shutdown. The guest has no shared-directory write protocol back to the repository. The pinned
-    base is cached only by the explicit `online-fetch.sh --debian-systemd-smoke-image` network acquisition mode under
-    current-user-owned mode-0700 `.harness-state`; it is test infrastructure, not a release build input or artifact.
-
-    Runtime libraries are staged from the already-required `rd-devcheck` image by a separate Docker invocation as
-    the host UID/GID with no network, a read-only image root, a read-only repository bind, all capabilities dropped,
-    no-new-privileges, and a 64-process limit. Docker supplies no PID/cgroup sharing, Docker socket, published port,
-    or host service-manager authority. The guest alone runs as root because it must exercise real `dpkg` maintainer
-    scripts and its own systemd manager. All package, `/usr`, `/run`, cgroup, user, loader-cache, and service changes
-    land only in the disposable overlay, which is removed at the end. No host root, `sudo`, host PID/cgroup namespace,
-    host package manager, host systemd command, or host RustDesk lifecycle operation is used.
-
-    Inside the guest, the fixture first proves Debian bookworm, PID-1 systemd, the running-systemd marker, read-only
-    source mounts, absence of a pre-existing RustDesk install and `policy-rc.d` suppression, and exact source
-    metadata/hashes. A fixed fail-closed `loginctl` admits only one active X11 seat, UID/GID 4001 with supplementary
-    group 4101; unexpected argv exits 64. `dpkg -i` executes the unmodified production maintainer scripts and starts
-    `rustdesk.service`. The installed fragment must byte-match `res/rustdesk.service`, have no drop-in, and pass
-    `systemd-analyze verify`. Its root `MainPID` must execute the installed RustDesk inode with exact
-    `/usr/bin/rustdesk --service` argv in `system.slice/rustdesk.service`; its runtime directory must be root-owned
-    mode 0700.
-
-    Each generation's strict root-owned mode-0600 durable record is parsed and matched to live procfs evidence. The
-    service child must be the direct child of the unit `MainPID`, execute the installed inode through
-    `/proc/self/fd/<n>` with exact `--server --service-owned-server` role, have all four UIDs/GIDs set to 4001, retain
-    exactly groups 4001/4101, carry zero inheritable/permitted/effective/ambient capabilities, set no-new-privileges,
-    expose only the bounded production environment, and share the exact RustDesk service cgroup. A second copy of
-    the actual binary runs concurrently as UID 4000 under a distinct transient
-    `rustdesk-portable-smoke.service` cgroup with neutral `--server` argv; its PID/start-time, four UIDs, argv, and
-    cgroup are revalidated after every installed-service event.
-
-    The behavior transaction proves four distinct installed generations. A normal `systemctl restart` reaps the
-    prior supervisor and child and creates a fresh generation without disturbing the portable unit. A deliberate
-    `systemctl stop` reaps both, suppresses automatic restart, and removes the runtime directory; `systemctl start`
-    creates another fresh generation. Supervisor crash is injected through systemd's exact unit authority with
-    `systemctl kill --kill-whom=main --signal=KILL`, not a process-name scan or unvalidated numeric-PID signal.
-    The prior direct child must disappear, `Restart=on-failure` must produce a new `MainPID` and generation,
-    `NRestarts` must increment, and the fresh supervisor must report exact exited/stale durable-record recovery. The
-    UID-4000 portable unit must remain live throughout. Finally, `dpkg -r` must stop/reap the installed supervisor
-    and non-root child and remove the executable link/unit/runtime directory; purge must remove the SysV conffile;
-    only the fixture's explicit final portable-unit stop may terminate the unrelated process.
-
-    `scripts/smoke-debian-systemd-lifecycle.sh`, its guest driver, and its strict `loginctl` fixture implement this
-    test. `scripts/verify.sh` binds their executable modes, immutable image pins/fetch authority, network/privilege
-    isolation, exact package/unit/child/cgroup identities, lifecycle events, portable survival, and result markers.
-    `scripts/verify-verifier-workspace.py` treats all three scripts and the fetch path as sealed inputs and rejects
-    mutations that restore a VM network, weaken Docker staging, omit the exact unit/cgroup/portable proofs, replace
-    unit-scoped crash injection with a raw PID signal, remove unexpected-argv rejection, alter the image pin, or
-    unwire the release gate. `scripts/verify-release.sh` runs the installed-systemd test immediately after the normal
-    runtime smoke, whose build stage supplies the exact debug executable.
-
-    The final focused networkless KVM run passed. It reported normal restart generation
-    `e646bd7a-0c86-4f98-b993-27d480217b7e` → `a7239aee-d69b-4c92-a773-562f2f09f4a5`, deliberate stop/start generation
-    `f8db9dc7-bc5e-4aae-97e0-d240c429f684`, and supervisor-crash recovery to
-    `d512d040-d567-460f-a11d-f5550c929110` with `NRestarts=1`. The exact Debian-12/systemd-252/seat-UID-4001/
-    portable-UID-4000 marker, cloud-init completion marker, and networkless/read-only/pinned-base isolation marker
-    all passed; the dependency bundle contained 100 files. Retained log `/tmp/rustdesk-systemd-rs11c27m.log` is
-    840 bytes, mode 0664, SHA-256 `72e5da081d821a9fa367b8d28205174a9e3755731246fc44dd6239b60968a7a2`.
-
-    This closes installed systemd stop/restart and installed supervisor crash/restart with the real non-root child.
-    This slice is not a final-release `.deb` artifact test, actual forced numeric-PID reuse,
-    cross-mount/container-namespace identity, or OpenRC/runit/manually supervised packaging integration; R-S11c-27n
-    below supplies the cross-container identity case. Exact-commit cold artifact evidence and external expert R-V3
-    review also remain open. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27n — cross-container executable identity — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
-    2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory runtime smoke now proves the previously separate
-    cross-mount/container-namespace case with the actual RustDesk image, rather than inferring it from same-mount
-    executable replacement or a neutral sibling role. Two concurrent, networkless Docker containers independently
-    copy the same read-only built source object to the identical `/usr/bin/rustdesk` pathname in their private
-    writable layers. Each copy must byte-match the same SHA-256 source while having a device/inode identity distinct
-    from that source and from the other container's installed copy. The orchestrator also requires different mount-
-    namespace and PID-namespace inode identities. Neither container joins a host or peer PID namespace, receives a
-    Docker socket, publishes a port, or receives host service authority.
-
-    The sibling executes its private `/usr/bin/rustdesk` through the descriptor-bound smoke launcher with neutral
-    `argv[0]=rd-smoke-server` and the exact `--server --service-owned-server` role. It supplies a fresh canonical
-    generation and its real launch parent, enters no-new-privileges with every inheritable/permitted/effective/
-    bounding/ambient capability set empty, and parks without a listener. The process guard binds readiness to its
-    retained PID/start time, dereferenced `/proc/<pid>/exe` device/inode, exact three-element argv, parent, unique
-    generation entry, root UID tuple, and capability state. The neutral argv keeps the fixture invisible to the
-    operational older host service's historical `rustdesk +--server` text selector; it does not weaken the RustDesk
-    service-owned role, which is independently checked in the exact argument vector and environment.
-
-    Concurrently, the main lifecycle namespace installs the same bytes at its own `/usr/bin/rustdesk`. Every actual
-    `--service` generation must publish the device/inode of that installed object, and the harness now compares the
-    live service child's `/proc/<pid>/exe` object both to the strict durable record and to the expected installed
-    object. The complete hostile-record, graceful stop/restart, stopped-child TERM-to-KILL escalation, supervisor
-    crash/recovery, forced pre-pidfd fallback, active-seat non-root descriptor-exec, and portable-server
-    noninterference matrix then runs while the sibling remains alive under repeated PID/start-time checks. Only
-    after all main-namespace authority has drained may the outer harness stop the sibling through its private
-    control file and exact container ID.
-
-    This evidence follows the Linux contracts that mount namespaces present distinct mount hierarchies,
-    `/proc/<pid>/exe` is a dereferenceable reference to the executed object (including after unlink), PID namespaces
-    isolate PID-number visibility and signal targets, and `pidfd_open(2)`/`pidfd_send_signal(2)` bind recovery signals
-    to one opened process. Production code is unchanged: normal lifecycle still owns the direct `Child`; crash
-    recovery still requires boot ID, start time, UID, executable device/inode, exact role, and generation before its
-    pidfd-bound signal. Identical path text, bytes, role text, or a plausible generation never becomes authority.
-
-    `scripts/smoke-server-launcher.c` now accepts only the optional literal service-owned role and keeps the final
-    exec descriptor-bound. `scripts/smoke-process-guard.py` has a separate exact service-owned proof. The release
-    smoke cross-compares source hashes and object/namespace identities before accepting
-    `CROSS_CONTAINER_EXECUTABLE_IDENTITY=pass`. `scripts/verify.sh` binds the production identity predicate, both
-    fixtures, the exact-role launcher/guard, cross-container comparisons, isolation, result markers, and this ledger
-    row. `scripts/verify-verifier-workspace.py` seals those inputs and its mutation suite rejects loss of the exact
-    role, installed path, executable-object, mount-namespace or PID-namespace separation, stage status, and ledger
-    gate.
-
-    The complete runtime smoke passed with common source identity `66306:103678568` and SHA-256
-    `67927cd9ae12c2fa2f5352ea2a366436eaab64751727c7c4ac6d9c8b2f77d0c0`; main and sibling installed objects were
-    respectively `180:92288192` and `177:92288157`, mount namespaces `4026533569` and `4026533119`, and PID
-    namespaces `4026533574` and `4026533529`. Sibling generation
-    `f1f28d9f-2d00-4186-88fe-9d91afc85044` survived the full main lifecycle and was then explicitly drained. The
-    whole-host historical-selector monitor retained its three-entry baseline with zero new match, and every
-    downstream socket/password/PAKE/session/tunnel/file-transfer/forged-frame/limiter/wire-capture stage reached
-    `SMOKE OK`.
-
-    This closes the cross-mount/container-namespace executable-identity and identical-in-container-path checklist
-    items. R-S11c-27o below supplies actual forced kernel numeric-PID reuse. Final-release `.deb` artifact proof,
-    OpenRC/runit/manual packaging integration, exact-commit cold artifact evidence, and external expert R-V3 review
-    remain open. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27o — actual kernel numeric-PID reuse — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
-    2026-07-18; PARENT ITEM REMAINS OPEN.** The mandatory runtime smoke now proves the exact stale-PID race that
-    R-S11c-27 still needed: a dead service-owned RustDesk child leaves a strict durable record for PID `50000`, and
-    a different live RustDesk service-owned child is then forced by the kernel allocator to reuse that same numeric
-    PID inside a private Docker PID namespace. The second child intentionally uses the same executable object and
-    service-owned role but has a different `/proc/<pid>/stat` start time and different canonical service generation.
-    Production recovery must reject the stale record before any signal, preserve the record bytes, leave the
-    unrelated reused-PID child alive, and exit fail-closed with the concrete start-time mismatch diagnostic.
-
-    `scripts/smoke-service-pid-reuse.sh` is a dedicated bounded fixture for this case. It runs only from the
-    mounted stage dispatcher and never installs into or modifies the host. The fixture remounts `/proc/sys` writable
-    only inside the container's private PID namespace, writes `target_pid - 1` to
-    `/proc/sys/kernel/ns_last_pid`, reads the forced predecessor back, and immediately launches the next RustDesk
-    service-owned child. It remounts `/proc/sys` read-only again after each forced allocation. The two RustDesk
-    children are launched through the audited descriptor-bound smoke launcher as exact
-    `rd-smoke-server --server --service-owned-server` roles with no-new-privileges and empty inheritable, ambient,
-    and bounding capability sets. The durable record is written with exclusive no-follow open, full-write looping,
-    root-owned mode-0600 file authority, boot ID, PID, start time, executable device/inode, UID, generation, and
-    role. Cleanup removes only the exact record identity and SHA-256 it created.
-
-    `scripts/smoke-server.sh` keeps this proof separate from the ordinary lifecycle container because forcing
-    kernel PID allocation requires container-local checkpoint/restore-style authority. The new `PID_REUSE_RUN`
-    container uses `--network none`, `--read-only`, `--pids-limit 128`, `--cap-drop ALL` plus only
-    `SYS_ADMIN`, `CHECKPOINT_RESTORE`, and `SETPCAP`, no-new-privileges, an unconfined AppArmor profile for the
-    container-local procfs remount, read-only source bind, and private tmpfs `/tmp` and `/run`. It does not use
-    `--privileged`, host networking, host PID namespace sharing, published ports, the Docker socket, host systemd,
-    package manager authority, or any host RustDesk service authority. The tested RustDesk children and the
-    recovery supervisor then drop their capability sets before executing RustDesk; the elevated authority exists
-    only around the fixture's private PID allocator setup.
-
-    The runtime proof passed with original generation `c43b6eab-16fb-4b0c-aabd-de0eebd312ff` and reused generation
-    `ad49ed73-0794-429e-a8d8-c6a9ed863b68`. Both live children received PID `50000` and used executable identity
-    `66306:103678568`; the stale record start time was `38877641`, while the reused live child start time was
-    `38877752`. Recovery exited `1`, logged `Linux service lifecycle authority failed closed:` and the exact
-    `start time changed from 38877641 to 38877752` mismatch, preserved record SHA-256
-    `ea02c7853f5836bbe3f9bb714098b947a8ff7552cc5655390517743744f04a59`, and the process guard revalidated the
-    reused child as the exact surviving service-owned role before fixture cleanup. Retained log
-    `/tmp/rustdesk-rs11c27o-pid-reuse.log` is 858 bytes, mode 0664, SHA-256
-    `5417929969680708ab5656e539e0385a9eb640d9ccb2a2fa30d3ecb7d1285050`.
-
-    `scripts/verify.sh` now seals the unchanged production start-time predicate and pidfd recovery call, the new
-    mounted stage, the isolated Docker argv, the forced `ns_last_pid` write/readback ordering, proof that the first
-    and second children share the same numeric PID but not start time, same-executable-object proof, fail-closed
-    diagnostic proof, no-signal survivor proof, forbidden broad-authority strings, and this ledger row.
-    `scripts/verify-verifier-workspace.py` loads the PID-reuse fixture as a first-class sealed input and its
-    mutation suite rejects weakening the result marker, removing same-PID proof, weakening the isolated container
-    argv, or dropping the R-S11c-27o stage status.
-
-    This closes the actual forced kernel numeric-PID-reuse checklist item for service-child recovery. It is not a
-    final-release `.deb` artifact proof, OpenRC/runit/manual packaging integration, exact-commit cold artifact
-    evidence, or external expert R-V3 review. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27p — packaged OpenRC/runit/manual supervisor templates — SOURCE/PACKAGE INTEGRATED
-    2026-07-18; NATIVE OPENRC/RUNIT EVIDENCE IS PROVIDED BY R-S11c-27q/r; PARENT ITEMS REMAIN OPEN.** The Debian
-    package source now carries explicit service-manager templates under
-    `res/service-managers/{openrc,runit,manual}` and stages them as exact mode-0755 regular files under
-    `/usr/share/rustdesk/files/{openrc,runit,manual}`. They are downstream/administrator integration inputs,
-    not an excuse for maintainer scripts to infer or rewrite the host's selected service topology. The existing
-    systemd-versus-SysV package lifecycle remains the only automatically selected package path; no OpenRC runlevel,
-    runit service link, or manual supervisor state is created behind the administrator's back.
-
-    The OpenRC template uses its documented foreground-daemon pattern: fixed
-    `command=/usr/bin/rustdesk`, exact `command_args=--service`, `command_background=true`, fixed root-owned
-    `/run/rustdesk.pid`, root identity, fixed working directory/umask, and bounded `TERM/30/KILL/5` retry. It has
-    no custom start/stop function and no `procname` fallback. The runit and manual templates contain only a strict
-    shell setup followed by `exec /usr/bin/rustdesk --service`, so the service manager owns the actual RustDesk
-    supervisor PID rather than a shell wrapper. None names `--server`, the service-owned child role, `/proc`, or a
-    process-discovery/sweep tool. Normal manager stop therefore reaches only the foreground `--service` process;
-    direct child/pidfd ownership, bounded child drain, and crash recovery remain inside the init-independent
-    R-S11c-27a–o supervisor protocol.
-
-    `build.py`'s closed Debian directory/file/executable inventories now require all three templates and its sole
-    package constructor copies their fixed source tree before canonical finalization. The independent artifact
-    verifier mirrors that exact inventory, mode policy, source Git-mode proof, constructor call shape, synthetic
-    package tests, and mutation fixtures. `scripts/build-debian.sh` extracts every completed `.deb`, requires each
-    template to be a non-linked mode-0755 regular file, byte-compares it with source, and runs the shared semantic
-    checker on the extracted payload. `scripts/verify-debian-maintainer-scripts.py` pins the OpenRC authority fields,
-    rejects process rediscovery/custom lifecycle functions, and exact-matches both foreground exec wrappers.
-    `scripts/verify.sh` and `scripts/verify-verifier-workspace.py` gate the source/package/documentation contract.
-    `docs/DEPLOYMENT.md` documents the three package paths, single-manager rule, and exact foreground stop model.
-
-    This slice closes the missing source/package templates and the already-runtime-tested manual-supervisor wrapper
-    integration. R-S11c-27q/r subsequently supply native OpenRC and runit evidence; this row does **not** claim a
-    built final-release `.deb`. Final-release `.deb` artifact proof, exact-commit cold artifact evidence, and
-    external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27q — native OpenRC lifecycle authority — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
-    2026-07-18; NATIVE RUNIT EVIDENCE IS PROVIDED BY R-S11c-27r; PARENT ITEMS REMAIN OPEN.** A dedicated mounted
-    lifecycle stage now runs the real built RustDesk binary under Debian bookworm's exact
-    `openrc=0.45.2-2+deb12u1` package in the existing
-    disposable, network-disabled lifecycle container. The fixture initializes an empty private OpenRC softlevel,
-    installs byte-identical copies of the production OpenRC template and RustDesk executable, and installs only
-    the bounded `loginctl` test fixture needed to select the root smoke seat. It does not start a host runlevel,
-    modify a host service, publish a container port, or share the host PID namespace.
-
-    The native transaction proves that OpenRC's fixed root-owned mode-0644 single-link pidfile names a live
-    root-UID `/usr/bin/rustdesk --service` supervisor executing the exact installed file object. The RustDesk
-    supervisor, rather than OpenRC or the harness, publishes the strict mode-0600 child record and directly owns
-    the exact `/proc/self/exe --server --service-owned-server` child: parent PID, start time, boot UUID, executable
-    device/inode, UID, generation UUID, NNP state, environment authority, typed parked IPC, and zero TCP-listen/UDP
-    surface are checked at runtime. A separate UID-4000, no-new-privileges, capability-free RustDesk server with
-    neutral argv and a distinct executable object survives native start, restart, stop, start-over-stale-pidfile,
-    failed crash restart, explicit recovery, and final stop.
-
-    The test preserves an OpenRC 0.45.2 behavior that must not be papered over: normal `stop` terminates the exact
-    tracked supervisor and its child but leaves `/run/rustdesk.pid`. A subsequent native `start` safely overwrites
-    that root-owned pidfile with a fresh PID/start identity and generation. If the backgrounded supervisor is
-    instead killed without OpenRC observing the exit, OpenRC still reports manager state `started`; direct
-    `restart` fails at its exact stop boundary because no matching `/usr/bin/rustdesk` is alive. The harness proves
-    that this failure changes neither the durable child record nor the unrelated process, then uses OpenRC's
-    explicit `rc-service rustdesk zap` state reset followed by `start`. Fresh RustDesk recovery discards the exited
-    exact child record without signaling it, publishes a different supervisor/child/generation, and again leaves
-    the portable process untouched. Supervisor crash and child parent-death exit are observed through retained
-    pidfds; no process-name, command-line, or numeric-PID sweep is available to the fixture.
-
-    `scripts/verify.sh` seals the exact Debian OpenRC pin, mounted networkless dispatch, lifecycle result, native
-    command sequence, strict supervisor/child/portable identities, explicit stale-state behavior, pidfd-only crash,
-    source-mount postcondition, forbidden broad-authority strings, and this row. The workspace verifier loads the
-    OpenRC fixture as a first-class source and mutation-tests the package pin, native dispatch/status, portable
-    survivor proof, and explicit crash recovery result.
-
-    This closes native OpenRC runtime evidence for the shipped template; R-S11c-27r separately supplies native
-    runit runtime evidence. This row does **not** claim a built final-release `.deb`, exact-commit cold artifact
-    evidence, or external expert R-V3 review. Those items and the upcoming release remain **OPEN**.
-
-  - **R-S11c-27r — native runit lifecycle authority — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
-    2026-07-18; PARENT ITEMS REMAIN OPEN.** A dedicated mounted lifecycle stage now runs the real built RustDesk
-    binary under Debian bookworm's exact `runit=2.1.2-54` package in the existing disposable, network-disabled
-    lifecycle container. The fixture creates one root-owned private service tree, installs byte-identical copies of
-    the production runit `run` wrapper and RustDesk executable, places a `down` marker before starting the manager,
-    and installs only the bounded `loginctl` fixture needed to select the root smoke seat. It does not link a host
-    service, start a host runit instance, modify a host service, publish a container port, or share the host PID
-    namespace.
-
-    The native transaction binds the whole ownership chain rather than inferring it from process names. One exact
-    root-UID `/usr/bin/runsvdir` process directly owns exactly one exact `/usr/bin/runsv` process for the private
-    `rustdesk` directory. Its root-owned non-group/world-writable `supervise/control` and `supervise/ok` FIFOs are the
-    only manager control objects used. That `runsv` owns one root-UID `/usr/bin/rustdesk --service` foreground
-    supervisor executing the exact installed file object. RustDesk, rather than runit or the harness, publishes the
-    strict mode-0600 child record and directly owns the exact
-    `/proc/self/exe --server --service-owned-server` child: parent PID, start time, boot UUID, executable
-    device/inode, UID, generation UUID, NNP state, environment authority, typed parked IPC, and zero TCP-listen/UDP
-    surface are checked at runtime.
-
-    Native `sv -w 30 restart` drains the prior supervisor/child and starts different PID/start and generation
-    identities without replacing the owning `runsv`. Native `sv -w 30 stop` removes the RustDesk durable record,
-    terminates both exact identities, exposes runit's `down` state, and leaves the manager and unrelated process
-    alive; `start` then creates a fresh exact chain. An exact retained-pidfd `SIGKILL` of the RustDesk supervisor
-    proves the service child exits through parent-death binding. The unchanged `runsv` automatically starts a fresh
-    RustDesk supervisor, which rejects the exited strict record without signaling it and publishes a new child and
-    generation. Finally, an exact retained-pidfd `SIGHUP` to `runsvdir` exercises its documented native contract:
-    `runsvdir` exits 111 after signaling its monitored `runsv`; runsv's shutdown drains the exact RustDesk
-    supervisor and child with no durable record left. No process-name, command-line, or numeric-PID sweep is
-    available to the fixture.
-
-    A separate UID-4000 RustDesk portable server executes a distinct file object with exact neutral argv,
-    no-new-privileges, and five zero capability sets. Its PID/start/executable/UID/argv/environment identity is
-    rechecked after every native transition and it survives start, restart, stop, start, supervisor crash,
-    automatic recovery, and final manager shutdown. The first focused transaction emitted
-    `RUNIT_NATIVE_LIFECYCLE=pass os=debian-12 runit=2.1.2-54 portable_uid=4000 normal_restart=pass
-    crash_recovery=automatic manager_shutdown=hup-111 child_exit_ms=3`.
-
-    `scripts/verify.sh` seals the exact Debian runit pin, mounted networkless dispatch, full lifecycle result,
-    precise manager/supervisor/child/portable identities, private FIFO authority, automatic crash recovery, native
-    HUP/111 shutdown, source-mount postcondition, forbidden broad-authority strings, and this row. The workspace
-    verifier loads the runit fixture as a first-class source and mutation-tests the package pin, native
-    dispatch/status, portable role, automatic recovery, and final runtime result.
-
-    This closes native runit runtime evidence for the shipped template. It does **not** claim a built final-release
-    `.deb`, exact-commit cold artifact evidence, or external expert R-V3 review. Those items, the parent item, and the
-    upcoming release remain **OPEN**.
-
-  - **R-S11c-27s — final Debian artifact lifecycle gate — SOURCE/RELEASE-TRANSACTION IMPLEMENTED AND
-    BEHAVIORALLY WIRED 2026-07-18; EXACT COLD ARTIFACT EXECUTION PENDING; PARENT ITEM REMAINS OPEN.** The prior
-    installed-systemd and SysV evidence deliberately constructed minimal packages around the real debug executable
-    and exact production lifecycle files. That proved the supervisor and maintainer-script behavior, but it did not
-    prove that the independently built, byte-reproducible `rustdesk-x86_64.deb` actually carries and executes that
-    behavior. The release transaction now closes the missing *gate*: after both complete release snapshots have
-    produced their four artifacts and A==B has been established, but before `SHA256SUMS` or final publication, it
-    invokes the pinned networkless systemd VM lifecycle against the exact pass-A `.deb`, then repeats the A==B
-    comparison. A lifecycle failure, artifact mutation, source mutation, or missing result marker aborts release.
-
-    Admission is bound to the private release transaction rather than an arbitrary pathname. The selected `.deb`
-    must be a current-user/current-group mode-0400, single-link, non-symlink regular file; its SHA-256 must equal the
-    independently compared pass-B artifact; and the lifecycle driver must run from the clean detached snapshot at
-    the exact 40-hex release commit. The driver rechecks canonical path, metadata, link count, package name,
-    architecture, SHA-256, clean/no-generated Git state, and the independent closed-inventory Debian artifact
-    verifier before extracting into private scratch. It records device/inode/size/owner/mode/link identity and
-    digest before any consumer, rechecks both after the VM, and places the package itself—not a reconstructed
-    package tree—on an immutable ISO9660 payload. Runtime libraries are derived from the exact extracted artifact in
-    the existing current-UID, all-capabilities-dropped, no-new-privileges, networkless Docker staging step.
-
-    Inside the disposable Debian 12 KVM guest, the artifact SHA-256, `rustdesk` package identity, `amd64`
-    architecture, and read-only payload mount are revalidated before installation. The offline cloud image is
-    intentionally minimal, so the fixture supplies the exact artifact-derived runtime library bundle and uses
-    dpkg's narrowly named `--force-depends` admission only to turn absent fixture package dependencies into warnings;
-    dpkg still unpacks and configures the exact archive and executes its real preinst/postinst/prerm/postrm scripts.
-    The test requires configured `ii` state, a clean `dpkg --verify`, the byte-exact production unit, and the complete
-    R-S11c-27m normal restart, stop/start, non-root child authority, unit-scoped supervisor crash/recovery, portable
-    sibling survival, removal, and purge transaction. Success additionally requires the exact artifact SHA-256 and
-    release commit in `DEBIAN_RELEASE_ARTIFACT_LIFECYCLE`; the host accepts no unbound success marker. This does not
-    claim APT dependency-resolution coverage, which is separate from the lifecycle behavior under test.
-
-    The release-snapshot path also fixes a concrete cold-transaction defect: ignored `.harness-state` content is
-    correctly absent from the clean detached source clones, so their pre-build systemd source gate could not find the
-    cached cloud image by a snapshot-relative default. `build-release.sh` now passes the canonical host cache file
-    explicitly; `verify-release.sh` captures and unsets that environment, then supplies the image/scratch pair only
-    to the systemd gate so unrelated source consumers never inherit those paths. The lifecycle driver independently
-    requires the publisher-pinned SHA-512, current-user mode-0444
-    single-link file, standalone qcow2 format, and structural integrity. Every mutable overlay, ISO, serial log, and
-    extracted package path instead lives beneath a current-user mode-0700 directory inside the private release
-    workspace. QEMU still receives `-nic none`; Docker receives no published port, host PID/cgroup namespace, Docker
-    socket bind, or added capability; and root exists only inside the throwaway VM for dpkg and its private systemd.
-
-    `build-release.sh --self-test` now synthesizes both artifact passes, proves the final lifecycle is invoked exactly
-    once with the pass-A path, A/B digest, exact commit, pinned-image handoff, and private scratch, and proves the
-    lifecycle occurs between two A==B comparisons and before manifest/publication. `scripts/verify.sh` and the
-    verifier-workspace semantic/mutation suite seal the host and guest artifact bindings, release ordering, source
-    snapshot handoff, confinement, result marker, and this ledger row. This row records only an implemented and
-    behaviorally wired release gate: no current final `.deb` satisfies the new gate, and the prohibited long cold
-    release build was not run during this slice. Final-release `.deb` runtime proof therefore remains **PENDING**
-    until the next clean exact-commit cold transaction emits the bound marker. Exact-commit four-artifact evidence
-    and external expert R-V3 review also remain open; the parent item and upcoming release remain **OPEN**.
-
-  - **R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership — SOURCE IMPLEMENTED/GATED
-    2026-07-21; FINAL NATIVE/RELEASE/DEVICE ITEMS REMAIN OPEN.** Endpoint/action: the per-connection
-    `try_start_cm_ipc()` task selects or starts the connection manager and bridges that connection's typed CM
-    messages. Boundary: the owning `Connection` and its lifetime/command/readiness senders ↔ the asynchronously
-    spawned CM bootstrap/bridge. The ordinary connected bridge already terminated when its command receiver closed,
-    but no dedicated future made owner loss independently selectable throughout bootstrap, and two
-    inherited pre-bridge paths did not carry that owner lifetime consistently. The desktop prelogin loop could wait
-    indefinitely after the connection disappeared. On Linux, the headless-user loop deliberately used the
-    connection-owned desktop-readiness receiver as a wake-only hint, yet treated `Ok(None)` exactly like a timeout
-    or signal. Dropping `LinuxHeadlessHandle` permanently closed that receiver; with no selected username, each
-    subsequent receive was immediately ready and the detached bootstrap could hot-loop. A connection could also
-    disappear immediately before CM launch or during the bounded endpoint retry without stopping those actions.
-
-    Every desktop `Connection` now owns the sole sender of a dedicated one-shot lifetime channel. The bootstrap
-    future is raced against its receiver; owner loss therefore cancels an async pre-bridge wait without requiring
-    command traffic. R-S11c-4d subsequently corrected the inherited post-bootstrap drain and changed hard-Drop
-    ordering: exact terminal intent is published on an independent one-shot lane before `Connection::Drop` retires
-    the desktop lifetime owner. Once authenticated bootstrap signals completion, owner loss permits only a bounded
-    terminal-completion window; the bridge never drains arbitrary queued commands. The finite command receiver
-    remains an additional fail-closed authority before each
-    target/prelogin selection, headless-user iteration, CM launch, and post-launch endpoint attempt. A small
-    Linux-only readiness result distinguishes
-    `OwnerClosed` from `Wake`: timeout and an actual signal remain bounded state-recheck events, while sender closure
-    is terminal before username refresh. The original five current-thread async regressions proved closed/signaled
-    readiness, closed/live connection-owner outcomes, and the then-current post-bootstrap drain. R-S11c-4d replaces
-    the last regression with bounded terminal completion and adds exact finite-queue coverage. The source gate and
-    independent semantic mutation verifier now bind the lifetime channel construction/wiring, owner/task `select!`,
-    terminal-publication-before-owner-retirement order, four command
-    checks and their state/launch/retry ordering, terminal closed-readiness handling, removal of the inherited
-    TODO/ignored timeout shape, R-T4, Appendix C #204, and this row.
-
-    Focused verification used the existing Rust 1.75 devcheck image as numeric UID/GID 1000 with the reviewed
-    vendor snapshot, no network, a read-only source mount, and a fresh disposable target: the complete library test
-    target compiled and all five lifecycle regressions passed (5 passed, 0 failed, 328 filtered). Exact Rust 1.75
-    rustfmt passed for `src/server/connection.rs`; the extracted shell gate, Bash parse, normal independent semantic
-    verifier, and complete deliberate source-mutation matrix passed in separate non-root networkless containers.
-    The newly pinned exact verifier image is not locally present, so the repository-wide `scripts/verify.sh` entry
-    point and a full release transaction are not claimed green; the existing image supplied focused diagnostic
-    evidence only.
-
-    Evidence boundary: this is a source-level lifecycle and local availability correction. It does not claim that
-    the Tokio bridge task is synchronously joined by `Connection::Drop`; owner loss cancels its future at the outer
-    `select!` before authenticated bootstrap completes and permits only bounded terminal completion afterward. A bounded
-    synchronous launch already admitted before concurrent owner loss may finish before that future is polled, after
-    which no remaining bootstrap work continues. R-S11ad separately kernel-binds any
-    launched no-UI CM child to its exact server parent. No native packaged artifact, Android swipe/relaunch device
-    sequence, long cold release transaction, or external R-V3 review is claimed here. The defect is not evidence of
-    host RustDesk modification, a public
-    listener, firewall change, root/container escape, exploitation, or compromise, and it is not a source-proven
-    cause of the reported Android outgoing-viewer symptom. The broader R-B2/R-B10/device and parent release items
-    remain **OPEN**.
-
-  Required implementation and release closure:
-
-  - The `--service` supervisor must retain direct ownership of every server child
-    it launches. Normal replacement/shutdown must target that owned `Child` or a
-    Linux `pidfd`, send `SIGTERM`, wait for a bounded graceful-exit interval, and
-    use `SIGKILL` only for the same revalidated child if the interval expires.
-  - Each service-owned server must inherit a dedicated parent-liveness
-    pipe/socket (or an equivalently race-safe kernel primitive) across the actual
-    privilege-drop/exec path. Supervisor death closes the channel and causes that
-    child to shut down; this behavior must not depend on systemd and must not
-    apply to user-owned/portable `rustdesk --server` processes.
-  - Crash recovery must use an atomically written, root-owned child record that
-    binds at least PID, `/proc/<pid>/stat` start time, boot identity, executable
-    device/inode, service generation, and the service-owned role marker. A new
-    supervisor must open a `pidfd` and revalidate every available identity field
-    immediately before signaling. Missing, malformed, stale, or ambiguous evidence
-    must fail closed by signaling nothing and reporting the condition; a PID or
-    command line alone is never ownership proof. If `pidfd_open(2)` is unavailable,
-    an already-exited or absent record may be removed without signaling, but a live,
-    mismatched, or unverifiable record must be preserved and startup must fail before
-    listener or replacement-child authority. No numeric-PID recovery signal fallback
-    is compatible with this requirement.
-  - Delete the global `ps | grep | awk | xargs kill`, broad `pkill -f`, and any
-    equivalent sweep as lifecycle authorities. The current `/proc/<pid>/exe`
-    pathname-string fallback must not be treated as executable identity across
-    mount namespaces: use file identity plus the service-owned relationship.
-    Another installation, a portable server, a build/smoke process, and a Docker
-    process must remain untargetable even when their visible argv contains
-    `rustdesk --server` or their in-namespace path is identical.
-  - On systemd, `KillMode=control-group` remains an additional containment layer
-    for unit-owned descendants, never a substitute for the portable supervisor
-    protocol. Packaging and service scripts for every supported init path must
-    invoke the same graceful supervisor shutdown rather than rediscovering
-    processes by name.
-  - Release gates must behavior-test normal restart, graceful stop, a wedged
-    child requiring bounded escalation, supervisor crash, stale/corrupt records,
-    PID reuse, executable replacement/deletion, identical argv from a different
-    executable, an identical in-container pathname backed by a different inode,
-    user-owned and non-root servers, and the real privilege-drop/exec chain. At
-    least one Debian non-systemd lifecycle harness is mandatory alongside the
-    systemd test. The release must also prove that a concurrent Docker smoke
-    `rustdesk --server` survives every service lifecycle event for which it is
-    not an owned child.
+- **UPCOMING RELEASES — Linux service-child lifecycle ownership — OPEN.** Historical ledger
+  disposition: SOURCE/RUNTIME/RELEASE-GATE IMPLEMENTED THROUGH R-S11c-27s; EXACT COLD
+  ARTIFACT EXECUTION PENDING. The current source uses one init-independent ownership protocol:
+  the installed `--service` supervisor owns the exact `--server --service-owned-server` child
+  it launched; no process-name, path-text, argv-text, or current-image sweep is lifecycle
+  authority. This remains explicitly **not authorization to inspect, signal, stop, restart,
+  replace, upgrade, or otherwise use the deployed host RustDesk service or Haggai as a test
+  dependency**.
+
+  Current source contract:
+
+  - `OwnedServiceChild` retains the Rust `Child` and a strict durable identity. Routine
+    replacement and shutdown use only that retained child, bound both graceful and forced phases,
+    remove the record only after reap, and preserve authority plus the record on uncertainty.
+  - `ServiceRuntime` exclusively leases a root-owned mode-0700 runtime directory and publishes
+    a bounded mode-0600 no-follow record containing PID, start time, boot ID, executable
+    device/inode, UID, generation, and exact service role. Publication is durable and
+    no-replace; malformed, linked, mis-owned, mis-moded, or ambiguous state is not adopted.
+  - Crash recovery opens a pidfd and completely revalidates identity before each pidfd-bound
+    signal. When pidfds are unavailable, only an exited or absent record may be removed; a live,
+    mismatched, or unverifiable record is preserved and startup fails before IPC or replacement
+    authority. The historical numeric-PID fallback is deleted.
+  - Launch derives the principal from the selected numeric UID, opens the exact executable before
+    a non-root credential transition, clears ambient environment and descriptors, supplies only
+    the passwd-derived principal plus selected-desktop state, sets no-new-privileges, binds parent
+    death across exec, and publishes the record before the child is resumed.
+  - The package's systemd, SysV, OpenRC, runit, and manual integrations all start the same
+    foreground `/usr/bin/rustdesk --service` supervisor. Manager containment is additional;
+    child selection, crash recovery, and drain stay inside the Rust supervisor protocol.
+  - The final-debian-artifact lifecycle gate is wired after cold A==B comparison and before
+    publication. Wiring is not execution evidence.
+
+  Evidence boundary:
+
+  - Git history retains the detailed 2026-07-16 through 2026-07-23 development diary, fixture
+    transcripts, run identifiers, timings, hashes, mutation counts, and superseded designs
+    formerly copied here. Those receipts are provenance, not current-release proof.
+  - Historical isolated runs exercised the actual debug binary or constructed package
+    transactions for manual, SysV, systemd, OpenRC, and runit lifecycle; parent death; hostile
+    records; executable replacement/deletion; cross-namespace identity; actual numeric-PID reuse;
+    and unrelated portable/container survival. They establish that those fixtures once observed
+    the intended behavior at their named source states.
+  - Several historical service-manager runs used root or added capabilities inside containers.
+    Under the current isolation policy they are diagnostic historical evidence only, not an
+    acceptable current privilege-boundary rerun. Current root-required service testing must occur
+    inside a disposable networkless VM; unprivileged containers remain rootless and
+    capability-free.
+  - The named systemd VM result and other historical runs predate current `master`; none proves
+    the exact final `.deb`, all current source, cold reproducibility, independent reproduction,
+    performance/resource bounds, or release readiness.
+
+  Current closure index:
+
+  - **R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED.**
+    The supervisor retains the final child; credential-drop exec carries kernel parent-death and
+    no-new-privileges authority; global server sweeps are absent.
+  - **R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED.**
+    Root-only lease/record publication and full pidfd identity revalidation are the recovery
+    authority.
+  - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED.**
+    TERM, KILL, and reap remain bound to the retained child with explicit deadlines and
+    fail-closed uncertain-state preservation.
+  - **R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior — HISTORICAL FOCUSED BEHAVIOR.**
+    The fixture crossed parent death, lease release, stale-record removal, and exact live-record
+    recovery; it is not current installed-artifact evidence.
+  - **R-S11c-27e — executable-object replacement/deletion recovery behavior — HISTORICAL FOCUSED BEHAVIOR.**
+    The fixture distinguished live executed inodes across rename and unlink rather than trusting
+    path or argv text.
+  - **R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior — HISTORICAL RUNTIME.**
+    The debug binary exercised graceful restart/stop, bounded forced reap, and unrelated portable
+    survival; the old container run is not a current-policy installed-service proof.
+  - **R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior — HISTORICAL RUNTIME.**
+    The debug fixture observed parent-death exit, preserved crash evidence, and a fresh recovered
+    generation.
+  - **R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior — SOURCE IMPLEMENTED;
+    HISTORICAL RUNTIME.** The descriptor-bound active-seat launch was exercised with exact
+    UID/GID/groups, bounded environment, empty live capabilities, and no-new-privileges. The old
+    capability-added container is not an acceptable current rerun.
+  - **R-S11c-27i — actual-binary hostile service-child record rejection behavior — HISTORICAL RUNTIME.**
+    Seven malformed or ambiguous record classes were refused without granting signal or
+    replacement authority.
+  - **R-S11c-27j — concurrent separate-Docker service noninterference behavior — HISTORICAL RUNTIME.**
+    An isolated sibling RustDesk process survived lifecycle operations until its own harness
+    explicitly drained it.
+  - **R-S11c-27k — pre-pidfd fallback recovery behavior — SUPERSEDED.** Its historical
+    revalidate-then-numeric-signal design retained an irreducible PID-reuse race and was deleted
+    by R-S11c-27u/R-S11ca; it is not a supported mode.
+  - **R-S11c-27u — pidfd-unavailable live recovery refusal — SOURCE IMPLEMENTED; CURRENT RUNTIME OPEN.**
+    Current source performs classification only and fails closed for live, mismatched, or
+    unverifiable records. The updated exact-binary refusal fixture was not executed at that slice,
+    and current installed-artifact behavior remains unproven.
+  - **R-S11c-27l — installed Debian SysV lifecycle — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL RUNTIME.**
+    The package adapter and lifecycle fixture bind one exact supervisor and preserve unrelated
+    processes. Its earlier constructed-package run predates current packaging and is not current
+    artifact proof.
+  - **R-S11c-27m — installed Debian systemd lifecycle — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL NATIVE VM.**
+    A networkless Debian VM once exercised installed restart, stop/start, supervisor crash,
+    non-root child identity, cgroup ownership, portable survival, removal, and purge; it does not
+    prove current `master` or the final artifact.
+  - **R-S11c-27n — cross-container executable identity — HISTORICAL RUNTIME.** Distinct
+    mount/PID namespaces using identical path and bytes remained distinct executable identities.
+  - **R-S11c-27o — actual kernel numeric-PID reuse — HISTORICAL RUNTIME.** A private PID namespace
+    forced reuse and recovery rejected the stale start identity without signaling the replacement.
+    Its elevated container fixture is historical only under the current VM-only privilege policy.
+  - **R-S11c-27p — packaged OpenRC/runit/manual supervisor templates — SOURCE/PACKAGE IMPLEMENTED.**
+    Templates invoke only the foreground service supervisor and create no competing child or
+    process-discovery authority.
+  - **R-S11c-27q — native OpenRC lifecycle authority — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL RUNTIME.**
+    The old container transaction exercised native manager behavior and stale state, but requires
+    current exact-artifact VM reproduction.
+  - **R-S11c-27r — native runit lifecycle authority — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL RUNTIME.**
+    The old container transaction exercised exact runsvdir/runsv/supervisor/child ownership and
+    recovery, but requires current exact-artifact VM reproduction.
+  - **R-S11c-27s — final Debian artifact lifecycle gate — SOURCE/RELEASE-TRANSACTION IMPLEMENTED;
+    EXECUTION OPEN.** The gate binds the cold A==B pass-A `.deb`, commit, package identity,
+    installed systemd lifecycle, post-run artifact identity, and pre-publication order. No current
+    final `.deb` has passed it.
+  - **R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership — SOURCE IMPLEMENTED/GATED;
+    NATIVE OPEN.** Owner loss is selectable throughout bootstrap and post-bootstrap work has
+    bounded terminal-first completion. Current native/package/device lifecycle execution remains
+    open.
+
+  Required closure before this parent item may close:
+
+  - Build the exact clean release commit twice from authenticated pinned inputs, prove A==B, and
+    execute the resulting pass-A `.deb`—not a debug binary or reconstructed mini-package—in
+    disposable networkless Linux VMs under systemd, SysV, OpenRC, runit, and the documented manual
+    supervisor path.
+  - Exercise root and active-user children across X11/Xwayland/login transitions; normal restart
+    and stop; wedged-child escalation; supervisor crash; pidfd-unavailable refusal; stale,
+    malformed, linked, mis-owned, and ambiguous records; PID reuse; executable
+    replacement/deletion; and identical path/bytes/argv from a different executable identity.
+  - Use realistic unauthorized local principals and concurrent unrelated RustDesk instances,
+    prove they cannot acquire IPC/signal/lifecycle authority, and prove exact cleanup with bounded
+    CPU, memory, file descriptors, processes, handles, and elapsed latency.
+  - Bind all executed artifacts and VM bases to hashes, preserve compact reproducible evidence,
+    reproduce independently, and obtain external security review. Until then, the source topology
+    is implemented but installed current-release behavior and release readiness remain **OPEN**.
 
 - **CURRENT RELEASE HARNESS — same-host smoke coexistence with an operational
   older RustDesk service — USER-REQUESTED 2026-07-16; CLOSED / RUNTIME PROVEN.**

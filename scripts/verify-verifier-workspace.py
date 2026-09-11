@@ -20088,27 +20088,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
         "Debian package-owned command-symlink hardening ledger",
     )
-    sysv_ledger = extract_between(
-        sources["hardening"],
-        "  - **R-S11c-27l — installed Debian SysV lifecycle",
-        "  - **R-S11c-27m — installed Debian systemd lifecycle",
-        "Debian SysV active hardening ledger",
-    )
-    for text, label in (
-        (
-            "then-current exact, link-free,\n    root-normalized package finalizer",
-            "Debian SysV ledger historical link-free scope",
-        ),
-        (
-            "That run predates R-S11bz's sole package-owned relative",
-            "Debian SysV ledger command-symlink chronology",
-        ),
-        (
-            "the old run is not current artifact proof",
-            "Debian SysV ledger current artifact boundary",
-        ),
-    ):
-        require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
         "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
@@ -20154,9 +20133,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         ("Debian package-owned command-symlink requirement", "command requirement mutation"),
         ("Debian package-owned command-symlink Appendix C row", "command Appendix mutation"),
         ("Debian package-owned command-symlink hardening ledger", "command hardening-ledger mutation"),
-        ("Debian SysV ledger historical link-free scope", "SysV historical-package mutation"),
-        ("Debian SysV ledger command-symlink chronology", "SysV command-symlink chronology mutation"),
-        ("Debian SysV ledger current artifact boundary", "SysV current-artifact boundary mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -83395,24 +83371,6 @@ def run_source_mutations(sources):
             "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
             "R-S11bz/R-S11e-92 — Debian command remains maintainer-script-owned",
             "Debian package-owned command-symlink hardening ledger",
-        ),
-        (
-            "hardening",
-            "then-current exact, link-free,\n    root-normalized package finalizer",
-            "current exact, link-free package finalizer",
-            "Debian SysV ledger historical link-free scope",
-        ),
-        (
-            "hardening",
-            "That run predates R-S11bz's sole package-owned relative",
-            "That run proves R-S11bz's package-owned relative",
-            "Debian SysV ledger command-symlink chronology",
-        ),
-        (
-            "hardening",
-            "the old run is not current artifact proof",
-            "the old run is current artifact proof",
-            "Debian SysV ledger current artifact boundary",
         ),
         (
             "build_py",

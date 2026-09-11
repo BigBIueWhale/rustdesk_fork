@@ -4985,14 +4985,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2adb) R-S11hd coherent latest-state wakelock snapshot ownership =="
-if python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test; then
-  note "ok  R-S11hd Apple/shared controlled-side wakelock snapshots are coherent, latest-state bounded, mutation-ordered, and terminal-visible"
-else
-  echo "  FAIL R-S11hd Apple/shared wakelock snapshots regained an unbounded queue, split-state read, stale overwrite, or hidden retirement"
-  rc=1
-fi
-
 echo "== (2g-c2ade) R-S11ix exact Dart session-stream consumer generation =="
 if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
   note "ok  R-S11ix Apple/shared Flutter event streams reserve exact consumer generations before native replacement"

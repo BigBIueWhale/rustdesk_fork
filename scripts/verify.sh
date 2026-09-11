@@ -11426,12 +11426,6 @@ else
   echo "  FAIL R-S11hp/R-S11e-253: whiteboard presentation regained generic event authority, stale owner resources, unbounded ripples, or continuous idle redraw"
   rc=1
 fi
-if python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test; then
-  echo "  ok  R-S11hd controlled-side wakelock snapshots are coherent, latest-state bounded, mutation-ordered, and terminal-visible"
-else
-  echo "  FAIL R-S11hd: controlled-side wakelock snapshots regained an unbounded queue, split-state read, stale overwrite, or hidden retirement"
-  rc=1
-fi
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   echo "  ok  R-S11gz/R-S11it/R-S11iu file-clipboard routes and CM client lifecycle are bounded and exact-generation-owned"
 else

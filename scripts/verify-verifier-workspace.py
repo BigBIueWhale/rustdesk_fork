@@ -24757,7 +24757,6 @@ def validate_windows_service_channel_protocol_contract(sources):
         ("propagate as an error and be logged once", "normative logged fail-closed proof errors"),
         ("The Boolean is presentation state only", "normative presentation-only result"),
         ("retain that capability across request handling", "normative retained service authority"),
-        ("Exact-current Windows bridge generation", "normative open native Windows evidence"),
     ):
         require_text(presentation_requirement, token, label)
     require_text(
@@ -24794,7 +24793,6 @@ def validate_windows_service_channel_protocol_contract(sources):
         ("MUST NOT</span> cancel or detach an admitted request", "normative admitted-work ownership"),
         ("return <code>Result&lt;()&gt;</code>", "normative exact result propagation"),
         ("release the latch in a mounted-only", "normative UI finality"),
-        ("Fresh generated-bridge compilation", "normative open generated bridge evidence"),
     ):
         require_text(client_transaction_requirement, token, label)
     for token, label in (

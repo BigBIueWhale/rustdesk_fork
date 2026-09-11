@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e6781d3f9c6df4f48d65dd3d499051cc0847bb43c31db50410a10574e69cfc92  requirements.html
+511f81cd3f2c1cec261eabb04aba011461b4d48214b401808c9d4d6caf85c4fb  requirements.html
 ```
 
 ## Current Verdict
@@ -30682,1377 +30682,180 @@ connection flow is correct and performant remain open STOP-SHIP obligations.
 
 ### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision
 
-**Status:** SOURCE EXCISION / REVISED PATH-COMPLETE APPLE AND 5,987-CASE
-INDEPENDENT MUTATION EVIDENCE PASS / FRESH GENERATED, NATIVE, AND DEPLOYED
-EVIDENCE OPEN
+**State.** The authored source implements the required excision. Current evidence is source-level;
+fresh generated-bridge, native-platform, installed-artifact, performance, and release evidence is
+still open.
 
-This adjacent audit traced the generic `check_super_user_permission` surface from
-every platform implementation through `src/ui_interface.rs`, the Flutter FFI
-export, generated bridge surface, and authored web parity method. History makes
-the ownership error precise: `b1c243c` removed the desktop security elevation
-lock while retaining a then-live macOS service-start check, and `4f492c8`
-subsequently removed the desktop service card and its last authored Dart call
-without deleting the remaining cross-language API. No authored caller remained.
-Linux and Windows implementations only queried the privilege state of the
-current process, but the macOS implementation could initiate an interactive
-generic execute-right Authorization Services ceremony and discarded the result
-of `AuthorizationFree`. This is source-proven dead API, misleading
-privilege-protocol, prompt, and cleanup-return debt. It is not evidence that the
-function ran, that it granted or used root authority, that it was remotely
-reachable, or that it caused a deployed or host failure.
+**Boundary and current implementation.** The zero-caller generic privilege operation is absent from
+`src/platform/macos.mm`, the macOS/Linux/Windows Rust platform layers, `src/ui_interface.rs`,
+`src/flutter_ffi.rs`, and the authored web bridge. No compatibility alias or replacement generic UI
+privilege API remains. Purpose-specific internal `is_root` and Windows `is_elevated` queries remain
+available to their real callers. The distinct macOS service-owned unattended-password authorization
+creator/verifier remains the only interactive typed authorization flow and retains its checked
+external-form cleanup and conditional commit rules.
 
-The smallest correction deletes `MacCheckAdminAuthorization`, the macOS, Linux,
-and Windows generic platform wrappers, the shared UI wrapper, the Flutter FFI
-export, and the authored web parity method. It also corrects one stale desktop
-settings comment that named the retired API. No replacement abstraction or
-compatibility stub was added: a zero-caller generic privilege prompt is not a
-valid protocol to preserve. The purpose-specific shared `is_root` query,
-Windows `is_elevated(process_id)`, and the macOS
-`MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm` /
-`MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm` typed
-service-owned-password flow remain unchanged and load-bearing.
+**Evidence.** `scripts/verify.sh`, `scripts/apple-conform-check.sh`, and
+`scripts/verify-verifier-workspace.py` bind authored-source absence, fresh generated-output absence,
+and preservation of the typed macOS authorization path. The focused current-tree baseline passes;
+it is static evidence only and does not show that a bridge was freshly generated, Authorization
+Services ran, or a deployed binary ran.
 
-R-S11ip and Appendix C #401 require the retired names and macOS generic execute
-right to be absent from all seven authored source surfaces and from freshly
-generated Rust, IO, Dart, and Freezed bridges. The shared gate, Apple source gate
-and embedded mutation analyzer, and independently implemented workspace
-validator now bind that absence while also requiring the surviving
-purpose-specific queries and exact typed macOS creator/verifier cardinalities.
-The independent mutation catalog contains direct reintroductions at every
-authored layer plus mutations of every exact authored/generated shared-gate
-path, the Apple analyzer, independent dispatch, normative requirement, ledger,
-and digest binding. The locked source-only executions recorded below passed on
-the exact revised pre-receipt bytes. Those results do not substitute for fresh
-bridge generation, target-native compilation or execution, installed-artifact
-evidence, device behavior, or the other explicitly open release evidence.
-
-The normative identity for this pre-verification source state is:
-
-```text
-snapshot c474b29a7fa54aa21822d44df2523f92c02669861803cc22776eaf2e4183aa5c  requirements.html
-```
-
-**Superseded pre-review verification receipt — 2026-09-06.** A locked semantic baseline passed, and a
-focused driver then extracted exactly the first 16 literal R-S11ip mutations
-from `run_source_mutations` and required every current runtime occurrence to be
-rejected by its intended diagnostic. That driver was itself outside the source
-tree, mounted read-only, and changed the actual `main` function's globals rather
-than the copied mapping returned by `runpy`; its retained container
-`74442f9ae51dad7fad3d09fc9005369cccb0eb8e6bed007f0727a0fe066781ce`
-exited 0/non-OOM with terminal `verify-verifier-workspace: ok` before removal.
-The complete Apple embedded analyzer and all of its embedded source mutations
-also passed. They bind native/Rust Apple excision and preservation of the exact
-typed password-authorization creator/verifier; they are source evidence, not
-native macOS compilation or Authorization Services execution.
-
-The pre-review production-path independent catalog subsequently ran unsliced
-from mutation one over the frozen pre-receipt tree. A separate locked AST read
-proved that its one literal tuple contains 5,977 well-formed four-string
-mutations. The retained catalog evidence is:
-
-```text
-container: r-s11ip-full-mutations-20260906
-id:        deb59b3ec2588fcf3673f278dea01053efb9bf201b5c3c5dff4759fddee056d1
-started:   2026-09-06T10:21:31.523142328Z
-finished:  2026-09-06T14:27:30.590642539Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    verify-verifier-workspace: ok
-```
-
-Final inspection proved the exact immutable image, UID/GID 1000, network none,
-read-only root and repository, all capabilities dropped, no added capability,
-`no-new-privileges`, private IPC, no privileged mode, 64 PIDs, 2 CPUs, 2 GiB
-memory with no additional swap, no ports or devices, and no Docker socket or
-host namespace. Live snapshots repeatedly showed one CPU-bound process, roughly
-298–358 MiB, and zero network and block I/O. The exact stopped container was
-removed after inspection. An earlier driver-wiring mistake modified only the
-copied `runpy` result mapping, accidentally entered the entire catalog, and was
-interrupted by a goal-continuation boundary after roughly 2 hours 43 minutes;
-its stopped container was exit 137 but non-OOM. That incomplete attempt was
-inspected, removed, and is not credited. The detached run above restarted from
-mutation one and is the sole complete-catalog pass for those frozen pre-review
-bytes. It is not current evidence after the path-completeness correction
-recorded below.
-
-Locked container checks also passed Bash parsing of both edited shell gates,
-in-memory Python AST parsing, HTML parsing, unique digest synchronization,
-`git diff --check`, the independent semantic baseline, and native-codec normal
-and complete mutation-self-test modes. The exact pinned FRB/Debian builder image
-`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`
-and the ignored `online/` input closure are absent from the machine after the
-earlier requested storage cleanup. Consequently no fresh generated Rust, IO,
-Dart, or Freezed bridge, exact Rust compile, or full shared `verify.sh` result is
-claimed. Nothing was pulled, rebuilt, substituted from an unrelated image, or
-accepted from stale ignored output. The release gate remains fail-closed because
-it requires all four freshly generated nonempty bridge outputs before reaching
-the R-S11e-279 check.
-
-Exact frozen pre-receipt identities were:
-
-```text
-31c7a7bf3e9652f858d2e033aa416f99f0dcd23d5c5ebd13ae05742d9f005bbe  src/platform/macos.mm
-1498f33231782f478f29e692e4665e28debcb759cb1c7b09b02f11db7649bd0b  src/platform/macos.rs
-44bf421711665b0fd75447baa36a106edf70bcb23a9301bd6f2caa2514fb95e2  src/platform/linux.rs
-0693be5d2fd03e319800994ce9b860997e5b4bb47ace9fbe50df8e1fc9cee433  src/platform/windows.rs
-c908e63dc1d49f3c654d1763173a2adc6e1e1986ee1759d0bce26ae23d198176  src/ui_interface.rs
-0eb74ada3d34f304b4c8c9d91363b78c979447c9547eb644255692a0786ac895  src/flutter_ffi.rs
-73af3b0f5c867e9ca92d13d173a0c24af4bb395564c43532f23b90d547faa447  flutter/lib/web/bridge.dart
-462cfeaacf3bc3502a5b5441c0759f7da68fa54ca06089427b4ebb4036b695f0  flutter/lib/desktop/pages/desktop_setting_page.dart
-5b513467bf98d2086d0bd7cb51963cd90a744819785e2a82fcf1e76e603b0a2c  scripts/verify.sh
-b1291fa7f9d8c14e465a20c3ac605d867b3811dd99a3112f97fe4a0832e32457  scripts/apple-conform-check.sh
-60f0d682549c43fd6ff02114b6cd0f59314f8776c1339aa39aae0540d58e2c7a  scripts/verify-verifier-workspace.py
-snapshot 92ddb1fea2c4ff4699c3c6acfa748c1203bf68324e340990d15ebd02832842de  requirements.html
-f45f1e0355729cfc23b7ffc540891a2c0ac3eaa2f589d90fd29a2be4d244f6d5  docs/NATIVE-CODEC-WATCH.md
-d183b1b40a7c0676d36d289ca1847b41f5169c463f6fb5ee6dcbe82ae86e08d3  HARDENING_STATUS.md
-```
-
-The corresponding pre-receipt binary Git diff SHA-256 is
-`c74fd1dd477973973d732e1c7520eb672b56e859e2133eadbcc30d46b7a313d1`.
-Only this receipt changed immediately after that complete run. Final-tree
-focused, independent-baseline, syntax/digest/native-watch, and diff checks then
-passed. The subsequent full-diff review found that the shared gate correctly
-enumerated all seven authored sources and all four fresh generated outputs, but
-the independent validator explicitly bound only the generated Dart path. The
-review therefore supersedes the 5,977-mutation result for current bytes: the
-validator now extracts the exact shared-gate block, requires every authored and
-generated path once, and mutation-tests each path. R-S11ip also now names Rust,
-Rust IO, Dart, and Dart Freezed outputs without ambiguity. No recursive or
-inherited green claim is made from that superseded run.
-
-**Current revised source-verification receipt — 2026-09-06.** A locked baseline
-passed on the corrected validator and a separate locked AST read proved that the
-one literal source-mutation tuple now contains exactly 5,987 well-formed
-four-string cases. A corrected focused driver selected all 26 current R-S11ip
-mutations: eight direct source reintroductions across the seven authored layers
-(the macOS Rust layer has separate declaration and wrapper cases), one shared
-source-inventory-operation mutation, seven exact authored-path bindings, four
-generated-path bindings, the Apple analyzer and independent-validator dispatch,
-the normative requirement and Appendix row, and the ledger and digest bindings.
-Every mutation was rejected by its intended diagnostic. The retained
-focused container evidence before removal was:
-
-```text
-container: r-s11ip-path-focused-20260906
-id:        d7e6f4bda0ecf2b1eda4a70504ba06206468feaf8d51d7b01628b146db6bf2e2
-started:   2026-09-06T14:36:44.977Z
-finished:  2026-09-06T14:36:51.676Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    verify-verifier-workspace: ok
-```
-
-The complete embedded Apple password/authority analyzer and all of its
-deliberate source mutations were then rerun after the revised normative wording.
-Only the self-contained read-only Python analyzer was extracted from
-`apple-conform-check.sh`; the outer Docker/build wrapper was not invoked. Its
-three finding files were empty. The retained Apple container evidence before
-removal was:
-
-```text
-container: r-s11ip-apple-revised-20260906
-id:        4ac114f28f456a640ad39bae8d8622fe9989374091318dfcacb9d6975b8330a6
-started:   2026-09-06T14:39:59.14939011Z
-finished:  2026-09-06T14:51:50.546528223Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    apple-password-embedded-analyzer-and-mutations: ok
-```
-
-Finally, the corrected independent catalog ran unsliced from mutation one over
-the frozen pre-receipt tree. It completed all 5,987 cases rather than resuming,
-sampling, or inheriting the superseded 5,977-case result. The retained complete
-catalog evidence before removal was:
-
-```text
-container: r-s11ip-path-full-mutations-20260906
-id:        1f67bd5153666001225d8ee9cab61829b3ad55114d8a14717a4f081491973562
-started:   2026-09-06T14:52:26.739183509Z
-finished:  2026-09-06T19:07:15.615379958Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    verify-verifier-workspace: ok
-```
-
-Inspection of both current complete runs proved the exact immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-UID/GID 1000, network none, read-only root and repository, all capabilities
-dropped, `no-new-privileges`, private IPC, no privileged mode, no host PID or
-user namespace, 64 PIDs, 2 CPUs, 2 GiB memory with no additional swap, private
-512 MiB no-exec tmpfs, no ports or devices, and no Docker socket. Live catalog
-snapshots repeatedly showed one CPU-bound process, roughly 298–358 MiB, and
-zero network and block I/O. Post-run inspection showed exit 0, non-OOM state,
-and an empty Docker error for both runs. Their exact stopped containers were
-removed after inspection.
-
-The frozen current pre-receipt identities shared by the Apple and complete
-catalog runs were:
-
-```text
-31c7a7bf3e9652f858d2e033aa416f99f0dcd23d5c5ebd13ae05742d9f005bbe  src/platform/macos.mm
-1498f33231782f478f29e692e4665e28debcb759cb1c7b09b02f11db7649bd0b  src/platform/macos.rs
-44bf421711665b0fd75447baa36a106edf70bcb23a9301bd6f2caa2514fb95e2  src/platform/linux.rs
-0693be5d2fd03e319800994ce9b860997e5b4bb47ace9fbe50df8e1fc9cee433  src/platform/windows.rs
-c908e63dc1d49f3c654d1763173a2adc6e1e1986ee1759d0bce26ae23d198176  src/ui_interface.rs
-0eb74ada3d34f304b4c8c9d91363b78c979447c9547eb644255692a0786ac895  src/flutter_ffi.rs
-73af3b0f5c867e9ca92d13d173a0c24af4bb395564c43532f23b90d547faa447  flutter/lib/web/bridge.dart
-462cfeaacf3bc3502a5b5441c0759f7da68fa54ca06089427b4ebb4036b695f0  flutter/lib/desktop/pages/desktop_setting_page.dart
-5b513467bf98d2086d0bd7cb51963cd90a744819785e2a82fcf1e76e603b0a2c  scripts/verify.sh
-40e0f19b21022f971aff9a8f1bed16ed9fccee6a790769e3adcbd1d962cd29ed  scripts/apple-conform-check.sh
-bba649107fd030e59486dfc4c8111de2ba0e019bd20b7d512e81589f51c75ae5  scripts/verify-verifier-workspace.py
-snapshot c474b29a7fa54aa21822d44df2523f92c02669861803cc22776eaf2e4183aa5c  requirements.html
-edf87984381da1c22537a2f5de1b2a9d96ea9841b4d1ba601fa270852b9e7ab5  docs/NATIVE-CODEC-WATCH.md
-342975f6eff6744f7c5fbbef004bae0762358372e2965e3d140208d776ae4019  HARDENING_STATUS.md
-```
-
-The corresponding current pre-receipt binary Git diff SHA-256 is
-`11e5284349a2488a11d12dff2fba5da7bbd2dd538f1885f91d93f3f6dd1f4711`.
-Only this R-S11ip receipt changed after the complete run; the complete catalog
-is not recursively rerun merely because its own exact evidence was appended.
-
-The first receipt-bearing focused rerun correctly rejected an ambiguous receipt:
-the current requirements hash appeared on two exact canonical lines, so a
-requirements mutation could not synchronize its derived hardening hash exactly
-once. Container
-`c1114afded8701540d317004fb02386a5526bece8fcefd1680fad079ae10cc6c`
-exited 1/non-OOM with that diagnostic, was inspected and removed, and is not
-credited. The evidence-list copy gained the same `snapshot` prefix already used
-by the superseded receipt while the one normative identity remained canonical;
-no product, gate, or requirement byte changed. A clean restart over binary diff
-SHA-256 `822ef01c02886c5a5179fa7e3fdda70895862f260e5077d98c81732fe07110c1`
-then selected exactly 26 of 5,987 mutations and passed the independent baseline
-and every focused diagnostic:
-
-```text
-container: r-s11ip-final-focused-20260906
-id:        537ffaacb07dac8bd6aef9f17faee2b3bf64e5126073bbbe89855a72681ed5de
-started:   2026-09-06T19:14:00.875812056Z
-finished:  2026-09-06T19:14:25.439003347Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    r-s11ip-focused-source-mutations: 26 of 5987
-           verify-verifier-workspace: ok
-```
-
-The same receipt-bearing diff then passed Bash parsing of the shared, Apple,
-and native-watch gates; the independent semantic baseline; AST parsing and the
-exact 5,987 well-formed-case count; HTML parsing; unique requirement-digest
-synchronization; the exact 14-file scope; authored-source absence; typed-symbol
-cardinality and purpose-specific-query preservation; native-codec normal and
-complete mutation-self-test modes; and `git diff --check`:
-
-```text
-container: r-s11ip-final-preflight-20260906
-id:        338465b4affddcfa25b38688b15beae2277079b0e9efec2e5dae43020cd3acfc
-started:   2026-09-06T19:16:26.081375067Z
-finished:  2026-09-06T19:16:35.225151698Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    verify-verifier-workspace: ok
-           source-mutation-catalog: 5987 well-formed cases
-           requirements-html-and-digest: ok c474b29a7fa54aa21822d44df2523f92c02669861803cc22776eaf2e4183aa5c
-           native-codec-watch: ok
-           native-codec-watch: self-test ok
-           r-s11ip-final-preflight: ok
-```
-
-Both final containers used the same locked profile and were removed after
-inspection; both temporary drivers were deleted. Commit-preparation baseline,
-syntax/digest/source-absence, and diff checks must pass again after this
-evidence-only paragraph and are not used to recursively rewrite their own
-receipt.
-
-No host RustDesk process, service, configuration, listener, firewall, network
-namespace, Android device, Windows VM, Haggai/Desktop_Haggai_computer workload,
-or unrelated Docker object is in scope or touched by this source repair. The
-current Linux host cannot provide exact-current signed macOS or Windows native
-execution, installed-artifact evidence, or Authorization Services prompt-path
-execution. The persistent Android service, cross-platform reconnect/focus flow,
-display-only delay, complete connection-flow correctness and performance
-request, native resource/latency soaks, clean release artifact equality,
-independent reproduction, external review, and every other explicit open
-hardening item remain active.
+**Open evidence.** Generate all Rust/Rust-IO/Dart/Freezed bridges from the exact candidate; compile
+and execute native Windows and signed macOS paths; exercise installed artifacts and macOS
+authorization release/failure cleanup; measure sustained resources; complete cold R-B2/R-B10,
+independent reproduction, and external review.
 
 ### R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority
 
-**Status:** SOURCE VERIFIED / FOCUSED, APPLE-EMBEDDED, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / FRESH GENERATED-BRIDGE, EXACT-CURRENT WINDOWS,
-INSTALLED, PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
-EVIDENCE OPEN
+**State.** The purpose-specific source path is implemented and statically gated. Exact-current
+generated bridge, native Windows, installed, performance, artifact, independent-reproduction, and
+external-review evidence remains open.
 
-The continuing action-by-action privilege audit found a deterministic mismatch in
-the already-typed Windows service-owned RDP-sharing path. Commit `36be1ee` moved the
-HKLM `share_rdp` mutation behind `SetShareRdp` and the service receiver's retained
-`WindowsServiceOwnedShareRdpRequester`, but the desktop settings page enabled that
-request with `bind.mainIsRoot()`. The live path was:
+**Boundary and current implementation.** The desktop control asks only
+`main_can_request_share_rdp_change` / `mainCanRequestShareRdpChange`. On Windows,
+`can_request_service_owned_share_rdp_change` returns true only for exact empty argv, the fixed
+installed package executable matching the running non-reparse image, and an elevated current token;
+proof errors propagate to the shared wrapper, are logged once, and fail closed. Other platforms
+return false. This Boolean is presentation state only. The LocalSystem receiver remains the sole
+mutation authority and retains `WindowsServiceOwnedShareRdpRequester` across handling through its
+final generation-, image-, token-, role-, liveness-, and pipe-revalidated HKLM write.
 
-```text
-flutter/lib/desktop/pages/desktop_setting_page.dart::shareRdp
-  -> src/flutter_ffi.rs::main_is_root
-  -> src/ui_interface.rs::is_root
-  -> src/platform/windows.rs::is_root
-  -> native is_local_system
-```
+**Evidence.** `scripts/verify-windows-service-channel-protocols.py`, the shared/Apple entrypoints,
+and `scripts/verify-verifier-workspace.py` bind the purpose-specific naming, exact local predicate,
+generic-root-bridge absence, logged fail-closed wrapper, and retained service capability. Their
+current baseline passes; it is source evidence, not execution of the Windows UI, UAC token, SCM
+service, or registry mutation.
 
-That question did not describe the requester the service accepts. The Windows
-`is_root` result means LocalSystem, while
-`authorize_windows_service_owned_share_rdp_requester` requires the named-pipe
-caller and retained process generation to have equal live token proofs, be
-elevated, use the current service executable, have exact empty argv, remain live,
-and retain the same pipe PID. `commit_share_rdp_change` replays generation,
-identity, image, role, token, elevation, pipe ownership, and liveness before its
-final service-owned registry write. The correct elevated installed administrative
-GUI therefore deterministically received `false` from the old presentation query;
-only a LocalSystem GUI could satisfy it. This was an availability and
-authority-vocabulary defect in authored source, not a bypass of the service
-receiver, an unauthorized registry write, proof that any deployed artifact
-executed the path, host mutation, or causation for an operational RustDesk issue.
-
-The local API now asks only the operation-specific question:
-
-- `src/platform/windows.rs::can_request_service_owned_share_rdp_change` first
-  requires exact empty argv, then validates the registered package executable and
-  the running executable as the same fixed, non-reparse installed file identity,
-  and finally queries current-token elevation. Wrong role returns false; every
-  package/image/token proof error propagates.
-- `src/ui_interface.rs::can_request_share_rdp_change` logs any proof error and
-  fails closed; its non-Windows result is false.
-- `src/flutter_ffi.rs::main_can_request_share_rdp_change`, the desktop setting,
-  and the authored web parity bridge carry only
-  `mainCanRequestShareRdpChange`. The generic `main_is_root`/
-  `mainIsRoot` and shared `ui_interface::is_root` surface are deleted. The real
-  platform-internal root/LocalSystem and elevation predicates remain for their
-  purpose-specific runtime callers.
-
-This Boolean is presentation state, not an admission or capability. It neither
-changes the request frame nor weakens, duplicates, or replaces the receiver-side
-authority transaction. No endpoint, listener, socket, port, network behavior,
-retry/reconnect policy, timer, task, worker, process launch, service transition,
-registry writer/value, prompt, display/control path, Android lifecycle path,
-dependency, or artifact is added or changed by this slice.
-
-The current open R-S11b/R-S11c and user-requested closure remains explicit. The
-source topology is implemented, and no presently catalogued Linux R-S11c-10
-service/display-discovery probe remains open; any newly discovered path will be
-tracked as a new closure. Exact-current physical Android persistent-service task
-swipe, reopen, Force Stop, repeated reconnect, and resource soak remain STOP-SHIP.
-Native Windows same-connection focus/minimize display-latency reproduction remains
-STOP-SHIP. Current signed Android and native Windows artifacts, native macOS
-execution, installed root/SYSTEM service execution, clean/cold/double-build
-R-B2/R-B10 artifact equality, independent reproduction, and external review remain
-open. The historical field observations also remain unresolved rather than being
-retroactively attributed to this source defect: an older Android build could retain
-incoherent screen-control/display state in the persistent service until Force Stop
-while file transfer worked, and an older Windows viewer could accumulate roughly
-ten seconds of display-only delay after focus loss while control remained responsive;
-reconnect cleared it. The broader whole-connection-flow correctness and performance
-request remains active.
-
-Current normative identity for this slice:
-
-```text
-2ba01a6d14f18127d8f1760a5da6a7b709bc8202bc6709c0c91065ea86c3fe38  requirements.html
-```
-
-**Source-verification receipt — 2026-09-07.** The dedicated Windows service
-protocol verifier passed normally and rejected all 145 of its deliberate
-mutations. The independently implemented workspace validator passed normally.
-A locked AST inspection proved that its one literal source-mutation tuple
-contains exactly 6,012 well-formed four-string cases. A separately isolated
-focused driver selected the 25 cases added for this correction and required
-each current occurrence to fail with its intended diagnostic; every case
-passed before the unsliced catalog began.
-
-The complete independent catalog then ran from mutation one over the frozen
-pre-receipt tree. It completed all 6,012 cases rather than resuming, sampling,
-or inheriting a prior result:
-
-```text
-container: r-s11iq-independent-source-catalog-v4-20260907
-id:        daef15f6e1b2e0cc5c9a9a2b2d75386ebac832da238ac662871b8b36e1ac0caf
-started:   2026-09-06T22:09:08.055357061Z
-finished:  2026-09-07T02:32:00.479685234Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    verify-verifier-workspace: ok
-```
-
-Repeated live inspection showed one CPU-bound Python process, approximately
-299–335 MiB in the sampled observations, one PID, and zero network and block
-I/O. Final inspection proved immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-numeric UID/GID 1000:1000, network none, read-only root and repository, all
-capabilities dropped, `no-new-privileges`, private IPC, 64 PIDs, 2 CPUs, 2 GiB
-memory with no additional swap, a private 512 MiB no-exec tmpfs, no ports or
-devices, and no Docker socket or host namespace. The exact stopped container
-was removed after terminal inspection.
-
-The frozen identities before that complete run and again after its terminal
-result were byte-for-byte equal:
-
-```text
-34690711e83d1d1bfda6b5f6f083d517788463f7e1b8852e87844187267da19c  HARDENING_STATUS.md
-4fdb14e20aefd20c6c7e8456b277da0425c20a47612957540d68aa7874e81cc7  docs/NATIVE-CODEC-WATCH.md
-652aa0d5e8777beaff80ca890acf86ecb776c87d729938e0dcb8c588b2f5d018  flutter/lib/desktop/pages/desktop_setting_page.dart
-f735dde4735c9d996263801dd7e093856b695dd8261995276c2ed03832061d5e  flutter/lib/web/bridge.dart
-snapshot 2ba01a6d14f18127d8f1760a5da6a7b709bc8202bc6709c0c91065ea86c3fe38  requirements.html
-72c058c30efc346a993cfd2231943b01fb40a6d0e70ff4498122e7f5bb158336  scripts/apple-conform-check.sh
-0c7b6809369ed3fb9910be5400c9d195c0e6cbcc551bd749b45a85897911e6ef  scripts/verify-verifier-workspace.py
-9f69eb44038fb0fed253dc79351ddc7e0fdeaf03f2b3e6584aae591075ef683e  scripts/verify-windows-service-channel-protocols.py
-eccc21b44340696613ede06c33dc72f2574131609f1b1bc718391921484a4814  scripts/verify.sh
-461fb3e9bd84a89f40b651f02daf78714510480a73496523e134ad21aeacafe5  src/flutter_ffi.rs
-04f6009e9332bf2418749bb5d85789f7625817af41aa422620a2b679e65efba4  src/platform/windows.rs
-62a90e0560e65baf18d94f51d72c9ac43c23f7f4de8ec0baf495835696c63d20  src/ui_interface.rs
-```
-
-The corresponding frozen binary Git diff SHA-256 was
-`007b8660bfb829cb869a50a31b1f1346bddc78f4a2d60a40c62850dd2114f4c5`.
-Only this receipt changed after the complete run; it is not recursively rerun
-merely because it records its own immutable result.
-
-Excluded development runs remain explicit. The first complete-catalog attempt
-correctly rejected the first new exact-role mutation after approximately 1 hour
-40 minutes, but the harness expected a less-specific diagnostic; it exited
-nonzero and is not credited. Isolated locked iterations then exposed and fixed,
-in order, FFI extraction precedence, section-header extraction precedence, a
-missing independent desktop-settings loader assertion, requirement-extraction
-masking, and the exact expected diagnostic. The sixth targeted restart passed
-all 25 current cases. One attempted subset invocation omitted isolated-Python
-flags, caused the verifier to re-exec only its ordinary baseline, and is also
-uncounted. These were verifier/evidence defects only; none executed product
-Rust, Flutter, a Windows service, or a registry mutation.
-
-The complete Apple password/authority analyzer and all of its embedded source
-mutations were rerun after this receipt. Only the self-contained Python heredoc
-was extracted from `apple-conform-check.sh`; the outer Apple Docker/build wrapper
-was not invoked. All three finding files existed and were empty:
-
-```text
-container: r-s11iq-apple-embedded-20260907
-id:        dd24a311444337f1a21b5c1be55d8b307b93cc3106df9c9a713e40e4ffe43533
-started:   2026-09-07T02:37:21.444990426Z
-finished:  2026-09-07T02:49:12.881128589Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    apple-password-embedded-analyzer-and-mutations: ok
-```
-
-That stopped container had the same locked image and confinement profile as the
-catalog and was removed after terminal inspection. The receipt-bearing focused
-145-mutation verifier, independent baseline, Bash parsing, HTML parsing, exact
-6,012/145 AST cardinalities, exact 12-file scope, authored old-name absence,
-native-codec normal and mutation-self-test modes, and `git diff --check` then
-passed together on binary Git diff SHA-256
-`e1b1163041f273132506b631284df5c8dabb1d7579ede64d48bbdb110b9e1a64`:
-
-```text
-container: r-s11iq-final-preflight-20260907
-id:        753c3e32ffa7e409a33050ef99c96a620391aa1be3c28dc3335ef52b96052b3a
-started:   2026-09-07T02:50:25.123319857Z
-finished:  2026-09-07T02:50:34.512279857Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    r-s11iq-final-preflight: ok
-```
-
-The stopped container used the same locked confinement and was removed after
-inspection. Two preceding ad-hoc preflight invocations are uncredited: the
-repository gates passed, but an extra local digest assertion counted the
-deliberately prefixed evidence snapshot as a substring of the canonical line.
-The corrected assertion uses exact-line cardinality, as the checked-in
-native-codec gate does. This was a temporary checker mistake and caused no
-product, requirement, gate, or runtime change.
-
-The shared gate's authored source, requirements, ledger, digest, and
-fresh-generated-output checks are bound by the focused and independent
-validators. The full shared release gate itself is not claimed: its exact
-pinned FRB/Debian builder image and ignored `online/` input closure remain absent
-after the requested storage cleanup. Nothing was pulled, rebuilt, or
-substituted, and no stale generated bridge was accepted as current evidence.
-Fresh Rust, Rust IO, Dart, and Dart Freezed generation, Windows
-compilation/execution, installed administrative UI behavior, SCM service
-mutation, and the other status-header evidence therefore remain open.
+**Open evidence.** Freshly generate and compile the Rust/Dart bridge; run an installed native
+Windows administrative UI through allow and deny cases; exercise real SCM mutations and adversarial
+image/token/generation/pipe races; measure latency and resources; bind signed artifacts; complete
+cold R-B2/R-B10, independent reproduction, and external review.
 
 ### R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership
 
-**Status:** SOURCE VERIFIED / FOCUSED, APPLE-EMBEDDED, AND INDEPENDENT COMPLETE
-SOURCE-MUTATION GATES PASS / SHARED FULL-GATE, FRESH GENERATED-BRIDGE,
-EXACT-CURRENT WINDOWS, INSTALLED, PERFORMANCE, ARTIFACT,
-INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN
+**State.** The bounded client-owner source design is implemented and statically gated. Fresh
+generated-bridge, native Windows, installed, resource-soak, artifact, independent-reproduction, and
+external-review evidence remains open.
 
-**Platform, action, and boundary.** This slice is limited to the Windows Flutter
-client which asks the already-hardened LocalSystem service to change the installed
-machine's `share_rdp` policy. The boundary is the ordinary Flutter-Rust-Bridge
-worker -> one process-owned async client transaction -> the existing typed
-`SetShareRdp`/`ShareRdpSet` service exchange. The separate service-side
-`WindowsServiceOwnedShareRdpRequester` remains the sole authority which can reach
-the HKLM writer after final exact process-generation, image, role, token,
-elevation, liveness, and pipe revalidation.
+**Boundary and current implementation.** One lazy process-lifetime
+`WindowsShareRdpClientOwner` owns one named OS thread, one fallibly built current-thread Tokio
+runtime, and a one-slot request channel. Admission uses `try_send`; full and closed channels are
+distinct failures. Startup failure, a finished worker, closed admission, or lost completion consumes
+and joins the terminal thread generation. The sole runner executes requests serially without a
+per-request spawn. Each service exchange retains separate one-second connect/send/receive bounds;
+the bridge waits at most eight seconds for the exact result without cancelling or detaching admitted
+work. Errors remain `Result<()>` through the shared and Flutter FFI surfaces. Dart uses one
+synchronous mounted-lifetime latch, disables duplicate row/checkbox actions, surfaces errors, and
+refreshes service-owned state only after latch release.
 
-**Source-proven old path.** The settings callback at
-`flutter/lib/desktop/pages/desktop_setting_page.dart::shareRdp` awaited
-`bind.mainSetShareRdp`, then unconditionally rebuilt the widget. It held no
-in-flight state, disabled neither its checkbox callback nor the wrapping row tap,
-and caught no failure. `src/flutter_ffi.rs::main_set_share_rdp` and
-`src/ui_interface.rs::set_share_rdp` returned `()`: the shared wrapper logged and
-discarded every error from `src/ipc.rs::set_service_owned_share_rdp`. The latter
-called `set_service_owned_share_rdp_with_ack`, an internal synchronous function
-created by placing `#[tokio::main(flavor = "current_thread")]` on an async body.
-Each invocation therefore built a new Tokio runtime and blocked its caller until
-that one request ended. Concurrent taps could start overlapping machine-policy
-transactions on multiple bridge workers; runtime construction failure panicked
-inside the macro expansion; service refusal or transport failure was invisible
-to Dart; and a widget rebuild did not prove completion.
+**Evidence.** `scripts/verify-windows-service-channel-protocols.py`, shared/Apple wiring checks, and
+`scripts/verify-verifier-workspace.py` bind the single owner, fallible runtime, nonblocking bounded
+admission, terminal joins, serial runner, exact result propagation, obsolete per-call-runtime
+absence, and UI latch. The current baseline passes; this is static evidence and does not execute
+the bridge worker, Windows UI, SCM transaction, timeout, panic, or race behavior.
 
-Primary-source review was performed before redesign. The pinned
-`flutter_rust_bridge` v1.80.1 documentation says async Rust APIs are not yet
-supported, ordinary functions execute in its worker pool, and only `SyncReturn`
-executes inline on Dart's main thread. Its `frb_rust/src/handler.rs` implements
-that default pool dispatch. Tokio tag `tokio-1.44.2`, matching `Cargo.lock`, shows
-that the entry macro rewrites the function to
-`Builder::new_current_thread().enable_all().build().expect(...).block_on(body)`;
-the runtime builder separately documents fallible construction and that
-`enable_all` enables the I/O/time drivers used here. The source files inspected
-were upstream `book/src/feature/async_rust.md`,
-`book/src/feature/sync_dart.md`, `book/src/feature/handler.md`,
-`frb_rust/src/handler.rs`, Tokio `tokio-macros/src/entry.rs`,
-`tokio/src/runtime/builder.rs`, and `tokio/src/runtime/runtime.rs`, at those exact
-tags. Read-only acquisition ran in two disposable nonroot, capability-free,
-read-only-root containers with no repository mount or published port. Their only
-network was an outbound Docker bridge used to read those public upstream sources;
-both used the pinned verifier image and `--rm`. This research was not a product or
-verification run.
-
-**Correct client ownership.** `src/ipc.rs` now gives the action one lazy
-process-lifetime `WindowsShareRdpClientOwner`. Its `OnceLock` stores an explicit
-startup success or failure, so a failed runtime does not trigger repeated thread
-creation. Startup creates a capacity-one Tokio channel, starts exactly one named
-plain OS thread, fallibly constructs one current-thread runtime with I/O/time
-enabled, and completes a synchronous readiness handshake before the owner is
-published. Both runtime-build failure and readiness-channel loss synchronously
-join the started thread. The live owner retains its join handle in a
-mutex-protected `Option`; every request first checks that the retained worker is
-still running, and a finished thread is consumed and joined before the failure
-is returned. A channel-closed admission or disconnected admitted-request result
-also consumes and joins the unavailable generation before returning its distinct
-failure; it does not depend on a racy `is_finished` precheck. No successful,
-failed-start, or observably failed live generation is detached.
-
-Request admission uses `try_send`, distinguishes a full queue from a closed
-worker, and never blocks a bridge worker merely to enqueue. Capacity is one queued
-request in addition to the transaction currently executing. The sole async runner
-receives requests serially and awaits the existing service transaction directly;
-it does not spawn per-request tasks. Only an exact `accepted: true` response is
-success. False, missing, unexpected, connect, send, and response failures are
-explicit errors. The former per-call `#[tokio::main]` helper is deleted. The
-installed-service check still precedes lazy worker construction, and the typed
-service request and receiver authorization are unchanged.
-
-After admission, the ordinary FRB worker waits on that request's private
-capacity-one completion channel for at most eight seconds. This covers the fixed
-one-second connect/send/response bounds for one executing and one queued
-transaction plus scheduling margin. Success, transaction failure, deadline
-uncertainty, and completion-channel loss remain distinct. Completion-channel loss
-is terminal worker evidence, so the caller takes and joins that generation before
-reporting it. Timing out the caller does not cancel or detach admitted service
-work: the retained serial owner continues the transaction and logs if the
-completion receiver is gone. A later request cannot bypass the queue and a dead
-worker is not silently replaced.
-
-`ui_interface::set_share_rdp` and
-`flutter_ffi::main_set_share_rdp` now return the exact `Result<()>`; non-Windows
-direct invocation returns an explicit unsupported-platform error. The Dart state
-sets `_shareRdpChangePending` synchronously before awaiting, refuses duplicate
-checkbox/row callbacks and disables both tap surfaces while it is true, visibly
-reports the bridge error, and releases the latch only from a mounted `finally`
-block. The rebuild then reads the service-owned registry value rather than
-optimistically claiming the requested value.
-
-This correction adds one lazy process-owned client thread/runtime and one bounded
-in-process queue. It adds no IPC endpoint, listener, frame, payload, authorization
-rule, registry writer/value, elevation path, process launch, public port, network
-behavior, service lifecycle transition, retry/reconnect policy, display/control
-path, Android lifecycle behavior, dependency, or artifact. It neither proves nor
-attempts to fix the reported Android persistent-service stale screen state or the
-Windows focus/minimize display-only delay.
-
-The current open R-S11b/R-S11c and user-requested closure remains explicit. Exact
-physical Android task-swipe/background/Force-Stop/reopen/reconnect and resource
-soak remains STOP-SHIP. Native Windows same-connection focus/minimize
-capture-through-presentation latency reproduction remains STOP-SHIP. Complete CM
-file-operation/result finality, protected service-IPC and installed Linux/macOS/
-Windows artifact execution, current signed mobile/native artifacts, clean cold
-R-B2/R-B10 double-build equality, separately performed independent reproduction,
-and external review remain open. Source-only evidence for this slice will not be
-used to close any of those items.
-
-Current normative identity for this slice:
-
-```text
-a42e3d352b7f7589cffc03e332b10df92a276fb2b07258df4aca5c537505ca0d  requirements.html
-```
-
-**Source verification receipt (2026-09-07).** Final review of the first frozen
-candidate found one additional ownership edge before commit: if the queue closed
-between the initial liveness check and `try_send`, or the admitted request's only
-completion sender disappeared because the worker terminated, the caller returned
-an error while the process-lifetime owner still retained the finished join handle.
-That handle was not detached or lost, and a later request would reap it, but the
-current caller had already observed conclusive worker failure. This did not meet
-the normative rule that every observably terminal generation be joined before the
-failure returns. `reap_unavailable_worker` now takes the handle without a racy
-`is_finished` precheck, releases the mutex, and joins it. Closed admission and
-disconnected completion call that primitive with purpose-distinct stopped/panic
-errors. Six focused mutations cover the reaper, handle consumption, join, both
-call sites, and the normative rule; separately authored workspace mutations cover
-the same source, focused, shared, Apple, and requirement surfaces.
-
-The corrected frozen pre-receipt candidate had binary-diff SHA-256
-`c0853be9bb2f61c366e095bd23d51cdb4fc82def902aabd7b1b1420f0c0409b8`.
-The focused Windows service-channel verifier rejected all 190 deliberate
-mutations. The independent workspace baseline passed. Strict shell parsing,
-Python AST parsing, HTML parsing and exact R-S11ir/#403/new-norm cardinality,
-the exact requirements SHA-256 above, normal and self-test native-codec watch,
-Rust 1.75 parser acceptance for all three changed Rust files, and
-`git diff --check` passed. The exact Rust toolchain was mounted read-only as a
-complete tree and executed only in the confined container. A disposable
-diagnostic subset additionally proved all 13 new independent mutation fixtures
-were effective before the full restart; it is preflight, not a substitute for
-the complete result.
-
-After this receipt was inserted, the current self-contained Apple password and
-authority analyzer plus every embedded deliberate source mutation completed with
-all three finding files empty and terminal
-`apple-password-embedded-analyzer-and-mutations: ok`. This was the embedded
-Python source analyzer only; the outer Apple build wrapper, Xcode, signed native
-artifact, Authorization Services, LaunchDaemon, and any host service did not run.
-
-The receipt-bearing staged tree then passed the strict final preflight with
-binary-diff SHA-256
-`5dfeb689cf5e1b2e0a104394e9e3beb6cfbca3cdfd9a80ce6727058b0ca880b0`.
-Container `dd547f615701f7e437362f2fc86f4ec2f196f6a5edd1c3c8f6cf634ec67e3bb9`
-(`r-s11ir-final-preflight-20260907`) ran from
-`2026-09-07T15:49:48.207680367Z` through
-`2026-09-07T15:49:57.893133189Z`, exited zero, was not OOM-killed, had an
-empty Docker error, and ended `r-s11ir-final-preflight: ok`. It rechecked the
-exact 11-file inventory, unchanged `Cargo.lock`, Bash/Python/HTML/Rust parsing,
-requirements identity/cardinality, 6,067-case catalog cardinality, all 190
-focused mutations, independent baseline, native-codec normal/self-test, and
-`git diff --check` under the same confinement. The full Rust 1.75 toolchain was
-an additional read-only bind; the container was inspected and removed.
-
-One subsequent post-receipt invocation mistyped the immutable image digest and
-omitted `--pull=never`; Docker attempted a registry lookup, received access
-denied, and exited 125 before creating a container or executing any check. No
-image was downloaded, tagged, created, or changed. That invocation is a policy
-and harness mistake and is uncredited. The corrected `--pull=never` invocation
-used the exact local image, again rejected all 190 focused mutations, passed the
-independent baseline and `git diff --check`, and ended
-`r-s11ir-post-receipt-check: ok`; the then-current binary diff SHA-256 was
-`3c25e1eb17e92751c11d6a71e4f2d6865eee5e96af955b55c8f2e45f7067a022`.
-
-The complete unsliced independent source-mutation catalog then ran from mutation
-one through exit zero against exactly that frozen candidate:
-
-```text
-container:  r-s11ir-independent-source-catalog-20260907-v5
-id:         ba9f8dd0f3ba03624cd0f51691008da3056945a0d73b264fe4f4a555cba2e803
-image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
-started:    2026-09-07T11:02:47.785158146Z
-finished:   2026-09-07T15:30:30.902587221Z
-exit:       0
-OOMKilled:  false
-error:      empty
-catalog:    6067 source mutations
-output:     verify-verifier-workspace: ok
-candidate:  c0853be9bb2f61c366e095bd23d51cdb4fc82def902aabd7b1b1420f0c0409b8
-```
-
-That named container used numeric UID/GID 1000:1000, `--network=none`, a
-read-only root and repository bind, all capabilities dropped,
-`no-new-privileges`, private IPC, a 64-PID limit, 2-GiB equal memory/swap limit,
-two CPUs, and a 512-MiB `nosuid,nodev,noexec` private `/tmp`. It had no published
-port, host namespace, device, Docker socket, or writable repository mount. The
-stopped container was inspected and removed only after its result and confinement
-were captured. The catalog covers the exact production, requirement, and gate
-bytes before this evidence-only receipt was inserted; no production, requirement,
-or verifier semantic is changed by the receipt.
-
-Excluded attempts remain explicit. Before the machine crash, two launch mistakes
-(shell quoting and omitted interactive stdin), one direct host `bash -n` despite
-the Docker-only execution rule, one read-only Python bytecode/HTML preflight
-mistake, and an overbroad Rustfmt check were uncredited. Catalog v1 was
-intentionally stopped when runtime-start failure publication lacked a mutation;
-v2 failed closed on an overbroad pre-existing desktop-IPC builder fixture; and v3
-was intentionally stopped after 4 hours 26 minutes when source review found the
-unavailable-worker join gap above. After correction, the first focused preflight
-used an independent-only exact-count helper and failed with `NameError`; the next
-counted a formatting-sensitive `self.` prefix; the next correctly stopped on the
-not-yet-synchronized requirement digest; one shell heredoc was misquoted; and one
-non-strict preflight mounted the Rustfmt executable without its adjacent shared
-libraries. All were changed-nothing diagnostics and are uncredited. Catalog v4
-ran for 1 hour 56 minutes and correctly rejected the new reaper-name mutation,
-but its fixture expected a later diagnostic rather than the earlier missing-item
-diagnostic; it exited one and is uncredited. A first 13-case diagnostic then found
-that a suffixed replacement retained the shared-gate marker as a substring. The
-replacement was made disjoint, all 13 new fixtures passed, and only then did the
-credited complete v5 catalog begin.
-
-No root, sudo, privileged container, host RustDesk process/service/binary/config,
-host listener, firewall/UFW/nftables/iptables state, or host network setting was
-inspected or changed. No image was built, pulled, tagged, or modified. The four
-unrelated running containers were not entered, stopped, reconfigured, or cleaned.
-This remains source evidence: fresh generated bridge output, Windows compilation
-and UI execution, a real installed SCM mutation, refusal/timeout/worker-panic
-races, sustained thread/CPU/memory/resource behavior, current signed artifacts,
-cold R-B2/R-B10 equality, independent reproduction, and external review remain
-open exactly as listed above.
+**Open evidence.** Freshly generate the bridge and run exact-current Rust/Dart/Flutter on native
+Windows. Exercise allow, refusal, queue-full, timeout uncertainty, startup failure, worker panic,
+concurrent taps, and real SCM completion; measure threads, handles, CPU, memory, and latency under
+soak; bind signed artifacts; complete cold R-B2/R-B10, independent reproduction, and external review.
 
 ### R-S11is/R-S11e-282 — exact-command CM file-response admission finality
 
-**Status:** SOURCE VERIFIED / FOCUSED, APPLE-EMBEDDED, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT RUST/NATIVE, INSTALLED DESKTOP, PHYSICAL
-ANDROID, PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
-EVIDENCE OPEN.
+**State.** Exact-command response finality is implemented in source and covered by focused static
+gates plus two Rust regressions. Exact Rust/native execution and real cross-platform file
+transactions remain open.
 
-**Platform, action, and boundary.** This slice covers the filesystem-response
-producer inside the desktop connection manager on Windows, Linux, and macOS and
-the same in-process handler on Android. The boundary is one authorized CM
-filesystem command or read-job tick -> one typed, bounded
-`CmFileResponse` admission -> the exact controlled `Connection` which owns the
-corresponding session/generation/request/job state. R-S11c-4a/4b connection-token
-authority, R-S11c-4c Login-before-filesystem ordering, R-S11c-4d command-queue
-ownership, and R-S11gy's bounded result mailbox remain unchanged.
+**Boundary and current implementation.** `CmFileResponder::send` returns the exact
+`CmEgressAdmissionError`; every response-producing filesystem helper and the exhaustive `handle_fs`
+dispatcher propagate refusal. Desktop and Android command owners treat refusal as terminal. A read
+job enters the live set only after its exact `ReadJobInit` response is admitted; digest/progress and
+read-tick work likewise stop on refusal. A framed write block whose raw body is absent or malformed
+is terminal, so parsing cannot silently resume out of frame. There is no log-only success, retry,
+alternate route, or inferred completion.
 
-**Source-proven old path.** `src/ui_cm_interface.rs::CmFileResponder::send`
-called `CmEgressSender::send`, logged its error, and returned `()`. Every
-response-producing branch of `handle_fs`, every directory/operation helper,
-read-job initialization, and the periodic read tick therefore continued after a
-response that the bounded mailbox had terminally refused. Desktop and Android
-callers erased the handler result; the desktop read-tick caller logged and kept
-the IPC loop alive. The read-job success path was a concrete commit-order defect:
-`start_read_job` called the void responder with `ReadJobInit`, then
-unconditionally assigned `conn_id` and pushed the job, leaving live work after
-its initial result/authority could no longer reach the owning connection. The
-desktop `AuthorizedFS(WriteBlock)` path also converted failure to read the
-following raw block into `None` and resumed the command loop despite losing
-frame synchronization. This is shared source-proven operation-result and
-resource-finality debt. It is not evidence that the unidentified weeks-old
-Android, Windows, or Debian artifacts exercised it; not proof of the reported
-display-only delay or a file-operation failure; and not evidence of compromise,
-public exposure, privilege escalation, or any host RustDesk/service/firewall/
-network/container change.
+**Evidence.** The Rust regressions
+`r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner` and
+`r_s11is_read_job_commits_only_after_initial_response_admission` encode the principal refusal and
+commit-order cases. `scripts/verify-cm-egress-budget.py`, shared/Apple wiring checks, and
+`scripts/verify-verifier-workspace.py` bind exhaustive propagation, desktop/Android termination,
+raw-frame finality, and both regressions. The focused current-tree baseline passes as
+source/test-wiring evidence; the Rust tests themselves were not compiled or executed in this
+documentation slice.
 
-**Correct ownership.** `CmFileResponder::send` now returns the exact
-`CmEgressAdmissionError`. `handle_fs` and every response-producing helper return
-and propagate that typed result across directory/recursive enumeration,
-create/remove/rename, write rejection/finalization/digest, and read
-initialization/digest/block/done/error. The responder contains no log-only or
-ignored-result branch. `start_read_job` admits its exact successful
-`ReadJobInit` before assigning and pushing the live job. Read-stream
-initialization returns an optional typed digest to the exact periodic tick,
-which admits it before reading further. The first response refusal makes the
-desktop command branch, desktop periodic tick, or Android listener break its
-exact session path; it cannot retry, redirect, infer success, or execute later
-CM work. Failure to receive a framed raw write block is independently terminal.
-An operation whose filesystem effect completed before result refusal is not
-rolled back or mislabeled; exact session teardown is the only safe disposition.
-
-Two current-thread Rust regressions configure zero response capacity. One proves
-that the exact `handle_fs` caller receives `MessageCapacity` while the receiver
-observes the identical terminal cause. The other constructs a real read job and
-proves it is not inserted after `ReadJobInit` refusal. The existing focused
-`scripts/verify-cm-egress-budget.py` gate is extended to bind the fallible
-responder, complete producer/caller propagation, raw-frame and periodic-tick
-termination, publish-before-job-commit order, both regressions, R-S11is,
-Appendix C #404, this ledger, the requirements digest, shared/Apple wiring, and
-independent workspace validation.
-
-Current normative identity for this slice:
-
-```text
-523fce2cd0aed40262f3d4d7433522b96856781cdf59d7382a26264518357ff7  requirements.html
-```
-
-**Source-verification receipt — 2026-09-08.** Rustfmt 1.75 parsing of the changed
-Rust source, Python AST parsing of both changed verifiers, Bash parsing of both
-changed shell gates, HTML parsing, the requirements identity and unique
-R-S11is/#404 cardinalities, `git diff --check`, and normal plus hostile-self-test
-native-codec-watch modes passed in the locked verifier profile. The focused CM
-egress verifier passed normally and rejected all 82 deliberate mutations. The
-independently implemented workspace baseline passed. A targeted independent
-driver then exercised the 19 new R-S11is fixtures plus both pre-existing CM
-fixtures whose expected diagnostic precedence changed; all 21 passed. A broader
-driver selected the complete contiguous 69-fixture R-S11gy/R-S11ha/R-S11is CM
-result and direct-log block, and every case passed. Both temporary drivers were
-deleted after their stopped containers were inspected and removed. The Linux
-nondumpable/CM verifier separately passed all 71 deliberate mutations.
-
-The complete independent catalog then restarted at mutation one and completed
-all 6,086 source mutations against the frozen pre-receipt candidate rather than
-resuming at either earlier failure:
-
-```text
-container:  r-s11is-independent-source-catalog-20260908-v3
-id:         c30f54e038a85eb3bcbccb5a455803dcf7c3ac8c61bf1ee39b0c577f300681a7
-image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
-started:    2026-09-07T21:13:27.745919396Z
-finished:   2026-09-08T01:51:45.435949200Z
-exit:       0
-OOMKilled:  false
-error:      empty
-catalog:    6086 source mutations
-output:     verify-verifier-workspace: ok
-candidate:  a5ee050d9c9f545738b18bd589e34dd748d1e220bc8f9b0b5be513bbd07c1023
-```
-
-Repeated inspection showed one CPU-bound Python process, approximately
-298–362 MiB across the sampled observations, one PID, and zero network and block
-I/O. Final inspection proved numeric UID/GID 1000:1000, network none, read-only
-root and repository, all capabilities dropped, `no-new-privileges`, private IPC,
-64 PIDs, two CPUs, 2 GiB memory with no additional swap, a private 512 MiB
-`nosuid,nodev,noexec` tmpfs, no ports or devices, and no Docker socket or host
-namespace. Its writable layer was 8.19 KiB; the 1.22 GiB virtual size was the
-pre-existing immutable image. The exact eight-path inventory and frozen binary
-Git diff matched before and after the run. The stopped container was removed
-only after its result and confinement were captured.
-
-The self-contained Apple password/authority Python analyzer and all of its
-embedded source mutations also passed after this slice, with all three required
-finding files empty:
-
-```text
-container: r-s11is-apple-embedded-20260907-v1
-id:        052c5549733639556ef918cbd80e0f668d556de7a2fe2c4c0167deacca984909
-started:   2026-09-07T17:04:53.511394433Z
-finished:  2026-09-07T17:17:11.078699449Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    apple-password-embedded-analyzer-and-mutations: ok
-```
-
-That stopped container used the same immutable image and locked confinement and
-was removed after inspection. This was the embedded source analyzer only: the
-outer Apple build wrapper, Xcode, a signed artifact, Authorization Services, and
-LaunchDaemon execution did not run.
-
-The failure trail is explicit. Catalog v1 ran for 2 hours 9 minutes and rejected
-a pre-existing direct-log mutation because it still expected the older
-`independent direct optional file-job log result` diagnostic; the strengthened
-fallible handler contract rejected the same effective mutation earlier. After
-that expectation alone was synchronized, catalog v2 ran for 2 hours 13 minutes
-and likewise rejected the pre-existing Android direct-log mutation because the
-new response-finality ordering emitted its earlier diagnostic. That expectation
-alone was synchronized. Two temporary targeted-driver attempts first asserted
-20 while selecting 19 cases and then still omitted the distinct Android log
-spelling; each refused before executing a mutation and is uncredited. The
-corrected 20-case driver passed before v2 exposed the second stale expectation;
-the final 21-case driver and the 69-case whole-CM-block driver then passed before
-the credited v3 restart. One adjacent checker invocation used an unsupported
-`--repo` option and is uncredited. Two older standalone source checkers remain
-stale against later authored source: `verify-cm-process-ownership.py` expects
-`timerCallback() async`, and `verify-viewer-file-finality.py` expects an obsolete
-`await bind.sessionReadRemoteDir(` call. Their failures are not credited as
-product evidence and were not hidden or weakened in this slice.
-
-The receipt-bearing strict preflight then rechecked the exact eight-path
-inventory, unchanged `Cargo.lock`, Bash/Python/HTML parsing, requirements
-identity and cardinality, exact 6,086-case independent and 82-case focused AST
-catalogs, all 82 focused mutations, the independent baseline, native-codec
-normal and hostile-self-test modes, Rustfmt 1.75 parsing of the changed Rust
-file, and `git diff --check`. It passed on binary Git diff SHA-256
-`d6b3513f350ca6c0852518566e4049caae0f832ef21522762b88cc79d9d301d2`:
-
-```text
-container: r-s11is-final-preflight-20260908-v2
-id:        3b679be39cd033d8a85a27ae20b7bdc4d66e2f5767ed79e092510bb71bc68d25
-started:   2026-09-08T02:02:10.791893612Z
-finished:  2026-09-08T02:02:20.413394587Z
-exit:      0
-OOMKilled: false
-error:     empty
-output:    r-s11is-final-preflight: ok
-```
-
-The full Rust 1.75 toolchain tree was an additional read-only bind; the stopped
-container otherwise used the same locked profile and was inspected and removed.
-The immediately preceding preflight attempt exited one before running the
-repository gates because its temporary AST counter accepted only a plain
-assignment while the focused catalog uses an annotated assignment. The helper
-was corrected to require that actual syntax; the attempt is uncredited and made
-no repository change. This evidence-only receipt does not recursively require
-rerunning the four-hour catalog; the literal receipt-bearing bytes are checked
-again by the final focused/independent/digest/diff publication check.
-
-No Rust crate, Flutter application, native target, installed artifact, service,
-or physical device was compiled or executed for this source receipt. The full
-shared release gate is not claimed: its exact pinned FRB/Debian builder image,
-ignored `online/` input closure, and fresh generated outputs remain absent after
-the earlier user-requested storage cleanup. Nothing was pulled, rebuilt, or
-substituted. No root, sudo, privileged container, host RustDesk process/service/
-binary/configuration, listener, firewall, host network state, Android device,
-VM, Haggai/Desktop_Haggai_computer workload, or unrelated Docker object was
-inspected or changed.
-
-This slice adds no retry, reconnect, acknowledgement, alternate protocol,
-worker, task, thread, runtime, listener, port, service transition, Android
-activity/service kill, weakening of the persistent foreground service,
-privilege, dependency, network behavior, or artifact. Exact Rust/native
-compilation and execution, complete installed Windows/Linux/macOS and physical
-Android file-operation/refusal/interruption transactions, cross-version
-behavior, sustained throughput/latency/CPU/memory/resource soak, current signed
-artifacts, clean cold R-B2/R-B10 equality, separately performed independent
-reproduction, R-V3 external review, causation, and proof that the complete
-connection flow is correct and performant remain open. The physical Android
-task-swipe/reopen/Force-Stop/reconnect/resource soak and native Windows
-same-connection focus/minimize capture-through-presentation latency reproduction
-remain STOP-SHIP.
+**Open evidence.** Compile and execute the exact Rust regressions, then run installed desktop and
+physical-Android file operations across directory, read, write, digest, cancellation, saturation,
+malformed/interrupted frames, and teardown. Add cross-version and sustained throughput/resource
+measurements, bind current artifacts, and complete cold R-B2/R-B10, independent reproduction, and
+external review.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 
-**Status:** SOURCE VERIFIED / FOCUSED, INDEPENDENT, AND COMPLETE SOURCE-MUTATION
-GATES PASS / SHARED-AND-APPLE WIRING PLUS APPLE EMBEDDED AUTHORITY ANALYZER PASS /
-EXACT-CURRENT WINDOWS RUST/NATIVE, INSTALLED-CM, PERFORMANCE, ARTIFACT,
-INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+**State.** Whole-stream and Windows route-setup ownership is implemented in source and covered by
+focused static gates. Native installed Windows and end-to-end route/file behavior remains open.
 
-**Platform, action, and boundary.** This slice covers the Windows desktop
-connection manager's per-stream Login/route setup and the shared controlled
-file-clipboard route registry used by Windows CM and Unix file clipboard. The
-boundary is one authenticated CM IPC stream -> at most one validated Login ->
-one exact controlled clipboard route/readiness publication/client commit ->
-terminal client cleanup while that route lease remains live. R-S11c-4a/4b connection-token
-authority, R-S11c-4c Login-before-filesystem ordering, R-S11c-4d bounded command
-publication, R-S11gz exact route leases, and R-S11is exact file-response finality
-remain unchanged.
+**Boundary and current implementation.** One `IpcTaskRunner::run` owns the CM stream. Only its first
+valid authorized `Login` may activate the connection; EOF, framing failure, repeated login,
+authorization failure, route refusal, readiness-publication failure, or registry refusal follows one
+terminal path without retry or spin. On Windows, the exact controlled clipboard route and readiness
+publication succeed before client-registry commit. Terminal cleanup retires the exact client before
+the route lease is released. `register_cliprdr_controlled` holds the route-registry write lock from
+vacancy proof through checked generation/channel allocation and sender commit, so a collision
+consumes no generation or channel and cannot replace an incumbent.
 
-**Source-proven old path.** The imported `IpcTaskRunner` represented both task
-liveness and its post-Login reconfiguration edge with `running: bool`. Its
-outer owner executed `while task_runner.running { task_runner.run().await; }`,
-while `run` cleared the Boolean only after Windows clipboard setup. Commit
-`943856a13b08605f8f3155c9a8ca79a57bb9ea11` then made controlled route setup
-fallible and returned directly on duplicate-route refusal before that clear.
-The unchanged `true` made the current-thread owner invoke the same setup again
-without an intervening await. `register_cliprdr_controlled` also called
-`next_route_generation` and allocated a bounded egress channel before taking the
-route write lock and discovering the duplicate, so every spin iteration burned
-one checked process-lifetime generation and transient allocation; eventual
-generation exhaustion aborts by design. The adjacent `MonitorReady` stream send
-was logged and ignored rather than treated as setup failure.
-The stream result match also ignored `Ok(None)`, even though the IPC decoder
-uses that result for a non-UTF-8 or invalid-JSON frame, and consequently allowed
-later frames on a stream after malformed input.
+**Evidence.** `scripts/verify-clipboard-route-budget.py`, shared/Apple wiring checks, and
+`scripts/verify-verifier-workspace.py` bind first-login activation, terminal malformed/EOF behavior,
+route/readiness-before-client order, cleanup-before-lease release, and vacancy-before-allocation.
+The clipboard route regressions bind disjoint fresh viewer routes and duplicate controlled-route
+refusal. The focused current-tree baseline passes as static/test-wiring evidence, not a native CM
+stream or clipboard runtime result.
 
-Deeper review of the entire collision transaction found two coupled identity
-errors that the initial explicit-disposition draft did not close. Login called
-`ConnectionManager::add_connection` before the next runner invocation attempted
-route admission; because `CLIENTS` replaces by bare connection ID, a colliding
-candidate could replace the incumbent entry and then remove that ID when its
-setup terminated. Conversely, an active runner returned and dropped its route
-lease before `ipc_task` called bare-ID client cleanup, so a new same-ID route
-could be admitted in that release/cleanup gap. Merely replacing the Boolean with
-a restart enum would stop the spin but retain incorrect ownership, so that draft
-was discarded before publication. These are concrete source-level Windows CM
-CPU/log/allocation, client-identity, and process-availability mechanisms.
-It is not evidence that an unidentified operational artifact reached the
-collision, not a network/session authorization bypass, privilege escalation,
-public-listener change, host/service/firewall/network/container mutation,
-compromise, or cause claim for the separately reported display-only delay.
+**Open evidence.** Run the exact candidate in an installed Windows VM through duplicate-ID,
+route-collision, readiness-refusal, malformed-frame, EOF, and cleanup races. Complete native
+Windows/Linux/macOS/Android file transactions, cross-version behavior, throughput and resource
+soaks, current signed artifacts, cold R-B2/R-B10, independent reproduction, and external review.
 
-**Correct ownership.** The ambiguous Boolean, outer runner loop, and proposed
-run-disposition protocol are absent. `ipc_task` invokes `run` exactly once; that
-invocation owns the complete stream. It begins with one inert bounded clipboard
-receiver kept pending by its local sender. The first `Data::Login` must pass the
-existing server-side connection-authority validation. A repeated Login is
-terminal because the current producer emits one Login and a second identity
-commit has no valid lifecycle meaning.
+### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-On Windows, the validated Login next admits its positive controlled route and,
-when the clipboard context is enabled, successfully publishes `MonitorReady`;
-only then does it commit `conn_id`, file authority/token, the controlled
-receiver/lease, and the client registry entry.
-Route collision or readiness failure therefore terminates with `conn_id == 0`
-and cannot replace or remove an incumbent client. Successful activation stays
-inside the same receive loop rather than returning or restarting. Every later
-terminal edge converges below the loop, where the committed client is removed or
-disconnected before the exact route lease is explicitly dropped. A non-UTF-8
-or invalid-JSON frame is `Ok(None)` at the IPC decoder and now logs and takes
-that same terminal path instead of allowing later frames on the stream. The route
-continues to exclude same-ID admission across client cleanup. No delay, backoff,
-retry, recovery timer, or second lifecycle mechanism is added.
+**State.** Exact-generation registry ownership is implemented in shared, Android, and Dart source
+and covered by focused static gates and source-wired regressions. Exact Rust/Dart/native execution,
+device lifecycle, installed-platform, performance, artifact, independent-reproduction, and
+external-review evidence remains open.
 
-Controlled route registration now takes the route-registry write lock and proves
-that the positive connection ID is vacant before it calls
-`next_route_generation` or allocates the egress channel. Only an admitted route
-therefore consumes identity and channel resources. The same critical section
-commits its sender before releasing the lock, and `ClipboardFileRouteLease::drop` still removes only exact
-`(conn_id, route_generation)` identity. Viewer allocation and the Unix
-connection-side terminal response remain unchanged.
+**Boundary and current implementation.** `CmClientRegistry` owns a checked process-lifetime
+monotonic generation and returns a private `CmClientOwner`. Admission rejects nonpositive IDs,
+stale source generations, active same-source collisions, and generation exhaustion without partial
+mutation. A disconnected entry may be replaced; only a strictly newer Android MainService source
+generation may supersede an active predecessor, whose egress owner is nonblockingly closed before
+replacement publication. Desktop source generation zero never supersedes an active collision.
+Remove, disconnect, chat, voice, clipboard, notification, and UI effects first prove the exact owner.
 
-The existing focused `scripts/verify-clipboard-route-budget.py` contract now
-binds vacancy-before-resource ordering under the commit lock, the single stream
-owner, first-Login-only activation, terminal malformed-frame/route/readiness
-failures, setup before client commit, same-loop activation, client cleanup
-before lease release, and complete absence of `running: bool`/`self.running`/an
-outer runner loop or restart disposition.
-Its deliberate mutations move resource allocation before duplicate admission,
-restore the Boolean, permit repeated Login, erase single-run ownership, invert
-setup/activation/cleanup ordering, and remove the normative or ledger bindings. The independently
-implemented workspace contract and mutation catalog inspect the same production
-invariants separately. Existing shared and Apple entrypoints already invoke the
-focused gate, so no duplicate gate runner is added.
+Android carries the accepted MainService generation into registry admission and mirrors
+`(connection_id, registry_generation)` across input, queued/delayed pointer work, voice activity,
+capture reconciliation, notifications, Kotlin callbacks, serialized events, and Dart state. A newer
+same-ID generation retires predecessor input, voice, recorder demand, and notification resources
+before publishing the replacement. Stale or duplicate callbacks are inert. The persistent Android
+foreground service remains intentional; cleanup correctness does not depend on task swipe or on
+killing that service.
 
-Current normative identity for this slice:
+**Evidence.** Four Rust regressions cover stale-owner reuse, stale/same-source collision refusal,
+disconnected replacement, and exhaustion:
+`r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id`,
+`r_s11iu_registry_rejects_stale_and_same_source_active_collisions`,
+`r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement`, and
+`r_s11iu_generation_exhaustion_does_not_commit_a_client`. Android/Kotlin and Dart fixtures cover
+generation serialization and controlled input/voice/resource supersession.
+`scripts/verify-clipboard-route-budget.py`, the focused Android ownership gates, shared/Apple wiring,
+and `scripts/verify-verifier-workspace.py` bind those paths. The focused current-tree baseline passes
+as static and test-wiring evidence; the Rust, Dart, Kotlin, app, and service paths did not execute
+in this slice.
 
-```text
-46d89af345ab2801fd043bb3e45536bd342199ba951993b64024d91d67a52bac  requirements.html
-```
-
-**Source-verification receipt — 2026-09-08.** Pinned Rust 1.75 `rustfmt`
-parsing of both changed Rust files, Python AST parsing of both changed verifier
-files, Bash parsing of the shared and Apple gates, HTML parsing, the exact
-requirements identity and unique R-S11it/Appendix C #405 cardinalities,
-unchanged `Cargo.lock`, native-codec-watch normal and hostile-self-test modes,
-and `git diff --check` passed in the locked verifier profile. The focused
-file-clipboard route verifier passed normally and rejected all 53 deliberate
-mutations. The independently implemented workspace baseline passed, and a
-separate in-memory targeted driver proved the new malformed-frame fixture is
-live and rejected. Earlier targeted runs against the pre-correction candidate
-had already exercised its affected CM route/setup family; the complete current
-catalog below supersedes those partial results.
-
-The independent source-mutation catalog restarted at mutation one and completed
-all 6,102 cases against the frozen pre-receipt candidate. It was one direct
-invocation of `verify-verifier-workspace.py --repo /repo
---source-mutations-only`, with no wrapper-side filtering, sharding, resume, or
-parallel duplicate:
-
-```text
-container:  r-s11it-independent-source-catalog-20260908-v3
-id:         555d1c75d015a24a51bbea0e3d5bfd8d144d07fac7abb180ff316aec0ecc6f5e
-image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
-started:    2026-09-08T06:50:50.153594992Z
-finished:   2026-09-08T11:28:59.182335842Z
-duration:   4h 38m 09.028740850s
-exit:       0
-OOMKilled:  false
-restart:    0
-error:      empty
-catalog:    6102 source mutations
-output:     verify-verifier-workspace: ok
-candidate:  b0212ef644996918b5211e52eb68a235c6fa1fdc8be6d94c3ea431f15a0de330
-```
-
-Repeated live inspection showed exactly one CPU-bound Python PID, approximately
-316-357 MiB across sampled observations, and zero network and block I/O. Final
-inspection proved numeric UID/GID 1000:1000, network none, a read-only root and
-read-only `/repo` bind, all capabilities dropped, `no-new-privileges`, private
-IPC, no host PID or user namespace, 64 PIDs, two CPUs, 2 GiB memory with no
-additional swap, one private 512 MiB `nosuid,nodev,noexec` tmpfs, no published
-port or device, and no Docker socket. Its writable layer was 8 KiB; its roughly
-1.22 GiB virtual root was the pre-existing immutable image. The exact seven-path
-inventory, unchanged `Cargo.lock`, and frozen binary Git diff matched before and
-after the run. The stopped container was removed only after its result and
-confinement were captured.
-
-The established self-contained Apple password/authority Python heredoc and all
-of its embedded source mutations also passed with all three finding files empty:
-
-```text
-container:  r-s11it-apple-embedded-20260908-v1
-id:         48f67e6222f5e7b77eef979f74f74349d14b27ab2704ac1dd62dc2001cba6693
-started:    2026-09-08T11:30:17.272668114Z
-finished:   2026-09-08T11:42:31.477717589Z
-exit:       0
-OOMKilled:  false
-restart:    0
-error:      empty
-output:     apple-password-embedded-analyzer-and-mutations: ok
-```
-
-That stopped container used the same exact immutable image and locked profile
-and was inspected and removed. This was the general embedded Apple source
-analyzer, not the outer Apple Docker/build wrapper, Xcode, a signed artifact,
-Authorization Services, LaunchDaemon behavior, or a direct analyzer of the two
-changed CM production files. Current-slice Apple coverage is the existing Apple
-entrypoint's exact focused-verifier invocation, which both the focused and
-independent validators bind and deliberately mutate.
-
-The failure trail is explicit. The first complete-catalog attempt stopped during
-its up-front fixture audit because one pre-existing CM log-queue mutation still
-targeted the deleted `self.running = false;` anchor; that fixture was re-anchored
-to live Android CM state, then its isolated case and the entire fixture inventory
-passed. Catalog v2 ran for 2h 59m 34s before read-only review found that the
-candidate still ignored decoder `Ok(None)` malformed frames and that its new
-readiness prose was unconditionally worded despite the existing conditional
-clipboard context. It was deliberately stopped, exited 137/non-OOM with empty
-Docker error, inspected, removed, and is uncredited. The source, normative text,
-focused and independent assertions, deliberate mutations, digest, and watch
-identity were corrected before the credited v3 restart. One short preflight then
-correctly rejected an impossible textual order between sibling `Ok(Some(...))`
-and `Ok(None)` match arms; only that cross-arm ordering assertion was removed,
-while the exact terminal arm and its mutation stayed. A first targeted-driver
-invocation omitted Docker stdin attachment, executed an empty Python program,
-and is uncredited; its corrected one-case run passed. An earlier Rustfmt attempt
-traversed unrelated child modules and exposed pre-existing formatting drift; all
-credited Rustfmt checks use `skip_children=true` on only the changed Rust files.
-The first receipt-preflight shell string contained an unescaped HTML single quote;
-the host shell rejected it before creating a container, and the stdin-driven
-replacement below passed.
-No failed, stopped, partial, malformed, superseded, or stale attempt is credited
-as current proof.
-
-The complete catalog is not recursively rerun after this evidence-only status
-and receipt insertion: every catalogued production, normative requirement,
-native-watch, focused/shared/Apple gate, and independent-verifier byte in the
-frozen seven-path candidate remains unchanged except this ledger evidence. The
-strict receipt-bearing preflight then rechecked the exact seven-path inventory,
-unchanged `Cargo.lock`, Rustfmt 1.75, Python/Bash/HTML parsing, requirements
-identity and cardinalities, exact 53/6,102 mutation-catalog cardinalities, all 53
-focused mutations, the independent baseline, native-codec normal and complete
-self-test modes, and `git diff --check`. It passed on the literal receipt-bearing
-binary Git diff SHA-256
-`7a5041f4bc26624785b7ebd8c8f8d60fbbbd553bec00563ca9a779c110e22ce1`:
-
-```text
-container:  r-s11it-final-preflight-20260908-v2
-id:         ea7e567d93774c261bf9d883c25db3041b72a5c02ae0fb031005276a73be375d
-started:    2026-09-08T11:48:19.290559541Z
-finished:   2026-09-08T11:48:29.027757858Z
-exit:       0
-OOMKilled:  false
-restart:    0
-error:      empty
-output:     r-s11it-final-preflight-v2-ok
-```
-
-The Rust toolchain tree was one additional read-only bind; the stopped container
-otherwise used the same locked profile, had a 12 KiB writable layer, and was
-inspected and removed. This final receipt paragraph alone changes ledger bytes;
-a bounded literal-ledger check follows before staging rather than recursively
-rerunning the four-hour catalog.
-
-No Rust crate, Flutter application, native target, installed artifact, service,
-or physical device has yet been compiled or executed for this slice. Exact
-Windows/native build and installed collision/readiness-failure behavior,
-cross-platform exact-generation ownership for the separate bare-ID `CLIENTS`
-registry, complete Windows/Linux/macOS/Android file-operation transactions, cross-version
-behavior, sustained throughput/latency/CPU/memory/resource soak, current signed
-artifacts, clean committed cold R-B2/R-B10 equality, independent reproduction,
-external review, causation, and proof that the complete connection flow is
-correct and performant remain open. The physical Android task-swipe/reopen/
-Force-Stop/reconnect/resource soak and native Windows same-connection focus/
-minimize capture-through-presentation display-latency reproduction remain
-STOP-SHIP.
-
-### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership (2026-09-08)
-
-**Status:** SOURCE VERIFIED / FOCUSED AND INDEPENDENT SOURCE-MUTATION GATES
-PASS / EXACT RUST, DART, NATIVE, INSTALLED-PLATFORM, PERFORMANCE, ARTIFACT,
-INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
-
-**Platform, action, and boundary.** This slice covers the shared desktop and
-Android connection-manager client registry from one authorized Login admission
-through terminal remove/disconnect, chat publication, voice-state mutation, and
-native-to-Dart presentation. The authority boundary is one exact desktop CM
-stream or Android MainService-owned accepted connection -> one checked
-process-lifetime client-registry generation -> only that task's client state and
-UI events. The intentionally persistent Android foreground service and its
-existing exact MainService generation remain intact. User-originated operations
-that intentionally select the currently displayed client by ID remain current-
-entry selectors rather than task-lifecycle authority.
-
-**Source-proven old path.** `src/ui_cm_interface.rs` stored all clients in a
-process-global `RwLock<HashMap<i32, Client>>`. `ConnectionManager::add_connection`
-unconditionally inserted by the server-assigned ID after retaining disconnected
-same-peer cards. Desktop terminal cleanup and Android listener cleanup then
-called `remove_connection` with only that ID; chat and voice state did the same.
-The Android listener retained `current_id`, not the admission it created, and
-accepted another Login on the same task. The Flutter bridge's remove and chat
-events carried only the ID, and Dart removal, chat, and voice selection likewise
-matched only the ID. Android's synchronized service-side capture-owner set and
-remove callback also keyed input, audio, capture reconciliation, and notification
-cleanup only by that ID. A reused ID could therefore let an older draining task
-mutate or remove a newer entry or retire the replacement's Android resources
-after Rust had correctly admitted it. This is especially relevant to Android because a
-new exact MainService generation can supersede an older generation without
-weakening the requested task-swipe-persistent service, but the same bare-ID flaw
-also existed in desktop process state. A desktop same-ID candidate could replace
-an incumbent before its terminal cleanup; an old UI event could select a newer
-card. This is source-level identity/lifecycle-finality debt. It is not evidence
-that a deployed artifact reached the collision, an authorization or privilege
-bypass, public exposure, host/service/firewall/network/container mutation,
-compromise, or causation/reproduction of the separately reported Android task-
-swipe or Windows focus/minimize display-only delay.
-
-**Correct ownership.** `CmClientRegistry` now owns both entries and a checked
-monotonic generation which survives entry clearing. Its single-lock `admit`
-transaction rejects nonpositive IDs, a source generation older than the current
-entry, and an active same-source collision before checked generation allocation
-or commit. It stamps both the private source generation and serialized registry
-generation and inserts exactly once. Exhaustion returns without changing the
-registry or candidate. A disconnected entry can be replaced. A strictly newer
-Android MainService source generation may supersede an active older entry; the
-new manager takes ownership and nonblockingly sends `Data::Close` to the
-displaced egress owner before publishing the replacement. Desktop managers and
-the native Windows probe use process-local source generation zero, so an active
-desktop same-ID collision fails closed instead of superseding.
-
-`ConnectionManager::add_connection` returns the private `CmClientOwner`
-`(id, generation)` minted by that transaction. The desktop whole-stream runner
-commits it only after route/readiness and registry admission succeed; the Android
-listener commits it only after the existing authorized, nonempty connection
-token and registry admission succeed. Both retain the owner through terminal
-cleanup. Repeated Android Login and pre-admission chat/voice are terminal. Chat,
-voice, remove, and disconnect all check the exact owner. If it is stale, cleanup
-returns before clipboard cleanup, UI callback, idle-exit evaluation, or any
-registry mutation. Voice state is cloned while locked and published only after
-the registry guard leaves the statement. The public bare-ID UI removal helper
-can remove only a disconnected entry; it cannot retire an active task owner.
-No registry lock is held across async work, JNI, UI, or clipboard callbacks.
-
-The Android bridge rejects source generation zero and constructs the manager
-with the exact service generation already carried by the server connection.
-Generation-bound Java callbacks continue to reject an older MainService object.
-Serialized clients and native remove/chat events now carry the signed registry
-generation across Rust, JSON, Kotlin `Long`, and Dart `int` representations. The
-synchronized Android resource mirror retains one exact generation and capture
-classification for every connection ID and returns Remote input authority with
-that generation. `ControlledInputOwner` carries service, connection, and registry
-generations, so the existing owner-bound queues, delayed actions, and pointer
-sequence cannot inherit same-ID predecessor work. Controlled voice registration
-and activity now use a connection-to-registry-generation map rather than an ID
-set. An existing ID admits only a strictly newer generation; a stale or duplicate
-add returns before input/audio/capture/notification publication. A valid newer
-add retires the predecessor's exact input owner, voice registration/activity and
-recorder demand, and notification before publishing replacement resource effects.
-Remove and voice callbacks likewise prove the exact current generation before
-any controlled-resource side effect. This closes the second same-service callback
-race without weakening MainService persistence.
-Dart rejects a lower-generation add before dialog or tab mutation; a newer
-generation removes the old client and tab together and appends their replacement
-together. Remove, chat, and voice events apply only to the matching current
-generation. This preserves the persistent service rather than using Activity/
-task removal as cleanup.
-
-Four pure Rust registry regressions cover stale-owner mutation/retirement after ID
-reuse, stale-source and active same-source collision refusal without generation
-consumption, disconnected same-source replacement with stale cleanup refusal,
-and generation exhaustion without commit. Android controlled-connection,
-controlled-input, and controlled-voice fixtures cover invalid, duplicate, stale,
-and exact same-ID generations; preserve multi-owner capture/voice demand; prove
-Remote-only input-generation lookup; and prove predecessor queued input and voice
-activity are not inherited. The existing Dart serialization regression binds the
-field. The focused route-budget verifier and independently
-implemented workspace validator bind the production, bridge, Dart, test,
-shared/Apple wiring, normative, digest, and ledger surfaces with deliberate
-mutations. The focused Android ownership verifier passed normally and rejected
-all 573 deliberate mutations. The focused route-budget verifier passed normally
-and rejected all 108 deliberate mutations. The independent workspace baseline,
-a widened targeted audit of all 270 selected mutation tuples at 282 duplicate
-runtime targets, and the complete 6,173-case independent source-mutation catalog
-passed. The exact receipts and evidence limits follow.
-
-Current normative identity for this slice:
-
-```text
-2a5e975fca589eee85f3c5b2bc050ce07907ac4b70a766dccc1d3462967713e9  requirements.html
-```
-
-**Source-verification receipt — 2026-09-09.** The frozen candidate passed
-Python AST parsing of all three changed Python gates, `requirements.html`
-parsing, Bash parsing of `scripts/verify.sh` and
-`scripts/native-codec-watch.sh`, the exact requirements SHA-256 above,
-`git diff --check`, the focused Android ownership and route-budget normal and
-self-test modes, the independent workspace baseline, and native-codec-watch
-normal and hostile-self-test modes. Pinned Rust 1.75 `rustfmt --check --config
-skip_children=true` passed for `src/ui_cm_interface.rs` and
-`src/windows_cm_lifecycle_probe.rs`. `src/flutter.rs` parses, but whole-file
-format checking remains unavailable as slice evidence because that pre-existing
-file has unrelated format drift outside this diff.
-
-The complete independent catalog restarted at mutation one and ran all 6,173
-source mutations against one frozen read-only repository bind. It was one direct
-invocation with no shard, resume, filter, parallel duplicate, host listener,
-published port, or product process:
-
-```text
-container:  r-s11iu-independent-source-catalog-20260908-v5
-id:         83313ea60e7cc228ee812d7d738b0b2c8625ee8bbfeadc2ea729149d585ba251
-image:      sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
-command:    /usr/bin/python3 -I -S /repo/scripts/verify-verifier-workspace.py --repo . --source-mutations-only
-started:    2026-09-08T20:28:41.309213361Z
-finished:   2026-09-09T01:04:21.685352728Z
-duration:   4h 35m 40.376139367s
-exit:       0
-OOMKilled:  false
-restart:    0
-error:      empty
-catalog:    6173 source mutations
-output:     verify-verifier-workspace: ok
-SizeRw:     8192 bytes
-SizeRootFs: 1215995904 bytes
-```
-
-Terminal inspection proved UID/GID 1000:1000, network `none`, read-only root,
-read-only `/repo`, `CapDrop=[ALL]`, no added capability,
-`no-new-privileges`, private IPC, a 64-PID limit, two CPUs, 2 GiB memory with no
-additional swap, and one private 512 MiB `nosuid,nodev,noexec` `/tmp`. There was
-no port binding, publish-all-ports setting, device, Docker socket, host
-namespace, or writable repository mount. Live observations showed exactly one
-CPU-bound Python PID, approximately 315-363 MiB memory, no OOM, no restart, and
-no container error. The 8 KiB writable layer was the only per-container
-residue; the approximately 1.22 GiB root was the pre-existing immutable image.
-The exited container was removed only after its result and confinement receipt
-were captured.
-
-The failure trail is retained rather than credited. Catalog v1
-(`f26d82a412c44caf6b03c0ce6383e05cac892223454467fc67c4ce0f1d2beadd`,
-`2026-09-08T13:03:53.280672779Z` to `2026-09-08T13:05:30.380576780Z`)
-was interrupted with exit 130.
-Catalog v2
-(`00d95717af3e3e4387a1bbfb519122f7db69f13357935266ac161bc66b1b8a97`,
-`2026-09-08T14:31:17.190428269Z` to `2026-09-08T14:36:42.516780850Z`)
-exited 1 on a stale mutation fixture. Catalog v3
-(`5de4115e57e021b6dbdd3275f6070d24d3c0744193aea1709c0a4f9fb6b279c9`,
-`2026-09-08T14:38:12.460202462Z` to `2026-09-08T17:00:45.742203195Z`)
-exited 1 because the desktop admission success-arm mutation survived. Catalog v4
-(`073c5f6e5a60162f11e6f37b365e35c8aaf57c3ddd5bebaca1bc4dacaeaa9654`,
-`2026-09-08T17:03:41.234076966Z` to `2026-09-08T19:27:06.680234600Z`)
-exited 1 because a mutation was rejected under a different diagnostic contract than its fixture required. All
-four were non-OOM, had zero restarts and empty Docker errors, used the same
-locked profile, had 8 KiB writable layers, were removed after inspection, and
-are uncredited. The success-arm and diagnostic-fixture defects were corrected;
-the widened targeted audit then passed all 270 selected tuples at 282 runtime
-targets before the successful full v5 restart.
-
-The locked image contains no `cargo`, `rustc`, `dart`, `flutter`, `kotlinc`,
-`kotlin`, or `java`, and this read-only checkout has no offline Cargo vendor
-tree. Consequently the wired four Rust behavior tests, Dart test, and Android
-Kotlin behavior fixtures were source- and mutation-verified but not compiled or
-executed here. No full release build was run. Those limitations are not converted
-into passing runtime evidence.
-
-This slice adds no retry, reconnect, timer, task, worker, thread, runtime,
-listener, port, endpoint, network behavior, protocol wire field, privilege,
-service stop, Activity kill, persistence weakening, capture/display behavior,
-dependency, or artifact. Exact Rust/Dart/native compilation and execution,
-physical Android task-swipe/reopen/Force-Stop behavior, exact-current Windows
-same-connection focus/minimize capture-through-presentation latency, installed
-collision/supersession behavior, complete cross-platform file transactions,
-cross-version behavior, sustained latency/CPU/memory/resource soak, signed
-artifacts, clean committed cold R-B2/R-B10 equality, independent reproduction,
-causation, external review, and proof that the complete connection flow is
-correct and performant remain open and STOP-SHIP where already designated.
+**Open evidence.** Execute the exact Rust/Dart tests and current app artifacts. On a physical Android
+device, exercise persistent-service task swipe, reopen, Force Stop, same-ID supersession, reconnect,
+and resource soak without treating service termination as the fix. Exercise same-ID desktop/Windows
+collisions and complete file transactions. Separately reproduce native Windows same-connection
+focus/minimize capture-through-presentation latency. Measure end-to-end latency, queues, CPU, memory,
+handles, and cleanup; bind signed artifacts; complete cold R-B2/R-B10, independent reproduction,
+causation analysis, external review, and the broader correct-and-performant connection-flow mandate.
 
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 

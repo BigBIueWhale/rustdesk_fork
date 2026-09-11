@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'dart:js' as js;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 
+import 'package:flutter_hbb/models/custom_cursor_pointer_route.dart';
 import 'package:flutter_hbb/models/custom_cursor_registry.dart';
 import 'package:flutter_hbb/models/model.dart' as model;
 
@@ -65,23 +67,31 @@ class CursorManager {
 }
 
 final _customCursors = CustomCursorRegistry(
-  onError: (operation, error, _) => debugPrint(
-      'Custom cursor $operation failed: ${error.runtimeType}'),
+  onError: (operation, error, _) =>
+      debugPrint('Custom cursor $operation failed: ${error.runtimeType}'),
 );
 final _cursorActivations = CustomCursorActivationQueue();
 final _cursorPresentations = CustomCursorPresentationCoordinator(
   activations: _cursorActivations,
 );
+final _cursorPresentationSessions = CustomCursorPresentationSessions();
+final _cursorPointerRoute =
+    CustomCursorPointerRetirementRoute(_cursorPresentationSessions);
 final _cursorPresentationFinalizer =
-    Finalizer<CustomCursorPresentationToken>((presentation) {
-  unawaited(presentation.retire());
+    Finalizer<CustomCursorPresentationSession>((session) {
+  unawaited(session.retire());
 });
+
+void _ensureCursorPointerRoute() =>
+    _cursorPointerRoute.install(GestureBinding.instance.pointerRouter);
 
 Future<void> _activateSystemFallback() =>
     CursorManager.instance.resetSystemCursor();
 
-void retireCustomCursorOwner(String owner) =>
-    _customCursors.retireOwner(owner);
+void retireCustomCursorOwner(String owner) {
+  unawaited(_cursorPresentationSessions.retireOwner(owner));
+  _customCursors.retireOwner(owner);
+}
 
 MouseCursor buildCursorOfCache(
     model.CursorModel cursor, double scale, model.CursorData? cache) {
@@ -119,12 +129,13 @@ MouseCursor buildCursorOfCache(
   );
   return handle == null
       ? MouseCursor.defer
-      : _RegisteredMemoryCursor(handle);
+      : _RegisteredMemoryCursor(cursor.customCursorOwner, handle);
 }
 
 class _RegisteredMemoryCursor extends MouseCursor {
-  const _RegisteredMemoryCursor(this.handle);
+  const _RegisteredMemoryCursor(this.owner, this.handle);
 
+  final String owner;
   final CustomCursorHandle handle;
 
   @override
@@ -147,22 +158,29 @@ class _RegisteredMemoryCursor extends MouseCursor {
 class _RegisteredMemoryCursorSession extends MouseCursorSession {
   _RegisteredMemoryCursorSession(_RegisteredMemoryCursor cursor, int device)
       : super(cursor, device) {
+    _ensureCursorPointerRoute();
     _presentation = CustomCursorPresentationToken(
       coordinator: _cursorPresentations,
       fallback: _activateSystemFallback,
-      onError: (error, _) => debugPrint(
-          'Custom cursor presentation failed: ${error.runtimeType}'),
+      onError: (error, _) =>
+          debugPrint('Custom cursor presentation failed: ${error.runtimeType}'),
     );
-    _cursorPresentationFinalizer.attach(this, _presentation, detach: this);
+    _presentationSession = _cursorPresentationSessions.bind(
+      owner: cursor.owner,
+      device: device,
+      presentation: _presentation,
+    );
+    _cursorPresentationFinalizer.attach(this, _presentationSession,
+        detach: this);
   }
 
   late final CustomCursorPresentationToken _presentation;
+  late final CustomCursorPresentationSession _presentationSession;
   bool _activationStarted = false;
   bool _disposed = false;
 
   @override
-  _RegisteredMemoryCursor get cursor =>
-      super.cursor as _RegisteredMemoryCursor;
+  _RegisteredMemoryCursor get cursor => super.cursor as _RegisteredMemoryCursor;
 
   @override
   Future<void> activate() async {
@@ -172,20 +190,24 @@ class _RegisteredMemoryCursorSession extends MouseCursorSession {
     _activationStarted = true;
     final lease = cursor.handle.acquire();
     if (lease == null) {
-      await _presentation.activateFallback(() => !_disposed);
+      await _presentation.activateFallback(
+          () => !_disposed && _presentationSession.mayPresent);
       return;
     }
     await _presentation.activate(
       lease,
-      () => !_disposed,
+      () => !_disposed && _presentationSession.mayPresent,
       CursorManager.instance.setSystemCursor,
     );
   }
 
   @override
   void dispose() {
+    if (_disposed) {
+      return;
+    }
     _disposed = true;
     _cursorPresentationFinalizer.detach(this);
-    unawaited(_presentation.retire());
+    unawaited(_presentationSession.retire());
   }
 }

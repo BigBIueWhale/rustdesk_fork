@@ -1,7 +1,99 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_hbb/models/custom_cursor_pointer_route.dart';
 import 'package:flutter_hbb/models/custom_cursor_registry.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _ManagedTestCursor extends MouseCursor {
+  _ManagedTestCursor({
+    required this.name,
+    required this.owner,
+    required this.handle,
+    required this.sessions,
+    required this.coordinator,
+    required this.order,
+  });
+
+  final String name;
+  final String owner;
+  final CustomCursorHandle handle;
+  final CustomCursorPresentationSessions sessions;
+  final CustomCursorPresentationCoordinator coordinator;
+  final List<String> order;
+  final Completer<void> presented = Completer<void>();
+  final Completer<void> fellBack = Completer<void>();
+
+  @override
+  MouseCursorSession createSession(int device) =>
+      _ManagedTestCursorSession(this, device);
+
+  @override
+  String get debugDescription => 'managed test cursor $name';
+}
+
+class _ManagedTestCursorSession extends MouseCursorSession {
+  _ManagedTestCursorSession(_ManagedTestCursor cursor, int device)
+      : super(cursor, device) {
+    _presentation = CustomCursorPresentationToken(
+      coordinator: cursor.coordinator,
+      fallback: () async {
+        cursor.order.add('fallback-${cursor.name}');
+        if (!cursor.fellBack.isCompleted) {
+          cursor.fellBack.complete();
+        }
+      },
+      onError: (_, __) => fail('presentation unexpectedly failed'),
+    );
+    _session = cursor.sessions.bind(
+      owner: cursor.owner,
+      device: device,
+      presentation: _presentation,
+    );
+  }
+
+  late final CustomCursorPresentationToken _presentation;
+  late final CustomCursorPresentationSession _session;
+  bool _activationStarted = false;
+  bool _disposed = false;
+
+  @override
+  _ManagedTestCursor get cursor => super.cursor as _ManagedTestCursor;
+
+  @override
+  Future<void> activate() async {
+    if (_disposed || _activationStarted) {
+      return;
+    }
+    _activationStarted = true;
+    final lease = cursor.handle.acquire();
+    if (lease == null) {
+      await _presentation
+          .activateFallback(() => !_disposed && _session.mayPresent);
+      return;
+    }
+    await _presentation.activate(
+      lease,
+      () => !_disposed && _session.mayPresent,
+      (_) async {
+        cursor.order.add('present-${cursor.name}');
+        if (!cursor.presented.isCompleted) {
+          cursor.presented.complete();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    unawaited(_session.retire());
+  }
+}
 
 void main() {
   test('activation queue preserves issue order across asynchronous turns',
@@ -27,18 +119,17 @@ void main() {
 
   test('replacement owns display before old lease deletion', () async {
     final queue = CustomCursorActivationQueue();
-    final coordinator =
-        CustomCursorPresentationCoordinator(activations: queue);
+    final coordinator = CustomCursorPresentationCoordinator(activations: queue);
     final registry = CustomCursorRegistry(maxEntries: 2, maxRgbaBytes: 8);
     final order = <String>[];
 
     CustomCursorHandle add(String owner) => registry.ensure(
-      owner: owner,
-      logicalKey: 'cursor',
-      rgbaBytes: 4,
-      register: (_) async => true,
-      delete: (_) async => order.add('delete-$owner'),
-    )!;
+          owner: owner,
+          logicalKey: 'cursor',
+          rgbaBytes: 4,
+          register: (_) async => true,
+          delete: (_) async => order.add('delete-$owner'),
+        )!;
 
     CustomCursorPresentationToken token(String name) =>
         CustomCursorPresentationToken(
@@ -88,8 +179,341 @@ void main() {
     ]);
   });
 
-  test('slow obsolete registration cannot block a newer activation',
+  test('Flutter manager replacement presents before predecessor release',
       () async {
+    final order = <String>[];
+    final sessions = CustomCursorPresentationSessions();
+    final coordinator = CustomCursorPresentationCoordinator(
+        activations: CustomCursorActivationQueue());
+    final registry = CustomCursorRegistry(maxEntries: 2, maxRgbaBytes: 8);
+    final manager = MouseCursorManager(MouseCursor.uncontrolled);
+    final router = PointerRouter();
+    final route = CustomCursorPointerRetirementRoute(sessions);
+    route.install(router);
+
+    _ManagedTestCursor add(String name) => _ManagedTestCursor(
+          name: name,
+          owner: name,
+          handle: registry.ensure(
+            owner: name,
+            logicalKey: 'cursor',
+            rgbaBytes: 4,
+            register: (_) async => true,
+            delete: (_) async => order.add('delete-$name'),
+          )!,
+          sessions: sessions,
+          coordinator: coordinator,
+          order: order,
+        );
+
+    final first = add('first');
+    manager.handleDeviceCursorUpdate(31, null, [first]);
+    await first.presented.future;
+    registry.retireOwner('first');
+
+    final second = add('second');
+    manager.handleDeviceCursorUpdate(31, null, [second]);
+    await second.presented.future;
+    await Future<void>.delayed(Duration.zero);
+    expect(order, ['present-first', 'present-second', 'delete-first']);
+
+    registry.retireOwner('second');
+    const removed = PointerRemovedEvent(pointer: 1, device: 31);
+    manager.handleDeviceCursorUpdate(31, removed, const <MouseCursor>[]);
+    router.route(removed);
+    await second.fellBack.future;
+    await Future<void>.delayed(Duration.zero);
+    expect(order, [
+      'present-first',
+      'present-second',
+      'delete-first',
+      'fallback-second',
+      'delete-second',
+    ]);
+    route.dispose();
+  });
+
+  test('device removal revokes a pending activation before presentation',
+      () async {
+    final registration = Completer<bool>();
+    final presented = <String>[];
+    final deleted = <String>[];
+    final registry = CustomCursorRegistry(maxEntries: 1, maxRgbaBytes: 4);
+    final handle = registry.ensure(
+      owner: 'owner',
+      logicalKey: 'cursor',
+      rgbaBytes: 4,
+      register: (_) => registration.future,
+      delete: (key) async => deleted.add(key),
+    )!;
+    final presentation = CustomCursorPresentationToken(
+      coordinator: CustomCursorPresentationCoordinator(
+          activations: CustomCursorActivationQueue()),
+      fallback: () async {},
+      onError: (_, __) => fail('presentation unexpectedly failed'),
+    );
+    final sessions = CustomCursorPresentationSessions();
+    final session = sessions.bind(
+      owner: 'owner',
+      device: 7,
+      presentation: presentation,
+    );
+
+    final activation = presentation.activate(
+      handle.acquire()!,
+      () => session.mayPresent,
+      (key) async => presented.add(key),
+    );
+    registry.retireOwner('owner');
+    final retirement = sessions.retireDevice(7);
+    expect(session.mayPresent, isFalse);
+
+    registration.complete(true);
+    expect(await activation, isFalse);
+    await retirement;
+    await Future<void>.delayed(Duration.zero);
+    expect(presented, isEmpty);
+    expect(deleted, hasLength(1));
+  });
+
+  test('Flutter pointer route retires only the removed device', () async {
+    final sessions = CustomCursorPresentationSessions();
+    final coordinator = CustomCursorPresentationCoordinator(
+        activations: CustomCursorActivationQueue());
+
+    CustomCursorPresentationSession session(int device) {
+      final result = sessions.bind(
+        owner: 'owner',
+        device: device,
+        presentation: CustomCursorPresentationToken(
+          coordinator: coordinator,
+          fallback: () async {},
+          onError: (_, __) => fail('presentation unexpectedly failed'),
+        ),
+      );
+      return result;
+    }
+
+    final removed = session(8);
+    final retained = session(9);
+    final router = PointerRouter();
+    final route = CustomCursorPointerRetirementRoute(sessions);
+    route.install(router);
+    route.install(router);
+
+    router.route(const PointerMoveEvent(pointer: 1, device: 8));
+    expect(removed.mayPresent, isTrue);
+    expect(retained.mayPresent, isTrue);
+
+    router.route(const PointerRemovedEvent(pointer: 1, device: 8));
+    expect(removed.mayPresent, isFalse);
+    expect(retained.mayPresent, isTrue);
+
+    route.dispose();
+    router.route(const PointerRemovedEvent(pointer: 2, device: 9));
+    expect(retained.mayPresent, isTrue);
+    await retained.retire();
+  });
+
+  test('stale device retirement cannot revoke its replacement', () async {
+    final sessions = CustomCursorPresentationSessions();
+    final coordinator = CustomCursorPresentationCoordinator(
+        activations: CustomCursorActivationQueue());
+
+    CustomCursorPresentationToken presentation() =>
+        CustomCursorPresentationToken(
+          coordinator: coordinator,
+          fallback: () async {},
+          onError: (_, __) => fail('presentation unexpectedly failed'),
+        );
+
+    final first = sessions.bind(
+      owner: 'first',
+      device: 11,
+      presentation: presentation(),
+    );
+    final replacement = sessions.bind(
+      owner: 'replacement',
+      device: 11,
+      presentation: presentation(),
+    );
+    expect(first.mayPresent, isFalse);
+    expect(replacement.mayPresent, isTrue);
+
+    await first.retire();
+    expect(replacement.mayPresent, isTrue);
+    await sessions.retireDevice(11);
+    expect(replacement.mayPresent, isFalse);
+  });
+
+  test('unactivated replacement chain inherits predecessor retirement',
+      () async {
+    final order = <String>[];
+    final sessions = CustomCursorPresentationSessions();
+    final coordinator = CustomCursorPresentationCoordinator(
+        activations: CustomCursorActivationQueue());
+    final registry = CustomCursorRegistry(maxEntries: 1, maxRgbaBytes: 4);
+    final handle = registry.ensure(
+      owner: 'first',
+      logicalKey: 'cursor',
+      rgbaBytes: 4,
+      register: (_) async => true,
+      delete: (_) async => order.add('delete-first'),
+    )!;
+    final firstPresentation = CustomCursorPresentationToken(
+      coordinator: coordinator,
+      fallback: () async => order.add('fallback-first'),
+      onError: (_, __) => fail('presentation unexpectedly failed'),
+    );
+    final first = sessions.bind(
+      owner: 'first',
+      device: 12,
+      presentation: firstPresentation,
+    );
+    expect(
+      await firstPresentation.activate(
+        handle.acquire()!,
+        () => first.mayPresent,
+        (_) async => order.add('present-first'),
+      ),
+      isTrue,
+    );
+    registry.retireOwner('first');
+
+    final replacement = sessions.bind(
+      owner: 'replacement',
+      device: 12,
+      presentation: CustomCursorPresentationToken(
+        coordinator: coordinator,
+        fallback: () async => order.add('fallback-replacement'),
+        onError: (_, __) => fail('presentation unexpectedly failed'),
+      ),
+    );
+    expect(first.mayPresent, isFalse);
+    expect(replacement.mayPresent, isTrue);
+    expect(order, ['present-first']);
+
+    final latest = sessions.bind(
+      owner: 'latest',
+      device: 12,
+      presentation: CustomCursorPresentationToken(
+        coordinator: coordinator,
+        fallback: () async => order.add('fallback-latest'),
+        onError: (_, __) => fail('presentation unexpectedly failed'),
+      ),
+    );
+    expect(replacement.mayPresent, isFalse);
+    expect(latest.mayPresent, isTrue);
+
+    await sessions.retireDevice(12);
+    await Future<void>.delayed(Duration.zero);
+    expect(latest.mayPresent, isFalse);
+    expect(order, [
+      'present-first',
+      'fallback-latest',
+      'delete-first',
+    ]);
+  });
+
+  test('owner retirement revokes every owned device and waits for fallback',
+      () async {
+    final order = <String>[];
+    final registry = CustomCursorRegistry(maxEntries: 1, maxRgbaBytes: 4);
+    final handle = registry.ensure(
+      owner: 'owner',
+      logicalKey: 'cursor',
+      rgbaBytes: 4,
+      register: (_) async => true,
+      delete: (_) async => order.add('delete'),
+    )!;
+    final coordinator = CustomCursorPresentationCoordinator(
+        activations: CustomCursorActivationQueue());
+    final presentation = CustomCursorPresentationToken(
+      coordinator: coordinator,
+      fallback: () async => order.add('fallback'),
+      onError: (_, __) => fail('presentation unexpectedly failed'),
+    );
+    final sessions = CustomCursorPresentationSessions();
+    final session = sessions.bind(
+      owner: 'owner',
+      device: 13,
+      presentation: presentation,
+    );
+    final secondSession = sessions.bind(
+      owner: 'owner',
+      device: 14,
+      presentation: CustomCursorPresentationToken(
+        coordinator: coordinator,
+        fallback: () async => order.add('fallback-unpresented'),
+        onError: (_, __) => fail('presentation unexpectedly failed'),
+      ),
+    );
+    expect(
+      await presentation.activate(
+        handle.acquire()!,
+        () => session.mayPresent,
+        (_) async => order.add('present'),
+      ),
+      isTrue,
+    );
+
+    registry.retireOwner('owner');
+    await sessions.retireOwner('owner');
+    await Future<void>.delayed(Duration.zero);
+    expect(session.mayPresent, isFalse);
+    expect(secondSession.mayPresent, isFalse);
+    expect(order, ['present', 'fallback', 'delete']);
+  });
+
+  test('in-flight presentation retains its lease through fallback', () async {
+    final presentationStarted = Completer<void>();
+    final allowPresentation = Completer<void>();
+    final order = <String>[];
+    final registry = CustomCursorRegistry(maxEntries: 1, maxRgbaBytes: 4);
+    final handle = registry.ensure(
+      owner: 'owner',
+      logicalKey: 'cursor',
+      rgbaBytes: 4,
+      register: (_) async => true,
+      delete: (_) async => order.add('delete'),
+    )!;
+    final presentation = CustomCursorPresentationToken(
+      coordinator: CustomCursorPresentationCoordinator(
+          activations: CustomCursorActivationQueue()),
+      fallback: () async => order.add('fallback'),
+      onError: (_, __) => fail('presentation unexpectedly failed'),
+    );
+    final sessions = CustomCursorPresentationSessions();
+    final session = sessions.bind(
+      owner: 'owner',
+      device: 17,
+      presentation: presentation,
+    );
+    final activation = presentation.activate(
+      handle.acquire()!,
+      () => session.mayPresent,
+      (_) async {
+        order.add('present-start');
+        presentationStarted.complete();
+        await allowPresentation.future;
+        order.add('present-finish');
+      },
+    );
+
+    await presentationStarted.future;
+    registry.retireOwner('owner');
+    final retirement = sessions.retireDevice(17);
+    expect(session.mayPresent, isFalse);
+    expect(order, ['present-start']);
+
+    allowPresentation.complete();
+    expect(await activation, isTrue);
+    await retirement;
+    await Future<void>.delayed(Duration.zero);
+    expect(order, ['present-start', 'present-finish', 'fallback', 'delete']);
+  });
+
+  test('slow obsolete registration cannot block a newer activation', () async {
     final coordinator = CustomCursorPresentationCoordinator(
         activations: CustomCursorActivationQueue());
     final registry = CustomCursorRegistry(maxEntries: 2, maxRgbaBytes: 8);
@@ -161,6 +585,7 @@ void main() {
       register: (_) async => false,
       delete: (_) async => order.add('delete-failed'),
     )!;
+    final failedLease = failedHandle.acquire()!;
     final current = CustomCursorPresentationToken(
       coordinator: coordinator,
       fallback: () async => order.add('fallback-current'),
@@ -182,7 +607,7 @@ void main() {
     registry.retireOwner('current');
     expect(
       await failed.activate(
-        failedHandle.acquire()!,
+        failedLease,
         () => true,
         (_) async => order.add('present-failed'),
       ),
@@ -246,8 +671,7 @@ void main() {
     await succeeding.retire();
   });
 
-  test('partial presentation failure retains both possible displays',
-      () async {
+  test('partial presentation failure retains both possible displays', () async {
     final errors = <Object>[];
     final deleted = <String>[];
     final coordinator = CustomCursorPresentationCoordinator(
@@ -268,7 +692,8 @@ void main() {
       onError: (_, __) => fail('presentation unexpectedly failed'),
     );
     expect(
-      await current.activate(add('current').acquire()!, () => true, (_) async {}),
+      await current.activate(
+          add('current').acquire()!, () => true, (_) async {}),
       isTrue,
     );
     registry.retireOwner('current');
@@ -323,7 +748,13 @@ void main() {
         );
 
     final first = add('first', 4)!;
-    add('second', 4)!;
+    final second = add('second', 4)!;
+    final firstRegistration = first.acquire()!;
+    final secondRegistration = second.acquire()!;
+    expect(await firstRegistration.ready, isTrue);
+    expect(await secondRegistration.ready, isTrue);
+    firstRegistration.release();
+    secondRegistration.release();
     expect(registry.ownerEntryCount('owner'), 2);
     expect(registry.ownerRgbaBytes('owner'), 8);
     expect(registry.entryCount, 2);
@@ -354,7 +785,13 @@ void main() {
         )!;
 
     final first = add('first');
-    add('second');
+    final second = add('second');
+    final firstRegistration = first.acquire()!;
+    final secondRegistration = second.acquire()!;
+    expect(await firstRegistration.ready, isTrue);
+    expect(await secondRegistration.ready, isTrue);
+    firstRegistration.release();
+    secondRegistration.release();
     final touch = first.acquire()!;
     touch.release();
     add('third');
@@ -380,6 +817,7 @@ void main() {
       delete: (key) async => deleted.add(key),
     )!;
     final lease = handle.acquire()!;
+    expect(await lease.ready, isTrue);
     for (var i = 0; i < 32; i += 1) {
       expect(
         registry.ensure(
@@ -525,8 +963,7 @@ void main() {
     );
   });
 
-  test('replacement registration waits for exact eviction deletion',
-      () async {
+  test('replacement registration waits for exact eviction deletion', () async {
     final deletionStarted = Completer<void>();
     final allowDeletion = Completer<void>();
     final registered = <String>[];
@@ -560,8 +997,7 @@ void main() {
     lease.release();
   });
 
-  test('uncertain deletion fails closed for all later registrations',
-      () async {
+  test('uncertain deletion fails closed for all later registrations', () async {
     final errors = <String>[];
     final registry = CustomCursorRegistry(
       maxEntries: 1,

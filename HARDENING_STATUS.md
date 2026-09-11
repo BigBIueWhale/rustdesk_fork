@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-7cb8a94a2166bf97afa4c765cd1ed6e9dedcaa97dd054f0a095ee8e8a2daf127  requirements.html
+ca5de72033997b53e82afec47199e51d7ff9fc46ab5ea92dea519c84428e5027  requirements.html
 ```
 
 ## Current Verdict
@@ -11006,111 +11006,69 @@ cross-version operation, actual cursor/display presentation ordering, capture-th
 bounded CPU/memory/tasks/handles/queues, sustained reconnect/focus/resource soak, cold R-B2/R-B10 equality,
 independent reproduction, causation, and external review.
 
-### R-S11gv/R-S11e-234 — exact bounded cursor-shape identity, publication, presentation, and retirement (2026-08-16)
+### R-S11gv/R-S11e-234 — exact bounded cursor-shape identity, publication, presentation, and retirement
 
-**SOURCE IMPLEMENTED; FOCUSED AND COMPLETE INDEPENDENT SOURCE-MUTATION VERIFICATION PASS; ALL RUST/DART/FLUTTER,
-GENERATED-BRIDGE, NATIVE, DEVICE, PERFORMANCE, AND RELEASE EVIDENCE OPEN.** Follow-up review of the complete remote
-cursor-shape path found several independent ownership boundaries that had never been made one coherent transaction:
+**SOURCE MODEL UPDATED; EXACT FLUTTER UNIT STATE-MACHINE COVERAGE PASSES; TARGET-NATIVE, DEVICE,
+PERFORMANCE, AND RELEASE EVIDENCE OPEN.**
 
-- Controlled-side cursor identity was derived from an operating-system hint. Windows handles can be reused while the
-  pixels behind them change, animated cursors can retain one native hint while content changes, and macOS serial-like
-  identity is not a content proof. Platform capture also derived allocation and copy sizes from native dimensions before
-  one common checked bound existed. The controller cached by that hint and each subscriber accumulated full payloads
-  independently. On the viewer, full cursor data crossed the same generic event surface without an exact Dart decode/
-  commit acknowledgement; later ID-only reuse therefore meant only “previously sent,” not “this exact handler decoded
-  and retained this revision.” Dart's `CachedPeerData.cursorDataList`, `CursorModel` decoded-image maps, and native/web
-  plugin registration maps had separate or absent resource ceilings. Flutter cursor activation is asynchronous, and
-  exact Flutter 3.24.5 source starts a replacement activation without awaiting it and removes a pointer session without
-  calling its disposal path. The old fire-and-forget register/set/delete flow therefore had no global replacement,
-  deletion, uncertain-outcome, or missing-disposal owner. These are shared source-proven identity/publication/resource-
-  finality defects and are consistent with stale presentation or cleanup-mediated recovery. They do not prove that the
-  weeks-old deployed Android, Windows, or Debian binaries contained or exercised these paths, and they do not establish
-  cursor state as the cause of the reported up-to-ten-second display-only delay.
-- `src/platform/mod.rs` now supplies one checked positive `width * height * 4` calculation with a 4 MiB ceiling.
-  Windows validates the exact color and mask/outline sizes, exact `GetBitmapBits` return length, checked outline geometry,
-  and representable in-image hotspot before allocation or copy. Linux checks dimensions and the native pixel pointer
-  before constructing a slice. macOS selects an existing `NSBitmapImageRep`, obtains pixel rather than point dimensions,
-  converts its point hotspot through that scale, bounds capacity before materialization, and emits exactly four
-  transparent bytes for a nil sampled color. The generic path and viewer path require exact geometry-derived RGBA length;
-  the compression helper rejects output that is short or exceeds the caller's exact limit. These source checks do not
-  count as native Windows/Linux/macOS capture execution.
-- The controller now hashes geometry, hotspot, and exact RGBA content for change identity instead of trusting the OS hint,
-  and allocates a positive monotonic nonwrapping protocol ID. Its shape cache and each subscriber-knowledge cache are LRU-
-  bounded by 64 entries and 16 MiB of raw RGBA weight. The current `Arc` is one additional bounded current-shape pin, and
-  each live handler has a metadata-only knowledge map charged using raw weights for eviction; those explicitly bounded
-  constant/per-handler references are not falsely counted as bytes physically resident inside the shared cache budget.
-  OS hints remain sampling hints only. Windows continues content sampling because handles can be reused or animate;
-  platform-specific change signals remain optimization inputs where source identity proves that they are sufficient.
-- Each exact native Flutter `SessionHandler` now owns one `CursorShapeMailbox`: one published typed shape event and one
-  current bounded shape reference. A process cache holds at most 64 shapes/16 MiB raw RGBA. The handler may receive an ID-
-  only event only when its bounded knowledge map records the exact identity/revision as positively acknowledged. Full
-  data, ID-only, and unavailable messages carry exact checked publication tokens. Dart takes the exact connection,
-  UI-owner, identity, revision, and publication after asynchronous shape preparation and reports whether the exact shape
-  can commit. A negative ID acknowledgement removes only that knowledge and promotes exactly one full-data publication;
-  a negative full-data acknowledgement advances or drains latest state without immediately retrying the same failed
-  payload. Failed Dart-port delivery keeps only current state and blocks posts until exact stream replacement re-arms the
-  latest shape. A newly inserted handler may inherit only the one current shape for replay. This does not create a timer,
-  retry loop, reconnect path, service restart, worker, isolate, runtime, transport queue, listener, port, or dependency.
-- Dart admits only canonical positive unsigned-64-bit decimal IDs. It validates dimensions, hotspot, exact RGBA length, and the raw
-  cache ceiling before taking an owned RGBA copy; it rechecks the exact session and retired-owner boundary after image
-  decode and again after platform-specific encoding. Its decoded shape cache is 64 entries/16 MiB by source RGBA weight,
-  skips the active shape while choosing an eviction victim, and disposes evicted images. The separate web callback source
-  cache has the same bound and exact sequence/current-owner gates. Full-data and ID-only handlers acknowledge native state
-  only after the corresponding prepare/lookup decision. Exact expected close, unexpected stream termination, explicit
-  close, connection failure, and reusable-mobile replacement call `retireCursorResources`: owner retirement becomes
-  visible before late asynchronous work can commit, decoded images are disposed, raw/web source state is cleared, and
-  platform-owner retirement begins. The desktop remote/camera and mobile remote/camera page teardown paths use that same
-  idempotent operation. The 16 MiB values are logical raw-source accounting, not a claim that decoded UI images, PNG/BGRA
-  encodings, platform objects, and bounded in-flight replacement candidates occupy exactly 16 MiB of physical memory.
-- Native and web cursor implementations now use the same process-global `CustomCursorRegistry` contract, each appropriate
-  to its platform manager. Across every connection/UI owner it admits at most 64 logical entries and 16 MiB raw RGBA.
-  Pending registration is counted and cannot be evicted; active leases and registrations with uncertain outcomes cannot
-  be deleted; owner retirement leaves pending/active entries accounted until exact finality. Capacity eviction removes
-  only an inactive completed entry, awaits its exact platform deletion, and only then starts replacement registration.
-  Registration or deletion uncertainty fails the entire registry closed instead of guessing that a platform object was
-  absent. Empty owners are removed. Generation, owner, logical-key, count, and byte arithmetic have explicit limits.
-- One `CustomCursorPresentationCoordinator` and activation queue serialize actual platform cursor changes. A request marks
-  itself desired before awaiting registration readiness, so a slow obsolete registration does not occupy the platform
-  queue and block a ready newer request. Inside the queue it rechecks exact desire and session liveness, sets the new
-  cursor before releasing the predecessor, and lets stale retirement affect only its exact presenter. Failed registration
-  or presentation establishes the system fallback before releasing a lease that might still be displayed. If both custom
-  presentation and fallback fail, the candidate and prior possibly displayed leases stay retained within the global
-  registry bound until a later successful replacement proves displacement. `MouseCursorSession` explicit disposal
-  detaches and retires one idempotent presentation token; a `Finalizer` owns the same token for Flutter's pointer-removal-
-  without-dispose path, and the token contains no reference back to the session. Diagnostic callbacks are isolated so an
-  exception raised while reporting an error cannot interrupt fallback, ready completion, lease release, or owner finality.
-- Deterministic Dart regressions cover serial platform ordering, replacement-before-delete, stale retirement, slow
-  obsolete registration, registration/presentation/fallback failure, uncertain displayed candidates, global count/byte
-  LRU, active and pending accounting, exact owner retirement, false/uncertain registration, deletion-before-replacement,
-  deletion uncertainty, and throwing diagnostic callbacks. Rust regressions cover checked capture bounds, controller
-  cache count/bytes/recency, counter exhaustion, content identity, shape mailbox latest-wins/replay/failure/exhaustion,
-  negative ID acknowledgement, shared-cache eviction, exact handler knowledge including recency, and current-shape replay.
-  The focused self-mutating source verifier and its shared, generated-bridge, Apple, and independent workspace wiring
-  pass: the focused catalog rejects all 73 deliberate mutations, the independent workspace baseline passes, and the
-  complete unsliced `--source-mutations-only` catalog restarts at mutation one and returns terminal
-  `verify-verifier-workspace: ok`. Earlier complete-catalog attempts are not counted as passes: they exposed nonunique
-  mutation targets, stale expected-diagnostic collisions, over-broad extraction boundaries, and assertions where an
-  unrelated surviving marker could satisfy a narrower invariant. Those proof-construction defects were corrected
-  without weakening product checks, and the complete catalog was rerun from the beginning. Counted checks run in the
-  existing immutable verifier image as numeric UID:GID 1000:1000, with no pull or network, read-only source/root, all
-  capabilities dropped, `no-new-privileges`, bounded PIDs/memory/CPU, private no-exec tmpfs, and no published port,
-  device, Docker socket, or host namespace. The image has Python and Bash but no Rust, Dart, Flutter, generated-bridge,
-  or native platform toolchain, so source mutation checks cannot be represented as compilation or runtime tests.
-  A later adjacent-gate repetition is also uncounted: the older display-selection verifier's exact independent-dispatch
-  mutation fixture still encoded the pre-R-S11gv three-call adjacency and therefore did not exist after the cursor-
-  resource validator was inserted. The fixture now binds the current four-call adjacency, and the independent verifier
-  meta-mutates that exact focused fixture so the focused self-test cannot silently become stale again.
-- The user's explicit release requirement remains broader than these reported symptoms: the whole initial connection,
-  reconnect, focus/background, task-swipe/reopen, stream replacement, display selection, capture, transport, decode,
-  compositor publication, control, file-transfer coexistence, and teardown flow must be correct and performant in
-  general. Exact Rust/Dart/Flutter compilation and tests; generated bridge generation/compilation; native Windows, Linux,
-  macOS, Android, iOS, and web capture/registration/presentation; physical Android task-swipe/reopen/Force-Stop recovery;
-  real Windows full-peer focus/minimize reproduction; the weeks-old deployed client/server combination; cross-version and
-  concurrent-feature behavior; capture-through-compositor timestamps and explicit latency budgets; sustained reconnect/
-  focus/resource/performance soak; cold R-B2/R-B10 artifact equality; installed process/service/package behavior;
-  independent reproduction; external review; and causation of the reported delay all remain open release obligations.
-  No host RustDesk process/configuration, firewall, listener, network namespace, VM, unrelated image, Android persistent
-  service, or OS privilege boundary is inspected or changed by this source slice.
+- The exact pinned Flutter 3.24.5 source exposes a framework lifetime hole:
+  `MouseCursorManager.handleDeviceCursorUpdate` removes `_lastSession[device]` and returns for
+  `PointerRemovedEvent` without calling `MouseCursorSession.dispose`. `RendererBinding` updates
+  `MouseTracker` before `GestureBinding` routes the same non-hit-tested removal event through
+  `PointerRouter`. Dart's `Finalizer` contract does not guarantee that a callback runs. The former
+  finalizer-only compensation therefore could not establish deterministic pointer-device retirement.
+- `flutter/lib/models/custom_cursor_registry.dart` now gives each live presentation one exact
+  `CustomCursorPresentationSession` keyed by UI owner and pointer device. Claiming a replacement first
+  installs the new exact device owner and synchronously revokes the predecessor; exact session retirement
+  removes only an identity-equal mapping. Device and UI-owner retirement synchronously make every affected
+  session unable to present before their serialized fallback/deletion futures run. The presentation token
+  independently rechecks retirement after asynchronous registration readiness. An in-flight platform
+  presentation remains conservatively leased until serialized fallback or a successful replacement proves
+  displacement.
+- The native and web adapters install one process-lifetime global `PointerRouter` route when their first
+  custom session is created. A real `PointerRemovedEvent` retires the current exact device owner. Normal
+  Flutter disposal detaches and retires the same finalizer-safe session object idempotently, UI teardown
+  retires every device owned by that exact cursor owner, and a stale dispose or later finalizer cannot remove
+  or reset its replacement. The finalizer token has no `MouseCursorSession` back-reference and remains only
+  a best-effort last resort; correctness no longer depends on garbage collection.
+- The existing checked capture, content identity, typed acknowledgement, bounded controller/subscriber/Dart
+  caches, exact decompression, and 64-entry/16 MiB process-global platform registry remain governed by
+  R-S11gv. Direct Rust `r_s11gv_` tests remain in `scripts/verify.sh`. The direct Dart
+  `custom_cursor_registry_test.dart` gate remains in `scripts/dart-verify.sh` and now covers pending
+  device removal, Flutter's exact `MouseCursorManager` replacement order, real `PointerRouter`
+  classification of `PointerRemovedEvent`, stale and unactivated same-device replacement chains, exact
+  UI-owner retirement, and retirement during an in-flight platform presentation in addition to its prior
+  ordering, uncertainty, resource-bound, and diagnostic-finality cases.
+- The 769-line `verify-viewer-cursor-resources.py` source-wording/mutation catalog and 387 lines of its
+  independent workspace verifier, mutation fixtures, source loading, and shell/Apple wiring are deleted.
+  They parsed selected strings and meta-tested 73 mutations but did not execute Flutter, a platform cursor
+  manager, pointer delivery, native capture, or presentation; retaining them would misstate evidence. No
+  skipped placeholder or compatibility wrapper replaces them.
+- A confined exact Flutter 3.24.5/Dart 3.5.4 run mounted the current registry/route sources and repository
+  test read-only into a disposable minimal Flutter package and passed all 24 tests. Its first run correctly exposed
+  four stale test setups: three requested eviction before asynchronous registration finality despite the
+  non-evictable pending-entry contract, and one acquired a failed handle only after it had retired. The tests
+  now acquire before asynchronous failure and await successful registration before inactive eviction. The
+  final suite additionally prevents old-session disposal from reclaiming a handoff after its unactivated
+  successor retires. A separate exact-Dart harness covers the lower-level pending-device, stale-replacement,
+  all-device UI-owner, and in-flight-presentation cases. A second networkless run used a byte-matched current
+  Flutter source snapshot and the unchanged committed lockfile to analyze the four touched production files
+  against the application's actual dependency closure and rerun all 24 tests. This proves the pure Dart
+  owner/coordinator state machine, shared production `PointerRouter` adapter, and touched-file type integration;
+  it does not analyze the whole app, generate the bridge, execute the native cursor plugin, or drive engine-to-
+  `RendererBinding` pointer delivery.
+- Engine/OS `PointerRemovedEvent` delivery, native plugin registration/presentation, physical Android task
+  swipe/reopen/Force Stop, Windows focus/minimize/reconnect, other target platforms, cross-version behavior,
+  capture-through-compositor latency, sustained resource/performance soak, cold artifact equality, installed
+  packages/services, independent reproduction, external review, and causation of the reported display delay
+  remain open. The broader requirement that the complete connection flow be correct and performant is not
+  narrowed by this slice.
+- Source extraction, formatting, structural checks, and product/test execution use disposable unprivileged
+  containers with no published ports. Product/test execution is networkless and uses a private snapshot or
+  read-only exact repository files; one formatter-only invocation made only its two exact source/test mounts
+  writable. Acquisition-only containers with no repository mount used outbound HTTPS to resolve the minimal test
+  and unchanged committed application lockfiles; all analysis/tests then ran offline. Nothing runs RustDesk or
+  inspects/changes host RustDesk, `haggai_computer`, host services, firewall/routing, or listener state.
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 

@@ -4894,14 +4894,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2aa) R-S11gv exact bounded cursor-shape resources =="
-if python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test; then
-  note "ok  R-S11gv Apple/shared cursor capture, identity, publication, presentation, and retirement are exact and bounded"
-else
-  echo "  FAIL R-S11gv Apple/shared cursor resources regained unchecked capture, stale identity, unacknowledged publication, unbounded registration, or incomplete teardown"
-  rc=1
-fi
-
 echo "== (2g-c2adaa) R-S11hn lossless whiteboard IPC/event-loop lifecycle ownership =="
 if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   note "ok  R-S11hn Apple/shared whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"

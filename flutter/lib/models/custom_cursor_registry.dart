@@ -66,6 +66,11 @@ class CustomCursorPresentationCoordinator {
   CustomCursorLease? _lease;
   final Map<Object, CustomCursorLease> _uncertainLeases = HashMap.identity();
 
+  void _claimReplacement({required Object presenter}) {
+    _desiredRequest = Object();
+    _desiredPresenter = presenter;
+  }
+
   Future<bool> activate({
     required Object presenter,
     required CustomCursorLease lease,
@@ -131,12 +136,25 @@ class CustomCursorPresentationCoordinator {
     required Future<void> Function() fallback,
     required void Function(Object error, StackTrace stackTrace) onError,
   }) {
-    if (identical(_desiredPresenter, presenter)) {
+    final wasDesired = identical(_desiredPresenter, presenter);
+    final handedOff = _desiredPresenter != null && !wasDesired;
+    if (wasDesired) {
       _desiredRequest = null;
       _desiredPresenter = null;
     }
     return _activations.schedule(() async {
-      if (!identical(_presenter, presenter) &&
+      // A successor observed at retirement permanently owns display finality.
+      // If it is retired before this turn, its own later turn performs the
+      // fallback; the predecessor must not take that responsibility back.
+      if (handedOff) {
+        return;
+      }
+      final successor = _desiredPresenter;
+      if (successor != null && !identical(successor, presenter)) {
+        return;
+      }
+      if (!wasDesired &&
+          !identical(_presenter, presenter) &&
           !_uncertainLeases.containsKey(presenter)) {
         return;
       }
@@ -195,8 +213,21 @@ class CustomCursorPresentationToken {
   final void Function(Object error, StackTrace stackTrace) _onError;
   final Object _identity = Object();
   bool _activationStarted = false;
+  bool _replacementClaimed = false;
   bool _retired = false;
   Future<void>? _retirement;
+
+  void _claimReplacementOf(CustomCursorPresentationToken previous) {
+    if (_retired ||
+        _activationStarted ||
+        _replacementClaimed ||
+        identical(this, previous) ||
+        !identical(_coordinator, previous._coordinator)) {
+      throw StateError('invalid custom cursor presentation replacement');
+    }
+    _replacementClaimed = true;
+    _coordinator._claimReplacement(presenter: _identity);
+  }
 
   Future<bool> activate(
     CustomCursorLease lease,
@@ -211,7 +242,7 @@ class CustomCursorPresentationToken {
     return _coordinator.activate(
       presenter: _identity,
       lease: lease,
-      mayPresent: mayPresent,
+      mayPresent: () => !_retired && mayPresent(),
       present: present,
       fallback: _fallback,
       onError: _onError,
@@ -225,7 +256,7 @@ class CustomCursorPresentationToken {
     _activationStarted = true;
     return _coordinator.activateFallback(
       presenter: _identity,
-      mayPresent: mayPresent,
+      mayPresent: () => !_retired && mayPresent(),
       fallback: _fallback,
       onError: _onError,
     );
@@ -242,6 +273,105 @@ class CustomCursorPresentationToken {
       fallback: _fallback,
       onError: _onError,
     );
+    _retirement = started;
+    return started;
+  }
+}
+
+/// Owns every live custom-cursor presentation by its exact UI owner and
+/// pointing device.
+///
+/// Flutter 3.24.5 forgets a `MouseCursorSession` on pointer-device removal
+/// without calling its disposal hook. Platform adapters therefore route that
+/// removal here. Revocation becomes synchronous before its asynchronous
+/// fallback/deletion work begins, and a late stale disposal can retire only its
+/// own session object.
+class CustomCursorPresentationSessions {
+  final Map<int, CustomCursorPresentationSession> _devices = {};
+
+  CustomCursorPresentationSession bind({
+    required String owner,
+    required int device,
+    required CustomCursorPresentationToken presentation,
+  }) {
+    final session = CustomCursorPresentationSession._(
+      sessions: this,
+      owner: owner,
+      device: device,
+      presentation: presentation,
+    );
+    _claim(session);
+    return session;
+  }
+
+  Future<void> retireDevice(int device) {
+    final session = _devices.remove(device);
+    return session?._retireFromSessions() ?? Future<void>.value();
+  }
+
+  Future<void> retireOwner(String owner) {
+    final owned = _devices.values
+        .where((session) => session.owner == owner)
+        .toList(growable: false);
+    for (final session in owned) {
+      if (identical(_devices[session.device], session)) {
+        _devices.remove(session.device);
+      }
+    }
+    return Future.wait<void>(
+        owned.map((session) => session._retireFromSessions()));
+  }
+
+  void _claim(CustomCursorPresentationSession session) {
+    final previous = _devices[session.device];
+    if (previous != null && !identical(previous, session)) {
+      session._presentation._claimReplacementOf(previous._presentation);
+    }
+    _devices[session.device] = session;
+    if (previous != null && !identical(previous, session)) {
+      unawaited(previous._retireFromSessions());
+    }
+  }
+
+  void _retireExact(CustomCursorPresentationSession session) {
+    if (identical(_devices[session.device], session)) {
+      _devices.remove(session.device);
+    }
+  }
+}
+
+/// A finalizer-safe exact presentation owner. It deliberately contains no
+/// reference to the `MouseCursorSession` that uses it.
+class CustomCursorPresentationSession {
+  CustomCursorPresentationSession._({
+    required CustomCursorPresentationSessions sessions,
+    required this.owner,
+    required this.device,
+    required CustomCursorPresentationToken presentation,
+  })  : _sessions = sessions,
+        _presentation = presentation;
+
+  final CustomCursorPresentationSessions _sessions;
+  final CustomCursorPresentationToken _presentation;
+  final String owner;
+  final int device;
+  bool _retired = false;
+  Future<void>? _retirement;
+
+  bool get mayPresent => !_retired;
+
+  Future<void> retire() {
+    _sessions._retireExact(this);
+    return _retireFromSessions();
+  }
+
+  Future<void> _retireFromSessions() {
+    final retirement = _retirement;
+    if (retirement != null) {
+      return retirement;
+    }
+    _retired = true;
+    final started = _presentation.retire();
     _retirement = started;
     return started;
   }
@@ -342,8 +472,7 @@ class CustomCursorRegistry {
     _owners[owner] = ownerState;
     final ready = Completer<bool>();
     entry.ready = ready.future;
-    unawaited(_initializeEntry(
-            ownerState, entry, retiredResources, register)
+    unawaited(_initializeEntry(ownerState, entry, retiredResources, register)
         .then<void>((value) {
       entry.registrationFinished = true;
       ready.complete(value);
@@ -398,8 +527,8 @@ class CustomCursorRegistry {
     }
     ownerState.retired = true;
     final inactive = ownerState.entries.values
-        .where((entry) =>
-            entry.activeSessions == 0 && entry.registrationFinished)
+        .where(
+            (entry) => entry.activeSessions == 0 && entry.registrationFinished)
         .toList(growable: false);
     for (final entry in inactive) {
       unawaited(_remove(owner, ownerState, entry));
@@ -454,8 +583,8 @@ class CustomCursorRegistry {
     entry.retired = true;
   }
 
-  void _registrationFinished(String owner, _CustomCursorOwner ownerState,
-      _CustomCursorEntry entry) {
+  void _registrationFinished(
+      String owner, _CustomCursorOwner ownerState, _CustomCursorEntry entry) {
     if (entry.activeSessions == 0 &&
         (entry.retired || ownerState.retired) &&
         _owns(ownerState, entry)) {
@@ -502,8 +631,8 @@ class CustomCursorRegistry {
     entry.lastUsed = _useCounter;
   }
 
-  Future<bool> _remove(String owner, _CustomCursorOwner ownerState,
-      _CustomCursorEntry entry) {
+  Future<bool> _remove(
+      String owner, _CustomCursorOwner ownerState, _CustomCursorEntry entry) {
     if (!_owns(ownerState, entry) ||
         !entry.registrationFinished ||
         entry.activeSessions != 0) {
@@ -531,8 +660,7 @@ class CustomCursorRegistry {
     return retired;
   }
 
-  void _reportError(
-      String operation, Object error, StackTrace stackTrace) {
+  void _reportError(String operation, Object error, StackTrace stackTrace) {
     final report = onError;
     if (report != null) {
       _reportCustomCursorError(

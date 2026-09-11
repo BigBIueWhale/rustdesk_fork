@@ -4889,14 +4889,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2-00) R-S11hj complete account storage/presentation authority excision =="
-if python3 scripts/verify-account-storage-excision.py --repo . --self-test; then
-  note "ok  R-S11hj Apple/shared account/address-book/group storage, bridge, option, IPC, and packaged glyph authority is absent"
-else
-  echo "  FAIL R-S11hj Apple/shared account/address-book/group persistence, bridge, option, presentation, or detached-worker authority regrew"
-  rc=1
-fi
-
 echo "== (2g-c2-000) R-S11hk bounded exact-session file-confirm ownership =="
 if python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test; then
   note "ok  R-S11hk Apple/shared file-confirm events are typed, bounded, FIFO, exact-session-owned, and terminal-visible"

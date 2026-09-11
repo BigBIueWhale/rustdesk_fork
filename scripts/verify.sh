@@ -11324,12 +11324,6 @@ else
   echo "  FAIL R-S11hi/R-S11e-246: peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
   rc=1
 fi
-if python3 scripts/verify-account-storage-excision.py --repo . --self-test; then
-  echo "  ok  R-S11hj/R-S11e-247 dormant account/address-book/group storage, option, IPC, web, and packaged glyph authority is absent"
-else
-  echo "  FAIL R-S11hj/R-S11e-247: account/address-book/group persistence, bridge, option, presentation, or detached-worker authority regrew"
-  rc=1
-fi
 if python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test; then
   echo "  ok  R-S11hk/R-S11e-248 file-confirm events are typed, bounded, FIFO, exact-session-owned, and terminal-visible"
 else

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-c4112502d8beb8da51a9b0a2877c5ef2aacf06153a125727efe17b15a71134fc  requirements.html
+1c11e67d652298cdf15ab77f3d0d2c8cee4618819adc51cb2084911b7d861344  requirements.html
 ```
 
 ## Current Verdict
@@ -12430,120 +12430,24 @@ reproduction; R-V3 external review; causation; and proof that the complete conne
 flow is correct and performant all remain explicit release obligations and explicit user
 requests.
 
-### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision (2026-08-22)
+### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision
 
-**SOURCE IMPLEMENTED; CONFINED SOURCE AND DELIBERATE-MUTATION VERIFICATION
-RECORDED BELOW; EXACT RUST/FLUTTER COMPILATION, COLD RELEASE, INSTALLED-ARTIFACT,
-INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW EVIDENCE OPEN.** Platforms: shared
-Rust configuration and Flutter FFI on Android, iOS, Windows, Linux, and macOS;
-desktop main-status IPC; and the web bridge/Flutter asset manifest. Endpoint/action:
-the inherited local address-book/group save/load/clear family and its account/deployment
-configuration and presentation compatibility surface. This slice does not change a
-direct connection, CPace authentication, remembered peer credential, live peer
-display-name/avatar metadata, Android foreground service, controlled listener, capture,
-video, audio, input, file transfer, or reconnect behavior.
+**SOURCE IMPLEMENTED; EXACT COMPILATION, GENERATED-BRIDGE, PACKAGE, AND INSTALLED-ARTIFACT
+EVIDENCE OPEN.** The direct-only fork has no live account/address-book/group UI or control plane, so
+the inherited record types, encrypted raw stores, FFI/web save/load/clear surface, account options,
+password-provenance flag, main-status variants, recursive asset packaging, and retired icon-font
+families were deleted instead of acquiring a replacement worker or migration protocol. Existing
+`*_ab` and `*_group` files remain untouched inert bytes. Live peer TOML persistence and direct-session
+display-name/avatar, CPace, password, and connection-token state are separate and remain governed by
+their own requirements.
 
-Read-only source and history tracing found a direct contradiction between the current
-tree and the already binding R-G4/R-SV6/R-SV6a account-control-plane disposition. The
-account, address-book, and “Accessible devices” Flutter models/widgets had been deleted,
-and no live authored Dart or Rust caller remained, but the initial-import storage
-backend survived untouched. `libs/hbb_common/src/config.rs` still defined seven
-address-book/group record and access-token envelope types and a complete encrypted raw
-file save/load/remove family. `src/flutter_ffi.rs` still exported six operations. A
-payload larger than 1,024 bytes caused every save to create a new unretained native
-thread; no owner could cancel, join, bound, observe, or order it. The web bridge retained
-six matching operations, two completion callbacks, and two fixed two-second timeout
-flows. This was dormant source authority and resource-lifecycle debt: deletion of the
-only front-end made it unreachable through the intended app, but any future bridge
-regrowth would have reactivated secret-bearing account persistence and an unbounded
-thread factory.
-
-The same audit found the compatibility state around that backend rather than stopping
-at the obvious functions. Eighteen address-book/group/account-deployment constants
-remained admitted through local, server, or built-in option registries: synchronization,
-tag/filter/panel/current-book, group-panel, address-book preset, device deployment
-preset, group/user/strategy preset, and connection-note keys. Seven of those option
-families remained presentable through desktop `MainStatusOptionKey`; Dart retained two
-dead constants; `LoginConfigHandler` retained one never-read address-book-password
-provenance flag. Flutter still recursively packaged the whole `assets/` directory and
-registered the retired `AddressBook` and `DeviceGroup` font families. By contrast,
-`OPTION_DISPLAY_NAME` and `OPTION_AVATAR` have a current, separately source-proven
-consumer in direct login construction and are retained. The direct-session CPace and
-connection-token path is also separate and unchanged.
-
-The corrected authority model is absence, not a more elaborate lifecycle. A direct-only
-fork with no account server or address-book/group UI has no legitimate producer,
-consumer, or migration owner for these records. The seven data types, encrypted raw
-store/recovery helpers and dedicated tests, six native FFI operations, six web methods,
-dead handler flag, eighteen option keys, seven main-status variants, and two Dart
-constants are deleted. No queue, retained worker, timeout, retry, cleanup task, or
-replacement persistence format is introduced. Existing user `*_ab` and `*_group` files
-are deliberately not read, migrated, rewritten, or removed; they are inert bytes outside
-the new process authority. Flutter now enumerates each retained SVG asset explicitly
-and declares only the four live font families, so the two orphan binary glyph files
-cannot enter an artifact through a directory wildcard.
-
-This supersedes only R-S11b-4d's historical raw address-book/group branch. Its live
-`PeerConfig` contract remains intact: TOML serialization still enters the same
-owner-only, no-follow, synchronized temp-and-replace transaction; typed exact-path load
-status, corruption preservation/hardening, and loaded-semantically-empty-only cleanup
-remain gated and unchanged. The shared verifier no longer requires or runs tests for a
-deleted raw account store and instead continues the live peer-TOML transaction,
-corruption, symlink, transient-read, retired-RDP-credential, and exact-path cleanup
-regressions.
-
-The focused `scripts/verify-account-storage-excision.py` validator parses every affected
-source boundary, proves each model/helper/FFI/bridge/option/IPC/Dart/package token absent,
-proves the retained explicit asset/font manifest and peer-TOML gate present, binds
-R-S11hj/Appendix C #370/this ledger/current requirements digest, and attacks the
-contract with deliberate regrowth and gate-removal mutations. The shared and Apple
-gates invoke that focused validator. The independent workspace validator separately
-binds the focused verifier's semantics and mutation inventory, repeats the product
-absence proof directly, and carries its own deliberate source-mutation entries rather
-than trusting the focused verdict.
-
-Final verification used only the authorized immutable local inspection image with
-network disabled, the repository bind-mounted read-only, UID/GID 1000, all capabilities
-dropped, `no-new-privileges`, a read-only root filesystem, bounded PIDs/memory/CPU, and
-no Docker socket, device, host namespace, or published port. The image contains Python
-and shell but no Rust/Cargo, Flutter/Dart, native codec stack, or platform target
-toolchain. Exact Rust/Flutter compilation and execution are therefore not claimed; no
-substitute image, network pull, dependency acquisition, listener, host process, or long
-release build was used.
-
-The focused account-storage verifier passed all 17 deliberate mutations. The
-independent workspace validator passed in normal mode, and its complete unfiltered
-4,852-entry semantic source-mutation catalog passed; every fixture had to be rejected at
-every reachable source occurrence. The first exhaustive construction run correctly
-stopped on two older fixtures whose anchors included compatibility symbols this slice
-deleted: the account-registration mutation depended on `OPTION_PRESET_DEVICE_NAME`, and
-the role-swap mutation depended on `save_ab_password_to_recent`. Each fixture was moved
-to an adjacent live stable anchor without changing the retired symbol it injects or the
-independent rejection it requires, and the complete catalog was then rerun from the
-beginning to its terminal pass. Both native-codec watch modes passed. The two modified
-Python verifiers parsed through Python's AST without writing bytecode; the shared,
-Apple, and native-codec shell gates passed `bash -n`; `requirements.html` passed
-the standard-library HTML parser; an exact asset-inventory comparison proved that every
-retained asset is manifested, no manifested path is absent, and the only unmanifested
-files are the two explicitly retired glyph binaries; and the independently computed
-requirements SHA-256 was
-`03ca0270cebdb90f6051e7932f568e261ef2b9278d7e1bf5efc1a3b2efb0652e`.
-
-This is source proof of a dormant inherited account-storage/resource surface and its
-complete runtime/package-authority excision. It is not evidence that an unidentified
-weeks-old Android, Windows, or Debian artifact contained or exercised the surface, not
-proof that it caused the reported display-only delay, and not evidence of exploitation,
-privilege escalation, compromise, public exposure, container escape, or a host
-RustDesk/service/firewall/listener/network change. This slice does not inspect, stop,
-restart, modify, or connect to a host RustDesk process or service; does not inspect or
-change host firewall/network/listener state; does not touch an Android device, VM,
-Haggai/Desktop_Haggai_computer workload, or unrelated container/image; and does not
-request or acquire root. Exact compilation, current physical Android/Windows and other
-platform behavior, clean cold R-B2/R-B10 equality, installed package inspection,
-sustained connection/reconnect/focus/background/resource/performance soak, independent
-reproduction, R-V3 external review, causation, and proof that the complete connection
-flow is correct and performant remain explicit release obligations and explicit user
-requests.
+The former focused Python verifier, its duplicated workspace validator and mutation catalog, and the
+shared/Apple invocations were deleted because they only searched exact source and documentation text;
+they did not compile the current tree, regenerate a bridge, inspect a package, load dormant user data,
+or execute an installed client. Closure now requires exact-current compilation, fresh generated-bridge
+inspection, built-package asset and symbol inventories, cold R-B2/R-B10 equality, installed-platform
+checks, independent reproduction, and external review. The broader cross-platform connection-flow,
+latency, resource, background/focus, reconnect, and cleanup obligations remain open.
 
 ### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 

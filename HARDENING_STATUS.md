@@ -13136,7 +13136,7 @@ shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS AND ONE DART
+**SOURCE IMPLEMENTED; SIX EXECUTABLE RUST REGRESSIONS AND ONE DART
 SERIALIZATION TEST RETAINED; ANDROID FIXTURE IS NOT EXECUTED; CURRENT
 DEVICE/NATIVE EVIDENCE OPEN.** `CmClientRegistry` owns a checked process-lifetime
 generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, stale source
@@ -13146,6 +13146,14 @@ supersede an active predecessor, whose egress owner closes before replacement. D
 source generation zero cannot supersede an active collision. Registry, clipboard, chat,
 voice, notification, input, capture, and UI effects first prove the exact owner.
 
+The Android CM/file bridge now runs as one retained child future of the exact network
+`Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
+current-thread runtime are absent. Unexpected child completion closes that connection;
+ordinary connection close publishes the existing one-shot terminal and awaits the child.
+`CmClientTaskOwner` owns the admitted registry generation, so dropping the child at any
+await synchronously attempts exact-generation registry/UI retirement. Android-visible
+imports used by this path are no longer incorrectly excluded by target configuration.
+
 Android source carries service, connection, and registry generations through its resource
 mirror, input, delayed pointer work, voice, capture reconciliation, notifications, native
 events, and Dart state. A newer same-ID owner retires predecessor resources before
@@ -13153,7 +13161,10 @@ publication; stale callbacks are intended to be inert. The persistent foreground
 remains intentional, and cleanup correctness must not depend on task swipe or Force Stop.
 
 Four Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
-disconnected replacement, and generation-exhaustion no-commit. The shared runner retains
+disconnected replacement, and generation-exhaustion no-commit. Two additional focused
+Rust tests drive the actual Android CM future through one-shot terminal completion and
+direct future cancellation after admission, and require exact single registry/UI removal.
+The shared runner retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
 `flutter/test/server_model_test.dart`, invoked by `scripts/dart-verify.sh`, executes
 registry-generation JSON serialization only; it does not exercise full Dart replacement
@@ -13162,13 +13173,18 @@ contains useful model assertions, but no retained gate compiles or executes it; 
 its strings is not an Android regression. The deleted combined verifier did not execute
 any of these paths.
 
-Required evidence remains exact Rust and Dart execution plus current Android package
-execution for same-ID supersession, stale/duplicate callbacks, input, queued/delayed
+The two child-future tests have not yet been executed against the current dependency
+closure because the pinned project builder is absent locally; Rust parsing alone is not
+their result. Required evidence remains exact Rust and Dart execution, an Android target
+compile, plus current Android package execution for same-ID supersession, stale/duplicate
+callbacks, input, queued/delayed
 actions, voice/recorder demand, capture, notification, task swipe, reopen, Force Stop,
 reconnect, and bounded cleanup without treating service death as recovery. Desktop and
 installed Windows same-ID collisions, complete file transactions, latency/resource soak,
 signed artifact binding, cold R-B2/R-B10 equality, independent reproduction, causation,
 R-V3 external review, and correct/performant end-to-end connection behavior remain open.
+This source correction is not evidence that it caused or resolves the user-reported
+outgoing Android screen-control hang or the Windows focus/minimize display-only latency.
 
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 

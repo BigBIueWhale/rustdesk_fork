@@ -10,7 +10,6 @@ use clipboard::ContextSend;
 use hbb_common::config::keys::*;
 #[cfg(not(any(target_os = "ios")))]
 use hbb_common::fs::serialize_transfer_job;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::{
     allow_err, bail,
     config::{keys::OPTION_FILE_TRANSFER_MAX_FILES, Config},
@@ -1555,8 +1554,31 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
     quit_cm();
 }
 
-#[cfg(target_os = "android")]
-#[tokio::main(flavor = "current_thread")]
+#[cfg(any(target_os = "android", test))]
+struct CmClientTaskOwner<T: InvokeUiCM> {
+    cm: ConnectionManager<T>,
+    owner: CmClientOwner,
+}
+
+#[cfg(any(target_os = "android", test))]
+impl<T: InvokeUiCM> CmClientTaskOwner<T> {
+    fn new(cm: ConnectionManager<T>, owner: CmClientOwner) -> Self {
+        Self { cm, owner }
+    }
+
+    fn owner(&self) -> CmClientOwner {
+        self.owner
+    }
+}
+
+#[cfg(any(target_os = "android", test))]
+impl<T: InvokeUiCM> Drop for CmClientTaskOwner<T> {
+    fn drop(&mut self) {
+        self.cm.remove_connection(self.owner, true);
+    }
+}
+
+#[cfg(any(target_os = "android", test))]
 pub async fn start_listen<T: InvokeUiCM>(
     cm: ConnectionManager<T>,
     mut rx: mpsc::Receiver<Data>,
@@ -1655,12 +1677,12 @@ pub async fn start_listen<T: InvokeUiCM>(
                     }
                 };
                 current_id = id;
-                current_owner = Some(owner);
+                current_owner = Some(CmClientTaskOwner::new(cm.clone(), owner));
                 current_cm_auth_token = cm_auth_token;
                 file_authority = admitted_file_authority;
             }
             Some(Data::ChatMessage { text }) => {
-                let Some(owner) = current_owner else {
+                let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
                     log::warn!("Rejected Android CM chat before client-registry admission");
                     break;
                 };
@@ -1697,7 +1719,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 break;
             }
             Some(Data::StartVoiceCall) => {
-                let Some(owner) = current_owner else {
+                let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
                     log::warn!(
                         "Rejected Android CM voice-call start before client-registry admission"
                     );
@@ -1706,7 +1728,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 cm.voice_call_started(owner);
             }
             Some(Data::VoiceCallIncoming) => {
-                let Some(owner) = current_owner else {
+                let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
                     log::warn!(
                         "Rejected Android CM incoming voice call before client-registry admission"
                     );
@@ -1715,7 +1737,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 cm.voice_call_incoming(owner);
             }
             Some(Data::CloseVoiceCall(reason)) => {
-                let Some(owner) = current_owner else {
+                let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
                     log::warn!(
                         "Rejected Android CM voice-call close before client-registry admission"
                     );
@@ -1729,9 +1751,7 @@ pub async fn start_listen<T: InvokeUiCM>(
             _ => {}
         }
     }
-    if let Some(owner) = current_owner {
-        cm.remove_connection(owner, true);
-    }
+    drop(current_owner);
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -2692,6 +2712,125 @@ mod tests {
     use crate::ipc::Data;
     use hbb_common::tokio::runtime::Runtime;
     use std::fs;
+
+    #[derive(Clone, Default)]
+    struct CmTaskOwnerTestUi {
+        added: Arc<AtomicBool>,
+        removed: Arc<StdMutex<Vec<(i32, i64, bool)>>>,
+    }
+
+    impl InvokeUiCM for CmTaskOwnerTestUi {
+        fn add_connection(&self, _client: &Client) {
+            self.added.store(true, Ordering::Release);
+        }
+
+        fn remove_connection(&self, id: i32, registry_generation: i64, close: bool) {
+            lock_cm_egress_test(&self.removed).push((id, registry_generation, close));
+        }
+
+        fn new_message(&self, _id: i32, _registry_generation: i64, _text: String) {}
+
+        fn change_theme(&self, _dark: String) {}
+
+        fn change_language(&self) {}
+
+        fn update_voice_call_state(&self, _client: &Client) {}
+
+        fn file_transfer_log(&self, _action: &str, _log: &str) {}
+    }
+
+    fn lock_cm_egress_test<T>(mutex: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
+        mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn android_cm_test_login(id: i32) -> Data {
+        Data::Login {
+            id,
+            is_file_transfer: false,
+            is_view_camera: false,
+            is_terminal: false,
+            port_forward: String::new(),
+            conn_type: ipc::CmAuthConnType::Remote,
+            peer_id: "peer".to_owned(),
+            name: "name".to_owned(),
+            avatar: String::new(),
+            authorized: true,
+            keyboard: true,
+            clipboard: true,
+            audio: true,
+            file: false,
+            file_transfer_enabled: false,
+            privacy_mode: false,
+            cm_auth_token: "test-token".to_owned(),
+        }
+    }
+
+    async fn wait_for_cm_test_admission(
+        future: &mut std::pin::Pin<Box<impl std::future::Future<Output = ()>>>,
+        added: &AtomicBool,
+    ) {
+        time::timeout(std::time::Duration::from_secs(1), async {
+            tokio::select! {
+                _ = future => panic!("Android CM future ended before terminal ownership"),
+                _ = async {
+                    while !added.load(Ordering::Acquire) {
+                        tokio::task::yield_now().await;
+                    }
+                } => {}
+            }
+        })
+        .await
+        .expect("Android CM future must admit its exact registry owner");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_android_cm_future_terminally_retires_its_registry_owner() {
+        let id = 2_000_000_001;
+        CLIENTS.write().unwrap().clients.remove(&id);
+        let ui = CmTaskOwnerTestUi::default();
+        let manager = ConnectionManager::new(ui.clone(), 41);
+        let (command_tx, command_rx) = mpsc::channel(2);
+        let (terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
+        let (egress_tx, _egress_rx) = cm_egress_channel();
+        command_tx.send(android_cm_test_login(id)).await.unwrap();
+        let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
+
+        wait_for_cm_test_admission(&mut future, &ui.added).await;
+        assert!(CLIENTS.read().unwrap().clients.contains_key(&id));
+        terminal_tx.send(CmConnectionTerminal::Close).unwrap();
+        time::timeout(std::time::Duration::from_secs(1), future)
+            .await
+            .expect("terminal Android CM cleanup must complete");
+
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+        assert_eq!(lock_cm_egress_test(&ui.removed)[0].0, id);
+        assert!(lock_cm_egress_test(&ui.removed)[0].2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_android_cm_future_cancellation_retires_its_registry_owner() {
+        let id = 2_000_000_002;
+        CLIENTS.write().unwrap().clients.remove(&id);
+        let ui = CmTaskOwnerTestUi::default();
+        let manager = ConnectionManager::new(ui.clone(), 42);
+        let (command_tx, command_rx) = mpsc::channel(2);
+        let (_terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
+        let (egress_tx, _egress_rx) = cm_egress_channel();
+        command_tx.send(android_cm_test_login(id)).await.unwrap();
+        let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
+
+        wait_for_cm_test_admission(&mut future, &ui.added).await;
+        assert!(CLIENTS.read().unwrap().clients.contains_key(&id));
+        drop(future);
+
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+        assert_eq!(lock_cm_egress_test(&ui.removed)[0].0, id);
+        assert!(lock_cm_egress_test(&ui.removed)[0].2);
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive() {

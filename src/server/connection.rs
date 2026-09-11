@@ -26,7 +26,9 @@ use crate::{
     display_service, ipc, privacy_mode, video_service, VERSION,
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
-use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
+use crate::common::DEVICE_NAME;
+#[cfg(target_os = "android")]
+use crate::flutter::connection_manager::run_channel;
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
 use hbb_common::anyhow::anyhow;
 #[cfg(target_os = "android")]
@@ -5274,12 +5276,14 @@ impl Connection {
             return;
         }
         #[cfg(target_os = "android")]
-        start_channel(
+        let mut cm_channel = Some(Box::pin(run_channel(
             rx_to_cm,
             cm_terminal_rx,
             tx_from_cm,
             conn.android_server_generation,
-        );
+        )));
+        #[cfg(not(target_os = "android"))]
+        let mut cm_channel = None::<std::future::Pending<hbb_common::ResultType<()>>>;
         #[cfg(target_os = "android")]
         conn.send_permission(Permission::Keyboard, conn.keyboard)
             .await;
@@ -5354,6 +5358,24 @@ impl Connection {
 
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
+
+                cm_result = async {
+                    match cm_channel.as_mut() {
+                        Some(channel) => channel.await,
+                        None => std::future::pending().await,
+                    }
+                }, if cm_channel.is_some() => {
+                    cm_channel.take();
+                    let reason = match cm_result {
+                        Ok(()) => "connection-manager channel ended before its connection",
+                        Err(ref error) => {
+                            log::error!("#{id}: Android connection-manager channel failed: {error}");
+                            "connection-manager channel failed"
+                        }
+                    };
+                    conn.on_close(reason, false).await;
+                    break;
+                }
 
                 completion = conn.file_writes.next(), if !conn.file_writes.is_empty() => {
                     let Some(completion) = completion else {
@@ -5835,6 +5857,12 @@ impl Connection {
         // the
         // temporary-password rotation that ran here on authorized-exit is removed with the OTP.)
         conn.on_close("End", true).await;
+        #[cfg(target_os = "android")]
+        if let Some(channel) = cm_channel {
+            if let Err(error) = channel.await {
+                log::error!("#{id}: Android connection-manager cleanup failed: {error}");
+            }
+        }
         log::info!("#{} connection loop exited", id);
     }
 

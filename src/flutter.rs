@@ -3207,24 +3207,24 @@ pub mod connection_manager {
     use hbb_common::tokio::sync::mpsc::Receiver;
 
     #[cfg(target_os = "android")]
-    pub fn start_channel(
+    pub async fn run_channel(
         rx: Receiver<crate::ipc::Data>,
         terminal: hbb_common::tokio::sync::oneshot::Receiver<
             crate::ui_cm_interface::CmConnectionTerminal,
         >,
         tx: crate::ui_cm_interface::CmEgressSender,
         service_generation: u64,
-    ) {
+    ) -> ResultType<()> {
         use crate::ui_cm_interface::start_listen;
         if service_generation == 0 {
-            log::error!("refusing to start Android CM channel without a service generation");
-            return;
+            bail!("refusing to run Android CM channel without a service generation");
         }
         let cm = crate::ui_cm_interface::ConnectionManager::new(
             FlutterHandler { service_generation },
             service_generation,
         );
-        std::thread::spawn(move || start_listen(cm, rx, terminal, tx));
+        start_listen(cm, rx, terminal, tx).await;
+        Ok(())
     }
 }
 

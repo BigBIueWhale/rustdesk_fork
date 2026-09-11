@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ba558356b51196fcee2135ab372d1f4591681b45c90291297226bdcf84f533d4  requirements.html
+e6781d3f9c6df4f48d65dd3d499051cc0847bb43c31db50410a10574e69cfc92  requirements.html
 ```
 
 ## Current Verdict
@@ -30511,118 +30511,40 @@ cross-platform reconnect/focus flow, display-only delay, complete connection-flo
 correctness/performance request, and every other explicit open hardening item
 remain active.
 
-### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement (2026-09-09)
+### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement
 
-**Status:** SOURCE CORRECTION / FOCUSED 137-MUTATION AND COMPLETE 6,229-ENTRY
-INDEPENDENT SOURCE-MUTATION EVIDENCE PASS / ADJACENT 186- AND 267-MUTATION
-EVIDENCE PASS / EXACT RUST/DART/GENERATED-BRIDGE, NATIVE PLATFORM, DEVICE,
-PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE
-PENDING.
+**State:** Source implementation and focused source/regression gates exist.
+Exact generated-bridge and native-platform execution, device lifecycle and
+performance evidence, current artifacts, independent reproduction, and external
+review remain pending.
 
-**Platform, action, and boundary.** This slice is limited to the software-RGBA
-presentation path shared by native Flutter Android, iOS, Windows, Linux, and
-macOS viewers. Its authority is one exact outgoing connection-session UUID,
-UI-owner UUID, event-stream replacement transaction, selected display, and
-checked RGBA publication token. Desktop native pixelbuffer textures remain
-separately governed by R-S11iv. The deliberately persistent Android controlled
-service, connection transport, file transfer, and input/control planes are not
-changed.
+**Boundary and current implementation.** This is the software-RGBA presentation
+path shared by Flutter viewers on Android, iOS, Windows, Linux, and macOS. One
+exact connection session, UI owner, replacement transaction, display, and checked
+publication token own each handoff. In `src/flutter.rs`, `session_start_` retains
+the worker and exact handler-owner guards while installing the supplied stream;
+`rearm_rgba_for_stream_replacement` rearms every live mailbox for that session
+under the mailbox write guard, assigns fresh checked tokens, keeps only the latest
+pending frame, sorts at most 16 publications by display, and posts them to that
+exact stream. A predecessor token is inert. Exhaustion, excess state, or refused
+publication retires only the exact session and fails the start transaction;
+unrelated sessions remain intact. No replay queue or reconnect policy is added.
 
-**Source-proven old path.** `session_start_` closed the predecessor event stream
-and installed the supplied replacement while holding the worker and exact
-handler-owner guards, but then released those guards. `replay_ready_rgba`
-separately snapshotted each live `(session, display, publication)` and reacquired
-whatever stream was current before reposting that same publication token. Dart's
-`ExactRgbaPublicationOrder` deliberately rejects a token that is not strictly
-newer, so a replacement consumer could reject the replay as a duplicate. An
-asynchronous callback already admitted by the predecessor retained the same
-native acknowledgement authority and could copy, drain, or promote that
-publication after replacement. An overlapping start could also replace the
-stream between the first transaction and its later replay. A subsequent focus
-refresh or reconnect minted a new token and could mask the lost handoff. This is
-current-source cross-platform presentation-liveness and exact-consumer-finality
-debt. It is not proof that an older deployed artifact exercised the race, not a
-causation claim for the reported Android task-swipe or Windows focus-delay
-symptom, and not evidence of compromise, public exposure, privilege escalation,
-or host/service/firewall/network/container mutation.
+**Evidence.** Rust regressions `r_s11iw_stream_replacement_*` cover fresh-token
+replacement, latest-pending promotion, stale acknowledgement refusal, unrelated-
+session preservation, and exact-session refusal cleanup. The focused
+`scripts/verify-viewer-rgba-mailbox.py`, shared gate, Apple gate, and independent
+workspace baseline bind those source and test contracts. This is source and
+in-repository regression evidence, not native/device behavior evidence.
 
-**Correct ownership.** The snapshot/replay functions are deleted. Before an
-event-stream start or replacement can finish, the existing worker slot and exact
-handler-owner write guard now remain held across predecessor close publication,
-installation of the supplied stream, cursor re-arm, and software-RGBA transfer.
-The transfer takes the exact software-mailbox write guard and invokes the
-existing `RgbaData::rearm` transition for every mailbox belonging to that exact
-session. A valid publication receives a fresh checked Dart-compatible token and
-promotes only its one latest pending frame, or retains the stable current bytes
-when no pending frame exists. Invalid mailboxes are idle. Retained replacement
-publications are capped by the existing 16-display limit and sorted by display.
-Their nonblocking posts target the exact supplied stream while the mailbox guard
-is still held, so a predecessor acknowledgement cannot enter between rotation
-and publication. Its old token is thereafter an exact no-op.
-
-Counter exhaustion, excess live state, or one refused post retires all and only
-that session's software-RGBA mailboxes before returning a visible start failure;
-the existing exact-owner rollback then owns handler and last-peer finality.
-Unrelated sessions remain intact. This adds no frame or replay queue, retry,
-reconnect, timer, poller, task, worker, thread, isolate, runtime, Service or
-Activity transition, listener, port, endpoint, network behavior, protocol field,
-privilege, dependency, native-texture path, or artifact.
-
-Two deterministic Rust regressions cover fresh-token stream replacement with
-latest-pending promotion, predecessor copy and acknowledgement refusal, exact
-unrelated-session preservation, and exact-session retirement on replacement
-stream refusal. The focused RGBA verifier and independently implemented
-workspace validator bind the deleted replay path, retained guard order, bounded
-rotation, failure finality, regressions, R-S11iw, Appendix C #408, this ledger,
-shared/Apple wiring, and the exact requirements identity.
-
-Current normative identity for this slice:
-
-```text
-0256ce629d4cdc1bb88391fceb3c834352ba7d92fecc9a07c2990d60acbddad3  requirements.html
-```
-
-**Evidence receipt.** On a frozen read-only repository snapshot in the exact
-pinned, unprivileged, capability-free, network-disabled image, the focused RGBA
-verifier rejected all 137 deliberate mutations, the adjacent display-finality
-and desktop-texture verifiers rejected all 186 and 267 deliberate mutations,
-and the independent workspace baseline passed. Targeted preflight then rejected
-97 occurrence mutations across 85 RGBA entries with their intended diagnostics
-and 10 occurrence mutations across 12 documentation entries. The final complete
-independent source-mutation catalog rejected all 6,229 entries and exited zero
-with `verify-verifier-workspace: ok`. Python AST parsing of the four changed
-verifiers, shell syntax checks, and the native-codec watch's normal and self-test
-modes also passed under the same confinement.
-
-The exhaustive gate first exposed a stale test-adjacency fixture after these
-regressions were inserted; the fixture was narrowed to the exact test name. Its
-next run exposed an actual meta-verifier gap where one of two runtime occurrences
-of a focused helper-contract mutation was rejected but the other was accepted.
-The workspace verifier now requires every intended occurrence to fail with the
-contract-specific diagnostic; the targeted occurrence preflights and the final
-6,229-entry pass are after that correction. Rustfmt 1.75 parses `src/flutter.rs`,
-and the lines in this slice were normalized, but its whole-file `--check` remains
-nonzero on broader pre-existing formatting drift. The pinned image contains no
-Cargo, Rust compiler, Dart, Flutter, Kotlin, or Java toolchain, so no exact native
-compile or regression execution is claimed.
-
-One process-boundary mistake occurred before the frozen final run: host
-`python3 -m py_compile` was invoked once on four verifier files. It created
-exactly four `.pyc` files; those four files were identified and removed
-immediately. It did not execute product code, request privilege, access a
-service or device, open a listener, or use the network. All later Python
-execution used the locked image. This mistake is recorded rather than omitted.
-
-No native behavior or release verdict is claimed before the confined gates
-finish. Exact Rust/Dart/generated-bridge compilation and execution, physical
-Android task-swipe/reopen/Force-Stop and Windows focus/minimize/window-transfer
-behavior, iOS/Linux/macOS and cross-version behavior, capture-through-compositor
-timestamps and explicit latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-current signed artifacts, clean committed cold R-B2/R-B10 equality, independent
-reproduction, causation, external review, and proof that the complete connection
-flow is correct and performant remain open STOP-SHIP obligations and explicit
-user requests.
+**Open evidence.** Run the exact current generated bridge and artifact on target
+platforms, including physical Android task-swipe/reopen/Force-Stop and native
+Windows focus/minimize/window-transfer. Measure capture-through-presentation
+latency, queues, CPU, memory, and cleanup under sustained lifecycle/reconnect
+soak. Current signed artifacts, cross-version behavior, clean cold R-B2/R-B10
+equality, independent reproduction, causation, external review, and proof that
+the complete connection flow is correct and performant remain open STOP-SHIP
+obligations.
 
 ### R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality
 
@@ -30656,287 +30578,107 @@ sustained lifecycle/resource soak, signed artifacts, clean cold R-B2/R-B10
 equality, independent reproduction, causation, external review, and proof that
 the complete connection flow is correct and performant remain STOP-SHIP.
 
-### R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality (2026-09-10)
+### R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality
 
-**Status:** SOURCE CORRECTION / TARGETED 18-MUTATION AND COMPLETE
-6,286-DEFINITION INDEPENDENT SOURCE-MUTATION EVIDENCE PASS; SHARED/APPLE
-SOURCE-GATE BINDINGS VERIFIED / EXACT RUST, NATIVE PLATFORM, INSTALLED DESKTOP,
-PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE
-PENDING.
+**State:** Source implementation and focused source gates exist. Exact Rust and
+native execution, installed desktop behavior, performance and resource evidence,
+current artifacts, independent reproduction, and external review remain pending.
 
-**Platform, action, and boundary.** This slice is limited to the controlled-side
-desktop connection-manager bridge shared by Linux, macOS, and Windows. Its owner
-is one authenticated network `Connection`; its local authority path is that
-connection's authenticated CM IPC stream and existing finite `CmEgressSender`.
-Android and iOS use the separate in-process consumer and are unchanged. CM
-launch policy, terminal intent, ordinary command admission, network protocol,
-file semantics, capture, display, input, persistence, and privilege boundaries
-remain unchanged.
+**Boundary and current implementation.** This is the controlled-side Linux,
+macOS, and Windows connection-manager bridge owned by one authenticated network
+`Connection`, its authenticated CM IPC stream, and its finite `CmEgressSender`.
+In `src/server/connection.rs`, authenticated `Ok(None)` is a terminal error rather
+than a repoll. `try_start_cm_ipc` retains an exact egress clone before transferring
+the original into `start_ipc`; only `Some(Err(_))` from the owner wrapper publishes
+`Data::CmErr`, normal owner cancellation publishes nothing, and refusal is handled.
+The established pre-login suppression is Windows-only. Existing ordinary-session
+and port-forward consumers remain the sole teardown authority, including the
+terminal `CmEgressFailure` behavior of the bounded lane.
 
-**Source-proven old path.** The live bridge selected `stream.next()` but matched
-only transport error and `Ok(Some(data))`; its catch-all ignored `Ok(None)`. An
-orderly authenticated IPC EOF could consequently become an immediately-ready
-future on every loop iteration, hot-repolling while retaining the task and exact
-connection resources. Separately, `try_start_cm_ipc` cloned the bounded
-CM-to-connection sender and reported `Data::CmErr` only under `cfg(windows)`.
-The network connection deliberately retains its own sender so `rx_from_cm.recv()`
-does not burn CPU when a bridge sender disappears. Thus a Linux or macOS bridge
-error or EOF neither closed that receiver nor notified the network owner; the
-session could remain incoherently live until a later ordinary command happened
-to encounter the dropped command receiver. This is current-source desktop
-liveness, resource-finality, and connection-state coherence debt. It is not
-native or field reproduction, proof that deployed bytes exercised the path, or
-causation for the reported Android task-swipe or Windows focus/display-delay
-symptoms. It is not evidence of compromise, public exposure, privilege
-escalation, or host/service/firewall/network/container mutation.
+**Evidence.** Shared and Apple gates plus the independent workspace baseline bind
+terminal EOF, exact sender ownership, cross-desktop failure publication, checked
+refusal, normal cancellation, the Windows-only exception, and both consumers.
+This is source-level evidence; no installed CM process was exercised by those
+checks.
 
-**Correct ownership.** `Ok(None)` from the authenticated CM stream now returns
-one explicit bridge error and cannot be repolled. Before moving the original
-egress sender into `start_ipc`, the exact bridge task retains one clone for
-failure finality on every desktop OS. Only `Some(Err(err))` returned by the
-owner wrapper publishes `Data::CmErr(err.to_string())` through that exact finite
-mailbox. Normal owner cancellation remains `None` and publishes no synthetic
-error. The established Windows pre-login case returns before publication and
-remains Windows-only. Failure-publication refusal is handled and logged rather
-than swallowed; the bounded egress implementation itself clears ordinary queued
-data and installs one terminal failure when capacity or encoding admission is
-refused. The existing ordinary-session and port-forward `CmErr` consumers remain
-the sole teardown authority.
+**Open evidence.** Execute EOF, transport failure, owner cancellation, pre-login,
+queue-refusal, and connection teardown against exact current installed Linux,
+macOS, and Windows artifacts. Exercise complete file/control/display transactions
+and measure lifecycle latency, CPU, memory, handles, queues, and cleanup under
+sustained reconnect/focus/background load. Cross-version behavior, current signed
+artifacts, clean cold R-B2/R-B10 equality, independent reproduction, causation,
+external review, and proof that the complete connection flow is correct and
+performant remain open STOP-SHIP obligations.
 
-This change adds no reconnect, retry, timer, poller, queue, task, worker, thread,
-runtime, service or Activity transition, listener, port, endpoint, network
-fallback, protocol field, privilege, dependency, process kill, or artifact.
-R-S11c-4d remains the finite command/terminal-lane parent contract. Shared and
-Apple source gates, the independently implemented workspace validator and its
-complete deliberate-mutation catalog, R-S11iy, Appendix C #410, the exact
-requirements identity, and this ledger must bind the correction before its
-source status advances.
+### R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation
 
-**Source verification receipt.** On source bytes frozen before the credited run,
-the targeted independent preflight rejected all 18 new production, consumer,
-requirement, ledger, digest-binding, shared-gate, and Apple-gate mutations with
-their intended diagnostics. The complete independent source-mutation catalog then
-validated and rejected every occurrence of all 6,286 current mutation definitions
-and exited zero with `verify-verifier-workspace: ok`. The committed baseline at
-`HEAD` contains 6,268 definitions; the 18-definition increase is exact and was
-computed from both Python syntax trees without importing or executing the verifier.
+**State:** Source implementation, Dart regressions, and focused source gates
+exist. Exact Dart/Flutter/generated-bridge and native execution, device lifecycle
+and performance evidence, current artifacts, independent reproduction, and
+external review remain pending.
 
-The credited catalog and all post-run executable checks used immutable local image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-as UID/GID 1000:1000 with no network, a read-only recursively-disabled repository
-bind, read-only root, all capabilities dropped, `no-new-privileges`, private IPC,
-64-PID, 2-GiB memory/no-swap-growth, two-CPU, and private 512-MiB noexec temporary
-filesystem limits. The independent ordinary baseline, Python AST parsing, shared
-and Apple shell syntax, native-codec/requirements-digest normal gate and its
-self-test, the single ledger-wide exact requirements hash, and `git diff --check`
-pass. The sole repository edit after the complete catalog is this documentary receipt; its
-ordinary independent baseline, syntax, digest, and diff checks were repeated.
+**Boundary and current implementation.** This is the Flutter session-event
+consumer shared by Android, iOS, Windows, Linux, macOS, and the web parity path.
+One exact connection session, UI owner, and process-local stream generation own
+each listener. `SessionStreamGeneration` retains one strictly advancing integer
+and one current identity-bearing binding. Mobile and desktop start paths reserve
+the binding before native `sessionStart`. Listener installation, every message,
+web RGBA, error, and done callback require that exact current binding before any
+session, queue, presentation, failure, or native-close effect. Exact owner
+retirement clears only its own binding. No stream history, subscription registry,
+retry, queue, worker, service transition, or reconnect policy is added.
 
-Three earlier runs are not credited: the first exposed an expected-diagnostic
-fixture mismatch and was interrupted after that real verifier defect was corrected;
-the second was deliberately interrupted to strengthen occurrence checking and its
-exact leftover verifier container was stopped; the third was stopped because its
-otherwise confined invocation omitted the canonical explicit `--pull=never` and
-equal memory/swap bounds. No unrelated container was inspected or changed. No
-image was built, pulled, loaded, or tagged; no root, sudo, privilege, capability,
-host service, firewall, network, listener, device, or installed RustDesk state was
-used or changed. The pinned image has no Cargo, Rust compiler, rustfmt, Dart,
-Flutter, Kotlin, Java, generated-bridge, or native platform toolchain, so none of
-these source checks is represented as Rust/native compilation, platform execution,
-device evidence, or installed-artifact evidence.
+**Evidence.** `flutter/test/session_stream_finality_test.dart` covers same-owner
+replacement, strict generation advance, different-owner retirement refusal, and
+exact current-owner retirement. `scripts/verify-session-stream-generation.py`,
+the shared Android ownership gate, Apple gate, and independent workspace baseline
+bind pre-native reservation and exact-current callback/finality checks. This is
+source and Dart unit-contract evidence, not device or installed-artifact evidence.
 
-Exact Rust/native compilation and execution, installed Linux/macOS/Windows CM
-EOF/error/pre-login behavior, complete file/control/display transactions,
-cross-version behavior, capture-through-compositor timestamps and explicit
-latency/queue/CPU/memory budgets, sustained connection/reconnect/focus/background
-and resource/performance soak, current signed artifacts, clean committed cold
-R-B2/R-B10 equality, independent reproduction, causation, external review, and
-proof that the complete connection flow is correct and performant remain open
-STOP-SHIP obligations and explicit user requests.
+**Open evidence.** Run the exact current bridge and artifact through physical
+Android task-swipe/reopen/Force-Stop and native Windows focus/minimize/window-
+transfer replacement scenarios, plus iOS, Linux, macOS, web, and cross-version
+behavior. Measure capture-through-presentation latency and bounded resource
+cleanup under sustained lifecycle/reconnect load. Current signed artifacts, clean
+cold R-B2/R-B10 equality, independent reproduction, causation, external review,
+and proof that the complete connection flow is correct and performant remain open
+STOP-SHIP obligations.
 
-### R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation (2026-09-09)
+### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication
 
-**Status:** SOURCE CORRECTION / FOCUSED 37-MUTATION AND COMPLETE INDEPENDENT
-SOURCE-MUTATION EVIDENCE PASS / EXACT DART, GENERATED-BRIDGE, NATIVE PLATFORM,
-DEVICE, PERFORMANCE, ARTIFACT, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW
-EVIDENCE PENDING.
+**State:** Source implementation, Dart/Rust regressions, and focused source gates
+exist. Exact generated-bridge and native desktop execution, installed-platform
+behavior, performance and resource evidence, current artifacts, independent
+reproduction, and external review remain pending.
 
-**Platform, action, and boundary.** This slice is limited to the Flutter session
-event consumer shared by Android, iOS, Windows, Linux, macOS, and the web parity
-path. Its authority is one exact outgoing connection-session UUID, UI-owner UUID,
-and process-local event-stream generation. The deliberately persistent Android
-controlled service, peer transport, file transfer, input/control, capture, native
-mailboxes, and desktop texture publication remain unchanged.
+**Boundary and current implementation.** This is the Windows, Linux, and macOS
+outgoing-viewer texture lifecycle from Dart display demand through asynchronous
+plugin creation, exact Rust publication, matching unpublication, and release.
+`LatestDesktopTextureSlot` requests retirement synchronously on false demand or
+disposal, retains one retirement future, and creates a successor only after exact
+predecessor finality. Native publication is result-bearing and names the exact
+session, UI owner, selected display, nonzero pointer, and operation. Registration
+accepts only a vacant slot or the same pointer; unregistration removes one exact
+matching pointer. Dart exposes the Flutter texture ID only after native success and
+attempts one matching unpublication before plugin release. Android and iOS use the
+separate bounded software-RGBA path.
 
-**Source-proven old path.** Native `session_start_` deliberately sent `close` to
-an existing handler stream and replaced it under the same session and UI-owner
-identities. Dart's `_listenToSessionStream` reconstructed only that unchanged pair.
-The predecessor and successor listeners therefore both appeared current. A delayed
-predecessor `close` could retire the successor's shared `SessionEventQueue`, mark
-the common FFI model closed, and invoke exact native session retirement after the
-successor had been installed. A late predecessor ordinary event, `onError`, or
-`onDone` had the same missing-generation admission. Reserving only after the Rust
-bridge call would remain racy because predecessor close is published inside that
-call. This is current-source cross-platform consumer-generation and replacement-
-finality debt. It is not native reproduction, proof that older deployed bytes
-exercised the race, or a causation claim for the reported Android task-swipe or
-Windows focus-delay symptoms. It is not evidence of compromise, public exposure,
-privilege escalation, or host/service/firewall/network/container mutation.
+**Evidence.** `flutter/test/desktop_texture_lifecycle_test.dart` covers in-flight
+retirement, false/true demand, predecessor finality, and single retirement. Rust
+regression `r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers
+selected-display, collision, wrong-pointer, exact-removal, and retired-owner cases.
+`scripts/verify-desktop-texture-lifecycle.py`, shared and Apple gates, and the
+independent workspace baseline bind those contracts. This is source and unit-
+contract evidence, not native plugin or installed-artifact behavior evidence.
 
-**Correct ownership.** `SessionStreamGeneration` retains one strictly advancing
-integer and only its current identity-bearing `SessionStreamBinding`. Reserving a
-successor immediately invalidates its predecessor even when the session/UI owner
-is unchanged. Both mobile and desktop paths reserve before calling native
-`sessionStart`. Listener installation, every native message callback, the web RGBA
-callback, error, and done finality require the exact current binding before any
-session, queue, presentation, failure, or native-close effect. Exact session-owner
-retirement clears the current binding and refuses to clear a binding belonging to
-a different owner. A start error after reservation follows the existing visible
-exact-session failure and native-retirement path.
-
-The generation owner adds no stream history, subscription registry, message/frame
-queue, retry, reconnect, timer, poller, task, worker, thread, isolate, runtime,
-service or Activity transition, listener, port, endpoint, network behavior,
-protocol field, privilege, dependency, or artifact. Work already invoked by a
-predecessor retains the existing bounded event/publication owners and may settle;
-no later predecessor callback can be newly admitted after reservation.
-Deterministic Dart regressions cover same-owner replacement, strict generation
-advance, different-owner retirement refusal, and exact current-owner retirement.
-The shared Android lifecycle gate, Apple source gate, independently implemented
-workspace validator and complete mutation catalog, R-S11ix, Appendix C #409, the
-exact requirements identity, and this ledger must bind the correction before its
-source status advances.
-
-**Source verification receipt.** In the immutable local image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-running as UID/GID 1000 with no network, a read-only recursively-disabled source
-bind, a read-only root filesystem, all capabilities dropped, no-new-privileges,
-private IPC, bounded PIDs/memory/CPU, and a bounded no-exec temporary filesystem:
-the focused R-S11ix validator rejects all 37 deliberate mutations; the broader
-Android ownership validator rejects all 588 deliberate mutations; the adjacent
-display-selection and software-RGBA validators reject all 186 and 137 deliberate
-mutations respectively; the independent workspace baseline passes; the native
-codec/requirements-digest self-test passes; Python AST and shell syntax checks
-pass; and the complete independent source-mutation catalog passes. `git diff
---check` also passes. The pinned image has no Dart/Flutter, Cargo/Rust, Kotlin,
-Java, generated-bridge, or native platform toolchain, so none of those source
-checks is represented as authored Dart execution, compilation, device evidence,
-or installed-artifact evidence.
-
-Exact Dart/Flutter/generated-bridge/native compilation and execution, physical
-Android task-swipe/reopen/Force-Stop and Windows focus/minimize/window-transfer
-behavior, iOS/Linux/macOS/web and cross-version behavior, capture-through-
-compositor timestamps and explicit latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-current signed artifacts, clean committed cold R-B2/R-B10 equality, independent
-reproduction, causation, external review, and proof that the complete connection
-flow is correct and performant remain open STOP-SHIP obligations and explicit
-user requests.
-
-### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication (2026-09-09)
-
-**Status:** SOURCE CORRECTION / FOCUSED 267-MUTATION AND COMPLETE 6,190-ENTRY
-INDEPENDENT SOURCE-MUTATION EVIDENCE PASS / SHARED, APPLE, EXACT
-RUST/DART/NATIVE, INSTALLED-PLATFORM, PERFORMANCE, ARTIFACT,
-INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING.
-
-**Platform, action, and boundary.** This slice is limited to Windows, Linux,
-and macOS outgoing-viewer software texture ownership from one Dart display-demand
-transition through asynchronous plugin creation, exact Rust renderer publication,
-matching unpublication, and plugin release. Android and iOS do not use this native
-desktop texture path; their bounded software-RGBA publication and lifecycle recovery
-remain governed by R-S11ew/R-S11fr. The authority is one exact connection-session
-UUID, UI-owner UUID, selected display, nonzero native pointer, and explicit
-publish/unpublish operation.
-
-**Source-proven old path.** `LatestDesktopTextureSlot.setWanted(false)` changed
-only desired state. If its current candidate was awaiting `activate()`, reconciliation
-could not call `retire()` until activation returned. Successful asynchronous native
-creation could therefore publish after deselection or disposal had requested
-retirement. A false/true demand transition during that wait could leave the old
-candidate current rather than retire it before one replacement. Separately,
-`registerPixelbufferTexture` returned void across Dart, generated-bridge input, FFI,
-and Rust. The Rust owner check logged and discarded refusal; it did not require the
-display to belong to that owner, replaced a different live pointer, and used pointer
-zero as an unowned removal sentinel. Dart treated that call as successful publication
-regardless and the display slot could latch a texture that native code had never
-accepted. A late same-owner teardown did not name its pointer and could clear a newer
-one. This is current source-level presentation-liveness and resource-finality debt.
-It is not native reproduction, proof that an older deployed artifact reached the
-race, a causation claim for the reported Windows focus delay, or an Android service
-defect; it is not evidence of compromise, public exposure, privilege escalation, or
-host/service/firewall/network/container mutation.
-
-**Correct ownership.** Every false demand and terminal slot disposal now requests
-the current candidate's retirement synchronously. The slot retains one retirement
-future, shares it with activation and reconciliation, and does not clear or replace
-the candidate before exact finality. Returning demand cannot turn a retirement-
-requested candidate into settled current even if a test double reports successful
-activation; one successor starts only after the predecessor future completes.
-Activation failure, repeated reconciliation, and disposal reuse that one request
-rather than calling retirement twice or spinning.
-
-Native publication now returns a Boolean and carries the exact session, UI owner,
-display, nonzero pointer, and explicit register flag. Registration requires the
-current exact owner and one of its selected displays; it accepts only a vacant slot
-or the same pointer. Unregistration permits cleanup after the display leaves the
-selection but removes only the exact matching pointer once. A zero, missing, wrong,
-colliding, stale-owner, or unowned-display operation is refusal without mutation.
-Dart requires publication success before exposing the Flutter texture ID, records
-that native publication committed, and supplies the same pointer to one matching
-unpublication before release. Refusal feeds the existing result-bearing lifecycle,
-which reports it and retires the candidate instead of latching healthy state.
-
-A deterministic Dart regression covers false/true demand while a candidate later
-reports successful activation: retirement is requested before the activation barrier
-opens, no replacement is created before retirement completes, and each predecessor
-is retired once. A deterministic Rust regression covers unowned-display refusal,
-live-pointer collision refusal, wrong-pointer removal refusal with state preserved,
-exact single-use removal, and the existing retired-owner replacement case. The
-focused semantic verifier and independently implemented workspace validator now
-bind these transitions: the focused verifier passed its 267 deliberate mutations,
-the independent validator passed its live baseline and complete 6,190-entry
-source-mutation catalog, and targeted independent probes first proved the corrected
-activation-ownership and retirement-finality diagnostics at all three affected
-source locations.
-
-Current normative identity for this slice:
-
-```text
-cec235a1a1324012fb48067f64c85d9b04604e358b8dc942d7457170cee2d497  requirements.html
-```
-
-**Verification receipt.** All executable verification used immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-as UID/GID 1000:1000 with no network, a read-only recursively disabled repository
-bind, read-only root, all capabilities dropped, `no-new-privileges`, private IPC,
-64-PID, 2-GiB memory/no-swap-growth, two-CPU, and private 512-MiB noexec tmpfs
-limits. `verify-desktop-texture-lifecycle.py --self-test` passed 267 mutations.
-The independently implemented `verify-verifier-workspace.py` passed its ordinary
-live baseline, targeted the two previously stale diagnostic expectations at three
-effective source locations, and then passed the complete 6,190-entry
-`--source-mutations-only` catalog in one uninterrupted 4:42:39 run (exit 0,
-OOM false, restart zero, 8-KiB writable layer). Python AST parsing of both changed
-verifiers, `bash -n scripts/verify.sh`, `git diff --check`, exact requirement/row/
-ledger uniqueness, the SHA-256 identity above, and native-watch identity all
-passed. Pinned Rust 1.75 `rustfmt --check` parsed `src/flutter.rs` and
-`src/flutter_ffi.rs` but reported whole-file layout differences; the unmodified
-`HEAD` versions independently return the same status, so no unrelated formatting-
-only sweep was made. The locked image has no Cargo, Rust compiler, Dart, Flutter,
-Kotlin, or Java toolchain and the checkout has no complete offline vendor closure,
-so this receipt does not claim native or generated-bridge compilation/execution.
-
-This correction adds no retry, reconnect, timer, poller, task, worker, thread,
-isolate, runtime, service or Activity transition, listener, port, endpoint, network
-behavior, protocol field, privilege, dependency, GPU path, or artifact. Exact
-generated-bridge/Dart/Rust compilation and execution, native Windows/macOS plugin
-execution, physical focus/minimize/display-switch/window-transfer stress, current
-Android task-swipe/reopen/Force-Stop behavior under its separate presentation path,
-capture-through-compositor timestamps and explicit latency/queue/CPU/memory budgets,
-cross-version behavior, sustained resource soak, current signed artifacts, clean
-committed cold R-B2/R-B10 equality, independent reproduction, causation, external
-review, and proof that the whole connection flow is correct and performant remain
-open. No source-only result from this slice closes those STOP-SHIP items.
+**Open evidence.** Run the exact current generated bridge and native Windows,
+Linux, and macOS plugins through focus/minimize, display-switch, window-transfer,
+deselection, disposal, and pointer-replacement stress. Measure capture-through-
+compositor latency, queues, CPU, memory, and cleanup under sustained lifecycle
+soak. Physical Android lifecycle behavior remains open under its separate path.
+Cross-version behavior, current signed artifacts, clean cold R-B2/R-B10 equality,
+independent reproduction, causation, external review, and proof that the complete
+connection flow is correct and performant remain open STOP-SHIP obligations.
 
 ### R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision
 

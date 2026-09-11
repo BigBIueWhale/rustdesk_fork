@@ -11396,12 +11396,6 @@ else
   echo "  FAIL R-S11gy/R-S11is: connection-manager results regained an unbounded hop, incomplete raw-byte accounting, discarded file response, or nonterminal refusal"
   rc=1
 fi
-if python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test; then
-  echo "  ok  R-S11hb native clipboard-listener callbacks are bounded, exact-generation-owned, and terminal-final"
-else
-  echo "  FAIL R-S11hb: native clipboard-listener callbacks regained unbounded retention, name-only cleanup, or incomplete terminal finality"
-  rc=1
-fi
 if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   echo "  ok  R-S11hn/R-S11e-251 whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
 else

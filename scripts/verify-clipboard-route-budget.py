@@ -1423,7 +1423,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11iu</span>', '<div class="req"><span class="id">R-S11iu-disabled</span>', "CM registry-generation requirement"),
     ("requirements", "<tr><td>406</td>", "<tr><td>406-disabled</td>", "CM registry-generation Appendix disposition"),
     ("hardening", "### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership", "### R-S11iu-disabled/R-S11e-284 — exact-generation CM client-registry ownership", "CM registry-generation ledger"),
-    ("workspace", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
+    ("workspace", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_route_budget_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
 )
 
 

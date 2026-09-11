@@ -784,7 +784,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>404</td>", "<tr><td>404-disabled</td>", "file-response Appendix disposition"),
     ("hardening", "### R-S11is/R-S11e-282 — exact-command CM file-response admission finality", "### R-S11is-disabled/R-S11e-282 — exact-command CM file-response admission finality", "file-response hardening ledger"),
     ("native_watch", "The same identity additionally binds R-S11is and Appendix C #404.", "The same identity no longer binds R-S11is and Appendix C #404.", "file-response digest binding"),
-    ("workspace", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract_disabled(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
+    ("workspace", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract_disabled(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
 )
 
 

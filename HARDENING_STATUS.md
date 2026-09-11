@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-d177d78369fe72058d8e7fdd8bad6c98df4d6468a70429f941c2c7c2639648e3  requirements.html
+d031498bc35eabc2d55fc6ea980d56e09aa3f2bac5e791cbd596462487799681  requirements.html
 ```
 
 ## Current Verdict
@@ -11638,108 +11638,70 @@ or OS privilege boundary.
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT
-RUST/NATIVE, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platforms:
-the shared native clipboard-master path compiled on Windows, Linux, and macOS. Android
-does not compile this module; its intentionally persistent `MainService` and separately
-owned outgoing clipboard poller are unchanged. Surface: native operating-system
-clipboard-change callback -> shared listener fan-out -> viewer and controlled clipboard
-workers.
+**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
+SOURCE/MUTATION THEATER DELETED; EXACT CURRENT NATIVE, DEVICE, PERFORMANCE,
+ARTIFACT, AND RELEASE EVIDENCE OPEN.** This is the shared native clipboard-master
+path compiled on Windows, Linux, and macOS. Android does not compile it; Android's
+persistent `MainService` and separately owned outgoing clipboard poller are unchanged.
 
-Read-only source tracing found that every native change callback sent a payloadless
-`CallbackResult::Next` into one standard unbounded channel per subscriber. The viewer
-and controlled consumers did not consume an event payload; after dequeue they reread the
-then-current native clipboard. A callback burst or slow clipboard inspection could
-therefore retain an unbounded count of obsolete readiness notifications. The same
-listener inserted a subscriber before master initialization but did not roll it back
-when initialization failed. Controlled-side `StopWithError` used `bail!` before the
-manual unsubscribe statement, leaving its subscription behind, while cleanup by name
-alone had no generation with which to reject a stale owner. A successfully initialized
-master that later returned logged the outcome but did not wake its consumers. These are
-source-proven shared desktop resource, ABA, and finality defects consistent with
-cleanup-mediated recovery. They are not proof that unidentified weeks-old Android,
-Windows, or Debian artifacts contained or exercised this path and are not a causation
-claim for the reported display-only delay.
+The inherited callback sent one payloadless notification per native change into an
+unbounded queue for every subscriber even though consumers reread current clipboard
+state after waking. Startup failure could retain the inserted subscriber, a controlled
+error could bypass manual unsubscribe, name-only cleanup admitted stale-owner ABA, and
+post-start master exit did not wake consumers. Those are source-proven desktop resource,
+ABA, and finality defects consistent with cleanup-mediated recovery—not proof about the
+weeks-old deployed artifacts or causation for the reported display-only delay.
 
-The callback queue is replaced by a mutex-owned state containing one ordinary
-`change_pending` bit, one typed terminal stop/error slot, receiver liveness, and a
-condition wake. Native change callbacks only set the bit and wake; repeated changes
-coalesce without blocking, allocation, or payload loss because the consumer still
-rereads current clipboard state. Terminal publication clears and outranks ordinary
-readiness. The sole receiver clears a delivered bit, and receiver drop closes admission,
-clears retained state, and retires its exact subscription.
+The listener now owns one coalescing readiness bit, one terminal stop/error slot that
+outranks readiness, receiver liveness, and a condition wake. Each subscription has a
+checked monotonic generation; duplicate live names are refused. The retained
+`ClipboardSubscription` and sole `CallbackReceiver` perform exact generation-bound RAII
+cleanup, startup failures remove the exact insertion and join the startup thread,
+post-start master exit publishes a terminal result, and exact last retirement signals and
+joins the sole listener thread. Viewer and controlled scopes retain the exact owner. No
+retry, reconnect, timer, poller, additional worker/thread/runtime/listener, payload queue,
+dependency, privilege transition, service restart, port, alternate clipboard path, or
+Android service change was introduced.
 
-Every subscription now receives a checked monotonic generation. Duplicate live names
-are refused. A retained `ClipboardSubscription` and its sole `CallbackReceiver` both
-carry the exact `(name, generation)` identity, and either RAII finalizer removes only a
-matching current record; a late close cannot delete a replacement. Both master-start
-failure paths remove the exact inserted subscriber, join the startup thread, release the
-global listener lock, and only then drop the receiver. A post-start master error or
-unexpected clean return publishes a terminal error to all current receivers. Exact last
-retirement publishes stop, signals the sole master, and joins its retained handle with a
-visible panic diagnostic. The existing startup result channel remains semantically
-bounded to the single result sent by one startup thread. Viewer retirement publishes its
-existing stop token before closing the retained exact subscription and handing the same
-thread handle to the existing bounded join owner. Controlled service scope owns both its
-subscription and receiver, so every normal, error, and early-return edge invokes exact
-RAII cleanup. No retry, reconnect, timer, poller, new worker/thread/runtime/listener,
-payload queue, dependency, privilege transition, service restart, port, alternate
-clipboard path, or Android persistent-service change was introduced.
+Four deterministic Rust tests exercise 1,024 changes collapsing to one delivery, terminal
+error superseding pending readiness, receiver retirement refusing later admission, and a
+stale generation preserving its replacement. The shared runner retains
+`cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color
+never`. These are executable state-machine tests; they do not by themselves observe an OS
+clipboard callback or target lifecycle.
 
-Four deterministic Rust regressions bind 1,024 ordinary notifications collapsing into
-one delivery, terminal error superseding an already-pending ordinary change, receiver
-retirement refusing later admission, and stale generation cleanup preserving a current
-replacement. `scripts/verify-clipboard-listener-ownership.py` independently binds the
-mailbox topology, priority, exact subscription admission/removal, both startup rollback
-edges, master finality, viewer and controlled ownership, regressions, requirements,
-Appendix C #363, ledger identity, and shared/Apple/independent wiring with deliberate
-mutations. The separate workspace validator parses the production topology and call
-sites rather than accepting the focused result as authority.
+The 429-line `verify-clipboard-listener-ownership.py` and 426 lines of duplicated workspace
+loading, source matching, mutation catalog, dispatch, and adjacency coupling were deleted.
+They only searched and deliberately rewrote source text; they never executed Rust, the
+native clipboard master, viewer or controlled workers, an Apple target, or a target OS.
+Shared and Apple invocations of that script were removed, while neighboring verifier
+fixtures were retargeted to the surviving dispatch sequence. R-S11hb and Appendix C #363
+now explicitly reject source matching, deliberate mutation, and script wiring as
+behavioral proof and require direct target-runtime lifecycle, correctness, latency, and
+resource evidence.
 
-In the immutable local verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-with `--pull=never`, networking disabled, a read-only root and repository, all
-capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, and finite
-CPU/memory/no-swap/PID/private-tmpfs limits, the focused clipboard-listener verifier
-rejected all 27 deliberate mutations. The adjacent Android/mobile ownership, CM egress,
-file-clipboard route, controlled-egress, keyed-writer, display-finality, and viewer
-voice-worker gates rejected 535, 64, 38, 51, 25, 186, and 63 mutations respectively.
-The independent unmodified workspace baseline passed. A narrowed independent run
-rejected all 22 new R-S11hb catalog entries, and a combined narrowed run rejected those
-entries plus every pre-existing outgoing-clipboard lifecycle mutation whose diagnostic
-could overlap the new contract. One uninterrupted preliminary complete independently
-parsed catalog then rejected all 4,611 source mutations. After this exact evidence text
-was installed, one further uninterrupted complete 4,611-entry catalog passed on the
-actual final tracked bytes. Exact Rust 1.75 formatting of all three changed Rust files,
-in-memory Python AST parsing, Bash syntax for the shared/Apple/native-codec gates, the
-synchronized requirements digest, the native-codec watch, and `git diff --check` also
-passed.
+In the existing immutable inspection image
+`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`,
+with no network, a read-only repository/root, numeric non-root identity, no capabilities,
+`no-new-privileges`, and bounded CPU/memory/PIDs/private tmpfs, Python AST and requirements
+HTML parsing, shared/Apple/Dart shell syntax, the reduced independent workspace baseline,
+native-codec watch, status-size gate, and each of the five changed neighboring adjacency
+mutations passed. A stable final targeted run left the exact host listener inventory
+unchanged. The container executed no Rust or native product/test code.
 
-The first complete-catalog attempt correctly rejected the weakened one-bit readiness
-field but its fixture expected a broader diagnostic label than the independent contract
-emitted. A narrowed run then proved that the initial `receiver_alive` selector matched
-both ordinary and terminal admission, each correctly rejected under a different label;
-the selector was narrowed to the ordinary-notification function. A later complete run
-correctly rejected weakened viewer stop publication, but the new combined viewer
-ownership check preempted that established mutation's narrower diagnostic. The new
-independent check was reduced to its distinct subscription concern while the established
-outgoing-clipboard contract retained stop/transition/order authority. No production
-requirement was removed or weakened. Only the final uninterrupted complete pass on the
-ledger-updated bytes is counted as final evidence.
-
-This remains source-level work, not current native behavior or release readiness. The
-exact pinned Debian, Apple, Windows, and dev-check builder images and authenticated Cargo
-vendor closure remain unavailable locally, so no exact-current Rust/native compilation
-or execution is claimed. Physical Android task-swipe/reopen/Force-Stop and real Windows
-focus/minimize reproduction; Linux/macOS/iOS and cross-version behavior; the weeks-old
-deployed artifacts; capture-through-compositor timestamps and explicit latency/queue
-budgets; sustained connection/reconnect/focus/background/file/control coexistence,
-backpressure, resource, and performance soak; clean cold R-B2/R-B10 equality; installed
-process/service/package behavior; independent reproduction; R-V3 external review;
-causation; and proof that the complete connection flow is correct and performant all
-remain explicit release obligations. This slice inspects or changes no host RustDesk
-process, configuration, service, listener, firewall/network state, VM, Android device or
-service, unrelated workload, or OS privilege boundary.
+The exact pinned devcheck/target builder inputs and authenticated repository `online/`
+closure remain unavailable locally, so the retained Rust tests were not compiled or run
+in this slice and receive no new result. Required evidence remains exact current Windows,
+Linux, and macOS execution of master startup/callback delivery, viewer and controlled
+subscriptions, focus/background/reconnect/replacement, every error/retirement edge,
+native clipboard correctness, latency and retained thread/handle/memory finality;
+physical Android and Windows symptom reproduction; cross-version and cross-platform
+behavior; capture-through-compositor timing; sustained coexistence/resource/performance
+soak; cold R-B2/R-B10 equality; installed artifacts/services; independent reproduction;
+R-V3 external review; causation; and the complete connection flow being correct and
+performant. This slice touches no host/Haggai RustDesk process, service, configuration,
+listener, firewall/network state, VM/device, image/cache, unrelated workload, or OS
+privilege boundary.
 
 ### R-S11hc/R-S11e-241 — latest-state Windows tray session-count ownership (2026-08-20)
 

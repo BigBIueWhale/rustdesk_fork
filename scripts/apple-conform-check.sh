@@ -4953,14 +4953,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2ada) R-S11hb exact bounded native clipboard-listener ownership =="
-if python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test; then
-  note "ok  R-S11hb Apple/shared native clipboard-listener callbacks are bounded, exact-generation-owned, and terminal-final"
-else
-  echo "  FAIL R-S11hb Apple/shared native clipboard-listener callbacks regained unbounded retention, name-only cleanup, or incomplete terminal finality"
-  rc=1
-fi
-
 echo "== (2g-c2adaa) R-S11hn lossless whiteboard IPC/event-loop lifecycle ownership =="
 if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   note "ok  R-S11hn Apple/shared whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"

@@ -4929,14 +4929,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2ad) R-S11gy/R-S11is bounded connection-manager result and exact file-response ownership =="
-if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
-  note "ok  R-S11gy/R-S11is Apple/shared connection-manager results are bounded and every CM file response is exact-command-final"
-else
-  echo "  FAIL R-S11gy/R-S11is Apple/shared connection-manager results regained an unbounded hop, incomplete raw-byte accounting, discarded file response, or nonterminal refusal"
-  rc=1
-fi
-
 echo "== (2g-c2adaa) R-S11hn lossless whiteboard IPC/event-loop lifecycle ownership =="
 if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   note "ok  R-S11hn Apple/shared whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"

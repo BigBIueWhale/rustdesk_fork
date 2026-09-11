@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-4fbfb46e26c82d2b5d281f676fe527e426e092e4179dd2fa9f2acb5656cc3b56  requirements.html
+0d973dde8dffd4019a0a659f7b6fcee593d4e6ed313389239ba71593db48702d  requirements.html
 ```
 
 ## Current Verdict
@@ -11367,98 +11367,66 @@ flow is correct and performant.
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 
-**SOURCE IMPLEMENTED; CONFINED FOCUSED, ADJACENT, COMPLETE INDEPENDENT
-SOURCE-MUTATION, SYNTAX, AND FORMAT EVIDENCE GREEN; EXACT
-RUST/DART/FLUTTER/NATIVE, DEVICE, PERFORMANCE, AND RELEASE EVIDENCE OPEN.**
-Platforms: the two desktop connection-manager result hops on Windows, Linux,
-and macOS, plus Android's direct in-process connection-manager result hop. Surface:
-synchronous UI, clipboard, voice, and file-result producers -> desktop CM IPC writer ->
-desktop connection bridge, or Android connection manager -> exact controlled connection.
+**SOURCE IMPLEMENTED; FIVE EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
+SOURCE/MUTATION THEATER DELETED; CURRENT INSTALLED/NATIVE CM EVIDENCE OPEN.**
+Platforms: Windows, Linux, and macOS desktop CM result hops plus Android's direct in-process hop.
+Surface: synchronous UI, clipboard, voice, and file-result producers -> bounded CM egress -> exact
+connection owner.
 
-Read-only source tracing found that desktop exact results crossed two consecutive
-unbounded Tokio `Data` queues: `IpcTaskRunner` retained producer results before CM IPC,
-then `Connection::start` retained the decoded CM responses before the network loop.
-Android used the latter unbounded shape directly. This traffic includes chat and
-click-time exchange, voice-call state, privacy state, Windows file clipboard, and typed
-CM file responses. A read-block may retain a separately framed 256 KiB `Bytes` payload
-that serde deliberately omits from the JSON envelope, while other structured CM frames
-may reach the 128 MiB IPC ceiling. A busy connection loop, blocked IPC writer, or stalled
-transport could therefore retain arbitrary messages and bytes. Dropping/reconnecting the
-exact connection destroyed the old queues. This is shared source-proven resource and
-finality debt consistent with cleanup-mediated recovery, not proof that the unidentified
-weeks-old Android, Windows, or Debian artifacts contained or exercised it and not a
-causation claim for the reported display-only delay.
+The inherited problem was two consecutive unbounded desktop `Data` queues and the same unbounded
+connection-facing shape on Android. The traffic includes chat, click-time, privacy, voice, Windows
+file clipboard, and typed CM file responses; raw read blocks carry bytes outside their JSON envelope.
+A blocked CM writer or connection loop could retain arbitrary count and bytes until reconnect/drop
+destroyed the queue. This is a cleanup-mediated recovery mechanism, not proof about an unidentified
+deployed artifact or causation for a reported display delay.
 
-Both desktop hops and Android now use one `CmEgressSender`/`CmEgressReceiver` primitive.
-It owns a finite FIFO under a short synchronous mutex, one nonblocking wake token, at most
-256 entries, a 128 MiB structured JSON ceiling, a separately enforced 256 KiB raw-block
-ceiling, and an aggregate budget of two maximum complete messages plus fixed accounting
-for all 256 entry slots. `CmEgressSizeCounter` passes each serde write through checked
-arithmetic without allocating a duplicate encoded message; `ReadBlock.data.len()` is
-added explicitly after structured sizing. Entry, count, retained-byte, structured-plus-
-raw, and drain arithmetic are checked. Producers snapshot the exact sender and release
-the global client registry lock before sizing or admission.
+The current `CmEgressSender`/`CmEgressReceiver` owner has one wake token, at most 256 entries, a
+128 MiB structured ceiling, a separately enforced 256 KiB raw-block ceiling, and a checked aggregate
+budget of two maximum complete messages plus fixed entry accounting. Its closed vocabulary excludes
+ambient filesystem data. Wrong class, encoding failure, individual or aggregate oversize, count or
+accounting failure atomically clears retained work, records one typed terminal cause, wakes the
+owner, and terminates the exact bridge/connection. Receiver retirement closes admission and releases
+payloads despite stale senders. No coalescing, retry, reconnect, alternate route, task, runtime,
+listener, privilege transition, service restart, or Android persistent-service weakening was added.
 
-The accepted direction is closed to `Close`, click-time, CM error, chat, typed CM file
-response, Windows file clipboard, privacy state, voice-call response, and voice-call
-close. Wrong class, encoding failure, structured or raw oversize, count or byte
-saturation, and accounting failure atomically clear queued work, preserve one typed
-terminal cause, and wake the exact receiver. The desktop IPC writer exits on that cause;
-the ordinary and sealed port-forward connection loops close the exact connection; and
-the desktop bridge propagates admission failure instead of discarding it. Receiver drop
-closes admission and clears every payload even if a UI, clipboard, voice, or file-worker
-sender clone survives. No result coalescing, retry, reconnect, timer, poller, task,
-thread, runtime, listener, port, dependency, privilege transition, service restart,
-alternate result route, or Android persistent-background-service weakening was added.
+Five executable Tokio regressions remain in `src/ui_cm_interface.rs`:
 
-Five deterministic Rust regressions bind FIFO and post-drain capacity recovery, terminal
-count and byte saturation, the closed message vocabulary, terminal queue/byte clearing,
-stale-sender refusal, individual structured oversize, complete serde-skipped raw-byte
-accounting and raw oversize, receiver retirement, asynchronous wake without polling, and
-last-producer retirement. `scripts/verify-cm-egress-budget.py` binds the implementation,
-both desktop hops, Android wiring, regressions, requirements, Appendix C #360, ledger,
-digest, and shared/Apple/independent wiring with deliberate mutations.
+- `r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive`
+- `r_s11gy_cm_egress_capacity_and_wrong_class_are_terminal`
+- `r_s11gy_cm_egress_encoded_byte_limits_are_terminal`
+- `r_s11gy_cm_egress_accounts_serde_skipped_raw_blocks_and_receiver_retirement`
+- `r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes`
 
-In the immutable local verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-with `--pull=never`, networking disabled, a read-only root and repository, all
-capabilities dropped, no-new-privileges, numeric UID/GID 1000, and bounded
-CPU/memory/PIDs/private tmpfs, the focused CM-egress verifier rejected all 50 deliberate
-mutations. Adjacent controlled-egress, keyed-writer, display-finality, Android voice-call
-ownership, and Windows production-listener DACL gates rejected 51, 25, 186, 534, and 36
-mutations respectively; the CM process-ownership self-test and independent unmodified
-baseline passed. One uninterrupted
-`/usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .
---source-mutations-only` execution then passed the complete independently parsed
-4,543-entry source-mutation catalog. The exact Rust 1.75 formatter passed the complete
-modified `src/ui_cm_interface.rs`; its diagnostics for the two partially modified Rust
-files contained only pre-existing, nonintersecting hunks. Bash syntax for both changed
-entry points, in-memory Python AST parsing for the verifier set, `git diff --check`, the
-native-codec gate, and the synchronized requirements digest also passed.
+The shared verifier retains the direct command
+`cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`. Its execution—not its
+presence—is the relevant regression evidence.
 
-Failure accounting: early complete-catalog attempts exposed stale mutation-fixture and
-expected-diagnostic bookkeeping, including the focused count assertion, independent
-one-slot wake, checked raw-byte addition, and workspace-dispatch labels. In every case the
-weakened source had already been rejected; the fixture was made exact without removing or
-weakening a production requirement, then the narrowed new-slice matrix and the complete
-catalog passed. The newly added asynchronous Rust regressions were also corrected before
-the counted full run to use Tokio's current-thread test harness rather than manually
-constructing a runtime. No image was pulled, built, or tagged; no host Rust command, root
-identity, Docker socket mount, listener, published port, host service/configuration,
-firewall/network state, VM, or unrelated workload was used, inspected, or changed.
+The deleted `scripts/verify-cm-egress-budget.py` was an 824-line source parser with textual mutation.
+It opened no CM stream or socket, ran no Cargo/Tokio/native process, and observed no filesystem,
+ordering, terminal cause, latency, memory, task, or handle outcome. Its duplicate workspace parser,
+mutation inventory, dispatch, source-map entry, and adjacency coupling were deleted; shared/Apple
+calls were removed and the surviving display-selection fixture now names only surviving dispatches.
+The same deletion removes its non-behavioral R-S11ha and R-S11is source assertions. No product source
+changed in this cleanup slice.
 
-This remains source and format evidence, not native behavior or release evidence. The
-exact pinned Debian, Apple, and dev-check builder images are absent, so no exact-current
-Rust/Dart/Flutter/native compilation or execution is claimed. Generated bridge
-generation/compilation; physical Android task-swipe/reopen/Force-Stop and real Windows
-focus/minimize reproduction; Linux/macOS/iOS and cross-version behavior;
-capture-through-compositor timestamps and explicit latency budgets; sustained
-reconnect/focus/backpressure/resource/performance soak; clean cold R-B2/R-B10 equality;
-installed process/service/package behavior; independent reproduction; R-V3 external
-review; causation; and proof that initial connection, reconnect, focus/background,
-task-swipe/reopen, replacement, capture, transport, decode, compositor publication,
-control, file-transfer coexistence, and teardown remain correct and performant are all
-explicitly open.
+In immutable inspection image
+`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`, run as numeric nonroot
+with no network or ports, read-only root/repository, dropped capabilities, no-new-privileges, and
+bounded resources, all 123 Python scripts parsed; requirements HTML and the affected shell gates
+parsed; the reduced independent workspace baseline passed; the exact surviving display-verifier
+adjacency mutation was present and rejected; native-codec synchronization and the status-size gate
+passed; and host `git diff --check` passed. Exact pre/post host listener bytes matched at SHA-256
+`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`. The exact pinned devcheck
+image, authenticated `online/` closure, repository Windows golden, and Android harness state are
+absent, so none of the retained Rust or installed/native scenarios can run from current authoritative
+assets. No substitute or unrelated image was used; no image was pulled or built, no host Rust command
+ran, and no product/native behavior is claimed.
+
+Remaining STOP-SHIP evidence is the current installed/native transaction itself: complete desktop
+and Android CM/file operations after Login, both hops, saturation and terminal-first refusal, stale
+generation, abrupt owner loss, reconnect, ordering, latency, memory, task/handle finality, and cleanup;
+plus platform lifecycle/presentation/soak, cold R-B2/R-B10 equality, independent reproduction, and
+external review.
 
 ### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
 
@@ -11521,71 +11489,22 @@ performant are open. No product source or Android persistent-service behavior ch
 
 ### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT
-RUST/DART/FLUTTER/NATIVE, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platforms: the desktop
-connection manager on Windows, Linux, and macOS, with Android's shared in-process
-filesystem handler kept explicitly log-free. Surface: authorized CM filesystem command
-handling -> terminal transfer-job serialization -> local connection-manager UI.
+**SOURCE IMPLEMENTED; TWO EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
+SOURCE/MUTATION THEATER DELETED; CURRENT DESKTOP/ANDROID RUNTIME EVIDENCE OPEN.**
 
-Read-only source tracing found that `IpcTaskRunner::run` created an unbounded Tokio
-`String` channel, passed its sender to `handle_fs`, and consumed the receiver in a
-separate branch of that same task's `select!`. Write cancellation, successful write
-completion, write failure, and read cancellation could each serialize one peer-derived
-transfer job into this channel. There was no concurrent producer or separate authority:
-the handler was awaited by the sole consumer task. A continuously ready filesystem
-stream could therefore retain an unbounded count of serialized terminal job strings
-until selection reached the log branch; connection retirement destroyed the backlog.
-This is source-proven desktop resource/finality debt and a cleanup-mediated recovery
-mechanism. It is not proof that the unidentified weeks-old Android, Windows, or Debian
-artifacts contained or exercised the path and is not a causation claim for the reported
-display-only delay.
+The inherited CM task sent terminal file-job logs through an unbounded `String` self-queue even
+though the same task awaited the producer and consumed the result. The current `handle_fs` returns at
+most one owned terminal log directly after removing the exact connection/generation job. Desktop
+consumes it before later file work; Android requests no log construction without retaining the job.
+There is no log channel, detached producer, retry, alternate presentation path, or service change.
 
-The log sender, receiver, and `select!` branch are deleted. `handle_fs` now returns at
-most one owned `Option<String>` terminal log to the exact command caller. Cancellation,
-completion, and error paths still remove the exact connection-ID/generation job before
-constructing that result. The desktop CM task consumes the value immediately after the
-awaited handler and before activating later read work or accepting another command.
-Android explicitly requests no log construction and still retires the matching job; it
-does not gain a presentation queue or an alternate route. The direct return provides
-natural command-owner backpressure and cannot outlive the stack transaction. No sender,
-receiver, wake, FIFO, retry, reconnect, timer, poller, worker, task, thread, runtime,
-listener, port, dependency, privilege transition, service restart, alternate log path,
-or Android persistent-background-service change was added.
-
-Two current-thread Rust regressions construct exact write jobs, prove start produces no
-terminal log, prove cancellation removes the exact job and directly returns the expected
-terminal JSON when requested, and prove the Android-shaped omission path returns no log
-without retaining the retired job. The extended
-`scripts/verify-cm-egress-budget.py` contract rejects the old unbounded `String` route,
-binds all four direct terminal-log paths, desktop consume-before-next-work ordering,
-Android omission, regressions, R-S11ha, Appendix C #362, and this ledger. Its deliberate
-mutations and the independently parsed workspace contract bind the same topology without
-treating the focused result as sufficient. In the exact confined verifier image, with the
-repository mounted read-only, networking disabled, all capabilities dropped,
-`no-new-privileges`, a non-root numeric user, and bounded CPU/memory/PIDs/private tmpfs,
-the focused CM egress/log gate rejected all 64 mutations. The adjacent file-clipboard,
-controlled-command, keyed-writer, display-finality, viewer voice-worker, and Android
-voice/session ownership gates rejected 38, 51, 25, 186, 63, and 534 mutations
-respectively. The independent workspace baseline passed; a narrowed independent run
-rejected all 15 newly added R-S11ha mutations; and the complete independent source matrix
-rejected all 4,589 mutations on the frozen final tracked bytes. Python AST parsing of both
-changed verifiers, Bash parsing of the shared gate, exact Rust 1.75 `rustfmt --check`, the
-requirements-ledger digest check, and `git diff --check` also passed. The exact pinned
-Debian/Apple/Windows builder images and authenticated Cargo vendor closure are unavailable
-locally, so neither the two new Rust regressions nor any native compilation/execution is
-claimed.
-
-The broader user mandate remains unchanged and open: exact-current Rust/Dart/Flutter and
-generated-bridge compilation/execution; physical Android task-swipe/reopen/Force-Stop and
-real Windows focus/minimize reproduction; Linux/macOS/iOS/web and cross-version behavior;
-the weeks-old deployed artifacts; capture-through-compositor timestamps and explicit
-latency/queue budgets; sustained connection/reconnect/focus/background/file/control
-coexistence/resource/performance soak; clean cold R-B2/R-B10 equality; installed process,
-service, and package behavior; independent reproduction; R-V3 external review; causation;
-and proof that the complete connection flow is correct and performant all remain release
-obligations. This source slice inspects or changes no host RustDesk process, configuration,
-service, listener, firewall/network state, VM, Android device/service, unrelated workload,
-or OS privilege boundary.
+The executable Tokio regressions
+`r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner` and
+`r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job` remain, with direct shared command
+`cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never`. The deleted combined
+CM source verifier did not execute them or observe logs/jobs/resources. Exact desktop and Android
+cancellation, completion, failure, next-command ordering, abrupt loss, and cleanup remain required,
+as do current artifacts, performance/soak, independent reproduction, and external review.
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
@@ -13403,32 +13322,28 @@ soak; bind signed artifacts; complete cold R-B2/R-B10, independent reproduction,
 
 ### R-S11is/R-S11e-282 — exact-command CM file-response admission finality
 
-**State.** Exact-command response finality is implemented in source and covered by focused static
-gates plus two Rust regressions. Exact Rust/native execution and real cross-platform file
-transactions remain open.
+**SOURCE IMPLEMENTED; TWO EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
+SOURCE/MUTATION THEATER DELETED; CURRENT INSTALLED DESKTOP/ANDROID FILE EVIDENCE OPEN.**
 
-**Boundary and current implementation.** `CmFileResponder::send` returns the exact
-`CmEgressAdmissionError`; every response-producing filesystem helper and the exhaustive `handle_fs`
-dispatcher propagate refusal. Desktop and Android command owners treat refusal as terminal. A read
-job enters the live set only after its exact `ReadJobInit` response is admitted; digest/progress and
-read-tick work likewise stop on refusal. A framed write block whose raw body is absent or malformed
-is terminal, so parsing cannot silently resume out of frame. There is no log-only success, retry,
-alternate route, or inferred completion.
+`CmFileResponder::send` returns the exact `CmEgressAdmissionError`; all response-producing helpers
+and exhaustive `handle_fs` propagation make refusal terminal on desktop and Android. A read job is
+committed only after `ReadJobInit` admission, digest/progress stops on refusal, and absent/malformed
+raw write framing terminates the stream. Already-completed filesystem effects are not falsely rolled
+back or reported unperformed; exact session closure is the only sound outcome after response loss.
+There is no log-only success, retry, alternate route, inferred completion, service transition, or
+persistent-service kill.
 
-**Evidence.** The Rust regressions
+The executable Tokio regressions
 `r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner` and
-`r_s11is_read_job_commits_only_after_initial_response_admission` encode the principal refusal and
-commit-order cases. `scripts/verify-cm-egress-budget.py`, shared/Apple wiring checks, and
-`scripts/verify-verifier-workspace.py` bind exhaustive propagation, desktop/Android termination,
-raw-frame finality, and both regressions. The focused current-tree baseline passes as
-source/test-wiring evidence; the Rust tests themselves were not compiled or executed in this
-documentation slice.
+`r_s11is_read_job_commits_only_after_initial_response_admission` remain, with direct shared command
+`cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never`. The deleted source
+verifier never drove the CM stream, filesystem, raw frame, or target process and is not evidence.
 
-**Open evidence.** Compile and execute the exact Rust regressions, then run installed desktop and
-physical-Android file operations across directory, read, write, digest, cancellation, saturation,
-malformed/interrupted frames, and teardown. Add cross-version and sustained throughput/resource
-measurements, bind current artifacts, and complete cold R-B2/R-B10, independent reproduction, and
-external review.
+Exact installed desktop and Android transactions remain STOP-SHIP. They must exercise directory and
+recursive listing, create/remove/rename, writes, digest, read blocks, completion, cancellation,
+malformed raw framing, saturation, abrupt loss, stale generation, reconnect, filesystem outcomes,
+protocol finality, jobs, latency, memory, tasks, handles, and cleanup. Current artifacts, cross-
+platform behavior, performance/soak, cold equality, independent reproduction, and review remain open.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 

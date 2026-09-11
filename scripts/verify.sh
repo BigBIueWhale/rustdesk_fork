@@ -11378,12 +11378,6 @@ else
   echo "  FAIL R-S11gv: remote cursor resources regained unchecked capture, stale identity, unacknowledged publication, unbounded registration, or incomplete teardown"
   rc=1
 fi
-if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
-  echo "  ok  R-S11gy/R-S11is connection-manager results are bounded and every CM file response is exact-command-final"
-else
-  echo "  FAIL R-S11gy/R-S11is: connection-manager results regained an unbounded hop, incomplete raw-byte accounting, discarded file response, or nonterminal refusal"
-  rc=1
-fi
 if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   echo "  ok  R-S11hn/R-S11e-251 whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
 else

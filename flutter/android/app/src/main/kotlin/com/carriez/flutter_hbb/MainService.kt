@@ -269,6 +269,18 @@ class MainService : Service() {
         }
     }
 
+    /**
+     * The exact native listener worker calls this only after start_server() has returned and its
+     * Tokio runtime has been destroyed. Keep the JNI callback itself non-blocking and finish the
+     * generation-bound retirement on Android's main looper, where Service state is owned.
+     */
+    @Keep
+    fun rustListenerWorkerStopped(generation: Long) {
+        Handler(Looper.getMainLooper()).post {
+            reconcileStoppedListenerWorker(generation)
+        }
+    }
+
     @Keep
     @Synchronized
     fun rustSetHalfScale(halfScale: Boolean) {
@@ -327,6 +339,8 @@ class MainService : Service() {
     private var acceptingControlledConnections = false
     @Volatile
     private var nativeCallbackContextReady = false
+    @Volatile
+    private var destroying = false
     // JNI callbacks synchronize on this Service while native code holds a read lease on its
     // callback owner. Startup/retirement therefore use a distinct lock before taking native write
     // ownership; sharing the Service monitor would invert those locks during teardown.
@@ -556,6 +570,48 @@ class MainService : Service() {
         return true
     }
 
+    private fun reconcileStoppedListenerWorker(generation: Long) =
+        synchronized(controlledServiceGenerationLock) {
+            if (generation <= 0L || nativeServerGeneration != generation) {
+                Log.d(
+                    logTag,
+                    "Ignored stale listener-worker terminal callback for generation $generation",
+                )
+                return@synchronized
+            }
+            if (!retireControlledConnectionResourcesForRetry(generation)) {
+                Log.e(
+                    logTag,
+                    "Could not retire controlled resources after listener worker $generation stopped",
+                )
+                return@synchronized
+            }
+            if (!retireControlledServiceGenerationLocked(
+                    generation,
+                    "native listener worker terminal convergence",
+                )
+            ) {
+                Log.e(
+                    logTag,
+                    "Could not reconcile terminal listener worker generation $generation",
+                )
+                return@synchronized
+            }
+            unregisterNetworkCallback()
+            releaseNetworkKeepaliveWakeLock()
+            publishControlledServiceStatus(false)
+            if (destroying && nativeCallbackContextReady) {
+                if (FFI.releaseService(this)) {
+                    nativeCallbackContextReady = false
+                } else {
+                    Log.e(
+                        logTag,
+                        "Could not release destroyed MainService callback authority after exact native convergence",
+                    )
+                }
+            }
+        }
+
     private fun retireUnownedNativeGenerationLocked(
         generation: Long,
         reason: String,
@@ -623,6 +679,7 @@ class MainService : Service() {
     }
 
     override fun onDestroy() {
+        destroying = true
         val generation = nativeServerGeneration
         publishControlledServiceStatus(false)
         releaseControlledConnectionResources()
@@ -638,7 +695,9 @@ class MainService : Service() {
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
         if (generationRetired && nativeServerGeneration == 0L) {
-            if (!FFI.releaseService(this)) {
+            if (FFI.releaseService(this)) {
+                nativeCallbackContextReady = false
+            } else {
                 Log.d(logTag, "MainService callback owner was already replaced or released")
             }
         } else {

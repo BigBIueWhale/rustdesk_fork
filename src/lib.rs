@@ -22,6 +22,8 @@ mod peer_text;
 // module is honestly named `direct_service` — the inherited mediator module name is grep-absent.
 #[cfg(not(any(target_os = "ios")))]
 mod direct_service;
+#[cfg(any(target_os = "android", test))]
+mod android_listener_lifecycle;
 #[cfg(not(any(target_os = "ios")))]
 pub use self::direct_service::*;
 /// cbindgen:ignore

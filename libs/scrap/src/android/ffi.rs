@@ -736,6 +736,30 @@ pub fn call_main_service_set_by_name_for_generation(
     })
 }
 
+/// Publish terminal listener-runtime convergence to the exact retained MainService generation.
+/// Unlike ordinary controlled callbacks, this remains admissible after listener activation has
+/// been closed: its sole purpose is to let that same generation finish retirement. The Java side
+/// posts the actual cleanup onto the main looper, so the native worker never re-enters retirement
+/// while holding this read lease.
+pub fn call_main_service_listener_worker_stopped_for_generation(generation: u64) -> JniResult<()> {
+    let jvm = JVM.read().unwrap();
+    let context = MAIN_SERVICE_CTX.read().unwrap();
+    let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
+        return Err(JniError::ThrowFailed(-1));
+    };
+    if generation == 0 || !context.generation.is_current(generation) {
+        return Err(JniError::ThrowFailed(-1));
+    }
+    let mut env = jvm.attach_current_thread_as_daemon()?;
+    env.call_method(
+        &context.owner,
+        "rustListenerWorkerStopped",
+        "(J)V",
+        &[JValue::Long(generation as jlong)],
+    )?;
+    Ok(())
+}
+
 pub fn call_main_service_set_half_scale_for_generation(
     generation: u64,
     half_scale: bool,

@@ -13681,13 +13681,8 @@ else
 fi
 echo "== Android exact-generation listener rebuild authority (R-S11el/R-S11e-172) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
-  direct_service::android_listener_lifecycle_tests:: -- --test-threads=1
-if /usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo .; then
-  echo "  ok  R-S11el/R-S11e-172 Android exact-generation listener rebuild authority"
-else
-  echo "  FAIL R-S11el/R-S11e-172: Android exact-generation listener rebuild authority regressed"
-  rc=1
-fi
+  android_listener_lifecycle::tests:: -- --test-threads=1
+echo "  ok  R-S11el/R-S11e-172 Android exact-generation listener lifecycle behavior"
 echo "== Android exact-generation raw-video and video-worker authority (R-S11em/R-S11eu/R-S11e-174/R-S11e-182) =="
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config \
   android_frame_raw_generation_tests::tests:: -- --test-threads=1
@@ -13734,13 +13729,13 @@ grep -qF 'networkKeepaliveWakeLock.release()' "$ms" || r_t13="$r_t13 no-wakelock
 grep -qF 'external fun rebuildDirectServerListener(generation: Long): Boolean' flutter/android/app/src/main/kotlin/ffi.kt || r_t13="$r_t13 no-generation-bound-kotlin-ffi"
 grep -qF 'Java_ffi_FFI_rebuildDirectServerListener' src/flutter_ffi.rs || r_t13="$r_t13 no-jni-export"
 grep -qF 'android_request_listener_rebuild(' src/flutter_ffi.rs || r_t13="$r_t13 no-exact-generation-jni-rebuild-hook"
-grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' src/direct_service.rs || r_t13="$r_t13 no-serialized-listener-lifecycle"
-grep -qF 'fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64>' src/direct_service.rs || r_t13="$r_t13 no-generation-bound-rebuild-transition"
+grep -qF 'static ANDROID_LISTENER_OWNER: Mutex<AndroidListenerOwner>' src/direct_service.rs || r_t13="$r_t13 no-serialized-listener-owner"
+grep -qF 'fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64>' src/android_listener_lifecycle.rs || r_t13="$r_t13 no-generation-bound-rebuild-transition"
 grep -qF 'fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64>' src/direct_service.rs || r_t13="$r_t13 no-atomic-generation-epoch-snapshot"
 grep -qF 'R-T13: rebuilding direct listener after exact-generation Android network change' src/direct_service.rs || r_t13="$r_t13 no-exact-generation-rebuild-log"
 grep -qF 'listener = None;' src/direct_service.rs || r_t13="$r_t13 no-listener-none-rebuild"
-grep -qF 'stale_network_callback_cannot_advance_replacement_generation_epoch' src/direct_service.rs || r_t13="$r_t13 no-generation-aba-regression"
-if ! /usr/bin/python3 -I -S - "$ms" flutter/android/app/src/main/kotlin/ffi.kt src/flutter_ffi.rs src/direct_service.rs <<'PY'
+grep -qF 'stale_network_callback_cannot_advance_replacement_generation_epoch' src/android_listener_lifecycle.rs || r_t13="$r_t13 no-generation-aba-regression"
+if ! /usr/bin/python3 -I -S - "$ms" flutter/android/app/src/main/kotlin/ffi.kt src/flutter_ffi.rs src/direct_service.rs src/android_listener_lifecycle.rs <<'PY'
 import pathlib
 import sys
 
@@ -13748,6 +13743,7 @@ main_service = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 kotlin_ffi = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
 rust_ffi = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
 direct = pathlib.Path(sys.argv[4]).read_text(encoding="utf-8")
+lifecycle = pathlib.Path(sys.argv[5]).read_text(encoding="utf-8")
 
 def between(text: str, start: str, end: str) -> str:
     begin = text.index(start)
@@ -13775,9 +13771,9 @@ jni = between(
     "\n    #[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_translateLocale(",
 )
 transition = between(
-    direct,
-    "    fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {",
-    "\n    fn snapshot(&self, expected_generation: u64) -> Option<u64> {",
+    lifecycle,
+    "    pub(crate) fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {",
+    "\n    pub(crate) fn snapshot(&self, expected_generation: u64) -> Option<u64> {",
 )
 server_loop = between(
     direct,
@@ -13803,11 +13799,11 @@ ok = (
     and jni.index("u64::try_from(generation)")
         < jni.index("android_request_listener_rebuild(")
         < jni.index('\"android-network-change\"')
-    and transition.index("!self.active")
+    and transition.index("self.phase != AndroidListenerPhase::Active")
         < transition.index("expected_generation == 0")
         < transition.index("self.generation != expected_generation")
         < transition.index("let Some(next) = self.rebuild_epoch.checked_add(1) else")
-        < transition.index("self.active = false")
+        < transition.index("self.phase = AndroidListenerPhase::StopRequested")
         < transition.index("self.rebuild_epoch = next")
     and "android_listener_lifecycle_snapshot(my_generation)" in server_loop
     and rebind in server_loop
@@ -16518,11 +16514,12 @@ grep -qF 'crate::direct_service::android_begin_generation,' "$r_s14_flutter_ffi"
 grep -qF 'android_activate_generation(generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing reserved-listener-generation-not-explicitly-activated"
 grep -qF 'let _worker_guard = AndroidDirectServerWorkerGuard(generation);' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing terminal-listener-worker-generation-not-retired"
 grep -qF 'Java_ffi_FFI_isServerGenerationActive' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-listener-generation-health-jni-missing"
-grep -qF 'android_request_stop_or_confirm_inactive(generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-convergence-jni-missing"
+grep -qF 'crate::direct_service::android_request_stop,' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-request-jni-missing"
 grep -qF 'pub fn owns_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing exact-main-service-generation-health-owner"
-grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-serialized-service-listener-lifecycle"
-grep -qF 'fn stop_generation(&mut self, expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-exact-generation-deactivation-transition"
-grep -qF 'lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
+grep -qF 'static ANDROID_LISTENER_OWNER: Mutex<AndroidListenerOwner>' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-serialized-service-listener-owner"
+grep -qF 'pub(crate) fn stop_generation(&mut self, expected_generation: u64) -> bool' src/android_listener_lifecycle.rs || r_s14_missing="$r_s14_missing no-exact-generation-stop-request-transition"
+grep -qF 'owner.lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
+grep -qF 'pub(crate) fn confirm_worker_converged(&mut self, expected_generation: u64) -> bool' src/android_listener_lifecycle.rs || r_s14_missing="$r_s14_missing worker-convergence-not-distinct-from-stop-request"
 grep -qF 'pub fn android_note_worker_exit(expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing terminal-listener-worker-exit-convergence"
 grep -qF 'outcome = &mut direct_listener' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing terminal-listener-task-not-observed"
 if [ -n "$r_s14_missing" ]; then

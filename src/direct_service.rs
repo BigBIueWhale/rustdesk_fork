@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "android")]
 use std::sync::Mutex;
 
+#[cfg(target_os = "android")]
+use crate::android_listener_lifecycle::AndroidListenerLifecycle;
 #[cfg(not(target_os = "android"))]
 use crate::server::check_zombie;
 use crate::server::{new as new_server, ServerPtr};
@@ -39,92 +41,23 @@ fn get_direct_port() -> i32 {
     config::DIRECT_PORT
 }
 
-#[cfg(any(target_os = "android", test))]
-#[derive(Default)]
-struct AndroidListenerLifecycle {
+#[cfg(target_os = "android")]
+struct AndroidListenerWorker {
     generation: u64,
-    rebuild_epoch: u64,
-    reserved: bool,
-    active: bool,
-}
-
-#[cfg(any(target_os = "android", test))]
-impl AndroidListenerLifecycle {
-    fn begin_generation(&mut self) -> Option<u64> {
-        if self.reserved || self.active {
-            return None;
-        }
-        let Some(next) = self.generation.checked_add(1) else {
-            self.reserved = false;
-            self.active = false;
-            return None;
-        };
-        if next > i64::MAX as u64 {
-            self.reserved = false;
-            self.active = false;
-            return None;
-        }
-        self.generation = next;
-        self.rebuild_epoch = 0;
-        self.reserved = true;
-        self.active = false;
-        Some(next)
-    }
-
-    fn activate_generation(&mut self, expected_generation: u64) -> bool {
-        if !self.reserved || self.active || self.generation != expected_generation {
-            return false;
-        }
-        self.reserved = false;
-        self.active = true;
-        true
-    }
-
-    fn stop_generation(&mut self, expected_generation: u64) -> bool {
-        if (!self.reserved && !self.active)
-            || expected_generation == 0
-            || self.generation != expected_generation
-        {
-            return false;
-        }
-        self.reserved = false;
-        self.active = false;
-        true
-    }
-
-    fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {
-        if !self.active || expected_generation == 0 || self.generation != expected_generation {
-            return None;
-        }
-        let Some(next) = self.rebuild_epoch.checked_add(1) else {
-            self.active = false;
-            return None;
-        };
-        self.rebuild_epoch = next;
-        Some(next)
-    }
-
-    fn snapshot(&self, expected_generation: u64) -> Option<u64> {
-        (self.active && expected_generation != 0 && self.generation == expected_generation)
-            .then_some(self.rebuild_epoch)
-    }
-
-    fn is_exact_inactive(&self, expected_generation: u64) -> bool {
-        expected_generation != 0
-            && self.generation == expected_generation
-            && !self.reserved
-            && !self.active
-    }
+    join: std::thread::JoinHandle<()>,
 }
 
 #[cfg(target_os = "android")]
-static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle> =
-    Mutex::new(AndroidListenerLifecycle {
-        generation: 0,
-        rebuild_epoch: 0,
-        reserved: false,
-        active: false,
-    });
+struct AndroidListenerOwner {
+    lifecycle: AndroidListenerLifecycle,
+    worker: Option<AndroidListenerWorker>,
+}
+
+#[cfg(target_os = "android")]
+static ANDROID_LISTENER_OWNER: Mutex<AndroidListenerOwner> = Mutex::new(AndroidListenerOwner {
+    lifecycle: AndroidListenerLifecycle::new(),
+    worker: None,
+});
 
 /// R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL, live state of the direct listener —
 /// `true` iff `direct_server` currently holds a bound `TcpListener` on the pinned v4 port. It is
@@ -171,32 +104,35 @@ impl Drop for ListenerBoundGuard {
 
 /// R-D7a: the Android controlled-side server is OWNED by the mandatory `MainService` foreground
 /// service and shares its lifetime — there is no headless `--service` on Android (a Flutter
-/// `cdylib`). `ANDROID_LISTENER_LIFECYCLE` serializes generation begin, exact-generation stop, and
-/// exact-generation activation and network rebuild. A callback queued by an obsolete service
+/// `cdylib`). `ANDROID_LISTENER_OWNER` serializes generation begin, exact-generation stop, native
+/// worker ownership, and exact-generation activation/network rebuild. A callback queued by an obsolete service
 /// therefore cannot advance the rebuild epoch after a replacement service owns the listener. The
 /// accept loop and keep-alive compare the generation they were STARTED UNDER against the current
-/// active ownership snapshot. Exact deactivation means "the owning service was destroyed, tear the
-/// listener down". A reservation is refused while any generation remains reserved or active, and
+/// active ownership snapshot. Deactivation first means "stop requested"; it does not become
+/// inactive until the exact worker has returned from `start_server` after its Tokio runtime was
+/// destroyed. A reservation is refused while any generation remains reserved, starting, active,
+/// stopping, or terminal-but-unreconciled, and
 /// an admitted rebuild advances only the current active generation's epoch and rebinds the same
 /// port.
 ///   - `MainService` startup -> exact-object-authorized JNI `startServer` calls
 ///     `android_begin_generation()` while binding the callback/raw/screen owner and leaves that
 ///     generation RESERVED, not active. After Kotlin commits screen/status/voice ownership and
-///     opens controlled-callback admission, exact-object JNI `activateServer` performs the single
-///     RESERVED -> ACTIVE transition and hands the value by value into the spawned server thread
+///     opens controlled-callback admission, exact-object JNI `activateServer` performs the
+///     RESERVED -> STARTING transition, transfers the spawned thread handle into the native owner,
+///     then releases that worker into ACTIVE and hands the value by value into the server thread
 ///     (through `start_server` -> `start_direct_only` -> `direct_server`). The accept loop +
 ///     keep-alive therefore run under EXACTLY that active generation and cannot accept before
 ///     callback admission — never a late lifecycle-state read inside the thread. That distinction
 ///     is load-bearing (N1/F1): a late load could read a generation a concurrent `deactivateServer`/
 ///     `startServer` had already superseded (or the post-stop value itself), letting a stopped
 ///     service's thread believe it was current and keep the listener bound ("Stop doesn't stop").
-///     No later begin can change the generation until its exact stop deactivates it; after that
-///     stop, a fresh reservation advances the generation, so the same lifecycle snapshot rejects
-///     the retired thread in either case.
+///     No later begin can change the generation until its exact stop, runtime exit, and terminal
+///     reconciliation complete; the retained completed thread handle is reaped before replacement.
 ///   - `MainService.onDestroy` -> exact-object JNI `deactivateServer` calls
-///     `android_request_stop_or_confirm_inactive()` with the exact generation it owns. A delayed
-///     obsolete Service cannot supersede a replacement generation, while a generation already
-///     deactivated by its terminal worker guard converges successfully.
+///     `android_request_stop()` with the exact generation it owns. A delayed obsolete Service
+///     cannot supersede a replacement generation. The worker's terminal guard publishes a
+///     generation-bound callback only after the runtime has gone away; that callback completes
+///     Kotlin/native retirement without blocking Android's main thread.
 ///     `direct_server` observes deactivation or supersession at its loop top and `return`s (dropping
 ///     the `TcpListener` local -> socket closed), and `start_direct_only` observes it in its
 ///     keep-alive poll and `return`s (so the JNI thread + its `#[tokio::main]` runtime unwind,
@@ -210,8 +146,25 @@ impl Drop for ListenerBoundGuard {
 /// keep-alive only after the Android-side startup transaction commits.
 #[cfg(target_os = "android")]
 pub fn android_begin_generation() -> u64 {
-    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
-    match lifecycle.begin_generation() {
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if let Some(worker) = owner.worker.as_ref() {
+        if !worker.join.is_finished() {
+            log::error!(
+                "R-S11hq: refusing Android listener replacement while generation {} worker has not exited",
+                worker.generation
+            );
+            return 0;
+        }
+        if let Some(worker) = owner.worker.take() {
+            if worker.join.join().is_err() {
+                log::warn!(
+                    "R-S11hq: reaped panicked Android listener worker generation {}",
+                    worker.generation
+                );
+            }
+        }
+    }
+    match owner.lifecycle.begin_generation() {
         Some(generation) => generation,
         None => {
             log::error!("R-D7a: Android server generation reservation refused or exhausted");
@@ -220,96 +173,126 @@ pub fn android_begin_generation() -> u64 {
     }
 }
 
-/// R-S11hq: activate one exact reserved Android listener generation after the Java-side startup
-/// transaction has committed. A duplicate, stale, already-active, or never-reserved request fails
-/// closed and cannot create a listener thread.
+/// R-S11hq: claim startup for one exact reserved Android listener generation after the Java-side
+/// transaction has committed. The worker does not become ACTIVE until its OS-thread handle is
+/// retained. A duplicate, stale, already-active, or never-reserved request fails closed.
 #[cfg(target_os = "android")]
 pub fn android_activate_generation(expected_generation: u64) -> bool {
-    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
-    if lifecycle.activate_generation(expected_generation) {
-        log::info!("R-S11hq: activated reserved Android listener generation {expected_generation}");
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if owner.lifecycle.activate_generation(expected_generation) {
+        log::info!(
+            "R-S11hq: claimed startup for reserved Android listener generation {expected_generation}"
+        );
         true
     } else {
         log::warn!(
             "R-S11hq: rejected stale or non-reserved Android activation generation {expected_generation}; current generation is {}",
-            lifecycle.generation
+            owner.lifecycle.generation()
         );
+        false
+    }
+}
+
+/// Transfer the exact native thread handle into the listener owner before allowing the thread to
+/// enter `start_server`. A successfully registered worker is therefore never detached: its handle
+/// remains generation-bound until a later begin reaps the completed thread. `activateServer`
+/// releases the worker's start gate only after this transfer succeeds.
+#[cfg(target_os = "android")]
+pub fn android_register_worker(
+    expected_generation: u64,
+    worker: std::thread::JoinHandle<()>,
+) -> Result<(), std::thread::JoinHandle<()>> {
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if owner.worker.is_some() || !owner.lifecycle.register_worker(expected_generation) {
+        log::error!(
+            "R-S11hq: refused unowned Android listener worker generation {expected_generation}"
+        );
+        return Err(worker);
+    }
+    owner.worker = Some(AndroidListenerWorker {
+        generation: expected_generation,
+        join: worker,
+    });
+    Ok(())
+}
+
+/// Roll back STARTING when the OS thread could not be created. No worker or runtime exists on
+/// this path, so the exact generation is immediately inactive.
+#[cfg(target_os = "android")]
+pub fn android_note_worker_start_failed(expected_generation: u64) -> bool {
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if owner.worker.is_none() && owner.lifecycle.worker_start_failed(expected_generation) {
+        log::warn!(
+            "R-S11hq: Android listener worker generation {expected_generation} failed before start"
+        );
+        true
+    } else {
         false
     }
 }
 
 /// R-D7a: deactivate the exact owned Android server generation (JNI `deactivateServer` on
 /// `MainService.onDestroy`). The graceful teardown twin of process-death fd close: the running
-/// accept loop + keep-alive observe that exact generation becoming inactive and unwind, closing the
-/// listening socket. A not-yet-activated reservation is retired by the same exact operation. Stop
-/// does not allocate a generation ID; only a successful begin does.
+/// accept loop + keep-alive observe STOP_REQUESTED and unwind, closing the listening socket. This
+/// operation acknowledges only the exact stop request; it deliberately does not claim the worker
+/// or runtime is already inactive. A not-yet-activated reservation has no worker and can retire
+/// immediately. Stop does not allocate a generation ID; only a successful begin does.
 #[cfg(target_os = "android")]
 pub fn android_request_stop(expected_generation: u64) -> bool {
-    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
-    if lifecycle.stop_generation(expected_generation) {
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if owner.lifecycle.stop_generation(expected_generation) {
         log::info!(
-            "R-D7a: Android listener stop — deactivated owned listener generation {expected_generation}"
+            "R-D7a: Android listener stop requested for owned generation {expected_generation}"
         );
         true
     } else {
         log::warn!(
-            "R-D7a: rejected stale or inactive Android listener-stop generation {expected_generation}; current generation is {}",
-            lifecycle.generation
+            "R-D7a: rejected stale Android listener-stop generation {expected_generation}; current generation is {}",
+            owner.lifecycle.generation()
         );
         false
     }
 }
 
-/// Exact retirement used after the retained MainService object/generation has already been
-/// proved. A worker-exit guard may have deactivated the lifecycle first; confirming that exact
-/// generation as inactive is then successful convergence rather than a stale-stop failure.
-#[cfg(target_os = "android")]
-pub fn android_request_stop_or_confirm_inactive(expected_generation: u64) -> bool {
-    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
-    if lifecycle.stop_generation(expected_generation) {
-        log::info!("R-D7a: deactivated owned Android listener generation {expected_generation}");
-        true
-    } else if lifecycle.is_exact_inactive(expected_generation) {
-        log::info!(
-            "R-S11hq: Android listener generation {expected_generation} was already inactive"
-        );
-        true
-    } else {
-        log::warn!(
-            "R-S11hq: could not retire Android listener generation {expected_generation}; current generation is {}",
-            lifecycle.generation
-        );
-        false
-    }
-}
-
-/// Read-only exact-generation health used by MainService idempotency. Reserved generations and
-/// generations whose worker has terminated are not active and therefore must be retired/retried.
+/// Exact-generation health used by MainService idempotency. Reserved, starting, stopping, and
+/// exited-but-unreconciled generations are not active and therefore must be retired/retried.
 #[cfg(target_os = "android")]
 pub fn android_generation_is_active(expected_generation: u64) -> bool {
-    ANDROID_LISTENER_LIFECYCLE
+    ANDROID_LISTENER_OWNER
         .lock()
         .unwrap()
+        .lifecycle
         .snapshot(expected_generation)
         .is_some()
 }
 
+/// Confirm that the exact worker passed its terminal guard. `start_server` is a synchronous
+/// `#[tokio::main]` entry, so reaching that guard proves its runtime has already been destroyed;
+/// async tasks have been dropped and Tokio has waited for any running `spawn_blocking` work. The
+/// retained OS-thread handle is reaped before a later generation can begin.
 #[cfg(target_os = "android")]
 pub fn android_generation_is_inactive(expected_generation: u64) -> bool {
-    ANDROID_LISTENER_LIFECYCLE
-        .lock()
-        .unwrap()
-        .is_exact_inactive(expected_generation)
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if owner
+        .worker
+        .as_ref()
+        .is_some_and(|worker| worker.generation != expected_generation)
+    {
+        return false;
+    }
+    owner
+        .lifecycle
+        .confirm_worker_converged(expected_generation)
 }
 
 /// RAII worker-exit convergence. This is intentionally distinct from explicit-stop logging: it runs
 /// when the JNI-owned server thread returns or unwinds and makes committed-generation health false.
 #[cfg(target_os = "android")]
 pub fn android_note_worker_exit(expected_generation: u64) -> bool {
-    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
-    if lifecycle.stop_generation(expected_generation) {
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    if owner.lifecycle.note_worker_exit(expected_generation) {
         log::warn!(
-            "R-S11hq: Android direct-server worker exited; deactivated generation {expected_generation}"
+            "R-S11hq: Android direct-server runtime exited for generation {expected_generation}"
         );
         true
     } else {
@@ -322,8 +305,8 @@ pub fn android_note_worker_exit(expected_generation: u64) -> bool {
 /// callback cannot pass validation and then advance the replacement generation's rebuild epoch.
 #[cfg(target_os = "android")]
 pub fn android_request_listener_rebuild(expected_generation: u64, reason: &str) -> bool {
-    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
-    match lifecycle.request_rebuild(expected_generation) {
+    let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
+    match owner.lifecycle.request_rebuild(expected_generation) {
         Some(epoch) => {
             log::info!(
                 "R-T13: direct listener rebuild requested by exact Android service generation {expected_generation} ({reason}); epoch={epoch}"
@@ -333,7 +316,7 @@ pub fn android_request_listener_rebuild(expected_generation: u64, reason: &str) 
         None => {
             log::warn!(
                 "R-T13: rejected stale or exhausted Android listener rebuild generation {expected_generation}; current generation is {}",
-                lifecycle.generation
+                owner.lifecycle.generation()
             );
             false
         }
@@ -345,9 +328,10 @@ pub fn android_request_listener_rebuild(expected_generation: u64, reason: &str) 
 /// generation check and an independently loaded rebuild counter.
 #[cfg(target_os = "android")]
 fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64> {
-    ANDROID_LISTENER_LIFECYCLE
+    ANDROID_LISTENER_OWNER
         .lock()
         .unwrap()
+        .lifecycle
         .snapshot(expected_generation)
 }
 
@@ -1264,78 +1248,3 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
 
 // R-D4: the `CheckIfResendPk` no-op RAII shell (the original resent `register_pk` on a post-config-
 // sync pk change — moot with no registration) is REMOVED with the mediator-shell sweep.
-
-#[cfg(test)]
-mod android_listener_lifecycle_tests {
-    use super::AndroidListenerLifecycle;
-
-    #[test]
-    fn stale_network_callback_cannot_advance_replacement_generation_epoch() {
-        let mut lifecycle = AndroidListenerLifecycle::default();
-
-        let first = lifecycle.begin_generation().unwrap();
-        assert_eq!(lifecycle.snapshot(first), None);
-        assert!(lifecycle.activate_generation(first));
-        assert_eq!(lifecycle.snapshot(first), Some(0));
-        assert_eq!(lifecycle.request_rebuild(first), Some(1));
-        assert_eq!(lifecycle.snapshot(first), Some(1));
-        assert_eq!(lifecycle.begin_generation(), None);
-        assert_eq!(lifecycle.snapshot(first), Some(1));
-
-        assert!(!lifecycle.stop_generation(first + 1));
-        assert_eq!(lifecycle.snapshot(first), Some(1));
-        assert!(lifecycle.stop_generation(first));
-        assert_eq!(lifecycle.snapshot(first), None);
-
-        let replacement = lifecycle.begin_generation().unwrap();
-        assert!(replacement > first);
-        assert_eq!(lifecycle.snapshot(replacement), None);
-        assert!(lifecycle.activate_generation(replacement));
-        assert_eq!(lifecycle.snapshot(replacement), Some(0));
-        assert_eq!(lifecycle.request_rebuild(replacement), Some(1));
-
-        assert_eq!(lifecycle.request_rebuild(first), None);
-        assert_eq!(lifecycle.snapshot(replacement), Some(1));
-        assert!(!lifecycle.stop_generation(first));
-        assert_eq!(lifecycle.snapshot(replacement), Some(1));
-    }
-
-    #[test]
-    fn invalid_or_exhausted_listener_lifecycle_transitions_fail_closed() {
-        let mut lifecycle = AndroidListenerLifecycle::default();
-
-        assert_eq!(lifecycle.request_rebuild(0), None);
-        assert!(!lifecycle.stop_generation(0));
-        assert_eq!(lifecycle.snapshot(0), None);
-
-        let reserved = lifecycle.begin_generation().unwrap();
-        assert_eq!(lifecycle.snapshot(reserved), None);
-        assert!(!lifecycle.activate_generation(reserved + 1));
-        assert!(lifecycle.stop_generation(reserved));
-        assert!(!lifecycle.activate_generation(reserved));
-        assert!(lifecycle.is_exact_inactive(reserved));
-        assert!(!lifecycle.is_exact_inactive(reserved + 1));
-
-        lifecycle.generation = i64::MAX as u64;
-        lifecycle.reserved = true;
-        lifecycle.active = false;
-        assert!(lifecycle.stop_generation(i64::MAX as u64));
-        assert_eq!(lifecycle.snapshot(i64::MAX as u64), None);
-
-        assert_eq!(lifecycle.begin_generation(), None);
-        assert!(!lifecycle.stop_generation(i64::MAX as u64));
-        assert_eq!(lifecycle.generation, i64::MAX as u64);
-        assert!(!lifecycle.reserved);
-        assert!(!lifecycle.active);
-        assert_eq!(lifecycle.snapshot(i64::MAX as u64), None);
-
-        lifecycle.generation = 7;
-        lifecycle.rebuild_epoch = u64::MAX;
-        lifecycle.reserved = false;
-        lifecycle.active = true;
-        assert_eq!(lifecycle.request_rebuild(7), None);
-        assert_eq!(lifecycle.rebuild_epoch, u64::MAX);
-        assert!(!lifecycle.active);
-        assert_eq!(lifecycle.snapshot(7), None);
-    }
-}

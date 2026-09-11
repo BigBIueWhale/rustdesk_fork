@@ -2327,7 +2327,16 @@ pub mod server_side {
 
     impl Drop for AndroidDirectServerWorkerGuard {
         fn drop(&mut self) {
-            let _ = crate::direct_service::android_note_worker_exit(self.0);
+            if crate::direct_service::android_note_worker_exit(self.0) {
+                if let Err(error) =
+                    scrap::android::call_main_service_listener_worker_stopped_for_generation(self.0)
+                {
+                    log::error!(
+                        "Could not publish Android listener worker convergence for generation {}: {error}",
+                        self.0
+                    );
+                }
+            }
         }
     }
 
@@ -2418,26 +2427,61 @@ pub mod server_side {
                 &env,
                 &service,
                 generation,
-                crate::direct_service::android_request_stop_or_confirm_inactive,
+                crate::direct_service::android_request_stop,
             );
             return jboolean::from(false);
         }
+        let (start_tx, start_rx) = std::sync::mpsc::sync_channel::<()>(1);
         match std::thread::Builder::new()
             .name("android-direct-service".to_owned())
             .spawn(move || {
                 let _worker_guard = AndroidDirectServerWorkerGuard(generation);
-                start_server(true, generation);
+                if start_rx.recv().is_ok() {
+                    start_server(true, generation);
+                }
             }) {
-            Ok(_) => jboolean::from(true),
+            Ok(worker) => {
+                if let Err(worker) =
+                    crate::direct_service::android_register_worker(generation, worker)
+                {
+                    drop(start_tx);
+                    if worker.join().is_err() {
+                        log::warn!(
+                            "Unregistered Android listener worker generation {generation} panicked while stopping"
+                        );
+                    }
+                    let _ = scrap::android::deactivate_main_service_generation(
+                        &env,
+                        &service,
+                        generation,
+                        crate::direct_service::android_request_stop,
+                    );
+                    return jboolean::from(false);
+                }
+                if start_tx.send(()).is_err() {
+                    log::error!(
+                        "Android listener worker generation {generation} exited before its start gate"
+                    );
+                    let _ = scrap::android::deactivate_main_service_generation(
+                        &env,
+                        &service,
+                        generation,
+                        crate::direct_service::android_request_stop,
+                    );
+                    return jboolean::from(false);
+                }
+                jboolean::from(true)
+            }
             Err(error) => {
                 log::error!(
                     "activateServer could not spawn listener generation {generation}: {error}"
                 );
+                let _ = crate::direct_service::android_note_worker_start_failed(generation);
                 let _ = scrap::android::deactivate_main_service_generation(
                     &env,
                     &service,
                     generation,
-                    crate::direct_service::android_request_stop_or_confirm_inactive,
+                    crate::direct_service::android_request_stop,
                 );
                 jboolean::from(false)
             }
@@ -2478,7 +2522,7 @@ pub mod server_side {
             &env,
             &service,
             generation,
-            crate::direct_service::android_request_stop_or_confirm_inactive,
+            crate::direct_service::android_request_stop,
         );
         if !retired {
             log::warn!(

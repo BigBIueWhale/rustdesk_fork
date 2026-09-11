@@ -12235,37 +12235,61 @@ performant remain explicit release obligations and explicit user requests.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 
-**State.** Source ownership and rollback are implemented. `MainService` keeps
-the listener inactive until one positive generation owns screen, status, voice,
-callback admission, and listener activation. Bound-only creation is inert; an
-explicit start performs one bounded attempt; task removal does not stop the
-foreground service.
+**State.** The source startup transaction and rollback remain implemented. A
+2026-09-11 review found that native deactivation nevertheless collapsed “stop
+requested” and “worker/runtime inactive” into one Boolean and discarded the
+`android-direct-service` thread handle. That could let Kotlin finalize generation
+N and attempt generation N+1 while N still owned its Tokio runtime, listener, or
+connection tasks. The source now separates that lifecycle and retains the exact
+thread handle. The actual production state module's three executable regressions
+pass under project-pinned Rust 1.75 in a confined container; complete Android
+target compilation and APK/device behavior remain unexecuted and unclaimed.
 
-**Boundary and implementation.** One retained `RETIRING` plan closes callback
-admission and deactivates the exact reserved, active, or terminally stopped
-listener before retiring exact voice, status, raw-video, and screen owners.
-Kotlin and native generation authority clear only after every required
-acknowledgement. Failure retains the same Service object, generation, callback
-authority, notification, and cleanup plan for a later explicit retry while
-blocking replacement; it never retries automatically or relies on Force Stop.
-Terminal worker outcomes deactivate only their captured generation, and health
-requires exact Service-object, generation, and active-listener equality.
+**Boundary and implementation.** `INACTIVE`, `RESERVED`, `STARTING`, `ACTIVE`,
+`STOP_REQUESTED`, and `EXITED` are distinct exact-generation states. Activation
+uses a start gate: the worker cannot enter `start_server` until its thread handle
+has transferred into the native owner. Deactivation only records
+`STOP_REQUESTED`; it cannot authorize native generation retirement or
+replacement. The worker's terminal guard runs only after synchronous
+`start_server` returns and its `#[tokio::main]` runtime has been destroyed, then
+publishes one generation-bound JNI callback. `MainService` posts reconciliation
+onto the Android main looper, retires the retained Kotlin/native plan, and
+releases a destroyed Service callback owner only after exact convergence. A
+later begin refuses a still-running predecessor and reaps its retained completed
+handle before allocating another generation. Reserved-start rollback without a
+worker remains immediate. Stale callbacks cannot select a replacement.
 
-**Evidence.** At source commit `6161c3e0474180b0c98f04b7f794ed8555e081d0`,
-the production owner classes and three Kotlin state programs passed in a
-networkless numeric-nonroot container using Kotlin 2.2.10/Temurin 17, and Rust
-1.75 executed two MainService-generation plus five raw/screen-generation tests.
-Focused startup/listener/status/raw/voice and independent source gates bind the
-current topology. The Kotlin toolchain was not the project-pinned Android
-Gradle toolchain, and none of this executed JNI or Android framework behavior.
+The existing startup transaction still keeps the listener inactive until one
+positive generation owns screen, status, voice, callback admission, and listener
+activation. Failure retains the same Service object, generation, callback
+authority, notification, and cleanup plan while blocking replacement; task
+removal does not stop the foreground service and Force Stop is not a recovery
+mechanism.
+
+**Evidence.** Historical state-program evidence at
+`6161c3e0474180b0c98f04b7f794ed8555e081d0` remains evidence only for that older
+source. The current Rust regressions exercise start-before-registration refusal,
+stop-request versus inactivity, terminal convergence before replacement, stale
+generation refusal, rebuild exhaustion, and thread-creation rollback. The exact
+dependency-free production module compiled and all three tests passed with
+rustc 1.75.0 in a numeric-nonroot, networkless, capability-dropped, read-only
+container; pinned rustfmt and parser checks also passed the touched Rust source.
+This is state-machine behavior and syntax evidence, not Android integration. The old focused
+Python listener “verifier” literally requires the superseded
+`reserved: bool`/`active: bool` representation and only matches source strings;
+it is stale and is not evidence for this correction. No current JNI, Android
+framework, emulator, or device execution exists yet.
 
 **Open evidence.** Build and install the exact current APK with the pinned
 Kotlin/Gradle/NDK closure, inject every startup and retirement failure, and run
 task-swipe/reopen/Service-recreation/Force-Stop, reconnect, file, display,
 control, capture, and audio cases on Android. Listener/thread/handle/memory/
-queue/CPU/latency finality, sustained soak, cross-version behavior, signed
-artifacts, cold R-B2/R-B10 equality, independent reproduction, and external
-review remain STOP-SHIP.
+queue/CPU/latency finality—including runtime destruction with a live
+`spawn_blocking` filesystem operation—sustained soak, cross-version behavior,
+signed artifacts, cold R-B2/R-B10 equality, independent reproduction, and
+external review remain STOP-SHIP. Accepted connection-task ownership and
+graceful convergence, rather than runtime-drop cancellation, require separate
+completion before this lifecycle is release-ready.
 
 ### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
 

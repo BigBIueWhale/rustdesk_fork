@@ -5041,14 +5041,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c3) R-S11ex/R-S11gf desktop Flutter texture lifecycle and Linux plugin load authority =="
-if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  note "ok  R-S11ex/R-S11fa/R-S11fs/R-S11gf Apple/shared Flutter texture finality and presentation resumption, including pointer-evidenced missing-focus recovery, plus Linux plugin load authority have exact bounded owners"
-else
-  echo "  FAIL R-S11ex/R-S11fa/R-S11fs/R-S11gf Apple/shared Flutter texture lifecycle, exact presentation-resume recovery including pointer-evidenced missing-focus recovery, or Linux plugin load authority regressed"
-  rc=1
-fi
-
 echo "== (2g-c4) R-S11fg/R-S11fh/R-S11fi/R-S11fj shared file-command, receive-persistence, and digest-inspection finality =="
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
   note "ok  R-S11fg/R-S11fh/R-S11fi/R-S11fj Apple/shared file frames retain exact writer completion and local persistence/digest failures are terminal"

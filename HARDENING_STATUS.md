@@ -801,6 +801,13 @@ current-master or release evidence. The later tracked R-S11gc full-peer Linux re
 entry and is the stronger presentation result. Historical Linux/Android compilation, deterministic behavior tests,
 portable Windows callback-core tests, and macOS cfg/parser/child checks establish only the layers they actually ran.
 
+The 4,268-line desktop-texture source-wording verifier and 3,512 lines of its verifier-of-verifier coupling are
+deleted. `scripts/dart-verify.sh` still executes the Dart presentation/texture state machines and Linux plus portable
+Windows native texture callback tests; `scripts/verify.sh` retains the Rust ownership/admission tests, and the
+isolated Windows/Linux presentation runners remain the target-native evidence paths. None is replaced by a
+compatibility wrapper or a documentary-string surrogate. This cleanup changes no product behavior and does not
+upgrade the still-open native-artifact evidence above.
+
 The release-blocking matrix above and the global OPEN table remain authoritative. Current Android APK/device
 lifecycle, native Windows focus/minimize/background and full-peer presentation, signed installed macOS, installed
 Debian service/session behavior, iOS, cross-version operation, peer semantic file completion, capture-to-actual-
@@ -13777,8 +13784,7 @@ STOP-SHIP obligations.
 
 ### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication
 
-**State:** Source implementation, Dart/Rust regressions, and focused source gates
-exist. Exact generated-bridge and native desktop execution, installed-platform
+**State:** Source implementation and Dart/Rust regressions exist. Exact generated-bridge and native desktop execution, installed-platform
 behavior, performance and resource evidence, current artifacts, independent
 reproduction, and external review remain pending.
 
@@ -13798,9 +13804,10 @@ separate bounded software-RGBA path.
 retirement, false/true demand, predecessor finality, and single retirement. Rust
 regression `r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers
 selected-display, collision, wrong-pointer, exact-removal, and retired-owner cases.
-`scripts/verify-desktop-texture-lifecycle.py`, shared and Apple gates, and the
-independent workspace baseline bind those contracts. This is source and unit-
-contract evidence, not native plugin or installed-artifact behavior evidence.
+`scripts/dart-verify.sh` and `scripts/verify.sh` retain those executable tests;
+the independent workspace baseline retains supplementary source checks. The
+deleted standalone source-wording verifier is not evidence. This is source and
+unit-contract evidence, not native plugin or installed-artifact behavior evidence.
 
 **Open evidence.** Run the exact current generated bridge and native Windows,
 Linux, and macOS plugins through focus/minimize, display-switch, window-transfer,

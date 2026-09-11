@@ -11475,12 +11475,6 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::controlled_file_write_tests::r_s11fh_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fj_ --color never
-if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs/R-S11gf/R-S11iv desktop Flutter texture finality, presentation resumption including pointer-evidenced missing-focus recovery, first-image admission, viewer refresh, Linux plugin loading, and exact pointer publication have exact bounded owners"
-else
-  echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs/R-S11gf/R-S11iv: Flutter texture lifecycle, exact presentation-resume recovery including pointer-evidenced missing-focus recovery, first-image admission, viewer refresh admission, Linux plugin load authority, or exact pointer publication regressed"
-  rc=1
-fi
 if /usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test; then
   echo "  ok  R-S11gb/R-S11e-215 native Windows presentation evidence remains exact-commit, isolated, loopback-only, pixel-observed, and latency-bounded"
 else
@@ -15735,7 +15729,7 @@ software_codec_build_hits() (
   grep -rInE 'hwcodec|vram|mediacodec' \
       --exclude-dir='.git' --exclude-dir='target' --exclude-dir='.harness-state' \
       --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
-    | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-desktop-texture-lifecycle|verify-verifier-workspace)\.py:[0-9]+:' \
+    | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\.py:[0-9]+:' \
     | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
     | grep -vE ':[0-9]+:[[:space:]]*#' \
     | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
@@ -15751,8 +15745,6 @@ software_codec_build_gate_self_test() {
     >"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1
   printf '%s\n' 'mediacodec = ["ndk"]' \
     >"$fixture/scripts/verify-verifier-workspace.py" || return 1
-  printf '%s\n' 'forbid(flutter, '\''feature = "vram"'\'', "Flutter VRAM feature branch")' \
-    >"$fixture/scripts/verify-desktop-texture-lifecycle.py" || return 1
   printf '%s\n' 'features.append("hwcodec")' \
     >"$fixture/.harness-state/evidence/build.py" || return 1
   printf '%s\n' '# features.append("hwcodec"); vram dropped' >"$fixture/build.py" || return 1

@@ -1054,339 +1054,37 @@ useful supplementary evidence for exact invariants. They do not prove focus/back
 behavior, native renderer scheduling, actual presented-frame latency, installed-service behavior, cross-version
 interoperability, performance budgets, or final release correctness. This mandate therefore remains OPEN.
 
-Follow-up verifier correction (2026-07-28),
-**R-S11cu/R-S11e-113 retained-identity systemd image consumer authority**: the fixed-archive verifier still
-expected the Debian lifecycle consumer to invoke ambient `id` separately inside each accepted image-metadata
-profile. R-S11dl commit `e7b0b41` had correctly moved identity selection ahead of repository loading, fixed it to
-absolute `/usr/bin/id`, refused UID or primary GID zero, and retained `HOST_UID`/`HOST_GID` for the lifecycle.
-The stale expectation therefore stopped with a missing
-`"$(id -u):$(id -g):400:1"` token even though the live consumer used the stronger current authority.
+**Verifier and fixture alignment follow-ups — CURRENT SOURCE DISPOSITION; NOT PRODUCT
+RUNTIME EVIDENCE.** These entries correct stale or operationally invalid verifier assumptions after stronger
+source/build transactions replaced earlier shapes. Normative behavior remains in the named requirements; the
+table records only the durable current alignment. Per-run failures, mutation matrices, commands, counts,
+timings, hashes, and confinement narration remain in Git history.
 
-The fixed-archive gate now requires both absolute retained identity captures and the exact single
-`"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1"` metadata profile before the existing SHA-512 and
-`qemu-img` checks. Its focused mutations replace each absolute identity command and widen the accepted profile.
-The independent workspace validator binds exactly two copies of each focused token—the check and its mutation
-anchor—forbids the obsolete inline-`id` expectation, and deliberately regrows it to prove rejection. The
-production acquisition and lifecycle sources are unchanged. This is release-verifier alignment, not evidence of
-a changed image, weakened consumer, root acquisition, container escape, public exposure, compromise, or host
-RustDesk/service/firewall/network modification, and it does not close exact cold artifact or installed/native
-evidence.
+| Disposition | Durable correction |
+| --- | --- |
+| R-S11cu/R-S11e-113 retained-identity systemd image consumer authority | The systemd image consumer retains the nonzero host UID/GID selected through absolute `/usr/bin/id` before repository use and admits only the retained-owner 0400/0444 metadata profile before publisher SHA-512 and `qemu-img` checks. |
+| R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority | The synthetic SDK self-test uses and restores a private construction umask; the production SDK validator continues to reject group/world-writable input rather than normalizing it. |
+| R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority | The synthetic committed-source fixture is explicitly mode 0700 before nested creation; production source-root ownership and write-bit refusal are unchanged. |
+| R-S11e-155 current same-user connection-manager launch-gate authority | The gate follows the unconditional Linux parent-death-bound CM launch, the macOS/Windows same-principal launch with exact proof environment, and transfer of the child into retained ownership. |
+| R-S11e-156 recursive Windows Amyuni absence-scan authority | The complete `res/msi` absence scan is recursive and preserves the distinction between clean no-match and scanner operational failure. |
+| R-S11e-157 Windows custom-action ignore-surface excision | The three inert `CustomActions` ignore rules left after deletion of the authored MSI custom-action project are absent; active package-output ignores remain. |
+| R-S11e-158 current olefile fixed-archive gate authority | Olefile is checked as its exact closed fixed-archive manifest entry, including name, URL, size, digest, and admitted redirect host, rather than through the deleted standalone fetch call. |
+| R-S11e-159 scoped Linux protected-service permit mutation authority | The focused negative fixture targets the exact password-sensitive transaction call, not an ambiguous argument fragment shared by another protected transaction. |
+| R-S11e-160 current mobile at-rest and signed-artifact gate authority | The shared gate delegates legacy-decrypt policy to its semantic verifier and requires the exact signing/verify-only mobile-key checker mounts and invocations. |
+| R-S11e-161 current Linux service-child executable-object gate authority | The gate inspects the dedicated executable-object helper: the running image and byte-identical installed fallback are opened close-on-exec, and the installed path is also no-follow, before credential-changing launch. |
+| R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority | Screenshot checks reject only the retired process-global cache/setter path, while media checks select the exact owning constructor, controlled-audio owner, connection fields, and read-before-install order. |
+| R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority | The shared edge gate follows the bounded connection/channel-owned screenshot registry and the typed, authorized Remote-only Android desktop-capture owner set; the deleted `isViewCamera` Boolean is not authority. |
+| R-S11e-164 exact software-codec build-path verifier scope | The build-path scan excludes only the two exact verifier-fixture programs that contain inert negative-test literals; new and ordinary build-capable scripts remain scanned by default. |
+| R-S11e-165 current mobile build-authority launcher mutation | The Android outer builder has one fixed `local_docker` launcher with `--network=none`; the hostile fixture changes that exact launcher to host networking and must be rejected. |
+| R-S11e-166 current shared Apple companion-gate authority | The shared gate binds the fixed selected Apple target matrix, rejects target overrides, and checks the exact reproducibility-epoch transfer plus two private read-only source mounts. |
+| R-S11e-167 current shared Android serialization-gate authority | An exact adjacency predicate requires `@Synchronized` immediately before `rustSetByName`; the broken quiet-grep pipeline and broad annotation-presence surrogate are absent. |
+| R-S11e-168 current Pub-cache lock-postcondition gate authority | Networked production and offline replay retain exact read-only project-lock preimages and require equality after enforced resolution, with Flutter tool lock protection remaining separate. |
 
-Follow-up verifier correction (2026-07-28),
-**R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority**: the Gradle output helper correctly
-rejects a group- or world-writable read-only Android SDK source, but its self-test constructed the complete
-synthetic SDK with default `Path.mkdir` and file-creation modes. Under ambient umask 0022 the fixture was
-non-group-writable and passed; under the ordinary collaborative 0002 profile its SDK root, descendants, and
-ordinary files could be group-writable, so the production validator correctly rejected the synthetic input.
-This failure did not identify unsafe metadata in the separately validated live SDK.
-
-The self-test now scopes umask 0077 only around construction of the synthetic SDK and restores the caller's
-previous umask in `finally`. That gives the complete fake read-only input private directory/file modes without
-normalizing a production SDK, changing the production validator, or affecting later fixtures. The focused
-verifier binds the exact scope and independently mutates both the private setting and restoration. The workspace
-validator requires one helper occurrence and exactly two focused check/mutation anchors for each operation, then
-mutates the helper and focused verifier independently. Confined behavioral runs under ambient umasks 0022, 0002,
-and 0000 plus both complete mutation matrices bind the correction. No persistent cache, product runtime,
-production acquisition, root authority, host process/service/listener/firewall/network state, or release artifact
-is modified.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority**: the libvpx local-output helper
-correctly refuses a group- or world-writable committed source root, but its self-test created the synthetic
-`source` directory through `Path.mkdir(parents=True)` without first choosing and normalizing the source-root
-mode. The main verifier intentionally preserves its caller's umask; under the ordinary collaborative `0002`
-profile, that fixture therefore became mode 0775 and the helper correctly rejected its own synthetic source.
-The real checkout root was current-user-owned mode 0755, so the failure did not show unsafe live source metadata
-or a weakened production verdict.
-
-The fixture now creates its source root with private intent and explicitly normalizes it to mode 0700 before
-creating the nested patch path. The production group/world-writable rejection is unchanged. The focused verifier
-requires the exact create-and-normalize sequence and mutates 0700 to 0770; the independent workspace validator
-binds the helper and both focused check/mutation anchors and independently widens each one. Confined executions
-under ambient umasks 0022 and 0002, the focused mutation matrix, and the independent workspace source-mutation
-matrix bind the correction. This changes only disposable verifier fixture metadata: no persistent cache,
-production acquisition, product runtime, root authority, host process/service/listener/firewall/network state,
-or release artifact is modified.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-155 current same-user connection-manager launch-gate authority**: the R-S11e-38 shared shell gate
-still required the obsolete conditional text `let child = if headless_cm`. R-S11e-95 had correctly made every
-Linux CM child parent-bound, replacing that conditional with the unconditional
-`run_me_with_env_and_parent_death` launch while retaining the macOS/Windows same-principal launch, exact CM proof
-environment, and retained child ownership. The stale literal therefore reported
-`same-user-cm-launch-selection-missing` even though the live source had the stronger current lifetime authority.
-
-The shared gate now extracts the exact launch block and separately requires the Linux parent-bound launch, the
-macOS/Windows current-image same-user launch with `cm_launch_env()`, and transfer of the resulting child into the
-retained `CHILD_PROCESS` owner. The independent semantic validator requires those operations in order after the
-typed-Windows/fail-closed root branch, binds all three shared-gate diagnostics, and deliberately mutates both
-platform launch shapes and all three gate anchors. Product source and runtime behavior are unchanged. This is
-verifier alignment with the already-implemented stronger CM lifetime contract, not evidence of root acquisition,
-privilege escalation, compromise, public exposure, container escape, or a host RustDesk/service/firewall/network
-change, and it does not close exact cold artifact, installed-native, device, or external-review evidence.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-156 recursive Windows Amyuni absence-scan authority**: the Windows Installer source gate broadened its
-Amyuni device-removal absence check from an explicit list of files to the complete `res/msi` tree, but retained
-GNU grep's nonrecursive `-nE` mode. GNU grep reports status 2 when given that directory, and the fail-closed
-`verify_scan_capture` wrapper correctly terminated the verifier instead of treating the operational error as a
-clean absence verdict. The live product/package sources remained clean; the call site, not the scanner's strict
-status handling or the source policy, was defective.
-
-That exact call now uses recursive, filename-reporting `-rInE`, matching every other shared absence scan that
-accepts a directory. Confined A/B execution proves the old invocation returns status 2, the corrected invocation
-returns the clean no-match status 1 on the current tree, and the corrected invocation returns status 0 and names a
-prohibited token in a nested fixture file. The independent semantic validator binds the recursive option, mutates
-it back to the operationally broken nonrecursive form, and binds this ledger entry. No product source, package
-content, scanner failure classification, build input/output, runtime behavior, root authority, host
-process/service/listener/firewall/network state, or release artifact is modified.
-
-Follow-up source-coherence correction (2026-07-28),
-**R-S11e-157 Windows custom-action ignore-surface excision**: R-S11e-90 deleted the complete RustDesk-authored
-MSI `CustomActions` project, its package fragment, solution/project references, build path, and offline
-dependencies, but the inherited `res/msi/.gitignore` still named three paths below that deleted directory. Once
-R-S11e-156 made the complete MSI absence scan operationally recursive, those stale entries correctly failed the
-same no-custom-action source contract. History attributes all three lines to the upstream import and shows that
-the project-deletion commit omitted only this inert ignore surface.
-
-The three `CustomActions/x64`, `CustomActions/*.user`, and `CustomActions/*.filters` entries are deleted. The
-remaining ignore rules still cover the active solution/package outputs. The independent semantic validator now
-loads the MSI ignore file, rejects any `CustomActions` spelling there, deliberately regrows a nested custom-action
-ignore rule, and binds this ledger entry; the existing recursive shared shell scan independently covers the same
-tree. This removes dangling repository policy rather than changing package/runtime behavior, and it modifies no
-build output, privilege boundary, host process/service/listener/firewall/network state, or release artifact.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-158 current olefile fixed-archive gate authority**: the Windows Installer shared gate still searched
-`scripts/online-fetch.sh` for the obsolete multiline `fetch_verify` spelling and braced digest argument introduced
-with the original olefile acquisition. The R-S11e-111 correction subsequently moved olefile into the exact
-fourteen-entry fixed-archive manifest and its independently verified transaction, deleting that call while
-preserving and strengthening the name, URL, exact-length, SHA-256, and redirect-host authority. The stale literals
-therefore reported `olefile-fetch-missing` and `olefile-fetch-not-digest-checked` even though the current
-acquisition contract was present and the Windows VM consumer remained digest-bound.
-
-The shared gate now extracts olefile only from `FIXED_ARCHIVE_ARGS` and compares the complete six-line entry with
-the current fixed name, URL, size variable, digest variable, and admitted host. The independent semantic validator
-binds the manifest scope, every expected entry field, exact comparison, and diagnostic, and deliberately mutates
-each anchor independently. Product acquisition, archive bytes, pins, redirect policy, publication, and Windows
-consumption are unchanged. This is verifier alignment with the already-implemented stronger fixed-archive
-transaction, not evidence of a failed download, weakened digest check, root acquisition, privilege escalation,
-compromise, public exposure, container escape, or a host RustDesk/service/firewall/network change.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-159 scoped Linux protected-service permit mutation authority**: the R-S11e-60 focused validator's
-`password permit transfer` self-test still mutated the generic two-line `identity, permit` argument fragment that
-was unique when the validator was introduced. The later protected Linux credential-snapshot transaction correctly
-added a second identity-bound, permit-owned dispatch with the same fragment. Normal semantic validation continued
-to isolate the password branch and require its exact sensitive-transaction dispatch, but the deliberate-mutation
-harness failed closed before it could execute because its older global anchor was no longer unique.
-
-The focused mutation now scopes the replacement to the exact
-`handle_sensitive_linux_service_ipc_transaction(stream, identity, permit)` call already required by the semantic
-contract. The independent workspace validator binds that scoped meta-verifier anchor, forbids restoration of the
-ambiguous fragment, and deliberately mutates the scoped anchor back to the old form. Production admission,
-authorization, transaction budgets, identity proof, permit ownership, and IPC behavior are unchanged. This is a
-verifier-authority correction after a legitimate additional protected transaction, not evidence of an unbounded
-service admission, authorization bypass, root acquisition, privilege escalation, compromise, public exposure,
-container escape, or a host RustDesk/service/firewall/network change.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-160 current mobile at-rest and signed-artifact gate authority**: the Appendix C #14 shared shell gate
-retained three assertions against source shapes superseded by stronger transactions. R-S11e-74 unified the
-desktop/mobile legacy decrypt functions behind one platform-classified policy that denies mobile keypair access
-when the live OS key is absent and returns `should_rewrap: mobile` after an authorized legacy decrypt. The old
-shell assertions still searched for the deleted pair of `#[cfg]`-split functions even though the focused semantic
-validator bound the current policy and passed all 12 mutations. Separately, Android builder confinement replaced
-two broad source-tree consumers with two read-only checker-file mounts plus one checker invocation in each of the
-signing and verify-only signed-artifact transactions. The old shell gate counted the checker path globally and
-expected two references, so the correct two mounts plus two invocations failed its obsolete cardinality.
-
-The shared gate now delegates legacy decrypt policy to the focused semantic validator and separately requires
-exactly two immutable mobile-key checker mounts and exactly two invocations. The Android builder semantic validator
-extracts the signing and verify-only transactions and requires each to mount the checker read-only before invoking
-it exactly once; four focused mutations independently weaken both mounts and both invocations. The independent
-workspace validator binds the current shared assertions, rejects all three obsolete checks, binds the strengthened
-focused enforcement and mutation inventory, and deliberately mutates each authority. Rust/Kotlin/Swift behavior,
-at-rest data, build inputs, signing, artifact bytes, and publication are unchanged. This is verifier alignment
-with the already-implemented fail-closed storage policy and immutable signed-artifact checks, not evidence of
-credential fallback, a missing migration, an unverified APK, root acquisition, privilege escalation, compromise,
-public exposure, container escape, or a host RustDesk/service/firewall/network change.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-161 current Linux service-child executable-object gate authority**: the R-S11c-27a shared shell gate
-still searched only the `try_start_server_()` function body for the close-on-exec `/proc/self/exe` open that had
-originally been inline there. R-S11c-27h subsequently extracted that operation into
-`open_active_user_service_child_executable()`, where the privileged supervisor opens the running image with
-`O_CLOEXEC`, validates its root-owned regular-file identity, and either retains the execute-only current object
-or opens an exact byte-identical root/root mode-0711 installed child with `O_CLOEXEC|O_NOFOLLOW`.
-`try_start_server_()` invokes that helper before its credential-changing pre-exec hook and continues to launch
-through the retained descriptor. The stale function scope therefore reported
-`credential-drop-executable-not-opened-cloexec` and `credential-drop-executable-object-not-opened` even though
-the stronger executable-object transaction was present and its behavior regression passed.
-
-The shared gate now extracts the dedicated image helper separately, requires both exact close-on-exec open
-shapes there, and requires the launcher to invoke it before retaining the existing descriptor-launch checks.
-The focused Linux service credential validator now binds both exact flag shapes in the helper's semantic order
-and independently mutation-tests removal of close-on-exec from the running and installed image opens. The
-independent workspace validator binds the corrected shared scopes, rejects restoration of the obsolete
-launch-block checks, binds the focused enforcement and mutations, and deliberately mutates each authority.
-Linux runtime code, credential transition, executable selection, package contents, service units, and release
-outputs are unchanged. This is verifier alignment with the already-implemented stronger executable-object
-transaction, not evidence of a path-based post-drop launch, missing privilege boundary, root acquisition,
-privilege escalation, compromise, public exposure, container escape, or a host
-RustDesk/service/firewall/network change.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority**: the shared R-D7a/R-T4
-shell gate retained two broad textual checks that no longer represented the exact retired ownership shapes.
-R-S11ee deleted the process-global screenshot cache and setter, but the shared gate searched both
-`src/client/screenshot.rs` and `src/client/io_loop.rs` for the substring `set_screenshot`; the valid generated
-protobuf call `msg.set_screenshot_request(...)` therefore produced
-`screenshot-process-global-cache-present`. Separately, the media-owner check rejected `_thread` across the
-correct function name `start_audio_thread`, rejected `audio_sender` and `voice_calling` across the complete
-connection source instead of the `Connection` fields, and selected the first audio-format match after R-S11eh
-added an earlier bounded-mailbox match. Those stale scopes produced
-`media-owner-or-controlled-audio-order-regressed` despite the exact full transaction passing the bounded-audio
-behavior regressions.
-
-The screenshot gate now rejects only the retired `static ref SCREENSHOT`, public screenshot setter definition,
-and exact I/O-loop call to that setter, while leaving protobuf request construction valid. The media gate
-extracts the exact owning constructor, `ControlledAudioThread`, `Connection` fields, and uniquely commented
-controlled playback handler. It requires `OwnedMediaThread`, the combined format/decoder owner, the current
-connection field, and read-before-install order, while rejecting the former detached `_thread` local and the
-retired `audio_sender:`, `audio_format:`, and `voice_calling:` fields only in their semantic owner scope. The
-focused Android ownership verifier independently enforces those product invariants and deliberately restores
-each retired shape; the workspace verifier binds both focused and shared authority. Product/runtime behavior,
-Android service persistence, protocol traffic, and release outputs are unchanged. This is verifier alignment
-with already-implemented exact ownership, not device reproduction or evidence of root acquisition, privilege
-escalation, compromise, public exposure, container escape, or a host
-RustDesk/service/firewall/listener/network change.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority**: the shared R-S19
-edge gate retained the exact source shapes from its original closure. It required the old source-first
-`set_take_screenshot(source: VideoSource, ...)` signature and the old
-`HashMap<(VideoSource, usize), Screenshot>` singleton. R-S11ef later replaced that weaker singleton with a
-bounded `PendingScreenshots` registry keyed by exact internal connection ID and response channel, while retaining
-source/display solely as the matching capture-loop selector. The old checks therefore reported
-`screenshot-not-source-keyed` and `screenshot-map-not-source-keyed` precisely because the current design is
-stronger. The same edge gate required the deleted Kotlin presentation boolean `isViewCamera`. The typed Android
-capture correction now carries exact `ControlledConnectionType`, defines desktop-capture demand as Remote-only,
-admits authorized exact owners through `ControlledCaptureOwnerState`, and reconciles that owner set in serialized
-`MainService` dispatch. Requiring the deleted boolean therefore reported
-`android-kotlin-no-viewcamera-gate` even though ViewCamera, file transfer, terminal, port forwarding, and unknown
-types cannot demand desktop capture.
-
-The shared edge gate now requires the bounded exact-owner screenshot registry, connection-keyed owner map, and
-source/display frame match. Its Android side requires the typed Remote-only capture policy plus exact owner
-upsert/reconciliation and rejects restoration of `MainService.isViewCamera`. The independent workspace validator
-binds each current shared assertion, rejects all three obsolete checks, deliberately mutates every authority, and
-binds this ledger entry. Existing focused and independent semantic validators already mutation-test the complete
-product behavior: screenshot connection/channel ABA safety and source selection, exact five-tag decoding,
-authorized Remote-only capture demand, owner aggregation, and serialized reconciliation. Product/runtime
-behavior, Android service persistence, capture resources, protocol traffic, and release outputs are unchanged.
-This is verifier alignment with already-implemented stronger ownership/type contracts, not an APK/device causal
-reproduction or evidence of root acquisition, privilege escalation, compromise, public exposure, container
-escape, or a host RustDesk/service/firewall/listener/network change.
-
-Follow-up verifier correction (2026-07-28),
-**R-S11e-164 exact software-codec build-path verifier scope**: the §18/R-R2b source gate recursively scanned
-every shell, Python, workflow, and PowerShell source as if each were a build driver. Later exact-ownership work
-correctly added `restore_vram` product/source-mutation fixtures to
-`scripts/verify-android-voice-call-ownership.py` and repeated them in the independent workspace mutation
-catalog. That catalog also necessarily carries inert `mediacodec` feature-declaration and historical
-`hwcodec`/`vram` comment mutations. None of those strings executes a build or selects a Cargo feature, but the
-token-only scan reported all of them as hardware-codec build enablement. The full verifier's independent
-vcpkg/native-set gate passed, and its finding contained no production build script, CI job, release driver, or
-Cargo default feature.
-
-The source gate now excludes exactly those two named verifier-fixture programs and no filename class. It uses
-non-symlink-following recursion, retains every build-source extension and the exact existing comment/identifier
-exceptions, and scans every new script—including a newly named `verify-*` script—by default. A private
-behavioral fixture proves the two exact verifier sources may retain negative-test literals, a full-line
-historical comment remains inert, an ordinary Python build driver is rejected, a new verifier-like Python
-driver is rejected, and a forbidden Cargo default is rejected. The independent workspace validator binds the
-scan inputs, exact no-wildcard exclusion pipeline, behavioral fixture, live failure/default-feature verdicts,
-and this ledger entry, with deliberate mutations for each authority. Product/runtime Rust, Kotlin, Dart,
-Android service persistence, capture resources, protocol behavior, build features, and release outputs are
-unchanged. This is source-role classification for the verifier, not evidence that hardware codecs were enabled
-or that any host/device/service/network state changed.
-
-Follow-up verifier correction (2026-07-29),
-**R-S11e-165 current mobile build-authority launcher mutation**: the focused R-R2/R-R2c verifier's ordinary
-semantic checks followed the current Android builder, but its host-network negative mutation still searched for
-the deleted direct `"$DOCKER_BIN" run` launcher. R-S11cj's Android builder authority closure in
-`9236d84bcbfb7493c495596918e2b52a2c7a1864` replaced that direct execution with the stronger fixed
-`local_docker` authority, so the old mutation anchor occurred zero times and the self-test aborted before
-testing host-network rejection. The product builder already had one unique
-`local_docker run --rm --pull=never --network=none --read-only` launcher and retained its numeric non-root,
-no-pull, read-only-root, capability-free, no-new-privileges, and bounded-resource execution.
-
-The focused verifier now names that current launcher once as its expected contract, requires exactly one
-occurrence in the Android outer builder, and derives the hostile mutation by changing only `--network=none` to
-`--network=host`. Its existing forbidden-authority check then rejects the effective mutation. The independent
-workspace verifier binds the current fixed-local launcher, exact cardinality check, exact host-network mutation,
-absence of the retired direct-Docker anchor, focused self-test wiring, and this ledger entry; deliberate
-mutations restore the retired launcher, weaken cardinality, neutralize the network mutation, or drift the
-ledger. No Android build product, Docker authority, Cargo/Flutter feature, APK, runtime, device, installed
-service, host process, listener, firewall, or network state changes in this correction.
-
-Follow-up verifier correction (2026-07-29),
-**R-S11e-166 current shared Apple companion-gate authority**: the shared R-R2/R-A6 shell gate still searched
-for the retired one-line `DEFAULT_APPLE_TARGETS` declaration, a short `-e SOURCE_DATE_EPOCH` transfer, and a
-short `-v "$REPO:/work:ro"` bind. The Apple verifier authority closure had already replaced those forms with a
-fixed multiline `SELECTED_APPLE_TARGETS` matrix whose caller overrides are rejected, the long
-`--env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"` transfer, and two read-only private
-`$APPLE_SOURCE` mounts. The focused Apple authority verifier and the independent workspace's product contract
-already required those stronger forms; only the older shared shell shape assertions had drifted. Consequently,
-the full verifier reported three missing tokens even though the current Apple checker retained the stronger
-target, reproducibility, and source-isolation authorities.
-
-The shared gate now compares the extracted target-array declaration byte-for-byte with the exact three-target
-matrix, requires rejection of both target override inputs, and proves the selected matrix drives the target
-loop. It counts exactly one long reproducibility-epoch transfer and exactly two private read-only source mounts,
-covering both the metadata parser and cross-check launch. The independent workspace validator extracts only
-this shared gate, binds every current assertion in transaction order, forbids the retired weak spellings, and
-deliberately mutates the extraction, matrix, verdict, override refusal, target-loop use, epoch count, mount
-count, and this ledger entry. Apple product source, toolchain inputs, container authority, release integration,
-runtime behavior, Android code, APK/device state, installed services, host processes, listeners, firewall, and
-network state are unchanged.
-
-Follow-up verifier correction (2026-07-29),
-**R-S11e-167 current shared Android serialization-gate authority**: the shared Android lifecycle shell gate
-attempted to prove that `MainService.rustSetByName` is synchronized with
-`grep -qA2 '@Synchronized' ... | grep -qF 'fun rustSetByName'`. The first grep's quiet mode suppresses all
-selected and context output, so the downstream grep deterministically receives no bytes and reports the
-current synchronized declaration missing. The Kotlin product already has the exact adjacent
-`@Keep`, `@Synchronized`, and `fun rustSetByName` lines. Both the focused Android ownership verifier and the
-independent workspace product contract already require that exact declaration, deliberately remove the
-annotation, and bind owner-set mutation plus capture reconciliation inside the serialized dispatch.
-
-The shared gate now uses one direct `awk` adjacency predicate: an exact annotation-only `@Synchronized` line
-must be immediately followed by the `rustSetByName` declaration. This replaces both the broken quiet-context
-pipeline and its weaker repository-wide annotation-presence check. The independent workspace validator
-extracts the exact shared Android lifecycle block, binds the current predicate, rejects the retired quiet
-pipeline, deliberately neutralizes the predicate, and binds this ledger entry. Kotlin/product code, service
-persistence, capture/input ownership, protocol behavior, APK/device state, installed services, host processes,
-listeners, firewall, network state, and release outputs are unchanged.
-
-Follow-up verifier correction (2026-07-29),
-**R-S11e-168 current Pub-cache lock-postcondition gate authority**: the shared R-R1/R-B12 shell gate still
-searched `scripts/online-fetch.sh` for the retired diagnostic text “pubspec.lock drifted during pub cache
-staging.” The message check came from `f90f197f`; the later Pub-cache authority closure in `a2bfb83a` replaced
-that staging flow with stronger private-source hash postconditions but did not update the older shared gate.
-The current offline semantic replay hashes the exact read-only authority lock before enforced Dart and Flutter
-offline resolution and compares the disposable project's lock afterward. The networked producer independently
-hashes its read-only private project lock before enforced resolution and compares the disposable project
-afterward. Both paths also separately preserve Flutter's own `flutter_tools` lock.
-
-The shared gate now requires both current project-lock equality assertions instead of a diagnostic string. The
-focused Pub-cache authority verifier binds each exact read-only preimage, enforced resolution, and postcondition
-in order and deliberately neutralizes each equality edge. The independent workspace validator binds the exact
-focused assertions, both product preimages/postconditions, both current shared checks, absence of the retired
-message check, and this ledger entry; its mutation catalog exercises all seven new assertion/coverage edges.
-No acquisition runs, and no Pub cache, lockfile, dependency graph, product source, runtime behavior, APK/device
-state, installed service, host process, listener, firewall, network state, or release output changes.
+This table is source/verifier disposition only. Except for the inert R-S11e-157 repository-policy deletion, these
+corrections did not alter product, acquisition, build, package, runtime, service, device, or artifact behavior.
+They do not prove current cold acquisition/build results, installed/native execution, Android or Apple behavior,
+presentation/performance/resource properties, independent reproduction, or external review. Those obligations
+remain OPEN in the release-blocking table and the named normative requirements.
 
 **Android persistent-service generation and mobile-session preparation — CURRENT SOURCE DISPOSITION;
 TARGET PACKAGE/DEVICE/RELEASE EVIDENCE OPEN.** Android intentionally keeps its controlled foreground

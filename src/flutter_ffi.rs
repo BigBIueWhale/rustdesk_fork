@@ -2432,18 +2432,22 @@ pub mod server_side {
             return jboolean::from(false);
         }
         let (start_tx, start_rx) = std::sync::mpsc::sync_channel::<()>(1);
+        let listener_cancellation = hbb_common::tokio_util::sync::CancellationToken::new();
+        let worker_cancellation = listener_cancellation.clone();
         match std::thread::Builder::new()
             .name("android-direct-service".to_owned())
             .spawn(move || {
                 let _worker_guard = AndroidDirectServerWorkerGuard(generation);
                 if start_rx.recv().is_ok() {
-                    start_server(true, generation);
+                    start_server(true, generation, worker_cancellation);
                 }
             }) {
             Ok(worker) => {
-                if let Err(worker) =
-                    crate::direct_service::android_register_worker(generation, worker)
-                {
+                if let Err(worker) = crate::direct_service::android_register_worker(
+                    generation,
+                    worker,
+                    listener_cancellation,
+                ) {
                     drop(start_tx);
                     if worker.join().is_err() {
                         log::warn!(

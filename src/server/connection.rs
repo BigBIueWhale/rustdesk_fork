@@ -5119,6 +5119,7 @@ impl Connection {
         control_permissions: Option<ControlPermissions>,
         credential_generation: u64,
         android_generation: Option<u64>,
+        cancellation: hbb_common::tokio_util::sync::CancellationToken,
     ) {
         // Android is not supported yet, so we always set control_permissions to None.
         #[cfg(target_os = "android")]
@@ -5333,11 +5334,6 @@ impl Connection {
         #[cfg(not(all(feature = "unix-file-copy-paste", not(target_os = "windows"))))]
         let (_tx_clip, mut rx_clip) = clipboard::clipboard_file_egress_channel();
 
-        // R-T9 (§20): an owned clone of the process-wide shutdown token, selected on below so a
-        // SIGTERM/SIGINT drains this session gracefully. Bound outside the loop because
-        // `cancelled()` borrows the token for the future's lifetime.
-        let shutdown = crate::server::shutdown_token();
-
         loop {
             if let Some(error) = conn.cm_command_failure.take() {
                 conn.on_close(
@@ -5406,7 +5402,7 @@ impl Connection {
                 // SIGKILL'd mid-write (which would truncate a file block on the peer and skip the
                 // CM Close). Send a CloseReason, then break so the post-loop tail runs its full
                 // cleanup (remove_connection + on_close → CM Close, capture/resolution restore).
-                _ = shutdown.cancelled() => {
+                _ = cancellation.cancelled() => {
                     log::info!("#{} graceful shutdown — closing session", id);
                     conn.send_close_reason_no_retry("Server is shutting down").await;
                     break;
@@ -5840,7 +5836,10 @@ impl Connection {
         // session (port_forward_socket is Some); then it relays the local target socket <-> the KEYED
         // self.stream until either side closes — every wire-bound byte sealed by send_bytes, every
         // inbound byte decrypted by next(), never a set_raw plaintext downgrade (R-A3/R-A9).
-        if let Err(err) = conn.try_port_forward_loop(&mut rx_from_cm).await {
+        if let Err(err) = conn
+            .try_port_forward_loop(&mut rx_from_cm, &cancellation)
+            .await
+        {
             conn.on_close(&err.to_string(), false).await;
         }
 
@@ -6970,6 +6969,7 @@ impl Connection {
     async fn try_port_forward_loop(
         &mut self,
         rx_from_cm: &mut crate::ui_cm_interface::CmEgressReceiver,
+        cancellation: &hbb_common::tokio_util::sync::CancellationToken,
     ) -> ResultType<()> {
         if let Some(mut forward) = self.port_forward_socket.take() {
             log::info!("Running port forwarding loop");
@@ -6977,6 +6977,10 @@ impl Connection {
             let mut idle_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
             loop {
                 tokio::select! {
+                    biased;
+                    _ = cancellation.cancelled() => {
+                        bail!("Server is shutting down");
+                    }
                     Some(item) = rx_from_cm.recv() => {
                         let data = match item {
                             crate::ui_cm_interface::CmEgressItem::Data(data) => data,

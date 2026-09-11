@@ -13700,6 +13700,9 @@ else
   rc=1
 fi
 echo "== Android app-open exact-generation MainService startup transaction (R-S11hq/R-S11hr/R-S11e-254/R-S11e-255) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  direct_service::direct_connection_task_tests:: -- --test-threads=1
+echo "  ok  R-S11hq parent cancellation owns and joins every accepted child task (Tokio unit behavior; Android native evidence remains separate)"
 if /usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo .; then
   echo "  ok  R-S11hq/R-S11hr/R-S11e-254/R-S11e-255 Android MainService startup source invariant (native lifecycle evidence remains separate)"
 else

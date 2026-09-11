@@ -190,8 +190,11 @@ def validate(repo: pathlib.Path) -> None:
         "claim_main_service_listener_start(&env, &service, generation)",
         "exact activation claim",
     )
-    if activate.count("scrap::android::deactivate_main_service_generation(") != 2:
-        raise VerificationError("both native activation failures must retain cleanup authority")
+    if activate.count("scrap::android::deactivate_main_service_generation(") != 4:
+        raise VerificationError(
+            "every post-claim activation, worker-transfer, start-gate, and spawn failure "
+            "must retain exact-generation cleanup authority"
+        )
     forbid(activate, "retire_main_service_generation(", "resource retirement inside activation failure")
 
     require_order(
@@ -199,7 +202,7 @@ def validate(repo: pathlib.Path) -> None:
         (
             'fn Java_ffi_FFI_deactivateServer(',
             "scrap::android::deactivate_main_service_generation(",
-            "android_request_stop_or_confirm_inactive",
+            "android_request_stop",
             'fn Java_ffi_FFI_retireServerGeneration(',
             "scrap::android::retire_main_service_generation(",
             "android_generation_is_inactive",

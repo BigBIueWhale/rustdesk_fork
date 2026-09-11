@@ -12235,29 +12235,42 @@ performant remain explicit release obligations and explicit user requests.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 
-**State.** The source startup transaction and rollback remain implemented. A
-2026-09-11 review found that native deactivation nevertheless collapsed “stop
-requested” and “worker/runtime inactive” into one Boolean and discarded the
-`android-direct-service` thread handle. That could let Kotlin finalize generation
-N and attempt generation N+1 while N still owned its Tokio runtime, listener, or
-connection tasks. The source now separates that lifecycle and retains the exact
-thread handle. The actual production state module's three executable regressions
-pass under project-pinned Rust 1.75 in a confined container; complete Android
-target compilation and APK/device behavior remain unexecuted and unclaimed.
+**State.** The exact-generation startup transaction, rollback, retained native
+worker, and accepted-connection ownership are implemented in source. The first
+2026-09-11 review found that deactivation collapsed “stop requested” and
+“worker/runtime inactive” and discarded the worker handle. A follow-up found that
+the retained worker still spawned every accepted socket into a detached Tokio
+task, reloaded the process-global shutdown token inside `Connection`, and relied
+on Android runtime destruction to abort those tasks. Port forwarding could also
+ignore service-generation stop until its one-hour idle deadline. The source now
+uses one exact worker-generation cancellation parent plus an owned `JoinSet`;
+complete Android compilation and native behavior remain unexecuted and
+unclaimed.
 
 **Boundary and implementation.** `INACTIVE`, `RESERVED`, `STARTING`, `ACTIVE`,
 `STOP_REQUESTED`, and `EXITED` are distinct exact-generation states. Activation
 uses a start gate: the worker cannot enter `start_server` until its thread handle
-has transferred into the native owner. Deactivation only records
-`STOP_REQUESTED`; it cannot authorize native generation retirement or
-replacement. The worker's terminal guard runs only after synchronous
-`start_server` returns and its `#[tokio::main]` runtime has been destroyed, then
-publishes one generation-bound JNI callback. `MainService` posts reconciliation
-onto the Android main looper, retires the retained Kotlin/native plan, and
-releases a destroyed Service callback owner only after exact convergence. A
-later begin refuses a still-running predecessor and reaps its retained completed
-handle before allocating another generation. Reserved-start rollback without a
-worker remains immediate. Stale callbacks cannot select a replacement.
+and cancellation parent have transferred into the native owner. Deactivation
+records `STOP_REQUESTED` and cancels only that worker's parent; it cannot
+authorize generation retirement or replacement. The accept loop owns every
+admitted task in one `JoinSet`, eagerly reaps completed tasks, and gives each
+connection a child token so listener stop propagates downward while one
+connection cannot cancel its listener or siblings. Shutdown leaves admission,
+drops the listener, cancels the parent, and joins every admitted task before the
+listener generation completes. Authentication, the established session loop,
+and the sealed port-forward relay observe that scoped token; `Connection` no
+longer reloads ambient process shutdown state. Desktop uses the same ownership
+path with its process-scoped parent.
+
+The worker's terminal guard runs only after synchronous `start_server` returns
+and its `#[tokio::main]` runtime is destroyed, then publishes one
+generation-bound JNI callback. Runtime destruction is the postcondition, not the
+normal connection-cleanup mechanism. `MainService` posts reconciliation onto the
+Android main looper, retires the retained Kotlin/native plan, and releases a
+destroyed Service callback owner only after exact convergence. A later begin
+refuses a still-running predecessor and reaps its retained completed handle
+before allocating another generation. Reserved-start rollback without a worker
+remains immediate. Stale callbacks cannot select a replacement.
 
 The existing startup transaction still keeps the listener inactive until one
 positive generation owns screen, status, voice, callback admission, and listener
@@ -12266,30 +12279,45 @@ authority, notification, and cleanup plan while blocking replacement; task
 removal does not stop the foreground service and Force Stop is not a recovery
 mechanism.
 
-**Evidence.** Historical state-program evidence at
-`6161c3e0474180b0c98f04b7f794ed8555e081d0` remains evidence only for that older
-source. The current Rust regressions exercise start-before-registration refusal,
+**Evidence.** The unchanged dependency-free production lifecycle module's three
+Rust 1.75 regressions previously exercised start-before-registration refusal,
 stop-request versus inactivity, terminal convergence before replacement, stale
-generation refusal, rebuild exhaustion, and thread-creation rollback. The exact
-dependency-free production module compiled and all three tests passed with
-rustc 1.75.0 in a numeric-nonroot, networkless, capability-dropped, read-only
-container; pinned rustfmt and parser checks also passed the touched Rust source.
-This is state-machine behavior and syntax evidence, not Android integration. The old focused
-Python listener “verifier” literally requires the superseded
-`reserved: bool`/`active: bool` representation and only matches source strings;
-it is stale and is not evidence for this correction. No current JNI, Android
-framework, emulator, or device execution exists yet.
+generation refusal, rebuild exhaustion, and thread-creation rollback in a
+numeric-nonroot networkless container. The new production `JoinSet` drain test
+proves parent-to-child cancellation, child isolation, complete join, and empty
+postcondition in code and is wired into `scripts/verify.sh`, but it has **not run**.
+Pinned rustfmt 1.75 parsed every touched Rust file; `bash -n`, `git diff --check`,
+and the focused Android startup source invariant pass. The source gate was
+corrected for the four current post-claim rollback edges and the two-phase
+`android_request_stop`/`android_generation_is_inactive` API; it remains
+supplementary source evidence. The monolithic
+`scripts/verify-verifier-workspace.py` was not run: source inspection shows its
+Android fixture still requires the retired stop helper and runtime-abort
+listener shape, so it would reject the current source for obsolete wording.
+That make-believe-verifier debt remains cleanup work, not product evidence and
+not a reason to restore the superseded lifecycle.
+
+Two bounded, network-disabled, numeric-nonroot compilation attempts used only
+the read-only repository/toolchain/cache plus three ephemeral crates whose bytes
+matched the exact `Cargo.lock` SHA-256 values. Linux stopped at the generic
+image's missing `gdk-3.0` development metadata; Windows checking stopped at the
+absent MSVC `lib.exe`. Neither reached the RustDesk crate, so neither is compile
+or test evidence. The roughly 1 GB target and all three temporary archives were
+removed. No current JNI, Android framework, emulator, device, or accepted-socket
+runtime execution exists yet.
 
 **Open evidence.** Build and install the exact current APK with the pinned
 Kotlin/Gradle/NDK closure, inject every startup and retirement failure, and run
 task-swipe/reopen/Service-recreation/Force-Stop, reconnect, file, display,
-control, capture, and audio cases on Android. Listener/thread/handle/memory/
-queue/CPU/latency finality—including runtime destruction with a live
-`spawn_blocking` filesystem operation—sustained soak, cross-version behavior,
-signed artifacts, cold R-B2/R-B10 equality, independent reproduction, and
-external review remain STOP-SHIP. Accepted connection-task ownership and
-graceful convergence, rather than runtime-drop cancellation, require separate
-completion before this lifecycle is release-ready.
+control, capture, port-forward, and audio cases on Android, including stop during
+pre-key authentication and each authenticated mode. First run the new Rust test
+and compile every affected target. Then prove listener/task/thread/handle/memory/
+queue/CPU/latency finality—including stop with live blocking filesystem work—on
+the real runtime. Sustained soak, desktop shutdown behavior, cross-version
+behavior, signed artifacts, cold R-B2/R-B10 equality, independent reproduction,
+and external review remain STOP-SHIP. This source change is not claimed to fix
+the separately reported Android task-swipe or Windows focus/display-latency
+symptoms, and complete connection-flow correctness and performance remain open.
 
 ### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
 

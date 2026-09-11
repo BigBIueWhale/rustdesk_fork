@@ -688,6 +688,10 @@ pub async fn create_tcp_connection(
     // Android binds every controlled callback to the exact foreground-service/listener
     // generation that accepted it. Other targets always pass None.
     android_generation: Option<u64>,
+    // The exact owner of the accepting listener supplies the connection lifetime. Desktop/iOS
+    // use the process-wide controlled-server token; Android uses the retained MainService worker
+    // generation token. A connection never reloads ambient shutdown state after admission.
+    cancellation: hbb_common::tokio_util::sync::CancellationToken,
 ) -> ResultType<()> {
     let mut stream = stream;
     // R-P5 / R-P14 / §8: keying is the single mandatory CPace handshake, run
@@ -697,13 +701,20 @@ pub async fn create_tcp_connection(
     // identity keys (R-P5), no alternate keying path to select, and no downgrade
     // (R-P11). With the rendezvous/relay paths neutralized (6920db9) the box only
     // serves direct connections, which always key via CPace below.
-    let credential_generation = authenticate_tcp_stream(&mut stream, addr).await?;
+    let credential_generation = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => return Ok(()),
+        result = authenticate_tcp_stream(&mut stream, addr) => result?,
+    };
     // R-T1(b): keying succeeded — release the pre-key handshake slot now, before the
     // unbounded Connection::start session, so the bound governs only the half-open
     // (attacker-reachable) population. (A fail-closed bail above auto-drops it on return.)
     drop(prekey_permit);
     // Allocate a session id only after CPace succeeds. Failed pre-key attempts are attacker input
     // and must not mutate authenticated-session accounting or drive an unbounded id counter.
+    if cancellation.is_cancelled() {
+        return Ok(());
+    }
     let id = server.write().unwrap().get_new_id();
 
     #[cfg(target_os = "macos")]
@@ -725,6 +736,7 @@ pub async fn create_tcp_connection(
         control_permissions,
         credential_generation,
         android_generation,
+        cancellation,
     )
     .await;
     Ok(())
@@ -1048,14 +1060,24 @@ pub fn check_zombie() {
 /// Otherwise, client will check if there's already a server and start one if not.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[tokio::main]
-pub async fn start_server(_is_server: bool, generation: u64) {
+pub async fn start_server(
+    _is_server: bool,
+    generation: u64,
+    #[cfg(target_os = "android")]
+    listener_cancellation: hbb_common::tokio_util::sync::CancellationToken,
+) {
     // R-D4 / R-D7: direct-only on every target (the Android JNI service entry too) — no
     // rendezvous mediator. The inherited start_all is bypassed for start_direct_only.
     // R-D7a (N1/F1): `generation` is the service-owned-listener generation the JNI `startServer`
     // established (android_begin_generation's return) and captured before spawning this thread;
     // pass it through so the accept loop runs under exactly it, never a late re-load (the
     // orphaned-listener race). iOS never starts a controlled listener, so this is Android's path.
-    crate::direct_service::start_direct_only(Some(generation)).await;
+    crate::direct_service::start_direct_only(
+        Some(generation),
+        #[cfg(target_os = "android")]
+        listener_cancellation,
+    )
+    .await;
 }
 
 /// Start the host server that allows the remote peer to control the current machine.

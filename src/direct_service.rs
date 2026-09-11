@@ -1,10 +1,9 @@
-use hbb_common::{
-    allow_err,
-    config::{self, Config, PermanentPasswordPrsRead},
-    log, sleep, tokio,
-};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::{anyhow::anyhow, ResultType};
+use hbb_common::anyhow::anyhow;
+use hbb_common::{
+    config::{self, Config, PermanentPasswordPrsRead},
+    log, sleep, tokio, ResultType,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "android")]
 use std::sync::Mutex;
@@ -45,6 +44,7 @@ fn get_direct_port() -> i32 {
 struct AndroidListenerWorker {
     generation: u64,
     join: std::thread::JoinHandle<()>,
+    cancellation: hbb_common::tokio_util::sync::CancellationToken,
 }
 
 #[cfg(target_os = "android")]
@@ -80,12 +80,11 @@ pub fn is_direct_listener_bound() -> bool {
 /// R-G1 (verify-ground-truth, R2-1 fix): RAII guard that ties `DIRECT_LISTENER_BOUND` to the bound
 /// listener's LIFETIME. `new()` (called only after a successful `listen_any_v4`) publishes `true`;
 /// its `Drop` publishes `false`. It is held INSIDE the `Option<(TcpListener, ListenerBoundGuard)>`
-/// in `direct_server`, so the flag is cleared on EVERY teardown — the graceful `return`s (R-T9
+/// in `direct_server`, so the flag is cleared on EVERY teardown — the graceful common tail (R-T9
 /// shutdown, R-D7a Android service-stop), the `listener = None` replacements (R-T13 rebuild, the
-/// R-S9 no-password park), AND — decisively — the runtime-abort of the `direct_server` task future
-/// when `start_direct_only`'s keep-alive returns after a stop: dropping the future runs `Drop` for
-/// its live locals (the `listener` held across the `accept().await`), which a bare `store(false)`
-/// statement placed AFTER that `.await` would never reach. Because only a thread that binds
+/// R-S9 no-password park), and an unexpected cancellation or unwind. Android's normal stop path
+/// does not rely on dropping this future: it closes listener admission, cancels and joins every
+/// accepted connection task, and then returns. Because only a thread that binds
 /// constructs a guard, and port exclusivity means at most one thread holds the bound listener at a
 /// time, a superseded never-bound Android thread cannot clear the live one (this subsumes the old
 /// per-thread `i_am_bound` gate).
@@ -133,12 +132,11 @@ impl Drop for ListenerBoundGuard {
 ///     cannot supersede a replacement generation. The worker's terminal guard publishes a
 ///     generation-bound callback only after the runtime has gone away; that callback completes
 ///     Kotlin/native retirement without blocking Android's main thread.
-///     `direct_server` observes deactivation or supersession at its loop top and `return`s (dropping
-///     the `TcpListener` local -> socket closed), and `start_direct_only` observes it in its
-///     keep-alive poll and `return`s (so the JNI thread + its `#[tokio::main]` runtime unwind,
-///     aborting any live accept task -> socket closed). No config write — the stop is the OS
-///     foreground-service lifecycle, not an option (the dead `stop-service` writes are deleted; the
-///     key is pinned `N`).
+///     `direct_server` observes deactivation or exact-token cancellation, closes its `TcpListener`,
+///     cancels every generation-owned accepted task, and joins the complete set. Only after that
+///     drain does `start_direct_only` return and let the JNI thread's `#[tokio::main]` runtime unwind.
+///     No config write — the stop is the OS foreground-service lifecycle, not an option (the dead
+///     `stop-service` writes are deleted; the key is pinned `N`).
 /// Desktop/iOS never touch this: their listener lifetime is the process / `systemd`-unit lifetime
 /// (R-X9), so the whole mechanism is `#[cfg(target_os = "android")]`.
 /// R-D7a: reserve a fresh inactive Android server generation at service start (JNI `startServer`);
@@ -201,6 +199,7 @@ pub fn android_activate_generation(expected_generation: u64) -> bool {
 pub fn android_register_worker(
     expected_generation: u64,
     worker: std::thread::JoinHandle<()>,
+    cancellation: hbb_common::tokio_util::sync::CancellationToken,
 ) -> Result<(), std::thread::JoinHandle<()>> {
     let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
     if owner.worker.is_some() || !owner.lifecycle.register_worker(expected_generation) {
@@ -212,6 +211,7 @@ pub fn android_register_worker(
     owner.worker = Some(AndroidListenerWorker {
         generation: expected_generation,
         join: worker,
+        cancellation,
     });
     Ok(())
 }
@@ -241,6 +241,13 @@ pub fn android_note_worker_start_failed(expected_generation: u64) -> bool {
 pub fn android_request_stop(expected_generation: u64) -> bool {
     let mut owner = ANDROID_LISTENER_OWNER.lock().unwrap();
     if owner.lifecycle.stop_generation(expected_generation) {
+        if let Some(worker) = owner
+            .worker
+            .as_ref()
+            .filter(|worker| worker.generation == expected_generation)
+        {
+            worker.cancellation.cancel();
+        }
         log::info!(
             "R-D7a: Android listener stop requested for owned generation {expected_generation}"
         );
@@ -741,8 +748,9 @@ async fn own_controlled_server_lifecycle(
     }
 
     let mut direct_listener = server.map(|server| {
+        let listener_cancellation = shutdown.clone();
         tokio::spawn(async move {
-            direct_server(server, None).await;
+            direct_server(server, None, listener_cancellation).await;
         })
     });
     // It is ok to run xdesktop manager when the headless function is not allowed.
@@ -798,8 +806,9 @@ async fn own_controlled_server_lifecycle(
 /// Android/iOS receive the exact mobile listener-generation input. Desktop receives an already
 /// installed signal owner, so listener/IPC admission cannot race fallible signal registration.
 pub async fn start_direct_only(
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    android_generation: Option<u64>,
+    #[cfg(any(target_os = "android", target_os = "ios"))] android_generation: Option<u64>,
+    #[cfg(target_os = "android")]
+    listener_cancellation: hbb_common::tokio_util::sync::CancellationToken,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     shutdown_signals: ControlledServerShutdownSignals,
 ) {
@@ -870,8 +879,17 @@ pub async fn start_direct_only(
             my_generation,
         );
         let server_cloned = server.clone();
+        #[cfg(target_os = "android")]
+        let direct_listener_cancellation = listener_cancellation.clone();
+        #[cfg(target_os = "ios")]
+        let direct_listener_cancellation = crate::server::shutdown_token();
         let direct_listener = tokio::spawn(async move {
-            direct_server(server_cloned, android_generation).await;
+            direct_server(
+                server_cloned,
+                android_generation,
+                direct_listener_cancellation,
+            )
+            .await;
         });
         // It is ok to run xdesktop manager when the headless function is not allowed.
         #[cfg(target_os = "linux")]
@@ -886,13 +904,13 @@ pub async fn start_direct_only(
         loop {
             sleep(3600.).await;
         }
-        // Android (R-D7a): the listener is OWNED by `MainService` and shares its lifetime. Poll the
-        // service-owned-listener generation this server thread runs under; when `MainService.onDestroy`
-        // -> `deactivateServer` deactivates it, return so this `#[tokio::main]` runtime (the JNI-spawned
-        // thread) unwinds — dropping the runtime aborts the live `direct_server` accept task, closing
-        // the listening socket. A graceful "Stop service" closes the socket via this teardown; an
-        // OS/OEM/battery kill closes it by process death (onStartCommand is START_NOT_STICKY, so no
-        // zombie auto-restart rebinds a listener the user stopped — R-S14).
+        // Android (R-D7a/R-S11hq): the listener and every connection it accepts are owned by the
+        // exact `MainService` generation. `deactivateServer` cancels the token retained beside the
+        // exact native worker handle. The listener then closes admission, asks every admitted task
+        // to finish through its normal cleanup path, and drains the complete task set before this
+        // function returns. Runtime destruction is only the final postcondition, never the cleanup
+        // mechanism. Process death remains the OS backstop; START_NOT_STICKY prevents a stopped
+        // service from being silently rebound.
         #[cfg(target_os = "android")]
         {
             // R-D7a (N1/F1 fix): compare against the generation CAPTURED at service start and passed
@@ -902,6 +920,7 @@ pub async fn start_direct_only(
             // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
             loop {
                 tokio::select! {
+                    biased;
                     outcome = &mut direct_listener => {
                         if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {
                             match outcome {
@@ -924,12 +943,23 @@ pub async fn start_direct_only(
                         }
                         return;
                     }
+                    _ = listener_cancellation.cancelled() => {
+                        match (&mut direct_listener).await {
+                            Ok(()) => log::info!(
+                                "R-S11hq: Android listener and accepted connections converged after exact generation cancellation"
+                            ),
+                            Err(error) => log::error!(
+                                "R-S11hq: Android listener owner failed while converging exact generation cancellation: {error}"
+                            ),
+                        }
+                        return;
+                    }
                     _ = sleep(1.) => {
                         if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {
-                            log::info!(
-                                "R-D7a: Android service stopped — start_direct_only returns so the server thread + tokio runtime unwind (listener socket closed)"
+                            log::warn!(
+                                "R-S11hq: Android listener lifecycle closed without its cancellation edge; converging the exact generation"
                             );
-                            return;
+                            listener_cancellation.cancel();
                         }
                     }
                 }
@@ -938,8 +968,48 @@ pub async fn start_direct_only(
     }
 }
 
+type DirectConnectionTaskResult = (std::net::SocketAddr, ResultType<()>);
+
+fn report_direct_connection_task(
+    completed: Result<DirectConnectionTaskResult, tokio::task::JoinError>,
+) {
+    match completed {
+        Ok((_addr, Ok(()))) => {}
+        Ok((addr, Err(error))) => {
+            log::debug!("direct connection from {addr} ended before session completion: {error:?}")
+        }
+        Err(error) => log::error!("owned direct-connection task failed: {error}"),
+    }
+}
+
+fn reap_ready_direct_connection_tasks(
+    tasks: &mut tokio::task::JoinSet<DirectConnectionTaskResult>,
+) -> usize {
+    let mut reaped = 0;
+    while let Some(completed) = tasks.try_join_next() {
+        report_direct_connection_task(completed);
+        reaped += 1;
+    }
+    reaped
+}
+
+async fn drain_direct_connection_tasks(
+    tasks: &mut tokio::task::JoinSet<DirectConnectionTaskResult>,
+) -> usize {
+    let mut drained = 0;
+    while let Some(completed) = tasks.join_next().await {
+        report_direct_connection_task(completed);
+        drained += 1;
+    }
+    drained
+}
+
 #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
-async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
+async fn direct_server(
+    server: ServerPtr,
+    android_generation: Option<u64>,
+    connection_cancellation: hbb_common::tokio_util::sync::CancellationToken,
+) {
     let mut listener = None;
     let mut port = 0;
     // R-D7a (Android, N1/F1 fix): the service-owned-listener generation this accept task runs
@@ -982,23 +1052,21 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
     // set, so the loud "PARKED" diagnostic below is logged once per entry into that state rather
     // than on every 1s poll. Reset the moment a usable password is present.
     let mut parked_no_password = false;
-    loop {
-        // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
-        // drops the `listener` local, so the listening socket closes and new SYNs get an RST), then
-        // leave the accept loop. The retained desktop lifecycle owner joins this task and then
-        // drives the live-session/local-IPC finalizer; this branch guarantees no new connection is
-        // admitted after cancellation.
-        if crate::server::is_shutting_down() {
+    let mut connection_tasks = tokio::task::JoinSet::<DirectConnectionTaskResult>::new();
+    'admission: loop {
+        reap_ready_direct_connection_tasks(&mut connection_tasks);
+        // R-T9 (§20): on graceful shutdown, leave admission. The common tail drops the listener,
+        // cancels every task admitted by this owner, and joins the complete set before returning to
+        // the retained desktop/Android lifecycle owner.
+        if connection_cancellation.is_cancelled() || crate::server::is_shutting_down() {
             log::info!("R-T9: shutdown — direct_server stops accepting");
-            // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop publishes
-            // DIRECT_LISTENER_BOUND = false (no manual store needed).
-            return;
+            break 'admission;
         }
         // R-D7a (Android): the foreground service that owns this listener was destroyed
         // (MainService.onDestroy -> deactivateServer -> exact stop convergence deactivated it).
-        // Return so the `listener` local drops and the listening socket closes; the accept task
-        // ends. No config write — symmetric with the desktop R-T9 edge above; a "service stopped,
-        // listener still bound" half-state is unrepresentable. (Desktop/iOS never take this branch.)
+        // Leave admission so the common close/cancel/drain tail runs. No config write — symmetric
+        // with the desktop R-T9 edge above; a "service stopped, listener still bound" half-state is
+        // unrepresentable. (Desktop/iOS never take this branch.)
         #[cfg(target_os = "android")]
         {
             let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation) {
@@ -1007,10 +1075,7 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                     log::info!(
                         "R-D7a: Android service stopped — direct_server drops the listener and stops accepting"
                     );
-                    // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop
-                    // publishes DIRECT_LISTENER_BOUND = false. If the start_direct_only keep-alive
-                    // returns first and aborts this task, dropping the future has the same result.
-                    return;
+                    break 'admission;
                 }
             };
             if rebuild_epoch != seen_rebuild_epoch {
@@ -1041,7 +1106,11 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
         // re-binds and re-runs assert_socket_surface. The per-connection gate (server.rs,
         // R-S9) already refuses every connection in this window, so no listener is ever an
         // access path without a password — the socket simply tracks the credential.
-        let prs_status = crate::server::effective_permanent_password_prs_status().await;
+        let prs_status = tokio::select! {
+            biased;
+            _ = connection_cancellation.cancelled() => break 'admission,
+            status = crate::server::effective_permanent_password_prs_status() => status,
+        };
         if !prs_status.is_available() {
             if listener.is_some() {
                 match prs_status {
@@ -1069,7 +1138,16 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                 }
             }
             parked_no_password = true;
-            sleep(1.).await;
+            tokio::select! {
+                biased;
+                _ = connection_cancellation.cancelled() => break 'admission,
+                completed = connection_tasks.join_next(), if !connection_tasks.is_empty() => {
+                    if let Some(completed) = completed {
+                        report_direct_connection_task(completed);
+                    }
+                }
+                _ = sleep(1.) => {}
+            }
             continue;
         }
         parked_no_password = false;
@@ -1106,7 +1184,7 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                     // R-G1 (verify-ground-truth): the listener is bound — store it WITH a fresh
                     // ListenerBoundGuard, whose `new()` publishes DIRECT_LISTENER_BOUND = true. The
                     // guard now lives inside `listener`, so it is dropped (publishing false) on every
-                    // teardown path, including the runtime-abort of this task (R2-1 fix).
+                    // teardown path, including an unexpected task cancellation (R2-1 fix).
                     listener = Some((l, ListenerBoundGuard::new()));
                     log::info!(
                         "Direct server listening on: {:?}",
@@ -1134,13 +1212,33 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                         err,
                         backoff_ms
                     );
-                    sleep(backoff_ms as f32 / 1000.0).await;
+                    tokio::select! {
+                        biased;
+                        _ = connection_cancellation.cancelled() => break 'admission,
+                        completed = connection_tasks.join_next(), if !connection_tasks.is_empty() => {
+                            if let Some(completed) = completed {
+                                report_direct_connection_task(completed);
+                            }
+                        }
+                        _ = sleep(backoff_ms as f32 / 1000.0) => {}
+                    }
                     continue;
                 }
             }
         }
         if let Some((l, _)) = listener.as_mut() {
-            match hbb_common::timeout(1000, l.accept()).await {
+            let accepted = tokio::select! {
+                biased;
+                _ = connection_cancellation.cancelled() => break 'admission,
+                completed = connection_tasks.join_next(), if !connection_tasks.is_empty() => {
+                    if let Some(completed) = completed {
+                        report_direct_connection_task(completed);
+                    }
+                    continue 'admission;
+                }
+                accepted = hbb_common::timeout(1000, l.accept()) => accepted,
+            };
+            match accepted {
                 Ok(Ok((stream, addr))) => {
                     accept_err_streak = 0; // R-T12: a successful accept resets the error back-off
                     // R-T1(b) / R-T0 rule 2 ("shed cheaply, early"): acquire the pre-key handshake
@@ -1209,18 +1307,22 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                         .local_addr()
                         .unwrap_or(Config::get_any_listen_addr(true));
                     let server = server.clone();
-                    tokio::spawn(async move {
-                        allow_err!(
-                            crate::server::create_tcp_connection(
-                                server,
-                                hbb_common::Stream::from(stream, local_addr),
-                                addr,
-                                None, // Direct connections don't have control_permissions
-                                permit,
-                                android_generation,
-                            )
-                            .await
-                        );
+                    // Each connection receives a child lifetime: listener cancellation propagates
+                    // down to every accepted task, while no connection can cancel its listener or
+                    // a sibling if a future path needs to cancel its own scoped lifetime.
+                    let task_cancellation = connection_cancellation.child_token();
+                    connection_tasks.spawn(async move {
+                        let result = crate::server::create_tcp_connection(
+                            server,
+                            hbb_common::Stream::from(stream, local_addr),
+                            addr,
+                            None, // Direct connections don't have control_permissions
+                            permit,
+                            android_generation,
+                            task_cancellation,
+                        )
+                        .await;
+                        (addr, result)
                     });
                 }
                 Ok(Err(e)) => {
@@ -1233,7 +1335,16 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                     crate::server::note_accept_error(port as u16, &e);
                     let backoff_ms = (50u64 << accept_err_streak.min(7)).min(5000);
                     accept_err_streak = accept_err_streak.saturating_add(1);
-                    sleep(backoff_ms as f32 / 1000.0).await;
+                    tokio::select! {
+                        biased;
+                        _ = connection_cancellation.cancelled() => break 'admission,
+                        completed = connection_tasks.join_next(), if !connection_tasks.is_empty() => {
+                            if let Some(completed) = completed {
+                                report_direct_connection_task(completed);
+                            }
+                        }
+                        _ = sleep(backoff_ms as f32 / 1000.0) => {}
+                    }
                 }
                 Err(_) => {
                     // The 1s poll timeout — normal idle; loop to re-check disabled/port.
@@ -1241,8 +1352,68 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                 }
             }
         } else {
-            sleep(1.).await;
+            tokio::select! {
+                biased;
+                _ = connection_cancellation.cancelled() => break 'admission,
+                completed = connection_tasks.join_next(), if !connection_tasks.is_empty() => {
+                    if let Some(completed) = completed {
+                        report_direct_connection_task(completed);
+                    }
+                }
+                _ = sleep(1.) => {}
+            }
         }
+    }
+
+    // Admission closes before cancellation reaches any connection. `JoinSet` is not used as an
+    // abort-on-drop shortcut: every admitted task owns the scoped token, follows its normal
+    // pre-key or authenticated-session teardown, and is joined before this listener generation
+    // can report completion.
+    drop(listener);
+    connection_cancellation.cancel();
+    let drained = drain_direct_connection_tasks(&mut connection_tasks).await;
+    log::info!("direct listener drained {drained} accepted connection task(s)");
+}
+
+#[cfg(test)]
+mod direct_connection_task_tests {
+    use super::{drain_direct_connection_tasks, DirectConnectionTaskResult};
+    use hbb_common::{tokio, tokio_util::sync::CancellationToken, ResultType};
+    use std::{
+        net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
+    };
+
+    #[tokio::test]
+    async fn parent_cancellation_converges_every_owned_child_before_listener_completion() {
+        let listener_cancellation = CancellationToken::new();
+        let isolated_child = listener_cancellation.child_token();
+        isolated_child.cancel();
+        assert!(!listener_cancellation.is_cancelled());
+
+        let completed = Arc::new(AtomicUsize::new(0));
+        let mut tasks = tokio::task::JoinSet::<DirectConnectionTaskResult>::new();
+
+        for port in [41001, 41002] {
+            let task_cancellation = listener_cancellation.child_token();
+            let task_completed = Arc::clone(&completed);
+            tasks.spawn(async move {
+                task_cancellation.cancelled().await;
+                task_completed.fetch_add(1, Ordering::AcqRel);
+                (
+                    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)),
+                    Ok(()) as ResultType<()>,
+                )
+            });
+        }
+
+        listener_cancellation.cancel();
+        assert_eq!(drain_direct_connection_tasks(&mut tasks).await, 2);
+        assert!(tasks.is_empty());
+        assert_eq!(completed.load(Ordering::Acquire), 2);
     }
 }
 

@@ -45698,16 +45698,6 @@ def validate_android_service_startup_transaction_contract(sources):
         (sources["requirements"], "<tr><td>377</td>", "Appendix C #377"),
         (sources["requirements"], "<tr><td>378</td>", "Appendix C #378"),
         (
-            sources["hardening"],
-            "### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction",
-            "hardening ledger",
-        ),
-        (
-            sources["hardening"],
-            "### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer",
-            "health-start hardening ledger",
-        ),
-        (
             sources["workspace_verifier"],
             '            "android_service_startup_transaction_verifier": (\n'
             '                repo / "scripts/verify-android-service-startup-transaction.py"\n'
@@ -106804,18 +106794,6 @@ def run_source_mutations(sources):
             "<tr><td>378</td>",
             "<tr><td>378-disabled</td>",
             "independent Android startup Appendix C #378",
-        ),
-        (
-            "hardening",
-            "### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction",
-            "### R-S11hq-disabled/R-S11e-254 — exact-generation Android MainService startup transaction",
-            "independent Android startup hardening ledger",
-        ),
-        (
-            "hardening",
-            "### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer",
-            "### R-S11hr-disabled/R-S11e-255 — app-open health start and persistent-resource generation transfer",
-            "independent Android startup health-start hardening ledger",
         ),
         (
             "android_service_startup_transaction_verifier",

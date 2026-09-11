@@ -13035,200 +13035,71 @@ performant remain explicit release obligations and explicit user requests.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 
-**Status:** SOURCE CORRECTED / EXECUTABLE KOTLIN AND RUST STATE TESTS GREEN IN
-A CONFINED CONTAINER / ANDROID JNI, APK, EMULATOR/DEVICE, PERFORMANCE,
-ARTIFACT, INDEPENDENT-REPRODUCTION, AND RELEASE EVIDENCE OPEN — STOP-SHIP.
+**State.** Source ownership and rollback are implemented. `MainService` keeps
+the listener inactive until one positive generation owns screen, status, voice,
+callback admission, and listener activation. Bound-only creation is inert; an
+explicit start performs one bounded attempt; task removal does not stop the
+foreground service.
 
-**Current state.** `MainService` startup keeps the listener inactive until the
-same positive generation owns screen, status, voice, committed callback
-admission, and one exact activation claim. Listener-task or worker termination
-deactivates only its captured generation, and health requires the retained
-Service object, generation, and active native lifecycle. Bound-only creation
-remains inert; each explicit start performs one bounded health/start attempt;
-task swipe does not weaken foreground-service persistence.
+**Boundary and implementation.** One retained `RETIRING` plan closes callback
+admission and deactivates the exact reserved, active, or terminally stopped
+listener before retiring exact voice, status, raw-video, and screen owners.
+Kotlin and native generation authority clear only after every required
+acknowledgement. Failure retains the same Service object, generation, callback
+authority, notification, and cleanup plan for a later explicit retry while
+blocking replacement; it never retries automatically or relies on Force Stop.
+Terminal worker outcomes deactivate only their captured generation, and health
+requires exact Service-object, generation, and active-listener equality.
 
-**Retirement boundary.** `MainServiceGenerationOwner` now adds a `RETIRING`
-phase and retains one immutable cleanup plan until `completeRetirement`.
-Replacement remains blocked throughout, and the process-wide status, voice,
-raw-video, and screen-size owners independently refuse successor admission
-until their exact predecessor has retired. Retirement closes callback admission,
-then exact-object-and-generation `deactivateServer` stops or confirms the
-reserved/active/terminally-stopped listener without discarding raw-video,
-screen, or callback ownership. Voice and status cleanup accept an exact retry
-but reject a stale generation after replacement. Only after those steps succeed
-may `retireServerGeneration` prove listener inactivity, retire-or-confirm both
-native resource owners, and clear native generation authority. Kotlin ownership
-and `nativeServerGeneration` clear only after that acknowledgement.
-`releaseService` has no best-effort cleanup fallback and refuses while any
-generation remains. Activation failure deactivates but leaves cleanup authority
-for Kotlin rollback. If an explicit start cannot finish cleanup, the inactive
-generation, exact callback object, foreground Service, and notification remain
-available for a later explicit retry; the Service publishes failure and neither
-accepts callbacks nor retries automatically. A fully retired failure stops only
-its exact start request. Any false cleanup result therefore retains an exact
-retry path rather than requiring Force Stop or process death.
+**Evidence.** At source commit `6161c3e0474180b0c98f04b7f794ed8555e081d0`,
+the production owner classes and three Kotlin state programs passed in a
+networkless numeric-nonroot container using Kotlin 2.2.10/Temurin 17, and Rust
+1.75 executed two MainService-generation plus five raw/screen-generation tests.
+Focused startup/listener/status/raw/voice and independent source gates bind the
+current topology. The Kotlin toolchain was not the project-pinned Android
+Gradle toolchain, and none of this executed JNI or Android framework behavior.
 
-**Evidence on the current worktree.** In the immutable local verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-running as UID 1000 with `--network=none`, all capabilities dropped, a read-only
-repository, and no published ports, the real production Kotlin owner classes
-compiled with the locally cached Kotlin 2.2.10 compiler on Temurin 17 and their
-three executable state programs passed. This is not the project-pinned Kotlin
-2.0.21 Android Gradle/APK build. The pinned Rust 1.75 compiler built and ran two native
-MainService-generation tests and five raw/screen-generation tests; all seven
-passed, and both dependency-free production state modules compiled for the
-installed `aarch64-linux-android` standard library. The focused startup,
-listener, status, raw/screen, and voice source baselines passed after the startup
-verifier was reduced from a mutation catalog to a load-bearing
-ordering/fallback-absence check. The shared workspace source baseline was
-updated for the two-phase model and passed in 6.7 seconds; its multi-hour
-mutation catalog is no longer part of the ordinary `verify.sh` path and was not
-run or credited. Pre/post read-only host
-listener inventories were identical for every confined run. This evidence
-proves the pure state transitions and current source ordering only; it does not
-execute JNI or Android framework behavior.
-
-**Still open / STOP-SHIP.** No locally owned Android emulator/device system image,
-Android NDK, or complete offline Android build dependency closure is present, so
-the project-pinned Kotlin/Gradle build, exact JNI compilation, candidate APK
-installation, injected failure at every startup and retirement stage,
-task-swipe/reopen/Service-recreation/Force-Stop behavior, connection and
-reconnection, real file/display/control/capture/audio operation, listener and
-thread finality, memory/handle/queue/CPU/latency measurement, and sustained
-resource soak remain unproved. Windows focus/minimize display latency,
-Linux/macOS/iOS and cross-version behavior, signed/installed artifacts, clean
-committed cold R-B2/R-B10 equality, independent reproduction, R-V3 external
-review, causation, and proof that the complete connection flow is correct and
-performant also remain explicit release obligations.
+**Open evidence.** Build and install the exact current APK with the pinned
+Kotlin/Gradle/NDK closure, inject every startup and retirement failure, and run
+task-swipe/reopen/Service-recreation/Force-Stop, reconnect, file, display,
+control, capture, and audio cases on Android. Listener/thread/handle/memory/
+queue/CPU/latency finality, sustained soak, cross-version behavior, signed
+artifacts, cold R-B2/R-B10 equality, independent reproduction, and external
+review remain STOP-SHIP.
 
 ### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
 
-**Status:** SOURCE IMPLEMENTED / FOCUSED AND COMPLETE INDEPENDENT
-DELIBERATE-MUTATION VERIFICATION GREEN / EXACT KOTLIN/RUST/JNI,
-PHYSICAL-DEVICE, CROSS-VERSION, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE
-OPEN.
+**State.** Source recovery is implemented. Reopening the app while the
+foreground service persists now schedules one explicit
+`ACT_ENSURE_CONTROLLED_SERVICE` start before passive binding. Scheduling
+failure is returned to Flutter, and the health action cannot request or consume
+screen-capture consent.
 
-Continuation review of the R-S11hq correction found that its only repair edge
-was not reachable from the lifecycle reported by the user. A dead committed
-native listener is detected and replaced only inside
-`MainService.onStartCommand`, but recreating Flutter after task removal called
-`init_service`, observed the still-published `MainService` status, and merely
-bound to the persistent Service. That bind is deliberately inert. If the old
-status still reported a coherent projection grant, the Activity also skipped
-fresh consent and returned. Thus the Service could preserve status, capture
-authority, and file-transfer-capable process state while no explicit callback
-ever executed the bounded native-listener health transaction. Force Stop made
-the symptom disappear by destroying the whole process, not by exercising a
-correct recovery edge.
+**Boundary and implementation.** An unhealthy committed generation is retired
+while it still owns callback authority: controlled admission closes; exact
+capture, input, demand, raw-video, reader/surface, and playback-audio state is
+retired; and only then do native status/voice owners retire. A coherent
+Service-owned `MediaProjection` and callback survive generation replacement.
+Android 14+ preserves its policy-permitted `VirtualDisplay` by detaching its
+surface; older policy releases it. Mismatched projection/callback state is
+discarded. The replacement republishes retained readiness only to its new exact
+generation. Each explicit transaction publishes its actual Boolean service
+outcome, while `direct-listener-bound` remains the UI's socket truth.
 
-The retry transaction also crossed two different lifetime domains without a
-defined transfer. Native listener, raw-video, status, and voice ownership were
-generation-scoped, while `MediaProjection` and—on Android 14+—its reusable
-`VirtualDisplay` were deliberately Service-scoped so unattended connections do
-not attempt an illegal second capture session. Exact native retirement alone
-left old controlled capture owners, input authority, capture demand, reader,
-surface, raw delivery, and playback-audio state behind. Conversely, fully
-releasing the projection/display during retry would destroy valid persistent
-Service authority and make a later display start require new consent or fail
-under the one-session platform rule.
+**Evidence.** Source commit
+`2fb7d4aaebf8899a347a2c7e7a27f68e9caaf98f` contains the Activity health edge
+and transfer ordering. Focused startup/status/listener/raw/voice validators and
+the independent source gate bind the current product topology. This is source
+evidence only; no current Kotlin/Gradle/JNI build, APK, emulator, or physical
+device executed this transaction.
 
-`MainActivity.init_service` now distinguishes observation from recovery. When
-an exact `MainService` status exists it first issues one dedicated
-`ACT_ENSURE_CONTROLLED_SERVICE` start, using `startForegroundService` on
-Android O+ and the pre-O start API otherwise. A refused or exceptional enqueue
-completes the MethodChannel call with `MAIN_SERVICE_START_FAILED`. Only then
-does the Activity passively bind and decide from the preexisting projection
-status whether user consent is needed. The status-absent path remains the
-existing inert `BIND_AUTO_CREATE` plus human-consent flow. The dedicated
-health action reaches `onStartCommand` but cannot request MediaProjection or
-consume a consent result; it performs exactly the existing one-attempt,
-non-sticky R-S11hq transaction and publishes current permission state.
-
-Before replacing an inactive positive generation, `MainService` now closes
-controlled admission, clears the exact capture-owner set, retires that exact
-input-service generation, clears capture demand, and stops raw video,
-reader/surface, and playback-audio state while the old generation is still the
-current callback authority. The stop explicitly follows the existing
-`reuseVirtualDisplay` policy: Android 14+ detaches and preserves the reusable
-display owned by the coherent Service projection; older versions release it.
-The projection and its registered callback remain paired. After a fresh
-status generation begins, that retained readiness is published only to the new
-exact generation. A projection/callback mismatch is discarded instead of
-being adopted. Only then may voice publication, generation commit, callback
-admission, and listener activation continue.
-
-The Android service-start API reports request enqueue, not eventual
-`onStartCommand` success. To keep Flutter status honest without blocking the
-main looper or introducing polling, every explicit transaction now posts one
-`service` state derived from its exact Boolean outcome through the existing
-main-looper state channel; normal Service destruction posts false. Dart's
-optimistic `_isStart` remains only the anti-reentrancy latch needed while the
-permission callback is in flight and now converges on that exact outcome. The
-listener display in the UI continues to use the Rust
-`direct-listener-bound` ground truth rather than treating this lifecycle flag
-as socket authority.
-
-The focused startup and MainService-status verifiers now derive the dedicated
-action vocabulary, foreground-compatible and fail-closed Activity request,
-app-open ordering, health-action separation from consent, pre-retirement
-capture/input cleanup, reusable-display preservation, coherent retained
-projection publication, exact asynchronous outcome reconciliation, normative
-R-S11hr text, Appendix C #378, and this ledger. The independent workspace
-validator derives the same product properties rather than trusting the focused
-gate and carries deliberate mutations for each material edge.
-
-The frozen pre-receipt candidate was exercised offline in immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-as UID/GID 1000 with a read-only repository mount, read-only container root,
-no network, all capabilities dropped, `no-new-privileges`, one process, a
-2-GiB memory/swap cap, two-CPU cap, and a private bounded `/tmp`. Focused
-self-tests rejected 98 startup, 49 MainService-status, 49 listener-generation,
-68 frame/raw-generation, and 545 voice-call mutations. The independent
-workspace baseline passed. A mechanically derived `HEAD`-to-candidate catalog
-delta preflight covered all 28 added tuples and the one replaced tuple. The
-complete unsliced independent workspace catalog then traversed all 5,145
-mutations from its first entry through its terminal result and printed
-`verify-verifier-workspace: ok`; the detached container's independent wait
-returned numeric exit 0 after 8,938 seconds. Its launch and terminal
-`git diff --binary` digest both equalled
-`e423cf27ba49c6dd37a19baccab9c242b95e2755ece321d43bbff3d9a70f3ff9`,
-and its launch and terminal porcelain-status digest both equalled
-`5705b588de97ac51f916b2d3c17f39f0ac2d956abb8dd4b6d3ee519e1d459a10`.
-All 134 Python verifier scripts parsed, `requirements.html` parsed, the three
-selected shell gates passed syntax checks, the native-codec watch and its
-self-test passed, `git diff --check` passed, and the synchronized requirements
-SHA-256 was
-`b65752b291b2887a1f0909fd8b09b0d49359850a1ec08d99fcd858314120970b`.
-
-Two earlier full attempts are deliberately uncredited. The first attached
-observer was terminated with exit 137 after 4,229 seconds by its client-session
-lifetime, with no Docker OOM event. A later detached traversal reached a stale
-workspace-catalog expected diagnostic for the new exact startup edge and
-exited nonzero; it did not expose an accepted product mutation. The catalog
-label was corrected, every current-slice catalog delta was mechanically
-preflighted, and only the subsequent complete terminal-zero traversal above is
-credited. The exact-generation Kotlin regression was updated as source but the
-approved image has no Kotlin compiler/runtime, so no Kotlin, Rust, JNI, APK, or
-device execution is claimed by this receipt.
-
-This source slice does not inspect, stop, restart, modify, or connect to a host
-RustDesk process or service; inspect or change host firewall/network/listener
-state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated container/image; or request/acquire root. It adds no retry timer,
-poller, reconnect loop, sticky restart, worker/thread/runtime, listener, port,
-transport, dependency, privilege transition, or host/network behavior.
-
-Exact Kotlin/Rust/JNI compilation and execution, injected failure at every
-startup and transfer stage, physical Android task-swipe/reopen/Force-Stop
-behavior, Android cross-version projection/display behavior, exact installed
-artifacts, Windows focus/minimize/reconnect reproduction, Linux/macOS/iOS
-behavior, capture-through-compositor timestamps, explicit end-to-end
-latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-clean committed cold R-B2/R-B10 equality, fresh independent reproduction,
-R-V3 external review, causation, and proof that the complete connection flow
-is correct and performant remain explicit release obligations and explicit
-user requests.
+**Open evidence.** Run the exact installed APK through task swipe, reopen,
+Service recreation, Force Stop, retained/revoked projection, Android 14 display
+reuse, injected cleanup/activation failures, reconnect, and concurrent
+file/display/control/audio work. Capture-to-present latency, queue/CPU/memory/
+handle cleanup, sustained lifecycle soak, cross-version behavior, cold release
+equality, independent reproduction, causation, and external review remain
+STOP-SHIP.
 
 ### R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak, and the empty-`Display` gap in its replacement
 

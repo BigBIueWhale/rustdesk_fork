@@ -8821,7 +8821,17 @@ pub async fn get_main_readiness_snapshot_for_process(
 
 #[cfg(target_os = "windows")]
 pub async fn get_windows_cpu_usage(ms_timeout: u64) -> ResultType<Option<f64>> {
-    match main_ipc_request(MainIpcRequest::CpuUsage, ms_timeout).await? {
+    let response = timeout(
+        ms_timeout,
+        main_ipc_request(MainIpcRequest::CpuUsage, ms_timeout),
+    )
+    .await
+    .map_err(|_| {
+        anyhow::anyhow!(
+            "Windows CPU-usage main IPC transaction exceeded its {ms_timeout} ms deadline"
+        )
+    })??;
+    match response {
         MainIpcResponse::CpuUsage(usage) => Ok(usage),
         _ => bail!("invalid main IPC CPU-usage response"),
     }

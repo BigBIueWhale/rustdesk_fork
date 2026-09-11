@@ -11288,6 +11288,7 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_video_unsupported_guard_blocks_marked_format --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_choose_saved_keyboard_mode --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_rewrite_saved_keyboard_mode --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::windows_cpu_usage_seed_policy_is_video_only --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests::av1_video_frame_is_rejected_before_viewer_state_admission --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::encoder_negotiation --color never

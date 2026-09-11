@@ -38,6 +38,8 @@ pub use file_trait::FileManager;
 // its sole linux user, was removed) — keep the macro import there, cfg-gated.
 #[cfg(not(target_os = "linux"))]
 use hbb_common::anyhow::anyhow;
+#[cfg(windows)]
+use hbb_common::tokio::sync::OnceCell;
 use hbb_common::{
     allow_err, bail,
     config::{
@@ -60,11 +62,6 @@ use hbb_common::{
     },
     ResultType, Stream, VIDEO_FRAME_RECEIPT_VERSION,
 };
-// do_sync_cpu_usage (cfg-win) carries #[tokio::main], whose expansion names the
-// `tokio` crate; the rustdesk crate reaches tokio only via hbb_common, so bind the
-// name here. cfg(windows)-gated: it is the lone bare-`tokio` user in this file.
-#[cfg(windows)]
-use hbb_common::tokio;
 pub use helper::*;
 use scrap::{
     codec::Decoder,
@@ -246,6 +243,36 @@ lazy_static::lazy_static! {
     static ref CLIPBOARD_STATE: Arc<Mutex<ClipboardState>> = Arc::new(Mutex::new(ClipboardState::new()));
 }
 
+#[cfg(any(windows, test))]
+fn windows_viewer_cpu_usage_seed_required(conn_type: ConnType) -> bool {
+    matches!(conn_type, ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA)
+}
+
+#[cfg(windows)]
+const WINDOWS_VIEWER_CPU_USAGE_SEED_TIMEOUT_MS: u64 = 50;
+
+#[cfg(windows)]
+async fn sync_windows_viewer_cpu_usage_once() {
+    static CPU_USAGE_SEEDED: OnceCell<()> = OnceCell::const_new();
+
+    CPU_USAGE_SEEDED
+        .get_or_init(|| async {
+            let start = std::time::Instant::now();
+            match crate::ipc::get_windows_cpu_usage(WINDOWS_VIEWER_CPU_USAGE_SEED_TIMEOUT_MS).await
+            {
+                Ok(cpu_usage) => hbb_common::platform::windows::sync_cpu_usage(cpu_usage),
+                Err(err) => {
+                    log::warn!("Unable to seed Windows viewer CPU usage from main IPC: {err}")
+                }
+            }
+            log::info!(
+                "{:?} used to seed Windows viewer CPU usage",
+                start.elapsed()
+            );
+        })
+        .await;
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_key_state(key: enigo::Key) -> bool {
     use enigo::KeyboardControllable;
@@ -276,7 +303,18 @@ impl Client {
         }
         debug_assert!(peer == interface.get_id());
         interface.update_received(false);
-        match Self::_start(peer, key, token, conn_type, interface.clone()).await {
+        let connection_attempt = Self::_start(peer, key, token, conn_type, interface.clone());
+        #[cfg(windows)]
+        let connection_result = if windows_viewer_cpu_usage_seed_required(conn_type) {
+            let ((), connection_result) =
+                hbb_common::tokio::join!(sync_windows_viewer_cpu_usage_once(), connection_attempt);
+            connection_result
+        } else {
+            connection_attempt.await
+        };
+        #[cfg(not(windows))]
+        let connection_result = connection_attempt.await;
+        match connection_result {
             Err(err) => {
                 let err_str = err.to_string();
                 if err_str.starts_with("Failed") {
@@ -3243,8 +3281,6 @@ where
     let is_view_camera = session.is_view_camera();
 
     std::thread::spawn(move || {
-        #[cfg(windows)]
-        sync_cpu_usage();
         let mut video_handler = None;
         let mut count = 0;
         let mut duration = std::time::Duration::ZERO;
@@ -3476,26 +3512,6 @@ fn fps_calculate(
         *count = 0;
         *duration = Duration::ZERO;
     }
-}
-
-#[cfg(windows)]
-fn sync_cpu_usage() {
-    use std::sync::Once;
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        let t = std::thread::spawn(do_sync_cpu_usage);
-        t.join().ok();
-    });
-}
-
-#[cfg(windows)]
-#[tokio::main(flavor = "current_thread")]
-async fn do_sync_cpu_usage() {
-    let start = std::time::Instant::now();
-    if let Ok(cpu_usage) = crate::ipc::get_windows_cpu_usage(50).await {
-        hbb_common::platform::windows::sync_cpu_usage(cpu_usage);
-    }
-    log::info!("{:?} used to sync cpu usage", start.elapsed());
 }
 
 /// Handle latency test.
@@ -5243,6 +5259,24 @@ mod tests {
                 panic!("login builder must produce a LoginRequest");
             };
             assert_eq!(login.video_frame_receipt_version, expected);
+        }
+    }
+
+    #[test]
+    fn windows_cpu_usage_seed_policy_is_video_only() {
+        for (conn_type, expected) in [
+            (ConnType::DEFAULT_CONN, true),
+            (ConnType::VIEW_CAMERA, true),
+            (ConnType::FILE_TRANSFER, false),
+            (ConnType::TERMINAL, false),
+            (ConnType::PORT_FORWARD, false),
+            (ConnType::RDP, false),
+        ] {
+            assert_eq!(
+                windows_viewer_cpu_usage_seed_required(conn_type),
+                expected,
+                "unexpected Windows CPU-usage seed policy for {conn_type:?}"
+            );
         }
     }
 

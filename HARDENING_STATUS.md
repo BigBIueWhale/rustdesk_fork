@@ -1044,6 +1044,30 @@ end-to-end latency. The exact artifact identity, timestamped Windows-viewer/Debi
 Android-viewer device matrix, media-boundary instrumentation, native Windows build, cold release,
 independent reproduction, and external review below remain release blockers.
 
+Follow-up source correction (2026-09-11), **Windows first-video CPU-hint startup ownership; native evidence
+OPEN.** The imported viewer path started its first Windows decoder worker, spawned a second OS thread from that
+worker, synchronously joined it, and constructed a new current-thread Tokio runtime solely to read the main
+process's CPU hint. The join result and IPC failure were discarded. Current upstream RustDesk still has that
+shape. It is unnecessary startup/resource debt on the first-frame path, but neither source inspection nor the
+available evidence establishes it as the cause of the reported multi-second focus-loss delay.
+
+The decoder worker now begins directly with its mailbox. For Remote and View Camera only, the already-existing
+asynchronous connection owner shares one process-wide Tokio `OnceCell` initialization and polls it concurrently
+with the network connection attempt. The initialization performs the optional main-IPC read under one outer
+50-ms asynchronous deadline, updates the hint on a valid response, and visibly logs failure before using the
+existing one-thread fallback. It creates no task, thread, runtime, queue, retry, listener, service transition,
+or network endpoint. File transfer, terminal, port-forward, and RDP do not perform the read. Cancellation before
+initialization completes leaves the cell uninitialized; later completion, including an explicitly logged IPC
+failure, consumes the one startup attempt. The prior decoder-side helper, nested runtime attribute, spawn, join,
+and ignored result are deleted.
+
+The checked-in connection-type regression covers all six connection types. Exact native Windows compilation,
+installed main-IPC success/absence/failure and concurrent-start execution, thread/handle observations,
+first-presented-frame timing, focus/minimize recovery without reconnect, artifact binding, and the broader
+cross-platform connection correctness/performance matrix remain open. The pinned Windows golden image and its
+provisioning inputs are absent from the current workspace and no Windows libvirt domain exists, so this entry
+does not substitute Linux parsing or source assertions for that missing evidence.
+
 Follow-up correction (2026-07-27), **mobile Activity owner versus exact connection identity**: the prior
 Activity/isolate generation closure still inherited a subtler identity collapse. The isolate-wide UUID registered
 with `MainActivity` was also the `SessionID` reused by every successive outgoing route. Flutter does not await an

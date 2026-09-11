@@ -1295,6 +1295,67 @@ def open_directory(path: Path) -> int:
     )
 
 
+def transition_root_mode(
+    path: Path,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    before_mode: int,
+    after_mode: int,
+    label: str,
+) -> None:
+    descriptor = open_directory(path)
+    try:
+        before = os.fstat(descriptor)
+        if (
+            identity(before) != expected_identity
+            or not stat.S_ISDIR(before.st_mode)
+            or (before.st_uid, before.st_gid) != (uid, gid)
+            or stat.S_IMODE(before.st_mode) != before_mode
+        ):
+            fail(f"{label} root authority changed before its mode transition")
+        os.fchmod(descriptor, after_mode)
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            identity(after) != expected_identity
+            or not stat.S_ISDIR(after.st_mode)
+            or (after.st_uid, after.st_gid) != (uid, gid)
+            or stat.S_IMODE(after.st_mode) != after_mode
+        ):
+            fail(f"{label} root mode transition did not commit exactly")
+    finally:
+        os.close(descriptor)
+
+
+def restore_private_root_mode(
+    path: Path,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    label: str,
+) -> None:
+    metadata = os.lstat(path)
+    mode = stat.S_IMODE(metadata.st_mode)
+    if (
+        identity(metadata) != expected_identity
+        or not stat.S_ISDIR(metadata.st_mode)
+        or (metadata.st_uid, metadata.st_gid) != (uid, gid)
+        or mode not in (0o700, 0o555)
+    ):
+        fail(f"{label} root authority changed before rollback")
+    if mode == 0o555:
+        transition_root_mode(
+            path,
+            expected_identity,
+            uid,
+            gid,
+            0o555,
+            0o700,
+            label,
+        )
+
+
 def publish(
     online: Path,
     staging: Path,
@@ -1351,8 +1412,15 @@ def publish(
         moved = True
         os.fsync(output_fd)
         os.fsync(online_fd)
-        os.chmod(destination, 0o555, follow_symlinks=False)
-        fsync_directory(destination)
+        transition_root_mode(
+            destination,
+            expected,
+            uid,
+            gid,
+            0o700,
+            0o555,
+            "published Android NDK",
+        )
         os.fsync(online_fd)
         with open_validated_archive(
             archive,
@@ -1374,7 +1442,13 @@ def publish(
     except BaseException as primary:
         if moved:
             try:
-                os.chmod(destination, 0o700, follow_symlinks=False)
+                restore_private_root_mode(
+                    destination,
+                    expected,
+                    uid,
+                    gid,
+                    "published Android NDK",
+                )
                 renameat2(
                     online_fd,
                     "android-ndk",
@@ -1480,6 +1554,10 @@ def recover(
             return "verified-unpublished"
         return "verified-unpublished-destination-occupied"
     if private_candidate is None and live_candidate == expected:
+        root_mode = stat.S_IMODE(os.lstat(destination).st_mode)
+        if root_mode not in (0o700, 0o555):
+            fail("published Android NDK root mode is incoherent and was preserved")
+        profile = "private-sealed" if root_mode == 0o700 else "sealed"
         with open_validated_archive(
             archive,
             version,
@@ -1492,12 +1570,58 @@ def recover(
                 os.lstat(online),
                 uid,
                 gid,
-                profile="sealed",
+                profile=profile,
                 expected_identity=expected,
             )
         if digest != payload["tree_digest"]:
             fail("recovered Android NDK tree digest changed")
-        return "published"
+        if root_mode == 0o555:
+            return "published"
+        try:
+            transition_root_mode(
+                destination,
+                expected,
+                uid,
+                gid,
+                0o700,
+                0o555,
+                "recovered Android NDK",
+            )
+            fsync_directory(online)
+            with open_validated_archive(
+                archive,
+                version,
+                archive_sha256,
+            ) as (zip_archive, entries, _archive_metadata):
+                digest = compare_output(
+                    zip_archive,
+                    entries,
+                    destination,
+                    os.lstat(online),
+                    uid,
+                    gid,
+                    profile="sealed",
+                    expected_identity=expected,
+                )
+            if digest != payload["tree_digest"]:
+                fail("recovered Android NDK tree digest changed after root sealing")
+        except BaseException as primary:
+            try:
+                restore_private_root_mode(
+                    destination,
+                    expected,
+                    uid,
+                    gid,
+                    "recovered Android NDK",
+                )
+                fsync_directory(online)
+            except BaseException as rollback:
+                primary.add_note(
+                    "Android NDK recovery mode rollback also failed: "
+                    f"{rollback}"
+                )
+            raise
+        return "published-after-root-seal"
     fail("Android NDK output transaction state is incoherent and was preserved")
 
 
@@ -1671,6 +1795,24 @@ def run_self_test() -> None:
         )
         return online, staging, archive, archive_sha256
 
+    def move_verified_for_recovery(online: Path, staging: Path) -> None:
+        output = staging / "output"
+        output_fd = open_directory(output)
+        online_fd = open_directory(online)
+        try:
+            renameat2(
+                output_fd,
+                spec.root,
+                online_fd,
+                "android-ndk",
+                RENAME_NOREPLACE,
+            )
+            os.fsync(output_fd)
+            os.fsync(online_fd)
+        finally:
+            os.close(online_fd)
+            os.close(output_fd)
+
     with tempfile.TemporaryDirectory(prefix="android-ndk-output-self-test.") as temporary:
         root = Path(temporary)
         try:
@@ -1718,6 +1860,86 @@ def run_self_test() -> None:
                 archive_sha256,
                 builder,
             )
+
+            online, staging, archive, archive_sha256 = fixture(
+                root / "post-rename-root-seal-recovery"
+            )
+            verify_staged(
+                online,
+                staging,
+                archive,
+                uid,
+                gid,
+                version,
+                archive_sha256,
+                builder,
+            )
+            moved_identity = identity(staging.joinpath("output", spec.root).lstat())
+            move_verified_for_recovery(online, staging)
+            if stat.S_IMODE((online / "android-ndk").lstat().st_mode) != 0o700:
+                fail("self-test post-rename Android NDK root was not private")
+            if (
+                recover(
+                    online,
+                    staging,
+                    archive,
+                    uid,
+                    gid,
+                    version,
+                    archive_sha256,
+                    builder,
+                )
+                != "published-after-root-seal"
+            ):
+                fail("self-test did not complete interrupted Android NDK root sealing")
+            recovered_metadata = (online / "android-ndk").lstat()
+            if (
+                identity(recovered_metadata) != moved_identity
+                or stat.S_IMODE(recovered_metadata.st_mode) != 0o555
+            ):
+                fail("self-test recovered the wrong Android NDK root authority")
+            check_complete(
+                online,
+                archive,
+                uid,
+                gid,
+                version,
+                archive_sha256,
+                builder,
+            )
+
+            online, staging, archive, archive_sha256 = fixture(
+                root / "post-rename-changed"
+            )
+            verify_staged(
+                online,
+                staging,
+                archive,
+                uid,
+                gid,
+                version,
+                archive_sha256,
+                builder,
+            )
+            move_verified_for_recovery(online, staging)
+            changed = online / "android-ndk" / "build" / "cmake" / "android.toolchain.cmake"
+            changed.chmod(0o600)
+            changed.write_bytes(b"changed after verified publication move\n")
+            expect_failure(
+                lambda: recover(
+                    online,
+                    staging,
+                    archive,
+                    uid,
+                    gid,
+                    version,
+                    archive_sha256,
+                    builder,
+                ),
+                "self-test accepted changed moved Android NDK output",
+            )
+            if stat.S_IMODE((online / "android-ndk").lstat().st_mode) != 0o700:
+                fail("self-test sealed a changed moved Android NDK root")
 
             online, staging, archive, archive_sha256 = fixture(root / "occupied")
             verify_staged(

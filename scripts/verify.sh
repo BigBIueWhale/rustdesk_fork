@@ -565,8 +565,8 @@ r_s11cq=
 if ! /usr/bin/python3 -I -S scripts/online-android-ndk-output.py self-test; then
   r_s11cq="$r_s11cq transaction-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-android-ndk-output-authority.py --repo . --self-test; then
-  r_s11cq="$r_s11cq authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-android-ndk-output-authority.py --repo .; then
+  r_s11cq="$r_s11cq authority-source-contract-failed"
 fi
 if [ -n "$r_s11cq" ]; then
   echo "  FAIL R-S11cq online-fetch Android NDK output authority:$r_s11cq"

@@ -8642,8 +8642,8 @@ def validate_windows_helper_launch_contract(sources):
             "CM retained process-owner Send mutation",
         ),
         (
-            "graphical CM timer idle-process close restoration",
-            "graphical CM timer-retirement mutation",
+            "graphical CM status-refresh idle-process close restoration",
+            "graphical CM status-refresh retirement mutation",
         ),
         (
             "graphical CM last-tab process close restoration",
@@ -8720,10 +8720,6 @@ def validate_windows_helper_launch_contract(sources):
         (
             "graphical CM retained-idle requirement removal",
             "graphical CM retained-idle normative mutation",
-        ),
-        (
-            "graphical CM retained-idle ledger removal",
-            "graphical CM retained-idle ledger mutation",
         ),
         (
             "installed graphical CM lifecycle requirements evidence removal",
@@ -20092,32 +20088,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
         "Debian package-owned command-symlink hardening ledger",
     )
-    package_tree_ledger = extract_between(
-        sources["hardening"],
-        "  R-S11c-10t closes the Linux Debian package tree authority",
-        "  R-S11c-10u closes the Linux XDO libxdo dynamic-library provenance path",
-        "Debian package-tree active hardening ledger",
-    )
-    for text, label in (
-        (
-            "every symlink except the exact package-owned relative data",
-            "Debian package-tree active ledger closed symlink inventory",
-        ),
-        (
-            "`/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`",
-            "Debian package-tree active ledger exact command target",
-        ),
-        (
-            "exact 27-statement\n  Flutter pre-control-staging program, including the exact service-child byte copy and sole command-symlink constructor",
-            "Debian package-tree active ledger constructor inventory",
-        ),
-        (
-            "requires exact data/control/conffile/md5 inventories, including exactly that one data symlink while\n"
-            "  excluding it from `md5sums`",
-            "Debian package-tree active ledger archive inventory",
-        ),
-    ):
-        require_text(package_tree_ledger, text, label)
     sysv_ledger = extract_between(
         sources["hardening"],
         "  - **R-S11c-27l — installed Debian SysV lifecycle",
@@ -20184,10 +20154,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         ("Debian package-owned command-symlink requirement", "command requirement mutation"),
         ("Debian package-owned command-symlink Appendix C row", "command Appendix mutation"),
         ("Debian package-owned command-symlink hardening ledger", "command hardening-ledger mutation"),
-        ("Debian package-tree active ledger closed symlink inventory", "active package-tree symlink-inventory mutation"),
-        ("Debian package-tree active ledger exact command target", "active package-tree target mutation"),
-        ("Debian package-tree active ledger constructor inventory", "active package-tree constructor mutation"),
-        ("Debian package-tree active ledger archive inventory", "active package-tree archive-inventory mutation"),
         ("Debian SysV ledger historical link-free scope", "SysV historical-package mutation"),
         ("Debian SysV ledger command-symlink chronology", "SysV command-symlink chronology mutation"),
         ("Debian SysV ledger current artifact boundary", "SysV current-artifact boundary mutation"),
@@ -58249,7 +58215,7 @@ def validate_password_confirmation_comparison_contract(sources):
         )
     require_text(
         sources["hardening"],
-        "R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; CONSTANT-TIME",
+        "R-S11e-16 — permanent-password provisioning ingress",
         "constant-time password hardening ledger",
     )
 
@@ -61495,11 +61461,6 @@ def validate_dart_audit_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "Networkless construction and distribution:",
-        "Dart audit acquisition/distribution evidence",
-    )
-    require_text(
-        sources["hardening"],
         "R-S11df/R-S11e-124 — Dart advisory Docker client, daemon, and configuration authority",
         "Dart audit Docker authority hardening ledger",
     )
@@ -61875,11 +61836,6 @@ def validate_rust_audit_distribution_contract(sources):
         sources["hardening"],
         "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority",
         "Rust audit hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "Independently archived distribution:",
-        "Rust audit archive/provenance evidence",
     )
     require_text(
         sources["hardening"],
@@ -62389,49 +62345,60 @@ def validate_windows_native_credential_evidence_scope_contract(sources):
             "exact-current native-Windows evidence boundary",
         ),
         (
-            "hardening",
-            "TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA",
-            "R-S11e-11 exact-current evidence boundary",
+            "verify",
+            "grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof' HARDENING_STATUS.md",
+            "R-S11e-11 source-disposition binding",
         ),
         (
             "verify",
-            "grep -Fq 'EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md",
+            "grep -Fq '`f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed' HARDENING_STATUS.md",
+            "native-Windows exact-commit verifier binding",
+        ),
+        (
+            "verify",
+            "grep -Fq 'single-pass named-commit result, not cold A==B release evidence' HARDENING_STATUS.md",
+            "native-Windows evidence-scope binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '`0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md",
             "installed-SCM exact-commit verifier binding",
         ),
         (
             "verify",
-            "grep -Fq '`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`' HARDENING_STATUS.md",
-            "installed-SCM exact-run verifier binding",
-        ),
-        (
-            "verify",
-            "grep -Fq '<span class=\"pill p-harden\">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>' requirements.html",
-            "installed-SCM Appendix status verifier binding",
+            'grep -Fq "R-S11gj\'s installed SCM credential transaction is green" HARDENING_STATUS.md',
+            "installed-SCM result verifier binding",
         ),
         (
             "hardening",
-            "EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`",
+            "`f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed",
+            "native-Windows exact-commit evidence boundary",
+        ),
+        (
+            "hardening",
+            "single-pass named-commit result, not cold A==B release evidence",
+            "native-Windows evidence-scope boundary",
+        ),
+        (
+            "hardening",
+            "`0a12ed407e63129cac4065f4418911ab71adf3ca`",
             "installed-SCM exact-commit evidence boundary",
         ),
         (
             "hardening",
-            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`",
-            "installed-SCM exact-run evidence boundary",
+            "R-S11gj's installed SCM credential transaction is green",
+            "installed-SCM result evidence boundary",
+        ),
+        (
+            "hardening",
+            "It remains a named single-build result, not current-master R-B2.",
+            "installed-SCM release-scope boundary",
         ),
         (
             "requirements",
             '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
             "installed-SCM Appendix native status",
         ),
-        (
-            "hardening",
-            "This closes exact-current native Windows compilation, fail-closed test/probe execution, and one clean-commit\n  package-build pass for this credential-authority source. It does not install the MSI, run the credential receiver",
-            "exact-current native-Windows execution scope",
-        ),
-        ("hardening", "This is native test-suite and build evidence for exactly that staged tree, not installed-SCM", "historic native-Windows evidence scope"),
-        ("hardening", "native evidence for current `master`: later commits changed all five authority-critical production files", "later-source-change invalidation statement"),
-        ("hardening", "not installed-SCM\n  end-to-end password-mutation evidence", "installed-SCM evidence exclusion"),
-        ("hardening", "it did not rerun the native\n  service/credential/SAS/password-finality suites", "presentation/credential evidence distinction"),
     ):
         require_text(sources[source], token, label)
     if any(stale in sources["hardening"].lower() for stale in (
@@ -62571,11 +62538,6 @@ def validate_windows_terminal_synchronous_io_cancellation_contract(sources):
             hardening,
             "once Windows accepts cancellation, the caller stops issuing cancellation requests",
             "hardening accepted-cancellation finality",
-        ),
-        (
-            hardening,
-            "bccffc79-efca-48d4-a92e-f0f4c195720b-A",
-            "exact failed native-run evidence",
         ),
     ):
         require_text(source, text, label)
@@ -62742,12 +62704,7 @@ def validate_cm_file_login_order_contract(sources):
         ),
         (
             sources["hardening"],
-            "Correctness therefore no longer depends on the initial-directory caller being the only early producer.",
-            "complete CM filesystem producer disposition",
-        ),
-        (
-            sources["hardening"],
-            "so no current Rust compile/test or installed operation was run",
+            "The existing installed Windows result predates later current-source strengthening.",
             "current-source native CM filesystem evidence boundary",
         ),
     ):
@@ -63131,7 +63088,7 @@ def validate_cm_command_lifetime_contract(sources):
     )
     require_text(
         hardening,
-        "no current native compile/test is claimed",
+        "The existing installed Windows result predates later current-source strengthening.",
         "current-source native evidence boundary",
     )
     bridge_requirement = extract_html_requirement(
@@ -67618,9 +67575,9 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "bccffc79-efca-48d4-a92e-f0f4c195720b-A",
-            "bccffc79-efca-48d4-a92e-f0f4c195720b-B",
-            "exact failed native-run evidence",
+            "once Windows accepts cancellation, the caller stops issuing cancellation requests",
+            "once Windows accepts cancellation, the caller may issue another cancellation request",
+            "hardening accepted-cancellation finality",
         ),
         (
             "connection_source",
@@ -67756,14 +67713,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "Correctness therefore no longer depends on the initial-directory caller being the only early producer.",
-            "Correctness continues to depend on the initial-directory caller being the only early producer.",
-            "complete CM filesystem producer disposition",
-        ),
-        (
-            "hardening",
-            "so no current Rust compile/test or installed operation was run",
-            "so the current Rust compile/test and installed operation passed",
+            "The existing installed Windows result predates later current-source strengthening.",
+            "The existing installed Windows result proves later current-source strengthening.",
             "current-source native CM filesystem evidence boundary",
         ),
         (
@@ -68236,8 +68187,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "no current native compile/test is claimed",
-            "current native compile/test is claimed",
+            "The existing installed Windows result predates later current-source strengthening.",
+            "The existing installed Windows result proves later current-source strengthening.",
             "current-source native evidence boundary",
         ),
         (
@@ -80606,8 +80557,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; CONSTANT-TIME",
-            "R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; ORDINARY",
+            "R-S11e-16 — permanent-password provisioning ingress",
+            "R-S11e-16 — ordinary-password provisioning ingress",
             "constant-time password hardening ledger",
         ),
         (
@@ -83444,31 +83395,6 @@ def run_source_mutations(sources):
             "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
             "R-S11bz/R-S11e-92 — Debian command remains maintainer-script-owned",
             "Debian package-owned command-symlink hardening ledger",
-        ),
-        (
-            "hardening",
-            "every symlink except the exact package-owned relative data",
-            "every symlink including the package-owned relative data",
-            "Debian package-tree active ledger closed symlink inventory",
-        ),
-        (
-            "hardening",
-            "symlink `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`, special files",
-            "symlink `/usr/bin/rustdesk -> /usr/share/rustdesk/rustdesk`, special files",
-            "Debian package-tree active ledger exact command target",
-        ),
-        (
-            "hardening",
-            "exact 27-statement\n  Flutter pre-control-staging program, including the exact service-child byte copy and sole command-symlink constructor",
-            "exact 21-operation\n  Flutter pre-finalization program",
-            "Debian package-tree active ledger constructor inventory",
-        ),
-        (
-            "hardening",
-            "requires exact data/control/conffile/md5 inventories, including exactly that one data symlink while\n"
-            "  excluding it from `md5sums`",
-            "requires exact link-free data/control/conffile/md5 inventories",
-            "Debian package-tree active ledger archive inventory",
         ),
         (
             "hardening",

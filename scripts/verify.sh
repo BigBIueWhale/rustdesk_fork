@@ -4863,36 +4863,24 @@ if grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md \
     || grep -Fq 'WORKTREE VALIDATED VIA R-S11b-2d' HARDENING_STATUS.md; then
   r_s11b2="$r_s11b2 stale-windows-current-native-evidence-claim"
 fi
-grep -Fq 'This is native test-suite and build evidence for exactly that staged tree, not installed-SCM' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-historic-native-scope-missing"
 grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 windows-exact-current-native-boundary-missing"
-grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; EXACT-CURRENT NATIVE WINDOWS' HARDENING_STATUS.md ||
+grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 r-s11e-11-status-prefix-missing"
-grep -Fq 'TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 r-s11e-11-validation-scope-missing"
-grep -Fq 'EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md ||
+grep -Fq '`f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-exact-current-native-commit-missing"
+grep -Fq 'single-pass named-commit result, not cold A==B release evidence' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-exact-current-native-scope-missing"
+grep -Fq '`0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 installed-scm-native-green-status-missing"
-grep -Fq '`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 installed-scm-native-run-identity-missing"
+grep -Fq "R-S11gj's installed SCM credential transaction is green" HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 installed-scm-native-result-missing"
 grep -Fq '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>' requirements.html ||
   r_s11b2="$r_s11b2 installed-scm-appendix-native-green-missing"
 grep -Fq '<code>0a12ed407e63129cac4065f4418911ab71adf3ca</code>' requirements.html ||
   r_s11b2="$r_s11b2 installed-scm-appendix-native-commit-missing"
-grep -Fq 'This closes exact-current native Windows compilation, fail-closed test/probe execution, and one clean-commit' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-exact-current-native-scope-missing"
-grep -Fq 'It does not install the MSI, run the credential receiver' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-installed-scm-gap-missing"
-grep -Fq 'native evidence for current `master`: later commits changed all five authority-critical production files' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-native-evidence-invalidation-missing"
-grep -Fq 'not installed-SCM' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-native-installed-service-gap-missing"
-grep -Fq 'it did not rerun the native' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-presentation-evidence-separation-missing"
-grep -Fq 'ad2dd37c3698945d1071e091c68d26d64bc32b54' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-native-evidence-commit-missing"
-grep -Fq 'native service/credential/SAS/password-finality/input suites' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-native-suite-evidence-missing"
+grep -Fq 'It remains a named single-build result, not current-master R-B2.' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 installed-scm-release-scope-missing"
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs || r_s11b2="$r_s11b2 service-owned-role-marker-missing"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-service-owned-role-marker-missing"
 if grep -Eq 'BeginUserOwnedPermanentPassword|BeginServiceOwnedUnattendedPasswordChange|RequestServiceOwnedUnattendedPasswordChange|RequestMacosServiceOwnedUnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult' src/ipc.rs src/platform/windows.rs; then

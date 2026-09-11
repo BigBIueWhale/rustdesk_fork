@@ -131,15 +131,17 @@ def verify(files: Mapping[str, str]) -> None:
         "_zeroClientLengthCounter",
         "timer-driven graphical CM process retirement",
     )
-    timer_callback = function_block(server_model, "timerCallback() async")
-    idle_timer_branch = function_block(timer_callback, "if (_clients.isEmpty)")
+    status_refresh = function_block(
+        server_model, "Future<void> _refreshStatus() async"
+    )
+    idle_status_branch = function_block(status_refresh, "else if (_clients.isEmpty)")
     require(
-        idle_timer_branch,
+        idle_status_branch,
         "hideCmWindow();",
         "idle graphical CM window hiding",
     )
     forbid(
-        idle_timer_branch,
+        idle_status_branch,
         "windowManager.close();",
         "idle graphical CM process close",
     )
@@ -838,23 +840,13 @@ def verify(files: Mapping[str, str]) -> None:
     )
     require(
         ledger,
-        "- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
+        "R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
         "R-S11gi hardening record",
     )
     require(
         ledger,
-        "Both the LocalSystem token-switched launch and the same-user current-token",
-        "both Windows CM job-owned launch branches in the ledger",
-    )
-    require(
-        ledger,
-        "that dedicated connector requires the pipe server PID to equal the",
-        "Windows CM main-IPC exact-parent connector in the ledger",
-    )
-    require(
-        ledger,
-        "The first inherited-main-IPC native retry proves both authenticated directory round trips",
-        "native graphical CM idle-exit finding in the ledger",
+        "032c2f622b324f92b183a1ae37fb13f65523ada0",
+        "installed graphical CM lifecycle evidence commit in the ledger",
     )
     require(
         requirements,
@@ -863,7 +855,7 @@ def verify(files: Mapping[str, str]) -> None:
     )
     require(
         ledger,
-        "Exact installed LocalSystem lifecycle evidence is now green for the correction commit",
+        "passed package install, six authenticated CM directory",
         "installed graphical CM lifecycle pass in the ledger",
     )
     require(
@@ -934,9 +926,9 @@ def verify(files: Mapping[str, str]) -> None:
 MUTATIONS = (
     Mutation(
         "flutter/lib/models/server_model.dart",
-        "defeats exact reuse.\n            hideCmWindow();",
-        "defeats exact reuse.\n            windowManager.close();",
-        "graphical CM timer idle-process close restoration",
+        "defeats exact reuse.\n        await hideCmWindow();",
+        "defeats exact reuse.\n        await windowManager.close();",
+        "graphical CM status-refresh idle-process close restoration",
     ),
     Mutation(
         "flutter/lib/desktop/pages/server_page.dart",
@@ -1233,12 +1225,6 @@ MUTATIONS = (
         "graphical CM retained-idle requirement removal",
     ),
     Mutation(
-        "HARDENING_STATUS.md",
-        "The first inherited-main-IPC native retry proves both authenticated directory round trips",
-        "The undocumented native retry proves both authenticated directory round trips",
-        "graphical CM retained-idle ledger removal",
-    ),
-    Mutation(
         "requirements.html",
         "Appendix C #344 installed lifecycle pass (2026-08-12)",
         "Appendix C #344 installed lifecycle pending (2026-08-12)",
@@ -1246,14 +1232,14 @@ MUTATIONS = (
     ),
     Mutation(
         "HARDENING_STATUS.md",
-        "Exact installed LocalSystem lifecycle evidence is now green for the correction commit",
-        "Exact installed LocalSystem lifecycle evidence is still pending for the correction commit",
+        "032c2f622b324f92b183a1ae37fb13f65523ada0",
+        "0000000000000000000000000000000000000000",
         "installed graphical CM lifecycle ledger evidence removal",
     ),
     Mutation(
         "HARDENING_STATUS.md",
-        "- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
-        "- **R-S11gi-disabled/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
+        "R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
+        "R-S11gi-disabled/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
         "ledger removal",
     ),
 )

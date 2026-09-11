@@ -13163,88 +13163,50 @@ decision; numeric-PID inference is not an acceptable silent fallback.
 
 ### R-S11ht/R-S11e-257 Linux desktop-selector namespace authority
 
-**Status:** SOURCE REPAIR AUTHORED AND SOURCE-GATED / EXACT NATIVE,
-INSTALLED-DESKTOP, CONTAINER-COEXISTENCE, PERFORMANCE, ARTIFACT, INDEPENDENT
-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.
+**State.** The source boundary is present. Exact-current compilation, installed
+desktop and service behavior, hostile namespace coexistence, performance and
+resource bounds, exact artifacts, independent reproduction, and external review
+remain open.
 
-Continuation review of R-S11hs found that its display correction closed only
-the first consumer of the field-confirmed foreign process environment. The
-bounded `DesktopProcessSnapshot` still selected environment candidates by the
-opened `/proc/PID` directory's numeric UID plus a closed but presentation-only
-basename/argv classifier. It imported `XAUTHORITY`, `WAYLAND_DISPLAY`, and
-`DBUS_SESSION_BUS_ADDRESS` without proving that the process which supplied
-those strings saw the same resources as the host supervisor and its service
-child. For X11, a foreign process could name the selected display and thereby
-supply an absolute credential path whose meaning was private to its mount
-namespace. The Wayland/D-Bus branch could import the foreign endpoints
-directly. It also marked `xwayland_running` immediately after basename
-classification, before environment availability or the final UID proof.
+**Boundary.** A selected desktop process may contribute `DISPLAY`,
+`XAUTHORITY`, `WAYLAND_DISPLAY`, or `DBUS_SESSION_BUS_ADDRESS` only when
+the already-opened process directory has the selected UID and its opened
+`ns/mnt` and `ns/net` objects match the supervisor's retained namespace
+objects by device and inode. The same UID and both namespace identities are
+checked before classification and after the complete bounded environment read.
+Missing, inaccessible, foreign, malformed, or changing identity discards the
+record. Xwayland presence commits only after the final proof.
 
-This is the unclosed sibling of the observed `haggai_computer` `kded6` event,
-not a hypothetical process topology: host procfs exposed that same-UID
-container process while the container's X socket did not exist in the host's
-mount namespace. R-S11hs correctly prevents its `DISPLAY=:99` from selecting
-the X endpoint, but a matching-display Xauthority value or a Wayland/D-Bus
-selector still crossed the same boundary. The old snapshot path was introduced
-by `ed76d7ce`; it bounded bytes and made records coherent but did not bind the
-namespace in which their resource names were meaningful.
+The mount namespace is required because filesystem-backed selector paths must
+have the same meaning in the eventual child; the network namespace is required
+because D-Bus may use abstract Unix sockets or network transports. The
+implementation does not substitute process names, PID or namespace-link text,
+pathname equality, cgroup membership, or one matching namespace for both.
+It enters no namespace and grants no process-control authority.
 
-Linux `namespaces(7)` defines an opened `/proc/PID/ns/*` object's device and
-inode pair as the equality test between processes. `mount_namespaces(7)` makes
-the mount namespace the filesystem view, while `network_namespaces(7)` states
-that network namespaces isolate the abstract Unix-domain socket namespace.
-Both are required: Xauthority, X11, Wayland, and pathname D-Bus selectors are
-filesystem-relative, while an admissible D-Bus address may name an abstract
-Unix socket or another network transport. PID, cgroup, user, and IPC namespace
-equality are not substituted. In particular, exact session-scope cgroup
-membership would reject legitimate user-service desktop components without
-proving the interpretation context these strings actually require.
+**Evidence.** Current source retains one bounded process snapshot, descriptor-
+relative process and namespace access, exact namespace-object comparison, and
+pre/post admission. Rust regressions cover bounded/complete parsing, coherent
+service-child identity, current-namespace admission, and independent mount or
+network mismatch refusal. The implementation provenance is
+`305515a5d0b3941fd564f48185cc8feb45c86162`.
 
-The replacement pins the supervisor's current mount and network namespace
-objects once per selected-desktop snapshot. It derives identity only through
-the opened objects' `st_dev` and `st_ino`. Each candidate's fixed `ns/mnt` and
-`ns/net` members are opened relative to the already-opened no-follow process
-directory; following those two kernel-owned proc magic links is intentional so
-the namespace object, not the link inode or text, is compared. Both namespace
-identities and the process-directory UID must match before command-line
-classification and again after the complete environment read. Missing,
-inaccessible, foreign, malformed, or changing namespace state discards that
-record. `xwayland_running` is committed only after the final proof and
-successful full environment observation. There is no name, PID, path,
-readlink-text, cgroup, one-namespace, or compatibility fallback.
+The former 743-line Python verifier and its second mutation-heavy copy in the
+workspace verifier were deleted: both inspected source strings and documentary
+headings, and neither executed a foreign namespace, an installed service, or a
+service child. The live tree retains the Rust regressions and one small
+supplementary source guard for the load-bearing pre/post namespace shape. This
+is source evidence only.
 
-The focused Rust regression proves the current process is admitted and that
-changing either the mount or network identity is refused. The existing bounded
-observation verifier is extended rather than creating a parallel authority:
-it binds the closed two-namespace vocabulary, opened-object identity,
-pre/post checks, Xwayland publication order, compiled-test/shared-gate wiring,
-R-S11ht, Appendix C #379, and this row with deliberate mutations. The
-independent workspace verifier derives the same properties and mutates them
-separately. On 2026-08-28 its final confined baseline and complete in-memory
-workspace mutation catalog, plus the focused verifier's own complete mutation
-set, all returned their terminal `ok` result against the final source,
-requirements, verifier, shared-gate, and ledger bytes. No mutation was waived.
-
-Exact native compilation has no verdict. The Rust 1.75 offline test command was
-run with the source and both host registry-cache identities read-only, with
-Cargo source expansion and target output confined to disposable container
-tmpfs. The union still lacks the locked `crossbeam-epoch 0.9.20` archive, so
-Cargo stopped during offline dependency resolution before compiling this
-source. No network was enabled and no persistent cache or target output was
-created. Rustfmt 1.75 did parse the complete Linux source; its whole-file
-`--check` is not recorded as green because it also reports existing formatting
-differences outside this slice.
-
-This correction does not enter a namespace, inspect or signal the selected
-process, add a retry/cache/timer/task/thread/runtime, change a listener/port or
-transport, add a dependency, change privilege, or broaden a supported mode. It
-does not inspect, stop, restart, modify, or connect to the host RustDesk
-service; inspect or change host firewall/network/listener state; touch an
-Android device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated
-container/image; or request root. Exact native compilation and test execution,
-installed X11/Wayland/Xwayland desktop and container-coexistence behavior,
-observation CPU/memory/latency budgets, clean cold R-B2/R-B10 artifacts,
-independent reproduction, and external review remain open.
+**Open evidence.** Build and install the exact current Debian artifact in
+disposable networkless VMs. Exercise supported supervisors and X11, Xwayland,
+and Wayland sessions with stable same-namespace selector processes plus
+same-UID processes whose mount namespace, network namespace, both namespaces,
+or identity during observation differ. Prove correct child environment and
+desktop selection, Xwayland publication ordering, bounded scan time, CPU,
+memory, and descriptors, service/child restart and cleanup, and noninterference
+with unrelated instances. Cold R-B2/R-B10 equality, independent reproduction,
+and external review remain STOP-SHIP.
 
 ### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry
 

@@ -5506,7 +5506,47 @@ if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environme
 echo "== (3b-iii-d5a) Linux service selected-session observation authority (R-S11ft/R-S11ht/R-S11e-207/R-S11e-257) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e207_ --color never
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e257_ --color never
-python3 scripts/verify-linux-service-session-observation.py --repo . --self-test
+r_s11e257=
+selector_namespaces=$(awk '/struct ProcNamespaceIdentity/,/enum BoundedProcFile/' src/platform/linux.rs)
+desktop_observer=$(awk '/fn observe_desktop_processes\(/,/fn process_basename\(/' src/platform/linux.rs)
+for binding in \
+  'struct ProcSelectorNamespaceAuthority' \
+  '_mount_handle: File' \
+  '_network_handle: File' \
+  'Self::Mount => "/proc/self/ns/mnt"' \
+  'Self::Network => "/proc/self/ns/net"' \
+  'Self::Mount => b"ns/mnt\0"' \
+  'Self::Network => b"ns/net\0"' \
+  'process_selector_namespace_identity(process_dir) == Some(expected)'; do
+  grep -qF "$binding" <<<"$selector_namespaces" || r_s11e257="$r_s11e257 namespace-authority-missing"
+done
+namespace_checks=$(grep -cF 'current_selector_namespaces.identity' <<<"$desktop_observer" || true)
+[ "$namespace_checks" -eq 2 ] || r_s11e257="$r_s11e257 pre-post-namespace-proof-missing"
+for binding in \
+  'budget.charge_numeric_entry()?;' \
+  'budget.charge_selected_process()?;' \
+  'budget.charge_environment_candidate()?;' \
+  'if kind == DesktopProcessKind::Xwayland {' \
+  '.push(DesktopProcessEnvironment { pid, kind, environ });'; do
+  grep -qF "$binding" <<<"$desktop_observer" || r_s11e257="$r_s11e257 bounded-observation-binding-missing"
+done
+if grep -Eq 'read_link|read_to_string|PathBuf' <<<"$selector_namespaces"; then
+  r_s11e257="$r_s11e257 text-or-path-namespace-authority-present"
+fi
+for binding in \
+  'fn r_s11e207_desktop_process_classification_is_exact()' \
+  'fn r_s11e207_proc_observation_rejects_oversized_or_partial_values()' \
+  'fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop()' \
+  'fn r_s11e207_desktop_snapshot_keeps_one_validated_process_environment()' \
+  'fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces()'; do
+  grep -qF "$binding" src/platform/linux.rs || r_s11e257="$r_s11e257 compiled-regression-missing"
+done
+grep -qF '<span class="id">R-S11ft</span>' requirements.html || r_s11e257="$r_s11e257 observation-requirement-missing"
+grep -qF '<tr><td>328</td>' requirements.html || r_s11e257="$r_s11e257 observation-disposition-missing"
+grep -qF '<span class="id">R-S11ht</span>' requirements.html || r_s11e257="$r_s11e257 namespace-requirement-missing"
+grep -qF '<tr><td>379</td>' requirements.html || r_s11e257="$r_s11e257 namespace-disposition-missing"
+if [ -n "$r_s11e257" ]; then echo "  FAIL R-S11e-207/R-S11e-257 Linux selected-session observation:$r_s11e257"; rc=1; else
+  echo "  ok  R-S11e-207/R-S11e-257 compiled regressions plus a focused source guard retain bounded exact-UID mount/network-namespace observation; installed behavior remains a separate native gate"; fi
 
 # (3b-iii-d6) R-S11m/R-S11e-27: Linux service-owned roles do not inherit pathname
 # authority from a manual/sudo/init launcher working directory. Custom-client sidecars

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-1c5471693891fc45aaea25bfda3eb421ba874ba8ebadc8df50046f074f136202  requirements.html
+868366503d6e72f8fe0e4eeed98fdf320bc04e3da7e3f939abd2f1c178ddad33  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,14 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk and required
+disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated
+listener source-wording verifier, and removed its 441-line duplicate workspace validator/mutation
+plumbing. The executable three-test lifecycle module and the small shared JNI/rebuild source guard
+remain. Exact-source Rust 1.75 execution proves the pure phase-machine edges only. The full workspace
+catalog still fails identically on clean `HEAD` and this tree at a separate obsolete Android entry-point
+selector; current APK/device behavior and broader verifier cleanup remain open.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -552,20 +560,19 @@ replacement. Every controlled register/update/remove/clear and playback-projecti
 that exact generation. Outgoing viewer voice remains a separate exact session/generation domain.
 R-S11ek and Appendix C #290 own the complete contract.
 
-**R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership — SOURCE
-IMPLEMENTED; DEVICE EVIDENCE OPEN.** Native generation begin, exact deactivation, and network-change
-rebuild admission share one serialized lifecycle state containing active generation and its checked
-rebuild epoch. Kotlin publishes the exact positive generation cross-thread and passes it through JNI;
-stale, zero, superseded, or exhausted operations cannot increment or rebind a replacement listener.
-The listener observes generation and epoch in one snapshot. `MainService.onDestroy` releases controlled
-capture resources and deactivates its exact listener generation before queued callback drain.
-R-S11el and Appendix C #293 own the product contract.
-
-**R-S11el/R-S11e-173 Android listener lifecycle verifier integration — SOURCE-ONLY ALIGNMENT;
-PRODUCT RUNTIME UNCHANGED.** The desktop lifecycle verifier now selects the exact serialized-generation
-snapshot, and the shared R-T13 proof selects the adjacent rebuild `listener = None`/`continue` transition
-instead of an earlier initialization substring. Appendix C #294 records this verifier correction. It is
-not product, listener, package, or device evidence.
+**R-S11el/R-S11e-172 exact MainService-generation Android listener and worker ownership — SOURCE
+IMPLEMENTED; DEVICE EVIDENCE OPEN.** `AndroidListenerOwner` serializes one explicit
+`Inactive → Reserved → Starting → Active → StopRequested → Exited → Inactive` lifecycle with the
+checked generation/rebuild epoch and the exact native worker `JoinHandle` plus cancellation token.
+Activation is not released until the worker is registered; stop cancels only the matching worker;
+replacement is refused until exit and convergence; and zero, stale, wrong-phase, or exhausted rebuilds
+cannot alter replacement state. Kotlin publishes the exact positive generation cross-thread, JNI proves
+the exact retained `MainService` object, and the listener observes only an active exact-generation epoch
+snapshot. The three executable Rust state-machine tests cover stale replacement callbacks, registration
+and convergence ordering, invalid/exhausted edges, and thread-start failure. These tests prove the pure
+native owner model only—not JNI/Android lifecycle, socket cleanup, reconnect, or device behavior. Current
+APK installation and network-change/Stop/task-swipe/Force-Stop/reopen/replacement/resource testing remain
+open under the global matrix. R-S11el and Appendix C #293 own the product contract.
 
 **R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership — SOURCE
 IMPLEMENTED; DEVICE EVIDENCE OPEN.** One serialized monotonic owner binds the process-global raw-video

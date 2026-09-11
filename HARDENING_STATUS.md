@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-81ae95b077c5ca6c5b482d5d4030beb6eee7fd819fb754c7f88b82de03ade34d  requirements.html
+173c60c79ba6995214b3dc717126d1fb6aac989859a262335b4c5ce8199e48a3  requirements.html
 ```
 
 ## Current Verdict
@@ -11302,83 +11302,69 @@ unbounded resource and freshness boundary shared by every platform:
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
-**SOURCE IMPLEMENTED; EXACT-CURRENT RUST/NATIVE EXECUTION, PHYSICAL LIFECYCLE/PERFORMANCE,
-COLD-RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platforms:
-shared Android, iOS, Windows, Linux, and macOS viewer/controlled transport. Surface: ordinary and
-receipt-bearing post-CPace sends through `libs/hbb_common/src/tcp.rs::FramedStream`, the bounded
-`WriterCommand` FIFO, and its sole split-sink writer task. Boundary: producer-owned plaintext and
-send nonce -> exact active/queued ciphertext ownership -> socket sink finality.
+**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED; SOURCE/MUTATION
+THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT, AND EXTERNAL EVIDENCE OPEN.**
+Platforms: shared Android, iOS, Windows, Linux, and macOS viewer/controlled transport. Surface:
+ordinary and receipt-bearing post-CPace sends through `FramedStream`, its bounded `WriterCommand`
+FIFO, and the sole split-sink writer task.
 
-Read-only source/history review proved that R-T3's writer task, introduced by `53bc0e1c`, bounded
-only the Tokio channel to 512 commands. `mpsc::Receiver::recv` returns that channel capacity as soon
-as the writer dequeues a command, before `sink.send` finishes, so one blocked active ciphertext was
-outside the stated count. The path had no retained-byte budget. Both keyed send variants called
-`SealCipher::seal` before `try_send`, allocating ciphertext and advancing the nonce before any
-backpressure decision. `BytesCodec::encode` enforces only the roughly 1 GiB wire representation;
-the engaged `max_packet_length` ceiling was receive-only. A plaintext beyond the post-secretbox
-32 MiB ceiling could therefore be sealed locally and rejected only by the peer, while 512 legal
-ceiling-sized queued frames represented approximately 16 GiB of logical ciphertext retention per
-connection before allocator/channel/host limits intervened. The inherited comment that sizes were
-server-generated and encoder-bounded was false: this shared writer carries video, file, clipboard,
-tunnel, screenshot, and control traffic, including peer-influenced production. Reconnect/drop
-destroyed the retained writer state. This is a source-proven shared resource/backpressure/finality
-defect consistent with cleanup-mediated recovery, not proof that the unidentified weeks-old
-Android, Windows, or Debian artifacts contained or exercised it and not a causation claim for the
-reported display-only delay.
+The inherited defect was real: the 512-command Tokio channel returned capacity when the writer
+dequeued a frame, before `sink.send` completed, leaving the active ciphertext outside its stated
+count. There was no retained-byte budget, and both keyed send paths sealed and advanced their nonce
+before discovering backpressure or enforcing the engaged 32 MiB session ceiling. This shared path
+carries media, file, clipboard, tunnel, screenshot, and control traffic. The mechanism is consistent
+with cleanup-mediated recovery, but source review does not establish that an unidentified deployed
+artifact exercised it or that it caused the reported display delay.
 
-R-T18 replaces the count-only assumption with one `WriterAdmission` created from the exact codec
-ceiling engaged at keying. Before either keyed seal, it checked-adds secretbox `MACBYTES`, rejects
-overflow/unrepresentable/oversized plaintext, and nonblockingly acquires one of exactly 512
-active-plus-queued frame permits plus the exact ciphertext length from a two-engaged-packet byte
-budget. The two owned semaphore permits travel in `WriterFrameReservation` inside the exact
-`WriterCommand::Frame` and remain live across the sole `sink.send`, independent of the mpsc
-channel's dequeue capacity. Successful flush releases the reservation before its exact receipt.
-On sink failure the `Framed` sink is dropped first so encoded bytes cannot outlive their budget;
-then the reservation and receipt retire. Send, tracked-send, writer-drain, and receive failure all
-use `poison_and_retire_writer`, which closes admission and aborts the exact writer. Hard stream drop
-performs the same close-before-abort ordering, so the active command and receiver-owned queue
-release all reservations without depending on a later connection-loop branch. Sealing remains on
-the one producer after admission, the existing FIFO and sole writer remain unchanged, and no
-retry, reconnect, timer, poller, task, thread, runtime, listener, port, dependency, privilege
-transition, alternate transport, or Android persistent-service change was added.
+The current design creates one `WriterAdmission` from the exact codec ceiling at keying. Before
+sealing, both keyed send paths checked-add secretbox `MACBYTES`, reject overflow and oversize, and
+nonblockingly reserve one of 512 active-plus-queued frame permits plus exact ciphertext bytes from
+a two-maximum-packet budget. Those owned permits travel in `WriterFrameReservation` through the
+sole sink await. Sink failure drops encoded sink state before releasing the reservation; all fatal
+send, drain, receive, admission, and hard-drop paths close admission before aborting the exact
+writer. No retry, reconnect, alternate writer, queue, timer, task, runtime, listener, dependency,
+privilege transition, or Android persistent-service change is part of this design.
 
-Deterministic Rust regressions in `tcp.rs` bind checked overflow and oversize refusal without permit
-consumption, exact 512-frame exhaustion/recovery, exact two-packet byte exhaustion/recovery, a
-backpressured `duplex(1)` writer whose mpsc capacity is already returned while its active count/byte
-permits remain owned, active-plus-queued permit recovery after fatal abort, no peer nonce advance
-or frame delivery for oversized plaintext, exact receipt lifetime, and sink-failure release. The
-focused `scripts/verify-keyed-writer-budget.py` validator and its deliberate mutations bind both
-send paths' reserve-before-seal order, engaged-ceiling construction, nonblocking owned permits,
-writer success/failure lifetime, poison/drop finality, regressions, documentation, requirements,
-digest, and shared/Apple/independent wiring. `scripts/verify-verifier-workspace.py` independently
-parses the same source owners and carries its own source-mutation catalog rather than trusting the
-focused result. In the immutable local verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-mounted read-only with no network, all capabilities dropped, no-new-privileges, a non-root numeric
-user, and bounded CPU/memory/PIDs/tmpfs, the focused keyed-writer gate rejected all 25 mutations;
-the adjacent controlled-egress and display-finality gates rejected 51 and 186 mutations; the
-Android ownership cross-check rejected all 534 of its mutations after its stale current-source
-fixtures and duplicate wake targets were made exact; and the independent baseline passed. One
-uninterrupted `/usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .
---source-mutations-only` execution passed the complete independently parsed 4,508-entry catalog.
-Shell syntax for the changed shared and Apple entry points and `git diff --check` also passed.
+Four executable Rust regressions remain in `libs/hbb_common/src/tcp.rs`:
 
-This is source evidence, not native or release evidence. The exact pinned Debian builder
-`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`, Apple verifier
-`sha256:1845e16ca1b255cc41dc57736b50263304937699d5e23e1353b843c00a2ea15f`, and dev-check
-`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` images were absent;
-the confined verifier contains neither Cargo nor rustfmt. No image was pulled, built, or tagged,
-no host Rust command was run, and no Rust/native compilation or behavior test is claimed. No host
-RustDesk process/configuration, service, listener, port, firewall, network namespace, VM, unrelated
-workload, or privilege boundary was inspected or changed.
+- `r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership`
+- `r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort`
+- `r_s11gx_failed_drain_retires_writer_admission`
+- `r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery`
 
-Remaining closure is unchanged and explicit: exact-current Rust/native execution on every
-supported target; physical Android task-swipe/reopen/Force-Stop and Windows focus/minimize
-reproduction; Linux/macOS/iOS and cross-version behavior; capture-through-compositor timestamps and
-explicit latency budgets; sustained reconnect/focus/backpressure/resource/performance soak; clean
-cold R-B2/R-B10 equality and exact installed artifacts/service behavior; independent reproduction;
-R-V3 external review; causation of the reported operational delay; and proof that the complete
-connection flow remains correct and performant.
+The shared gate retains the direct command
+`cargo test -p hbb_common --lib r_s11gx_ --color never`. This is the relevant executable regression
+entry point; its actual execution remains an evidence obligation and is not inferred from source.
+
+The deleted `scripts/verify-keyed-writer-budget.py` was a 456-line source parser with 25 textual
+mutations. It never invoked Cargo or Tokio, opened a socket, created backpressure, exercised a sink,
+or observed nonce, delivery, latency, memory, task, or handle finality. The duplicate keyed-writer
+parser, mutation catalog, dispatch, source-map entry, and adjacency fixtures were removed from
+`scripts/verify-verifier-workspace.py`; shared and Apple calls to the deleted focused parser were
+removed, and adjacent verifier fixtures were made exact. R-T18, R-S11gx, and Appendix C #359 now
+state that these source/mutation/script-wiring checks are not behavioral evidence.
+
+No product source changed in this cleanup slice. On the final pre-commit bytes, the immutable local
+inspection image `sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`
+ran as numeric non-root with no network, no capabilities, no-new-privileges, a read-only repository,
+and bounded CPU, memory, PIDs, and tmpfs. All 125 Python scripts passed AST parsing;
+`requirements.html` and the three changed/shared shell entry points parsed; the independent
+workspace baseline passed; and the exact changed adjacency mutation in each surviving CM egress,
+controlled egress, and display-selection verifier was rejected. Native-codec binding passed, the
+ledger measured 1,117,479 UTF-8 bytes / 372,493 estimated tokens, `git diff --check` passed, and the
+host listener snapshot remained byte-identical at
+`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4` before and after. The
+inspection image has no Cargo, and the exact pinned dev-check image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` is absent. No image was
+pulled or built, no host Rust command ran, and no Rust/native or product behavior is claimed.
+
+Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
+real `FramedStream` socket backpressure, sink-failure, drain, abort, nonce/non-delivery, latency, and
+retained-resource observation; physical Android task-swipe/reopen/Force-Stop and Windows focus/
+minimize reproduction; Linux/macOS/iOS and cross-version behavior; sustained reconnect/focus/
+backpressure/resource/performance soak; cold R-B2/R-B10 artifact equality and installed behavior;
+independent reproduction; R-V3 external review; causation; and proof that the complete connection
+flow is correct and performant.
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 

@@ -11384,12 +11384,6 @@ else
   echo "  FAIL R-S11gw: controlled-side service egress regained unbounded, reordered, oversized, silently dropped, or stranded state"
   rc=1
 fi
-if python3 scripts/verify-keyed-writer-budget.py --repo . --self-test; then
-  echo "  ok  R-S11gx keyed writer admission owns exact active-plus-queued frame and ciphertext budgets before seal"
-else
-  echo "  FAIL R-S11gx: keyed writer regained oversize pre-seal allocation, count/byte retention, active-frame, or abort-finality debt"
-  rc=1
-fi
 if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
   echo "  ok  R-S11gy/R-S11is connection-manager results are bounded and every CM file response is exact-command-final"
 else

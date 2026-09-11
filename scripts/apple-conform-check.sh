@@ -4937,14 +4937,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2ac) R-S11gx exact keyed-writer count-and-byte ownership =="
-if python3 scripts/verify-keyed-writer-budget.py --repo . --self-test; then
-  note "ok  R-S11gx Apple/shared keyed writer admission is pre-seal, exact-byte, active-frame-owned, and abort-final"
-else
-  echo "  FAIL R-S11gx Apple/shared keyed writer regained oversize pre-seal allocation, count/byte retention, active-frame, or abort-finality debt"
-  rc=1
-fi
-
 echo "== (2g-c2ad) R-S11gy/R-S11is bounded connection-manager result and exact file-response ownership =="
 if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
   note "ok  R-S11gy/R-S11is Apple/shared connection-manager results are bounded and every CM file response is exact-command-final"

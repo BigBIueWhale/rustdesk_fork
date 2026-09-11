@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R-S11as/R-S11e-59 desktop IPC readiness and retained-owner verifier."""
+"""Focused desktop controlled-server and local-IPC lifecycle source invariant."""
 
 from __future__ import annotations
 
@@ -47,10 +47,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "direct": "src/direct_service.rs",
         "ipc": "src/ipc.rs",
         "common": "src/common.rs",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
-        "verify": "scripts/verify.sh",
-        "apple": "scripts/apple-conform-check.sh",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -250,8 +246,9 @@ def validate(sources: Dict[str, str]) -> None:
             "outcome = ipc_completion",
             "ControlledServerStartupEvent::DesktopIpcReady(Ok(()))",
             "let mut direct_listener = server.map(|server|",
+            "let listener_cancellation = shutdown.clone();",
             "tokio::spawn(async move",
-            "direct_server(server, None).await;",
+            "direct_server(server, None, listener_cancellation).await;",
             "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
             "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
             "outcome = wait_for_direct_listener_task(&mut direct_listener)",
@@ -355,28 +352,6 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "desktop worker transfer to lifecycle owner",
     )
-    require(server, "start_direct_only(Some(generation)).await;", "Android generation transfer")
-    if start.count(
-        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {"
-    ) != 2:
-        raise VerificationError("both Android exact active-generation teardown checks are absent")
-    absent(
-        start,
-        "android_generation_current(my_generation)",
-        "obsolete Android generation teardown",
-    )
-    require(start, "assert_startup_invariants()", "mobile shared-process invariant refusal")
-
-    for source, needle, label in (
-        (sources["requirements"], '<span class="id">R-S11as</span>', "R-S11as requirement"),
-        (sources["requirements"], "Desktop local IPC readiness, completion, and native-thread lifetime have one retained owner", "R-S11as title"),
-        (sources["requirements"], "<tr><td>167</td>", "Appendix C #167"),
-        (sources["requirements"], "Desktop authority-bearing IPC started before mandatory invariants", "Appendix C #167 disposition"),
-        (sources["hardening"], "R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership", "R-S11e-59 ledger"),
-        (sources["verify"], "desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59)", "shared source gate"),
-        (sources["apple"], "desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59)", "Apple source gate"),
-    ):
-        require(source, needle, label)
 
 
 Mutation = Tuple[str, str, str, str]
@@ -385,7 +360,7 @@ Mutation = Tuple[str, str, str, str]
 MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "crate::direct_service::assert_startup_invariants()", "crate::direct_service::assert_startup_invariants_after_admission()", "pre-admission invariants"),
     ("server", "crate::direct_service::start_direct_only(shutdown_signals).await;", "std::thread::spawn(|| crate::ipc::start(\"\"));\n        crate::direct_service::start_direct_only(shutdown_signals).await;", "detached IPC spawn absence"),
-    ("ipc", "let thread = std::thread::Builder::new()", "let thread = std::thread::spawn(move || {});\n    //", "fallible worker creation"),
+    ("ipc", "let thread = std::thread::Builder::new()\n        .name(\"rustdesk-desktop-ipc\".to_owned())", "let thread = std::thread::spawn(move || {});\n    //", "fallible worker creation"),
     ("ipc", '.name("rustdesk-desktop-ipc".to_owned())', '.name("ipc".to_owned())', "named worker"),
     ("ipc", '#[tokio::main(flavor = "current_thread")]\nasync fn run_desktop_ipc(', "#[tokio::main]\nasync fn run_desktop_ipc(", "single current-thread runtime"),
     ("ipc", "readiness.send(Ok(()))", "readiness.send(Err(\"not ready\".to_owned()))", "successful all-listener readiness"),
@@ -395,6 +370,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("ipc", "    password_mutations().clear_after_transactions_drain();\n    drop(listener_guard);\n    match listener_error", "    password_mutations().clear_after_transactions_drain();\n    match listener_error", "main guard before return"),
     ("ipc", "async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {", "async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {\n    crate::server::finish_graceful_shutdown().await;", "main IPC finalizer absence"),
     ("direct", "readiness = ipc_readiness", "readiness = std::future::pending()", "readiness observation"),
+    ("direct", "let listener_cancellation = shutdown.clone();", "let listener_cancellation = hbb_common::tokio_util::sync::CancellationToken::new();", "public listener process-cancellation ownership"),
     ("direct", "outcome = ipc_worker.wait_for_completion()", "outcome = std::future::pending()", "IPC completion observation"),
     ("direct", "worker.join().await", "Ok(())", "exact native join"),
     ("direct", "crate::server::finish_graceful_shutdown().await", "crate::server::begin_graceful_shutdown().await", "sole finalizer call"),
@@ -403,11 +379,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("common", "static ref IS_SERVER:", "static ref SERVER_RUNNING: bool = false;\n    static ref IS_SERVER:", "server-running state absence"),
     ("ipc", 'listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());\n                        crate::server::request_graceful_shutdown_after_listener_failure();', 'listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());', "Linux service credential listener fatal latch"),
     ("ipc", 'listener_error = Some("protected macOS service credential IPC listener ended unexpectedly".to_owned());\n                        crate::server::request_graceful_shutdown_after_listener_failure();', 'listener_error = Some("protected macOS service credential IPC listener ended unexpectedly".to_owned());', "macOS service credential listener fatal latch"),
-    ("requirements", '<span class="id">R-S11as</span>', '<span class="id">R-S11az</span>', "R-S11as requirement"),
-    ("requirements", "<tr><td>167</td>", "<tr><td>9167</td>", "Appendix C #167"),
-    ("hardening", "R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership", "R-S11e-59 — detached desktop IPC", "R-S11e-59 ledger"),
-    ("server", "start_direct_only(Some(generation)).await;", "start_direct_only(None).await;", "Android generation boundary"),
-    ("direct", "_ = sleep(1.) => {\n                        if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {", "_ = sleep(1.) => {\n                        if android_listener_lifecycle_snapshot(0).is_none() {", "Android exact active-generation teardown"),
     ("ipc", "    protected_service_ipc_result(listener_error)\n}", "    crate::server::finish_graceful_shutdown().await;\n    protected_service_ipc_result(listener_error)\n}", "protected service finalizer absence"),
 )
 

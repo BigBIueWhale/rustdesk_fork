@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-868366503d6e72f8fe0e4eeed98fdf320bc04e3da7e3f939abd2f1c178ddad33  requirements.html
+cb4bfa8542f77c76a1a44c2c586de192a4a0e572f90b69f1a3cf67118c13b809  requirements.html
 ```
 
 ## Current Verdict
@@ -67,9 +67,18 @@ The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk 
 disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated
 listener source-wording verifier, and removed its 441-line duplicate workspace validator/mutation
 plumbing. The executable three-test lifecycle module and the small shared JNI/rebuild source guard
-remain. Exact-source Rust 1.75 execution proves the pure phase-machine edges only. The full workspace
-catalog still fails identically on clean `HEAD` and this tree at a separate obsolete Android entry-point
-selector; current APK/device behavior and broader verifier cleanup remain open.
+remain. Exact-source Rust 1.75 execution proves the pure phase-machine edges only; current APK/device
+behavior and broader verifier cleanup remain open.
+
+R-S11ap–R-S11as and Appendix C #164–#167 now state timeless desktop lifecycle requirements and required
+installed scenarios instead of implementation history and verifier receipts, reducing `requirements.html`
+by 5,976 bytes. The focused desktop lifecycle source invariant was narrowed by 29 lines/2,075 bytes to the
+actual product ownership paths, while its 1,210-line/50,029-byte duplicate validator and mutation layer was
+deleted from the workspace verifier. No product source changed in this cleanup. The focused check protects
+source topology only; exact installed lifecycle, failure-injection, cleanup, and resource evidence remains
+open below. A confined normal workspace-catalog run passes the synchronized requirements identity and the
+deleted desktop duplicate layer, then stops at an unrelated stale Android CM source signature
+(`pub fn start_channel(`); R-S11bg's current full-gate and independent-image obligations remain open.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -855,6 +864,16 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full-gate rerun and a fresh independent rebuild of its recoverable verifier image. Long mutation catalogs are integration checkpoints, not the ordinary development loop. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
+
+**R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
+NATIVE EVIDENCE OPEN.** `src/server.rs`, `src/direct_service.rs`, and `src/ipc.rs` perform startup
+invariant and signal setup before admission, create one fallible named native IPC worker, wait for all
+required local-listener readiness before starting the public listener, observe cancellation/signal/public-
+listener/IPC completion in one owner, and join the exact listener and IPC thread before the sole non-returning
+desktop finalizer. Protected Linux/macOS service IPC instead drains and returns its outcome to its foreground
+owner. The focused source invariant guards that topology and R-S11e-58 has a pure returned-outcome regression;
+neither proves the installed setup/failure/stop/restart/drain/exit/resource scenarios required by the OPEN
+matrix.
 
 ### Source closure and supersession index
 

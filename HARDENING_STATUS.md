@@ -994,388 +994,74 @@ Final owner close remains terminal and cannot be reversed by a queued reconnect.
 viewer core used by Android, desktop, iOS, and future macOS builds; only the generation/UUID layer and persistent
 foreground-service amplification are Android-specific.
 
-Observation and explicit user mandate (2026-07-30),
 **OPEN — cross-platform focus-loss display latency and end-to-end connection correctness/performance audit.**
-The user now reports the same broad display symptom from a Windows outgoing viewer: after the client goes out
-of focus, display operations can lag by up to roughly ten seconds; remote control/input remains responsive, and
-only reconnecting clears the display delay. This is therefore not Android-only and does not point specifically
-to Android's persistent controlled-side `MainService`. The observed Windows desktop client and Debian
-controlled-side server predate the entire approximately nineteen-day continuous Ralph/Codex hardening loop, not
-merely its latest few slices. They therefore omit every change made during that loop. The observation is evidence
-about that older operational snapshot only: it does not establish that current `master` contains the identical
-behavior, that work performed during the loop introduced it, that an intervening correction failed, or that any
-particular present-source mechanism is causal. The split between responsive control and delayed display is
-evidence only that the control and media/display planes can diverge; viewer
-focus/visibility throttling, capture cadence, encoder scheduling, transport backpressure, decoder queueing,
-frame publication, and renderer scheduling remain hypotheses until measured. Reconnect is a state-reset clue,
-not an acceptable recovery design or proof of which state was stale.
 
-The user's explicit direction is broader than these complaints: the complete connection flow must be correct
-and performant in general, across supported viewer and controlled platforms, rather than patched only for the
-reported Android/Windows manifestations. Future work must audit connection admission, exact-round ownership,
-initial establishment, focus/visibility and foreground/background transitions, display-topology changes,
-capture/encode/send/receive/decode/render scheduling, bounded queues and frame-drop/backpressure policy,
-control/media independence, reconnect/replacement, network transitions, error publication, and final worker
-drain. A reconnect must neither be required to recover timely display nor hide leaked/stale state. Correctness
-includes exact authority and resource finality; performance includes explicit queue/latency bounds, prompt
-supersession of obsolete frames, no unbounded wait or polling cadence, and no focus-driven starvation after the
-viewer becomes active again.
+**Observed behavior and evidence boundary.** An older Windows outgoing viewer was reported to develop up to roughly
+ten seconds of display delay after losing focus while remote input remained responsive; reconnect cleared the delay.
+An older Android outgoing viewer could similarly retain a bad screen-control state across task swipe/reopen until
+Android Force Stop destroyed the persistent process, while file transfer still worked. The Windows viewer and Debian
+controlled-side artifacts predate the long hardening loop, and no exact commit or artifact manifest has been identified.
+These reports prove neither a current-`master` regression nor one cause. They show that control and display planes can
+diverge and that wholesale state replacement masks the fault; they do not implicate Android's intentionally persistent
+controlled-side `MainService`, prove exploitation, or establish any host/service/network modification.
 
-Closure requires first identifying the exact older client/server commits or artifact manifests used for the
-observation, reproducing with timestamped current and older builds, and instrumenting monotonic timestamps and
-queue depths at every media boundary so capture, encoding, network transit, decode, frame publication, and
-render delay can be separated from control-message latency. Source/history review must compare all platform
-focus/visibility hooks and every timeout, debounce, sleep, polling loop, bounded channel, frame coalescer, and
-decoder/render reset path; it must not assume that a ten-second observation corresponds to a similarly named
-constant. Regression evidence must cover sustained focus loss and recovery without reconnect, repeated
-focus/unfocus, simultaneous responsive input with delayed/healthy video, congestion/backpressure, reconnect,
-and teardown on at least the relevant Windows-viewer/Debian-controlled and Android-viewer paths, with shared-core
-tests extended to other platforms where the same code compiles. Measurable latency/queue budgets, current
-artifact identity, separately repeatable reproduction, and external review remain open. R-S11eb and the
-outgoing-worker entries above provide lifecycle foundations but are not claimed to close this newly observed
-display-performance problem.
+The binding product requirement is broader than either report: the complete connection flow must be correct and
+performant across every supported viewer and controlled platform. Focus, visibility, foreground/background, task,
+display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,
+fresh presentation, bounded resources, and final ownership without requiring reconnect as a recovery mechanism.
 
-Source/history result (2026-07-31), **one shared viewer-video defect is proven, but the end-to-end mandate
-remains OPEN.** Commit `edc8a3b` changed the decoder channel from unbounded to capacity eight while retaining
-non-key frames in a separate 120-frame `ArrayQueue`. A producer retained each frame before it attempted a
-nonblocking `VideoQueue` wake-token send. When that channel was full, the token was dropped but the frame
-remained; the decoder popped exactly one frame per surviving token. After a stall, equal producer/consumer
-rates could therefore leave a stable tokenless backlog. At one frame per second, the eight-channel-entry
-offset is directly consistent with roughly eight seconds of delayed display. Keyframes bypassed the frame
-queue through the same bounded channel, control/input used another plane, and reconnect destroyed both
-structures. This is a source-proven shared viewer-core defect and a strong causal candidate, not proof that
-the unidentified operational Windows/Android builds contain it or that it caused either observed incident.
+### Current source disposition — not native closure
 
-R-S11ev/R-S11e-183 replaces that split store/token protocol with one directly consumable bounded video
-mailbox, explicit GOP generations, leading-keyframe recovery, a one-second receive-through-decode freshness
-budget, and symmetric endpoint/worker finality. Confined Linux and Android Rust compilation and deterministic
-state-machine tests can establish those source invariants without touching a host service or listener. They
-cannot establish Windows focus recovery, Android task-swipe/Force-Stop behavior, renderer scheduling, or
-end-to-end latency. The exact artifact identity, timestamped Windows-viewer/Debian-controlled and
-Android-viewer device matrix, media-boundary instrumentation, native Windows build, cold release,
-independent reproduction, and external review below remain release blockers.
+Normative behavior and detailed mechanics live in the named requirements and Appendix C rows; dedicated status entries
+hold any still-useful implementation detail. The following is current source disposition, not evidence that a packaged
+client presented timely pixels on a target OS.
 
-Follow-up source correction (2026-09-11), **Windows first-video CPU-hint startup ownership; native evidence
-OPEN.** The imported viewer path started its first Windows decoder worker, spawned a second OS thread from that
-worker, synchronously joined it, and constructed a new current-thread Tokio runtime solely to read the main
-process's CPU hint. The join result and IPC failure were discarded. Current upstream RustDesk still has that
-shape. It is unnecessary startup/resource debt on the first-frame path, but neither source inspection nor the
-available evidence establishes it as the cause of the reported multi-second focus-loss delay.
+| Requirement | Current source disposition |
+| --- | --- |
+| R-S11ev/R-S11e-183, Appendix C #304 | The source-proven split 120-frame store/eight-token decoder protocol could retain tokenless old frames indefinitely while input stayed responsive; reconnect destroyed the backlog. It is replaced by one directly consumable capacity-eight, generation/GOP-aware mailbox with a one-second receipt-through-decode freshness bound and exact endpoint/worker finality. R-S11fn and R-S11fo subsequently close decoder-control and endpoint-loss continuation. This is a strong causal candidate, not artifact-specific causal proof. |
+| R-S11eb/R-S11e-146, Appendix C #281 | Mobile Activity/isolate ownership is distinct from a fresh exact outgoing-connection UUID. Replacement drains prior mobile connections; route, event, frame, cursor, file, timer, input, and delayed cleanup work is exact-session guarded. The persistent Android controlled service is intentionally unchanged. |
+| R-S11ec/R-S11e-147, Appendix C #282 | Outgoing clipboard lifetime is owned by exact network-round leases and one retained worker handle, independent of UI-registry presence; replacement waits for predecessor drain. |
+| R-S11ed/R-S11e-148, Appendix C #283 | Delayed OS-password input is an exact-round owned async task using only the admitting round's sender; every replacement/exit aborts and awaits it before round completion. |
+| R-S11ee/R-S11e-149, Appendix C #284 | Viewer screenshot bytes and monotonic request IDs are exact session/request owned; the process-global cache and stale-response selection are absent. |
+| R-S11ef/R-S11e-150, Appendix C #285 | Controlled screenshot requests are exact connection/channel owned and bounded; one retained bounded encoder replaces detached per-response threads. |
+| R-S11eg/R-S11e-151, Appendix C #286 | Controlled video completion is exact source/display/generation/connection state without a shared unbounded acknowledgement queue or per-wait runtime; R-S11fb supplies the superseding sole-writer completion boundary. |
+| R-S11eh/R-S11e-152, Appendix C #287 | Each exact real-time audio subscriber has a constant-size format/latest-frame/wake mailbox consumed by the connection writer; unbounded intermediate audio queues are absent. |
+| R-S11ei/R-S11e-153, Appendix C #288 | Android controlled input carries exact service-generation/Remote-connection ownership through JNI, uses bounded retained drains, and retires exact work without killing the persistent service. This is the controlled-Android path, not the reported outgoing-viewer path. |
 
-The decoder worker now begins directly with its mailbox. For Remote and View Camera only, the already-existing
-asynchronous connection owner shares one process-wide Tokio `OnceCell` initialization and polls it concurrently
-with the network connection attempt. The initialization performs the optional main-IPC read under one outer
-50-ms asynchronous deadline, updates the hint on a valid response, and visibly logs failure before using the
-existing one-thread fallback. It creates no task, thread, runtime, queue, retry, listener, service transition,
-or network endpoint. File transfer, terminal, port-forward, and RDP do not perform the read. Cancellation before
-initialization completes leaves the cell uninitialized; later completion, including an explicitly logged IPC
-failure, consumes the one startup attempt. The prior decoder-side helper, nested runtime attribute, spawn, join,
-and ignored result are deleted.
+The later dedicated entries R-S11eu through R-S11fc, R-S11ff, R-S11fk through R-S11fp, and R-S11fr through
+R-S11fs cover Android video-generation ownership, viewer and controlled video flow, Flutter software/native
+presentation, resume/re-notification, exact peer receipts, shared capture pacing, decoder control/finality, and pointer-
+evidenced recovery. Their source/model gates do not replace the native matrix below; R-S11fk and R-S11fl remain
+explicitly PARTIAL / RELEASE-BLOCKING.
 
-The checked-in connection-type regression covers all six connection types. Exact native Windows compilation,
-installed main-IPC success/absence/failure and concurrent-start execution, thread/handle observations,
-first-presented-frame timing, focus/minimize recovery without reconnect, artifact binding, and the broader
-cross-platform connection correctness/performance matrix remain open. The pinned Windows golden image and its
-provisioning inputs are absent from the current workspace and no Windows libvirt domain exists, so this entry
-does not substitute Linux parsing or source assertions for that missing evidence.
+The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
+join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization
+from the existing async connection owner, concurrent with connection establishment, with one outer 50-ms main-IPC
+deadline and visible fallback logging. The checked-in connection-type regression covers all six connection types.
+Current native Windows IPC success/failure/concurrency, thread/handle, first-presented-frame, and focus/minimize evidence
+remains open; this source debt is not claimed as the delay's cause.
 
-Follow-up correction (2026-07-27), **mobile Activity owner versus exact connection identity**: the prior
-Activity/isolate generation closure still inherited a subtler identity collapse. The isolate-wide UUID registered
-with `MainActivity` was also the `SessionID` reused by every successive outgoing route. Flutter does not await an
-asynchronous `State.dispose()`, and the global mobile `FFI` model is reused. An old route could dispatch its early
-`sessionClose`, suspend during later UI cleanup, and resume after a replacement same-peer/type route had started
-under the same UUID. That stale close could therefore select the replacement; a delayed old stream could likewise
-observe the global model after `start()` cleared its `closed` flag. The existing exact worker join made selected
-teardown complete, but did not make selection itself unambiguous.
+Two unrelated verifier diary entries formerly embedded here are reduced to current redirects. The
+R-S11ej/R-S11e-154 current release target-contract authority is source-aligned, while the clean committed R-B2/R-B10
+transaction remains open (Appendix C #289). The R-S11cr/R-S11e-110 archive-specific PID mutation authority is subsumed
+by the canonical R-S11cr Android SDK acquisition/publication entry; corrected disposable acquisition, cold release,
+device evidence, independent reproduction, and external review remain open.
 
-R-S11eb/R-S11e-146 now separates one canonical mobile client-owner UUID from a fresh connection UUID minted by
-every outgoing `FFI.start()`. The authored add/attach/start bridge carries both. Android holds the exact
-client-owner read guard through handler insertion or I/O-worker spawn, stores the owner association in each
-session handler, and rejects start unless that association matches. Before a new mobile connection is inserted,
-native code removes and joins every previous mobile connection except an already-identical owner/session pair.
-Activity replacement and task removal drain by the stored client-owner association rather than treating that
-owner as a session-table key. Each mobile page retains the exact UUID returned by its own start; early and late
-close calls keep that UUID, shared Dart cleanup proceeds only while it is still current, and the event stream
-captures and rechecks it before delivery. A late close for A therefore cannot select replacement B even when both
-belong to one isolate and target the same peer/type.
+### Release-blocking behavioral evidence
 
-The reused mobile submodels are reset before UUID rotation. File-transfer pending completers are cancelled,
-dialogs are retired, their event-loop generation prevents an old async callback or timer from rearming, and an
-old same-key timeout removes a task only if the map still contains its exact completer. Input teardown releases
-pressed side buttons and relative-mouse state against the exact retired connection without permanently disposing
-the observers needed by its replacement. Frame, decoded-image, cursor, and file events all recheck the captured
-exact connection before publication; decoded images and asynchronously collected window-coordinate results are
-kept outside shared state until that recheck. Route-owned subscriptions/controllers/timers are retired, and
-delayed keyboard, metrics, menu, post-frame, and key-help work also refuses a replacement. The incoming
-`MainService`, foreground persistence, controlled listener, MediaProjection, and capture owner are deliberately
-unchanged. iOS shares the exact per-connection and reusable-model corrections without Android's retained service
-or Activity-owner admission layer.
+| Evidence | Required closure |
+| --- | --- |
+| Artifact identity and comparison | Identify the exact operational Windows/Android viewer and Debian controlled-side artifacts. Bind every old/current executable or package to its source, manifest, and digest, and hold the isolated environment constant for controlled A/B comparison. |
+| Windows viewer / Debian controlled side | In disposable native Windows and Linux environments, run exact current artifacts through sustained focus loss/recovery, minimize/restore, occlusion, repeated transitions, display changes, congestion, reconnect, and teardown. Demonstrate timely display recovery without reconnect while input remains responsive. Include the relevant old/current and supported cross-version combinations. |
+| Android | Install the exact current APK in a disposable emulator and, where platform behavior requires it, a physical device. Exercise outgoing viewing across background, task swipe, reopen, process persistence, network transition, reconnect, and Force Stop as a destructive baseline. Separately exercise controlled-side persistent-service generation/replacement and capture/input cleanup. The service must remain persistent by design; correctness must come from exact retirement, not service death. |
+| End-to-end observability | Record monotonic timestamps and queue depths for capture, encode, enqueue/write, authenticated peer receipt, decode, publication, renderer/compositor commit, and actual presentation, alongside control-message latency. Define explicit freshness/latency and CPU/memory/thread/handle bounds before execution. Frame receipt or callback invocation alone is not presentation. |
+| Stress and finality | Cover decoder/renderer stalls, simultaneous healthy and suspended viewers, backpressure, keyframe recovery, topology change, network interruption, stale/duplicate work, replacement, abrupt peer loss, error publication, repeated reconnect, and soak. Prove bounded queues/resources and complete process/worker cleanup. |
+| Release evidence | Run the exact clean committed cold R-B2/R-B10 artifacts, repeat independently, and obtain external review. Preserve commands, topology, artifact identities, logs, timing, and cleanup proof. |
 
-Follow-up correction (2026-07-27), **R-S11ec/R-S11e-147 outgoing clipboard network-round ownership**:
-the shared viewer clipboard loop still used a process-global `running` Boolean and discarded both desktop and
-Android thread handles. Its production stop comment documented the broken edge: when the peer closed first,
-Flutter's handler remained in `SESSIONS` until later UI disposal, so `has_sessions_running(DEFAULT_CONN)` returned
-true and the finished I/O round skipped clipboard stop. No later native close retried it. The Windows
-file-clipboard `ContextSend` lifetime used the same stale UI-map predicate. On Android the intentionally
-persistent controlled-side service kept that detached outgoing poller alive across task swipe/relaunch; the same
-liveness error and lost join authority existed in desktop Flutter builds. This is source-proven shared viewer
-resource-lifecycle debt, not proof that the clipboard poller caused the reported screen-control hang, not a reason
-to stop `MainService`, and not evidence of host modification, public exposure, privilege escalation, container
-escape, exploitation, or compromise.
-
-Every default outgoing I/O round now owns a fresh monotonic clipboard lease from function entry through every
-return/error/cancellation path. The runtime retains the exact lease set, worker stop token, and sole
-`JoinHandle`. Peer-info admission starts at most one shared worker. Releasing a stale or non-last lease cannot
-stop another round; the exact last release closes listener admission, removes the retained handle, and transfers
-it to the existing fixed bounded off-runtime completion pool. A replacement round admitted during that drain is
-retained, its start request is recorded, and it cannot start a worker until the old exact handle has joined.
-Completion finalizes Linux clipboard-FUSE and Windows file-clipboard context state only if the exact lease set is
-still empty; otherwise it restarts the shared worker for the retained replacement. The UI-handler map no longer
-participates in network-resource liveness, the `has_sessions_running` facade and admitted-bug comment are deleted,
-and both platform worker spawns are named and handle-owned. iOS does not compile this clipboard worker. Exact
-lease/ABA behavior plus focused/shared/independent source and mutation gates bind R-S11ec and Appendix C #282.
-Installed/native behavior, current APK/device reproduction, and exact cold R-B2/R-B10 release evidence remain
-open under their existing rows.
-
-Follow-up correction (2026-07-27), **R-S11ed/R-S11e-148 delayed OS-password input exact-round ownership**:
-the native viewer's manual OS-password automation still cloned `Session` into an unretained
-`std::thread`. It sent activation mouse events around three 50-ms sleeps, waited another 1.2 seconds, and then
-sent the password and Return. Every event called `Interface::send` on that cloned session, whose `sender` slot is
-replaced for each outgoing connection round. Although explicit reconnect closes and joins the prior I/O worker
-before launching its successor, that worker did not own this detached helper. An old helper could therefore wake
-after reconnect, resolve the replacement sender, and inject the old activation/password sequence into the next
-round. This source mechanism is shared by native Android, iOS, and desktop Flutter viewers; Android's persistent
-process amplifies the stale lifetime, while the web bridge bypasses this Rust path. It is not claimed as the exact
-cause of the reported screen-control hang, a controlled-side `MainService` defect, exploitation, public
-exposure, root acquisition, container escape, or any host RustDesk/service/firewall/network change.
-
-The UI now submits one typed `Data::InputOsPassword` request through the sender installed for its current round.
-Only the connected `Remote` that receives that request starts the sequence. Before spawning, that current
-`Remote` synchronously constructs the immutable mouse/key messages. It retains the sole
-`OwnedInputOsPasswordTask`; the async future captures only that prepared bundle and the exact
-`Remote::sender`, with no `Session`, `Interface`, handler, or other mutable connection-state capability. None of
-its delayed events calls `Session::send` or looks up mutable session state. The original activation order,
-modifier mapping, three
-50-ms delays, 1.2-second delay, optional password behavior, and Return event remain. A closed exact channel logs a
-noncredential diagnostic and terminates the sequence. A second request first aborts and awaits the prior task;
-all normal round exits call the same abort-and-await path before `connection_round_owner.finish(round)`, so
-reconnect cannot install its replacement I/O worker while stale input work remains owned by the old round.
-Exceptional `Remote` drop aborts the retained task, and the exact captured channel is independently incapable of
-delivering to a replacement. The implementation uses Tokio's existing runtime and async sleeps, with no nested
-runtime, `spawn_blocking`, native helper thread, or Android service-lifetime change. The focused behavior
-regression proves that replacement does not start until cancellation has dropped the old sender, and that the
-replacement receives only its own task's event. Focused/shared/independent source and deliberate-mutation gates
-bind R-S11ed and Appendix C #283. Installed native behavior, current APK/device reproduction, and exact cold
-R-B2/R-B10 release evidence remain open under their existing rows.
-
-Follow-up correction (2026-07-27), **R-S11ee/R-S11e-149 exact-session screenshot ownership**:
-the Flutter viewer still cached the most recent peer screenshot in one process-global Rust
-`Mutex<Screenshot>`. The consuming FFI accepted a `session_id` but ignored it, so another simultaneous desktop
-session or a later mobile route could consume whichever peer's PNG most recently replaced the singleton.
-Session/route removal did not destroy the bytes. The wire protocol also reused the UI-session UUID as every
-screenshot request ID; its pending `HashSet` could not distinguish replacements for the same UI session, and a
-late response or an old file-picker callback could select newer bytes. Android's persistent process amplified
-the cache lifetime, but this source defect was shared by Android, iOS, and desktop Flutter. It is cross-session
-peer-data/resource ownership and stale-callback debt, not proof of the reported screen-control hang, a
-controlled-side `MainService` defect, privilege escalation, exploitation, root acquisition, public exposure,
-container escape, or a host RustDesk/service/firewall/network change.
-
-The global cache and setter are deleted. Each exact live Flutter `SessionHandler` now owns at most one
-`OwnedScreenshot { request_id, data }`; beginning a request clears that handler's prior value, and removing the
-handler destroys it. The current outgoing `Remote` maps a fresh monotonic wire request ID to the exact UI-session
-UUID, retains at most one current request per UI session and eight total, and drops all mappings with the round.
-Replacing a request retires its prior ID first. Only removal of the exact current mapping admits a response, so
-late, duplicate, replaced, and unrequested responses cannot publish. The targeted event includes the exact
-request ID. Save, copy, and discard carry both session and request IDs; only a double match atomically consumes
-the bytes once, while a stale mismatch preserves the current screenshot. Exact-request and exact-handler
-behavior regressions plus generated-bridge/Dart analysis and focused/shared/independent source and mutation gates
-bind R-S11ee and Appendix C #284. Installed native behavior, current APK/device reproduction, and exact cold
-R-B2/R-B10 release evidence remain open under their existing rows.
-
-Follow-up correction (2026-07-27), **R-S11ef/R-S11e-150 controlled-side screenshot request and encoder
-ownership**: R-S19 had separated monitor and camera screenshot capture, but the controlled side still retained
-one process-global request per `(VideoSource, display_idx)`. A second authorized Remote or ViewCamera connection
-at the same source/display silently destroyed the earlier request and response channel. The entry had no
-connection identity, so disconnect could not cancel it; first-pass VRAM fallback removed and reinserted old work
-and could overwrite a newer request; and every captured response spawned an unretained native PNG thread. This
-is source-proven response-integrity, availability, and resource-lifecycle debt shared by controlled desktop
-builds and Android's controlled service path. It is not proof of the reported Android screen-control hang, an
-authorization bypass, exploitation, root acquisition, public exposure, container escape, or a host
-RustDesk/service/firewall/network modification.
-
-The controlled screenshot manager now binds every nonempty, control-free, at-most-128-byte request ID to the
-internal connection ID and exact Tokio response channel. It retains at most 64 exact owners; each owns at most
-one in-flight request and one replaceable pending successor. Concurrent connections at the same source/display
-coexist and share one frame/PNG encode, while a later request from the same exact channel replaces only its
-pending successor. Completion, VRAM retry, and cancellation double-match the connection ID and channel;
-`Connection::drop` cancels that exact authority, and cleanup from a stale channel cannot select a replacement
-that reused the numeric ID. VRAM fallback requeues old work once only when no newer pending request exists.
-
-One process-lifetime retained worker replaces per-response detached threads and admits through a two-slot
-nonblocking queue. Startup failure, queue saturation, or worker retirement sends an explicit error and releases
-the exact in-flight owner. Capture dimensions, pixel multiplication, and exact RGBA length are checked against
-the existing 16,384-side and 8,192 × 8,192-pixel limits. The PNG writer refuses before its allocation crosses
-the 32-MiB response limit, with a post-encode check retained as defense in depth. Behavior regressions cover
-concurrent owners, pending/in-flight replacement, numeric-ID/channel ABA, disconnect retirement,
-successor-preserving VRAM retry, exact owner capacity, request-ID labels, dimension/pixel limits, and bounded
-PNG writing. Focused/shared/independent source and deliberate-mutation gates bind R-S11ef, Appendix C
-#285, and R-S11e-150. Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10
-artifacts, separately required independent reproduction, and external review remain open.
-
-Follow-up correction (2026-07-27), **R-S11eg/R-S11e-151 controlled video-frame acknowledgement
-ownership**: the controlled video service retained one process-global unbounded Tokio acknowledgement channel
-and one pending connection-ID set per numeric display index. Monitor display 0 and camera display 0 therefore
-shared one receiver and overwrote the same pending entry. Their capture threads competed for acknowledgements,
-counted distinct IDs that did not belong to their own frame, and could prematurely complete or starve each
-other. Displayless peer acknowledgement and disconnect wake used the overwritten display map; notifier entries
-survived capture-loop retirement; and every 300-ms wait constructed a fresh current-thread Tokio runtime. This
-is source-proven cross-source frame-pacing integrity, availability, and resource-lifecycle debt shared by
-controlled desktop builds and Android's controlled service path. It is not proof of the reported Android
-screen-control hang, a screen/camera authorization bypass, exploitation, root acquisition, public exposure,
-container escape, or a host RustDesk/service/firewall/network modification.
-
-Every live controller is now keyed by exact `(VideoSource, display_idx)` and owns one checked monotonic generation
-plus current pending/acknowledged set behind a standard condition variable. The weak process index admits at most
-64 live controller generations, rejects an already-live key, and removes only the dropping controller's exact
-`Arc`. The generic service snapshots current subscribers and installs that round under its service lock before
-enqueueing the encoded frame. Completion and intentional supersession carry source, display, generation, and
-connection ID; late predecessor completion, unrelated IDs, and duplicates do nothing. Trusted local connection
-destruction retires the ID from every live exact controller, while the peer has no displayless or generationless
-completion path. The capture thread retains its 300-ms cancellation/privacy wake and three-second pacing bound
-through the condition variable, without a channel, async mutex, retained stopped-loop notifier, or per-wait
-runtime. R-S11fb/R-S11e-189 supersedes the interim connection-task-dequeue completion with exact sole-writer
-completion and binds the current egress behavior.
-
-Behavior regressions cover same-index monitor/camera separation, exact pending-ID and duplicate handling, stale
-generation rejection, local disconnect and exact-round retirement, 64-controller capacity plus exact
-registration retirement, and preparation before frame enqueue. Focused/shared/independent source and
-deliberate-mutation gates bind R-S11eg, Appendix C #286, and R-S11e-151. Installed native behavior, current
-APK/device reproduction, exact cold R-B2/R-B10 artifacts, separately required independent reproduction, and
-external review remain open.
-
-Follow-up correction (2026-07-27), **R-S11eh/R-S11e-152 bounded exact-subscriber real-time audio
-egress**: every controlled connection sent locally captured `AudioFrame` and `AudioFormat` messages through the
-same unbounded Tokio queue as non-droppable control/state traffic. The one-second stale-frame refusal ran only
-after dequeue, so a stalled stream write could leave the audio producer allocating indefinitely before the check
-ran. The shared non-iOS outgoing voice-call service subscription was also unbounded. Its R-S11bp blocking worker
-removed hot polling but drained that service queue into the viewer round's separate unbounded `Data` command
-queue, moving rather than closing the resource debt. This is source-proven real-time audio availability/resource
-debt shared by controlled desktop/Android paths and outgoing desktop/Android viewers. It is not proof of the
-reported Android screen-control hang, a controlled-service authorization bypass, exploitation, root acquisition,
-public exposure, container escape, or host RustDesk/service/firewall/network modification.
-
-Each exact audio-service subscriber now owns one constant-size mailbox: at most one pending `AudioFormat`, one
-latest pending `AudioFrame`, and one capacity-one Tokio wake token. Repeated frames replace the pending frame. A
-new format replaces the pending format and clears an old pending frame; dequeue takes format before frame, so a
-codec-generation transition cannot be crossed by queued old audio. Producer send is synchronous and nonblocking;
-a full wake is coalesced, and closed-receiver send clears retained state. Standard mutex poisoning is diagnosed
-and recovered, and neither async nor blocking receive holds the lock across its event-driven wait. There is no
-unbounded collection, per-message task/thread, nested runtime, or sleep-poll.
-
-`ConnInner` routes exactly `AudioFrame` and `Misc::AudioFormat` to that mailbox before its existing video/general
-routes. A controlled `Connection` creates one exact mailbox, drains it in a separate branch of the sole stream
-writer, preserves the one-second stale-frame refusal after dequeue, and never sees audio on the general unbounded
-receiver. The outgoing `VoiceCallAudio` owner contains the exact synthetic subscription, non-cloneable input
-lease, and mailbox receiver; the existing connection select writes received audio directly to the peer. The
-dedicated voice worker, durable stop flag/channel, intermediate `Data::Message` forwarding, and voice-specific
-completion handoff are deleted. Explicit stop, replacement/final shutdown, and hard `Drop` unsubscribe the exact
-connection before releasing the exact lease. Android's persistent `MainService`, incoming controlled listener
-and capture resources, and native one-recorder coordinator are unchanged.
-
-Six behavior regressions cover latest-frame coalescing, format-before-frame ordering, codec-generation
-retirement, separation from control/video channels, exact-sender closure, and asynchronous wait/wake/closure.
-Focused/shared/independent source and deliberate-mutation gates bind R-S11eh, Appendix C #287, and R-S11e-152.
-Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10 artifacts, separately required
-independent reproduction, and external review remain open.
-
-Follow-up correction (2026-07-27), **R-S11ei/R-S11e-153 exact-owner bounded Android controlled input**:
-Android's controlled-side `InputService` retained one uncancelled process-lifetime `Timer`, an unbounded
-`LinkedList<GestureDescription>` wheel queue drained by elapsed-delay tasks, a fresh main-handler post for every
-pre-API-33 key event, and globally replaceable long-press/recents tasks carrying no connection identity. Repeated
-down events could create tasks which the sole retained pointer could not cancel. Rust checked only the live
-`MainService` generation and then erased the authenticated connection ID at JNI; Kotlin returned `void`, and
-authorization/type replacement, disconnect, and service teardown retired no pending input. A task swipe
-intentionally preserves the foreground/accessibility process, whereas Force Stop destroys it, so this was real
-Android process-persistent stale-action and unbounded-resource debt. It is confined to the controlled path used
-when the Android device itself receives remote input; it is not the outgoing Android viewer path used to control
-a desktop host and is therefore not proof of the reported viewer-to-host screen-control hang. It is also not
-evidence of an authorization bypass, exploitation, root acquisition, public exposure, container escape, or host
-RustDesk/service/firewall/network modification.
-
-Pointer and key JNI now carry the exact `(MainService generation, authenticated Remote connection ID)` and return
-Kotlin admission as a Boolean. The serialized `MainService` constructs `ControlledInputOwner` only while
-controlled admission is open, its native generation is positive, and the exact ID remains in the authorized
-Remote capture/input owner set. Rust closes that exact connection on owner/queue refusal or JNI failure.
-`InputService` retains a set of exact live owners, one typed exact-owner mouse/touch continuation, and no
-latest-owner fallback. Authorization/type replacement, connection removal, and service teardown remove only the
-exact owner's or generation's queued/delayed state. Retirement of an API-26+ pointer sequence finishes an already
-admitted continued stroke before resetting it; a staged down with no admitted stroke is discarded rather than
-turned into a click. The persistent `MainService` and `AccessibilityService` remain alive and are not killed as a
-cleanup mechanism.
-
-The wheel and key queues are exact-owner `ArrayDeque`s capped at 32 and 64 pending entries. Each has one retained
-main-handler drain callback; at most one wheel action is OS-admitted, and Android's completion/cancellation
-callback exclusively advances the next still-live owner. Key drain processes one event per turn. Long-press and
-recents each have one owner/sequence-checked delayed slot. Post failure removes that owner's pending queue before
-refusal. `Timer`, `TimerTask`, the delay-polled wheel loop, unbounded controlled-input collection, and per-key
-handler allocation are deleted. Exact capacity, owner removal, other-owner ordering, invalid-owner, and
-generation-ABA fixtures plus focused/shared/independent source and deliberate-mutation gates bind R-S11ei,
-Appendix C #288, and R-S11e-153. The targeted Android release-Kotlin task compiles this source in the pinned
-networkless nonroot Android builder without producing an APK. The pinned networkless nonroot
-`aarch64-linux-android` Rust cross-check also compiles the exact JNI signatures and connection-ID handoff. A
-current APK install and physical-device controlled-Android connect/disconnect/task-swipe/reconnect sequence, the
-separate outgoing viewer reproduction, exact cold R-B2/R-B10 artifacts, separately required independent
-reproduction, and external review remain open.
-
-Follow-up verifier correction (2026-07-28), **R-S11ej/R-S11e-154 current release target-contract authority**:
-the shared executable target fixture had drifted behind both production build scripts. It created its output
-directory even though current publication requires a freshly absent destination; installed fake `git` and
-`docker` commands through `PATH` even though the targets replace `PATH` with `/usr/bin:/bin`; injected inherited
-`DOCKER_HOST`/`DOCKER_CONFIG` even though the targets now reject those inputs and create one private target-owned
-Docker authority; omitted `LOCAL_DOCKER_AUTHORITY_INITIALIZED` and the current initialization/assertion/removal
-API; expected obsolete volume syntax; and invoked Android's `--verify-apk` branch instead of the normal build
-consumer. The first concrete result was a Debian no-clobber rejection followed by an unbound cleanup variable,
-not evidence about the current build consumer. This was a verifier-integrity and release-evidence defect, not a
-product runtime defect, privilege escalation, compromise, root acquisition, public exposure, container escape,
-or host RustDesk/service/firewall/network change.
-
-The fixture now copies the exact target, Android inner-build, Android exact-source validator, and private-tree
-cleanup helper sources into one private real SHA-1 Git repository, commits them, removes ambient Git
-configuration, detaches `HEAD`, and supplies that actual full commit to release-child mode. Runtime inputs remain
-untracked, and every target still proves its own exact clean source. The output edge remains absent before and
-after every case. A fixture-local `lib.sh` models the current target-owned Docker lifecycle: it rejects inherited
-Docker client inputs, creates and identity-binds exact private `{}` configuration below the target-owned
-workspace, routes only through one exact private fake client under an explicitly empty environment carrying only
-the fixture log/mutation selector, checks authority before/after use, and removes the configuration before the
-production closure helper removes the exact workspace. Each initialization records its workspace so the outer
-fixture rejects any retained path.
-
-Android now follows its normal build path with exact private signing-file modes. The fake client recognizes only
-the keytool certificate preflight, returns the pinned fixture RSA/signature/fingerprint properties without
-logging it as a build consumer, and records/fails the subsequent build invocation. Both targets must reach
-exactly one recorded build consumer using their immutable image and exact `type=bind` read-only online snapshot;
-direct mode must use a private target-created copy. Existing missing/private/symlink/closure/image/online-override
-and post-consumer-mutation cases remain, inherited `DOCKER_CONFIG` refusal replaces the obsolete caller-owned
-config-byte test, and mutable tags, output creation, or retained workspaces fail. The independent semantic
-validator now binds the exact helper sources, real detached Git setup, no-clobber order, local Docker lifecycle,
-keytool/build separation, exact mount grammar, poison rejection, normal Android command, and cleanup proof; its
-deliberate mutation catalog changes each edge and requires the named rejection. This slice runs no release build
-and does not satisfy the still-open clean committed cold R-B2/R-B10 transaction.
-
-Follow-up verifier correction (2026-07-28), **R-S11cr/R-S11e-110 archive-specific PID mutation authority**:
-the focused Android SDK output verifier selected the text
-`--pids-limit=256 --memory=4g` from the complete `online-fetch.sh` source. The later Cargo semantic funnel
-legitimately acquired the same PID and memory values, so the mutation harness stopped before exercising the SDK
-contract with `mutation target for PID bound occurs 2 times`. The production archive-acquisition funnel remained
-correct and uniquely extracted by the validator; the defect was the mutation selector's broader authority.
-
-The PID mutation now includes the exact `online_docker_run_archive_acquisition` function header and its
-constrained launch prefix before changing only that funnel's PID limit. The focused self-test therefore changes
-the semantic region the validator owns even when an unrelated funnel uses identical numeric limits. The
-independent workspace validator requires that exact contextual mutation, forbids the old global selector, and
-deliberately regrows the global form to prove rejection. This correction changes no acquisition producer,
-container invocation, product runtime, host process, service, listener, firewall, network state, or release
-artifact, and it does not close the still-open exact clean release/device evidence.
+Confined compilation, deterministic state-machine tests, source assertions, semantic checks, and mutation rejection remain
+useful supplementary evidence for exact invariants. They do not prove focus/background recovery, Android lifecycle
+behavior, native renderer scheduling, actual presented-frame latency, installed-service behavior, cross-version
+interoperability, performance budgets, or final release correctness. This mandate therefore remains OPEN.
 
 Follow-up verifier correction (2026-07-28),
 **R-S11cu/R-S11e-113 retained-identity systemd image consumer authority**: the fixed-archive verifier still

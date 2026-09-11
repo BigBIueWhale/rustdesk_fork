@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-33be224f43a5f24ae7b31a067884ced103b4e6b3d55287e2c4bbe5c5b331c2a5  requirements.html
+8a00090d3ef0cc26c953dcdfad715b4cfb15d30f497c388ef4cbddb1c3ae1f71  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,16 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+R-S11gc and Appendix C #338 now separate the enduring Linux full-peer acceptance contract from
+historical execution progress. The 21-attempt diary, superseded input digests, intermediate harness
+failures, mutation receipts, and documentation-status coupling were deleted; the current ledger keeps
+the latest retained named-commit runtime, its exact confinement/claim boundary, present rerun
+availability, and every broader open obligation. This reduced `requirements.html` by 9,035 bytes and
+this ledger by 14,447 bytes. The focused checker was reduced by 50,580 bytes to a fast harness
+source-contract check, and 7,992 bytes of duplicate workspace mutations/loaders were deleted. The
+actual full-peer build/runtime harness remains unchanged and is the only test in this family that can
+establish pixel freshness, stable-connection focus recovery, or joined teardown.
 
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,
@@ -4791,101 +4801,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   bounded raw evidence. The narrow historical pass remains useful, but Windows full-peer
   focus/background performance and release readiness remain **OPEN**.
 
-- **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — ONE EXACT COMMITTED
-  LINUX/X11 FULL-PEER TRANSACTION GREEN; LATER EXACT-CURRENT SUCCESSOR RECORDED SEPARATELY;
-  BROADER PLATFORM/RELEASE EVIDENCE REMAINS STOP-SHIP.**
-
-  **Purpose and claim.** The earlier Linux evidence consisted of two disconnected halves: one real
-  capture/encode/authenticated-transport/decode path stopped before Flutter, while one synthetic
-  Flutter/X11 test presented direct-ABI frames without a peer, password handshake, capture,
-  transport, or decoder. R-S11gc therefore requires one actual controlled peer and one actual
-  viewer to join those layers and prove current pixels, focus recovery without reconnect, and
-  final cleanup. The user's older deployed Android and Windows observations remain relevant: control
-  could stay responsive while displayed video fell roughly ten seconds behind, reconnect restored
-  freshness, and the observed Android stale-service case required Force Stop. Those reports are not
-  a proven cause in current source and do not show that the problem was Android-only.
-
-  **Runtime topology and authority.** The maintained transaction builds the release-mode Rust core
-  and real 79-file Flutter Linux bundle from one clean commit and pinned offline inputs. Controlled
-  peer and viewer have separate mount, PID, IPC, home/configuration, and X11 state. The controlled
-  peer anchors a Docker `--network=none` namespace containing only `lo`; the viewer shares only that
-  exact namespace. Both are numeric nonroot with read-only roots/source/bundle, dropped
-  capabilities, `no-new-privileges`, bounded resources, no host namespace/device/display/Docker
-  socket, and no published port.
-
-  Evidence-only bind confinement: the shipped server intentionally binds wildcard port 21118, so
-  the server process alone loads the manifested `smoke-bind-loopback.c` shim that rewrites only
-  `AF_INET` + `INADDR_ANY` + port 21118 to loopback. The password CLI and viewer do not receive the
-  preload. This proves the media/session path under literal container-loopback confinement; it is
-  not native product bind-address evidence and did not expose or modify any host listener, RustDesk
-  service, firewall, route, interface, or configuration.
-
-  The same shipped server starts parked and receives the fixed test credential through redirected
-  `--password-stdin` and authenticated same-user IPC. The viewer uses only
-  `--connect 127.0.0.1` inside a private D-Bus/AT-SPI session. Its controller binds the exact
-  launcher PID, `rustdesk`/`Rustdesk` WM_CLASS pair, title, and one enabled, sensitive, editable,
-  focusable, focused `PASSWORD_TEXT` node before entering the credential through XTest; that node
-  must then retire stably. A 256-state X11 source traverses real capture, software encoding,
-  authenticated TCP, viewer decoding, Rust-to-Dart publication, the production Linux texture
-  plugin, Flutter, and observed X11 pixels. Focus moves to a separate visible sink for 2000 ms and
-  returns through a real pointer click while the authenticated TCP tuple and socket inode must stay
-  identical. `WM_DELETE_WINDOW`, response-bound Dart cleanup, exact process joins, listener closure,
-  zero UDP, manifests, inputs, and source identity are terminal success conditions.
-
-  **Authoritative retained receipt.** Exact committed transaction
-  `38ad03ea7a2465297425ad745ada5c05f8de7e94`, tree
-  `a71a28b7aba45d90ec39886b6317928e27bb6a1d`, and source-archive SHA-256
-  `58da0080ef04f1433792ddd3ec8170da5a14b35958f22956b283da1c870cd53b` rebuilt the optimized
-  core and real 79-file bundle. The real prompt authenticated and retired. Four distinct initial
-  states appeared with first-fresh latency 83 ms and maximum age 289 ms. During 2000 ms of real
-  focus loss the blurred sample was 81 ms old; pointer return recovered in 0 ms with maximum
-  recovery age 287 ms on the same TCP tuple and inode. The real window closed; the viewer exited
-  zero without the former engine-less messenger warnings, post-destruction GTK call, or signal 139;
-  every owned process joined; the listener closed; zero UDP remained; and the transaction emitted
-  `FLUTTER_PEER_PRESENTATION_SMOKE_OK`.
-
-  **Product defects exposed and current corrections.**
-
-  **Linux password accessibility.** The global Linux `workaroundFreezeLinuxMint()`
-  `ExcludeSemantics` wrapper and its call sites were removed. `DialogTextField` supplies explicit
-  focusable semantics, so the real obscured password field can satisfy the exact AT-SPI contract.
-  The pinned engine's contradictory `SHOWING` mapping is intentionally not used.
-
-  **Dart page/session teardown.** Tab and native-window removal now enter one asynchronous
-  pre-removal boundary, re-resolve exact object identity afterward, and await texture and session
-  cleanup. Framework `State.dispose()` remains synchronous; transfer preserves the native session
-  while retiring engine-owned texture state.
-
-  **Linux multi-window teardown.** The vendored plugin inhibits GTK default destruction, makes
-  close idempotent, waits for the Dart method response, and erases the owning map only in a later
-  GTK idle turn. Both process-global pointer hook IDs are owned and removed.
-
-  **Linux plugin callback lifetime.** The exact vendored `url_launcher_linux 3.2.1` omits its
-  redundant re-entrant handler clear during messenger shutdown. The exact vendored
-  `window_manager 0.3.6` binds a concrete window, closes admission on destroy, rejects queued calls
-  as `window_unavailable`, cancels delayed Dart work, and retires callbacks/channel/registrar
-  ownership before their targets. R-S11ge and Appendix C #340 own the normative lifetime contract.
-
-  Historical red runs and transient harness failures remain in Git history; their run numbers,
-  superseded cache digests, build durations, warning counts, mutation-catalog repairs, and repeated
-  cleanup narration are not current-state requirements. The retained diagnoses above are the
-  lasting product conclusions.
-
-  **Current evidence boundary.** The defining `38ad03…` receipt does not prove source added later,
-  including R-S11gf's exact bundle-relative texture-plugin loader. The adjacent
-  **R-S11gc exact-current full-peer input authority recovery** entry records later green executions,
-  including `11b20830f5d1c5354cbcee872557b28b6923f8a1`, after the current narrow vcpkg input
-  projection and later loader/lifetime corrections. Those are still named-commit Linux/X11 results,
-  not proof for subsequent master bytes or a cold release artifact.
-
-  **Open / STOP-SHIP.** The Linux result covers only one X11 software-codec peer/focus cycle. It
-  does not establish Android Activity/foreground-service/task-swipe/reopen/Force-Stop behavior;
-  Windows engine/compositor focus, minimize, background, or reconnect behavior; macOS/iOS;
-  installed service or cross-user behavior; cross-version interoperability; concurrent
-  control/file/audio correctness; repeated reconnect and sustained latency/queue/CPU/memory/resource
-  soak; exact Debian/package execution; cold R-B2/R-B10 equality; independent reproduction; or
-  external review. Each remains release-blocking.
-
 - **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX, EXACT
   RELEASE-BUNDLE EXECUTION, AND LATER FULL-PEER EVIDENCE RECORDED.** Platform: shipped
   Linux Flutter runner. Endpoint/action:
@@ -4902,8 +4817,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   parameter. A null decision output, missing bundled core, or missing symbol still returns
   `EXIT_FAILURE`; a successful false decision returns `EXIT_SUCCESS`; and only a true decision
   enters `g_application_run`. Rust's existing nonzero exits for validation, authorization, and
-  command failures are unchanged. Shared source gates and the self-mutating full-peer verifier bind
-  both branches, and the independent workspace verifier binds the actual Linux runner path. The
+  command failures are unchanged. The fast full-peer harness source-contract check binds both
+  branches in the actual Linux runner. The
   sixth exact committed release-bundle transaction made the shipped authenticated
   `--password-stdin` command print `Done!` and exit zero, after which the same process reached typed
   `user-server` state. The run then stopped at the separate literal-loopback harness contradiction
@@ -4991,148 +4906,55 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
   network state was inspected or changed for this source slice.
 
-- **R-S11gc exact-current full-peer input authority recovery — EXECUTABLE EVIDENCE GREEN; BROADER
-  PLATFORM/SOAK EVIDENCE OPEN.** The previous full-peer entry remained bound to Pub-cache digest
-  `854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19`, but those bytes are no
-  longer present. The current sealed `online/pub-cache` has strict current-three-Git shape and
-  digest `fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4`. A separate pinned
-  numeric-nonroot, networkless, read-only verifier resolved the exact project lock
-  `cc7da12d2a7033bd76f5d19926ee39242ff1cd19f55223d2d9ad12d530329eae` and Flutter-tools lock
-  `66955192347d2d4eb24476745462c80a11d9bbf19a461f3504bbbd86e366ee8e` with
-  `--offline --enforce-lockfile`, including exactly the three locked Git commits. The pin refresh is
-  therefore explicit evidence-input authority, not path-based acceptance.
+- **R-S11gc/R-S11e-216 Linux full-peer presentation — NAMED COMMITTED RUNTIME GREEN;
+  CURRENT ARTIFACT, INSTALLED, CROSS-PLATFORM, AND SOAK EVIDENCE OPEN.**
 
-  The full canonical online closure remains red and was not repinned. Its expected digest is
-  `d552816bcd34cb3a5c47403dcd782def30a61626a3363a274bcd979c5245c27b`, while the inspected live
-  tree produced `c9016ffb36516e3e5d361067f0cba4a6120c2678adb31e258d7a68885aca554f`; the file, directory,
-  symlink, byte, and hardlink cardinalities also differ. R-B10 cold equality remains stop-ship. The
-  R-S11gc transaction now checks only—and all of—the persistent inputs it actually consumes, twice,
-  in separate networkless numeric-nonroot containers: exact Rust/Flutter/LLVM archives; the pinned
-  Cargo-vendor tree and configuration; the FRB 1.80.1 install metadata plus exact codegen binary;
-  the exact x64-Linux vcpkg subtree; and the separately copied, sealed, strict Pub-cache. The build
-  receives only those exact paths under an otherwise empty read-only `/online` mount namespace and
-  independently repeats archive and both Pub-lock resolutions. The whole persistent `online/` root
-  is visible only to the read-only input verifier, not to the compiler. A green peer result cannot
-  be used to infer the unrelated full-online closure.
-
-  The outer runner no longer executes Python on the host. Exact builder and verifier images are
-  admitted only by their immutable local content IDs; all tree, semantic, build, and product code
-  executes inside constrained containers. Runtime container inspection uses the fixed Docker CLI as
-  orchestration and still fails closed on network, PID/IPC/UTS, rootfs, numeric-user, port, device,
-  capability, no-new-privileges, unsafe-mount, and viewer-only passwd-witness differences. The
-  controlled peer retains `--network=none`, and the viewer can share only that exact loopback-only
-  namespace; neither publishes a port or touches the already-running host RustDesk service. The
-  exact-current committed full-peer build/runtime result is intentionally still pending at this
-  ledger point.
-
-  The first exact committed attempt at `f6d788a345a23575cb9360d9ecd361c49786416f` passed both
-  persistent-input validators, acquired and verified the exact five-package Xvfb closure, and copied
-  and sealed the exact Pub cache. It then failed before the build container started because Docker
-  could not create the nested LLVM file mountpoint below the already read-only empty `/online` root.
-  No compiler, RustDesk process, X server for a peer, or product listener started. The correction
-  pre-creates the seven empty directory/file mountpoints in the private workspace and seals that
-  skeleton before Docker overlays the exact read-only sources; it does not broaden the mounted
-  inputs or make the namespace writable.
-
-  The second exact committed attempt at `b98307025f9187557ff52ddbc0a45dbe3c4f75b8` passed the
-  exact input precheck, exact five-package Xvfb closure, sealed Pub-cache preparation, seven nested
-  read-only input mounts, fresh bridge generation, and the networkless release Cargo/Flutter build.
-  The build reported `FLUTTER_PEER_BUILD_OK` with the exact generated runner and core library, and
-  the post-build sealed Pub-cache recheck passed. The controlled server container was then created
-  under `--network=none`, but the outer inspector rejected its mount receipt before peer readiness or
-  viewer launch. Cleanup retired the server and private workspace. This is no pixel,
-  display-freshness, focus-recovery, control, or product pass/fail verdict.
-
-  A scoped never-started-container reproduction proved the inspector defect exactly: Docker CLI
-  appends its own final newline, while the mount template already ended every record with a newline,
-  yielding one terminal empty record that the fail-closed parser correctly rejected. The pending
-  harness correction emits a distinct final `end` record instead. It also strengthens the receipt
-  from an unsafe-mount/passwd check to an exact unordered contract: one read-only source, output,
-  Xvfb root, and `xkbcomp` bind, one writable private coordination bind, and exactly one additional
-  read-only private passwd bind for the viewer only. Only bind records before exactly one terminator
-  are accepted; unknown destinations and wrong sources, modes, types, or cardinalities fail closed.
-  The diagnostic containers were never started, used `--network=none`, and were removed by exact ID;
-  a label-scoped read-only check found none retained. Container-only Bash/Python parsing, the focused
-  verifier's complete deliberate-mutation set, and the independent workspace baseline passed. A
-  complete unsliced independent `--source-mutations-only` catalog then reached terminal
-  `verify-verifier-workspace: ok`. After that result was recorded in the tracked ledger, a fresh
-  complete catalog over those ledger-updated bytes also reached the same terminal verdict and exited
-  zero. No tracked byte changed afterward. At that ledger point, another clean committed full-peer
-  transaction was still required.
-
-  That clean transaction then executed exact pushed commit
-  `8ab3769681679e0e6843da922f25415be3bd0540`, tree
-  `979836fd42d3d5add4ed00a3ad8b2413c10e2f16`, and source-archive SHA-256
-  `4b5bc77e9a94a7353f0cc90e9b21a6a67f231ce238cc1b3a9012347d35f31ba3`. Both persistent-input
-  checks passed around the transaction. The exact Xvfb producer admitted five pinned packages and
-  proved zero TCP listeners and zero UDP sockets. Fresh bridge generation completed without a severe
-  diagnostic; the cold networkless Rust release build finished in 5m09s with its existing 65-warning
-  application inventory; and Flutter produced the exact 79-file release bundle with the expected
-  runner and core library. The sealed Pub-cache copy remained unchanged after the build.
-
-  The real viewer authenticated through the actual accessible password prompt using XTest, without a
-  password argument. It then observed current decoded Flutter-texture pixels: initial freshness was
-  0 ms, maximum initial age was 246 ms, and four distinct frames were seen. Across an externally
-  induced 2,000 ms focus-loss interval, the stream remained connected and fresh with a 41 ms blurred
-  age; recovery after focus return was 0 ms, the total maximum age was 286 ms, and a real pointer
-  operation was observed without reconnect. The terminal receipt bound the actual peer, capture,
-  transport, decode, Flutter texture, X11 pixels, focus recovery, viewer/server/Xvfb joins, and clean
-  listener retirement.
-
-  Runtime confinement was observed, not inferred: the controlled server had `--network=none`, only
-  interface `lo`, exactly one TCP listener at `127.0.0.1:21118`, zero UDP sockets, and no published
-  port. Its viewer shared only that exact namespace. The exact mount receipts passed for both runtime
-  containers, and the server closed the listener before retirement. Cleanup left no scoped peer
-  workspace or retained devcheck container. The host RustDesk process/service/binary/configuration,
-  host listener, display, firewall, route, and network state were not inspected or changed.
-
-  This closes exact-current Linux X11 full-peer presentation and focus-loss freshness for this source
-  slice only. It does not establish Android or Windows background/focus lifecycle behavior, repeated
-  reconnect/resource soak, file-transfer coexistence, Debian-artifact execution, macOS/iOS behavior,
-  cold cross-platform R-B2 artifacts, full R-B10 online-closure equality, independent reproduction,
-  or external review. Those remain explicit release blockers.
-
-  A later exact-current rerun at clean pushed commit
-  `94bbfbabc5362dcda27d79e9b90015063207c1a6`, tree
-  `2206ccd6a6c7eea6330dbb58e3a831b4e30fff41`, stopped in its first read-only persistent-input
-  check before compilation, Xvfb acquisition, or any RustDesk process/listener. The full-peer pin still
-  described the retired broad x64-Linux vcpkg tree at
-  `24a2295145b04938abed637daac104252c4374a119db19749451a8fc69858436`; R-B10 had replaced that
-  consumer with the current narrow projection. A fresh numeric-nonroot, networkless, read-only
-  verifier independently recomputed the live projection as 52 files, 6 directories, zero symlinks,
-  9,713,973 content bytes, and closure
-  `9564b164d4c6d4a9b3d7540a1655505009af34a9e610eadaf076e4807f63cf2c`, then accepted its exact
-  output key, libvpx key, builder identity, closed inventory, archive framing, and x86-64 object ABI
-  through `online-vcpkg-native-output.py check-complete`. The evidence-only pin and focused mutation
-  gate now bind that checked projection. This is harness-input drift and correction, not a product
-  failure or pass; another exact committed full-peer transaction remains required after the correction.
-
-  The corrected exact committed transaction then ran pushed commit
+  **What the retained runtime establishes.** Clean pushed commit
   `11b20830f5d1c5354cbcee872557b28b6923f8a1`, tree
-  `53cc48bbd8991e153fce9bcdd519f864b0830811`, from canonical source archive SHA-256
-  `003ae61ec95769560f7f35f4d8c57867fc342ef707e841a76069406f515b2a38`. Both persistent-input
-  checks accepted the current vcpkg projection and every other consumed input around the complete
-  transaction. The fresh networkless release Rust build finished in 5m11s with the existing 65-warning
-  application inventory; Flutter produced the exact 79-file bundle. The viewer authenticated through
-  the real accessible password prompt via XTest with no password argument, observed first fresh pixels
-  in 163 ms, reached four distinct current frames, and stayed on the same connection through 2,000 ms
-  of externally induced focus loss. Blurred age was 82 ms, focus-return recovery was 0 ms, total maximum
-  age was 286 ms, and a real pointer operation was observed. The actual capture, encode, keyed transport,
-  decode, Flutter texture, X11 pixels, viewer/server/source/Xvfb joins, and listener retirement all
-  reached their terminal receipts. `dbus-run-session` emitted one `ignoring unknown child process`
-  diagnostic during teardown, so no warning-free or diagnostic-clean claim is made; the viewer and
-  server nevertheless reached their exact joined terminal results and the transaction exited zero.
+  `53cc48bbd8991e153fce9bcdd519f864b0830811`, and canonical source archive SHA-256
+  `003ae61ec95769560f7f35f4d8c57867fc342ef707e841a76069406f515b2a38` built the
+  release Rust core and actual 79-file Linux Flutter bundle from the transaction’s exact pinned
+  offline inputs. The shipped nonroot server started credential-empty and parked, accepted the test
+  password only through redirected `--password-stdin` and authenticated same-user IPC, and then
+  became the same typed listening process. The real viewer authenticated through its accessible
+  password field using XTest; no password appeared in argv or environment.
 
-  Runtime confinement was re-observed at the exact commit: numeric nonroot, read-only roots/source,
-  dropped capabilities, no-new-privileges, bounded resources, no device, Docker-socket mount, host
-  namespace, or published port. The server had only interface `lo`, exactly
-  `127.0.0.1:21118`, and zero UDP; the viewer shared only that owned network-none namespace and the
-  listener was closed before retirement. The separately disposable five-package Xvfb producer ended
-  with zero listening TCP and zero UDP sockets. No host RustDesk process/service/configuration/listener,
-  display, firewall, route, or network state was inspected or changed. This advances exact-current
-  Linux/X11 evidence only. Android task-swipe/persistent-service/Force-Stop/reopen, native Windows
-  focus/minimize, repeated reconnect/resource soak, file-transfer coexistence, installed service,
-  macOS/iOS, cold R-B2 artifacts, independent reproduction, and external review remain release blockers.
+  A changing 256-state X11 source traversed actual capture, software encode, keyed TCP, viewer
+  decode, Rust-to-Dart texture publication, the production Linux texture plugin, Flutter, and
+  observed X11 pixels. First fresh pixels arrived in 163 ms; four distinct current frames were
+  observed; blurred age during 2,000 ms of external focus loss was 82 ms; pointer-return recovery
+  was 0 ms; and total maximum age was 286 ms. The authenticated TCP tuple and inode stayed
+  identical, so reconnect could not explain recovery. Viewer, server, source, both Xvfb owners, and
+  listener reached their joined terminal receipts. One `dbus-run-session` unknown-child diagnostic
+  occurred during teardown, so this is not claimed as a diagnostic-clean run.
+
+  **Confinement and claim boundary.** Controlled peer and viewer had separate process, IPC,
+  home/configuration, and X11 state. The controlled peer used `--network=none` with only `lo`; the
+  viewer shared only that exact namespace; no port was published and zero UDP sockets were present.
+  The server-only manifested evidence shim narrowed the product’s intentional wildcard port-21118
+  bind to `127.0.0.1`; therefore the transaction proves the media/session path under literal
+  container-loopback confinement, not native product bind-address behavior. It did not inspect or
+  change the host RustDesk service, binary, configuration, listener, display, firewall, route, or
+  network state. A green transaction does not establish the broader R-B10 online closure.
+
+  The maintained fast checker now validates only this harness source contract. It does not replay
+  the runtime and cannot renew or extend the named-commit evidence. The former self-mutation catalog,
+  requirements/status prose checks, and independent verifier-of-verifier copies were deleted because
+  they measured source wording rather than presentation behavior. The real full-peer harness remains
+  the authoritative executable test.
+
+  **Current rerun state (2026-09-12).** This checkout has no canonical `online/` input closure, exact
+  pinned Debian-builder/devcheck images, retained full-peer workspace, or current built bundle. A
+  current transaction therefore cannot honestly be run from the present local inputs; no substitute
+  image or unrelated Android container counts as evidence.
+
+  **Open / STOP-SHIP.** Later source changes do not inherit this named-commit result. Release still
+  requires an exact-current artifact run plus installed Linux coverage; Android persistent-service,
+  task-swipe/reopen/Force-Stop, real-peer presentation, and resource-finality testing; native Windows
+  focus/minimize/background/reconnect and display-latency testing; macOS/iOS; cross-version
+  interoperability; concurrent control/file/audio operation; repeated reconnect and sustained
+  capture-to-present latency, freshness, queue, CPU, memory, thread, handle, and cleanup soak; cold
+  R-B2/R-B10 equality; independent reproduction; and external review.
 
 - **R-B10 exact-current canonical online-input reconciliation — OPERATIONAL ACQUISITION AND
   COMPLETE CLOSURE VERIFICATION GREEN FOR THE NAMED V3 TRANSACTION 2026-08-08; CURRENT V4

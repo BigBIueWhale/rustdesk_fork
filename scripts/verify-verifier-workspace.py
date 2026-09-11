@@ -65194,144 +65194,6 @@ def run_source_mutations(sources):
             "independent production terminal cleanup-response binding",
         ),
         (
-            "verify",
-            "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test",
-            "true # full-peer Linux presentation verifier removed",
-            "full-peer Linux presentation shared focused-verifier wiring",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"controller": "scripts/flutter-peer-presentation-x11.c"',
-            '"controller": "scripts/removed-flutter-peer-presentation-x11.c"',
-            "independent full-peer Linux presentation controller binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"stage": "scripts/smoke-flutter-peer-presentation-stage.sh"',
-            '"stage": "scripts/removed-smoke-flutter-peer-presentation-stage.sh"',
-            "independent full-peer Linux presentation stage binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"bind_shim": "scripts/smoke-bind-loopback.c"',
-            '"bind_shim": "scripts/removed-smoke-bind-loopback.c"',
-            "independent full-peer Linux loopback-confinement binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"linux_runner": "flutter/linux/main.cc"',
-            '"linux_runner": "flutter/linux/removed-main.cc"',
-            "independent Linux Flutter runner exit-contract binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"flutter_common": "flutter/lib/common.dart"',
-            '"flutter_common": "flutter/lib/removed-common.dart"',
-            "independent Linux Flutter common-semantics binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"flutter_dialog": "flutter/lib/common/widgets/dialog.dart"',
-            '"flutter_dialog": "flutter/lib/common/widgets/removed-dialog.dart"',
-            "independent Linux Flutter password-dialog binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"password_semantics_test": "flutter/test/password_field_semantics_test.dart"',
-            '"password_semantics_test": "flutter/test/removed-password-field-semantics-test.dart"',
-            "independent Linux Flutter password-semantics regression binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"dart_verify": "scripts/dart-verify.sh"',
-            '"dart_verify": "scripts/removed-dart-verify.sh"',
-            "independent Linux Flutter offline behavior-gate binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"desktop_tabbar": "flutter/lib/desktop/widgets/tabbar_widget.dart"',
-            '"desktop_tabbar": "flutter/lib/desktop/widgets/removed-tabbar-widget.dart"',
-            "independent full-peer tab-controller teardown binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"desktop_tab_retirement_test": "flutter/test/desktop_tab_retirement_test.dart"',
-            '"desktop_tab_retirement_test": "flutter/test/removed-tab-retirement-test.dart"',
-            "independent full-peer tab-retirement regression binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"flutter_attributes": "flutter/.gitattributes"',
-            '"flutter_attributes": "flutter/removed-.gitattributes"',
-            "independent full-peer vendored multi-window byte preservation binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"flutter_pubspec": "flutter/pubspec.yaml"',
-            '"flutter_pubspec": "flutter/removed-pubspec.yaml"',
-            "independent full-peer vendored multi-window dependency manifest binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"flutter_lock": "flutter/pubspec.lock"',
-            '"flutter_lock": "flutter/removed-pubspec.lock"',
-            "independent full-peer vendored multi-window dependency lock binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"multi_window_linux": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc"',
-            '"multi_window_linux": "flutter/third_party/desktop_multi_window/linux/removed-flutter-window.cc"',
-            "independent full-peer vendored multi-window Linux lifetime binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"multi_window_header": "flutter/third_party/desktop_multi_window/linux/flutter_window.h"',
-            '"multi_window_header": "flutter/third_party/desktop_multi_window/linux/removed-flutter-window.h"',
-            "independent full-peer vendored multi-window Linux lifetime state binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
-            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/REMOVED-UPSTREAM.md"',
-            "independent full-peer vendored multi-window provenance binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/url_launcher_plugin.cc"',
-            '"url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/removed-url-launcher-plugin.cc"',
-            "independent full-peer vendored URL-launcher Linux lifetime binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/url_launcher_shutdown_test.cc"',
-            '"url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/removed-url-launcher-shutdown-test.cc"',
-            "independent full-peer vendored URL-launcher shutdown regression binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"url_launcher_upstream": "flutter/third_party/url_launcher_linux/UPSTREAM.md"',
-            '"url_launcher_upstream": "flutter/third_party/url_launcher_linux/REMOVED-UPSTREAM.md"',
-            "independent full-peer vendored URL-launcher provenance binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"window_manager_linux": "flutter/third_party/window_manager/linux/window_manager_plugin.cc"',
-            '"window_manager_linux": "flutter/third_party/window_manager/linux/removed-window-manager-plugin.cc"',
-            "independent full-peer vendored window-manager Linux lifetime binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"window_manager_test": "flutter/third_party/window_manager/linux/test/window_manager_shutdown_test.cc"',
-            '"window_manager_test": "flutter/third_party/window_manager/linux/test/removed-window-manager-shutdown-test.cc"',
-            "independent full-peer vendored window-manager shutdown regression binding",
-        ),
-        (
-            "flutter_peer_presentation_verifier",
-            '"window_manager_upstream": "flutter/third_party/window_manager/UPSTREAM.md"',
-            '"window_manager_upstream": "flutter/third_party/window_manager/REMOVED-UPSTREAM.md"',
-            "independent full-peer vendored window-manager provenance binding",
-        ),
-        (
             "desktop_remote_page_dart",
             "Future<void> prepareForRemoval({bool closeSession = true})",
             "Future<void> prepareForRemoval({bool closeSession = false})",
@@ -65703,12 +65565,6 @@ def run_source_mutations(sources):
             '    [ "$guard_disabled_status" -eq 0 ] \\\n'
             '      || { echo "  FAIL window manager: guard-disabled source unexpectedly passed or crashed"; exit 1; }',
             "independent window-manager guard-disabled execution/source-gate cardinality",
-        ),
-        (
-            "flutter_peer_presentation_stage",
-            "grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log",
-            "grep -qF 'unrelated warning' /tmp/viewer.log",
-            "independent runtime refusal of post-engine messenger use",
         ),
         (
             "requirements",
@@ -75148,9 +75004,6 @@ def main():
             "desktop_window_manager_upstream": (
                 repo / "flutter/third_party/window_manager/UPSTREAM.md"
             ).read_text(encoding="utf-8"),
-            "flutter_peer_presentation_stage": (
-                repo / "scripts/smoke-flutter-peer-presentation-stage.sh"
-            ).read_text(encoding="utf-8"),
             "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),
             "dart_verify": (repo / "scripts/dart-verify.sh").read_text(encoding="utf-8"),
@@ -75275,9 +75128,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_presentation_verifier": (
                 repo / "scripts/verify-flutter-presentation-windows.py"
-            ).read_text(encoding="utf-8"),
-            "flutter_peer_presentation_verifier": (
-                repo / "scripts/verify-flutter-peer-presentation.py"
             ).read_text(encoding="utf-8"),
             "build_windows_source": (
                 repo / "scripts/build-windows.ps1"

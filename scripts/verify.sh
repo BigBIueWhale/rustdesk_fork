@@ -11378,12 +11378,6 @@ else
   echo "  FAIL R-S11gv: remote cursor resources regained unchecked capture, stale identity, unacknowledged publication, unbounded registration, or incomplete teardown"
   rc=1
 fi
-if python3 scripts/verify-controlled-control-egress.py --repo . --self-test; then
-  echo "  ok  R-S11gw controlled-side synchronous service egress is ordered, bounded, and failure-visible"
-else
-  echo "  FAIL R-S11gw: controlled-side service egress regained unbounded, reordered, oversized, silently dropped, or stranded state"
-  rc=1
-fi
 if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
   echo "  ok  R-S11gy/R-S11is connection-manager results are bounded and every CM file response is exact-command-final"
 else

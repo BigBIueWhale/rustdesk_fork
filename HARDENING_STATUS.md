@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-173c60c79ba6995214b3dc717126d1fb6aac989859a262335b4c5ce8199e48a3  requirements.html
+4fbfb46e26c82d2b5d281f676fe527e426e092e4179dd2fa9f2acb5656cc3b56  requirements.html
 ```
 
 ## Current Verdict
@@ -11232,73 +11232,72 @@ cursor-shape path found several independent ownership boundaries that had never 
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 
-**SOURCE IMPLEMENTED; CONFINED 51-MUTATION FOCUSED, 63/186/73-MUTATION ADJACENT,
-32-SPECIFICATION/34-TARGET OVERLAP, AND COMPLETE 4,484-SPECIFICATION INDEPENDENT SOURCE
-VERIFICATION GREEN; SCOPED EXACT-TOOLCHAIN RUSTFMT GREEN; EXACT RUST/NATIVE, DEVICE,
-PERFORMANCE, AND RELEASE EVIDENCE OPEN.** Review of the controlled-side connection writer found one remaining
-unbounded resource and freshness boundary shared by every platform:
+**SOURCE IMPLEMENTED; FIVE EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED; SOURCE/MUTATION
+THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT, AND EXTERNAL EVIDENCE OPEN.**
+Platforms: shared Android, iOS, Windows, Linux, and macOS controlled-side transport. Surface:
+synchronous service producers -> exact connection-owned `ControlEgressState` -> connection loop ->
+keyed writer.
 
-- `ConnInner` is the synchronous subscriber cloned into the controlled audio, video, cursor, display, clipboard, and
-  related services. Audio frames/formats already use `AudioEgressSender`, while video frames and display switches use
-  `VideoEgressSender`; every other service message used an `mpsc::UnboundedSender<(Instant, Arc<Message>)>`. The sole
-  connection loop drained that queue and only then admitted each message to the keyed transport writer. In particular,
-  `input_service::run_pos` publishes changed cursor positions every 33 milliseconds, and screenshot work can return a
-  response near the session-packet scale through the same queue. If the connection loop was occupied or transport
-  admission stalled, the old abstraction imposed no message or byte ceiling and preserved every obsolete position.
-  Reconnect destroys that exact queue, which is consistent with cleanup-mediated recovery but does not prove that the
-  weeks-old Android, Windows, or Debian artifacts contained or exercised this path or that it caused the reported delay.
-- The unbounded alias and channel are deleted. Each exact connection now owns one `ControlEgressState` behind a short
-  synchronous mutex plus a one-slot Tokio wake channel. Admission checks the protobuf wire size against the keyed
-  session payload ceiling, retains no more than 256 messages and two maximum session packets plus fixed entry accounting,
-  and uses checked count, entry-byte, retained-byte, replacement, and drain arithmetic. Capacity/accounting failure is
-  committed under the same state guard that detected it before the receiver is woken. Only a cursor position already at
-  the FIFO tail is replaceable. A clipboard, topology, cursor-shape, stop-service, screenshot, or any other exact message
-  remains FIFO and separates two independently ordered position samples; the implementation does not search through or
-  reorder across that barrier.
-- Audio/video frames, audio format, and switch-display video-generation state are structurally refused by the control
-  mailbox and remain on the pre-existing semantic media mailboxes. Wrong-class admission, an oversized message, count or
-  byte saturation, or accounting failure clears all retained work, stores one typed failure, wakes the exact receiver,
-  and makes the connection select close that exact round. Receiver retirement closes admission and clears retained
-  state immediately, so stale service/screenshot sender clones cannot keep message payloads alive. The design adds no
-  timer, retry, reconnect, task, thread, runtime, listener, port, dependency, privilege transition, service restart, or
-  Android persistent-background-service change.
-- Five deterministic Rust regressions cover trailing-position replacement with a non-position ordering barrier, terminal
-  count saturation and payload release, replacement/drain byte accounting, retained-byte and single-packet ceilings, all
-  four wrong media classes, receiver retirement, and asynchronous wake/producer retirement.
-  `scripts/verify-controlled-control-egress.py` binds the synchronous 33 ms producer, exact service/subscriber/channel/
-  select/screenshot/block-input paths, the deleted unbounded surface, all bounds and
-  terminal ordering, regressions, normative requirement/Appendix record, ledger, gate wiring, and requirements digest
-  with 51 deliberate mutations. Shared, Apple, and independent workspace wiring are part of this slice.
-- Counted source verification on 2026-08-17 used only pre-existing immutable image
-  `sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3` as numeric UID/GID
-  1000:1000 with `--pull=never`, `--network=none`, a read-only root filesystem and read-only repository bind, all
-  capabilities dropped, `no-new-privileges`, 128 PIDs, 2 GiB memory with no additional swap, two CPU quota, a private
-  256 MiB owner-matched no-exec tmpfs, and no port, device, Docker socket, or host namespace. The 51-mutation focused
-  gate, adjacent 63-mutation voice-call-worker, 186-mutation display-finality, and 73-mutation cursor-resource gates,
-  independent baseline validation, and the exact 32-specification/34-runtime-target cross-verifier overlap audit passed.
-  The complete independent catalog then ran from mutation one through all 4,484 specifications and exited zero with
-  `verify-verifier-workspace: ok`. Python AST parsing, Bash syntax, normal and self-test native-codec watch, and
-  `git diff --check` also passed. The requirements/native-watch identity is the SHA-256 recorded below.
-- Exact Rust 1.75.0 `rustfmt` was mounted read-only from the host toolchain and executed only inside the same confined
-  container. An initial whole-file diagnostic found pre-existing formatting drift in untouched regions plus six new
-  touched-hunk shapes. Only those six touched shapes were corrected; the scoped rerun found no formatter difference in
-  an R-S11gw-added or modified range. No whole-file formatting-green claim is made. Exact-current Rust compilation and
-  the five native regressions were not executed: the available generic verifier image contains Rust 1.95.0 without
-  `rustfmt`, and the current repository/cache does not contain an authenticated complete offline Cargo closure. Network,
-  image pull/build/tag, an unauthenticated dependency substitute, and host Rust execution remained forbidden, so those
-  native results stay explicitly open rather than being inferred from source gates. Two early native-codec-watch
-  diagnostics used a root-owned tmpfs because its owner options were omitted; they failed before the check could create
-  temporary state, are uncounted, and were rerun green with the owner-matched tmpfs above. Earlier partial overlap audits
-  are likewise diagnostic and uncounted; the recorded 32/34 overlap and complete catalog are the final counted shapes.
-- The user's broader release requirement remains explicit and open: the complete initial connection, reconnect,
-  focus/background, task-swipe/reopen, stream replacement, display selection, capture, transport, decode, compositor
-  publication, control, file-transfer coexistence, and teardown flow must be correct and performant in general. Exact
-  current Rust/native compilation and execution; physical Android task-swipe/reopen/Force-Stop and real Windows focus/
-  minimize reproduction; Linux/macOS/iOS and cross-version behavior; capture-through-compositor timestamps and explicit
-  latency budgets; sustained reconnect/focus/resource/performance soak; cold R-B2/R-B10 artifact equality; installed
-  process/service/package behavior; independent reproduction; external review; and causation remain open. No host
-  RustDesk process/configuration, firewall, listener, network namespace, VM, unrelated image, Android persistent service,
-  or OS privilege boundary is inspected or changed by this source slice.
+The inherited defect was real. Audio and video already had semantic bounded mailboxes, but every
+other synchronous service message entered an unbounded Tokio channel. This included 33 ms cursor
+positions, exact cursor-shape, clipboard and topology messages, stop-service intent, and potentially
+large screenshot responses. A busy connection loop or back-pressured writer could retain arbitrary
+count and bytes and later deliver stale positions. Reconnect destroyed the old queue; that is a
+cleanup-mediated recovery mechanism, not evidence that an unidentified deployed artifact exercised
+it or that it caused a reported display delay.
+
+The current design gives each exact controlled connection one short-mutex state owner and a one-slot
+wake. It admits at most 256 messages and two maximum session packets plus checked entry accounting;
+each protobuf must fit the keyed-session payload ceiling. Only the FIFO-tail `CursorPosition` may be
+replaced. Every exact message is an ordering barrier, and all other messages remain FIFO. Audio and
+video classes are refused from this control mailbox. Wrong class, oversize, count or byte exhaustion,
+or accounting failure clears retained work, stores one typed terminal cause, wakes the receiver, and
+terminates the exact connection. Receiver retirement closes admission and releases retained state
+even while stale producer clones exist. This adds no retry, reconnect, timer, task, runtime, listener,
+dependency, privilege transition, service restart, or Android persistent-service change.
+
+Five executable Rust regressions remain in `src/server/connection.rs`:
+
+- `r_s11gw_cursor_positions_replace_only_the_trailing_cursor`
+- `r_s11gw_count_saturation_is_terminal_and_releases_exact_messages`
+- `r_s11gw_byte_and_wire_bounds_fail_the_exact_round_closed`
+- `r_s11gw_media_bypass_and_receiver_retirement_are_visible`
+- `r_s11gw_async_receiver_waits_without_polling_and_closes`
+
+The shared gate retains the direct command
+`cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`. Its actual execution,
+not its presence in a shell script, is the relevant regression evidence.
+
+The deleted `scripts/verify-controlled-control-egress.py` was a 518-line source parser with 51
+textual mutations. It never invoked Cargo or Tokio, drove a producer, blocked a connection loop,
+created socket backpressure, or observed ordering, freshness, latency, memory, task, or handle
+finality. Its duplicate workspace validator, mutation catalog, dispatch, source-map entry, and
+adjacency fixtures were removed; shared and Apple invocations were removed, and the two surviving
+neighbor fixtures now name only surviving dispatches. R-S11gw and Appendix C #358 now say explicitly
+that source matching, source mutation, script wiring, and workspace parsing are not behavioral proof.
+No product source changed in this cleanup slice.
+
+In immutable local inspection image
+`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`, mounted read-only as
+numeric UID/GID 1000 with no network or ports, all capabilities dropped, no-new-privileges, and
+bounded resources, all 124 Python scripts parsed, requirements HTML and the affected shell gates
+parsed, the reduced independent workspace baseline passed, both changed neighboring adjacency
+mutations were present and rejected, native-codec synchronization and the status-size gate passed,
+and host `git diff --check` passed. One initial targeted mutation exposed that the shortened CM
+fixture matched an earlier quoted occurrence rather than the real dispatch; it was anchored to the
+actual three-call sequence and then rejected. Exact pre/post host listener bytes matched at SHA-256
+`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`. The exact pinned devcheck
+image `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` is absent and the
+inspection image has no Cargo. No image was pulled or built, no host Rust command ran, and no Rust,
+native, or product behavior is claimed.
+
+Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
+real synchronous cursor, clipboard, topology, stop-service, input-response, and screenshot producers
+through mailbox and connection-loop backpressure; refusal, disconnect, replacement, FIFO, freshness,
+latency, and retained-resource observation; physical Android task-swipe/reopen/Force-Stop and Windows
+focus/minimize reproduction; Linux/macOS/iOS and cross-version behavior; sustained reconnect/focus/
+resource/performance soak; cold R-B2/R-B10 equality and installed behavior; independent reproduction;
+R-V3 external review; causation; and complete connection-flow correctness and performance.
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 

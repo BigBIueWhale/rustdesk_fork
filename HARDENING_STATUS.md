@@ -9886,701 +9886,100 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   bounded raw evidence. The narrow historical pass remains useful, but Windows full-peer
   focus/background performance and release readiness remain **OPEN**.
 
-- **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
-  IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
-  STOP-SHIP.** The user explicitly requires the connection flow to be correct and performant as a
-  whole, not merely patched around individual complaints. The concrete reported symptom is also
-  retained: after Android task removal with its persistent service still alive, or after a Windows
-  viewer loses focus, control can remain responsive while displayed video falls as much as about ten
-  seconds behind; reconnecting restores current display, and Android additionally required Force Stop
-  in the observed stale-service case. Those are cross-platform operational observations against
-  older deployed builds, not a proven cause in current source and not evidence that only Android is
-  affected.
+- **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — ONE EXACT COMMITTED
+  LINUX/X11 FULL-PEER TRANSACTION GREEN; LATER EXACT-CURRENT SUCCESSOR RECORDED SEPARATELY;
+  BROADER PLATFORM/RELEASE EVIDENCE REMAINS STOP-SHIP.**
 
-  The prior Linux evidence did not close that risk. One real production smoke exercised capture,
-  encode, authenticated transport, decode, and the Rust UI callback but stopped before Flutter. A
-  separate release Flutter app exercised the production texture plugin and actual X11 pixels with
-  synthetic direct-ABI frames but had no peer, handshake, capture, transport, or decoder. Passing
-  both is not the same as passing one product session, and this ledger forbids treating it that way.
+  **Purpose and claim.** The earlier Linux evidence consisted of two disconnected halves: one real
+  capture/encode/authenticated-transport/decode path stopped before Flutter, while one synthetic
+  Flutter/X11 test presented direct-ABI frames without a peer, password handshake, capture,
+  transport, or decoder. R-S11gc therefore requires one actual controlled peer and one actual
+  viewer to join those layers and prove current pixels, focus recovery without reconnect, and
+  final cleanup. The user's older deployed Android and Windows observations remain relevant: control
+  could stay responsive while displayed video fell roughly ten seconds behind, reconnect restored
+  freshness, and the observed Android stale-service case required Force Stop. Those reports are not
+  a proven cause in current source and do not show that the problem was Android-only.
 
-  The new transaction builds the exact release-mode Linux Rust shared core and actual RustDesk
-  Flutter runner from one clean commit using the pinned offline Rust 1.75, Flutter 3.24.5, LLVM,
-  Cargo-vendor, vcpkg, and immutable-image inputs. The first exact committed run correctly stopped
-  before compilation because the canonical root-owned Pub cache is stale and lacks locked
-  `sqflite 2.2.8+4`; no product, X server, or listener started. That canonical tree remains
-  read-only, unchanged, and explicitly blocks R-B10. The evidence harness now admits only the
-  previously retained current-lock cache after a networkless numeric-nonroot read-only validation of
-  its complete closed-tree/five-Git shape and structural digest
-  `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`, copies it to fresh
-  private state, seals and revalidates the copy, exposes that copy read-only to the build, enforces
-  both locks offline, and repeats the complete check after build. This is evidence input only, not a
-  canonical-cache repair or release pass. The harness performs no Debian packaging or release double
-  build. A second exact committed run built that release Rust/Flutter bundle successfully and
-  revalidated the sealed Pub-cache copy unchanged after build, but stopped before peer readiness
-  because the outer container-inspection function expanded `label` from a same-statement `local`
-  declaration under `set -u`. Cleanup retired the owned network-none server container. The corrected
-  harness assigns the receipt path only after the three arguments exist, and its focused mutation
-  suite rejects reintroducing the unsafe declaration. A third exact committed run again built the
-  full bundle and revalidated its sealed inputs, then stopped before starting either product role:
-  the shipped unprivileged `--password-stdin` command correctly refused to mutate a user-owned
-  credential before its authorizing daemon existed. The corrected order now starts the shipped
-  nonroot `--server` first, uses the existing pinned typed-IPC probe to bind its exact PID/start
-  identity and both owned IPC sockets while proving credential-empty parked state with zero INET
-  listeners/UDP, performs the shipped CLI's authenticated same-user IPC mutation, and requires that
-  same server identity to transition to typed password-present/listener-bound/user-writable state.
-  A fourth exact committed run built the bundle and reached the real parked daemon: the typed probe
-  reported `state=parked` while the namespace had zero TCP listeners and zero UDP. The generic
-  shared waiter nevertheless rejected that valid state because it also expected a Rust log phrase
-  on redirected stderr, while the release Flutter runner routes Rust logs to its private log tree.
-  Cleanup retired the parked server without ever starting a viewer or public listener. Two additive
-  release-runner waiter modes now retain exact PID/start identity, owned listener inode when
-  listening, both owned IPC sockets, typed state, and before/after TCP/UDP checks, but make no
-  inapplicable stderr-log assertion; the log-enforcing modes used by other smokes remain unchanged.
-  A fifth exact committed run passed the typed parked-state proof and completed the shipped
-  authenticated same-user password mutation: the CLI printed its exact `Done!` success marker, but
-  the Linux Flutter runner nevertheless returned status 1. The harness correctly rejected the
-  contradictory outcome before accepting server readiness or starting a viewer. This exposed the
-  separate R-S11gd runner-exit defect recorded below; cleanup retired the owned network-none state.
-  A sixth exact committed run used commit `05f9d6e9e5d35aca7564222714f21d4f67cc56f2`,
-  tree `18ee30b23dc11d4fbe7d51aa54fd8c360517d4d7`, and source-archive SHA-256
-  `eb63f001feedd6476b185624938e641dc386a6aa61e4841999fe561fddcae8ce`.
-  It built the real release bundle, passed typed parked readiness, made the shipped authenticated
-  `--password-stdin` command print `Done!` and exit zero, and observed that same server enter typed
-  `user-server` state with zero UDP. The run then found the product's intentional wildcard
-  `0.0.0.0:21118` listener and rejected it against the harness's literal-loopback contract before
-  starting a viewer. The server container had only `lo` in its Docker `--network=none` namespace,
-  published no port, and had no host namespace; no host listener, service, firewall, route, or
-  network state changed. This was a deterministic harness contradiction, not a production bind
-  regression or public exposure.
+  **Runtime topology and authority.** The maintained transaction builds the release-mode Rust core
+  and real 79-file Flutter Linux bundle from one clean commit and pinned offline inputs. Controlled
+  peer and viewer have separate mount, PID, IPC, home/configuration, and X11 state. The controlled
+  peer anchors a Docker `--network=none` namespace containing only `lo`; the viewer shares only that
+  exact namespace. Both are numeric nonroot with read-only roots/source/bundle, dropped
+  capabilities, `no-new-privileges`, bounded resources, no host namespace/device/display/Docker
+  socket, and no published port.
 
-  The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c` from
-  the same exact committed snapshot, includes the shared object in the immutable runtime manifest,
-  loads it only for the controlled server process tree, and waits for that exact manifested path to
-  appear in the exact server process's maps before credential provisioning. The source verifier
-  requires the shim to rewrite only `AF_INET` + `INADDR_ANY` + port 21118 to `INADDR_LOOPBACK` and
-  to pass every other bind through unchanged. Every stage rejects ambient `LD_PRELOAD`; the harness
-  does not export it, and neither the separate password CLI nor viewer launch receives it. This is
-  explicit evidence-only confinement outside the product. A future green result may prove the
-  full media/session path under literal loopback but cannot be cited as native product bind-address
-  evidence. The product's intentional wildcard listener implementation and release behavior remain
-  unchanged.
+  Evidence-only bind confinement: the shipped server intentionally binds wildcard port 21118, so
+  the server process alone loads the manifested `smoke-bind-loopback.c` shim that rewrites only
+  `AF_INET` + `INADDR_ANY` + port 21118 to loopback. The password CLI and viewer do not receive the
+  preload. This proves the media/session path under literal container-loopback confinement; it is
+  not native product bind-address evidence and did not expose or modify any host listener, RustDesk
+  service, firewall, route, interface, or configuration.
 
-  A seventh exact committed run used commit `5f196f805ca3b22ec0fa11b27c65a6b1c0b16bce`,
-  tree `be0dc14ab22aef078b2a939235eeefdb36cde0c2`, and source-archive SHA-256
-  `b46c92504e30d4741bdc99ba73b0b33e844fd28acc6ced53a71692ba3c3c1799`. It rebuilt
-  the release bundle, proved the exact manifested loopback shim was mapped by the exact server,
-  passed the parked/passworded typed-IPC transitions, and exposed only `127.0.0.1:21118` with zero
-  UDP. The real viewer then created the Linux remote multi-window engine in the launcher process,
-  but the observer rejected its X11 identity before authentication. The pinned plugin creates that
-  additional engine/window in-process, and neither the runner nor plugin overrides GTK's program
-  class. For executable `rustdesk`, GTK's documented default yields the exact `WM_CLASS`
-  instance/class pair `rustdesk`/`Rustdesk`; the observer instead searched for lowercase `rustdesk`
-  inside the case-sensitive class field. This is a deterministic observer mismatch, not a peer,
-  decode, presentation, or focus-recovery product verdict. Cleanup retired the exact viewer,
-  server, source, and Xvfb owners and closed the listener without host exposure. The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields;
-  it does not accept an arbitrary title match, a case-insensitive class, or a different process. A corrected exact
-  committed runtime remains required before this item can advance.
+  The same shipped server starts parked and receives the fixed test credential through redirected
+  `--password-stdin` and authenticated same-user IPC. The viewer uses only
+  `--connect 127.0.0.1` inside a private D-Bus/AT-SPI session. Its controller binds the exact
+  launcher PID, `rustdesk`/`Rustdesk` WM_CLASS pair, title, and one enabled, sensitive, editable,
+  focusable, focused `PASSWORD_TEXT` node before entering the credential through XTest; that node
+  must then retire stably. A 256-state X11 source traverses real capture, software encoding,
+  authenticated TCP, viewer decoding, Rust-to-Dart publication, the production Linux texture
+  plugin, Flutter, and observed X11 pixels. Focus moves to a separate visible sink for 2000 ms and
+  returns through a real pointer click while the authenticated TCP tuple and socket inode must stay
+  identical. `WM_DELETE_WINDOW`, response-bound Dart cleanup, exact process joins, listener closure,
+  zero UDP, manifests, inputs, and source identity are terminal success conditions.
 
-  An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`,
-  tree `f582a08054a48d970e5a989b3c411df291eb5572`, and source-archive SHA-256
-  `c9b2a9dde5ef1c705a35a577d711755de01eacdccde279ba5370b3c23a581427`. It rebuilt
-  the actual release Rust/Flutter bundle, retained all 65 Rust warnings, passed the parked and
-  passworded typed-IPC lifecycle, exposed only the shimmed `127.0.0.1:21118` listener with zero
-  UDP, and passed the exact viewer PID/title/`WM_CLASS` boundary. The controller then injected the
-  credential after its blind 750-ms delay and eventually timed out without authenticated current
-  pixels or a Rust-to-Dart texture-publication event. The product had created a pixel-buffer texture,
-  and an early focus callback logged `StateError` while the peer display inventory was still empty,
-  but neither observation proves that authentication completed or that a media/presentation path
-  failed. Source tracing proves the remote title is assigned before the secondary Flutter engine and
-  password prompt finish initialization; the old controller's `PASSWORD_PROMPT_OK` line represented
-  key injection, not observation of that prompt. This eighth result is therefore an invalid
-  prompt-readiness witness, not a product authentication, media, pixel, delay, or focus verdict.
-  Cleanup again joined all exact owners and closed the private listener.
-
-  A ninth exact committed run used commit `c32873e1cdfe2aff288df9d0ae0ea41a1bb311ea`, tree
-  `e23574cfc3f3bd2365be2ceb9279b1ba07b82d45`, and source-archive SHA-256
-  `d61af93904e4470d5bba66a4e09bcd7883a5aa12cf785420141f0c0b2cc0927c`. The exact
-  five-package acquisition again had zero listening TCP/UDP sockets; retained Pub-cache digest
-  `c3c59a…` reverified unchanged; bridge generation had no severe diagnostic; and the actual release
-  Rust core completed in 5m18s with the same 65 warnings before the Flutter release bundle built.
-  The transaction then stopped while linking the evidence controller: that controller directly calls
-  `g_object_unref`, while `pkg-config --libs atspi-2` in the pinned image emits `-latspi -ldbus-1
-  -lglib-2.0` but not the directly required `-lgobject-2.0`. The linker rejected the unresolved
-  symbol and missing direct DSO before output sealing or any server, viewer, X server, product
-  configuration, or listener started. This is deterministic harness link-closure debt, not a
-  RustDesk authentication, media, pixel, delay, or focus verdict. The corrected controller link
-  requests `gobject-2.0` explicitly through the same pinned pkg-config authority; it does not add a
-  package, image, product dependency, runtime privilege, bus mount, network surface, or fallback.
-  In the same immutable numeric-nonroot/networkless verifier profile, the focused gate and every
-  deliberate mutation passed; the complete controller linked warning-clean into non-executable
-  tmpfs with the exact build flags; both shell stages parsed; the independent semantic baseline and
-  native-codec/requirements-hash gate passed; and a fresh complete independent in-memory
-  source-mutation catalog ran from mutation one to terminal `verify-verifier-workspace: ok`, exit
-  zero. The catalog was neither sampled nor shortened and no product/runtime process started.
-
-  A tenth exact committed run used commit `c482884986cf2589984f7d05829182113e2bf75d`, tree
-  `d58f81eeba0b8c4ae593423f09bfdf868966f58f`, and source-archive SHA-256
-  `f28b89cf728945d975855ddbaea669f0acd1897070e59925599cc32ce9197a26`. It rebuilt the
-  release core in 5m17s with the same 65 warnings, built and manifested all 79 bundle files, proved
-  the direct GObject controller link, and reverified the sealed Pub-cache copy. The exact server then
-  passed parked/passworded typed readiness and exposed only `127.0.0.1:21118` with zero UDP. Before
-  the viewer product could start, `dbus-run-session` failed because the pinned image deliberately has
-  no passwd-database entry for arbitrary numeric UID 1000; `dbus-daemon` could not resolve its current
-  UID and exited while creating the private session bus. Exact cleanup joined the server, source, and
-  Xvfb owners and closed the listener. This is private-session harness identity debt, not a product
-  authentication, media, pixel, delay, or focus verdict.
-
-  The corrected viewer receives one exact temporary passwd witness created in the harness's private
-  mode-0700 workspace: a single `rustdesk-evidence` entry for the already-selected host numeric
-  UID/GID, fixed home `/tmp/viewer-home`, and `/usr/sbin/nologin`. It contains no root/system account
-  or credential, is owned by that same nonroot identity at mode 0400, and is mounted read-only only at
-  the viewer container's `/etc/passwd`; the server and every producer receive no such mount. Outer
-  container inspection binds its exact source, target, singleton cardinality, and read-only state;
-  the viewer stage binds exact owner/mode/link-count/content and successful same-UID `getent`; and the
-  outer transaction revalidates source identity/content after viewer exit. This adds no UID change,
-  capability, privilege escalation, host passwd/group/shadow mount, host bus/socket, product input,
-  interface, or published port. Missing or changed identity evidence fails closed before viewer
-  launch.
-
-  In the same immutable numeric-nonroot/networkless verifier profile, the focused verifier rejected
-  every deliberate mutation, the complete controller linked warning-clean, both shell stages parsed,
-  the native-codec/requirements-hash gate and independent baseline passed, and a fresh complete
-  independent source-mutation catalog ran from mutation one to terminal
-  `verify-verifier-workspace: ok`, exit zero, without sampling. A separate targeted boundary
-  transaction mounted the exact one-line mode-0400 witness read-only at `/etc/passwd`, resolved UID
-  1000 exactly with `getent`, created a real private session bus with `dbus-run-session`, and completed
-  `org.freedesktop.DBus.ListNames`; it printed
-  `PRIVATE_DBUS_IDENTITY_OK uid=1000 passwd=one-line-read-only network=none`. That disposable test
-  used the same networkless/read-only-root/capability-free profile and started no RustDesk, X server,
-  product configuration, interface, or listener. Its transient witness was removed after the test.
-
-  An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`,
-  tree `898bd090d13a9df725257fa03a02730fbe32e59c`, and source-archive SHA-256
-  `30556f5878e7db34a79f56461da360c8f4ecff0c2e13a331ab5df98b9463a596`. It acquired
-  exactly the five pinned Xvfb packages while proving zero listening TCP and zero UDP, rebuilt the
-  release core in 5m17s with the same 65 warnings, built and manifested all 79 bundle files,
-  reverified the sealed Pub-cache copy, passed the parked/passworded server lifecycle, and exposed
-  only `127.0.0.1:21118` with zero UDP in the external-interface-free namespace. The viewer's exact
-  one-line identity worked: its private D-Bus and AT-SPI registry activated without a host bus or
-  socket, and the controller bound the exact same-PID `rustdesk`/`Rustdesk` remote window. After the
-  bounded prompt scan it reported one application, 28 nodes, no node satisfying the old compound
-  readiness predicate, and exactly one focused node whose numeric AT-SPI role was 39. The initial
-  run interpretation incorrectly counted role 39 as `PASSWORD_TEXT`. The pinned enum makes role 39
-  `PANEL` and role 40 `PASSWORD_TEXT`, so this run did not establish that a password field existed;
-  the focused object was consistent with Flutter's top-level panel.
-  Exact cleanup joined the viewer, server, source fixture, and both Xvfb owners and closed the sole
-  listener. Because no credential was injected, this run is not authentication, media, pixel,
-  delay, or focus-recovery evidence.
-
-  Independently of that corrected run interpretation, the old compound predicate was internally
-  impossible for any genuine obscured password field in this exact Flutter engine. Pinned engine
-  revision `a18df97ca5` creates `PASSWORD_TEXT` only when both
-  `IsTextField` and `IsObscured` are set, while the same `fl_accessible_node.cc` state table maps
-  AT-SPI `SHOWING` to the inverse of `IsObscured`. Every genuine obscured Flutter password field is
-  consequently password-role and not `SHOWING`. The corrected contract deletes only that
-  contradictory state requirement while retaining exact process, singular password role,
-  `VISIBLE`, `EDITABLE`, `ENABLED`, `SENSITIVE`, `FOCUSABLE`, and `FOCUSED`. It also closes two
-  adjacent proof weaknesses: readiness now rejects any second password-role node even if hidden,
-  and post-Enter retirement requires the password-role node itself to disappear for five bounded
-  scans rather than merely becoming non-visible. Failure diagnostics report the individual required
-  state bits. This correction changes no Rust/Flutter product code, dependency, package, image,
-  privilege, identity, bus, interface, listener, credential path, or fallback.
-
-  Focused verification first exposed one test-of-the-test weakness: after adding exact
-  password-role accounting, the controller legitimately contained two role comparisons, while the
-  old mutation changed only the first and the verifier accepted the second as sufficient. The
-  verifier now requires exactly both accounting and readiness comparisons; its complete focused
-  mutation set passes. In the immutable numeric-nonroot/networkless verifier profile, the full
-  controller links warning-clean, the independent workspace baseline passes, and the synchronized
-  requirements/native-codec normal and adversarial gates pass. A new complete, unsliced independent
-  source-mutation catalog then ran from mutation one on the corrected verifier bytes and exited zero
-  with terminal `verify-verifier-workspace: ok`. No product, X server, bus, interface, or listener
-  started during those source gates.
-
-  A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`,
-  tree `72aebaede99bd85c04df99c6f044824fbd52ec40`, and source-archive SHA-256
-  `7dfc91756673649982f74e0de62ab5bf01b1e5915f96aa108e5b3b8c5b2a3fbe`. It acquired
-  exactly the same five pinned Xvfb packages while proving zero listening TCP and zero UDP, rebuilt
-  the release core in 5m21s with the same 65 warnings, built and manifested all 79 bundle files,
-  reverified the sealed Pub-cache copy, passed parked/passworded server readiness, and exposed only
-  `127.0.0.1:21118` with zero UDP in the external-interface-free namespace. The private viewer
-  D-Bus and AT-SPI registry activated, and the controller again bound the exact same-PID window. The
-  corrected scan then reported one application, 28 nodes, zero password-role nodes, and one focused
-  role-39 `PANEL`. No credential was typed, no authentication or pixel observation began, exact
-  cleanup joined every owned process, and the listener closed. This is evidence that the required
-  password accessible was absent at the observation boundary; by itself it does not distinguish a
-  prompt that was never constructed from one whose Flutter semantics were not exported.
-
-  The next diagnostic reused that same bounded, exact-PID accessibility traversal after a failed
-  prompt wait. It emits each node's numeric role and six already-tested state bits plus at most 96
-  printable sanitized bytes of its accessible name, then fails exactly as before. It never reads an
-  accessible text value, runs only before any credential input, and cannot relax the singular
-  password-node predicate or reach XTest input. This evidence-only diagnostic changes no product
-  Rust/Flutter code, package, dependency, image, privilege, bus, network surface, or fallback.
-
-  A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`,
-  tree `f9cda6ac38b50025f90b6e974213d655fa80c9dd`, and source-archive SHA-256
-  `70ead83cf4d3bcc07fb29951e834495d5b2fbfd7361f44eb69beef20718ec6b5`. It acquired
-  the same five pinned Xvfb packages while proving zero listening TCP and zero UDP, rebuilt the
-  release core in 5m20s with the same 65 warnings, built and manifested all 79 bundle files,
-  reverified the sealed Pub-cache copy, passed parked/passworded server readiness, and exposed only
-  `127.0.0.1:21118` with zero UDP in the external-interface-free namespace. The private viewer
-  D-Bus and AT-SPI registry activated and the controller bound the exact same-PID window. The
-  diagnostic proved that the real prompt was constructed: its tree contained the named `Password
-  required` panel, `Remember password`, `Cancel`, and `OK`, but the input itself was role 61
-  `TEXT` with `editable=1`, `enabled=0`, `sensitive=0`, `visible=1`, `focusable=0`, and
-  `focused=0`; the focused node remained role 39 `PANEL`. No credential was typed, authentication
-  and pixel observation never began, cleanup joined all exact owners, and the listener closed.
-
-  Source tracing then found the product cause at the exact observation boundary. Every opted-in
-  Linux text field, including the connect-password `DialogTextField`, was wrapped by the global
-  `workaroundFreezeLinuxMint()` helper in Flutter application code. On every Linux distribution,
-  that helper returned `ExcludeSemantics`, whose contract removes the complete descendant semantics
-  tree. The upstream Flutter issue it cites is an open Linux Mint 22/Cinnamon TextField selection
-  freeze; it does not establish that deleting every selected field's semantics on all Linux is
-  harmless. The correction removes that global semantics-deletion helper and all of its authored
-  call sites rather than special-casing the evidence harness. A focused widget regression requires
-  the real obscured dialog field to remain text-field, obscured, enabled, focusable, and focused,
-  while source gates retain the production `PasswordWidget` to `DialogTextField` obscured-state
-  forwarding and recursively reject resurrection of the helper. This change deliberately accepts
-  that the cited Mint/Cinnamon engine bug may need a separate, properly scoped engine/platform fix;
-  silently making Linux fields inaccessible is not a correct mitigation.
-
-  The focused regression then exposed a second real boundary instead of being weakened to pass.
-  Flutter 3.24.5's `EditableText` supplied the focus action and `isFocused` but not the raw
-  `isFocusable` flag. Exact pinned engine source in `fl_accessible_node.cc` maps Linux
-  `ATK_STATE_FOCUSABLE` only from `kFlutterSemanticsFlagIsFocusable`; the focus action cannot
-  satisfy the runtime predicate. The product therefore annotates the always-enabled
-  `DialogTextField` with `Semantics(focusable: true)` and retains the end-to-end `FOCUSABLE`
-  requirement. Against freshly generated bridges, the real widget node then carried all six
-  required flags: text-field, obscured, enabled-state, enabled, focusable, and focused.
-
-  The canonical `dart-verify.sh` transaction remained fail-closed before generation because its
-  read-only canonical Pub cache still lacks locked `sqflite 2.2.8+4`; it ran no analyzer or test and
-  is not counted as product evidence. A separate networkless numeric-nonroot focused transaction
-  instead mounted the already-retained current-lock Pub cache read-only at structural digest
-  `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`, copied only Git's
-  tracked-plus-untracked non-ignored source inventory into tmpfs, freshly generated all bridge
-  outputs with pinned Rust 1.75, Flutter 3.24.5, LLVM 15.0.6, and FRB 1.80.1, rejected severe
-  diagnostics, and passed the exact password semantics widget test 1/1. The generator's known
-  unresolved conditional-module and Dart C-header warnings remained visible. A subsequent fresh
-  transaction in the same profile reported 24 generator warning lines and zero severe diagnostics,
-  kept both selected files formatter-clean, made `flutter analyze lib/` exit zero with zero errors,
-  40 warnings, and 224 infos, and again passed the widget regression 1/1. No warning-free claim is
-  made. This is still not the wider Dart/Rust test suite, a product peer session, or release evidence.
-
-  A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`,
-  tree `ec93614de768955d61abbd2353e99476963a83c6`, and source-archive SHA-256
-  `0eb0be8f261b07cda83a13e5dc2017ebdff0319db66b6fe59a55756f1b4c041f`. It repeated the
-  exact five-package acquisition with zero TCP listeners and zero UDP sockets, rebuilt the release
-  Rust core in 5m26s with the existing 65-warning baseline, built and manifested 79 Flutter bundle
-  files, reverified the retained Pub-cache input, passed parked/passworded typed readiness, and
-  exposed only `127.0.0.1:21118` with zero UDP inside the external-interface-free namespace. The
-  real same-PID password field was singular, password-role, editable, enabled, sensitive, visible,
-  focusable, and focused. XTest entered the credential only after that observation, the prompt
-  retired, and authentication completed. Four distinct initial pictures were at most 247 ms old;
-  throughout a real 2000-ms focus loss the observed maximum age was 260 ms; three current pictures
-  recovered in 0 ms; and the authenticated TCP tuple/inode remained identical. The controller
-  printed the complete `FLUTTER_PEER_PRESENTATION_OK` verdict without reconnecting.
-
-  The fourteenth transaction is nevertheless red. Closing that real remote window logged two
-  attempts to set a handler on an `FlBinaryMessenger` whose engine was gone, then the viewer
-  segfaulted and exited 139. The harness correctly rejected the exit. Exact cleanup still joined
-  the controlled server, capture source, and both Xvfb owners and closed the listener. Source tracing
-  found a direct lifecycle contradiction: remote and view-camera pages declared `State.dispose()`
-  as asynchronous even though Flutter never awaits it, tab and window close paths synchronously
-  removed or cleared those pages, and the Linux taskbar-close path could destroy the subwindow
-  engine without awaiting page cleanup at all. Texture-plugin method-channel retirement and session
-  cleanup could therefore run after engine destruction; the observed messenger warnings and native
-  crash are consistent with that ordering. This is a real teardown/resource-management defect
-  exposed by the first successful full presentation path, not a green full transaction.
-
-  The first correction gives the tab controller one asynchronous pre-removal boundary, makes
-  individual and all-tab closes wait at that boundary, and re-resolves an exact tab by object
-  identity after waiting so delayed cleanup cannot remove a replacement at the old index. Remote
-  and view-camera pages idempotently retire texture publication, await texture release, close the
-  exact FFI session, restore their UI/plugin state, and leave `State.dispose()` synchronous; the
-  state method remains only a fallback and no longer pretends the framework will await it. Normal
-  tab buttons, dialog cancellation, context-menu close, taskbar/native window close, main-window
-  `onDestroy`, and tab-to-window ownership transfer all converge on the same boundary; transfer
-  explicitly preserves the native session while still retiring the old engine-owned texture. A
-  focused three-case Flutter regression requires individual removal to remain pending until cleanup
-  completes, all snapshotted window tabs to retire before clearing, and a same-key replacement to
-  survive an old delayed close. A networkless numeric-nonroot focused run first passed 3/3 against
-  the latest previously generated bridge whose Rust ABI matches the unchanged Rust source. A later
-  clean transaction freshly generated all bridge outputs from the pending source with the pinned
-  Rust/Flutter/LLVM/FRB tools, reported 18 known generator warning lines and zero severe diagnostics,
-  kept the three selected Dart files formatter-clean, made `flutter analyze lib/` exit zero with zero
-  errors, 40 warnings, and 224 infos, and passed 14/14 combined tab-retirement, texture-lifecycle,
-  and password-semantics tests. The complete independent source-mutation catalog then exited zero
-  with `verify-verifier-workspace: ok` in the pinned, networkless, read-only, numeric-nonroot
-  verifier container. Its first two attempts failed closed because two new camera teardown mutations
-  were rejected by stronger earlier contracts than the fixture's expected later diagnostics. The
-  fixture was corrected without weakening either product check: awaited texture retirement now
-  expects the full recovery/texture/session ordering rejection, while camera cleanup-binding removal
-  and synchronous-clear injection are distinct mutations and must each reach their exact rejection.
-  The publication gate repeats the complete catalog after this evidence-ledger edit, with the final
-  receipt recorded outside the self-referential tracked tree.
-
-  A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`,
-  tree `a454a18dce13cd0db2028cea36769c27bb642bb3`, and source-archive SHA-256
-  `c8d78a7734783955298312d6ab2ede0b40314d569e7b8a656ad4e661d8a618f7`. It acquired the
-  same exact five Xvfb packages with zero acquisition listeners/UDP sockets, reverified the sealed
-  Pub cache, rebuilt the release core in 5m21s with the 65-warning baseline, manifested 79 bundle
-  files, and exposed only `127.0.0.1:21118` with zero UDP in the external-interface-free peer
-  namespace. The exact password accessible again passed every predicate before XTest entry.
-  Authentication and presentation passed: four initial pictures were first-current in 0 ms and at
-  most 250 ms old; across a real 2000-ms focus loss the blurred age was 42 ms, maximum observed age
-  was 247 ms, recovery was 0 ms, and the authenticated TCP tuple/inode stayed identical.
-
-  The fifteenth transaction is also red. Its log proves the first correction executed before native
-  subwindow destruction: remote-page cleanup began, the exact pixelbuffer texture was destroyed,
-  the exact session model closed, and only then did the main engine request the subwindow close.
-  The process nevertheless emitted the same two engine-less messenger warnings and exited 139;
-  cleanup joined every controlled owner and closed the listener. The first correction therefore
-  fixes a real Dart/texture/session ordering defect but is not the complete native crash fix.
-
-  Exact source tracing found the remaining direct lifetime violation in pinned
-  `rustdesk_desktop_multi_window` commit `b47e8385e5a75d38319ad706a64b0ead3108b093`. Its Linux GTK
-  `delete-event` callback calls `OnWindowDestroy`, which immediately erases the manager-owned
-  `unique_ptr<FlutterWindow>` and runs that same callback object's destructor; the callback then
-  returns `self->isPreventClose` by reading freed storage. The destructor also destroys the GTK
-  widget/Flutter engine while its delete signal is still unwinding. Upstream `master` at
-  `533883bcb0ffe91a9afdb13b8bac9b14b3e054ba` retains the identical self-erasure and post-free read,
-  so an unrelated pin bump is not a correction.
-
-  The native correction vendors the exact previously pinned plugin under
-  `flutter/third_party/desktop_multi_window`, preserves its Apache-2.0 license and functional
-  Dart, Linux, Windows, and macOS behavior, and changes the native behavior only at the Linux
-  close lifetime. Close
-  scheduling becomes idempotent; GTK default destruction is inhibited; and the owning-map erase is
-  posted to the GTK idle queue so the `delete-event` callback returns before the `FlutterWindow`
-  destructor can run. `pubspec.yaml` and `pubspec.lock` bind the local deterministic path, never the
-  retained cache. Focused and independent verifiers reject provenance loss, path redirection,
-  missing idempotence, lost idle deferral, synchronous owner deletion, or restoration of the
-  post-free field read. The later exact plugin analyzer exposed seven upstream diagnostics. Its
-  behavior-preserving cleanup removes an impossible null-aware call and unused imports, calls
-  `super.initState()`, uses a real `@override`, matches overridden parameter names, and replaces
-  deprecated `describeEnum(edge)` with the identical `edge.name` wire value. The exact plugin
-  analyzer is now focused- and independently mutation-bound. Fresh offline dependency resolution,
-  build/analyzer tests, complete mutation
-  closure, and an exact committed full-peer rerun remain required; this is not a green claim.
-
-  The first authoritative fresh-generation attempt against this pending source then rejected the
-  retained Pub cache before FRB code generation: the tracked Android-toolchain closure from commit
-  `526b9604257f9d12313547450336adc8d74e5903` locks `external_path 2.2.0`,
-  `flutter_keyboard_visibility 6.0.0`, and `sqflite 2.2.8+4`, while the sealed cache still contains
-  only `1.0.3`, `5.4.1`, and `2.2.0`. Earlier Linux smoke builds consumed stale generated
-  package/plugin metadata pointing at those older directories, so their successful native build did
-  not prove the committed Pub lock resolves offline. The new path dependency merely forced the
-  resolver to expose this pre-existing closure failure; it did not cause the missing package bytes.
-  Downgrading the Android repair or accepting stale generated metadata is forbidden. At that
-  intermediate revision, the closed acquisition and evidence contracts described the exact four
-  remaining Git dependencies after vendoring, but a checked replacement cache still had to acquire
-  the exact locked hosted packages and pass networkless semantic replay before fresh generation
-  could resume. This was a red reproducibility finding, not a native-patch test result or release
-  claim.
-
-  That build-input finding was subsequently repaired through the checked nonroot publication path,
-  not by weakening the lock or editing the occupied cache in place. At that intermediate revision,
-  the exact pinned online closure contained the then-current four-Git Pub graph at mode 0500 and
-  structural digest
-  `dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526`.
-  Its complete online-closure receipt is
-  `50d1d2747532520a740c4037f3b61fb733d2be6057337295cbdbe0d698378412`
-  over 174,684 files, 56,876 directories, 35 symlinks, 34,572,235,445 regular-file
-  bytes, eight hard links, and nine explicitly checked case collisions. Exact acquisition replay
-  passed at commits `362add3` and `a678c6f`. The canonical Dart verifier then ran from a detached
-  exact `a678c6f` snapshot: fresh bridge generation, the application and both in-tree plugin
-  analyzers, all selected Flutter tests, the native Linux and portable Windows callback tests, the
-  shipped-feature Rust check, the maintained lifecycle/audio/video/receipt Rust tests, and final
-  source-digest postcondition all passed. The shipped Rust check retained its existing 65-warning
-  baseline; no warning-free or native-device claim is made.
-
-  The full-peer harness still referred to the obsolete ignored five-dependency cache after that
-  canonical correction. It now accepts only the exact mode-0500 canonical `online/pub-cache`, checks
-  the structural digest above, copies it in a networkless numeric-nonroot transaction, seals and
-  rechecks the copy under the production publisher, and records provenance
-  `canonical-pinned-online-copy`. The focused verifier rejects changes to its path, digest, mode,
-  publisher check, or provenance. The independent workspace semantic baseline and its complete,
-  unsliced `--source-mutations-only` catalog both passed inside the same strict networkless,
-  read-only, numeric-nonroot verifier container without a host bus or cgroup mount. The broader
-  executable `--self-test` mode is not claimed here because its systemd/cgroup authority contract is
-  a separate boundary; no host authority was mounted merely to obtain that additional line.
-
-  A sixteenth exact committed run used commit
-  `6fd5e5354a97b9f0e244e28b30c3d142e813fdc3`, tree
-  `d76faf80b6526c9bd46dbe86068ee73f1063c96a`, and source-archive SHA-256
-  `45a29f61671b8ae8eba859b17ee836fd2b0be6645a38fdefc3c5484d46fee329`.
-  It resolved both locks from the canonical copy, freshly built the release core and 79-file Flutter
-  bundle, started the two real product roles in the external-interface-free namespace, and failed
-  closed because the observed password accessible did not retire after XTest submission. A
-  seventeenth exact run at commit `8e6202da93225d640f7ea91c5facbbf78c465a1a`, tree
-  `b21e7a6af036775393ca53f747a6ad6e0279ab05`, archive SHA-256
-  `94f7e9521d92f21bea65211075ceb888827cf43a6f8fa2b19058fe7fb47e4fea`,
-  reproduced that failure with ordinary process stderr retained. Neither failure authenticated or
-  produced pixel evidence; both joined every exact owner and closed the loopback listener.
-
-  An eighteenth exact committed diagnostic run used commit
-  `6a6767ef181b26e70e26fa066e01b1f387cb9a84`, tree
-  `5e26137c1cd5ebf44ba6b045d092628d77b67cd0`, and source-archive SHA-256
-  `0b6e2f02a5b3bfb6367f560c6ba5a7dbfff4cf043b683eb8ed2a2ce842aaadae`.
-  The added diagnostic collector admitted only current-UID/GID, single-link, non-group/world-writable
-  regular files under exact 16-file, 8-MiB-per-file, and 32-MiB-aggregate bounds, and emitted them only
-  on failure. This time the same real path retired the singular password prompt, authenticated, and
-  passed presentation: first-current pixels arrived in 82 ms, four initial states were at most
-  287 ms old, the 2000-ms blurred sample was 81 ms old, the maximum observed age was 290 ms,
-  recovery was 0 ms, and the exact authenticated TCP tuple/inode remained unchanged. The transaction
-  nevertheless correctly stayed red because the viewer segfaulted during subwindow teardown and
-  exited 139. Server logs prove the session had been fully authenticated, encoded with VP9, and then
-  closed/reset by the viewer; all controlled owners joined and the listener closed.
-
-  Those bounded logs disprove the idea that a single GTK-idle deferral completed the lifetime fix.
-  RustDesk's Dart `onDestroy` method awaits `closeAll`, which in turn awaits exact texture and session
-  retirement. The vendored native plugin had sent that method fire-and-forget and scheduled engine
-  deletion immediately for the next idle turn. The idle callback could therefore destroy the engine
-  while the asynchronous method response was still in flight; the observed attempts to use an
-  `FlBinaryMessenger` without an engine and exit 139 are direct evidence of that ordering violation.
-  The pending correction adds one response completion to the existing channel: native code retains
-  the window/channel through `fl_method_channel_invoke_method_finish`, then schedules the owning-map
-  erase for a later GTK idle turn. It does not add a timer, retry, second teardown path, dependency,
-  or platform-wide refactor. The focused verifier independently rejects removing response finality,
-  completion invocation, idempotence, or post-response idle deferral. Against the exact pinned
-  Flutter 3.24.5 Linux headers, the modified native channel passed a C++14 syntax/type check with all
-  new warnings treated as errors; the only suppressed warning class was two pre-existing unused
-  callback parameters. The complete independent source-mutation catalog required four unsliced
-  starts. The first three did not accept broken product code: each correctly reached a new teardown
-  mutation and the strengthened validator rejected it, but the catalog fixture still expected the
-  pre-rename diagnostic label and therefore failed its effective-target accounting. Every mutation
-  tied to the renamed ordered gate was then audited, the expected labels were aligned without
-  weakening a validator, and a separate mutation was added that injects fire-and-forget teardown
-  while retaining the correct response call. The fourth complete run proceeded past all prior
-  points and exited zero with `verify-verifier-workspace: ok`; it was neither sampled nor shortened.
-  At that byte freeze, an exact committed full-peer rerun including viewer exit zero still remained
-  mandatory before this item could become green; the later green transaction is recorded below.
-
-  A nineteenth exact committed run used commit
-  `a968e78ec9542eb8c182309b6ef6c832a6d31ebd`, tree
-  `c4c979fa4743033676981290b441cf365b437301`, and the response-bound native/Dart handshake above.
-  The clean exact build again exercised both actual product roles: the prompt retired,
-  authentication succeeded, four initial source states were current with first-current latency
-  0 ms and maximum initial age 297 ms, the same authenticated connection stayed alive through the
-  real 2000-ms blur, the blurred sample was 121 ms old, recovery took 0 ms, and the maximum recovery
-  observation was 253 ms. The server and all evidence owners joined and the listener closed. The
-  viewer nevertheless emitted the same two engine-less messenger warnings and exited 139. This
-  proves the response handshake closed a real ordering hole but was not sufficient, and the
-  transaction remains red.
-
-  A disposable diagnostic-only exact build then interposed a bounded channel tracer on the isolated
-  viewer only; neither diagnostic commit is in this branch and neither is eligible to publish. That
-  run again authenticated and passed actual pixels/focus on one connection (first-current 0 ms,
-  maximum initial age 253 ms, 2000-ms blurred age 84 ms, recovery 0 ms, maximum observed age
-  297 ms), then exited 139. Exact stacks bound both warnings to the two Pigeon channels
-  `dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.canLaunchUrl` and
-  `dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.launchUrl` in locked
-  `url_launcher_linux 3.2.1`. Its two messenger handlers jointly retain one API object, that API
-  owns the plugin, and the plugin can therefore reach its final reference while messenger shutdown
-  is already removing those handlers. Upstream disposal then redundantly calls
-  `ful_url_launcher_api_clear_method_handlers()`, constructing channels and resetting the same
-  handlers re-entrantly after engine retirement. Current upstream source retains that ownership
-  pattern, so an unrelated dependency bump is not accepted as a fix.
-
-  R-S11ge/Appx C #340 carries the smallest direct correction. The exact locked package is vendored
-  with its hosted SHA-256 provenance; Linux plugin disposal omits only that redundant recursive
-  clear and still releases its registrar and parent object. A native regression using the exact
-  generated Pigeon code and pinned Flutter 3.24.5 engine requires two real handlers, handler-owned
-  plugin retention, shutdown through the real messenger interface, exactly two normal terminal
-  handler resets (one per channel), an empty handler table, and final plugin release. The corrected
-  source passes warning-clean; the exact stock 3.2.1 disposal fails the same executable test because
-  it performs additional resets during shutdown. This is stronger than a source-spelling assertion
-  but remains only a focused native lifetime proof until the real peer exits cleanly.
-
-  The same audit found a second independent lifetime defect in the vendored multi-window Linux
-  implementation. It installs process-global GTK button-press and button-release emission hooks
-  with the `FlutterWindow` as callback data, but retained and removed only the press-hook ID. The
-  pending correction owns both returned IDs and conditionally removes both before GTK window/engine
-  destruction, eliminating the release hook's dangling callback pointer. Exact pinned-engine
-  C++14 compilation passes with new warnings forbidden. Focused and independent verifiers mutate
-  both hook ownership and both URL-launcher ownership boundaries. Full offline analysis, complete
-  mutation closure, and a clean exact committed peer rerun remain mandatory; none of these pending
-  source results is represented as release-green evidence.
-
-  A twentieth exact committed run used commit
-  `91867e66e5ce97df693ab8508582991312a5560e`, tree
-  `d2f5e48db064c2febb2179bd05977f2ba960eb53`, both vendored corrections, and the complete exact
-  current closure. The release bundle authenticated through the real password prompt, produced four
-  current initial states with 0-ms first-current latency and 288-ms maximum age, stayed on the same
-  authenticated socket through the 2000-ms blur with an 82-ms blurred sample, and recovered in 0 ms
-  with 286-ms maximum observed recovery age. Both former engine-less messenger warnings were absent,
-  proving the URL-launcher correction changed the exact failing runtime. The viewer still exited 139
-  after the multi-window owner printed its destruction message; the harness therefore remained red
-  and did not publish.
-
-  A second disposable diagnostic-only exact build added flushed destructor phases and a fatal-signal
-  backtrace to that same contained viewer; diagnostic commit `9339935` is detached from this branch
-  and is not publishable product code. It again passed the real peer on one connection (0-ms first
-  current frame, 248-ms maximum initial age, four states, 2000-ms blur with an 83-ms-old sample,
-  0-ms recovery, and 296-ms maximum recovery age). The trace then proved every multi-window
-  destructor phase had completed, including GTK destruction and channel release, before the fatal
-  callback. The exact top native frames were `gtk_window_is_maximized` and the selected
-  `libwindow_manager_plugin.so`: a queued `window_manager.isMaximized` method call derived a GTK
-  toplevel from its still-retained registrar after that registrar's view had been destroyed. This is
-  neither a Rust transport failure nor the repaired URL-launcher path; it is a third, independently
-  reproduced native lifetime defect.
-
-  R-S11ge and Appendix C #340 now also bind that last boundary. The exact selected
-  `window_manager 0.3.6` fork is provenance-bound in tree at commit
-  `85789bfe6e4cfaf4ecc00c52857467fdb7f26879`, tree
-  `9627e63c85411da995da37cb7cd6d392766a509d`; its unmodified upstream Linux source has SHA-256
-  `5b2a562f2e853cde3661468aea2a38fc9d1abef5e2fbd3befbc86831a7f7cd87`. Linux registration now
-  binds one concrete `GtkWindow`; the window's `destroy` signal closes method admission, removes the
-  process-global hook, and clears raw window/event-box/device state. Already-queued calls receive
-  `window_unavailable` without entering GTK. Disposal disconnects every remaining window callback,
-  conditionally removes the hook, and releases CSS/title/channel/registrar ownership. The tab bar's
-  delayed initial maximize query now owns a timer, cancels it in `dispose`, and checks `mounted` both
-  after the platform await and in the post-frame callback. A pinned-engine native regression drives
-  the real standard-method codec/channel against an unavailable window, requires the exact error,
-  zero recursive handler mutations during messenger shutdown, and final plugin release; removing
-  the guard makes that same regression fail. The corrected native test passes with new warnings
-  forbidden.
-
-  The current full offline transaction then completed from a fresh private copy of canonical
-  closure `50d1d2747532520a740c4037f3b61fb733d2be6057337295cbdbe0d698378412`
-  in immutable Debian builder
-  `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`.
-  Fresh FRB generation and atomic publication passed; the exact formatter set was unchanged;
-  application analysis reported zero errors; both previously clean vendored packages reported no
-  issues; and the exact upstream `window_manager` Dart package retained four visible nonfatal info
-  diagnostics (one unnecessary qualifier and three deprecated `describeEnum` uses). All selected
-  Flutter tests passed, including mobile latest-wins/finality, desktop texture retirement, tab
-  teardown, focus/background presentation recovery, RGBA publication ordering, and password
-  semantics. The Linux texture, URL-launcher, and window-manager native regressions, the exact-stock
-  and guard-disabled negative controls, the portable Windows texture core, Rust formatting, the
-  locked shipped-feature Rust check and maintained Rust regressions, all source gates, the final
-  closure digest, and the unchanged-source postcondition passed. The transaction exited zero with
-  its explicit `DART-VERIFY` green verdict.
-
-  This was reached only after two legitimate pre-verdict failures. First, the vendored analyzer
-  commands had accidentally omitted the main analyzer's documented nonfatal-info/nonfatal-warning
-  flags; the uniform policy now keeps real errors fatal without editing provenance-bound upstream
-  Dart merely to silence informational diagnostics. Second, root `.gitignore`'s broad `*png` rule
-  omitted the new untracked package assets from the pre-commit source archive, so the first Flutter
-  test correctly failed asset-bundle construction. Four narrow path exceptions now admit only the
-  shipped `window_manager` PNGs. Each asset is SHA-256-bound to the pinned upstream checkout, and
-  the full transaction visibly rechecked all four before its final verdict. The Dart verifier
-  authority self-test rejects 131 deliberate mutations, the focused full-peer verifier self-test
-  passes, and the independent semantic baseline passes. The first complete current-source mutation
-  catalog correctly reached the new ignored-asset mutation and rejected it, but its effective-target
-  fixture expected the narrower `asset inventory` label instead of the combined ordered gate's
-  actual `shipped asset authority` label. The expected diagnostic identity was aligned without
-  weakening the validator or product gate. A complete unsliced restart from mutation one is the
-  terminal pre-commit byte-freeze gate; its result is deliberately not preclaimed in this tracked
-  paragraph because editing the paragraph afterward would invalidate that byte freeze. At that byte
-  freeze, a clean exact committed real-peer exit-zero rerun still remained mandatory before any
-  green runtime claim.
-
-  Vendoring `window_manager` reduced the committed application lock to exactly three Git records,
-  two from `rustdesk-org`. The first exact committed peer attempt at candidate commit
-  `3d89498ceada87d7d7d4653aa29bf5ab5410d327` correctly stopped before compilation because the
-  retained canonical Pub cache still had the superseded fourth Git checkout. That was an input-shape
-  rejection, not a product or lifecycle verdict; no RustDesk process, X server, or listener started.
-  A separate private snapshot first reverified the retained closure
-  `50d1d2747532520a740c4037f3b61fb733d2be6057337295cbdbe0d698378412`, then the checked nonroot
-  acquisition transaction replaced only the stale Pub cache through its preservation-first
-  same-parent exchange. Both exact application and Flutter-tools locks replayed offline, every other
-  occupied Android, Debian, Windows, Cargo, native-codec, SDK, Gradle, and WiX input revalidated, and
-  the complete fixed-archive SHA-256/SHA-512 sweep passed. The exact current Pub cache is mode 0500
-  with structural digest
-  `854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19`; the refreshed canonical
-  online-closure receipt is
-  `d552816bcd34cb3a5c47403dcd782def30a61626a3363a274bcd979c5245c27b` over 193,952 files,
-  62,162 directories, 35 symlinks, 34,989,432,893 regular-file bytes, 14 hardlink groups, and nine
-  explicitly checked case collisions. The displaced cache remains preservation-bound by the
-  transaction record. This establishes current offline input coherence only; the subsequent exact
-  committed runtime verdict is recorded below.
-
-  No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
-  peer and viewer run as numeric non-root in separate mount, PID,
-  IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
-  `--network=none` namespace whose only interface must be `lo`; the viewer shares only that exact
-  owned namespace, so its sole target is container-loopback `127.0.0.1:21118` without an external
-  interface or host-published port. Both runtimes have read-only roots/source/bundle, all
-  capabilities dropped, `no-new-privileges`, bounded resources, no device, Docker socket, host
-  namespace, or host display. The only networked producer is the existing non-root acquisition of
-  five exact SHA-256-pinned Xvfb packages; it receives no source/output authority beyond that private
-  closure.
-
-  The controlled peer starts the exact shipped `--server` runner parked, provisions a fixed test
-  password through redirected `--password-stdin` and its authenticated same-user IPC transaction,
-  then must make that same server own exactly one IPv4 listener at `127.0.0.1:21118` with zero UDP.
-  The viewer starts the shipped runner with only
-  `--connect 127.0.0.1` inside a viewer-only private D-Bus/AT-SPI session supplied by the pinned
-  runtime image; no host bus or socket is mounted. An XTest/AT-SPI controller binds the exact
-  launcher PID, exact `rustdesk`/`Rustdesk` X11 instance/class pair, and exact remote-title shape,
-  then waits for exactly one same-PID `PASSWORD_TEXT` accessible that is visible, enabled,
-  sensitive, editable, focusable, and focused. The pinned Flutter engine's contradictory
-  obscured-password `SHOWING` mapping is explicitly forbidden as a readiness predicate. Only then
-  may the controller type the credential and submit Enter; that exact password-role node must remain
-  absent for five bounded consecutive scans before pixel evidence may
-  begin. Fixed delays and title-only prompt inference are forbidden, and accessibility unavailability
-  fails closed instead of falling back to blind input. The source fixture encodes
-  256 ordered states as two independently colored halves. The observer correlates actual Flutter/X11
-  pixels with live source history, requiring four distinct initial pictures no more than 1000 ms old.
-  It then holds focus on a separate mapped sink for 2000 ms and returns through a real pointer click;
-  three distinct current pictures must appear within 2500 ms. The authenticated TCP client tuple and
-  socket inode are sampled before and after that focus cycle and must remain identical, so a reconnect
-  cannot be credited as presentation recovery. The real remote window closes through
-  `WM_DELETE_WINDOW`, all viewer/server/source/Xvfb owners must join, and the listener/UDP surface,
-  bundle manifest, result receipts, container configurations, source commit/tree/archive, online
-  inputs, and clean worktree must revalidate before the terminal verdict.
-
-  The focused verifier deliberately breaks external-interface isolation, namespace sharing,
-  no-port inspection, offline/locked compilation, severe-diagnostic rejection, prompt-only password
-  handling, the viewer-only accessibility session, exact accessible process/role/state/singularity,
-  prompt readiness and stable retirement, source-display selection, frame-age and recovery bounds,
-  stable socket identity, XTest input, the 256-state source, shared-verifier wiring, and
-  requirement/ledger records. The independent
-  workspace verifier separately binds the focused verifier and its controller/source paths.
-
-  Pre-publication verification ran only in immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric
-  UID/GID 1000 with `--pull=never`, `--network=none`, read-only root and source, all capabilities
-  dropped, `no-new-privileges`, bounded PIDs/memory/no-swap/CPU/tmpfs, and no port, device, Docker
-  socket, privileged flag, or host namespace. The focused verifier and every deliberate mutation
-  passed; the C11 controller passed syntax-only compilation with `-Wall -Wextra -Werror` against
-  X11, XTest, and AT-SPI;
-  both shell stages parsed; the native-codec/requirements-hash gate and all of its mutations passed;
-  and the independent workspace semantic baseline passed. A fresh complete independent in-memory
-  source-mutation catalog then ran from mutation one to terminal exit zero and printed
-  `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
-  RustDesk process, X server, listener, or networked process and changed no host service,
-  configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `bdd378bdc9f1881c71fee1fd234edbb78b8c8efdd45d0e89e2eecaf1369f7d24`.
-
-  The twenty-first exact committed transaction is green. Commit
+  **Authoritative retained receipt.** Exact committed transaction
   `38ad03ea7a2465297425ad745ada5c05f8de7e94`, tree
   `a71a28b7aba45d90ec39886b6317928e27bb6a1d`, and source-archive SHA-256
-  `58da0080ef04f1433792ddd3ec8170da5a14b35958f22956b283da1c870cd53b`
-  rebuilt the optimized Rust core and real 79-file Flutter Linux bundle from the exact current
-  closure. The viewer authenticated by typing through the singular real password accessible, which
-  then retired stably. Four distinct initial states reached the real Flutter/X11 window with the
-  first fresh frame in 83 ms and maximum age 289 ms. During a real 2000-ms focus loss the blurred
-  sample was 81 ms old; pointer return recovered in 0 ms with maximum recovery age 287 ms while the
-  exact authenticated TCP tuple and socket inode remained unchanged. The real window closed through
-  `WM_DELETE_WINDOW`; the viewer exited zero without the former engine-less messenger warnings,
-  post-destruction GTK call, or signal 139; and viewer, server, source fixture, and both Xvfb owners
-  joined. The listener closed, zero UDP remained, the source commit/tree/archive and sealed Pub-cache
-  digest revalidated, and the transaction printed its terminal
-  `FLUTTER_PEER_PRESENTATION_SMOKE_OK` verdict. The fourteenth, fifteenth, eighteenth, nineteenth,
-  and twentieth runs remain useful red historical evidence for the defects this transaction closes.
+  `58da0080ef04f1433792ddd3ec8170da5a14b35958f22956b283da1c870cd53b` rebuilt the optimized
+  core and real 79-file bundle. The real prompt authenticated and retired. Four distinct initial
+  states appeared with first-fresh latency 83 ms and maximum age 289 ms. During 2000 ms of real
+  focus loss the blurred sample was 81 ms old; pointer return recovered in 0 ms with maximum
+  recovery age 287 ms on the same TCP tuple and inode. The real window closed; the viewer exited
+  zero without the former engine-less messenger warnings, post-destruction GTK call, or signal 139;
+  every owned process joined; the listener closed; zero UDP remained; and the transaction emitted
+  `FLUTTER_PEER_PRESENTATION_SMOKE_OK`.
 
-  This green result closes only one Linux/X11 software-codec full-peer and focus cycle. It does not
-  establish Android
-  Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
-  behavior; macOS/iOS; installed service/cross-user behavior; cross-version interoperability;
-  concurrent control/file/audio correctness; long reconnect/focus/resource/performance soak; cold
-  R-B2/R-B10 artifacts; independent reproduction; or external review. Every such item remains
-  explicitly release-blocking.
+  **Product defects exposed and current corrections.**
+
+  **Linux password accessibility.** The global Linux `workaroundFreezeLinuxMint()`
+  `ExcludeSemantics` wrapper and its call sites were removed. `DialogTextField` supplies explicit
+  focusable semantics, so the real obscured password field can satisfy the exact AT-SPI contract.
+  The pinned engine's contradictory `SHOWING` mapping is intentionally not used.
+
+  **Dart page/session teardown.** Tab and native-window removal now enter one asynchronous
+  pre-removal boundary, re-resolve exact object identity afterward, and await texture and session
+  cleanup. Framework `State.dispose()` remains synchronous; transfer preserves the native session
+  while retiring engine-owned texture state.
+
+  **Linux multi-window teardown.** The vendored plugin inhibits GTK default destruction, makes
+  close idempotent, waits for the Dart method response, and erases the owning map only in a later
+  GTK idle turn. Both process-global pointer hook IDs are owned and removed.
+
+  **Linux plugin callback lifetime.** The exact vendored `url_launcher_linux 3.2.1` omits its
+  redundant re-entrant handler clear during messenger shutdown. The exact vendored
+  `window_manager 0.3.6` binds a concrete window, closes admission on destroy, rejects queued calls
+  as `window_unavailable`, cancels delayed Dart work, and retires callbacks/channel/registrar
+  ownership before their targets. R-S11ge and Appendix C #340 own the normative lifetime contract.
+
+  Historical red runs and transient harness failures remain in Git history; their run numbers,
+  superseded cache digests, build durations, warning counts, mutation-catalog repairs, and repeated
+  cleanup narration are not current-state requirements. The retained diagnoses above are the
+  lasting product conclusions.
+
+  **Current evidence boundary.** The defining `38ad03…` receipt does not prove source added later,
+  including R-S11gf's exact bundle-relative texture-plugin loader. The adjacent
+  **R-S11gc exact-current full-peer input authority recovery** entry records later green executions,
+  including `11b20830f5d1c5354cbcee872557b28b6923f8a1`, after the current narrow vcpkg input
+  projection and later loader/lifetime corrections. Those are still named-commit Linux/X11 results,
+  not proof for subsequent master bytes or a cold release artifact.
+
+  **Open / STOP-SHIP.** The Linux result covers only one X11 software-codec peer/focus cycle. It
+  does not establish Android Activity/foreground-service/task-swipe/reopen/Force-Stop behavior;
+  Windows engine/compositor focus, minimize, background, or reconnect behavior; macOS/iOS;
+  installed service or cross-user behavior; cross-version interoperability; concurrent
+  control/file/audio correctness; repeated reconnect and sustained latency/queue/CPU/memory/resource
+  soak; exact Debian/package execution; cold R-B2/R-B10 equality; independent reproduction; or
+  external review. Each remains release-blocking.
 
 - **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX, EXACT
   RELEASE-BUNDLE EXECUTION, AND LATER FULL-PEER EVIDENCE RECORDED.** Platform: shipped

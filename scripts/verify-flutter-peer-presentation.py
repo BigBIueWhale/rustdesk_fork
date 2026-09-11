@@ -1259,120 +1259,50 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(sources["requirements"], "<tr><td>338</td>", "Appendix C evidence row")
     require(sources["requirements"], "<tr><td>340</td>", "Appendix C teardown row")
+    hardening_heading = (
+        "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence"
+    )
+    hardening_start = sources["hardening"].find(hardening_heading)
+    if hardening_start < 0:
+        raise VerificationError(f"missing hardening evidence ledger: {hardening_heading!r}")
+    hardening_end = sources["hardening"].find("\n- **", hardening_start)
+    if hardening_end < 0:
+        raise VerificationError("unterminated R-S11gc hardening evidence ledger")
+    hardening_entry = sources["hardening"][hardening_start:hardening_end]
     require(
-        sources["hardening"],
-        "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence",
-        "hardening evidence ledger",
+        hardening_entry,
+        "38ad03ea7a2465297425ad745ada5c05f8de7e94",
+        "hardening exact committed source receipt",
+    )
+    require(
+        hardening_entry,
+        "58da0080ef04f1433792ddd3ec8170da5a14b35958f22956b283da1c870cd53b",
+        "hardening exact source-archive receipt",
+    )
+    require(
+        hardening_entry,
+        "FLUTTER_PEER_PRESENTATION_SMOKE_OK",
+        "hardening terminal runtime verdict",
+    )
+    require(
+        hardening_entry,
+        "Evidence-only bind confinement:",
+        "hardening loopback evidence boundary",
+    )
+    require(
+        hardening_entry,
+        "Each remains release-blocking.",
+        "hardening residual evidence boundary",
     )
     require(
         sources["hardening"],
-        "R-S11gc exact-current full-peer input authority recovery",
+        "- **R-S11gc exact-current full-peer input authority recovery",
         "exact-current input-authority ledger",
     )
     require(
         sources["hardening"],
         "The full canonical online closure remains red and was not repinned.",
         "full-online closure residual ledger",
-    )
-    require(
-        sources["hardening"],
-        "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`",
-        "hardening loopback-confinement disposition",
-    )
-    require(
-        sources["hardening"],
-        "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields",
-        "hardening exact viewer-window identity disposition",
-    )
-    require(
-        sources["hardening"],
-        "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`",
-        "hardening invalid prompt-readiness evidence disposition",
-    )
-    require(
-        sources["hardening"],
-        "A twentieth exact committed run used commit",
-        "warning-clean but crashing twentieth real-peer evidence",
-    )
-    require(
-        sources["hardening"],
-        "The exact top native frames were `gtk_window_is_maximized`",
-        "exact stale window-manager crash diagnosis",
-    )
-    require(
-        sources["hardening"],
-        "Already-queued calls receive\n  `window_unavailable` without entering GTK",
-        "window-manager terminal-admission correction record",
-    )
-    require(
-        sources["hardening"],
-        "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`",
-        "hardening corrected AT-SPI role interpretation",
-    )
-    require(
-        sources["hardening"],
-        "A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`",
-        "hardening exact zero-password-node evidence disposition",
-    )
-    require(
-        sources["hardening"],
-        "The next diagnostic reused that same bounded, exact-PID accessibility traversal",
-        "hardening bounded accessibility diagnostic",
-    )
-    require(
-        sources["hardening"],
-        "A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`",
-        "hardening exact prompt-tree evidence disposition",
-    )
-    require(
-        sources["hardening"],
-        "The correction removes that global semantics-deletion helper and all of its authored",
-        "hardening Linux semantics-deletion product correction",
-    )
-    require(
-        sources["hardening"],
-        "A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`",
-        "hardening viewer teardown-crash evidence",
-    )
-    require(
-        sources["hardening"],
-        "The first correction gives the tab controller one asynchronous pre-removal boundary",
-        "hardening awaited viewer teardown correction",
-    )
-    require(
-        sources["hardening"],
-        "A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`",
-        "hardening awaited-teardown runtime result",
-    )
-    require(
-        sources["hardening"],
-        "Its Linux GTK",
-        "hardening native multi-window lifetime diagnosis",
-    )
-    require(
-        sources["hardening"],
-        "An eighteenth exact committed diagnostic run used commit",
-        "hardening response-race runtime diagnosis",
-    )
-    require(
-        sources["hardening"],
-        "The pending correction adds one response completion to the existing channel",
-        "hardening response-bound native teardown correction",
-    )
-    require(
-        sources["hardening"],
-        "A nineteenth exact committed run used commit",
-        "hardening response-bound runtime result",
-    )
-    require(
-        sources["hardening"],
-        "Exact stacks bound both warnings to the two Pigeon channels",
-        "hardening exact URL-launcher teardown diagnosis",
-    )
-    require(
-        sources["hardening"],
-        "retained and removed only the press-hook ID",
-        "hardening unmatched GTK release-hook diagnosis",
     )
     require(
         sources["readme"],
@@ -1547,28 +1477,13 @@ MUTATIONS = (
     ("requirements", "<tr><td>340</td>", "<tr><td>340-disabled</td>"),
     ("requirements", "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag", "maps password visibility consistently"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
-    ("hardening", "R-S11gc exact-current full-peer input authority recovery", "R-S11gc unbounded input acceptance"),
+    ("hardening", "38ad03ea7a2465297425ad745ada5c05f8de7e94", "unidentified-full-peer-source"),
+    ("hardening", "58da0080ef04f1433792ddd3ec8170da5a14b35958f22956b283da1c870cd53b", "unidentified-full-peer-archive"),
+    ("hardening", "FLUTTER_PEER_PRESENTATION_SMOKE_OK", "FLUTTER_PEER_PRESENTATION_SMOKE_UNKNOWN"),
+    ("hardening", "Evidence-only bind confinement:", "Native product bind evidence:"),
+    ("hardening", "Each remains release-blocking.", "Each is release-ready."),
+    ("hardening", "- **R-S11gc exact-current full-peer input authority recovery", "- **R-S11gc unbounded input acceptance"),
     ("hardening", "The full canonical online closure remains red and was not repinned.", "The full canonical online closure is green."),
-    ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
-    ("hardening", "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields", "The observer accepts any title match"),
-    ("hardening", "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`", "The eighth exact run proved product presentation failure"),
-    ("hardening", "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`", "The eleventh exact run proved product presentation failure"),
-    ("hardening", "A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`", "The twelfth exact run proved product presentation failure"),
-    ("hardening", "The next diagnostic reused that same bounded, exact-PID accessibility traversal", "The next diagnostic accepted any accessibility traversal"),
-    ("hardening", "A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`", "The thirteenth exact run proved product presentation success"),
-    ("hardening", "The correction removes that global semantics-deletion helper and all of its authored", "The correction retains global semantics deletion"),
-    ("hardening", "A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`", "The fourteenth exact run was green"),
-    ("hardening", "The first correction gives the tab controller one asynchronous pre-removal boundary", "The first correction keeps asynchronous State.dispose"),
-    ("hardening", "A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`", "The fifteenth exact run was green"),
-    ("hardening", "Its Linux GTK", "Its unrelated Linux GTK"),
-    ("hardening", "An eighteenth exact committed diagnostic run used commit", "An uncounted diagnostic run used commit"),
-    ("hardening", "The pending correction adds one response completion to the existing channel", "The pending correction adds one arbitrary delay"),
-    ("hardening", "A nineteenth exact committed run used commit", "An uncounted nineteenth run used commit"),
-    ("hardening", "Exact stacks bound both warnings to the two Pigeon channels", "A guess associated the warnings with a plugin"),
-    ("hardening", "retained and removed only the press-hook ID", "owned both global hook IDs"),
-    ("hardening", "A twentieth exact committed run used commit", "An uncounted twentieth run used commit"),
-    ("hardening", "The exact top native frames were `gtk_window_is_maximized`", "The crash location was guessed"),
-    ("hardening", "Already-queued calls receive\n  `window_unavailable` without entering GTK", "Queued calls continue into GTK"),
 )
 
 

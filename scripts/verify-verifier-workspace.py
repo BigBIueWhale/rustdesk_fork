@@ -38382,41 +38382,6 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "Linux plugin and GTK callback lifetime Appendix C row",
     )
     require_text(
-        sources["hardening"],
-        "A nineteenth exact committed run used commit",
-        "response-bound full-peer runtime result",
-    )
-    require_text(
-        sources["hardening"],
-        "Exact stacks bound both warnings to the two Pigeon channels",
-        "exact URL-launcher teardown diagnosis",
-    )
-    require_text(
-        sources["hardening"],
-        "retained and removed only the press-hook ID",
-        "unmatched GTK release-hook diagnosis",
-    )
-    require_text(
-        sources["hardening"],
-        "A twentieth exact committed run used commit",
-        "twentieth exact full-peer result",
-    )
-    require_text(
-        sources["hardening"],
-        "The exact top native frames were `gtk_window_is_maximized`",
-        "exact window-manager teardown diagnosis",
-    )
-    require_text(
-        sources["hardening"],
-        "Already-queued calls receive\n  `window_unavailable` without entering GTK",
-        "awaited window-manager lifetime correction",
-    )
-    require_text(
-        sources["hardening"],
-        "The twenty-first exact committed transaction is green",
-        "exact committed full-peer green result",
-    )
-    require_text(
         sources["apple"],
         "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
         "desktop texture Apple focused-verifier wiring",
@@ -93463,48 +93428,6 @@ def run_source_mutations(sources):
             "<tr><td>340</td>",
             "<tr><td>340-disabled</td>",
             "Linux plugin and GTK callback lifetime Appendix C row",
-        ),
-        (
-            "hardening",
-            "A nineteenth exact committed run used commit",
-            "An uncounted nineteenth run used commit",
-            "response-bound full-peer runtime result",
-        ),
-        (
-            "hardening",
-            "Exact stacks bound both warnings to the two Pigeon channels",
-            "A guess associated the warnings with a plugin",
-            "exact URL-launcher teardown diagnosis",
-        ),
-        (
-            "hardening",
-            "retained and removed only the press-hook ID",
-            "owned both global hook IDs",
-            "unmatched GTK release-hook diagnosis",
-        ),
-        (
-            "hardening",
-            "A twentieth exact committed run used commit",
-            "An uncounted twentieth run used commit",
-            "twentieth exact full-peer result",
-        ),
-        (
-            "hardening",
-            "The exact top native frames were `gtk_window_is_maximized`",
-            "A guess implicated window_manager",
-            "exact window-manager teardown diagnosis",
-        ),
-        (
-            "hardening",
-            "Already-queued calls receive\n  `window_unavailable` without entering GTK",
-            "Queued calls continue into GTK",
-            "awaited window-manager lifetime correction",
-        ),
-        (
-            "hardening",
-            "The twenty-first exact committed transaction is green",
-            "The twenty-first exact committed transaction remains unverified",
-            "exact committed full-peer green result",
         ),
         (
             "apple",

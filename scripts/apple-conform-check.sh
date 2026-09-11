@@ -5042,10 +5042,10 @@ else
 fi
 
 echo "== (2g-c2ba) R-S11hu atomic exact-owner outgoing viewer-session registry =="
-if python3 scripts/verify-viewer-session-registry.py --repo . --self-test; then
-  note "ok  R-S11hu Apple/shared viewer-session admission and retirement are atomic and exact-owner"
+if python3 scripts/verify-viewer-session-registry.py --repo .; then
+  note "ok  R-S11hu Apple/shared source shape keeps viewer-session admission and retirement atomic and exact-owner"
 else
-  echo "  FAIL R-S11hu Apple/shared viewer-session registry regained detached duplicate checks, replacing admission, stale-owner close, or split last-peer retirement"
+  echo "  FAIL R-S11hu Apple/shared source shape regained detached duplicate checks, replacing admission, stale-owner close, or split last-peer retirement"
   rc=1
 fi
 

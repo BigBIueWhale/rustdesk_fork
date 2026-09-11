@@ -11432,10 +11432,10 @@ else
   echo "  FAIL R-S11go: display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
   rc=1
 fi
-if python3 scripts/verify-viewer-session-registry.py --repo . --self-test; then
-  echo "  ok  R-S11hu outgoing viewer-session admission and retirement are atomic and exact-owner"
+if python3 scripts/verify-viewer-session-registry.py --repo .; then
+  echo "  ok  R-S11hu source shape keeps outgoing viewer-session admission and retirement atomic and exact-owner"
 else
-  echo "  FAIL R-S11hu: viewer-session registry regained detached duplicate checks, replacing admission, stale-owner close, or split last-peer retirement"
+  echo "  FAIL R-S11hu source shape: viewer-session registry regained detached duplicate checks, replacing admission, stale-owner close, or split last-peer retirement"
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never

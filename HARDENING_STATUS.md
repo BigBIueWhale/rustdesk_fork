@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-6def4cb0e3cda369a4fd76250ef393f49decfc1ac461b8d9992c284a993bc5ac  requirements.html
+140f7a68ed1f1db585255866f9a8434b34e8982450e7ff7ff112461cccef7a49  requirements.html
 ```
 
 ## Current Verdict
@@ -28020,179 +28020,23 @@ independent reproduction, and external review remain open.
 
 ### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry
 
-**Status:** SOURCE REPAIR AUTHORED / FOCUSED RUST REGRESSIONS AND COMPLETE
-SOURCE/MUTATION GATES AUTHORED / EXACT GENERATED-BRIDGE, NATIVE,
-CROSS-PLATFORM, INSTALLED-ARTIFACT, PERFORMANCE, INDEPENDENT-REPRODUCTION, AND
-EXTERNAL-REVIEW EVIDENCE OPEN.
+**State.** The source design is present. Exact-current generated-bridge/native execution, cross-platform concurrency, installed-artifact, performance/resource, independent-reproduction, and external-review evidence remain open.
 
-The continuing connection-flow audit found a shared viewer defect beneath the
-Android symptom, not an Android persistent-service defect. `SESSIONS` is the
-process-wide outgoing peer registry on every Flutter client platform. Most of
-its accessors search every peer by one connection UUID, but `session_add`
-checked that UUID before the insertion lock and `insert_session` later used a
-replacing handler-map insertion. When the peer key was already installed, the
-function retained the existing peer in the registry but returned the newly
-constructed candidate `Arc`; its caller could therefore start and mutate an
-owner that was not the registry owner.
+**Boundary and current implementation.** `SESSIONS` is the process-wide outgoing viewer registry shared by Android, iOS, Linux, macOS, Windows, and the web-authored bridge. `sessions::insert_session` holds one global write guard from the global connection-UUID uniqueness check through vacant handler admission and returns the actual installed peer `Arc`; it does not publish ambient last-peer state before admission succeeds. `sessions::remove_session_by_exact_ui_owner` requires `(connection UUID, client-owner UUID)` and holds the same global write guard through handler removal and possible last-peer map removal. Non-last close preserves the peer, last close returns the exact peer for `close_and_join` outside the lock, and failed-start rollback uses the same primitive. Rust FFI, the three authored Dart close paths, and web parity carry both identities.
 
-Retirement had a separate linearization gap. Normal close removed a handler
-under one temporary `SESSIONS.write()` guard, dropped that guard after observing
-the map empty, then acquired a second guard to remove the peer. Failed-start
-rollback checked the exact client owner but used the same split removal. A new
-same-peer attachment could enter between the empty observation and peer-map
-removal and then be destroyed by the older close. Normal close and its
-prediction bridge also carried only the connection UUID, even though Dart
-already retains a separate exact `clientOwnerId`. The later
-`close_event_stream` call could not repair finality: it ran only after the
-handler had been removed, so the lookup was necessarily empty.
+**Evidence.** Source inspection confirms the single-write-guard admission and retirement paths in `src/flutter.rs`, exact-owner finality in `src/flutter_ffi.rs::session_close`, and dual-identity close propagation in `flutter/lib/models/model.dart` and `flutter/lib/web/bridge.dart`. The retained Rust regressions exercise installed-versus-candidate `Arc` identity, global duplicate refusal, wrong-owner refusal, non-last retirement, and last-peer return. The compact focused source gate and the independently implemented workspace check cover the cross-language shape without using synthetic mutations or documentary wording as product evidence.
 
-The source now gives admission and retirement one top-level linearization
-point. New-peer and existing-peer attachment take the global registry write
-guard before the global UUID uniqueness test and retain it through a vacant
-handler-entry commit; replacing insertion is gone. `insert_session` returns a
-fallible result containing the actual peer `Arc` selected by the registry, so
-same-peer reuse cannot start the discarded candidate. `LocalConfig`'s ambient
-last-peer publication occurs only after admission succeeds. Existing-window
-display attachment keeps the same registry transaction through its already
-ordered display-selection command reservation and vacant-entry commit.
-
-One `remove_session_by_exact_ui_owner` primitive now serves ordinary close and
-failed-start rollback. It checks `(connection UUID, client-owner UUID)` before
-mutation and retains one global write guard through exact-handler retirement
-and possible last-handler peer removal. A non-last close removes only its
-handler and reconciles the remaining display owners; a last close returns the
-exact installed peer so `close_and_join` can run without holding the registry
-lock. Wrong-owner and stale UUID callbacks are no-ops. Rust FFI, all three
-authored Dart close paths, and the web close signature now carry both UUIDs.
-The obsolete post-removal event-stream lookup is deleted rather than replaced
-by a retry, timer, or second close protocol. The separate prediction surface
-described here was subsequently deleted by R-S11hv because it had no caller and
-could only provide a stale preflight read beside the authoritative close.
-
-The focused Rust regressions exercise installed-versus-candidate `Arc`
-identity, same-peer reuse, global duplicate-UUID refusal without peer
-replacement, wrong-owner refusal, non-last handler retirement, and last-owner
-peer return. `scripts/verify-viewer-session-registry.py` binds both registry
-transactions, exact FFI/Dart/web propagation, regressions, requirement and
-ledger rows, shared gates, the independent validator, and synchronized
-requirement hashes with deliberate self-mutations. The repository-wide
-workspace verifier derives the source properties independently and adds them
-to its complete in-memory mutation catalog. On the source and contract bytes
-immediately preceding this evidence-only receipt,
-`verify-viewer-session-registry.py --self-test` rejected all 22 deliberate
-mutations; the adjacent display-selection, viewer-RGBA, and Android ownership
-self-tests rejected 186, 115, and 545 mutations respectively; the independent
-workspace baseline returned `verify-verifier-workspace: ok`; and a fresh,
-direct, unfiltered `--source-mutations-only` run completed from mutation one
-through terminal `verify-verifier-workspace: ok` with numeric exit zero. An
-earlier full run correctly rejected all three corrupted Dart close sites but
-stopped because an older catalog tuple expected the later Android validator's
-diagnostic instead of the newly earlier independent registry diagnostic. The
-fixture label was corrected without weakening either validator, an isolated
-run reached the verifier's `ok` result, and only the subsequent fresh
-unfiltered exit-zero run is counted as the complete catalog receipt. Shared
-shell entrypoints also passed `bash -n`. Post-receipt focused and independent
-baseline results are recorded in the true-EOF audit; this paragraph does not
-substitute source gates for native or deployed execution.
-
-This source slice does not inspect, stop, restart, modify, or connect to a host
-RustDesk process or service; inspect or change host firewall/network/listener
-state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated container/image; or request/acquire root. It creates no service,
-listener, port, network request, reconnect loop, retry, timer, task, thread,
-runtime, worker, dependency, or privilege transition. Exact Rust/generated
-bridge compilation and regression execution, Android/iOS/Linux/macOS/Windows
-and web behavior, concurrent attach/close stress, current physical Android
-task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
-capture-through-compositor timestamps, explicit end-to-end
-latency/queue/CPU/memory budgets, sustained connection/reconnect/focus/
-background/file/control/resource/performance soak, clean committed cold
-R-B2/R-B10 equality, installed artifacts/service behavior, fresh independent
-reproduction, R-V3 external review, causation, and proof that the complete
-connection flow is correct and performant remain explicit release obligations
-and explicit user requests.
+**Open evidence.** Run the exact-current compiled `r_s11hu_` regressions and generated bridge, then exercise concurrent same-peer attach/close and stale-callback races on each supported native client. Physical Android task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction, capture-through-presentation timestamps, latency/queue/CPU/memory/handle budgets, sustained connection/file/control/resource soak, signed installed artifacts, clean cold R-B2/R-B10 equality, independent reproduction, external review, field causation, and proof of the complete performant connection flow remain release obligations.
 
 ### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision
 
-**Status:** SOURCE REPAIR AUTHORED / COMPLETE FOCUSED AND INDEPENDENT
-STRUCTURAL/MUTATION GATES AUTHORED / EXACT GENERATED-BRIDGE, NATIVE,
-CROSS-PLATFORM, INSTALLED-ARTIFACT, INDEPENDENT-REPRODUCTION, AND
-EXTERNAL-REVIEW EVIDENCE OPEN.
+**State.** The non-authoritative close-prediction surface is absent from current source. Exact generated-bridge/native compilation and cross-platform close/concurrency execution remain open.
 
-The continuing connection-flow review found that R-S11hu had preserved an
-unused second lifecycle surface. `would_remove_peer_by_exact_ui_owner` read the
-viewer registry and predicted whether removing an exact UI owner would also
-remove the peer; `will_session_close_close_session` exported that read through
-native FFI, and `willSessionCloseCloseSession` retained web parity. Repository
-history shows that the sole authored UI consumer was removed with the old
-note-at-close audit flow in commit `4a20b8d`. No production caller remained.
+**Boundary and current implementation.** Viewer retirement has one authority: the R-S11hu exact-owner close transaction. Rust has no `would_remove_peer_by_exact_ui_owner`, native FFI has no `will_session_close_close_session`, and the web bridge has no `willSessionCloseCloseSession`. Current callers need no prediction; any future disposition must be returned atomically by the close transaction rather than read before it.
 
-The absence of a caller made the surface dead, but the authority defect is more
-important than dead-code size. Prediction and close were separate registry
-transactions. A concurrent attachment or retirement could linearize between
-them, so even the exact `(connection UUID, client-owner UUID)` prediction could
-not grant close authority, reserve the last-handler outcome, or prove finality.
-Its unconditional web stub was weaker still. Keeping that API would advertise
-a misleading two-step close protocol for a generated bridge or future UI to
-adopt.
+**Evidence.** Source inspection confirms the prediction symbols are absent while `remove_session_by_exact_ui_owner` still checks both identities and returns the last installed peer for finality outside the registry lock. The focused source gate and independent workspace check enforce that current source shape; they are supplementary to, not substitutes for, the retained Rust registry regressions and native execution.
 
-The Rust helper, native FFI export, web stub, and prediction-only regression
-assertions are deleted. The actual R-S11hu operation remains deliberately
-unchanged: `remove_session_by_exact_ui_owner` checks both identities and
-performs handler plus possible last-peer removal under one global registry
-write transaction, and only the returned last peer receives `close_and_join`
-after the guard is released. Current close callers need no disposition. If a
-future UI needs one, it must be a typed result of that same close transaction,
-not a preceding registry read.
-
-`scripts/verify-viewer-session-registry.py` now rejects the prediction symbol
-at the Rust, FFI, and web surfaces, while continuing to bind the exact-owner
-close transaction and every authored Dart/web close signature. Its mutation
-set deliberately reintroduces all three deleted surfaces. The independent
-workspace validator derives the absence and the surviving one-transaction
-close contract directly, verifies that the focused verifier owns those three
-mutations, and adds independent source, focused-verifier, requirement,
-Appendix, ledger, and identity-binding mutations. R-S11hv, Appendix C #381,
-and this row make the deletion normative rather than incidental.
-
-Exact native regression execution was attempted only within the approved
-read-only, network-disabled, unprivileged verifier boundary, but no verdict is
-available. The prior offline vendor closure and prior development-check image
-are absent, and the remaining approved Rust image and read-only host Cargo
-cache do not contain the locked `crossbeam-epoch 0.9.20` source/archive. Cargo
-therefore cannot resolve the exact graph offline. No dependency was fetched,
-no image was pulled or built, no host project code was executed, and no
-privilege was requested or acquired. Generated-bridge/native compilation and
-execution remain explicitly open rather than inferred from structural gates.
-
-On the source and contract bytes immediately preceding this evidence-only
-receipt, the confined focused verifier parsed and rejected all 27 deliberate
-mutations, including separate Rust, FFI, and web prediction reintroductions;
-the independent workspace baseline returned `verify-verifier-workspace: ok`;
-and a fresh, direct, unfiltered `--source-mutations-only` run traversed the
-complete in-memory repository catalog and terminated with
-`verify-verifier-workspace: ok` and numeric exit zero. No mutation was sampled,
-filtered, waived, or converted into a weaker expected diagnostic. Post-receipt
-focused and independent baseline results are recorded in the true-EOF audit;
-this structural evidence does not substitute for the explicitly open native,
-generated-bridge, platform, installed-artifact, performance, or external-review
-evidence.
-
-This slice creates no replacement close path, retry, timer, task, thread,
-runtime, listener, service, port, network request, dependency, or privilege
-transition. It does not inspect, stop, restart, modify, or connect to a host
-RustDesk process or service; inspect or change host firewall/network/listener
-state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated container/image; or request/acquire root. Exact generated bridge and
-native compilation, Android/iOS/Linux/macOS/Windows and web concurrent close
-execution, current physical Android task-swipe/reopen/Force-Stop and Windows
-focus/minimize/reconnect reproduction, capture-through-compositor timestamps,
-explicit latency/queue/CPU/memory budgets, sustained connection/reconnect/
-focus/background/file/control/resource/performance soak, clean committed cold
-R-B2/R-B10 equality, installed artifacts/service behavior, fresh independent
-reproduction, R-V3 external review, causation, and proof that the complete
-connection flow is correct and performant remain explicit release obligations
-and explicit user requests.
+**Open evidence.** Compile the exact generated bridge and execute close/attach races across Android, iOS, Linux, macOS, Windows, and web. Installed artifacts, sustained lifecycle/resource soak, cold release equality, independent reproduction, and external review remain open.
 
 ### R-S11hw/R-S11e-260 — exact Windows service-owned RDP-policy requester role
 

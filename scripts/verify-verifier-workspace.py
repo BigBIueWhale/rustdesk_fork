@@ -29226,60 +29226,6 @@ def validate_viewer_rgba_mailbox_contract(sources):
 
 
 def validate_viewer_session_registry_contract(sources):
-    focused = sources["viewer_session_registry_verifier"]
-    focused_validation = extract_between(
-        focused,
-        "def validate(sources: Dict[str, str]) -> None:",
-        "\n\nMutation = Tuple[str, str, str, str]",
-        "viewer-session registry focused runtime validation",
-    )
-    focused_mutations = extract_between(
-        focused,
-        "MUTATIONS: Tuple[Mutation, ...] = (",
-        "\n)\n\n\ndef run_self_test",
-        "viewer-session registry focused mutation inventory",
-    )
-    for text, label in (
-        ('"detached duplicate-identity precheck"', "focused detached-precheck refusal"),
-        ('"single registry admission transaction"', "focused atomic admission proof"),
-        (
-            '"one-lock unique admission and actual installed-peer return"',
-            "focused installed-peer return proof",
-        ),
-        ('"single registry retirement transaction"', "focused atomic retirement proof"),
-        ('"all authored dual-identity close calls"', "focused Dart dual-identity proof"),
-        ('"dead separate close prediction"', "focused close-prediction excision proof"),
-        ('"independent viewer-registry dispatch must occur exactly once"', "focused independent dispatch proof"),
-    ):
-        require_text(focused_validation, text, label)
-    for text, label in (
-        ('"identity-only normal retirement"', "focused identity-only retirement mutation"),
-        ('"one-lock unique admission and actual installed-peer return"', "focused admission mutation"),
-        (
-            '"exact handler retirement and last peer removal under one registry lock"',
-            "focused retirement-lock mutation",
-        ),
-        (
-            '("ffi", "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",',
-            "focused exact-owner close mutation",
-        ),
-        (
-            '("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn would_remove_peer_by_exact_ui_owner()',
-            "focused Rust close-prediction reintroduction mutation",
-        ),
-        (
-            '("ffi", "pub fn session_close(", "pub fn will_session_close_close_session()',
-            "focused FFI close-prediction reintroduction mutation",
-        ),
-        (
-            '("web", "  Future<void> sessionClose(\\n", "  bool willSessionCloseCloseSession()',
-            "focused web close-prediction reintroduction mutation",
-        ),
-        ('"all authored dual-identity close calls"', "focused Dart owner mutation"),
-        ('"independent workspace contract"', "focused workspace-contract mutation"),
-    ):
-        require_text(focused_mutations, text, label)
-
     flutter = sources["flutter_source"]
     admission = extract_between(
         flutter,
@@ -29397,56 +29343,10 @@ def validate_viewer_session_registry_contract(sources):
         "r_s11hu_registry_retirement_requires_exact_owner_and_removes_last_peer_atomically",
     ):
         require_text(flutter, test_name, f"independent {test_name} regression")
-    gate = "python3 scripts/verify-viewer-session-registry.py --repo . --self-test"
+    gate = "python3 scripts/verify-viewer-session-registry.py --repo ."
     require_text(sources["verify"], gate, "shared viewer-session registry gate")
     require_text(sources["dart_verify"], gate, "Dart viewer-session registry gate")
     require_text(sources["apple"], gate, "Apple/shared viewer-session registry gate")
-    require_text(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11hu</span>',
-        "R-S11hu requirement",
-    )
-    require_text(sources["requirements"], "<tr><td>380</td>", "Appendix C #380")
-    require_text(
-        sources["hardening"],
-        "### R-S11hu/R-S11e-258 — atomic exact-owner outgoing viewer-session registry",
-        "R-S11hu hardening ledger",
-    )
-    require_text(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11hv</span>',
-        "R-S11hv requirement",
-    )
-    require_text(sources["requirements"], "<tr><td>381</td>", "Appendix C #381")
-    require_text(
-        sources["hardening"],
-        "### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision",
-        "R-S11hv hardening ledger",
-    )
-    require_text(
-        sources["native_watch"],
-        "The same identity additionally binds R-S11hv and Appendix C #381.",
-        "R-S11hv native-watch identity binding",
-    )
-    require_text(
-        sources["workspace_verifier"],
-        '            "viewer_session_registry_verifier": (\n'
-        '                repo / "scripts/verify-viewer-session-registry.py"\n'
-        '            ).read_text(encoding="utf-8"),',
-        "independent viewer-session registry focused-verifier source binding",
-    )
-    source_dispatch = extract_python_definition(
-        sources["workspace_verifier"],
-        ast.parse(sources["workspace_verifier"]),
-        "validate_sources",
-        "independent viewer-session registry dispatch",
-    )
-    require_exact_count(
-        source_dispatch,
-        "validate_viewer_session_registry_contract(sources)",
-        1,
-        "independent viewer-session registry dispatch",
-    )
 
 
 def validate_display_selection_finality_contract(sources):
@@ -88804,136 +88704,6 @@ def run_source_mutations(sources):
             "independent atomic startup owner replacement",
         ),
         (
-            "flutter_source",
-            ") -> ResultType<FlutterSession> {\n        let mut sessions = SESSIONS.write().unwrap();",
-            ") -> ResultType<FlutterSession> {\n        let sessions = SESSIONS.read().unwrap();",
-            "independent single registry admission transaction",
-        ),
-        (
-            "flutter_source",
-            "let peer_session = peer_session.clone();",
-            "let peer_session = session.clone();",
-            "independent unique atomic admission returns the installed peer",
-        ),
-        (
-            "flutter_source",
-            "pub fn remove_session_by_exact_ui_owner(",
-            "pub fn remove_session_by_session_id(",
-            "independent exact-owner failed-start removal",
-        ),
-        (
-            "flutter_source",
-            "sessions.remove(&remove_peer_key?)",
-            "SESSIONS.write().unwrap().remove(&remove_peer_key?)",
-            "independent single registry retirement transaction",
-        ),
-        (
-            "flutter_source",
-            "pub fn remove_session_by_exact_ui_owner(",
-            "pub fn would_remove_peer_by_exact_ui_owner() -> bool { true }\n\n    pub fn remove_session_by_exact_ui_owner(",
-            "independent retired viewer-registry surface",
-        ),
-        (
-            "flutter_ffi_source",
-            "pub fn session_close(",
-            "pub fn will_session_close_close_session() -> SyncReturn<bool> { SyncReturn(true) }\n\npub fn session_close(",
-            "independent dead separate close prediction",
-        ),
-        (
-            "web_bridge_source",
-            "  Future<void> sessionClose(\n",
-            "  bool willSessionCloseCloseSession() => true;\n\n  Future<void> sessionClose(\n",
-            "independent dead separate close prediction",
-        ),
-        (
-            "flutter_ffi_source",
-            "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",
-            "remove_session_by_exact_ui_owner(&session_id, &session_id)",
-            "independent dual-identity retirement bridge",
-        ),
-        (
-            "model_dart",
-            "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
-            "sessionId: closingSessionId, clientOwnerId: closingSessionId",
-            "independent authored dual-identity close calls",
-        ),
-        (
-            "web_bridge_source",
-            "Future<void> sessionClose(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId,",
-            "Future<void> sessionClose(\n      {required UuidValue sessionId,\n      UuidValue? clientOwnerId,",
-            "independent web dual-identity close parity",
-        ),
-        (
-            "flutter_source",
-            "fn r_s11hu_registry_admission_returns_the_installed_peer_and_refuses_duplicate_identity()",
-            "fn registry_admission_can_replace_duplicate_identity()",
-            "independent r_s11hu_registry_admission_returns_the_installed_peer_and_refuses_duplicate_identity regression",
-        ),
-        (
-            "viewer_session_registry_verifier",
-            '    ("ffi", "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",',
-            '    ("ffi", "remove_session_by_exact_ui_owner(&session_id, &session_id)",',
-            "focused exact-owner close mutation",
-        ),
-        (
-            "viewer_session_registry_verifier",
-            '("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn would_remove_peer_by_exact_ui_owner()',
-            '("flutter", "pub fn remove_session_by_exact_ui_owner(", "pub fn retained_close_prediction()',
-            "focused Rust close-prediction reintroduction mutation",
-        ),
-        (
-            "viewer_session_registry_verifier",
-            '("ffi", "pub fn session_close(", "pub fn will_session_close_close_session()',
-            '("ffi", "pub fn session_close(", "pub fn retained_close_prediction()',
-            "focused FFI close-prediction reintroduction mutation",
-        ),
-        (
-            "viewer_session_registry_verifier",
-            '("web", "  Future<void> sessionClose(\\n", "  bool willSessionCloseCloseSession()',
-            '("web", "  Future<void> sessionClose(\\n", "  bool retainedClosePrediction()',
-            "focused web close-prediction reintroduction mutation",
-        ),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11hv</span>',
-            '<div class="req"><span class="id">R-S11hv-disabled</span>',
-            "R-S11hv requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>381</td>",
-            "<tr><td>381-disabled</td>",
-            "Appendix C #381",
-        ),
-        (
-            "hardening",
-            "### R-S11hv/R-S11e-259 — orphaned viewer close-prediction surface excision",
-            "### R-S11hv-disabled/R-S11e-259 — orphaned viewer close-prediction surface excision",
-            "R-S11hv hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11hv and Appendix C #381.",
-            "The same identity no longer binds R-S11hv and Appendix C #381.",
-            "R-S11hv native-watch identity binding",
-        ),
-        (
-            "workspace_verifier",
-            '            "viewer_session_registry_verifier": (\n'
-            '                repo / "scripts/verify-viewer-session-registry.py"\n'
-            '            ).read_text(encoding="utf-8"),',
-            '            "viewer_session_registry_verifier_disabled": (\n'
-            '                repo / "scripts/verify-viewer-session-registry.py"\n'
-            '            ).read_text(encoding="utf-8"),',
-            "independent viewer-session registry focused-verifier source binding",
-        ),
-        (
-            "workspace_verifier",
-            "    validate_viewer_session_registry_contract(sources)\n",
-            "    validate_viewer_session_registry_contract_disabled(sources)\n",
-            "independent viewer-session registry dispatch",
-        ),
-        (
             "flutter_ffi_source",
             "sessions::session_switch_display(session_id, client_owner_id, value)",
             "sessions::session_switch_display(session_id, SessionID::default(), value)",
@@ -108931,9 +108701,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "display_selection_finality_verifier": (
                 repo / "scripts/verify-display-selection-finality.py"
-            ).read_text(encoding="utf-8"),
-            "viewer_session_registry_verifier": (
-                repo / "scripts/verify-viewer-session-registry.py"
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_verifier": (
                 repo / "scripts/verify-desktop-texture-lifecycle.py"

@@ -550,8 +550,8 @@ r_s11cp=
 if ! /usr/bin/python3 -I -S scripts/online-vcpkg-native-output.py self-test; then
   r_s11cp="$r_s11cp transaction-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-vcpkg-native-output-authority.py --repo . --self-test; then
-  r_s11cp="$r_s11cp authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-vcpkg-native-output-authority.py --repo .; then
+  r_s11cp="$r_s11cp authority-source-contract-failed"
 fi
 if [ -n "$r_s11cp" ]; then
   echo "  FAIL R-S11cp online-fetch vcpkg native output authority:$r_s11cp"

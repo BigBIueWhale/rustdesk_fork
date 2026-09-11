@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-da20fe9d326752970c985b505fd4e559087d165e384befd782e4e2c537bb3172  requirements.html
+50974828eaa58997a66481bd788f8282e3050329ab7039ea7bd554de7af82c5b  requirements.html
 ```
 
 ## Current Verdict
@@ -4110,145 +4110,78 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   R-V3 review remain open. No online acquisition, image pull/build/tag, release build, root command,
   or host RustDesk process/service/config/listener/firewall/network operation was executed for this
   slice.
-- **R-S11cp/R-S11e-108 — networked vcpkg native output authority — SOURCE, TRANSACTION
-  SELF-TEST, FOCUSED MUTATION, AND READ-ONLY HISTORICAL-CACHE DENIAL EVIDENCE IMPLEMENTED
-  2026-07-24; INDEPENDENT WORKSPACE MUTATION AND ADJACENT AUTHORITY GATES PASS; COLD NETWORK
-  REBUILD AND RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
-  acquisition host and immutable Debian/Android builder
-  containers. Endpoint/action: `scripts/online-fetch.sh::stage_vcpkg_natives` and
-  `stage_vcpkg_natives_arm64`, which network-build the pinned `libvpx`, `libyuv`, `opus`,
-  `libjpeg-turbo`, and Android `oboe` native set for the `x64-linux` and `arm64-android` triplets.
-  Boundary: networked vcpkg port/build execution ↔ every pinned offline input and the durable
-  `online/vcpkg/installed/<triplet>` consumer roots.
+- **R-S11cp/R-S11e-108 — networked vcpkg native output authority — SOURCE AND REAL
+  FILESYSTEM TRANSACTION HARDENING IMPLEMENTED 2026-09-12; COLD NETWORK REBUILD, RELEASE
+  ARTIFACTS, NATIVE/DEVICE EVIDENCE, AND EXTERNAL REVIEW REMAIN OPEN.** Platform: the
+  unprivileged Linux acquisition host and immutable Debian/Android builder containers.
+  Boundary: networked vcpkg execution ↔ pinned offline inputs and durable
+  `online/vcpkg/installed/{x64-linux,arm64-android}` consumer trees.
 
-  Before this slice both containers mounted the complete `ONLINE_DIR` read-write. Each could
-  rewrite or delete every unrelated offline release input and the other architecture's native
-  output. Each producer removed the existing permanent triplet name and moved a privately named
-  temporary beside it without an independent host validator, no-clobber publication, durable state
-  record, or restart reconciliation. The skip marker bound only libvpx; it did not bind libyuv,
-  opus, Oboe, the complete overlay, vcpkg archive, immutable builder, or Android NDK. The published
-  tree also retained vcpkg `debug`, `share`, `tools`, and package metadata that no repository
-  consumer reads. R-S11cj's numeric non-root immutable execution limited the broad mount to the
-  invoking user's authority but did not make the cross-producer input write/delete authority or
-  destructive direct-final publication admissible. This is source-proven acquisition-output,
-  publication, and stale-cache authority debt, not evidence that an input changed, a container
-  escaped, host root was acquired, a listener was exposed, host RustDesk/service/config/firewall/
-  network state changed, exploitation occurred, or the host was compromised.
+  The original builders mounted the complete online cache read-write, could replace either
+  architecture's final tree, presence-trusted a libvpx-only marker, and retained unconsumed vcpkg
+  output. The hardened lifecycle instead keys the complete triplet/port/builder/vcpkg/libvpx/
+  libyuv/overlay/NDK input closure; reverifies the archives; locks and reconciles kind-scoped
+  staging; and gives each immutable numeric-nonroot producer read-only nonrecursive online/overlay
+  mounts plus exactly one private writable `/outputs/native` tree. Disposable source, build,
+  download, home, and binary-cache state stays in bounded container scratch. Publication contains
+  only the exact consumed headers, five x86-64 archives or six AArch64 archives, and both receipts.
 
-  `vcpkg_native_output_key` now has one versioned, kind-specific closed mapping over the exact
-  triplet/port set, immutable builder image ID, vcpkg baseline and archive SHA-256, complete
-  libvpx source/patch/overlay key, libyuv commit and archive SHA-512, the exact directory inventory
-  and every regular file below one real nonsymlink `res/vcpkg` root with NUL-delimited path/digest
-  framing, refusal of any other overlay entry type, and, for Android, the NDK version and archive
-  SHA-256. Both stages reverify the
-  vcpkg archive and the exact libvpx/libyuv captures before execution; the Android stage also
-  reverifies the retained NDK archive. The NDK extracted tree is a separate producer boundary,
-  closed immediately below by R-S11cq/R-S11e-109 rather than claimed by this output slice.
+  The host helper independently enforces canonical same-filesystem mount-closed bounded traversal,
+  current ownership, stable full reads, portable paths, exact inventories/receipts, and refusal of
+  symlinks, special files, external hardlinks, set-id/sticky bits, xattrs, or group/world writes.
+  Every archive is parsed with bounded framing and must contain canonical 64-bit little-endian
+  relocatable ELF objects for exactly x86-64 or AArch64. Files and directories are sealed 0400/0500
+  and synchronized.
 
-  Each architecture holds a nonblocking exclusive lock over the canonical current-user-private
-  online root, reconciles its unpredictable `.rustdesk-vcpkg-native-<kind>.*` namespace, and
-  validates a present final tree rather than presence-trusting or deleting it. A cold current-user
-  cache establishes mode-0700 `vcpkg/installed` parents. Stale, wrong, foreign, or historical
-  present state fails closed; the non-root script does not chmod, delete, or replace it. The
-  helper itself also refuses UID or GID 0, independently preserving that acquisition boundary.
-  `scripts/online-vcpkg-native-output.py` creates one empty mode-0700 output and one bounded,
-  mode-0600, fsynced state record binding online/staging/output/nested-parent identities, owner,
-  kind, complete output/libvpx keys, immutable builder, and exact destination.
+  The prior v1 journal recorded the candidate inode and input recipe but not whether validated
+  output had been selected or what bytes were selected. Recovery could therefore accept a
+  changed-but-still-structurally-valid tree after its inode reached the final path. The v2 journal
+  starts explicitly `unselected` with no digest. After sealing and synchronization, the helper
+  derives and revalidates a domain-separated, path/type/content-framed full-tree SHA-256, atomically
+  records `selected` plus that digest, reloads the durable state, and revalidates the same inode
+  and digest before descriptor-relative `renameat2(RENAME_NOREPLACE)`. An identity-bound directory
+  descriptor changes only the exact root from private 0700 to final 0500; output and both namespace
+  directories are synchronized and the exact bytes, identity, shape, ownership, modes, receipts,
+  archive framing, and ABI are postchecked. Later failure restores the exact root to 0700 and
+  rolls that inode back without clobber.
 
-  Both networked builders retain the R-S11cj no-pull/nonroot/read-only-root/capability-free/
-  no-new-privileges/resource-bounded acquisition floor. They now see the full online input closure
-  and exact overlay only through `readonly,bind-recursive=disabled`; their only writable durable
-  host mount is the one recorded candidate at `/outputs/native`. Extracted vcpkg source, build
-  trees, downloads, home, and binary-cache state remain in bounded container scratch with
-  `VCPKG_BINARY_SOURCES=clear`. The x64 producer copies only the exact pinned headers and five
-  release static archives; the Android producer copies that projection plus exact Oboe headers and
-  `liboboe.a`. Both write the complete output-key receipt and the retained libvpx-key receipt.
-  Neither can write an online input, final name, other triplet, or unconsumed debug/share/tool/
-  package-metadata tree.
+  Recovery safely retires still-private legacy/unselected candidates but refuses and preserves a
+  moved v1 or unselected inode because neither state selected produced bytes. A selected private
+  candidate must match its recorded digest. A selected inode moved before its root was sealed must
+  match the digest while still mode 0700, is then descriptor-sealed to 0500 and synchronized, and
+  must match again before classification as published. Changed, ambiguous, wrong-mode, or
+  wrong-topology state is preserved. A bounded interrupted state replacement beside an unchanged
+  unselected private candidate is classified for safe retirement. The helper rejects UID or GID 0.
 
-  The host independently validates candidate output even after producer failure: canonical
-  same-filesystem mount-closed bounded traversal, current ownership, stable full reads, portable
-  paths, and no symlink, special file, external hardlink, set-id/sticky bit, extended attribute, or
-  group/world writable state. The top-level tree, header files, header-directory set, archive
-  basenames, and both receipt bytes are exact. Every archive receives a bounded Unix-archive parse;
-  it must contain at least one object, valid framing/name references, and only 64-bit little-endian
-  relocatable ELF objects for x86-64 or AArch64 as selected. Canonical relocatable program-header
-  fields, the fixed ELF64 header/section-entry sizes, a nonempty section inventory, and a wholly
-  in-member section table are also required. New output therefore excludes missing libraries,
-  plausible-looking wrong-architecture archives, and right-machine header-only impostors before
-  any consumer can reach them.
+  Historical root-owned final trees remain non-mutatingly admissible only through the exact legacy
+  owner/mode/mount/link/xattr/type/path/size/archive checks and a frozen pair of current output key
+  plus legacy full-tree digest. The allowlist remains empty. The observed x64 and Android trees
+  carry stale libvpx receipt
+  `2f1a0d9ec38bec3b32c2154a752119c3240c9944ab0ce1c4dfaf91e6a4bfac23`; their measured legacy
+  digests `4fbb47ef3e8cdd79f96697e9650fc3a31e368dd38a54aa3af372bb5e59b0fa46` and
+  `913588e8746761275c3115279789e1590bff9af614072882c09e5fc827e4ad55` remain denial evidence,
+  not provenance. Acquisition rejects them without chmod, deletion, or replacement.
 
-  Success seals files mode 0400 and inner directories mode 0500, synchronizes the full tree and
-  staging namespace, and permits publication only when producer and independent host-output
-  verdicts are both green. Descriptor-relative `renameat2(RENAME_NOREPLACE)` installs the recorded
-  root into the still-absent nested triplet name; publication immediately seals that root mode
-  0500, synchronizes output and both namespace directories, and rechecks the exact identity,
-  inventory, receipts, archive framing, and ABI. A later failure restores only the recorded root's
-  private traversal mode and rolls that exact inode back without clobber. Recovery accepts only
-  bounded unprepared, unpublished, occupied-destination, or exact-published arrangements and
-  preserves every incoherent state. Exact-identity directory-mode restoration and
-  external-inode-closure removal retire reconciled private staging.
+  The executable helper self-test and the 282-line focused source-contract gate pass in immutable
+  image `sha256:e064e6c140869235533eb855191f9ac0f4be112e690012a15d4e80413589c518` under
+  `--network=none`, no ports, numeric nonroot, read-only root/repository, zero capabilities,
+  no-new-privileges, bounded CPU/PIDs/memory, and private noexec scratch. Actual filesystem cases
+  cover both triplets, exact 0400/0500 publication, owner-writable refusal, wrong ABI/malformed ELF,
+  inventory/symlink/hardlink/xattr refusal, no-clobber, unprepared and interrupted-state recovery,
+  moved-unselected and moved-v1 preservation, selected pre/post-rename recovery, semantically
+  admissible byte change after selection at the final path, and injected postpublication failure
+  with exact rollback.
+  The redundant 895-line focused mutation harness and 405 lines of duplicated workspace
+  vcpkg checks/mutations/loaders were deleted; the real filesystem test remains primary and the
+  focused gate retains only load-bearing source wiring. The ordinary workspace gate correctly
+  rejected the intentionally stale requirements hash after the normative edit, then passed after
+  the new hash was synchronized. Python AST, Bash syntax, requirements HTML parsing, exact hash
+  binding, `git diff --check`, and the status-size gate pass below its 400,000-token budget.
 
-  A closed historical compatibility branch examines only root:root final output whose complete tree
-  is root-owned, same-filesystem, mount/link/xattr/type/path/size bounded, has exact mode-0755
-  directories and only mode-0644/0664/0755 files, and is never world-writable. The only legacy
-  group-write entries are root-group metadata; online acquisition already refuses UID or primary
-  GID 0, so its identity cannot exercise that bit. It
-  rejects the new marker in a legacy tree, requires the exact historical libvpx receipt, exact
-  consumer header/archive projection, and the same complete archive framing and ELF-machine proof.
-  A legacy tree could be accepted only if its pair of complete current output key and canonical
-  full-tree digest also appeared in an explicit frozen allowlist. That allowlist is deliberately
-  empty. Read-only inspection found both host caches carry stale libvpx receipt
-  `2f1a0d9ec38bec3b32c2154a752119c3240c9944ab0ce1c4dfaf91e6a4bfac23`, while the current
-  libvpx input key is
-  `8e936f7953fa1065cf276106b54bc3ad93208e6854557143c5e42a66802dac6e`.
-  Their canonical full-tree digests are
-  `4fbb47ef3e8cdd79f96697e9650fc3a31e368dd38a54aa3af372bb5e59b0fa46`
-  (`x64-linux`) and
-  `913588e8746761275c3115279789e1590bff9af614072882c09e5fc827e4ad55`
-  (`arm64-android`). File mtimes place both native receipts at 2026-07-13 10:13 +0300 and the
-  current distfile receipt at 11:07 +0300; repository history cannot bind the earlier uncommitted
-  build state to the later complete input closure. Those digests are therefore denial evidence,
-  not provenance, and the new acquisition path rejects both existing trees without changing them.
-  A second read-only check supplied the old marker deliberately so both trees traversed through
-  complete structure/archive validation and reached the final empty-allowlist predicate; both were
-  rejected there as well, proving the full-tree digest is propagated into the final receipt check.
-  It does not trust or execute the historical `tools` subtree, and new publication never contains
-  that subtree. A current-user-owned output must use the new exact shape, complete receipt, and
-  0400/0500 modes; the historical shape cannot be recreated by the acquisition identity.
-
-  The executable helper self-test passed in immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as UID/GID 1000:1000 with no pull/network, read-only root/source, zero capabilities,
-  no-new-privileges, and bounded resources. It covers both architectures' successful
-  validate/seal/publish/recover/check path, wrong-machine archive rejection, exact header
-  rejection, destination no-clobber/recovery, symlink and external-hardlink rejection, empty
-  unprepared recovery, extended-attribute rejection where supported, and stale historical-receipt
-  refusal. The focused authority verifier passes and rejects all 42 deliberate mutations. The
-  independent workspace validator passes normally and its complete source-mutation mode passes in
-  the final post-review rerun,
-  including deliberate weakening of overlay closure, exact library/ABI inventory, legacy
-  modes/all-archive checks, stale-receipt binding, empty legacy acceptance set, nonzero identity,
-  descriptor-relative publication, ambiguous-state refusal, shared-gate wiring, normative
-  requirement, Appendix row, and hardening ledger. The adjacent ordinary acquisition-container,
-  Gradle-source, Gradle-output, Cargo-output, Pub-output, and libyuv-output gates reject all
-  30/38/30/36/40/27 mutations after the mount narrowing.
-
-  The dependency inventory passes normally and rejects all 103 fixtures: 905 Cargo packages/36
-  Git records, 199 Flutter lock packages/eight Git records, 58 Flutter dependencies/six
-  development dependencies, six build scripts, and 871 lexical `unsafe {` blocks across 247
-  tracked Rust files. Native-codec watch normal and mutation modes pass. Bash syntax, Python AST
-  parsing, requirements HTML parsing, requirements SHA-256
-  `94bff7811d9677399e1c8f429c5e2f16f9c4d7d3b7a9e99da0259f5cc3fc01ec`, and
-  `git diff --check` pass.
-
-  No networked vcpkg build was run, no current cache was changed, and no release artifact was
-  built. Exact read-only historical-cache denial is recorded above. Android NDK extraction is
-  closed separately by R-S11cq/R-S11e-109 immediately below; Android SDK and other
-  host-side/archive producers, maintenance candidate-image publication, exact cold R-B2 artifacts,
-  native/device evidence, and external R-V3 review remain open. No image pull/build/tag, root
-  command, or host RustDesk process/service/config/listener/firewall/network operation was
-  executed for this slice.
+  No cold/networked vcpkg build, image pull/build/tag, release build, root command, host RustDesk
+  process/service/config/listener/firewall/network action, or cache mutation occurred. Android NDK
+  extraction is tracked by R-S11cq immediately below. Other acquisition producers, exact cold
+  R-B2 artifacts, native/device evidence, and external R-V3 review remain open.
 - **R-S11cq/R-S11e-109 — Android NDK extraction and output authority — SOURCE,
   ADVERSARIAL TRANSACTION, EXACT PINNED-ARCHIVE LIFECYCLE, AND FOCUSED MUTATION EVIDENCE
   IMPLEMENTED 2026-07-24; COLD NETWORK ACQUISITION AND RELEASE EVIDENCE REMAIN OPEN.**

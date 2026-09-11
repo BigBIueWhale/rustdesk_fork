@@ -16,8 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-STATE_NAME = ".rustdesk-vcpkg-native-output-state-v1"
-STATE_VERSION = 1
+STATE_NAME = ".rustdesk-vcpkg-native-output-state-v2"
+LEGACY_STATE_NAME = ".rustdesk-vcpkg-native-output-state-v1"
+STATE_VERSION = 2
+LEGACY_STATE_VERSION = 1
 OUTPUT_MARKER = ".rustdesk-vcpkg-native-output-key-v1"
 LIBVPX_MARKER = ".rustdesk-libvpx-native-key"
 STAGING_PATTERN = re.compile(
@@ -496,6 +498,8 @@ def inspect_tree(
     directories = 1
     content_bytes = 0
     digest = hashlib.sha256()
+    if not legacy:
+        digest.update(b"rustdesk-vcpkg-native-output-tree-v1\0")
     final_metadata: list[tuple[Path, tuple[int, ...]]] = []
 
     def descend(directory: Path, relative: str, depth: int) -> None:
@@ -927,6 +931,8 @@ def state_payload(
         "libvpx_key": libvpx_key,
         "builder": builder,
         "destination": kind,
+        "publication": "unselected",
+        "output_digest": None,
     }
 
 
@@ -946,7 +952,14 @@ def load_state(
     validate_builder(builder)
     staging_metadata = validate_staging(online, staging, uid, gid, kind)
     _vcpkg_metadata, parent_metadata = ensure_private_parents(online, uid, gid)
-    data, metadata = read_regular(staging / STATE_NAME, MAX_STATE_BYTES)
+    current_state = staging / STATE_NAME
+    legacy_state = staging / LEGACY_STATE_NAME
+    current_exists = current_state.exists() or current_state.is_symlink()
+    legacy_exists = legacy_state.exists() or legacy_state.is_symlink()
+    if current_exists == legacy_exists:
+        fail("vcpkg native staging does not contain exactly one recognized state record")
+    state = current_state if current_exists else legacy_state
+    data, metadata = read_regular(state, MAX_STATE_BYTES)
     if (
         (metadata.st_uid, metadata.st_gid) != (uid, gid)
         or stat.S_IMODE(metadata.st_mode) != 0o600
@@ -956,7 +969,7 @@ def load_state(
         payload = json.loads(data.decode("ascii"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         fail(f"vcpkg native transaction state is malformed: {error}")
-    expected_keys = {
+    common_keys = {
         "version",
         "online",
         "online_identity",
@@ -973,10 +986,29 @@ def load_state(
         "builder",
         "destination",
     }
-    if not isinstance(payload, dict) or set(payload) != expected_keys:
+    if not isinstance(payload, dict):
         fail("vcpkg native transaction state has an unexpected schema")
-    if payload["version"] != STATE_VERSION:
-        fail("vcpkg native transaction state version changed")
+    version = payload.get("version")
+    if state == current_state:
+        if set(payload) != common_keys | {"publication", "output_digest"}:
+            fail("vcpkg native transaction state has an unexpected current schema")
+        if version != STATE_VERSION:
+            fail("vcpkg native transaction state version changed")
+        publication = payload.get("publication")
+        output_digest = payload.get("output_digest")
+        if publication == "unselected":
+            if output_digest is not None:
+                fail("unselected vcpkg native state carries publication authority")
+        elif publication == "selected":
+            if (
+                not isinstance(output_digest, str)
+                or SHA256_PATTERN.fullmatch(output_digest) is None
+            ):
+                fail("selected vcpkg native state has no exact output digest")
+        else:
+            fail("vcpkg native transaction state has an unknown publication disposition")
+    elif set(payload) != common_keys or version != LEGACY_STATE_VERSION:
+        fail("legacy vcpkg native transaction state has an unexpected schema")
     if payload["online"] != os.fspath(online) or payload["staging"] != os.fspath(staging):
         fail("vcpkg native transaction state has the wrong path binding")
     parent = parent_paths(online)[1]
@@ -1058,7 +1090,7 @@ def verify_staged(
     output_key: str,
     libvpx_key: str,
     builder: str,
-) -> None:
+) -> str:
     payload = load_state(
         online,
         staging,
@@ -1069,23 +1101,27 @@ def verify_staged(
         libvpx_key,
         builder,
     )
+    if payload.get("version") != STATE_VERSION:
+        fail("legacy vcpkg native state cannot authorize a new publication")
     validate_inventory(staging, {STATE_NAME, "output"})
     output = staging / "output"
     expected = decode_identity(payload["output_identity"], "vcpkg native output")
-    validate_output(
-        output,
-        uid,
-        gid,
-        kind,
-        output_key,
-        libvpx_key,
-        legacy=False,
-        normalize=True,
-        expected_identity=expected,
-    )
-    seal_tree(output)
-    sync_tree(output)
-    validate_output(
+    publication = payload.get("publication")
+    if publication == "unselected":
+        validate_output(
+            output,
+            uid,
+            gid,
+            kind,
+            output_key,
+            libvpx_key,
+            legacy=False,
+            normalize=True,
+            expected_identity=expected,
+        )
+        seal_tree(output)
+        sync_tree(output)
+    digest = validate_output(
         output,
         uid,
         gid,
@@ -1097,7 +1133,10 @@ def verify_staged(
         private_sealed_root=True,
         expected_identity=expected,
     )
+    if publication == "selected" and digest != payload.get("output_digest"):
+        fail("selected vcpkg native output digest changed")
     fsync_directory(staging)
+    return digest
 
 
 def check_complete(
@@ -1171,6 +1210,93 @@ def open_directory(path: Path) -> int:
     )
 
 
+def transition_root_mode(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    source_modes: set[int],
+    destination_mode: int,
+    label: str,
+) -> None:
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        dir_fd=parent_fd,
+    )
+    try:
+        before = os.fstat(descriptor)
+        if (
+            identity(before) != expected_identity
+            or not stat.S_ISDIR(before.st_mode)
+            or (before.st_uid, before.st_gid) != (uid, gid)
+            or stat.S_IMODE(before.st_mode) not in source_modes
+        ):
+            fail(f"{label} root transition precondition failed")
+        os.fchmod(descriptor, destination_mode)
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            identity(after) != expected_identity
+            or (after.st_uid, after.st_gid) != (uid, gid)
+            or stat.S_IMODE(after.st_mode) != destination_mode
+        ):
+            fail(f"{label} root transition postcondition failed")
+    finally:
+        os.close(descriptor)
+
+
+def validate_candidate_output(
+    output: Path,
+    uid: int,
+    gid: int,
+    kind: str,
+    output_key: str,
+    libvpx_key: str,
+    expected_identity: tuple[int, int],
+    expected_digest: str,
+    *,
+    published: bool,
+) -> str:
+    digest = validate_output(
+        output,
+        uid,
+        gid,
+        kind,
+        output_key,
+        libvpx_key,
+        legacy=False,
+        sealed=True,
+        private_sealed_root=not published,
+        expected_identity=expected_identity,
+    )
+    if digest != expected_digest:
+        fail("vcpkg native candidate digest postcondition failed")
+    return digest
+
+
+def record_publication(
+    staging: Path,
+    payload: dict[str, object],
+    output_digest: str,
+) -> dict[str, object]:
+    validate_sha256(output_digest, "vcpkg native publication digest")
+    if payload.get("version") != STATE_VERSION:
+        fail("legacy vcpkg native state cannot select a publication")
+    if payload.get("publication") == "selected":
+        if payload.get("output_digest") != output_digest:
+            fail("vcpkg native publication digest changed across retry")
+        return payload
+    if payload.get("publication") != "unselected":
+        fail("vcpkg native publication has an unknown disposition")
+    updated = dict(payload)
+    updated["publication"] = "selected"
+    updated["output_digest"] = output_digest
+    write_state(staging, updated)
+    return updated
+
+
 def publish(
     online: Path,
     staging: Path,
@@ -1181,7 +1307,7 @@ def publish(
     libvpx_key: str,
     builder: str,
 ) -> None:
-    verify_staged(
+    digest = verify_staged(
         online,
         staging,
         uid,
@@ -1209,32 +1335,87 @@ def publish(
         fail("vcpkg native destination appeared before no-clobber publication")
     sync_tree(output)
     fsync_directory(staging)
+    validate_candidate_output(
+        output,
+        uid,
+        gid,
+        kind,
+        output_key,
+        libvpx_key,
+        expected,
+        digest,
+        published=False,
+    )
+    record_publication(staging, payload, digest)
+    payload = load_state(
+        online,
+        staging,
+        uid,
+        gid,
+        kind,
+        output_key,
+        libvpx_key,
+        builder,
+    )
+    if payload.get("publication") != "selected":
+        fail("vcpkg native publication selection was not recorded")
+    expected_digest = str(payload.get("output_digest"))
+    validate_candidate_output(
+        output,
+        uid,
+        gid,
+        kind,
+        output_key,
+        libvpx_key,
+        expected,
+        expected_digest,
+        published=False,
+    )
     parent_fd = open_directory(parent)
     staging_fd = open_directory(staging)
     moved = False
     try:
+        if identity(os.lstat(output)) != expected:
+            fail("vcpkg native candidate identity changed before publication")
         renameat2(staging_fd, "output", parent_fd, kind, RENAME_NOREPLACE)
         moved = True
+        transition_root_mode(
+            parent_fd,
+            kind,
+            expected,
+            uid,
+            gid,
+            {0o700},
+            0o500,
+            "published vcpkg native output",
+        )
+        fsync_directory(destination)
         os.fsync(staging_fd)
         os.fsync(parent_fd)
-        os.chmod(destination, 0o500, follow_symlinks=False)
-        fsync_directory(destination)
-        os.fsync(parent_fd)
-        validate_output(
+        validate_candidate_output(
             destination,
             uid,
             gid,
             kind,
             output_key,
             libvpx_key,
-            legacy=False,
-            sealed=True,
-            expected_identity=expected,
+            expected,
+            expected_digest,
+            published=True,
         )
     except BaseException as primary:
         if moved:
             try:
-                os.chmod(destination, 0o700, follow_symlinks=False)
+                transition_root_mode(
+                    parent_fd,
+                    kind,
+                    expected,
+                    uid,
+                    gid,
+                    {0o500, 0o700},
+                    0o700,
+                    "vcpkg native publication rollback",
+                )
                 renameat2(parent_fd, kind, staging_fd, "output", RENAME_NOREPLACE)
                 os.fsync(staging_fd)
                 os.fsync(parent_fd)
@@ -1255,6 +1436,34 @@ def optional_identity(path: Path) -> tuple[int, int] | None:
         return None
 
 
+def validate_interrupted_state_write(path: Path, uid: int, gid: int) -> None:
+    data, metadata = read_regular(path, MAX_STATE_BYTES)
+    del data
+    if (
+        (metadata.st_uid, metadata.st_gid) != (uid, gid)
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+    ):
+        fail("interrupted vcpkg native state write is unsafe and was preserved")
+
+
+def validate_recovery_inventory(
+    staging: Path,
+    expected: set[str],
+    uid: int,
+    gid: int,
+    *,
+    allow_interrupted_selection: bool = False,
+) -> bool:
+    names = set(os.listdir(staging))
+    if names == expected:
+        return False
+    temporary_name = f"{STATE_NAME}.tmp"
+    if allow_interrupted_selection and names == expected | {temporary_name}:
+        validate_interrupted_state_write(staging / temporary_name, uid, gid)
+        return True
+    fail("vcpkg native staging inventory is incoherent and was preserved")
+
+
 def recover_unprepared(
     online: Path,
     staging: Path,
@@ -1264,19 +1473,22 @@ def recover_unprepared(
 ) -> str:
     validate_staging(online, staging, uid, gid, kind)
     names = set(os.listdir(staging))
+    destination = parent_paths(online)[1] / kind
+    live_output = optional_identity(destination)
     if not names:
+        if live_output is not None:
+            fail("unprepared vcpkg native transaction may have moved and was preserved")
         return "unprepared-empty"
     expected = {"output"}
-    temporary_state = staging / f"{STATE_NAME}.tmp"
-    if names == {"output", temporary_state.name}:
-        data, metadata = read_regular(temporary_state, MAX_STATE_BYTES)
-        del data
-        if (
-            (metadata.st_uid, metadata.st_gid) != (uid, gid)
-            or stat.S_IMODE(metadata.st_mode) != 0o600
-        ):
-            fail("unprepared vcpkg native state write is unsafe and was preserved")
-        expected.add(temporary_state.name)
+    temporary_names = {f"{STATE_NAME}.tmp", f"{LEGACY_STATE_NAME}.tmp"}
+    present_temporary = names & temporary_names
+    if len(present_temporary) == 1 and names == {"output"} | present_temporary:
+        validate_interrupted_state_write(
+            staging / next(iter(present_temporary)),
+            uid,
+            gid,
+        )
+        expected.update(present_temporary)
     if names != expected:
         fail("unprepared vcpkg native staging is incoherent and was preserved")
     output = staging / "output"
@@ -1292,7 +1504,9 @@ def recover_unprepared(
     with os.scandir(output) as entries:
         if next(entries, None) is not None:
             fail("unprepared vcpkg native output is not empty and was preserved")
-    if temporary_state.name in names:
+    if live_output is not None:
+        return "unprepared-destination-occupied"
+    if present_temporary:
         return "unprepared-state-write"
     return "unprepared-output"
 
@@ -1307,8 +1521,8 @@ def recover(
     libvpx_key: str,
     builder: str,
 ) -> str:
-    state = staging / STATE_NAME
-    if not state.exists() and not state.is_symlink():
+    state_paths = (staging / STATE_NAME, staging / LEGACY_STATE_NAME)
+    if not any(path.exists() or path.is_symlink() for path in state_paths):
         return recover_unprepared(online, staging, uid, gid, kind)
     payload = load_state(
         online,
@@ -1324,23 +1538,109 @@ def recover(
     private_output = optional_identity(staging / "output")
     destination = parent_paths(online)[1] / kind
     live_output = optional_identity(destination)
+    version = payload.get("version")
+    if version == LEGACY_STATE_VERSION:
+        if private_output == expected:
+            validate_recovery_inventory(
+                staging,
+                {LEGACY_STATE_NAME, "output"},
+                uid,
+                gid,
+            )
+            if live_output is None:
+                return "legacy-unpublished"
+            return "legacy-unpublished-destination-occupied"
+        if private_output is None and live_output == expected:
+            validate_recovery_inventory(
+                staging,
+                {LEGACY_STATE_NAME},
+                uid,
+                gid,
+            )
+            fail("legacy v1 vcpkg native state lacks publication selection and was preserved")
+        fail("legacy vcpkg native output transaction state is incoherent and was preserved")
+    publication = payload.get("publication")
+    if publication == "unselected":
+        if private_output == expected:
+            interrupted = validate_recovery_inventory(
+                staging,
+                {STATE_NAME, "output"},
+                uid,
+                gid,
+                allow_interrupted_selection=True,
+            )
+            if live_output is None:
+                return "unpublished-state-write" if interrupted else "unpublished"
+            return "unpublished-destination-occupied"
+        if private_output is None and live_output == expected:
+            validate_recovery_inventory(staging, {STATE_NAME}, uid, gid)
+            fail("unselected vcpkg native transaction moved and was preserved")
+        fail("unselected vcpkg native output transaction is incoherent and was preserved")
+    if publication != "selected":
+        fail("vcpkg native publication disposition is incoherent and was preserved")
+    expected_digest = str(payload.get("output_digest"))
     if private_output == expected:
-        validate_inventory(staging, {STATE_NAME, "output"})
+        validate_recovery_inventory(staging, {STATE_NAME, "output"}, uid, gid)
+        validate_candidate_output(
+            staging / "output",
+            uid,
+            gid,
+            kind,
+            output_key,
+            libvpx_key,
+            expected,
+            expected_digest,
+            published=False,
+        )
         if live_output is None:
             return "unpublished"
         return "unpublished-destination-occupied"
     if private_output is None and live_output == expected:
-        validate_inventory(staging, {STATE_NAME})
-        validate_output(
+        validate_recovery_inventory(staging, {STATE_NAME}, uid, gid)
+        live_mode = stat.S_IMODE(os.lstat(destination).st_mode)
+        if live_mode == 0o700:
+            validate_candidate_output(
+                destination,
+                uid,
+                gid,
+                kind,
+                output_key,
+                libvpx_key,
+                expected,
+                expected_digest,
+                published=False,
+            )
+            parent_fd = open_directory(destination.parent)
+            staging_fd = open_directory(staging)
+            try:
+                transition_root_mode(
+                    parent_fd,
+                    kind,
+                    expected,
+                    uid,
+                    gid,
+                    {0o700},
+                    0o500,
+                    "recovered vcpkg native publication",
+                )
+                fsync_directory(destination)
+                os.fsync(staging_fd)
+                os.fsync(parent_fd)
+            finally:
+                os.close(staging_fd)
+                os.close(parent_fd)
+        elif live_mode != 0o500:
+            fail("published vcpkg native root has an unrecoverable mode")
+        validate_candidate_output(
             destination,
             uid,
             gid,
             kind,
             output_key,
             libvpx_key,
-            legacy=False,
-            sealed=True,
-            expected_identity=expected,
+            expected,
+            expected_digest,
+            published=True,
         )
         return "published"
     fail("vcpkg native output transaction state is incoherent and was preserved")
@@ -1480,6 +1780,46 @@ def run_self_test() -> None:
         )
         return online, staging
 
+    def select(online: Path, staging: Path, kind: str) -> dict[str, object]:
+        digest = verify_staged(
+            online,
+            staging,
+            uid,
+            gid,
+            kind,
+            output_key,
+            libvpx_key,
+            builder,
+        )
+        payload = load_state(
+            online,
+            staging,
+            uid,
+            gid,
+            kind,
+            output_key,
+            libvpx_key,
+            builder,
+        )
+        output = staging / "output"
+        validate_candidate_output(
+            output,
+            uid,
+            gid,
+            kind,
+            output_key,
+            libvpx_key,
+            decode_identity(payload["output_identity"], "vcpkg native output"),
+            digest,
+            published=False,
+        )
+        return record_publication(staging, payload, digest)
+
+    def promote(online: Path, staging: Path, kind: str) -> Path:
+        destination = parent_paths(online)[1] / kind
+        os.rename(staging / "output", destination)
+        return destination
+
     with tempfile.TemporaryDirectory(prefix="vcpkg-native-output-self-test.") as temporary:
         root = Path(temporary)
         try:
@@ -1528,6 +1868,213 @@ def run_self_test() -> None:
                     libvpx_key,
                     builder,
                 )
+                published = parent_paths(online)[1] / kind
+                for current, directories, files in os.walk(published):
+                    current_path = Path(current)
+                    if stat.S_IMODE(os.lstat(current_path).st_mode) != 0o500:
+                        fail("self-test vcpkg native publication directory is not sealed")
+                    for name in directories:
+                        if stat.S_IMODE(os.lstat(current_path / name).st_mode) != 0o500:
+                            fail("self-test vcpkg native publication directory is not sealed")
+                    for name in files:
+                        if stat.S_IMODE(os.lstat(current_path / name).st_mode) != 0o400:
+                            fail("self-test vcpkg native publication file is not sealed")
+                marker = published / OUTPUT_MARKER
+                marker.chmod(0o600)
+                expect_failure(
+                    lambda: check_complete(
+                        online,
+                        uid,
+                        gid,
+                        kind,
+                        output_key,
+                        libvpx_key,
+                        builder,
+                    ),
+                    "self-test accepted an owner-writable published vcpkg native file",
+                )
+                marker.chmod(0o400)
+
+            online, staging = fixture(root / "unselected-moved", "x64-linux")
+            moved_identity = identity(os.lstat(staging / "output"))
+            moved = promote(online, staging, "x64-linux")
+            expect_failure(
+                lambda: recover(
+                    online,
+                    staging,
+                    uid,
+                    gid,
+                    "x64-linux",
+                    output_key,
+                    libvpx_key,
+                    builder,
+                ),
+                "self-test accepted a moved unselected vcpkg native output",
+            )
+            if (
+                identity(os.lstat(moved)) != moved_identity
+                or stat.S_IMODE(os.lstat(moved).st_mode) != 0o700
+            ):
+                fail("self-test changed a moved unselected vcpkg native output")
+
+            online, staging = fixture(root / "selected-recovery", "arm64-android")
+            selected = select(online, staging, "arm64-android")
+            if selected.get("publication") != "selected" or recover(
+                online,
+                staging,
+                uid,
+                gid,
+                "arm64-android",
+                output_key,
+                libvpx_key,
+                builder,
+            ) != "unpublished":
+                fail("self-test did not recover a selected private vcpkg native output")
+            moved = promote(online, staging, "arm64-android")
+            if stat.S_IMODE(os.lstat(moved).st_mode) != 0o700:
+                fail("self-test selected vcpkg native output was prematurely sealed")
+            if recover(
+                online,
+                staging,
+                uid,
+                gid,
+                "arm64-android",
+                output_key,
+                libvpx_key,
+                builder,
+            ) != "published":
+                fail("self-test did not complete selected vcpkg native recovery")
+            if stat.S_IMODE(os.lstat(moved).st_mode) != 0o500:
+                fail("self-test did not seal a recovered vcpkg native output")
+
+            online, staging = fixture(root / "selected-changed", "x64-linux")
+            selected = select(online, staging, "x64-linux")
+            selected_identity = decode_identity(
+                selected["output_identity"],
+                "vcpkg native output",
+            )
+            changed = promote(online, staging, "x64-linux")
+            header = changed / "include" / "jconfig.h"
+            header.chmod(0o600)
+            header.write_bytes(b"/* changed but still semantically admitted */\n")
+            header.chmod(0o400)
+            expect_failure(
+                lambda: recover(
+                    online,
+                    staging,
+                    uid,
+                    gid,
+                    "x64-linux",
+                    output_key,
+                    libvpx_key,
+                    builder,
+                ),
+                "self-test accepted changed selected bytes at the final path",
+            )
+            if (
+                identity(os.lstat(changed)) != selected_identity
+                or optional_identity(staging / "output") is not None
+                or stat.S_IMODE(os.lstat(changed).st_mode) != 0o700
+            ):
+                fail("self-test changed or relocated a rejected final-path candidate")
+
+            online, staging = fixture(root / "legacy-moved", "x64-linux")
+            legacy = load_state(
+                online,
+                staging,
+                uid,
+                gid,
+                "x64-linux",
+                output_key,
+                libvpx_key,
+                builder,
+            )
+            legacy.pop("publication")
+            legacy.pop("output_digest")
+            legacy["version"] = LEGACY_STATE_VERSION
+            (staging / STATE_NAME).unlink()
+            legacy_state = staging / LEGACY_STATE_NAME
+            legacy_state.write_text(
+                json.dumps(legacy, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="ascii",
+            )
+            legacy_state.chmod(0o600)
+            legacy_live = promote(online, staging, "x64-linux")
+            expect_failure(
+                lambda: recover(
+                    online,
+                    staging,
+                    uid,
+                    gid,
+                    "x64-linux",
+                    output_key,
+                    libvpx_key,
+                    builder,
+                ),
+                "self-test accepted moved legacy state without publication selection",
+            )
+            if stat.S_IMODE(os.lstat(legacy_live).st_mode) != 0o700:
+                fail("self-test changed a moved legacy vcpkg native output")
+
+            online, staging = fixture(root / "interrupted-selection", "x64-linux")
+            temporary_state = staging / f"{STATE_NAME}.tmp"
+            temporary_state.write_bytes(b'{"interrupted":true}\n')
+            temporary_state.chmod(0o600)
+            if recover(
+                online,
+                staging,
+                uid,
+                gid,
+                "x64-linux",
+                output_key,
+                libvpx_key,
+                builder,
+            ) != "unpublished-state-write":
+                fail("self-test did not retire an interrupted selection write safely")
+
+            online, staging = fixture(root / "post-publication-rollback", "x64-linux")
+            rollback_identity = identity(os.lstat(staging / "output"))
+            original_validator = validate_candidate_output
+
+            def reject_published(*args: object, **kwargs: object) -> str:
+                if kwargs.get("published") is True:
+                    fail("injected post-publication validation failure")
+                return original_validator(*args, **kwargs)
+
+            globals()["validate_candidate_output"] = reject_published
+            try:
+                expect_failure(
+                    lambda: publish(
+                        online,
+                        staging,
+                        uid,
+                        gid,
+                        "x64-linux",
+                        output_key,
+                        libvpx_key,
+                        builder,
+                    ),
+                    "self-test accepted an injected post-publication failure",
+                )
+            finally:
+                globals()["validate_candidate_output"] = original_validator
+            rolled_back = staging / "output"
+            if (
+                identity(os.lstat(rolled_back)) != rollback_identity
+                or stat.S_IMODE(os.lstat(rolled_back).st_mode) != 0o700
+            ):
+                fail("self-test publication rollback did not restore the exact private output")
+            if recover(
+                online,
+                staging,
+                uid,
+                gid,
+                "x64-linux",
+                output_key,
+                libvpx_key,
+                builder,
+            ) != "unpublished":
+                fail("self-test did not recover the rolled-back selected output")
 
             online, staging = fixture(root / "wrong-abi", "x64-linux")
             (
@@ -1679,6 +2226,49 @@ def run_self_test() -> None:
                 != "unprepared-empty"
             ):
                 fail("self-test did not classify empty unprepared vcpkg native staging")
+
+            partial_staging = make_staging(online, "x64-linux")
+            (partial_staging / "output").mkdir(mode=0o700)
+            partial_state = partial_staging / f"{STATE_NAME}.tmp"
+            partial_state.write_bytes(b'{"partial":')
+            partial_state.chmod(0o600)
+            if recover(
+                online,
+                partial_staging,
+                uid,
+                gid,
+                "x64-linux",
+                output_key,
+                libvpx_key,
+                builder,
+            ) != "unprepared-state-write":
+                fail("self-test did not classify an interrupted initial state write")
+
+            moved_staging = make_staging(online, "x64-linux")
+            ensure_private_parents(online, uid, gid)
+            moved_output = moved_staging / "output"
+            moved_output.mkdir(mode=0o700)
+            moved_identity = identity(os.lstat(moved_output))
+            moved_destination = parent_paths(online)[1] / "x64-linux"
+            os.rename(moved_output, moved_destination)
+            expect_failure(
+                lambda: recover(
+                    online,
+                    moved_staging,
+                    uid,
+                    gid,
+                    "x64-linux",
+                    output_key,
+                    libvpx_key,
+                    builder,
+                ),
+                "self-test accepted an unrecorded moved vcpkg native output",
+            )
+            if (
+                identity(os.lstat(moved_destination)) != moved_identity
+                or stat.S_IMODE(os.lstat(moved_destination).st_mode) != 0o700
+            ):
+                fail("self-test changed an unrecorded moved vcpkg native output")
 
             if hasattr(os, "setxattr"):
                 online, staging = fixture(root / "xattr", "x64-linux")

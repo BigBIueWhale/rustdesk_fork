@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-511aff2d240163d29045c70f94d94603e5d1f3cb45de9c09e17dbd4cd0fda8dd  requirements.html
+e18fc9a84fe9c014b75fe8dd47e2c750ff813441995b692170b265d8d88600ec  requirements.html
 ```
 
 ## Current Verdict
@@ -80,6 +80,17 @@ supervisor/desktop/churn/resource scenarios that must run in disposable networkl
 `requirements.html` by 4,046 bytes. The former dedicated source-wording verifier was already deleted; the
 compiled ownership regressions and small shared source guard remain unchanged. No product source ran or changed,
 so exact-current installed Linux behavior remains open.
+
+R-S11fu and Appendix C #329 now state the timeless Android packaging contract instead of a historical commit,
+error count, dependency-record counts, verifier wiring, dummy-JNI receipt, and `PARTIAL` status. The retained
+contract pins the reviewed AGP/Kotlin/Gradle/JDK/SDK tuple, namespaces, bytecode and fail-visible compiler policy,
+release shrinker rules, minimum plugin closure, vendored UniLinks provenance, and the real Rust/JNI package and
+installed-lifecycle acceptance boundary. This reduced `requirements.html` by 1,281 bytes. The current Gradle,
+lockfile, manifest, keep-rule, nullable-storage, and vendored-source declarations were inspected and align with
+that source contract; official Android, Kotlin, Gradle, and pinned Flutter 3.24.5 records support the tuple and
+release-shrinker path. The required certified Android builder image is not present and no current RustDesk APK or
+AAB was found, so no build, signing, installation, emulator, device, peer, lifecycle, presentation, performance,
+or release evidence is claimed; the Android and artifact rows in the OPEN matrix remain unchanged.
 
 The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk and required
 disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated

@@ -65,7 +65,6 @@ def validate(sources: Dict[str, str]) -> None:
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    workspace = sources["workspace"]
     common_android = sources["common_android"]
     codec = sources["codec"]
     vpxcodec = sources["vpxcodec"]
@@ -894,28 +893,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership",
         "video-worker hardening disposition",
     )
-    for token, label in (
-        (
-            "validate_android_frame_raw_generation_contract(sources)",
-            "independent contract dispatch",
-        ),
-        (
-            '"android_frame_raw_generation_verifier": (\n'
-            '                repo / "scripts/verify-android-frame-raw-generation.py"',
-            "independent focused-verifier source",
-        ),
-        (
-            "stale raw-video generation retirement",
-            "independent stale-retirement mutation",
-        ),
-        (
-            "exact-generation Android video-worker consumer ownership",
-            "independent video-worker contract",
-        ),
-    ):
-        require(workspace, token, label)
-
-
 MUTATIONS = (
     Mutation(
         "owner",
@@ -1307,20 +1284,6 @@ MUTATIONS = (
         "R-S11eu/R-S11e-182 ambient Android video-worker and screen-state ownership",
         "video-worker hardening disposition",
     ),
-    Mutation(
-        "workspace",
-        '"android_frame_raw_generation_verifier": (\n'
-        '                repo / "scripts/verify-android-frame-raw-generation.py"',
-        '"android_frame_raw_generation_verifier_disabled": (\n'
-        '                repo / "scripts/verify-android-frame-raw-generation.py"',
-        "independent focused-verifier source",
-    ),
-    Mutation(
-        "workspace",
-        "exact-generation Android video-worker consumer ownership",
-        "ambient Android video-worker consumer ownership",
-        "independent video-worker contract",
-    ),
 )
 
 
@@ -1383,9 +1346,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (
-            repo / "scripts/verify-verifier-workspace.py"
-        ).read_text(encoding="utf-8"),
     }
 
 

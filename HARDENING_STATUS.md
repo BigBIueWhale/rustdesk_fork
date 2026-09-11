@@ -84,13 +84,23 @@ reducing `requirements.html` by another 571 bytes. The workspace verifier lost 9
 validator/mutation layer plus obsolete cross-scope and verifier-of-verifier checks. The Android voice source
 verifier lost 154 lines of obsolete CM/listener-lifecycle assertions and mutations, and those shared/Apple
 CM gates no longer require documentation or ledger wording. The shared source gate retains the load-bearing
-queue, terminal, desktop bridge, Android
-child-future, no-detached-runtime, exact task-owner, early-failure, and normal-close-finality checks. In a
+queue, terminal, desktop bridge, Android child-future, no-detached-runtime, exact task-owner, early-failure,
+and normal-close-finality checks. In a
 nonroot, network-disabled, read-only-source container, that focused block passes and the Android verifier
-passes normally and rejects all 563 retained mutations. The normal workspace catalog advances beyond the
-deleted `start_channel` assumption and stops at the separate stale Android listener-startup assertion
-`Android exact server-generation stop contract: required contract is absent`. No Rust test, Android target,
-installed application, or device ran; R-S11bg and all current native/runtime obligations remain open.
+passes normally and rejects all 563 retained mutations. No Rust test, Android target, installed application,
+or device ran in that CM cleanup; R-S11bg and all current native/runtime obligations remained open.
+
+Android focused-verifier ownership is now one-way rather than circular. The workspace verifier lost 10,299
+lines and 419,555 bytes: five duplicate Android voice/session, lifecycle-drain, raw-frame, service-status,
+and startup-transaction validators; their source loaders and dispatch; and 578 mutations whose diagnostics
+were duplicate-owned or existed only to mutate that plumbing. The retained focused raw-frame and status
+verifiers no longer require or mutate their deleted workspace copies. One stale lifecycle-drain mutation
+now targets the current post-drain
+exact-owner revalidation rather than a deleted comment boundary. In a nonroot, network-disabled,
+read-only-source container, the retained focused suites rejected 563 voice/session, 39 lifecycle-drain, 59
+raw-frame, and 41 service-status mutations; the current startup source invariant and normal workspace catalog
+also pass. This is fast source/integration evidence only: no Rust test, Android compilation, APK, emulator,
+device, listener, or product runtime ran, and every installed/native obligation in the OPEN matrix remains.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -12288,12 +12298,12 @@ Pinned rustfmt 1.75 parsed every touched Rust file; `bash -n`, `git diff --check
 and the focused Android startup source invariant pass. The source gate was
 corrected for the four current post-claim rollback edges and the two-phase
 `android_request_stop`/`android_generation_is_inactive` API; it remains
-supplementary source evidence. The monolithic
-`scripts/verify-verifier-workspace.py` was not run: source inspection shows its
-Android fixture still requires the retired stop helper and runtime-abort
-listener shape, so it would reject the current source for obsolete wording.
-That make-believe-verifier debt remains cleanup work, not product evidence and
-not a reason to restore the superseded lifecycle.
+supplementary source evidence. The workspace verifier's five duplicate Android
+focused validators, loaders, dispatches, and their uniquely owned mutation
+catalog are now deleted rather than preserving the retired stop helper and
+runtime-abort listener shape. Its normal integration catalog runs successfully,
+but that execution still observes source structure rather than Android behavior
+and is not a reason to restore any superseded lifecycle.
 
 Two bounded, network-disabled, numeric-nonroot compilation attempts used only
 the read-only repository/toolchain/cache plus three ephemeral crates whose bytes

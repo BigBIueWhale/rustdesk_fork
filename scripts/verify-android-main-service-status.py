@@ -71,7 +71,6 @@ def validate(sources: Dict[str, str]) -> None:
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    workspace = sources["workspace"]
 
     require_order(
         owner,
@@ -637,24 +636,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership",
         "hardening disposition",
     )
-    for token, label in (
-        (
-            "validate_android_main_service_status_contract(sources)",
-            "independent contract dispatch",
-        ),
-        (
-            '"android_main_service_status_verifier": (\n'
-            '                repo / "scripts/verify-android-main-service-status.py"',
-            "independent focused-verifier source",
-        ),
-        (
-            '"android_main_service_status_owner": (',
-            "independent status-owner source",
-        ),
-    ):
-        require(workspace, token, label)
-
-
 MUTATIONS = (
     Mutation(
         "owner",
@@ -904,14 +885,6 @@ MUTATIONS = (
         "R-S11en/R-S11e-175 ambient MainService status ownership",
         "hardening disposition",
     ),
-    Mutation(
-        "workspace",
-        '"android_main_service_status_verifier": (\n'
-        '                repo / "scripts/verify-android-main-service-status.py"',
-        '"android_main_service_status_verifier_disabled": (\n'
-        '                repo / "scripts/verify-android-main-service-status.py"',
-        "independent focused-verifier source",
-    ),
 )
 
 
@@ -933,9 +906,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (
-            repo / "scripts/verify-verifier-workspace.py"
-        ).read_text(encoding="utf-8"),
     }
 
 

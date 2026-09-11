@@ -697,8 +697,12 @@ MUTATIONS = (
     ),
     (
         "flutter",
-        "let owner_admission = acquire_android_client_owner(client_owner_id)?;\n\n    // to-do: check the same id session.",
-        "// post-drain owner revalidation omitted\n\n    // to-do: check the same id session.",
+        "// Android may change Activity authority while the off-component preparation above waits for\n"
+        "    // exact predecessor finality. Reacquire and revalidate only after that wait, then keep the\n"
+        "    // read guard through insertion so a lifecycle transition cannot cross the new live session.\n"
+        "    #[cfg(target_os = \"android\")]\n"
+        "    let owner_admission = acquire_android_client_owner(client_owner_id)?;",
+        "// Post-drain owner revalidation intentionally omitted.",
         "post-drain exact-owner revalidation",
     ),
     (

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-d031498bc35eabc2d55fc6ea980d56e09aa3f2bac5e791cbd596462487799681  requirements.html
+81ae95b077c5ca6c5b482d5d4030beb6eee7fd819fb754c7f88b82de03ade34d  requirements.html
 ```
 
 ## Current Verdict
@@ -11477,96 +11477,62 @@ explicitly open.
 
 ### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
 
-Source review found a narrower shared lifecycle defect beneath the reported cleanup
-pattern. `libs/clipboard/src/lib.rs` retained both senders and receivers in one
-process-global registry. A viewer connection round looked up a route by peer ID and
-reused its receiver, while `src/client/io_loop.rs` held that receiver for the complete
-network round. A replacement round could therefore contend with the stale round rather
-than owning fresh state. Viewer-generated IDs and controlled connection IDs also shared
-the positive `i32` namespace, cleanup removed a route by ID without a generation,
-payload-bearing `ClipboardFile` values crossed unbounded channels, and an accidental
-Windows build with `unix-file-copy-paste` could create both a direct controlled consumer
-and the connection-manager consumer. This is source-proven ownership/resource/finality
-debt consistent with cleanup-mediated recovery. It is not proof that the unidentified
-weeks-old Android, Windows, or Debian artifacts contained or exercised this path and is
-not a causation claim for the reported display-only delay.
+**SOURCE IMPLEMENTED; FIVE EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
+SOURCE/MUTATION THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT,
+AND RELEASE EVIDENCE OPEN.** The inherited registry retained receivers across viewer
+rounds, used overlapping positive viewer/controlled IDs, removed routes without a
+generation, admitted payloads through unbounded channels, and could create competing
+Windows controlled consumers. Those are source-proven ownership, resource, and finality
+defects consistent with cleanup-mediated recovery—not proof about the weeks-old deployed
+artifacts or causation for the reported display-only delay.
 
-The registry now contains only `ClipboardFileEgressSender` route endpoints. Each viewer
-network round creates and exclusively owns one fresh receiver and a strictly negative,
-checked monotonic ID. Controlled routes accept only one unique positive connection ID;
-zero remains the Unix broadcast sentinel. The Windows ABI continues to carry the opaque
-identity as `UINT32`, and every native callback restores the exact bits as `i32`. A
-monotonic route-generation lease removes only an exact `(conn_id, generation)` record,
-so stale teardown cannot delete a replacement. Windows controlled callbacks have exactly
-the authorized CM-owned route, while the direct controlled route is Unix-only. FUSE
-tests now acquire the same exact controlled-route ownership instead of reaching into a
-receiver-sharing API.
+The current registry retains only clonable senders. Every viewer round owns a fresh
+receiver, checked negative ID, and exact generation lease; controlled IDs are unique and
+positive, with zero reserved for Unix broadcast. Windows preserves the opaque ID bit
+pattern, has only the CM-owned controlled consumer, and Unix alone owns the direct
+controlled route. Each route uses one nonblocking wake token, a 256-message FIFO ceiling,
+an individual heap ceiling of `MAX_SESSION_PACKET`, a two-maximum-payload aggregate
+budget plus fixed entry accounting, and checked capacity-based nested allocation sizing.
+Admission/accounting failure is terminal and clears payloads; receiver and final-producer
+retirement are visible; point/broadcast sends snapshot senders before admission.
 
-Each route owns one nonblocking wake token, a 256-message FIFO ceiling, an individual
-retained-heap ceiling equal to the 32 MiB `MAX_SESSION_PACKET`, and an aggregate budget
-of two maximum heap payloads plus fixed accounting for all 256 entry slots. Sizing uses
-allocation capacity for every nested `String` and `Vec`, checked element-size
-multiplication for vector storage, checked count and retained-byte addition, and checked
-drain subtraction. Individual oversize, count/byte saturation, and accounting failure
-atomically clear retained payloads, preserve one typed terminal cause, and wake the
-owner. Receiver retirement closes admission and clears state despite stale sender
-clones; final producer retirement closes a waiting receiver. Viewer, Unix-controlled,
-and Windows-CM consumers terminate their exact round on terminal failure or unexpected
-closure. Point sends and broadcasts snapshot senders and release the registry read lock
-before sizing/admission; broadcast refusal is visible. No retry, reconnect, message
-coalescing, timer, poller, worker, task, thread, runtime, listener, port, dependency,
-privilege transition, service restart, alternate transport, or Android persistent-
-background-service change was added.
+Five Rust tests exercise FIFO recovery, terminal count/byte failure and payload release,
+allocation-capacity accounting, wake and receiver/producer finality, fresh role-disjoint
+routes, duplicate controlled-route refusal, generation-safe cleanup, and exact delivery.
+Existing FUSE tests exercise exact controlled-route acquisition. The shared runner retains
+`cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never`.
+These are executable in-process state-machine tests, not native clipboard, Windows ABI,
+viewer/CM/FUSE lifecycle, or installed-artifact evidence.
 
-Five deterministic Rust regressions bind FIFO/post-drain recovery, terminal count and
-byte failure with payload release, allocation-capacity rather than length accounting,
-one-slot asynchronous wake, receiver and final-producer retirement, fresh viewer route
-state, negative/positive role separation, duplicate controlled-route refusal, current-
-route fallback after exact lease retirement, and exact point delivery. Existing Unix
-FUSE regressions now bind exact route acquisition, response, send failure, and timeout.
-`scripts/verify-clipboard-route-budget.py` binds the implementation, Windows ID round
-trip, viewer/controlled/CM consumers, regressions, requirements, Appendix C #361,
-R-S11e-238, digest, and shared/Apple/independent wiring with deliberate mutations. The
-independent workspace validator separately parses the production topology and call sites
-and carries its own weakening catalog.
+The 1,463-line `verify-clipboard-route-budget.py` and 1,450 lines of duplicated workspace
+loading, source matching, mutation catalog, dispatch, and adjacency coupling were deleted.
+The script only searched and rewrote source text while claiming R-S11gz, R-S11it, and
+R-S11iu coverage; it never ran Rust, Dart, Kotlin, Flutter, Windows, Android, IPC, or a
+clipboard route. Shared and Apple invocations were removed and four neighboring mutation
+fixtures were retargeted to the surviving dispatch sequence. Requirements and Appendix C
+now treat executable state transitions and current target observation as evidence and
+explicitly reject source matching, deliberate mutation, script wiring, and workspace
+parsing as behavioral proof.
 
-In the immutable local verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-with `--pull=never`, networking disabled, a read-only root and repository, all
-capabilities dropped, no-new-privileges, numeric UID/GID 1000, and bounded
-CPU/memory/PIDs/private tmpfs, the focused file-clipboard verifier rejected all 38
-deliberate mutations. Its independently parsed narrowed workspace catalog rejected all
-31 separate weakenings and the unmodified independent workspace baseline passed.
-Adjacent viewer voice-call, controlled-egress, CM-egress, keyed-writer,
-display-finality, Android voice-call ownership, and Windows production-listener DACL
-gates rejected 63, 51, 50, 25, 186, 534, and 36 mutations respectively. Bash syntax,
-in-memory Python AST parsing, the synchronized requirements digest, and the native-codec
-gate passed. Exact Rust 1.75 formatting passed the complete modified clipboard library,
-viewer loop, CM interface, and FUSE test source. The formatter reported no difference at
-the modified controlled-connection hunk; that large file retains pre-existing formatter
-differences elsewhere. The first complete independent source-mutation run correctly
-rejected the new one-slot-wake weakening but exposed a diagnostic-label mismatch in the
-new mutation fixture. The second complete run then proved that the independent validator
-bound the focused message ceiling only by a generic constant-name marker; that weakening
-was accepted, so the validator was tightened to require the exact focused assertion.
-After both verifier defects were corrected without weakening a production requirement,
-the real canonically isolated narrowed catalog rejected all 31 unique new targets and one
-uninterrupted complete independently parsed 4,574-entry source-mutation catalog passed
-against the frozen tree. No image was pulled, built, or tagged; no host Rust command,
-root identity, Docker socket mount, listener, published port, host
-service/configuration, firewall/network state, VM, or unrelated workload was used,
-inspected, or changed.
+A confined structural pass in immutable image
+`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`
+passed Python AST and requirements HTML parsing, shared/Apple/Dart shell syntax, the
+reduced workspace baseline, all four changed adjacency mutations, native-codec
+synchronization, the status-size gate, and `git diff --check`. It used no network,
+ports, capabilities, writable repository/root, elevated user, or unbounded resources;
+the exact host listener inventory was unchanged. No product/native test ran. The
+repository `online/` closure, pinned devcheck image, and repository-owned Windows
+golden VM are absent, so the retained Rust/Dart/Kotlin/native scenarios receive no new
+behavior verdict.
 
-This remains source, format, and adversarial-gate evidence, not native behavior or
-release readiness. The exact pinned Debian, Apple, and dev-check builder images and the
-authenticated Cargo-vendor closure are absent, so no exact-current Rust/Dart/Flutter/
-native compilation or execution is claimed. Physical Android task-swipe/reopen/
-Force-Stop and Windows focus/minimize reproduction; Linux/macOS/iOS and cross-version
-behavior; capture-through-compositor timestamps and explicit latency budgets; sustained
-connection/reconnect/focus/background/file-control coexistence/backpressure/resource/
-performance soak; clean cold R-B2/R-B10 equality; installed process/service/package
-behavior; independent reproduction; R-V3 external review; causation; and proof that the
-whole connection flow is correct and performant remain explicitly open.
+Exact current Windows/Linux/macOS execution must still cover native ABI identity, viewer,
+Unix-controlled, Windows-CM, and FUSE routes through connection/reconnect, refusal,
+replacement, and cleanup, with file correctness, latency, backpressure, CPU, memory,
+handles, and thread finality. Physical Android/Windows symptom reproduction,
+cross-version/platform behavior, capture-to-present timing, sustained coexistence soak,
+cold R-B2/R-B10 equality, installed artifacts/services, independent reproduction, R-V3
+external review, causation, and the complete connection flow remaining correct and
+performant are open. No product source or Android persistent-service behavior changed.
 
 ### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership (2026-08-20)
 
@@ -13481,72 +13447,64 @@ external review.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 
-**State.** Whole-stream and Windows route-setup ownership is implemented in source and covered by
-focused static gates. Native installed Windows and end-to-end route/file behavior remains open.
+**SOURCE IMPLEMENTED; DEDICATED EXECUTABLE REGRESSION MISSING; EXACT NATIVE
+INSTALLED CM/ROUTE EVIDENCE OPEN.** One `IpcTaskRunner::run` owns the CM stream. Only
+the first server-validated authorized Login may activate it. On Windows, controlled-route
+admission and `MonitorReady` publication precede client-registry commit. EOF, framing
+failure, repeated Login, authority failure, route/readiness/registry refusal, bounded
+egress failure, disconnect, and ordinary completion converge on one terminal path without
+retry. An admitted client is retired while its exact route lease remains live, and route
+vacancy is proved under the registry lock before generation/channel allocation.
 
-**Boundary and current implementation.** One `IpcTaskRunner::run` owns the CM stream. Only its first
-valid authorized `Login` may activate the connection; EOF, framing failure, repeated login,
-authorization failure, route refusal, readiness-publication failure, or registry refusal follows one
-terminal path without retry or spin. On Windows, the exact controlled clipboard route and readiness
-publication succeed before client-registry commit. Terminal cleanup retires the exact client before
-the route lease is released. `register_cliprdr_controlled` holds the route-registry write lock from
-vacancy proof through checked generation/channel allocation and sender commit, so a collision
-consumes no generation or channel and cannot replace an incumbent.
+The retained R-S11gz route tests execute the controlled-route vacancy and duplicate-ID
+primitive, but they do not execute CM stream activation, malformed input, readiness
+failure, or cleanup ordering. The deleted clipboard-route verifier was only source
+matching and deliberate mutation; it was not an R-S11it regression. R-S11it now
+explicitly requires executable first-Login, malformed-frame, route/readiness-refusal,
+cleanup-before-release, and vacancy-before-allocation scenarios. No replacement
+source-text verifier was added.
 
-**Evidence.** `scripts/verify-clipboard-route-budget.py`, shared/Apple wiring checks, and
-`scripts/verify-verifier-workspace.py` bind first-login activation, terminal malformed/EOF behavior,
-route/readiness-before-client order, cleanup-before-lease release, and vacancy-before-allocation.
-The clipboard route regressions bind disjoint fresh viewer routes and duplicate controlled-route
-refusal. The focused current-tree baseline passes as static/test-wiring evidence, not a native CM
-stream or clipboard runtime result.
-
-**Open evidence.** Run the exact candidate in an installed Windows VM through duplicate-ID,
-route-collision, readiness-refusal, malformed-frame, EOF, and cleanup races. Complete native
-Windows/Linux/macOS/Android file transactions, cross-version behavior, throughput and resource
-soaks, current signed artifacts, cold R-B2/R-B10, independent reproduction, and external review.
+Run the exact installed Windows candidate through those scenarios, EOF and abrupt-owner
+loss, same-ID route races, SCM restart, and complete file/clipboard transactions. Retain
+latency, CPU/memory/handle/thread cleanup, current artifact identity, cold R-B2/R-B10
+equality, independent reproduction, and external review. Until that exists, the source
+shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**State.** Exact-generation registry ownership is implemented in shared, Android, and Dart source
-and covered by focused static gates and source-wired regressions. Exact Rust/Dart/native execution,
-device lifecycle, installed-platform, performance, artifact, independent-reproduction, and
-external-review evidence remains open.
+**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS AND ONE DART
+SERIALIZATION TEST RETAINED; ANDROID FIXTURE IS NOT EXECUTED; CURRENT
+DEVICE/NATIVE EVIDENCE OPEN.** `CmClientRegistry` owns a checked process-lifetime
+generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, stale source
+generations, active same-source collisions, and exhaustion without partial mutation.
+Disconnected owners may be replaced; only a newer Android MainService generation may
+supersede an active predecessor, whose egress owner closes before replacement. Desktop
+source generation zero cannot supersede an active collision. Registry, clipboard, chat,
+voice, notification, input, capture, and UI effects first prove the exact owner.
 
-**Boundary and current implementation.** `CmClientRegistry` owns a checked process-lifetime
-monotonic generation and returns a private `CmClientOwner`. Admission rejects nonpositive IDs,
-stale source generations, active same-source collisions, and generation exhaustion without partial
-mutation. A disconnected entry may be replaced; only a strictly newer Android MainService source
-generation may supersede an active predecessor, whose egress owner is nonblockingly closed before
-replacement publication. Desktop source generation zero never supersedes an active collision.
-Remove, disconnect, chat, voice, clipboard, notification, and UI effects first prove the exact owner.
+Android source carries service, connection, and registry generations through its resource
+mirror, input, delayed pointer work, voice, capture reconciliation, notifications, native
+events, and Dart state. A newer same-ID owner retires predecessor resources before
+publication; stale callbacks are intended to be inert. The persistent foreground service
+remains intentional, and cleanup correctness must not depend on task swipe or Force Stop.
 
-Android carries the accepted MainService generation into registry admission and mirrors
-`(connection_id, registry_generation)` across input, queued/delayed pointer work, voice activity,
-capture reconciliation, notifications, Kotlin callbacks, serialized events, and Dart state. A newer
-same-ID generation retires predecessor input, voice, recorder demand, and notification resources
-before publishing the replacement. Stale or duplicate callbacks are inert. The persistent Android
-foreground service remains intentional; cleanup correctness does not depend on task swipe or on
-killing that service.
+Four Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
+disconnected replacement, and generation-exhaustion no-commit. The shared runner retains
+`cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
+`flutter/test/server_model_test.dart`, invoked by `scripts/dart-verify.sh`, executes
+registry-generation JSON serialization only; it does not exercise full Dart replacement
+or stale-event UI behavior. `scripts/android-controlled-connection-type-test.kt`
+contains useful model assertions, but no retained gate compiles or executes it; grepping
+its strings is not an Android regression. The deleted combined verifier did not execute
+any of these paths.
 
-**Evidence.** Four Rust regressions cover stale-owner reuse, stale/same-source collision refusal,
-disconnected replacement, and exhaustion:
-`r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id`,
-`r_s11iu_registry_rejects_stale_and_same_source_active_collisions`,
-`r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement`, and
-`r_s11iu_generation_exhaustion_does_not_commit_a_client`. Android/Kotlin and Dart fixtures cover
-generation serialization and controlled input/voice/resource supersession.
-`scripts/verify-clipboard-route-budget.py`, the focused Android ownership gates, shared/Apple wiring,
-and `scripts/verify-verifier-workspace.py` bind those paths. The focused current-tree baseline passes
-as static and test-wiring evidence; the Rust, Dart, Kotlin, app, and service paths did not execute
-in this slice.
-
-**Open evidence.** Execute the exact Rust/Dart tests and current app artifacts. On a physical Android
-device, exercise persistent-service task swipe, reopen, Force Stop, same-ID supersession, reconnect,
-and resource soak without treating service termination as the fix. Exercise same-ID desktop/Windows
-collisions and complete file transactions. Separately reproduce native Windows same-connection
-focus/minimize capture-through-presentation latency. Measure end-to-end latency, queues, CPU, memory,
-handles, and cleanup; bind signed artifacts; complete cold R-B2/R-B10, independent reproduction,
-causation analysis, external review, and the broader correct-and-performant connection-flow mandate.
+Required evidence remains exact Rust and Dart execution plus current Android package
+execution for same-ID supersession, stale/duplicate callbacks, input, queued/delayed
+actions, voice/recorder demand, capture, notification, task swipe, reopen, Force Stop,
+reconnect, and bounded cleanup without treating service death as recovery. Desktop and
+installed Windows same-ID collisions, complete file transactions, latency/resource soak,
+signed artifact binding, cold R-B2/R-B10 equality, independent reproduction, causation,
+R-V3 external review, and correct/performant end-to-end connection behavior remain open.
 
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 

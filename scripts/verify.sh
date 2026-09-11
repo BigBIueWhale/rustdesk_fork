@@ -11414,12 +11414,6 @@ else
   echo "  FAIL R-S11hp/R-S11e-253: whiteboard presentation regained generic event authority, stale owner resources, unbounded ripples, or continuous idle redraw"
   rc=1
 fi
-if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
-  echo "  ok  R-S11gz/R-S11it/R-S11iu file-clipboard routes and CM client lifecycle are bounded and exact-generation-owned"
-else
-  echo "  FAIL R-S11gz/R-S11it/R-S11iu: file-clipboard or CM client routing regained shared, bare-ID, stale-generation, unbounded, or nonterminal behavior"
-  rc=1
-fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   echo "  ok  R-S11go native Flutter display selection is exact-owner, typed, ordered, bounded, and failure-visible"
 else

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-6215158a351ffbe5208159551abf15a9211027657e0be73cafa534e6756738a1  requirements.html
+511aff2d240163d29045c70f94d94603e5d1f3cb45de9c09e17dbd4cd0fda8dd  requirements.html
 ```
 
 ## Current Verdict
@@ -71,6 +71,15 @@ retaining every stable requirement/row identity and its normative owner. R-S11fs
 explicit: pointer-down always consults exact presentation recovery independently of `_isWindowBlur`, and the
 owner is a no-op when no suspension is pending. No product source or verifier changed in this cleanup, and it
 creates no new native/runtime evidence.
+
+R-S11ft and Appendix C #328 now state the timeless privileged selected-session observation contract rather
+than its implementation diary, mutation wiring, test receipts, and repeated evidence status. Every fixed process
+role, descriptor/UID/namespace proof, byte/count/value limit, whole-record failure rule, deterministic selector
+rule, and complete root/user child identity remains normative; installed acceptance now directly names the
+supervisor/desktop/churn/resource scenarios that must run in disposable networkless VMs. This reduced
+`requirements.html` by 4,046 bytes. The former dedicated source-wording verifier was already deleted; the
+compiled ownership regressions and small shared source guard remain unchanged. No product source ran or changed,
+so exact-current installed Linux behavior remains open.
 
 The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk and required
 disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated

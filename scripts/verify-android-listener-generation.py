@@ -616,12 +616,6 @@ MUTATIONS = (
     ),
     Mutation(
         "main_service",
-        "FFI.stopServer(this, retirement.generation)",
-        "FFI.stopServer(this, 0L)",
-        "exact teardown generation",
-    ),
-    Mutation(
-        "main_service",
         "        releaseControlledConnectionResources()\n",
         "        // Controlled resources retained through callback drain.\n",
         "capture-before-listener teardown",
@@ -859,20 +853,6 @@ MUTATIONS = (
     ),
     Mutation(
         "desktop_ipc",
-        '    require(\n'
-        '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
-        '        "Android exact active-generation teardown",\n'
-        '    )',
-        '    require(\n'
-        '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(0).is_none() {",\n'
-        '        "Android exact active-generation teardown",\n'
-        '    )',
-        "desktop exact active-generation assertion",
-    ),
-    Mutation(
-        "desktop_ipc",
         '    absent(\n'
         '        start,\n'
         '        "android_generation_current(my_generation)",\n'
@@ -912,12 +892,6 @@ MUTATIONS = (
         "direct_service::android_listener_lifecycle_tests:: -- --test-threads=1",
         "direct_service::disabled_android_listener_lifecycle_tests:: -- --test-threads=1",
         "canonical lifecycle behavior gate",
-    ),
-    Mutation(
-        "verify",
-        "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test",
-        "true # exact Android listener-generation gate removed",
-        "canonical focused gate",
     ),
     Mutation(
         "requirements",

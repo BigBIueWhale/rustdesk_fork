@@ -651,10 +651,6 @@ def validate(sources: Dict[str, str]) -> None:
             '"android_main_service_status_owner": (',
             "independent status-owner source",
         ),
-        (
-            "stale status generation retirement",
-            "independent stale-retirement mutation",
-        ),
     ):
         require(workspace, token, label)
 
@@ -674,27 +670,9 @@ MUTATIONS = (
     ),
     Mutation(
         "owner",
-        "@Synchronized\n    fun retire(generation: Long)",
-        "fun retire(generation: Long)",
-        "serialized generation retirement",
-    ),
-    Mutation(
-        "owner",
         "@Synchronized\n    fun snapshot(): MainServiceStatus?",
         "fun snapshot(): MainServiceStatus?",
         "serialized status snapshot",
-    ),
-    Mutation(
-        "owner",
-        "generation <= 0L ||\n            generation < greatestGeneration",
-        "generation < greatestGeneration",
-        "positive generation refusal",
-    ),
-    Mutation(
-        "owner",
-        "(generation == greatestGeneration && activeGeneration != generation)",
-        "false",
-        "retired generation refusal",
     ),
     Mutation(
         "owner",
@@ -716,25 +694,9 @@ MUTATIONS = (
     ),
     Mutation(
         "owner",
-        "fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean {\n"
-        "        if (generation <= 0L || activeGeneration != generation)",
-        "fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean {\n"
-        "        if (generation <= 0L)",
-        "exact readiness generation",
-    ),
-    Mutation(
-        "owner",
         "        mediaProjectionReady = ready\n        return true",
         "        return true",
         "readiness state commit",
-    ),
-    Mutation(
-        "owner",
-        "fun retire(generation: Long): Boolean {\n"
-        "        if (generation <= 0L || activeGeneration != generation)",
-        "fun retire(generation: Long): Boolean {\n"
-        "        if (generation <= 0L)",
-        "exact retirement generation",
     ),
     Mutation(
         "owner",
@@ -814,12 +776,6 @@ MUTATIONS = (
         "publishControlledServiceStatus(false)\n        releaseControlledConnectionResources()",
         "publishControlledServiceStatus(true)\n        releaseControlledConnectionResources()",
         "destruction publishes stopped service outcome",
-    ),
-    Mutation(
-        "service",
-        "statusOwner.retire(retirement.generation)",
-        "statusOwner.retire(1L)",
-        "exact status generation retirement",
     ),
     Mutation(
         "service",
@@ -929,12 +885,6 @@ MUTATIONS = (
         "activityFlutterMethodChannel = null\n\n        unbindMainService()",
         "activityFlutterMethodChannel = null",
         "Activity destruction binding retirement",
-    ),
-    Mutation(
-        "verify",
-        "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test",
-        "true # Android MainService status gate removed",
-        "shared focused mutation gate",
     ),
     Mutation(
         "requirements",

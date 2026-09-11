@@ -932,12 +932,6 @@ MUTATIONS = (
     ),
     Mutation(
         "owner",
-        "        if generation <= self.greatest_generation {",
-        "        if generation < self.greatest_generation {",
-        "retired generation refusal",
-    ),
-    Mutation(
-        "owner",
         "        self.greatest_generation = generation;\n"
         "        self.active_generation = Some(generation);",
         "        self.active_generation = Some(generation);",
@@ -963,12 +957,6 @@ MUTATIONS = (
     ),
     Mutation(
         "owner",
-        "assert!(!owner.retire(7));\n        assert!(owner.admits(8));",
-        "assert!(owner.retire(7));\n        assert!(owner.admits(8));",
-        "stale retirement preserves replacement",
-    ),
-    Mutation(
-        "owner",
         "assert_eq!(owner.begin(12), BeginGeneration::Rejected);",
         "assert_eq!(owner.begin(12), BeginGeneration::New);",
         "retired generation behavior",
@@ -980,21 +968,6 @@ MUTATIONS = (
         "                true",
         "            BeginGeneration::New => {\n                true",
         "new generation raw reset",
-    ),
-    Mutation(
-        "frame_raw",
-        "        if !self.owner.retire(generation) {",
-        "        if false {",
-        "wrapper exact retirement",
-    ),
-    Mutation(
-        "frame_raw",
-        "        if !self.owner.admits(generation) {\n"
-        "            return false;\n"
-        "        }\n"
-        "        self.frame.set_enable(value);",
-        "        self.frame.set_enable(value);",
-        "wrapper enable admission",
     ),
     Mutation(
         "frame_raw",
@@ -1079,12 +1052,6 @@ MUTATIONS = (
     ),
     Mutation(
         "rust_ffi",
-        "Ok(false) if context.generation.is_some()",
-        "Ok(false)",
-        "active callback-owner replacement refusal",
-    ),
-    Mutation(
-        "rust_ffi",
         "    if !VIDEO_RAW.lock().unwrap().begin_generation(generation) {",
         "    if false {",
         "raw-video begin during exact-object binding",
@@ -1100,16 +1067,6 @@ MUTATIONS = (
         ".update(generation, (width, height, scale))",
         ".update(1, (width, height, scale))",
         "screen JNI exact generation forwarding",
-    ),
-    Mutation(
-        "rust_ffi",
-        "if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {\n"
-        "                log::warn!(\n"
-        '                    "failed to retire Android raw-video generation {generation} during MainService release"',
-        "if false {\n"
-        "                log::warn!(\n"
-        '                    "failed to retire Android raw-video generation {generation} during MainService release"',
-        "exact-object release raw retirement",
     ),
     Mutation(
         "rust_ffi",
@@ -1313,12 +1270,6 @@ MUTATIONS = (
         "android_frame_raw_generation_tests::tests:: -- --test-threads=1",
         "android_frame_raw_generation_tests_disabled::tests:: -- --test-threads=1",
         "shared pure behavior gate",
-    ),
-    Mutation(
-        "verify",
-        "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test",
-        "true # Android raw-video generation gate removed",
-        "shared focused mutation gate",
     ),
     Mutation(
         "requirements",

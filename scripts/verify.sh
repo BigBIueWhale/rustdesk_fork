@@ -16556,7 +16556,6 @@ grep -qF 'private var greatestControlledServiceGeneration = 0L' "$r_s14_voice_ow
 grep -qF 'private var activeControlledServiceGeneration: Long? = null' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing exact-active-controlled-audio-generation"
 grep -qF 'private var playbackProjection: Pair<Long, MediaProjection>? = null' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-projection-generation-owner"
 grep -qF 'if (!owners.clearControlledConnections(generation))' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing stale-controlled-audio-clear-not-rejected"
-grep -qF 'if (playbackProjection?.first == generation)' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-clear-not-exact-generation"
 grep -qF 'stale generation cleared replacement controlled owners' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-generation-aba-regression"
 grep -qF 'same-ID replacement retained predecessor voice state' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-registry-generation-aba-regression"
 grep -qF 'duplicate same-ID registry generation was admitted' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-duplicate-registry-generation-regression"

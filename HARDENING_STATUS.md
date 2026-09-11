@@ -1388,450 +1388,90 @@ message check, and this ledger entry; its mutation catalog exercises all seven n
 No acquisition runs, and no Pub cache, lockfile, dependency graph, product source, runtime behavior, APK/device
 state, installed service, host process, listener, firewall, network state, or release output changes.
 
-Follow-up correction (2026-07-29),
-**R-S11ek/R-S11e-169 exact MainService-generation Android controlled voice/playback ownership**:
-the source audit found that Android's intentionally process-wide `VoiceCallAudioCoordinator` kept controlled
-connection and active-voice sets keyed only by numeric connection ID, retained an unowned playback
-`MediaProjection`, and exposed a global `clearControlledConnections()`. `MainService` called that global clear
-from teardown. Although Rust-to-Java controlled callbacks and controlled input already carried the exact native
-service generation, the final Kotlin audio coordinator boundary discarded it. A delayed obsolete service
-teardown could consequently clear a replacement generation's live same-number controlled voice owner or
-playback projection. An Android Force Stop destroys the process and masks this class of lifetime error, while an
-ordinary task swipe intentionally leaves the foreground/accessibility process alive.
+**Android persistent-service generation and mobile-session preparation — CURRENT SOURCE DISPOSITION;
+TARGET PACKAGE/DEVICE/RELEASE EVIDENCE OPEN.** Android intentionally keeps its controlled foreground
+`MainService` and process-wide resources alive across ordinary task removal. Correctness therefore comes
+from exact generation ownership and terminal retirement, not from killing the service. Force Stop remains a
+destructive diagnostic baseline: it clears process state but is not the intended recovery mechanism. The
+controlled-side service resources below are distinct from Android/iOS outgoing-viewer sessions; neither
+domain may clear, replace, or infer authority from the other.
 
-`VoiceCallOwnerState` now retains the greatest admitted and exact active controlled-service generations.
-Positive monotonic replacement clears only the predecessor controlled sets, a begin for the current active
-generation is idempotent and state-preserving, and clearing a generation retires it so the same value cannot be
-reactivated. Controlled register/update/unregister/clear operations require the exact active generation.
-`VoiceCallAudioCoordinator` serializes the same generation transaction, stores playback ownership as
-`(generation, MediaProjection)`, retires a predecessor projection only on an actual newer-generation begin, and
-refuses stale projection updates and teardown before recorder reconciliation. `MainService` begins with
-controlled admission closed, installs the exact positive generation returned by `FFI.startServer(this, ...)`,
-opens admission only after coordinator binding succeeds, and carries that generation through every controlled
-voice and playback operation. A stale teardown therefore cannot select or clear the replacement generation,
-even when Android/Rust reuses the same numeric connection ID. The outgoing viewer voice owner remains a
-separate exact session/generation domain and survives controlled-service replacement.
+**R-S11ek/R-S11e-169 exact MainService-generation Android controlled voice/playback ownership —
+SOURCE IMPLEMENTED; DEVICE EVIDENCE OPEN.** Controlled admission begins closed. The positive native
+server generation returned for the exact retained `MainService` object is installed in the process-wide
+audio coordinator before callbacks are admitted. The coordinator accepts only monotonic generations;
+same-generation begin is idempotent, replacement retires only predecessor controlled voice/playback
+state, and a retired or stale generation—including same-number connection-ID ABA—cannot mutate the
+replacement. Every controlled register/update/remove/clear and playback-projection operation carries
+that exact generation. Outgoing viewer voice remains a separate exact session/generation domain.
+R-S11ek and Appendix C #290 own the complete contract.
 
-The pure Kotlin behavior fixture covers closed-before-generation admission, monotonic replacement, same-ID ABA
-register/update/clear refusal, replacement-state preservation, idempotent current begin, retired-generation
-refusal, and controlled/outgoing replacement overlap. The focused verifier binds the state machine, coordinator transaction,
-closed-until-bound service order, exact call-site propagation, normative R-S11ek, Appendix C #290, and this
-ledger entry, and deliberately mutates each authority. The shared Android lifecycle gate and independent
-workspace validator bind the same current source and focused-mutation authority; the targeted Android Kotlin
-task compiles the changed production sources. These checks run without starting a service, listener, capture,
-peer, or host process and without root or host-state changes.
+**R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership — SOURCE
+IMPLEMENTED; DEVICE EVIDENCE OPEN.** Native generation begin, exact deactivation, and network-change
+rebuild admission share one serialized lifecycle state containing active generation and its checked
+rebuild epoch. Kotlin publishes the exact positive generation cross-thread and passes it through JNI;
+stale, zero, superseded, or exhausted operations cannot increment or rebind a replacement listener.
+The listener observes generation and epoch in one snapshot. `MainService.onDestroy` releases controlled
+capture resources and deactivates its exact listener generation before queued callback drain.
+R-S11el and Appendix C #293 own the product contract.
 
-Final confined prepublication proof on the authored source passes the focused baseline and rejects all `385`
-deliberate ownership regressions, passes the independent workspace baseline and its complete unsliced in-memory
-source-mutation catalog, compiles and executes the pure Kotlin owner-state fixture, and passes the native-codec
-requirements-hash gate in normal and hostile-mutation modes. The real Android arm64
-`:app:compileReleaseKotlin` production graph also completed successfully (`23` actionable tasks, `22` executed)
-in the cached immutable previously certified Android builder; the current release builder pin was not locally
-available, so that bounded compile is source evidence rather than a current release-artifact claim. Later review
-changed only the pure fixture and verifier assertions, not the successfully compiled production Kotlin. No APK
-was created, installed, or executed.
+**R-S11el/R-S11e-173 Android listener lifecycle verifier integration — SOURCE-ONLY ALIGNMENT;
+PRODUCT RUNTIME UNCHANGED.** The desktop lifecycle verifier now selects the exact serialized-generation
+snapshot, and the shared R-T13 proof selects the adjacent rebuild `listener = None`/`continue` transition
+instead of an earlier initialization substring. Appendix C #294 records this verifier correction. It is
+not product, listener, package, or device evidence.
 
-This is source-proven Android process-persistent resource, availability, and lifecycle debt and a scoped source
-correction. It is not a physical-device causal reproduction of the reported outgoing viewer-to-host
-screen-control hang, an authorization bypass, exploitation, root acquisition, privilege escalation, compromise,
-public exposure, container escape, or a host RustDesk/service/firewall/listener/network change. Raw-video JNI
-enablement and companion-service status publication remain separate audit boundaries and are not claimed fixed
-here. Current APK/device task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts, separately
-required independent reproduction, and external review remain open.
+**R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership — SOURCE
+IMPLEMENTED; DEVICE EVIDENCE OPEN.** One serialized monotonic owner binds the process-global raw-video
+buffer to the exact retained service generation. Binding the JNI callback owner begins that same
+generation before publication; exact-object replacement/release retires only its own generation.
+Typed video enable/disable and every `ImageReader` frame callback carry the generation, while audio uses
+a separate typed operation rather than the deleted ambient video/audio selector. Each service has its
+own cross-thread-visible `captureActive`: start commits it only after non-null display creation and
+checked raw admission; stop disables exact raw state before retiring local display/reader/surface/
+playback objects. Stale local teardown may free its own Android objects but cannot clear replacement
+raw-video state. R-S11em and Appendix C #295 own the complete contract.
 
-Follow-up correction (2026-07-29),
-**R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership — SOURCE VERIFIED;
-COLD RELEASE, DEVICE REPRODUCTION, AND EXTERNAL REVIEW OPEN**: Android intentionally retains the controlled listener in its foreground
-`MainService` while UI tasks come and go. Its R-T13 `ConnectivityManager.NetworkCallback`, however, called
-generationless `FFI.rebuildDirectServerListener()`. The JNI operation unconditionally advanced the independent
-process-global `LISTENER_REBUILD_EPOCH`. Android may deliver an already-queued callback after the owning service
-is destroyed, so an obsolete service callback could race a same-process replacement and make that replacement's
-live listener drop and rebind. The exact server-generation counter correctly protected `stopServer`, but it and
-the rebuild epoch were separate atomics; adding a Kotlin generation check alone would leave a check/increment
-race. This was process-persistent Android listener availability and lifecycle ownership debt. It is not evidence
-of an authorization bypass, a second or public listener, a host RustDesk/service/firewall/network change,
-exploitation, root acquisition, container escape, or compromise.
+**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE
+IMPLEMENTED; DEVICE EVIDENCE OPEN.** One private serialized status owner publishes only the exact active
+service generation and MediaProjection readiness. Current begin is idempotent, replacement resets
+readiness, stale updates/retirement cannot affect a replacement, and Activity-visible status remains
+observation rather than capture/listener/connection authority. Passive attachment to an existing
+service binds with flags `0`; `BIND_AUTO_CREATE` is used only for explicit initialization when no status
+is published. Explicit Stop calls `Context.stopService` and then retires the Activity binding so Android
+can deliver the sole resource teardown in `MainService.onDestroy`. The duplicate callable `destroy()`/
+`stopSelf()` path, generationless companion booleans, and dead clipboard capture-status replica are
+absent. R-S11en and Appendix C #296 own the complete contract.
 
-`src/direct_service.rs` now has one `AndroidListenerLifecycle` state containing the current service generation,
-its active ownership bit, and its per-generation rebuild epoch behind `ANDROID_LISTENER_LIFECYCLE`. Checked
-generation begin, exact-generation deactivation, and exact-generation rebuild admission all linearize under that
-single lock. A successful begin allocates only one generation ID, resets its epoch, and activates it; stop
-deactivates the exact owner without consuming another ID. The listener reads active generation and epoch in one
-snapshot; deactivation or supersession ends the exact accept loop, while only an epoch change observed with that
-same active generation selects `listener = None` and the existing pinned-port rebind path. Zero and stale
-operations leave current state unchanged; generation-allocation or epoch exhaustion deactivates the exact
-current ownership instead of wrapping or leaving its listener current. The old
-`ANDROID_SERVER_GENERATION`, `LISTENER_REBUILD_EPOCH`, and generationless rebuild API are absent.
+**R-S11eo/R-S11e-176 mobile outgoing-session preparation finality and failure visibility — SOURCE
+IMPLEMENTED; ANDROID/iOS PACKAGE AND DEVICE EVIDENCE OPEN.** Android and iOS mobile add use one typed
+asynchronous bridge operation on the existing bounded worker pool; the required predecessor
+`close_and_join` remains terminal and serialized off Flutter's UI isolate. Dart retains at most one
+running start and one replaceable latest pending successor. Exact close cancels its pending request or
+awaits its admitted preparation before native close, and a stale completion closes only its captured
+UUID. Initial worker failure rolls back the exact handler/session and joins its worker; unexpected
+stream error/end is exact-session-bound, retires that session, dismisses loading state, and produces a
+bounded nonsecret error rather than a successful-looking UUID or indefinite `Connecting...` state.
+R-S11eo and Appendix C #297 own the complete contract.
 
-Kotlin retains the exact positive generation returned by `FFI.startServer` in a `@Volatile` field visible to
-`ConnectivityManager` callback threads, passes it through the now-Boolean rebuild JNI declaration, and
-distinguishes a rejected stale callback from an admitted rebuild. The JNI boundary performs a checked
-signed-to-unsigned conversion and forwards the exact value. `MainService.onDestroy` releases
-controlled capture/voice/input resources and then deactivates its exact listener generation before it drains the
-handler and unregisters the network callback, so later queued callbacks are rejected natively. The pure Rust
-state-machine regressions cover current rebuild, wrong-stop preservation, stop/replacement, same-process stale
-callback ABA, zero inputs, generation-allocation exhaustion, and rebuild-epoch exhaustion. R-S11el and Appendix C #293 make the boundary
-normative. The dedicated focused verifier, the shared R-T13/R-S14 source gate, and the independent workspace
-catalog bind the exact Kotlin/JNI/native propagation, single serialized state, teardown order, old-surface
-absence, behavior tests, requirement, and this ledger with deliberate mutations.
+**Retained evidence and boundary.** Focused generation/ABA, listener epoch, raw-frame, status/Stop,
+bounded-start, exact-cancellation, rollback/join, and stream-finality tests exist, and historical
+networkless nonroot Android Rust/Kotlin plus shared Dart/Flutter compilation exercised the corrected
+source. Those results were source/compile evidence only. Mutation counts, repeated catalog runs, cache
+workarounds, failed wrapper attempts, per-run timings, log hashes, and publication narration remain in
+Git history rather than the current ledger. An older disposable APK compile predates these corrections
+and is not evidence for them.
 
-Final confined source verification on 2026-07-29 used only immutable cached builders as UID:GID 1000:1000 with
-no pull/network, a read-only live repository, all capabilities dropped, no-new-privileges, bounded resources, and
-private scratch. The pinned Android Rust target check reported its aarch64 library green. The real production
-`:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` task completed offline in 31 seconds with
-228 actionable tasks (227 executed, one up-to-date); it did not build, sign, install, or run an APK. The two exact
-pure-Rust lifecycle regressions passed with 377 unrelated tests filtered. The focused listener gate rejected all
-34 deliberate mutations, the shared Android ownership gate rejected all 385, the independent workspace baseline
-passed, and native-codec watch normal/self-test passed. Complete unsliced independent source-mutation catalogs
-also passed from mutation one before and after the final semantic/comment cleanup. Preliminary harness diagnostics
-were retained rather than hidden: the Kotlin projector first refused a legacy mode-0755 live cache and the exact
-source archive lacked the ignored `gradlew`, so verification copied and normalized that cache privately and used
-the pinned Gradle 7.6.4 distribution directly; an initial Rust wrapper request used an unsupported image-role
-label and never entered a container; and one full-catalog wrapper had a mismatched cleanup quote and never launched
-Docker. None was a product compile/test failure or a live-source mutation.
-
-This source slice does not start an Android service or listener, deliver a network callback, connect a peer,
-build/install an APK, operate on a device, or modify any host RustDesk/service/firewall/listener/network state.
-Current APK/device network-switch/task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts,
-separately required independent reproduction, and external review remain open. The broader Ralph-loop goal
-remains active.
-
-Follow-up verifier correction (2026-07-29),
-**R-S11el/R-S11e-173 Android listener lifecycle verifier integration — SOURCE CORRECTED AND CONFINED
-FOCUSED/SHARED/INDEPENDENT MUTATION VERIFIED; EXACT CLEAN-TREE CANONICAL VERIFIED AND PUBLISHED;
-PRODUCT RUNTIME UNCHANGED.** Platform: source-only Android and shared
-desktop lifecycle verification. Endpoint/action: exact-generation service teardown and R-T13 listener rebuild
-proof. Boundary: verifier selectors that consume the Android listener lifecycle source ↔ the exact active
-generation snapshot and exact adjacent rebuild/drop-and-retry transition they claim to prove.
-
-The strict-umask canonical verifier was run from the clean published
-`b540b3781095c159623acd551a05ee1b1fe18da4` tree. Its exact lifecycle behavior tests and dedicated focused
-Android gate passed, as did every later shown source/vendor/image gate, but it ended with five verdict failures.
-Four R-S11e-56 through R-S11e-59 verdicts had one cause:
-`scripts/verify-desktop-ipc-lifecycle.py` still required the deleted
-`android_generation_current(my_generation)` predicate after R-S11el replaced it with a serialized
-generation-and-epoch snapshot. R-T13 had a separate selection error: its order expression searched for the first
-`listener = None;` substring, which matched the earlier `let mut listener = None;` initialization instead of the
-exact network-change rebuild assignment. These were fail-closed verifier integration/phase-selection defects,
-not product lifecycle failures.
-
-The desktop focused verifier now requires the exact
-`if android_listener_lifecycle_snapshot(my_generation.get()).is_none()` teardown condition and forbids the obsolete
-predicate. The shared R-T13 proof names the exact adjacent `listener = None;` plus `continue;` transition, so
-listener initialization cannot satisfy or precede the rebuild proof. The dedicated Android listener verifier
-owns both cross-verifier assertions. Its mutations and the independent workspace catalog reject weakening either
-consumer back to an inexact generation or first-occurrence selector. R-S11el and Appendix C #294 bind this
-verifier-only correction. No production Rust, Kotlin, JNI, listener, service, or network behavior changes here.
-
-Confined verification used cached immutable development image
-`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID:GID
-1000:1000 with no pull/network, a read-only repository and root filesystem, all capabilities dropped,
-no-new-privileges, bounded PIDs/memory/CPU, private tmpfs, and no Docker socket, port, device, or host namespace.
-The desktop lifecycle verifier rejected all 25 mutations; the dedicated Android listener verifier rejected all
-39; the shared Android ownership verifier rejected all 385; the independent workspace baseline, Python and
-shell parsing, native-codec watch normal/self-test, and the exact extracted R-T13 inline proof passed. The final
-complete unsliced independent source-mutation catalog restarted from mutation one and passed.
-
-Preliminary diagnostics are retained rather than hidden. A bytecode parse first attempted to write beside the
-read-only source before `PYTHONPYCACHEPREFIX` was directed to private tmpfs. The broad first meta-check then
-mistook the old symbol inside its protective `absent(...)` assertion for an admitted use; the corrected contract
-requires that exact refusal block and mutates it to `require(...)`. A broad executable-fixture launch first
-omitted the preallocated mode-0700 scratch and then lacked the minimal container's `/run/user/1000`; the complete
-semantic catalog uses its dedicated source-only mode, while canonical `verify.sh` owns its full fixture
-environment. Three complete catalog attempts correctly exposed one stale concatenated-string mutation anchor
-and then two expected-diagnostic labels that lagged the actual earlier enforcing contracts. After aligning the
-fixtures—not weakening an authority check—the fourth complete run passed from mutation one.
-
-The failed predecessor-state log is retained privately with its digest and complete five-verdict diagnosis, as
-are every preliminary and passing verifier log. Commit
-`d80f8f80a30512ee87cf53c27bedcc31a90a9d1f` was pushed directly to `master`; local HEAD, local/remote-tracking
-`master`, `FETCH_HEAD`, and the live remote ref were proved identical with zero divergence and a clean worktree.
-The exact published commit then passed the complete canonical verifier under strict umask; its mode-0600 log
-hash is `1118266bc7502c8d60202602ff8c6596985f15df7b899802e8f53ddc07d99aea`. No root/sudo, host
-RustDesk/service/config, firewall/nftables/iptables, listener/port, Docker socket/port/device/host namespace,
-APK/device, or online acquisition action was used or claimed.
-
-Follow-up correction (2026-07-29),
-**R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership — SOURCE IMPLEMENTED;
-FOCUSED/SHARED/INDEPENDENT MUTATION AND ANDROID RUST/KOTLIN TARGET VERIFIED; PUBLISHED;
-ROOT-REQUIRING CANONICAL TRANSACTION, COLD RELEASE, AND DEVICE EVIDENCE PENDING**: Android's screen-capture producer and native consumer shared one
-process-global `VIDEO_RAW` buffer. The inherited generic `setFrameRawEnable(name, value)` selector admitted
-generationless video enable and disable, and `onVideoFrameUpdate(buffer)` admitted every delayed
-`ImageReader` callback without the native generation already bound to the exact retained `MainService`. A stale
-service teardown could therefore disable and clear a replacement generation's live buffer, while a stale frame
-callback could publish predecessor pixels into it. The same service used companion `_isStart` as its internal
-capture-resource short circuit, so replacement status could be mistaken for instance-local pipeline ownership.
-Force Stop destroys this state with the process, whereas ordinary task removal intentionally preserves the
-foreground process.
-
-`FrameRawGenerationOwner` now holds the greatest admitted generation and exact active generation. Zero,
-retired, regressed, and superseded generations are rejected; a current begin is idempotent; a newer begin
-replaces ownership; and only exact retirement clears it. `GenerationOwnedFrameRaw` couples every new or retired
-owner transition to disabling and clearing the frame buffer, and gates both enablement and frame publication on
-that exact active generation. `bind_main_service_generation` begins raw-video ownership before it publishes the
-generation in the exact-object callback context. Replacing or releasing that exact context retires its recorded
-raw owner; an obsolete `releaseService` object cannot select a replacement. JNI now exposes typed
-`setVideoFrameRawEnable(generation, value)` and `onVideoFrameUpdate(generation, buffer)` operations. Audio keeps
-its separately coordinated ownership through a distinct typed `setAudioFrameRawEnable(value)` operation; the
-ambient video/audio string selector is deleted.
-
-Each `MainService` now keeps a volatile instance-local `captureActive` field for the exact service's start
-short-circuit, display reconfiguration, frame admission, and native `is_start` reply. Start creates the surface
-and non-null `VirtualDisplay`, then requires native admission for its exact positive generation before committing
-local active state. Rejected stale admission releases the newly created local
-pipeline and returns false. Stop attempts exact-generation raw disable before clearing local active state and
-releasing the display, reader, surface, and playback projection. Its local Android objects can therefore be
-retired without a stale service disabling or publishing into replacement raw state. R-S11en subsequently deletes
-the dead clipboard capture-status replica and closes Activity-visible service/MediaProjection status and explicit
-Stop as their own exact lifecycle boundary.
-
-Confined authored-tree verification used the current pinned Android builder
-`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2` and exact offline closure
-`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918` as UID:GID 1000:1000 with no
-pull/network, dropped capabilities, no-new-privileges, bounded resources, private scratch, and no Docker
-socket, port, device, or host namespace. The real `aarch64-linux-android` Rust library check completed green.
-Three pure generation-state regressions passed. The dedicated raw-video verifier rejected all 40 deliberate
-mutations, the adjacent Android voice/capture/input verifier rejected all 385, and the independent workspace
-baseline passed. The changed Rust modules pass the pinned Rust 1.75 `rustfmt` check; a recursive crate-wide
-attempt also exposed unrelated pre-existing formatting drift under `libs/scrap/src/common/`, which this narrow
-slice did not modify.
-
-The independent complete-catalog diagnostics were retained rather than hidden. Its first complete pass found
-that the new raw-video check ran before an established MediaProjection check and therefore stole the older
-mutation's expected diagnostic; the check was ordered after that existing owner. A second pass found a stale
-expected diagnostic label, and a third found a genuine presence-only verifier weakness: either of two
-`FrameRawGenerationOwner` occurrences could be removed while the other satisfied the assertion. The contract
-now requires an exact count of two. A fourth complete unsliced run passed from mutation one. The final
-post-ledger complete source-mutation catalog also restarted from mutation one and passed.
-
-The exact committed source then passed the real
-`:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` graph in the pinned Android builder:
-Gradle reported `BUILD SUCCESSFUL in 31s` with 228 actionable tasks (227 executed, one up-to-date). No APK was
-linked, signed, installed, or run. Commit `09b66acce42fb1bb806837160bcebe13e4d66dd3`
-(`Bind Android raw video to service generations`) was pushed directly to `origin/master`; local `HEAD`,
-local/tracking `master`, `FETCH_HEAD`, and the live remote ref were proved identical with zero divergence and a
-clean worktree. The full canonical verifier was deliberately not launched because its root-IPC stage explicitly
-starts two containers as UID:GID `0:0` with `CAP_CHOWN` and `CAP_FOWNER`, while the user prohibited acquiring
-root. It is not claimed green or silently bypassed.
-
-This is Android controlled-side source-proven process-persistent capture availability and frame-ownership debt,
-not a causal reproduction of the reported outgoing Android viewer-to-desktop screen-control hang, an
-authorization bypass, exploitation, root acquisition, privilege escalation, compromise, public exposure,
-container escape, or a host RustDesk/service/firewall/listener/network change. Current APK/device
-capture-replacement/task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts, separately
-required independent reproduction, and external review remain open. The broader Ralph loop remains active.
-
-Follow-up correction (2026-07-30),
-**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE IMPLEMENTED;
-FOCUSED/SHARED/INDEPENDENT MUTATION AND TARGETED KOTLIN VERIFIED; PUBLISHED; COLD RELEASE AND DEVICE EVIDENCE
-PENDING.**
-Platform: Android controlled-side foreground service and Flutter Activity. Endpoint/action: process-visible
-service/MediaProjection status, Activity binding, UI `init_service`, UI `stop_service`, and
-`MainService.onDestroy`. Boundary: an obsolete or stopped service generation and retained Activity client ↔ the
-current foreground service's status and sole capture/listener/resource teardown.
-
-The source and history audit found two related inherited paths. `MainService` published MediaProjection
-readiness and capture activity through companion `_isReady`/`_isStart` booleans introduced by the original
-upstream import, so an obsolete same-process callback had no generation identity. `MainActivity` bound using
-`BIND_AUTO_CREATE`; its explicit Stop called `MainService.destroy()`, and that duplicate teardown called
-`stopSelf()` without dropping the Activity binding. Android's documented started-and-bound lifecycle retains a
-stopped service until all auto-create clients unbind. Because `MainService.onDestroy` is the sole exact owner of
-native listener deactivation, controlled capture release, callback-owner release, network callback removal, and
-wake-lock release, the old UI could report Stop before that teardown became runnable. Force Stop destroys the
-process and masks both classes of stale state. This was inherited lifecycle and status ownership, not introduced
-by Docker or a host change.
-
-`MainServiceStatusOwner` now serializes one private monotonic status publication containing the exact positive
-native service generation and MediaProjection readiness. A current begin is idempotent and preserves readiness;
-a newer generation resets it; zero, regressed, retired, and superseded generations fail closed; and only the
-exact active generation can update readiness or retire the publication. `MainService` begins it only after JNI
-returns the exact server generation, carries that generation through projection install/release/stop, and retires
-it during `onDestroy`. The old companion booleans/getters are deleted. The unread process-global
-`RdClipboardManager` capture-start replica and its writers are deleted rather than generation-wrapped.
-
-Passive Activity attachment to a published running service now binds with flags `0`. `BIND_AUTO_CREATE` exists
-only behind explicit initialization when no status is published. Activity destruction uses one idempotent
-binding-retirement helper. Explicit Stop calls `Context.stopService` for the explicit `MainService` intent and
-then unbinds the Activity client, allowing the framework to deliver `onDestroy`. The callable
-`MainService.destroy()` and `stopSelf()` duplicate teardown are absent. Status remains observation only; capture,
-listener, connection, and authorization state remain owned by their exact service-generation resources.
-
-The pure Kotlin status-owner fixture compiled with pinned Kotlin 2.1.21 and passed its fresh, invalid, current,
-replacement, stale-update, stale-retire, exact-retire, and retired-reactivation cases. The dedicated focused
-verifier rejected all 35 deliberate source/behavior/requirement/ledger/shared-gate regressions. The adjacent raw
-video and combined Android lifecycle/ownership catalogs rejected all 40 and 385 mutations respectively. The
-independent workspace baseline and its complete unsliced `--source-mutations-only` catalog passed from mutation
-one. The real Android
-`:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` application graph then completed with
-`BUILD SUCCESSFUL in 40s`, 228 actionable tasks (227 executed, one up-to-date), and byte-for-byte post-build
-equality for every affected production source. It used immutable Android image
-`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`, verified projected Gradle-cache digest
-`522efa37b4b1da33d05369bea4ba7f2fd17ecd08b1afbd01bf3999d9a34299fe`, UID:GID `1000:1000`,
-`--network=none`, a read-only live repository and offline closure, dropped capabilities, no-new-privileges,
-bounded private scratch, and no port, device, Docker socket, or host namespace. It did not link, sign, install,
-or run an APK.
-
-Preliminary confined harness failures are retained explicitly. The first standalone Kotlin compiler invocation
-omitted the cached JetBrains annotations artifact and failed before code generation; the exact compiler POM
-closure was completed and the fixture passed. The first production-compile snapshot attempted to traverse
-unrelated stale build locks below `.claude/worktrees`; no Gradle task began, and the retry excluded that auxiliary
-tree. The second stopped before Gradle because the cache projector correctly refused a nonstandard owner-only
-`/tmp`; the successful transaction kept the process at UID:GID `1000:1000` while giving only the container tmpfs
-its standard root-owned mode-`01777` parent metadata. None of these diagnostics changed the live source or
-offline cache.
-
-The complete canonical `scripts/verify.sh` transaction is not run or claimed: its root-IPC stage explicitly
-launches two containers as UID:GID `0:0` with `CAP_CHOWN` and `CAP_FOWNER`, while the user prohibited acquiring
-root. No service, listener, MediaProjection, peer, APK, device, host RustDesk/service/configuration,
-firewall/UFW/nftables/iptables, host listener/port, root/sudo, VM/libvirt, or online acquisition action has
-occurred. Commit `cb6efb3634ee5878ef696cc4ebbe040c47bfcba9`
-(`Bind Android service status to lifecycle`) was pushed directly to `origin/master`; at the start of the next
-Ralph-loop slice local `HEAD`, tracking `origin/master`, and the clean worktree all proved that exact identity.
-Current APK/device start/status/explicit-Stop/task-swipe/Force-Stop/replacement reproduction, exact cold R-B2/R-B10
-artifacts, separately required independent reproduction, and external review remain open. The broader Ralph loop
-remains active.
-
-Follow-up correction (2026-07-30),
-**R-S11eo/R-S11e-176 mobile outgoing-session preparation finality and failure visibility — SOURCE/GATES
-COMPLETE AND PUBLISHED IN THIS COHERENT MASTER SLICE; CURRENT APK/iOS/DEVICE/COLD-RELEASE EVIDENCE OPEN.**
-Platforms: Android and iOS outgoing Flutter viewers, plus shared Flutter stream failure handling. Endpoint/action:
-new mobile route creation, prior mobile-session drain, initial native I/O-worker start, exact route close, and
-Rust-to-Dart event stream termination. Boundary: Flutter's main UI isolate and replaceable route identity ↔ the
-blocking exact native worker tree and asynchronous bridge worker pool.
-
-The source audit found that every new mobile `FFI.start()` called `sessionAddSync`. Native `session_add` then
-removed all previous mobile handlers and peer sessions and called `Session::close_and_join`; that exact top-level
-worker does not exit until its owned video/audio/voice children drain. This join is intentional R-S11eb finality.
-However, flutter_rust_bridge 1.80.1's `SyncReturn` executor directly invokes the Rust closure on its caller, while
-ordinary bridge calls run in its fixed four-worker pool. The potentially unbounded join therefore ran on Flutter's
-main Dart isolate. Flutter's official isolate guidance says the UI normally runs on that one isolate and work that
-cannot finish inside a frame gap—including asynchronous FFI work—must be moved off it. Android's retained process
-amplifies the lifetime, but iOS is routed through the same authored mobile close/join path.
-
-The failure path was independently incomplete. `sessionAddSync` converted an error into a string; Dart printed it
-and returned the freshly minted session UUID as if connection start had succeeded. The subsequent bridge stream
-had neither `onError` nor `onDone`. Native `session_start_` installed the event stream before
-`start_io_thread`; a false/error result left no transactional rollback. These paths could leave the route's
-loading dialog on “Connecting...” without a live outgoing worker.
-
-Mobile add is now one typed normal bridge Future, `session_add_mobile`, with the concrete codegen-compatible Rust
-result `Result<()>`. Generated flutter_rust_bridge 1.80.1 output proves `Future<void> sessionAddMobile` dispatches
-through `_platform.executeNormal(FlutterRustBridgeTask(` and contains no synchronous executor call, so the bridge's
-existing fixed worker pool owns the blocking native call instead of Flutter's UI isolate. A native mutex serializes
-its complete close/join-and-insert transaction, and the synchronous/new-existing add entries reject mobile before
-mutation. The required exact worker join remains unchanged and is neither detached nor bounded by a false
-completion deadline.
-
-The Dart owner submits mobile starts through `MobileSessionStartQueue`. It retains exactly one running request and
-one replaceable pending successor. A third request completes and discards the older pending request; exact pending
-cancel removes only its match; failure releases the running slot so the latest successor proceeds. Each running
-request rechecks its captured connection UUID after native add and closes that exact native session if the route
-was closed or superseded. Exact `FFI.close` cancels a matching pending request or awaits a matching running request
-before its final native close, so cancellation-before-add cannot become a later unowned session. Password and
-connection inputs are retained for at most those two bounded requests.
-
-`session_start_` now rolls a false or errored initial worker admission back through the exact session ID, removes
-and drops its handler/event stream without forging the normal-close marker, and, if it is the last handler,
-synchronously closes and joins that exact peer. The bridge failure therefore remains observable to Dart.
-The regression blocks rollback until the failed exact worker exits and proves a different replacement UUID remains
-present and unclosed. Every non-web Flutter event stream now distinguishes the native exact close event from an
-unexpected bridge error/end. Unexpected failure is accepted only for the still-current UUID, retires that exact
-native session, dismisses the loading state, and presents a bounded nonsecret Connection Error instead of logging
-and pretending success.
-
-The pure Dart queue regressions cover one-running/one-latest-pending capacity, pending supersession, exact pending
-cancellation without interrupting admitted finality, closing running A while successor B is pending, and
-failure-to-successor recovery. The stream-finality regressions prove that an exact normal-close marker suppresses
-later stream termination while one unexpected termination is admitted exactly once.
-
-The complete confined `scripts/dart-verify.sh` transaction regenerated FRB output in a private source snapshot,
-proved the normal worker-pool bridge call, reported zero changes across the eight selected Dart formatter inputs,
-reported zero Flutter analyzer errors, passed all selected existing Flutter tests, passed all four queue cases and
-both stream-finality cases, and passed exact Rust 1.75 `rustfmt --check` for `src/flutter.rs` and
-`src/flutter_ffi.rs`. The locked/offline `flutter,unix-file-copy-paste` library check passed. Its generated-bridge
-mobile lifecycle group passed 9/9, including
-`failed_session_start_rolls_back_and_joins_only_the_exact_session`; the subsequent exact clipboard, delayed
-OS-password, screenshot, frame-acknowledgement, and audio-egress groups also passed. The transaction used exact
-Debian builder
-`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`, exact offline closure
-`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, UID:GID `1000:1000`, no network or
-pull, a read-only root, dropped capabilities, no-new-privileges, bounded resources, and a read-only live source.
-
-The focused Android ownership verifier passes and rejects all 427 deliberate mutations. The independent workspace
-verifier baseline and its final complete unsliced `--source-mutations-only` catalog pass against the exact final
-source. The shared source block, requirements R-S11eo, Appendix C #297, and this ledger row are bound into both
-verifiers. `native-codec-watch.sh` and its adversarial self-test, changed-shell syntax, requirements digest
-`bc15d2b7afe5f2d2751951b3f0cd7f4631c3ea6badd9e388ee43d1ec53ad6dc2`, and `git diff --check` pass.
-The separate confined `scripts/android-rust-check.sh` generated the bridge and compiled the aarch64 Android release
-library at API 21 successfully in exact Android builder
-`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`, then re-proved the private build
-source and unchanged live source against the same offline closure.
-
-Three preliminary gates failed closed and are not hidden: FRB rejected the aliased `ResultType<()>`, so the
-codegen boundary now uses concrete `Result<()>` and mutation-binds that spelling; Dart 3.5's formatter rejected the
-pattern-matching `while` form, so the identical bounded drain uses an explicit null-check loop; and an initially
-repository-wide `cargo fmt --all -- --check` exposed unrelated parent-tree formatting drift, so the retained gate
-checks only the two Rust files owned by this slice. The complete transaction was restarted after each correction;
-only the final green run is counted.
-
-The canonical `scripts/verify.sh` transaction is deliberately not run or claimed because its root-IPC stage launches
-UID:GID `0:0` containers with `CAP_CHOWN`/`CAP_FOWNER`, which the user prohibited. No APK or iOS artifact was
-built, signed, installed, or run; the Android result is a native aarch64 library compile, and iOS compilation
-requires an Apple build environment. No physical-device connect → task swipe → relaunch → same-host screen-control
-or Force-Stop reproduction was performed, so this correction is a source-proven mechanism and correctness repair,
-not a claim that the reported device symptom was reproduced. Exact cold R-B2/R-B10 artifacts, current Android/iOS
-installed behavior, separately required independent reproduction, and external review remain open. No root/sudo,
-privileged container, host RustDesk/service/process/configuration action, listener, published port, public endpoint
-probe, firewall/UFW/nftables/iptables/network mutation, Docker socket/device/host-namespace mount, or host service
-inspection occurred. The broader Ralph loop remains active.
-
-The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
-snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
-passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
-library, and then links and runs the generated-bridge mobile-session lifecycle test set with those same features.
-All eight generated-bridge mobile-session regressions pass, and the exact clipboard-lease, delayed
-OS-password-input, and exact screenshot-request regressions run separately under the same shipped feature set.
-The counted 2026-07-27
-transaction used immutable Debian builder
-`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` as UID/GID
-1000:1000 with no network or pull, a read-only root, dropped capabilities, no-new-privileges, finite resources,
-private source/offline-input snapshots, and exact closure digest
-`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`. It completed with zero analyzer
-errors, all four Flutter test files passing, the shipped-feature Rust library check passing, all eight
-generated-bridge mobile lifecycle tests passing, and
-`client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop` plus
-`client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement` plus
-`client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request` passing. The focused
-ownership verifier additionally rejected all 238 deliberate mutations, and the independent
-workspace verifier's complete in-memory source-mutation catalog passed. No APK, device, installed-service,
-listener, or release-artifact result is inferred from those source/integration checks. That executable
-test also exposed an older Linux release-link defect: the pinned Debian builder's libc did not export the
-`renameat2` wrapper used by durable service-record publication. The call now uses the Linux `SYS_renameat2`
-syscall directly, preserving `RENAME_NOREPLACE`, errno handling, and the existing `ENOSYS`/`EINVAL` fallback; the
-same full gate proves the corrected link. Focused source/mutation and shared/independent gates bind source
-closure. A current APK build/install and the physical-device connect → task swipe → relaunch → same-host
-screen-control sequence remain R-B2/R-B10 evidence and are not claimed here.
-Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
-drain, delayed-callback ABA rejection, admission/transition lock exclusion, current-isolate lost-response
-reconciliation, and stale-Activity replacement-owner refusal. They now also hold a synthetic outgoing worker open, prove an owner transition
-cannot report completion before releasing and joining it, prove a media owner closes admission before joining
-its exact worker, cancel an exact connecting round, reject stale success/error publication, and prove durable
-supersession covers cancellation before waiter creation. `scripts/verify.sh` gates the typed JNI surface, absence of
-argument-free/global drain APIs, registration-before-UI-or-exit order, owner-scoped Activity/service teardown,
-read-only current-isolate resume reconciliation, stale-Activity takeover refusal, lock-held add/start/retire
-ordering, initial I/O-handle retention,
-reconnect/final joins, connecting-round replacement, current-round-only publication, child-worker ownership, the
-fixed completion pool, nonblocking hard-drop handoff, the sole
-owning audio constructor, and controlled voice-audio close/join sinks. A disposable tracked-file candidate snapshot completed one
-offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
-1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
-was checked for nonzero size and then discarded with the scratch tree. That candidate predates R-S11eb and is not
-artifact evidence for this exact identity/model correction or the R-B2 final signed/reproducible artifact proof.
-The real-device connect → swipe-away → relaunch → reconnect sequence remains pending and is not claimed here.
-The owner/connection split and next-connection stale-state cleanup are shared by Android and iOS. Android's
-generation/Activity-owner layer and persistent foreground-service amplification are Android-specific, while exact
-outgoing I/O/media-worker completion is shared by Android, desktop, iOS, and future macOS builds through the
-common viewer core.
+Current target evidence remains release-blocking: build and bind the exact current Android APK and iOS
+artifact to source; install them in disposable target environments; exercise service start, passive
+attach, explicit Stop, task swipe, reopen, Force Stop, service replacement, connectivity changes,
+projection replacement, stale callbacks, same-ID ABA, slow outgoing predecessor drain, route
+replacement/close, stream failure, reconnect, and file-transfer/display coexistence; observe actual
+capture/decode/presentation freshness plus CPU/memory/thread/handle/queue bounds and complete cleanup.
+Cold R-B2/R-B10 artifacts, independent reproduction, and external review also remain open. These source
+corrections are plausible defenses against persistent-process incoherence but are not a device-level
+causal reproduction of the user's older outgoing screen-control hang, and they do not establish an
+authorization bypass, exploitation, host modification, or public exposure.
 
 **R-X6/R-S14 Android final APK manifest authority — CLOSED / GATED (2026-07-11).**
 Platform: Android release APK. Endpoint/action: the single merged `AndroidManifest.xml` packaged into the

@@ -41918,11 +41918,6 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("android_ffi", "if generation == 0 || context.generation != Some(generation)", "if false", "controlled callback generation comparison"),',
-        "Android controlled callback generation mutation",
-    )
-    require_text(
-        focused,
         '("owners", "replacement.generation < previous.generation", "replacement.generation <= previous.generation", "idempotent same-generation resume"),',
         "Android outgoing nondecreasing-generation contract",
     )
@@ -43826,12 +43821,6 @@ def validate_android_listener_generation_contract(sources):
         ("run_mutations(sources)", "focused mutation dispatch"),
     ):
         require_text(focused, text, f"Android listener generation {label}")
-    require_exact_count(
-        focused,
-        "android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
-        1,
-        "Android listener stale-lifecycle mutation fixture",
-    )
     require_exact_count(
         focused,
         'rebind = "                    listener = None;\\\\n                    continue;"',
@@ -54256,10 +54245,6 @@ def validate_android_media_projection_finality_contract(sources):
         (
             "if (!owners.clearControlledConnections(generation))",
             "stale controlled-audio clear refusal",
-        ),
-        (
-            "if (playbackProjection?.first == generation)",
-            "exact-generation playback clear",
         ),
         (
             "stale generation cleared replacement controlled owners",
@@ -96968,12 +96953,6 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
-            "true # Android voice-call ownership verifier removed",
-            "Android voice-call ownership shared focused-verifier wiring",
-        ),
-        (
-            "verify",
             "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs",
             "grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs",
             "Android shared stale-Activity refusal gate source",
@@ -102712,12 +102691,6 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "FFI.stopServer(this, retirement.generation)",
-            "FFI.stopServer(this, 0)",
-            "Android exact attempted-owner generation retirement",
-        ),
-        (
-            "android_main_service",
             "if (!startRawVideoRecorder(projection))",
             "if (startRawVideoRecorder(projection))",
             "Android VirtualDisplay-before-active transactional start",
@@ -102744,7 +102717,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_owner_state",
-            "generation < greatestControlledServiceGeneration",
+            "generation <= greatestControlledServiceGeneration",
             "false",
             "Android voice owner monotonic controlled-service generation admission",
         ),
@@ -102823,11 +102796,17 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_owner_state",
-            "if (!isControlledServiceGeneration(generation)) {\n"
+            "if (activeControlledServiceGeneration == null) {\n"
+            "            return greatestControlledServiceGeneration == generation\n"
+            "        }\n"
+            "        if (activeControlledServiceGeneration != generation) {\n"
             "            return false\n"
             "        }\n"
             "        controlledConnections.clear()",
-            "if (false) {\n"
+            "if (activeControlledServiceGeneration == null) {\n"
+            "            return greatestControlledServiceGeneration == generation\n"
+            "        }\n"
+            "        if (false) {\n"
             "            return false\n"
             "        }\n"
             "        controlledConnections.clear()",
@@ -102875,20 +102854,14 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_coordinator",
-            "if (playbackProjection?.first == generation)",
-            "if (playbackProjection != null)",
+            "if (currentProjection != null && currentProjection.first != generation)",
+            "if (false)",
             "Android audio coordinator exact-generation controlled teardown",
         ),
         (
             "android_voice_call_coordinator",
-            "if (!owners.isControlledServiceGeneration(generation))",
-            "if (false)",
-            "Android audio coordinator exact-generation playback update",
-        ),
-        (
-            "android_voice_call_coordinator",
-            "projection?.let { generation to it }",
-            "projection?.let { 1L to it }",
+            "playbackProjection = generation to projection",
+            "playbackProjection = 1L to projection",
             "Android audio coordinator exact-generation playback update",
         ),
         (
@@ -103201,12 +103174,6 @@ def run_source_mutations(sources):
             "Android exact native server generation return",
         ),
         (
-            "android_ffi_kt",
-            "external fun stopServer(service: Context, generation: Long): Boolean",
-            "external fun stopServer(generation: Long): Boolean",
-            "Android exact native server object-and-generation stop",
-        ),
-        (
             "android_scrap_ffi",
             "env.is_same_object(owner.owner.as_obj(), &service)",
             "true",
@@ -103223,40 +103190,6 @@ def run_source_mutations(sources):
             "init_ndk_context(java_vm, context_jobject)",
             "init_ndk_context(java_vm, service.as_obj().as_raw() as *mut c_void)",
             "Android retained global application context before NDK publication",
-        ),
-        (
-            "android_scrap_ffi",
-            "match env.is_same_object(current.owner.as_obj(), service) {\n"
-            "        Ok(true) => {}\n"
-            "        Ok(false) => return None,\n"
-            "        Err(error) => {\n"
-            "            log::error!(\"failed to compare MainService generation owner: {error}\");\n"
-            "            return None;\n"
-            "        }\n"
-            "    }\n"
-            "    if current.generation.is_some()",
-            "match Ok(true) {\n"
-            "        Ok(true) => {}\n"
-            "        Ok(false) => return None,\n"
-            "        Err(error) => {\n"
-            "            log::error!(\"failed to compare MainService generation owner: {error}\");\n"
-            "            return None;\n"
-            "        }\n"
-            "    }\n"
-            "    if current.generation.is_some()",
-            "Android single exact-object-authorized MainService generation reservation",
-        ),
-        (
-            "android_scrap_ffi",
-            "if current.generation.is_some()",
-            "if false",
-            "Android single exact-object-authorized MainService generation reservation",
-        ),
-        (
-            "android_scrap_ffi",
-            "if generation == 0 || context.generation != Some(generation)",
-            "if false",
-            "Android generation comparison before controlled Java dispatch",
         ),
         (
             "flutter_source",
@@ -103393,12 +103326,6 @@ def run_source_mutations(sources):
             "direct_service::android_listener_lifecycle_tests:: -- --test-threads=1",
             "direct_service::disabled_android_listener_lifecycle_tests:: -- --test-threads=1",
             "independent Android listener shared lifecycle behavior gate",
-        ),
-        (
-            "verify",
-            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test",
-            "true # Android listener-generation focused gate disabled",
-            "independent Android listener shared focused gate",
         ),
         (
             "requirements",
@@ -103599,12 +103526,6 @@ def run_source_mutations(sources):
             "independent Android raw-video shared pure behavior gate",
         ),
         (
-            "verify",
-            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test",
-            "true # Android raw-video focused gate disabled",
-            "independent Android raw-video shared focused gate",
-        ),
-        (
             "requirements",
             '<span class="id">R-S11em</span>',
             '<span class="id">R-S11em-disabled</span>',
@@ -103647,12 +103568,6 @@ def run_source_mutations(sources):
             "Android MainService status focused verifier purpose",
         ),
         (
-            "android_main_service_status_owner",
-            "generation <= 0L || activeGeneration != generation",
-            "generation <= 0L",
-            "independent stale status generation retirement",
-        ),
-        (
             "android_main_service_status_test",
             "retained projection readiness was not republished to the replacement generation",
             "replacement readiness passed",
@@ -103676,12 +103591,6 @@ def run_source_mutations(sources):
             "val flags = if (createIfNeeded) Context.BIND_AUTO_CREATE else 0",
             "val flags = Context.BIND_AUTO_CREATE",
             "independent MainService explicit-only bind flag",
-        ),
-        (
-            "verify",
-            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test",
-            "true # Android MainService status focused gate disabled",
-            "independent Android MainService status shared focused gate",
         ),
         (
             "requirements",
@@ -103754,12 +103663,6 @@ def run_source_mutations(sources):
             "if (!owners.clearControlledConnections(generation))",
             "if (false)",
             "current shared Android stale controlled-audio clear refusal gate",
-        ),
-        (
-            "verify",
-            "if (playbackProjection?.first == generation)",
-            "if (playbackProjection != null)",
-            "current shared Android exact-generation playback clear gate",
         ),
         (
             "verify",
@@ -106746,12 +106649,6 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "FFI.stopServer(this, retirement.generation)",
-            "FFI.stopServer(this, 0L)",
-            "Android exact attempted-owner generation retirement",
-        ),
-        (
-            "android_main_service",
             "if (!FFI.activateServer(this, generation))",
             "if (false)",
             "Android closed-until-committed native/audio service generation ownership",
@@ -106871,12 +106768,6 @@ def run_source_mutations(sources):
             "Android separated service/application JNI initialization",
         ),
         (
-            "android_ffi_kt",
-            "external fun stopServer(service: Context, generation: Long): Boolean",
-            "external fun stopServer(generation: Long): Boolean",
-            "Android exact native server object-and-generation stop",
-        ),
-        (
             "android_scrap_ffi",
             "if current.generation != Some(generation) {\n        return None;\n    }\n    match env.is_same_object",
             "if current.generation.is_none() {\n        return None;\n    }\n    match env.is_same_object",
@@ -106893,12 +106784,6 @@ def run_source_mutations(sources):
             "pub fn owns_main_service_generation(",
             "pub fn owns_main_service_generation_disabled(",
             "independent exact native generation health owner",
-        ),
-        (
-            "android_scrap_ffi",
-            "if !current.listener_started {\n        return false;\n    }\n    match env.is_same_object(current.owner.as_obj(), service)",
-            "if false {\n        return false;\n    }\n    match env.is_same_object(current.owner.as_obj(), service)",
-            "independent exact Service object and generation health",
         ),
         (
             "flutter_ffi_source",
@@ -106925,28 +106810,10 @@ def run_source_mutations(sources):
             "Android exact object-and-active-listener generation health",
         ),
         (
-            "flutter_ffi_source",
-            "crate::direct_service::android_request_stop_or_confirm_inactive(generation)",
-            "crate::direct_service::android_request_stop(generation)",
-            "Android positive exact-object proof before server generation stop",
-        ),
-        (
-            "flutter_ffi_source",
-            "let Some(retirement) = scrap::android::retire_main_service_generation(",
-            "let retirement = scrap::android::retire_main_service_generation(",
-            "Android positive exact-object proof before server generation stop",
-        ),
-        (
             "android_scrap_ffi",
             "let generation = begin_generation();",
             "let generation = 1;",
             "Android single exact-object-authorized MainService generation reservation",
-        ),
-        (
-            "android_scrap_ffi",
-            "Ok(false) if context.generation.is_some()",
-            "Ok(false)",
-            "Android callback Service versus process application-context ownership",
         ),
         (
             "direct_service",

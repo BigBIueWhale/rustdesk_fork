@@ -192,9 +192,6 @@ def validate(sources: Dict[str, str]) -> None:
     helper = sources["helper"]
     pins = sources["pins"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
-    workspace = sources["workspace"]
     try:
         ast.parse(helper)
     except SyntaxError as error:
@@ -262,6 +259,12 @@ def validate(sources: Dict[str, str]) -> None:
         "\n}\n\n# ── vcpkg overlay distfiles",
         "Pub-cache output lifecycle",
     )
+    publication = extract_between(
+        helper,
+        "def publish(",
+        "\n\ndef optional_relative_identity(",
+        "new Pub-cache publication",
+    )
     replacement = extract_between(
         helper,
         "def replace(",
@@ -298,13 +301,6 @@ def validate(sources: Dict[str, str]) -> None:
         "\n\ndef publish(",
         "displaced Pub-cache validation",
     )
-    helper_self_test = extract_between(
-        helper,
-        "def self_test(",
-        "\n\ndef common_arguments(",
-        "Pub-cache transaction self-test",
-    )
-
     for token, label in (
         ("online_docker run --rm --pull=never --network=none --read-only",
          "offline immutable-container launch"),
@@ -514,9 +510,12 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     for token, label in (
-        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
+        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v3"',
          "bounded transaction record"),
-        ("STATE_VERSION = 2", "replacement-aware transaction schema"),
+        ('LEGACY_STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
+         "legacy transaction record"),
+        ("STATE_VERSION = 3", "metadata-bound transaction schema"),
+        ("LEGACY_STATE_VERSION = 2", "legacy transaction schema"),
         ("RENAME_EXCHANGE = 2", "atomic exchange primitive"),
         ("REPLACEMENT_PATTERN = re.compile(", "reserved displaced-output namespace"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
@@ -538,13 +537,22 @@ def validate(sources: Dict[str, str]) -> None:
         ("os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW", "no-follow reads"),
         ("stable_metadata(before_file) != stable_metadata(after_file)",
          "stable content reads"),
-        ("Pub cache has a hardlink outside its closed output tree",
+        ('metadata_digest = hashlib.sha256(b"rustdesk-pub-cache-metadata-v1\\0")',
+         "domain-separated metadata digest"),
+        ('f"{metadata.st_uid}:{metadata.st_gid}".encode("ascii")',
+         "ownership metadata binding"),
+        ('"replaced_output_metadata_digest": replaced.metadata_digest',
+         "displaced metadata commitment"),
+        ("summary.metadata_digest != expected_metadata_digest",
+         "displaced metadata verification"),
+        ("if expected_links != len(paths):",
          "closed internal hardlinks"),
-        ("Pub cache symlink escapes the cache root", "escaping-symlink rejection"),
+        ("if not parts:", "escaping-symlink rejection"),
         ("Pub cache symlink exists outside a Git checkout",
          "symlink namespace restriction"),
-        ("Pub cache contains a special file", "special-file rejection"),
-        ("Pub hosted package directories and content-hash records are not one exact set",
+        ('else:\n                fail(f"Pub cache contains a special file: {child_relative}")',
+         "special-file rejection"),
+        ("if not package_names or package_names != hash_names:",
          "hosted/hash set equality"),
         ('for advisory in ("archive-advisories.json", "http-advisories.json")',
          "required advisory cache"),
@@ -564,39 +572,27 @@ def validate(sources: Dict[str, str]) -> None:
         ('return "unpublished"', "unpublished recovery"),
         ('return "published"', "published recovery"),
         ('return "unselected-while-occupied"', "unbound stale-stage recovery"),
+        ('fail("unselected Pub-cache transaction moved and was preserved")',
+         "unselected moved-output refusal"),
+        ('if publication != "new":', "new-publication recovery authority"),
+        ('"recovered Pub-cache publication"', "new-publication root sealing"),
+        ('legacy v2 Pub-cache replacement lacks displaced metadata binding',
+         "legacy replacement preservation"),
         ('return "replacement-prepared"', "prepared replacement recovery"),
         ('return "replaced"', "completed replacement recovery"),
         ("Pub-cache replacement transaction state is incoherent and was preserved",
          "ambiguous replacement recovery refusal"),
         ("Pub-cache output transaction state is incoherent and was preserved",
          "ambiguous new-output recovery refusal"),
-        ("self-test accepted an occupied Pub-cache destination",
-         "destination-race fixture"),
-        ("self-test accepted an escaping Pub-cache symlink",
-         "escaping-symlink fixture"),
-        ("self-test accepted a Pub-cache hardlink outside the output",
-         "external-hardlink fixture"),
-        ("self-test accepted a special file in Pub-cache output",
-         "special-file fixture"),
-        ("self-test accepted extended attributes in Pub-cache output",
-         "extended-attribute fixture"),
-        ('prepare_replacement_case("promoted-crash")',
-         "candidate-promotion crash fixture"),
-        ('prepare_replacement_case("exchanged-crash")',
-         "exchange-before-seal crash fixture"),
-        ('prepare_replacement_case("rollback")',
-         "sealed-candidate rollback fixture"),
-        ("self-test replacement rollback did not restore prepared state",
-         "rollback topology assertion"),
-        ("self-test record archival changed the displaced Pub-cache identity",
-         "archival preservation assertion"),
     ):
         require(helper, token, label)
     require_order(
-        helper,
+        publication,
         (
             "verify_staged(",
             "sync_tree(output)",
+            "fsync_directory(staging)",
+            "record_new_publication(",
             'renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)',
             "published Pub-cache identity postcondition failed",
             "validate_published_candidate(",
@@ -623,9 +619,10 @@ def validate(sources: Dict[str, str]) -> None:
             "candidate.digest != expected_digest",
             "replaced = validate_displaced_output(destination, uid, gid)",
             "retired_metadata = validate_retired_root(",
+            "sync_tree(output)",
+            "fsync_directory(staging)",
             "state = record_replacement_publication(",
             "validate_displaced_output(",
-            "sync_tree(output)",
             'renameat2(\n            staging_fd,\n            "output",\n            online_fd,\n            replacement_name,\n            RENAME_NOREPLACE,',
             "os.fsync(staging_fd)",
             "os.fsync(online_fd)",
@@ -701,36 +698,6 @@ def validate(sources: Dict[str, str]) -> None:
         verify,
         "/usr/bin/python3 -I -S scripts/verify-online-fetch-pub-cache-output-authority.py --repo . --self-test",
         "focused verifier wiring",
-    )
-    require(requirements, '<span class="id">R-S11cn</span>', "R-S11cn requirement")
-    require(requirements, "<tr><td>233</td>", "Appendix C #233 disposition")
-    require(requirements, '<span class="id">R-S11fy</span>', "R-S11fy requirement")
-    require(requirements, "<tr><td>333</td>", "Appendix C #333 disposition")
-    require(
-        hardening,
-        "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
-        "hardening-ledger disposition",
-    )
-    require(
-        hardening,
-        "R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority",
-        "stale replacement hardening disposition",
-    )
-    require(
-        workspace,
-        '"online_fetch_pub_cache_output_authority_verifier"',
-        "workspace-verifier source ownership",
-    )
-    require(
-        workspace,
-        "Online-fetch Pub-cache output authority focused verifier",
-        "workspace-verifier semantic binding",
-    )
-    require(
-        workspace,
-        '("journal-only archival with old-tree preservation",\n'
-        '         "Pub-cache focused preservation binding"),',
-        "workspace-verifier stale-replacement binding",
     )
 
 
@@ -846,12 +813,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        '            bad_mode=""\n',
-        "            bad_mode=''\n",
-        "single-quoted semantic payload boundaries",
-    ),
-    Mutation(
-        "shell",
         '"dash_chat_2|bd6b5b41254e57c5bcece202ebfb234de63e6487|.|'
         'https://github.com/rustdesk-org/Dash-Chat-2"',
         '"dash_chat_2|0000000000000000000000000000000000000000|.|'
@@ -942,20 +903,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "Pub cache has a hardlink outside its closed output tree",
-        "Pub cache permits a hardlink outside its output tree",
+        "if expected_links != len(paths):",
+        "if expected_links < len(paths):",
         "hardlink closure",
     ),
     Mutation(
         "helper",
-        "Pub cache symlink escapes the cache root",
-        "Pub cache permits a symlink escape",
+        "if not parts:",
+        "if False:",
         "symlink closure",
     ),
     Mutation(
         "helper",
-        "Pub cache contains a special file",
-        "Pub cache permits a special file",
+        'else:\n                fail(f"Pub cache contains a special file: {child_relative}")',
+        "else:\n                continue # special files accepted",
         "special-file closure",
     ),
     Mutation(
@@ -978,9 +939,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
+        'STATE_NAME = ".rustdesk-pub-cache-output-state-v3"',
         'STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
-        'STATE_NAME = ".rustdesk-pub-cache-output-state-v1"',
         "replacement transaction version",
+    ),
+    Mutation(
+        "helper",
+        "STATE_VERSION = 3",
+        "STATE_VERSION = 2",
+        "metadata-bound state version",
     ),
     Mutation(
         "helper",
@@ -1020,6 +987,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
+        '        "replaced_output_metadata_digest": replaced.metadata_digest,',
+        '        "replaced_output_metadata_digest": replaced.digest,',
+        "displaced metadata commitment",
+    ),
+    Mutation(
+        "helper",
+        "        and summary.metadata_digest != expected_metadata_digest\n",
+        "        and summary.digest != expected_metadata_digest\n",
+        "displaced metadata verification",
+    ),
+    Mutation(
+        "helper",
         '        renameat2(\n            staging_fd,\n            "output",\n            online_fd,\n            replacement_name,\n            RENAME_NOREPLACE,',
         '        renameat2(\n            staging_fd,\n            "output",\n            online_fd,\n            replacement_name,\n            0,',
         "candidate promotion no-clobber",
@@ -1054,42 +1033,40 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        'prepare_replacement_case("promoted-crash")',
-        'prepare_replacement_case("promoted-crash-disabled")',
-        "promoted-candidate crash fixture",
-    ),
-    Mutation(
-        "helper",
-        'prepare_replacement_case("exchanged-crash")',
-        'prepare_replacement_case("exchanged-crash-disabled")',
-        "exchange-before-seal crash fixture",
-    ),
-    Mutation(
-        "helper",
         'required = {"hosted", "hosted-hashes", "git"}',
         'required = {"hosted", "git"}',
         "top-level inventory",
     ),
     Mutation(
         "helper",
-        "Pub hosted package directories and content-hash records are not one exact set",
-        "Pub hosted packages need not have matching hashes",
+        "if not package_names or package_names != hash_names:",
+        "if not package_names:",
         "hosted/hash equality",
     ),
     Mutation(
         "helper",
-        'output = staging / "output"\n    sync_tree(output)\n    fsync_directory(staging)',
-        'output = staging / "output"\n    pass # new output not synchronized\n    fsync_directory(staging)',
+        'output = staging / "output"\n'
+        "    sync_tree(output)\n"
+        "    fsync_directory(staging)\n"
+        "    state = record_new_publication(staging, state, expected_digest)",
+        'output = staging / "output"\n'
+        "    pass # new output not synchronized\n"
+        "    fsync_directory(staging)\n"
+        "    state = record_new_publication(staging, state, expected_digest)",
         "new-output durability barrier",
     ),
     Mutation(
         "helper",
-        'fail("reserved replacement Pub-cache name is already occupied")\n'
+        'retired_metadata = validate_retired_root(online, retired_root, uid, gid)\n'
+        '    output = staging / "output"\n'
         "    sync_tree(output)\n"
-        "    fsync_directory(staging)",
-        'fail("reserved replacement Pub-cache name is already occupied")\n'
+        "    fsync_directory(staging)\n"
+        "    state = record_replacement_publication(",
+        'retired_metadata = validate_retired_root(online, retired_root, uid, gid)\n'
+        '    output = staging / "output"\n'
         "    pass # replacement output not synchronized\n"
-        "    fsync_directory(staging)",
+        "    fsync_directory(staging)\n"
+        "    state = record_replacement_publication(",
         "replacement durability barrier",
     ),
     Mutation(
@@ -1100,15 +1077,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "Pub-cache replacement transaction state is incoherent and was preserved",
-        "Pub-cache replacement transaction state was discarded",
+        '        fail("Pub-cache replacement transaction state is incoherent and was preserved")',
+        '        return "replaced" # incoherent replacement accepted',
         "ambiguous replacement recovery",
     ),
     Mutation(
         "helper",
-        "Pub-cache output transaction state is incoherent and was preserved",
-        "Pub-cache output transaction state was discarded",
+        '    fail("Pub-cache output transaction state is incoherent and was preserved")',
+        '    return "published" # incoherent publication accepted',
         "ambiguous new-output recovery",
+    ),
+    Mutation(
+        "helper",
+        '    if publication != "new":\n',
+        '    if publication not in ("new", "unselected"):\n',
+        "new-publication recovery authority",
+    ),
+    Mutation(
+        "helper",
+        '        fail(\n'
+        '            "legacy v2 Pub-cache replacement lacks displaced metadata binding "\n'
+        '            "and was preserved"\n'
+        "        )",
+        '        return "replaced"  # legacy replacement accepted without metadata binding',
+        "legacy replacement preservation",
     ),
     Mutation(
         "android",
@@ -1164,50 +1156,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "true # Pub-cache authority gate removed",
         "focused verifier wiring",
     ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11cn</span>',
-        '<span class="id">R-S11cn-disabled</span>',
-        "R-S11cn requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>233</td>",
-        "<tr><td>233-disabled</td>",
-        "Appendix C #233 disposition",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11fy</span>',
-        '<span class="id">R-S11fy-disabled</span>',
-        "R-S11fy requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>333</td>",
-        "<tr><td>333-disabled</td>",
-        "Appendix C #333 disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
-        "R-S11cn/R-S11e-106 — ambient Pub-cache output authority",
-        "hardening disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority",
-        "R-S11fy/R-S11e-211 — ambient Pub-cache replacement authority",
-        "stale replacement hardening disposition",
-    ),
-    Mutation(
-        "workspace",
-        '("journal-only archival with old-tree preservation",\n'
-        '         "Pub-cache focused preservation binding"),',
-        '("journal-only archival with old-tree preservation",\n'
-        '         "Pub-cache focused observation"),',
-        "workspace-verifier stale-replacement binding",
-    ),
 )
 
 
@@ -1217,9 +1165,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "helper": "scripts/online-pub-cache-output.py",
         "pins": "scripts/pins.env",
         "verify": "scripts/verify.sh",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
-        "workspace": "scripts/verify-verifier-workspace.py",
         "pub_lock": "flutter/pubspec.lock",
         "android": "scripts/android-apk-build.sh",
         "debian": "scripts/build-debian.sh",

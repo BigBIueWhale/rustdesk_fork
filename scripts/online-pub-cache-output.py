@@ -16,8 +16,10 @@ import stat
 import tempfile
 
 
-STATE_NAME = ".rustdesk-pub-cache-output-state-v2"
-STATE_VERSION = 2
+STATE_NAME = ".rustdesk-pub-cache-output-state-v3"
+LEGACY_STATE_NAME = ".rustdesk-pub-cache-output-state-v2"
+STATE_VERSION = 3
+LEGACY_STATE_VERSION = 2
 STAGING_PATTERN = re.compile(r"\.rustdesk-pub-cache\.[A-Za-z0-9_]{8,64}")
 ARCHIVE_PATTERN = re.compile(
     r"pub-cache-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"
@@ -44,12 +46,21 @@ class PubCacheError(RuntimeError):
 
 
 class TreeSummary:
-    def __init__(self, files: int, directories: int, symlinks: int, size: int, digest: str):
+    def __init__(
+        self,
+        files: int,
+        directories: int,
+        symlinks: int,
+        size: int,
+        digest: str,
+        metadata_digest: str,
+    ):
         self.files = files
         self.directories = directories
         self.symlinks = symlinks
         self.size = size
         self.digest = digest
+        self.metadata_digest = metadata_digest
 
 
 def fail(message: str) -> None:
@@ -281,6 +292,20 @@ def inspect_tree(
     hardlinks: dict[tuple[int, int], tuple[int, list[str]]] = {}
     normalized_inodes: set[tuple[int, int]] = set()
     tree_digest = hashlib.sha256()
+    metadata_digest = hashlib.sha256(b"rustdesk-pub-cache-metadata-v1\0")
+
+    def record_metadata(
+        kind: bytes,
+        relative: str,
+        metadata: os.stat_result,
+    ) -> None:
+        update_digest(
+            metadata_digest,
+            kind,
+            relative or ".",
+            stat.S_IMODE(metadata.st_mode),
+            f"{metadata.st_uid}:{metadata.st_gid}".encode("ascii"),
+        )
 
     def descend(directory: Path, relative: str, depth: int) -> None:
         nonlocal files, directories, symlinks, content_bytes
@@ -373,6 +398,7 @@ def inspect_tree(
                     stat.S_IMODE(metadata.st_mode),
                     file_digest.digest(),
                 )
+                record_metadata(b"F", child_relative, metadata)
                 final_metadata.append((child, stable_metadata(metadata)))
             elif stat.S_ISLNK(metadata.st_mode):
                 symlinks += 1
@@ -390,6 +416,7 @@ def inspect_tree(
                     stat.S_IMODE(metadata.st_mode),
                     os.fsencode(target),
                 )
+                record_metadata(b"L", child_relative, after_link)
                 final_metadata.append((child, stable_metadata(after_link)))
             else:
                 fail(f"Pub cache contains a special file: {child_relative}")
@@ -407,6 +434,7 @@ def inspect_tree(
             stat.S_IMODE(after.st_mode) & (~0o200 if not relative else 0o777),
             b"",
         )
+        record_metadata(b"D", relative, after)
         final_metadata.append((directory, stable_metadata(after)))
 
     descend(root, "", 0)
@@ -433,6 +461,7 @@ def inspect_tree(
         symlinks,
         content_bytes,
         tree_digest.hexdigest(),
+        metadata_digest.hexdigest(),
     )
 
 
@@ -625,11 +654,16 @@ def provenance_values(
     }
 
 
-def validate_publication_state(value: dict[str, object]) -> None:
+def validate_publication_state(
+    value: dict[str, object],
+    *,
+    require_replaced_metadata: bool,
+) -> None:
     publication = value.get("publication")
     expected_digest = value.get("expected_digest")
     replaced_identity = value.get("replaced_output_identity")
     replaced_digest = value.get("replaced_output_digest")
+    replaced_metadata_digest = value.get("replaced_output_metadata_digest")
     retired_root = value.get("retired_root")
     retired_root_identity = value.get("retired_root_identity")
     archive_name = value.get("archive_name")
@@ -641,6 +675,7 @@ def validate_publication_state(value: dict[str, object]) -> None:
                 expected_digest,
                 replaced_identity,
                 replaced_digest,
+                replaced_metadata_digest,
                 retired_root,
                 retired_root_identity,
                 archive_name,
@@ -658,6 +693,7 @@ def validate_publication_state(value: dict[str, object]) -> None:
                 for item in (
                     replaced_identity,
                     replaced_digest,
+                    replaced_metadata_digest,
                     retired_root,
                     retired_root_identity,
                     archive_name,
@@ -674,6 +710,13 @@ def validate_publication_state(value: dict[str, object]) -> None:
         or HEX_SHA256_PATTERN.fullmatch(expected_digest) is None
         or not isinstance(replaced_digest, str)
         or HEX_SHA256_PATTERN.fullmatch(replaced_digest) is None
+        or (
+            require_replaced_metadata
+            and (
+                not isinstance(replaced_metadata_digest, str)
+                or HEX_SHA256_PATTERN.fullmatch(replaced_metadata_digest) is None
+            )
+        )
         or not isinstance(retired_root, str)
         or not isinstance(archive_name, str)
         or ARCHIVE_PATTERN.fullmatch(archive_name) is None
@@ -696,19 +739,43 @@ def load_state(
     staging_metadata = validate_root(staging, "Pub-cache staging", {(uid, gid)})
     if staging.parent != online or STAGING_PATTERN.fullmatch(staging.name) is None:
         fail("Pub-cache staging is outside its reserved online namespace")
-    data = read_small_regular(staging / STATE_NAME, 4096, "Pub-cache output state")
-    metadata = os.lstat(staging / STATE_NAME)
+    state_paths = [
+        path
+        for path in (staging / STATE_NAME, staging / LEGACY_STATE_NAME)
+        if path.exists() or path.is_symlink()
+    ]
+    if len(state_paths) != 1:
+        fail("Pub-cache staging does not contain exactly one state record")
+    state_path = state_paths[0]
+    metadata = os.lstat(state_path)
     if (
-        metadata.st_uid != uid
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != uid
         or metadata.st_gid != gid
+        or metadata.st_nlink != 1
         or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_size > 4096
     ):
         fail("Pub-cache output state metadata is invalid")
+    descriptor = os.open(state_path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(descriptor)
+        if stable_metadata(metadata) != stable_metadata(before):
+            fail("Pub-cache output state changed before read")
+        data = os.read(descriptor, 4097)
+        if len(data) > 4096 or os.read(descriptor, 1):
+            fail("Pub-cache output state exceeds its byte bound")
+        after = os.fstat(descriptor)
+        if stable_metadata(before) != stable_metadata(after):
+            fail("Pub-cache output state changed while read")
+    finally:
+        os.close(descriptor)
     try:
         value = json.loads(data)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         fail(f"Pub-cache output state is malformed: {error}")
-    required_keys = {
+    legacy_keys = {
         "version",
         "online",
         "staging",
@@ -729,9 +796,19 @@ def load_state(
         "archive_name",
         "replacement_name",
     }
-    if not isinstance(value, dict) or set(value) != required_keys:
-        fail("Pub-cache output state has an unexpected schema")
-    if value.get("version") != STATE_VERSION:
+    current_keys = legacy_keys | {"replaced_output_metadata_digest"}
+    if not isinstance(value, dict):
+        fail("Pub-cache output state is not an object")
+    version = value.get("version")
+    if version == LEGACY_STATE_VERSION:
+        if state_path.name != LEGACY_STATE_NAME or set(value) != legacy_keys:
+            fail("legacy Pub-cache output state has an unexpected schema")
+        validate_publication_state(value, require_replaced_metadata=False)
+    elif version == STATE_VERSION:
+        if state_path.name != STATE_NAME or set(value) != current_keys:
+            fail("Pub-cache output state has an unexpected schema")
+        validate_publication_state(value, require_replaced_metadata=True)
+    else:
         fail("Pub-cache output state has the wrong version")
     if value.get("online") != os.fspath(online) or value.get("staging") != os.fspath(staging):
         fail("Pub-cache output state path binding is invalid")
@@ -748,7 +825,6 @@ def load_state(
         str(value.get("flutter_version")),
         str(value.get("flutter_archive_sha256")),
     )
-    validate_publication_state(value)
     return value
 
 
@@ -780,6 +856,7 @@ def prepare(
         "expected_digest": None,
         "replaced_output_identity": None,
         "replaced_output_digest": None,
+        "replaced_output_metadata_digest": None,
         "retired_root": None,
         "retired_root_identity": None,
         "archive_name": None,
@@ -991,6 +1068,8 @@ def record_new_publication(
     state: dict[str, object],
     expected_digest: str,
 ) -> dict[str, object]:
+    if state.get("version") != STATE_VERSION:
+        fail("legacy Pub-cache state cannot select a new publication")
     if state.get("publication") == "new":
         if state.get("expected_digest") != expected_digest:
             fail("new Pub-cache publication digest changed across retry")
@@ -1013,6 +1092,8 @@ def record_replacement_publication(
     retired_root: Path,
     retired_root_identity: tuple[int, int],
 ) -> dict[str, object]:
+    if state.get("version") != STATE_VERSION:
+        fail("legacy Pub-cache state cannot select a replacement")
     archive_name = replacement_archive_name(
         decode_identity(state.get("staging_identity"), "Pub-cache staging"),
         replaced_identity,
@@ -1026,6 +1107,7 @@ def record_replacement_publication(
         "expected_digest": expected_digest,
         "replaced_output_identity": encode_identity(replaced_identity),
         "replaced_output_digest": replaced.digest,
+        "replaced_output_metadata_digest": replaced.metadata_digest,
         "retired_root": os.fspath(retired_root),
         "retired_root_identity": encode_identity(retired_root_identity),
         "archive_name": archive_name,
@@ -1089,6 +1171,7 @@ def validate_displaced_output(
     gid: int,
     expected_identity: tuple[int, int] | None = None,
     expected_digest: str | None = None,
+    expected_metadata_digest: str | None = None,
 ) -> TreeSummary:
     summary = inspect_tree(
         output,
@@ -1103,6 +1186,11 @@ def validate_displaced_output(
     )
     if expected_digest is not None and summary.digest != expected_digest:
         fail("displaced Pub-cache digest changed")
+    if (
+        expected_metadata_digest is not None
+        and summary.metadata_digest != expected_metadata_digest
+    ):
+        fail("displaced Pub-cache ownership or modes changed")
     return summary
 
 
@@ -1126,13 +1214,13 @@ def publish(
     if summary.digest != expected_digest:
         fail("Pub cache changed after networkless semantic verification")
     state = load_state(online, staging, uid, gid)
-    state = record_new_publication(staging, state, expected_digest)
     destination = online / "pub-cache"
     if destination.exists() or destination.is_symlink():
         fail("Pub-cache destination appeared before no-clobber publication")
     output = staging / "output"
     sync_tree(output)
     fsync_directory(staging)
+    state = record_new_publication(staging, state, expected_digest)
     online_fd = open_directory(online)
     staging_fd = open_directory(staging)
     moved = False
@@ -1290,6 +1378,7 @@ def finish_promoted_replacement(
     )
     expected_digest = str(state.get("expected_digest"))
     replaced_digest = str(state.get("replaced_output_digest"))
+    replaced_metadata_digest = str(state.get("replaced_output_metadata_digest"))
     online_fd = open_directory(online)
     staging_fd = open_directory(staging)
     exchanged = already_exchanged
@@ -1309,6 +1398,7 @@ def finish_promoted_replacement(
                 gid,
                 replaced_identity,
                 replaced_digest,
+                replaced_metadata_digest,
             )
             if optional_relative_identity(online_fd, replacement_name) != candidate_identity:
                 fail("promoted Pub-cache candidate identity changed before exchange")
@@ -1356,6 +1446,7 @@ def finish_promoted_replacement(
             gid,
             replaced_identity,
             replaced_digest,
+            replaced_metadata_digest,
         )
     except BaseException as primary:
         try:
@@ -1403,6 +1494,9 @@ def replace(
     replaced_metadata = os.lstat(destination)
     replaced = validate_displaced_output(destination, uid, gid)
     retired_metadata = validate_retired_root(online, retired_root, uid, gid)
+    output = staging / "output"
+    sync_tree(output)
+    fsync_directory(staging)
     state = record_replacement_publication(
         staging,
         state,
@@ -1416,22 +1510,21 @@ def replace(
         state.get("replaced_output_identity"), "replaced Pub-cache output"
     )
     replaced_digest = str(state.get("replaced_output_digest"))
+    replaced_metadata_digest = str(state.get("replaced_output_metadata_digest"))
     validate_displaced_output(
         destination,
         uid,
         gid,
         replaced_identity,
         replaced_digest,
+        replaced_metadata_digest,
     )
-    output = staging / "output"
     replacement_name = str(state.get("replacement_name"))
     if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
         fail("replacement Pub-cache name is malformed")
     replacement = online / replacement_name
     if replacement.exists() or replacement.is_symlink():
         fail("reserved replacement Pub-cache name is already occupied")
-    sync_tree(output)
-    fsync_directory(staging)
     online_fd = open_directory(online)
     staging_fd = open_directory(staging)
     promoted = False
@@ -1494,12 +1587,23 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
     private_output = optional_identity(staging / "output")
     live_output = optional_identity(online / "pub-cache")
     publication = state.get("publication")
+    if (
+        state.get("version") == LEGACY_STATE_VERSION
+        and publication == "replacement"
+    ):
+        fail(
+            "legacy v2 Pub-cache replacement lacks displaced metadata binding "
+            "and was preserved"
+        )
     if publication == "replacement":
         replaced_output = decode_identity(
             state.get("replaced_output_identity"), "replaced Pub-cache output"
         )
         expected_digest = str(state.get("expected_digest"))
         replaced_digest = str(state.get("replaced_output_digest"))
+        replaced_metadata_digest = str(
+            state.get("replaced_output_metadata_digest")
+        )
         replacement_name = str(state.get("replacement_name"))
         if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
             fail("replacement Pub-cache name is malformed")
@@ -1529,6 +1633,7 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
                 gid,
                 replaced_output,
                 replaced_digest,
+                replaced_metadata_digest,
             )
             return "replacement-prepared"
         if (
@@ -1560,15 +1665,61 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             )
             return "replaced"
         fail("Pub-cache replacement transaction state is incoherent and was preserved")
-    if (
-        publication == "unselected"
-        and private_output == output
-        and live_output is not None
-    ):
-        return "unselected-while-occupied"
+    if publication == "unselected":
+        if private_output == output:
+            if live_output is None:
+                return "unpublished"
+            return "unselected-while-occupied"
+        fail("unselected Pub-cache transaction moved and was preserved")
+    if publication != "new":
+        fail("Pub-cache output transaction has an unknown disposition")
+    expected_digest = str(state.get("expected_digest"))
     if private_output == output and live_output is None:
+        validate_candidate_output(
+            staging / "output",
+            uid,
+            gid,
+            output,
+            expected_digest,
+            published=False,
+        )
         return "unpublished"
     if private_output is None and live_output == output:
+        destination = online / "pub-cache"
+        live_mode = stat.S_IMODE(os.lstat(destination).st_mode)
+        if live_mode == 0o700:
+            validate_candidate_output(
+                destination,
+                uid,
+                gid,
+                output,
+                expected_digest,
+                published=False,
+            )
+            online_fd = open_directory(online)
+            try:
+                transition_root_mode(
+                    online_fd,
+                    "pub-cache",
+                    output,
+                    uid,
+                    gid,
+                    {0o700},
+                    0o500,
+                    "recovered Pub-cache publication",
+                )
+                os.fsync(online_fd)
+            finally:
+                os.close(online_fd)
+        elif live_mode != 0o500:
+            fail("published Pub-cache root has an unrecoverable mode")
+        validate_published_candidate(
+            destination,
+            uid,
+            gid,
+            output,
+            expected_digest,
+        )
         return "published"
     fail("Pub-cache output transaction state is incoherent and was preserved")
 
@@ -1602,6 +1753,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         state.get("replaced_output_identity"), "replaced Pub-cache output"
     )
     replaced_digest = str(state.get("replaced_output_digest"))
+    replaced_metadata_digest = str(state.get("replaced_output_metadata_digest"))
     replacement = online / replacement_name
     validate_displaced_output(
         replacement,
@@ -1609,6 +1761,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         gid,
         replaced_identity,
         replaced_digest,
+        replaced_metadata_digest,
     )
     online_fd = open_directory(online)
     retired_fd = open_directory(retired_root)
@@ -1634,6 +1787,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
             gid,
             replaced_identity,
             replaced_digest,
+            replaced_metadata_digest,
         )
     finally:
         os.close(retired_fd)
@@ -1763,6 +1917,8 @@ def self_test() -> None:
                 uid,
                 gid,
             )
+            sync_tree(case_staging / "output")
+            fsync_directory(case_staging)
             return record_replacement_publication(
                 case_staging,
                 state,
@@ -1772,6 +1928,83 @@ def self_test() -> None:
                 case_retired,
                 identity(retired_metadata),
             )
+
+        def prepare_new_case(
+            label: str,
+            *,
+            select: bool,
+        ) -> tuple[Path, Path, TreeSummary, dict[str, object]]:
+            case_online = Path(temporary) / f"{label}-online"
+            case_online.mkdir(mode=0o700)
+            case_staging = make_stage(case_online)
+            prepare(case_online, case_staging, uid, gid, provenance)
+            make_fake_cache(case_staging / "output")
+            candidate = verify_staged(
+                case_online,
+                case_staging,
+                uid,
+                gid,
+                provenance,
+                normalize=True,
+            )
+            sync_tree(case_staging / "output")
+            fsync_directory(case_staging)
+            state = load_state(case_online, case_staging, uid, gid)
+            if select:
+                state = record_new_publication(
+                    case_staging,
+                    state,
+                    candidate.digest,
+                )
+            return case_online, case_staging, candidate, state
+
+        def promote_new_case(case_online: Path, case_staging: Path) -> None:
+            online_fd = open_directory(case_online)
+            staging_fd = open_directory(case_staging)
+            try:
+                renameat2(
+                    staging_fd,
+                    "output",
+                    online_fd,
+                    "pub-cache",
+                    RENAME_NOREPLACE,
+                )
+                os.fsync(staging_fd)
+                os.fsync(online_fd)
+            finally:
+                os.close(staging_fd)
+                os.close(online_fd)
+
+        def downgrade_state_to_v2(
+            case_staging: Path,
+            state: dict[str, object],
+        ) -> dict[str, object]:
+            legacy = dict(state)
+            legacy["version"] = LEGACY_STATE_VERSION
+            del legacy["replaced_output_metadata_digest"]
+            current_path = case_staging / STATE_NAME
+            legacy_path = case_staging / LEGACY_STATE_NAME
+            data = (
+                json.dumps(legacy, sort_keys=True, separators=(",", ":")) + "\n"
+            ).encode("ascii")
+            current_path.unlink()
+            descriptor = os.open(
+                legacy_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+                0o600,
+            )
+            try:
+                view = memoryview(data)
+                while view:
+                    written = os.write(descriptor, view)
+                    if written <= 0:
+                        fail("short write while creating legacy Pub-cache test state")
+                    view = view[written:]
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            fsync_directory(case_staging)
+            return legacy
 
         def promote_replacement_case(
             case_online: Path,
@@ -1819,6 +2052,138 @@ def self_test() -> None:
             remove_stage(case_online / "pub-cache")
             case_retired.rmdir()
             case_online.rmdir()
+
+        (
+            new_crash_online,
+            new_crash_staging,
+            new_crash_candidate,
+            new_crash_state,
+        ) = prepare_new_case("new-crash", select=True)
+        if recover(new_crash_online, new_crash_staging, uid, gid) != "unpublished":
+            fail("self-test did not recover a selected unpublished Pub-cache")
+        promote_new_case(new_crash_online, new_crash_staging)
+        if stat.S_IMODE(os.lstat(new_crash_online / "pub-cache").st_mode) != 0o700:
+            fail("self-test new Pub-cache was unexpectedly sealed before recovery")
+        if recover(new_crash_online, new_crash_staging, uid, gid) != "published":
+            fail("self-test did not recover an unsealed new Pub-cache publication")
+        if stat.S_IMODE(os.lstat(new_crash_online / "pub-cache").st_mode) != 0o500:
+            fail("self-test recovery did not seal the new Pub-cache root")
+        if check_complete(new_crash_online, uid, gid).digest != new_crash_candidate.digest:
+            fail("self-test new-publication recovery changed the Pub-cache")
+        if new_crash_state.get("publication") != "new":
+            fail("self-test new-publication fixture was not durably selected")
+        remove_stage(new_crash_staging)
+        remove_stage(new_crash_online / "pub-cache")
+        new_crash_online.rmdir()
+
+        (
+            unselected_online,
+            unselected_staging,
+            _unselected_candidate,
+            unselected_state,
+        ) = prepare_new_case("unselected-moved", select=False)
+        promote_new_case(unselected_online, unselected_staging)
+        try:
+            recover(unselected_online, unselected_staging, uid, gid)
+        except PubCacheError:
+            pass
+        else:
+            fail("self-test accepted a moved unselected Pub-cache transaction")
+        unselected_identity = decode_identity(
+            unselected_state.get("output_identity"),
+            "unselected Pub-cache output",
+        )
+        if optional_identity(unselected_online / "pub-cache") != unselected_identity:
+            fail("self-test altered the moved unselected Pub-cache")
+        if stat.S_IMODE(os.lstat(unselected_online / "pub-cache").st_mode) != 0o700:
+            fail("self-test sealed the moved unselected Pub-cache")
+        remove_stage(unselected_online / "pub-cache")
+        remove_stage(unselected_staging)
+        unselected_online.rmdir()
+
+        (
+            legacy_new_online,
+            legacy_new_staging,
+            legacy_new_candidate,
+            legacy_new_state,
+        ) = prepare_new_case("legacy-new", select=True)
+        downgrade_state_to_v2(legacy_new_staging, legacy_new_state)
+        promote_new_case(legacy_new_online, legacy_new_staging)
+        if recover(legacy_new_online, legacy_new_staging, uid, gid) != "published":
+            fail("self-test did not recover a safe legacy-v2 new publication")
+        if check_complete(legacy_new_online, uid, gid).digest != legacy_new_candidate.digest:
+            fail("self-test legacy-v2 new recovery changed the Pub-cache")
+        remove_stage(legacy_new_staging)
+        remove_stage(legacy_new_online / "pub-cache")
+        legacy_new_online.rmdir()
+
+        (
+            legacy_replace_online,
+            legacy_replace_records,
+            legacy_replace_staging,
+            legacy_replace_candidate,
+            _legacy_replace_old,
+            legacy_replace_old_identity,
+        ) = prepare_replacement_case("legacy-replacement")
+        legacy_replace_state = bind_replacement_case(
+            legacy_replace_online,
+            legacy_replace_records,
+            legacy_replace_staging,
+            legacy_replace_candidate,
+        )
+        downgrade_state_to_v2(legacy_replace_staging, legacy_replace_state)
+        try:
+            recover(legacy_replace_online, legacy_replace_staging, uid, gid)
+        except PubCacheError:
+            pass
+        else:
+            fail("self-test accepted legacy-v2 replacement without metadata binding")
+        if optional_identity(legacy_replace_online / "pub-cache") != legacy_replace_old_identity:
+            fail("self-test altered the old Pub-cache while rejecting legacy replacement")
+        if optional_identity(legacy_replace_staging / "output") != decode_identity(
+            legacy_replace_state.get("output_identity"),
+            "legacy replacement candidate",
+        ):
+            fail("self-test altered the candidate while rejecting legacy replacement")
+        remove_stage(legacy_replace_staging)
+        remove_stage(legacy_replace_online / "pub-cache")
+        legacy_replace_records.rmdir()
+        legacy_replace_online.rmdir()
+
+        (
+            metadata_online,
+            metadata_records,
+            metadata_staging,
+            metadata_candidate,
+            _metadata_old,
+            metadata_old_identity,
+        ) = prepare_replacement_case("metadata-mismatch")
+        metadata_state = bind_replacement_case(
+            metadata_online,
+            metadata_records,
+            metadata_staging,
+            metadata_candidate,
+        )
+        mismatched_metadata_state = dict(metadata_state)
+        mismatched_metadata_state["replaced_output_metadata_digest"] = "0" * 64
+        atomic_write_state(metadata_staging, mismatched_metadata_state)
+        try:
+            recover(metadata_online, metadata_staging, uid, gid)
+        except PubCacheError:
+            pass
+        else:
+            fail("self-test accepted mismatched displaced Pub-cache metadata")
+        if optional_identity(metadata_online / "pub-cache") != metadata_old_identity:
+            fail("self-test altered the old Pub-cache after metadata mismatch")
+        if optional_identity(metadata_staging / "output") != decode_identity(
+            metadata_state.get("output_identity"),
+            "metadata-mismatch candidate",
+        ):
+            fail("self-test altered the candidate after metadata mismatch")
+        remove_stage(metadata_staging)
+        remove_stage(metadata_online / "pub-cache")
+        metadata_records.rmdir()
+        metadata_online.rmdir()
 
         staging = make_stage(online)
         prepare(online, staging, uid, gid, provenance)
@@ -1958,13 +2323,19 @@ def self_test() -> None:
         if recover(replacement_online, staging, uid, gid) != "replaced":
             fail("self-test did not classify a completed Pub-cache replacement")
         replacement_state = load_state(replacement_online, staging, uid, gid)
+        if (
+            replacement_state.get("replaced_output_metadata_digest")
+            != displaced_summary.metadata_digest
+        ):
+            fail("self-test replacement state did not bind displaced metadata")
         replacement_name = str(replacement_state.get("replacement_name"))
         retired_output = replacement_online / replacement_name
         if identity(os.lstat(retired_output)) != displaced_identity:
             fail("self-test replacement did not preserve the displaced Pub-cache identity")
+        retired_summary = validate_displaced_output(retired_output, uid, gid)
         if (
-            validate_displaced_output(retired_output, uid, gid).digest
-            != displaced_summary.digest
+            retired_summary.digest != displaced_summary.digest
+            or retired_summary.metadata_digest != displaced_summary.metadata_digest
         ):
             fail("self-test replacement changed the displaced Pub-cache")
         archived = archive_replaced(replacement_online, staging, uid, gid)
@@ -2008,9 +2379,10 @@ def self_test() -> None:
         promoted_displaced = promoted_online / str(promoted_state.get("replacement_name"))
         if identity(os.lstat(promoted_displaced)) != promoted_old_identity:
             fail("promoted-candidate recovery lost the displaced Pub-cache identity")
+        promoted_summary = validate_displaced_output(promoted_displaced, uid, gid)
         if (
-            validate_displaced_output(promoted_displaced, uid, gid).digest
-            != promoted_old.digest
+            promoted_summary.digest != promoted_old.digest
+            or promoted_summary.metadata_digest != promoted_old.metadata_digest
         ):
             fail("promoted-candidate recovery changed the displaced Pub-cache")
         cleanup_completed_replacement(
@@ -2048,9 +2420,10 @@ def self_test() -> None:
         exchanged_displaced = exchanged_online / str(exchanged_state.get("replacement_name"))
         if identity(os.lstat(exchanged_displaced)) != exchanged_old_identity:
             fail("exchanged-candidate recovery lost the displaced Pub-cache identity")
+        exchanged_summary = validate_displaced_output(exchanged_displaced, uid, gid)
         if (
-            validate_displaced_output(exchanged_displaced, uid, gid).digest
-            != exchanged_old.digest
+            exchanged_summary.digest != exchanged_old.digest
+            or exchanged_summary.metadata_digest != exchanged_old.metadata_digest
         ):
             fail("exchanged-candidate recovery changed the displaced Pub-cache")
         cleanup_completed_replacement(
@@ -2114,9 +2487,14 @@ def self_test() -> None:
             fail("self-test replacement rollback did not restore prepared state")
         if identity(os.lstat(rollback_online / "pub-cache")) != rollback_old_identity:
             fail("self-test replacement rollback lost the old live Pub-cache")
+        rollback_summary = validate_displaced_output(
+            rollback_online / "pub-cache",
+            uid,
+            gid,
+        )
         if (
-            validate_displaced_output(rollback_online / "pub-cache", uid, gid).digest
-            != rollback_old.digest
+            rollback_summary.digest != rollback_old.digest
+            or rollback_summary.metadata_digest != rollback_old.metadata_digest
         ):
             fail("self-test replacement rollback changed the old live Pub-cache")
         if identity(os.lstat(rollback_staging / "output")) != candidate_identity:

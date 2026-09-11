@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e8d5bdf7d636e3022b487e507810426dba3dd5de015154b537e6cb1f5de38303  requirements.html
+dde1ac621888423ca89cd83363a6c9583ab075fa9d487d2b7cdadc7e80e3e797  requirements.html
 ```
 
 ## Current Verdict
@@ -117,6 +117,23 @@ was added. This is documentation architecture plus a narrow transaction correcti
 mutation, current artifact build, Android lifecycle result, or broad release closure.
 The live ledger moved from 1,084,405 to 1,076,172 bytes and from 361,469 to 358,724 conservative
 tokens in this slice, using the repository's documented `ceil(UTF-8 bytes / 3)` method.
+
+R-S11cn/R-S11fy and Appendix C #233/#333 now state the timeless Pub-cache acquisition,
+publication, recovery, and stale-replacement contracts instead of implementation history, `FIX`
+status, verifier receipts, mutation counts, and repeated unrelated release disclaimers. This reduced
+`requirements.html` by 4,647 bytes. The two Pub ledger entries were compressed to current source
+behavior, retained evidence, and explicit open native/release gaps; including this architecture record,
+the full ledger fell by 9,598 bytes to 1,066,574 bytes, or 355,525 conservative tokens by the documented
+method. The workspace verifier's
+duplicate Pub validator, dispatch, mutation block, and two dedicated loaders were deleted rather
+than updated, removing 530 lines and 24,762 bytes. The surviving focused verifier no longer reads
+requirements, ledger, or workspace prose and retains the product/source boundary checks. Review also
+found and corrected three real transaction defects: the durable selection preceded candidate
+synchronization, nonreplacement recovery could classify a moved unselected inode as published and
+did not finish a selected post-rename root seal, and the displaced-tree record omitted exact UID/GID/
+mode commitment. State v3, exact legacy-v2 policy, and the current confined filesystem crash tests
+cover those corrections at the layers described in R-S11cn/R-S11fy. This is one coherent cleanup and
+product-correction slice, not completion of the documentation work item or release evidence.
 
 The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk and required
 disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated
@@ -4002,160 +4019,50 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   native/device evidence, and external R-V3 review remain open. No online acquisition, networked
   producer, image pull/build/tag, release build, root command, or host RustDesk process/service/
   config/listener/firewall/network operation was executed for this slice.
-- **R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority — SOURCE,
-  TRANSACTION, PINNED-TOOL SEMANTIC, AND MUTATION VERIFIED 2026-07-24; COLD NETWORK
-  ACQUISITION AND RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host,
-  the immutable Debian builder used by the networked producer, and every Android/Debian/Windows/
-  macOS/Dart consumer of the resulting cache. Endpoint/action: `scripts/online-fetch.sh::
-  stage_pub_cache`, which acquires the Flutter project's hosted and Git dependency closure into
-  `online/pub-cache`. Boundary: networked Pub archive/Git processing ↔ the exact committed project,
-  pinned Flutter SDK, complete offline-input closure, and durable cache publication.
+- **R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority — SOURCE AND
+  CURRENT NUMERIC-NONROOT FILESYSTEM SELF-TEST GREEN; CURRENT SEALED CACHE/OFFLINE-REPLAY
+  EVIDENCE RETAINED; COLD ACQUISITION, CANONICAL REPLACEMENT, AND RELEASE EVIDENCE OPEN.**
+  Platform: the unprivileged Linux acquisition transaction and its immutable networked/offline
+  builders. Endpoint: `scripts/online-fetch.sh::stage_pub_cache` and
+  `scripts/online-pub-cache-output.py`. Boundary: networked Pub archive/Git processing ↔ exact
+  committed source and pinned Flutter inputs ↔ one durable structurally and semantically closed
+  `online/pub-cache`.
 
-  Before this slice `stage_pub_cache` mounted all of `$ONLINE_DIR` read-write, mounted the live
-  checkout's `flutter` project, and let the producer create the permanent `online/pub-cache` name
-  directly. If either `hosted` or `git` already existed, it returned without proving completeness,
-  lockfile agreement, package hashes, Git refs/objects, or offline resolvability. The legitimate
-  output is one Pub cache, but package/archive extraction and Git behavior held write/delete authority
-  over every unrelated cached release input, while partial or stale state could survive until a
-  platform build. R-S11cj's numeric non-root producer constrained writes to the invoking user's
-  authority but did not make the broad bind, live source input, direct final-name publication, or
-  presence-only reuse admissible. This is source-proven acquisition-input, output-publication, and
-  stale-state authority debt, not evidence that a cached input changed, a container escaped, host
-  root was acquired, a listener was exposed, host RustDesk/service/config/firewall/network state
-  changed, exploitation occurred, or the host was compromised.
+  The transaction exclusively locks the current-user-private online root and reconciles reserved
+  staging before reuse or production. The producer sees the exact source and complete online closure
+  read-only and receives one writable durable path: a same-filesystem private candidate mounted at
+  canonical `/online/pub-cache`. It runs as numeric nonroot in the bounded no-port/no-host-namespace
+  acquisition profile, enforces both committed lockfiles, proves them unchanged, and removes only the
+  declared ephemeral Pub entries. Existing and new caches undergo the same bounded stable no-follow
+  owner/mount/link/symlink/type/mode/xattr/path checks, exact hosted/hash/advisory inventory, and
+  current three-checkout/three-bare-cache shape.
 
-  `online-fetch.sh` now serializes the complete Pub transaction with an exclusive lock on the
-  current-user-private online root. It constructs and verifies the same clean exact-commit source
-  authority used by the Gradle warmer, binds transaction provenance to commit, tree, source-archive
-  SHA-256, Flutter 3.24.5, and the independently pinned Flutter archive SHA-256, verifies the Flutter
-  archive before and after producer execution, and reconciles every matching reserved transaction.
-  Reuse of the retained authority re-proves the live commit/tree/clean checkout and archive digest
-  before constructing a fresh exact writable copy; the Pub copy is retired before the later Gradle
-  stage recreates its own generation. Neither producer path mounts or copies the live repository.
+  A separate networkless immutable-builder pass mounts cache and source read-only, resolves both
+  lockfiles offline with enforcement, and binds all three Git package/ref/path/URL mappings, clean
+  trees, allowed modes, package identities, locked commits, and full checkout/bare object closure.
+  The normalized candidate and staging parent are synchronized before state v3 durably selects
+  publication. New publication uses descriptor-relative `RENAME_NOREPLACE`, seals only the exact
+  candidate root, synchronizes the namespace, and revalidates identity, digest, and shape. Recovery
+  accepts an unselected candidate only while it remains private, validates and seals an exact
+  journal-selected post-rename candidate, and preserves incoherent or moved-unselected state.
+  Occupied stale replacement follows the additional R-S11fy preservation contract.
 
-  A cold Pub run creates unpredictable mode-0700 same-filesystem staging and a mode-0600 fsynced
-  state record binding exact online, staging, output, source, and Flutter identities. The established
-  confined online launcher still supplies intentional bridge egress, the already-loaded immutable
-  Debian image ID, invoking numeric UID:GID, no pull, read-only root, all capabilities dropped,
-  no-new-privileges, bounded PID/memory/no-swap/CPU/tmpfs, no port, no socket, and no host namespace.
-  All of `/online` is mounted only `readonly,bind-recursive=disabled`. The sole writable durable host
-  mount is the exact staged output, nested at canonical `/online/pub-cache` so Pub's cached Git remote
-  paths remain valid after publication. The exact source generation is separately mounted read-only
-  at `/project-source` and copied only to bounded container tmpfs; home, unpacked toolchain, `.dart_tool`,
-  generated plugin state, and other project mutations are disposable. System/global Git configuration
-  is excluded rather than widened with a wildcard safe-directory rule.
+  Exact-current execution in immutable local Python image
+  `sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`
+  as UID:GID 1000:1000 passed the production filesystem self-test and focused baseline. The same
+  networkless, read-only-root/repository, capability-free, no-new-privileges, bounded profile then
+  rejected all 65 focused deliberate mutations. Both runs used private noexec tmpfs, no port,
+  device, Docker socket, privileged flag, or host namespace, and left the host listener inventory
+  unchanged. The duplicate workspace Pub validator/mutation copy was deleted; it provided wording
+  redundancy, not an additional behavioral layer.
 
-  The pinned SDK's `flutter_tools` lock is resolved with `dart pub get --enforce-lockfile`, and the
-  exact project's committed lock is resolved with `flutter pub get --enforce-lockfile`; both lockfile
-  hashes must remain unchanged. Only Pub's known ephemeral `_temp`, `log`, and root `README.md` state
-  is removed. The producer never receives another writable online path or a path to the final cache
-  name. Existing output is no longer presence-trusted: it enters the same complete non-mutating
-  structural and semantic validation as a new candidate.
-
-  `scripts/online-pub-cache-output.py` binds canonical absolute roots, root/output identities, exact
-  ownership, same filesystem, and absence of descendant mounts. It rejects foreign/mixed ownership,
-  group/world-writable state, acquisition-user-writable published state, nonportable paths,
-  filesystem crossings, special objects, set-id/sticky bits, extended attributes, unstable reads,
-  changed metadata, excess depth/count/bytes, and files over the per-file bound. Regular-file
-  hardlinks are admitted only when every `st_nlink` edge is accounted for inside the candidate; this
-  preserves Pub's legitimate internally hardlinked Git pack objects while excluding an external
-  mutable edge. Symlinks are admitted only inside a Git checkout, never inside the bare-cache tree,
-  and only with bounded printable relative targets whose lexical walk remains inside the cache.
-  This preserves the six legitimate relative symlinks in the locked `uni_links` checkout without
-  granting an escape.
-
-  A new output contains exactly `hosted`, `hosted-hashes`, and `git`. Hosted package directory names
-  and `.sha256` record names must be the same nonempty set, every record must be exactly one 64-hex
-  SHA-256 value, and the archive/http advisory cache files required by established Windows staging
-  must exist. The Git tree must contain exactly the eight lock-derived checkouts and eight bare
-  caches with their expected checkout/ref and bare-cache naming shapes, real `.git` directories, and
-  package-path records. Historical complete output may additionally retain only Pub's bounded
-  `_temp`, `log`, or root `README.md` entries; these are inspected and hashed rather than trusted.
-  Validation freezes every staged descendant read-only and returns one deterministic type/path/mode/
-  content/link-group tree digest; the staged root remains privately traversable until publication
-  and its intentional final 0700→0500 transition is canonicalized in that digest.
-
-  Structural success does not authorize publication. `verify_pub_cache_resolution` independently
-  launches the same exact immutable builder with `--network=none`, read-only root, numeric non-root
-  identity, no capabilities/privilege gain, bounded resources, and only read-only online, candidate,
-  and exact-source mounts. It re-extracts the SHA-pinned Flutter 3.24.5 SDK into tmpfs, copies the
-  exact project into tmpfs, resolves both `flutter_tools` and project lockfiles offline with
-  `--enforce-lockfile`, and proves their bytes unchanged. A closed eight-entry map derived from
-  `flutter/pubspec.lock` binds each Git package, exact resolved commit, package subpath, and upstream
-  URL. For every entry it proves one matching checkout, exact HEAD, no untracked/worktree/index
-  drift, a canonical bare-cache remote under `/online/pub-cache/git/cache`, exact upstream URL,
-  presence of the locked commit, full no-dangling/no-reflog `git fsck` on checkout and bare cache,
-  only Git modes 100644/100755/120000, and the expected package name at the locked path.
-
-  Producer, exact-source, Flutter-input, structural-output, offline-semantic, and publication
-  statuses are accumulated independently. Publication is attempted only when the first five are
-  green and the structural receipt is exactly one SHA-256 digest. Every candidate file and directory
-  is fsynced; descriptor-relative `renameat2(RENAME_NOREPLACE)` installs the exact output inode at a
-  still-absent `pub-cache` name, removes owner write from the published root, fsyncs candidate,
-  staging, and online namespace directories, then repeats identity, digest, and exact-shape checks.
-  A later failure restores root traversal and moves that exact inode back without clobber. Restart
-  recovery accepts only the exact recorded unpublished or published inode arrangement and preserves
-  every incoherent state. The established owner/mount-bound directory restorer and external-inode-
-  closure remover retire reconciled private staging.
-
-  Lockfile failure is also closed at consumption rather than only acquisition. Android APK, Debian,
-  Windows, FRB codegen, Dart verification, the Flutter offline shim, Windows guest setup, and macOS
-  distribution now pass `--enforce-lockfile` to their canonical Pub resolutions; offline consumers
-  retain `--offline`, and Flutter-level plugin injection continues to use the real Flutter tool where
-  required. This prevents a consumer from silently selecting a graph other than the committed lock
-  even if cache state is broader than that consumer needs.
-
-  The design follows primary contracts. Dart documents lockfiles, package content hashes, and
-  enforced-lockfile failure at https://dart.dev/tools/pub/dependencies and defines the `PUB_CACHE`
-  system-cache root at https://dart.dev/resources/glossary#system-cache. Docker documents writable-
-  by-default bind mounts, read-only binds, and recursive controls at
-  https://docs.docker.com/engine/storage/bind-mounts/. Git documents full object/connectivity
-  validation at https://git-scm.com/docs/git-fsck.html. Linux documents descriptor-relative
-  `RENAME_NOREPLACE` and the directory fsync needed for durable namespace entries at
-  https://man7.org/linux/man-pages/man2/renameat2.2.html and
-  https://man7.org/linux/man-pages/man2/fsync.2.html.
-
-  Executable evidence used immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as UID/GID 1000:1000, with no pull/network, read-only root/source, all capabilities dropped,
-  no-new-privileges, bounded resources, no socket, no port, and no host namespace. The transaction
-  self-test covers successful publication/recovery, occupied destination, escaping symlink, external
-  hardlink, FIFO, and extended-attribute rejection. A read-only copy of the complete established
-  423,566,825-byte cache (20,750 files, 5,962 directories, six legitimate symlinks, eight checkouts,
-  and eight bare caches) into verifier tmpfs passed the production `check-complete` validator with
-  deterministic inode-independent digest
-  `c5f0882f4550769d23fcc63f13851111fc050f4be3fdf4c1dcedd137ac4411ff`
-  after removing only the three producer-declared ephemeral top-level entries; moving that exact
-  normalized tree to the final-name fixture produced the same `check-complete` digest. Separately,
-  the established cache was mounted read-only into the
-  immutable Debian builder with `--network=none`; both enforced lockfiles resolved offline and all
-  eight exact Git semantic/object checks passed. The host cache and source were not changed.
-
-  The focused gate binds the transaction/mount order, exact image/pin/source paths, producer and
-  offline commands, eight lock-derived mappings, independent verdict barrier, helper invariants,
-  every canonical consumer, shared gate, R-S11cn, Appendix C #233, and this entry, and rejects its
-  complete 40-case deliberate-mutation suite. The independent workspace semantic binding passed
-  normally and its complete source-mutation inventory rejected every mutation after closing a
-  cross-launch token-masking weakness. Adjacent Gradle source/output gates rejected 38/30 mutations,
-  the online-container gate rejected 30, the Cargo-output gate rejected 36, Dart authority rejected
-  60, Android/Debian builder authority rejected 79/32, dependency inventory rejected all 103 and
-  passed live with 905 Cargo packages (36 Git), 199 Flutter packages (eight Git), and 871 lexical
-  unsafe blocks across 247 tracked Rust sources, and native-codec normal/self-test gates passed.
-  Changed shell syntax, Python compilation, requirements parsing/hash synchronization, and diff
-  hygiene passed. The pinned Linux verifier image did not contain a PowerShell parser; the two
-  PowerShell `--enforce-lockfile` edits are therefore source- and mutation-checked here, not claimed
-  as independently parser-executed.
-
-  No real networked Pub acquisition was run, so this is source, transaction, real-cache structural,
-  pinned-tool offline semantic, and negative-fixture evidence rather than cold acquisition
-  reproduction. Pub's content hashes and locked Git objects are enforced, but upstream publisher
-  provenance beyond those contracts remains separate. The libyuv single-file archive is closed by
-  R-S11co/R-S11e-107 below, and both x64-linux/arm64-android vcpkg native outputs are closed by
-  R-S11cp/R-S11e-108 below. SDK and other archive producers, host-side downloads/extractions,
-  maintenance candidate-image publication, exact cold
-  R-B2 artifacts, native/device evidence, and external R-V3 review remain open. No online
-  acquisition, image pull/build/tag, release build, root command, or host RustDesk process/service/
-  config/listener/firewall/network operation was executed for this slice.
+  Retained operational evidence remains narrower than cold acquisition: the current sealed
+  three-Git cache digest `fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4`
+  passed both exact offline enforced-lockfile resolutions and three Git checks in R-S11gc, and the
+  named R-B10 acquisition reaccepted it rather than rebuilding or replacing it. No current cold
+  network acquisition, root-owned displaced-tree metadata-drift VM case, real canonical Pub-cache
+  replacement, clean release artifact, Android/Windows/macOS device behavior, cross-version run,
+  sustained performance/resource soak, independent reproduction, or external review is established.
 - **R-S11co/R-S11e-107 — networked libyuv distfile output authority — SOURCE AND
   TRANSACTION SELF-TEST, EXACT-CACHE COMPATIBILITY, AND FOCUSED/INDEPENDENT MUTATION
   EVIDENCE VERIFIED 2026-07-24; COLD NETWORK ACQUISITION AND RELEASE EVIDENCE REMAIN OPEN.**
@@ -4838,57 +4745,41 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   current artifacts, cold release reproduction, independent reproduction, and external review remain
   explicit release blockers.
 
-- **R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority — SOURCE IMPLEMENTED;
-  NON-ROOT SYNTHETIC SUCCESS/CRASH/ROLLBACK SELF-TEST, 67-MUTATION FOCUSED GATE, AND COMPLETE
-  INDEPENDENT SOURCE-MUTATION MATRIX GREEN; REAL CANONICAL EXECUTION OPEN.** Platform: the unprivileged Linux acquisition host and
-  the existing immutable networked/offline builder profiles. Endpoint/action:
+- **R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority — SOURCE
+  CORRECTED; CURRENT NUMERIC-NONROOT FILESYSTEM CRASH/ROLLBACK TESTS AND 72-MUTATION FOCUSED
+  GATE GREEN; ROOT-OWNED METADATA-DRIFT VM AND REAL CANONICAL REPLACEMENT OPEN.** Platform:
+  the unprivileged Linux acquisition transaction. Endpoint:
   `scripts/online-fetch.sh::{stage_pub_cache,retire_pub_cache_output_staging}` and
-  `scripts/online-pub-cache-output.py` state-v2 replacement/recovery/archive commands. Boundary: a
-  structurally or semantically stale occupied `online/pub-cache` ↔ one exact-current, independently
-  revalidated candidate becoming canonical without root or destructive authority over the old tree.
+  `scripts/online-pub-cache-output.py`. Boundary: an occupied immutable or root-owned stale cache
+  ↔ one independently verified candidate, without destructive authority over the displaced tree.
 
-  The old acquisition path treated occupancy as final. If `check-complete` or either networkless
-  enforced-lockfile replay failed, it stopped before producing a current candidate. Historical
-  container-created trees can be root-owned and immutable. Source review initially proposed exchanging
-  the candidate directly from its staging parent with the old live directory and archiving the displaced
-  tree outside `online`; the first confined self-test correctly failed that design with `EACCES`. Linux
-  requires write permission on a moved directory when a cross-parent rename must update its `..` entry,
-  so that proposal could not satisfy the non-root/root-owned-old requirement and was discarded before any
-  canonical input was touched.
+  An occupied cache is reused unchanged only after complete structural and offline semantic
+  validation. Otherwise the helper validates it without chmod, chown, normalization, deletion, or
+  cross-parent movement. The normalized candidate and staging parent are synchronized before state
+  v3 selects replacement. The durable record binds candidate and displaced identities/content
+  digests, the displaced tree's exact UID/GID/mode digest, provenance, namespace-root identities,
+  and deterministic reserved names. Legacy-v2 replacement state is preserved and rejected because
+  it lacks that metadata commitment; safe legacy nonreplacement state is accepted only through the
+  same exact candidate validation.
 
-  State v2 now records the exact candidate/old/online/staging/retired-record identities, candidate and old
-  tree digests, provenance, and deterministic no-clobber names before namespace mutation. A writable,
-  completely verified candidate is durably promoted from staging to a reserved sibling under the same
-  online parent. A descriptor-relative `RENAME_EXCHANGE` swaps those same-parent sibling names atomically,
-  which does not update the immutable old directory's `..` entry. Only the exact new live candidate is
-  descriptor-sealed to 0500. The old tree remains unchanged at the state-bound reserved sibling and is
-  revalidated by identity and digest; it is never chmodded, chowned, recursively removed, or moved across
-  parents. Only the user-owned journal envelope is no-clobber archived under the same-filesystem private
-  `.harness-state/retired-online-inputs` root.
+  The candidate is promoted with descriptor-relative `RENAME_NOREPLACE` to a reserved sibling under
+  the locked online parent and then installed by same-parent `RENAME_EXCHANGE`. Only the candidate
+  root transitions from 0700 to 0500. The displaced tree stays at the recorded sibling and is checked
+  by inode, content, links, ownership, and modes before completion and around journal-only archival.
+  Recovery accepts only exact prepared, promoted, exchanged-unsealed, or completed replacement
+  topology. Nonreplacement recovery refuses a moved unselected inode; for selected new state it
+  validates the exact private candidate or validates, seals, synchronizes, and revalidates the exact
+  live post-rename inode. Rollback restores the old live name first and demotes only the candidate.
 
-  Recovery distinguishes prepared, promoted, exchanged-but-unsealed, and completed topologies by all
-  three namespace identities. It validates both trees before finishing a recorded promotion or exchange;
-  every other arrangement is preserved and rejected. Rollback first restores the old live name by a
-  same-parent exchange, then restores traversal and demotes only the exact candidate. The confined helper
-  self-test passed normal replacement of a sealed old directory, recovery after promotion, recovery after
-  exchange before root sealing, rollback after candidate sealing, old identity/digest preservation,
-  candidate finality, and journal archival. The test ran as numeric UID/GID 1000 with no network, read-only
-  source/root filesystem, dropped capabilities, no-new-privileges, bounded resources, private tmpfs, and
-  no ports, devices, host namespace, Docker socket, or privileged flag. The focused verifier rejected all
-  67 deliberate weakenings of acquisition, semantic replay, state binding, old-tree validation, promotion,
-  same-parent exchange, root sealing, rollback, recovery, archival, fixtures, requirements, ledger, shared
-  wiring, and independent-workspace binding. The complete independent workspace source-mutation matrix
-  separately rejected mutations of the focused verifier and the underlying shell/helper/documentation
-  authority; the ordinary independent baseline was also green.
-
-  This is not operational replacement evidence. The real `online/pub-cache` and `.harness-state` were not
-  read by the helper, mutated, renamed, permission-changed, or archived; the actual networked producer was
-  not run. No host RustDesk executable/process/service/configuration, listener, firewall, display, or
-  network state was inspected or changed. R-S11fz below separately closes the stale canonical Gradle
-  replacement source authority; its real canonical execution remains open. Native Windows/Android/Linux builds, installed device/VM lifecycle and renderer
-  behavior, focus/task-swipe presentation latency, cross-version sessions, exact current artifacts, cold
-  release reproduction, independent reproduction, and external review remain explicit stop-ship gaps.
-
+  The current real temporary-filesystem self-test passed ordinary new publication and replacement,
+  selected pre-rename and post-rename/pre-seal recovery, moved-unselected refusal, promoted and
+  exchanged recovery, rollback, safe legacy-v2 new recovery, legacy-v2 replacement refusal,
+  mismatched displaced-metadata refusal, identity/content/metadata preservation, finality, and
+  journal archival. The focused verifier rejected all 65 retained mutations. The confined profile
+  and listener result are recorded in R-S11cn above. These results do not exercise a genuinely
+  root-owned displaced tree, power-cut storage behavior, the live canonical cache, cold acquisition,
+  release artifacts, target devices/VMs, cross-version behavior, sustained resource/performance
+  bounds, independent reproduction, or external review; all remain open where applicable.
 - **R-S11fz/R-S11e-212 — stale occupied canonical Gradle-cache replacement — SOURCE IMPLEMENTED;
   CURRENT NUMERIC-NONROOT FILESYSTEM SELF-TEST GREEN; OLDER REAL APK AND V3 CANONICAL
   EVIDENCE RETAINED; CURRENT V4, COLD-RELEASE, AND DEVICE EVIDENCE OPEN.** Platform: the unprivileged Linux

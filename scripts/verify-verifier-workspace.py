@@ -3473,7 +3473,6 @@ def validate_docs(sources):
 
     hardening = sources["hardening"]
     for text in (
-        "Current `.6` source verdict (2026-07-14)",
         "git clone --no-hardlinks --no-checkout --reject-shallow",
         "524,544",
         "no longer normalizes the workspace or its authenticated online snapshot",
@@ -79936,12 +79935,6 @@ def run_source_mutations(sources):
             "refuses any late content instead of traversing it",
             "recursively removes any late content",
             "requirements release authority",
-        ),
-        (
-            "hardening",
-            "Current `.6` source verdict (2026-07-14)",
-            "Current `.6` source verdict (2026-07-13)",
-            "hardening-status current release authority",
         ),
         (
             "changelog",

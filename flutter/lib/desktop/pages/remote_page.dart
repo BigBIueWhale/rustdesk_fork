@@ -654,8 +654,12 @@ class _RemotePageState extends State<RemotePage>
           debugPrint(
               "Unexpected status: onPointerDown is triggered while the remote window is in blur status");
           _isWindowBlur = false;
-          _resumePresentationIfNeeded();
         }
+        // The presentation owner may also be suspended by minimize even when the separate
+        // Windows blur flag is already coherent. Asking it to resume is a no-op unless an exact
+        // suspend is pending, so this also recovers a missed restore callback without refreshing
+        // on ordinary pointer input.
+        _resumePresentationIfNeeded();
         if (!_rawKeyFocusNode.hasFocus) {
           _rawKeyFocusNode.requestFocus();
         }

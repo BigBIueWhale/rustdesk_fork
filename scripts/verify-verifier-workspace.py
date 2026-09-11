@@ -67311,15 +67311,15 @@ def run_source_mutations(sources):
         ),
         (
             "desktop_remote_page_dart",
-            "          _isWindowBlur = false;\n          _resumePresentationIfNeeded();",
-            "          _isWindowBlur = false;",
-            "independent desktop remote viewer pointer-evidenced missing-focus recovery",
+            "        _resumePresentationIfNeeded();\n        if (!_rawKeyFocusNode.hasFocus)",
+            "        if (!_rawKeyFocusNode.hasFocus)",
+            "independent desktop remote viewer pointer-evidenced pending-presentation recovery",
         ),
         (
             "desktop_camera_page_dart",
-            "          _isWindowBlur = false;\n          _resumePresentationIfNeeded();",
-            "          _isWindowBlur = false;",
-            "independent desktop camera viewer pointer-evidenced missing-focus recovery",
+            "        _resumePresentationIfNeeded();\n        if (!_rawKeyFocusNode.hasFocus)",
+            "        if (!_rawKeyFocusNode.hasFocus)",
+            "independent desktop camera viewer pointer-evidenced pending-presentation recovery",
         ),
         (
             "requirements",

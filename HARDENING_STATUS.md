@@ -783,9 +783,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   re-notification and peer refresh; only the newest still-current asynchronous Dart decode may replace the
   displayed `ui.Image`. Generated-bridge and native lifecycle/presentation/performance evidence remain open.
 - **R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery** — Source closed. A pointer event delivered
-  to the exact Windows remote canvas while blur state is stale clears that state and runs the same coalesced exact-
-  owner presentation recovery used by a real focus event; it cannot restore control alone while display remains
-  suspended.
+  to the exact Windows remote canvas always consults the same coalesced exact-owner presentation recovery used by a
+  real focus event. A stale blur flag is still cleared, but recovery no longer depends on that second flag: a pending
+  minimize suspension also survives a missed restore/focus callback. The recovery owner is a no-op when no exact
+  suspension is pending, so ordinary pointer input cannot create refresh traffic or restore control alone while
+  display remains suspended.
 - **R-S11ft/R-S11e-207 Linux selected-session observation authority** — Source closed. Each stable service-loop
   iteration builds one bounded selected-user process snapshot with capped proc records and coherent selector
   fields; privileged X11/Wayland/Xwayland/D-Bus selection does not repeatedly reread attacker-mutable proc state.

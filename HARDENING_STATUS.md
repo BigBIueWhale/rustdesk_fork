@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-bb23abcfc5ae91981674ee6eed5a3118d5502c4df000743b734df88079ccb69a  requirements.html
+d177d78369fe72058d8e7fdd8bad6c98df4d6468a70429f941c2c7c2639648e3  requirements.html
 ```
 
 ## Current Verdict
@@ -11743,87 +11743,50 @@ service, unrelated workload, or OS privilege boundary.
 
 ### R-S11hc/R-S11e-241 — latest-state Windows tray session-count ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT
-RUST/NATIVE, WINDOWS RUNTIME, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.**
-Platform: Windows desktop tray. Surface: typed main-IPC controlled-session-count query ->
-process-lifetime tray poller -> Tao UI tooltip presentation. Android's intentionally
-persistent `MainService`, the controlled service, media transport, and connection state
-machines are not part of this slice and are unchanged.
+**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS AUTHORED AND WIRED; EXACT
+CURRENT WINDOWS TRAY/PERFORMANCE/ARTIFACT EVIDENCE OPEN.** The inherited one-second tray
+poller sent each changed controlled-session count through an unbounded standard-library
+channel, while the Tao loop consumed at most one queued value per callback. A stalled UI
+could therefore retain obsolete history. Publication discarded receiver failure and the
+poller did not observe receiver retirement. This was Windows source-proven resource,
+stale-presentation, and finality debt—not a privileged-service bypass, proof that deployed
+artifacts exercised it, or a causation claim for the reported display delay.
 
-Read-only source tracing found that the existing one-second poller sent every changed
-`usize` snapshot into `std::sync::mpsc::channel`, whose standard sender is unbounded. The
-Tao event loop attempted at most one `try_recv` per callback. If UI dispatch stalled,
-arbitrarily many historical counts could therefore remain allocated even though only the
-newest tray tooltip state was meaningful. Publication discarded `send` failure with
-`.ok()`, and the process-lifetime poller did not test whether its receiver still existed.
-The neighboring Windows SCM stop sender was separately inspected and remains unchanged:
-its atomic one-shot admission proves at most one stop token, so it is already
-capacity-independent. The tray finding is Windows source-proven resource,
-stale-presentation, and finality debt. It is not a privileged-service bypass, proof that
-an unidentified deployed artifact exercised the path, or a causation claim for the
-reported display-only delay.
+The tray now owns one Tokio watch cell initialized to zero. The existing poller receives the
+sole sender, publishes only changed state after releasing its read guard, and exits before
+the next IPC query or after publication when the UI receiver is closed. Arbitrarily many
+changes before observation collapse to the newest count. The Tao event-loop scope owns the
+sole receiver, acknowledges each observed revision once, and retires it after publisher
+closure. The typed main-IPC request, one-second interval, IPC timeout, polling thread/runtime,
+tooltip semantics, service authority, network topology, and Android persistent service are
+unchanged; no alternate queue, retry, reconnect, listener, port, dependency, or privilege
+path was added.
 
-The tray now owns one Tokio watch cell initialized to zero. The existing poller is handed
-the sole sender and replaces only changed state; a short read guard is explicitly released
-before publication, so a write cannot wait upon its own read guard. Arbitrarily many
-changes before the UI observes a revision collapse to the newest count without blocking
-or allocating a historical event backlog. The UI event-loop scope owns the sole receiver,
-uses `has_changed` plus `borrow_and_update` to observe and acknowledge the latest revision
-once, and retires that receiver after publisher closure. Publication returns receiver
-liveness, the poller checks liveness before each IPC query, and a failed publication exits
-the poller. Unchanged state causes no wake. The existing one-second interval, IPC timeout,
-polling thread, current-thread runtime, typed `MainIpcRequest::ControlledSessionCount`
-operation, and tooltip behavior remain otherwise unchanged. No retry, reconnect, timer,
-worker, thread, runtime, IPC operation, service action, listener, port, dependency,
-privilege transition, alternate path, or Android persistent-service behavior is added or
-changed.
+Four Rust regressions exercise latest-state collapse, unchanged-state silence,
+receiver-retirement refusal, and publisher-retirement observation. The shared runner keeps
+its exact `cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never`
+invocation. The 310-line `verify-tray-session-count-mailbox.py` and 390 lines of duplicated
+workspace coupling were deleted because they only matched and deliberately mutated source
+strings; they never executed Tokio, the IPC poller, Tao, or Windows. R-S11hc and Appendix C
+#364 now require the executable state-machine regressions plus exact Windows main-IPC,
+tooltip, focus/session, latency, poller-retirement, and bounded-resource observation.
 
-Four deterministic Rust regressions bind latest-state collapse, unchanged-state silence,
-receiver-retirement refusal, and publisher-retirement observation.
-`scripts/verify-tray-session-count-mailbox.py` independently binds the production
-topology, old-path absence, explicit read-guard scope, changed-only publication,
-revision acknowledgement, sole sender/receiver ownership, both finality directions,
-tests, requirements, Appendix C #364, ledger identity, and shared/independent wiring with
-deliberate mutations. The separate workspace validator parses these source and wiring
-properties rather than accepting the focused verifier's outcome as authority.
+Confined Python AST/HTML parsing, shared/Apple/Dart shell syntax, the reduced independent
+workspace baseline, requirements-digest synchronization, native-codec watch, status-size
+gate, and `git diff --check` passed. The non-networked container left the exact host listener
+inventory unchanged (`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`).
 
-In the immutable local verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
-with `--pull=never`, networking disabled, a read-only root and repository, all
-capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, and finite
-CPU/memory/no-swap/PID/private-tmpfs limits, the focused tray verifier rejected all 24
-deliberate mutations. The adjacent Android voice/input, Android lifecycle-drain, CM
-egress, file-clipboard route, controlled-egress, keyed-writer, display-finality, viewer
-voice-worker, and native clipboard-listener gates rejected 535, 39, 64, 38, 51, 25, 186,
-63, and 27 mutations respectively. The independent unmodified workspace baseline passed,
-and a narrowed independent run rejected all 26 new R-S11hc catalog entries. On these exact
-ledger bytes, one final uninterrupted complete independently parsed catalog rejected all
-4,637 source mutations. Exact Rust 1.75 formatting, in-memory Python AST parsing, shared
-Bash syntax, the synchronized requirements digest, the native-codec watch, and
-`git diff --check` also passed.
-
-The first narrowed independent run exposed a gate self-reference rather than accepting a
-production weakening: mutating the `tray_source` key in `main()` could still leave the
-same text inside the mutation fixture itself, so a raw-text source-map assertion was
-insufficient. The independent validator now parses the actual `main()` sources dictionary
-and requires singular focused-verifier and tray-source keys structurally. Its unmodified
-baseline and all 26 new mutations then passed. No production requirement or behavior was
-removed or weakened. Only the final uninterrupted complete pass on these ledger-updated
-bytes is counted as final evidence.
-
-This remains source-level work, not current native behavior or release readiness. The
-exact pinned Windows builder and authenticated Cargo vendor closure are unavailable
-locally, so exact-current Rust/native compilation and real tray execution are not yet
-claimed. Physical Windows focus/minimize/reconnect behavior; Android task-swipe/reopen/
-Force-Stop behavior; Linux/macOS/iOS/web and cross-version behavior; the weeks-old
-deployed artifacts; capture-through-compositor timestamps and explicit latency/queue
-budgets; sustained connection/reconnect/focus/background/file/control coexistence,
-resource, and performance soak; clean cold R-B2/R-B10 equality; installed process,
-service, and package behavior; independent reproduction; R-V3 external review;
-causation; and proof that the complete connection flow is correct and performant all
-remain explicit release obligations. This slice inspects or changes no host RustDesk
-process, configuration, service, listener, firewall/network state, VM, Android device or
-service, unrelated workload, or OS privilege boundary.
+Exact current Windows compilation and tray execution remain open. The authenticated
+repository `online/` closure, pinned devcheck/Windows helper inputs, and repository-owned
+golden QCOW2 are absent; unrelated local Android emulator images are not RustDesk evidence
+or test authority. The retained Rust tests were therefore not compiled or executed and
+receive no new behavior verdict. Required evidence still includes an exact candidate in a
+disposable zero-interface Windows VM, installed-service and real tray behavior,
+focus/minimize/session transitions, sustained thread/handle/memory and latency soak, cold
+R-B2/R-B10 equality, independent reproduction, R-V3 external review, and the complete
+connection flow remaining correct and performant. This slice touches no host/Haggai RustDesk process, service,
+configuration, listener, firewall/network state, VM/device, image/cache, unrelated workload,
+or OS privilege boundary.
 
 ### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership (2026-08-21)
 

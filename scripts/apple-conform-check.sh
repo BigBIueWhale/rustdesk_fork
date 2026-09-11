@@ -3098,16 +3098,6 @@ if grep -qF 'let tx_from_cm_clone = p.tx_from_cm.clone();' <<<"$cm_ipc_owner" \
     || grep -qF 'allow_err!(tx_from_cm_failure.send' <<<"$cm_ipc_owner"; then
   r_s11c4d="$r_s11c4d windows-only-or-swallowed-bridge-failure-publication-present"
 fi
-grep -qF 'finite per-connection CM command queue' "$REPO/requirements.html" \
-  || r_s11c4d="$r_s11c4d normative-command-budget-missing"
-grep -qF 'R-S11c-4d — bounded exact-owner CM command publication' "$REPO/HARDENING_STATUS.md" \
-  || r_s11c4d="$r_s11c4d hardening-ledger-missing"
-grep -qF '<span class="id">R-S11iy</span>' "$REPO/requirements.html" \
-  || r_s11c4d="$r_s11c4d bridge-failure-requirement-missing"
-grep -qF '<tr><td>410</td>' "$REPO/requirements.html" \
-  || r_s11c4d="$r_s11c4d bridge-failure-appendix-missing"
-grep -qF 'R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality' "$REPO/HARDENING_STATUS.md" \
-  || r_s11c4d="$r_s11c4d bridge-failure-ledger-missing"
 if [ -n "$r_s11c4d" ]; then
   echo "  FAIL R-S11c-4d bounded exact-owner macOS CM command publication:$r_s11c4d"
   rc=1

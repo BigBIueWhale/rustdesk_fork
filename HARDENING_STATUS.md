@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-cb4bfa8542f77c76a1a44c2c586de192a4a0e572f90b69f1a3cf67118c13b809  requirements.html
+845420bcd797d4fb9158c1d01d16ed966e74b870e24659dcbaa7d7e18633bd30  requirements.html
 ```
 
 ## Current Verdict
@@ -76,9 +76,21 @@ by 5,976 bytes. The focused desktop lifecycle source invariant was narrowed by 2
 actual product ownership paths, while its 1,210-line/50,029-byte duplicate validator and mutation layer was
 deleted from the workspace verifier. No product source changed in this cleanup. The focused check protects
 source topology only; exact installed lifecycle, failure-injection, cleanup, and resource evidence remains
-open below. A confined normal workspace-catalog run passes the synchronized requirements identity and the
-deleted desktop duplicate layer, then stops at an unrelated stale Android CM source signature
-(`pub fn start_channel(`); R-S11bg's current full-gate and independent-image obligations remain open.
+open below.
+
+R-S11c-4d and Appendix C #204 now state the timeless finite-command, independent-terminal, and retained
+Android child-future contract instead of implementation history, test counts, receipts, or a `FIX` badge,
+reducing `requirements.html` by another 571 bytes. The workspace verifier lost 931 lines: its duplicate CM
+validator/mutation layer plus obsolete cross-scope and verifier-of-verifier checks. The Android voice source
+verifier lost 154 lines of obsolete CM/listener-lifecycle assertions and mutations, and those shared/Apple
+CM gates no longer require documentation or ledger wording. The shared source gate retains the load-bearing
+queue, terminal, desktop bridge, Android
+child-future, no-detached-runtime, exact task-owner, early-failure, and normal-close-finality checks. In a
+nonroot, network-disabled, read-only-source container, that focused block passes and the Android verifier
+passes normally and rejects all 563 retained mutations. The normal workspace catalog advances beyond the
+deleted `start_channel` assumption and stops at the separate stale Android listener-startup assertion
+`Android exact server-generation stop contract: required contract is absent`. No Rust test, Android target,
+installed application, or device ran; R-S11bg and all current native/runtime obligations remain open.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -13208,8 +13220,11 @@ The shared runner retains
 registry-generation JSON serialization only; it does not exercise full Dart replacement
 or stale-event UI behavior. `scripts/android-controlled-connection-type-test.kt`
 contains useful model assertions, but no retained gate compiles or executes it; grepping
-its strings is not an Android regression. The deleted combined verifier did not execute
-any of these paths.
+its strings is not an Android regression. The shared source gate checks the retained
+Android child future, exact generation transfer, terminal/connection finality, and RAII
+registry retirement without asserting documentation text. The duplicate workspace CM
+validator and the unrelated CM/listener checks formerly embedded in the Android voice
+and media source validators are deleted; none of those source checks executed these paths.
 
 The two child-future tests have not yet been executed against the current dependency
 closure because the pinned project builder is absent locally; Rust parsing alone is not

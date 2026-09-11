@@ -2601,18 +2601,6 @@ def validate(sources: Dict[str, str]) -> None:
         "service_generation: u64",
         "connection-manager callback generation owner",
     )
-    start_channel = extract_item(
-        flutter, "pub fn start_channel", "generation-bound Android connection channel"
-    )
-    require_order(
-        start_channel,
-        (
-            "service_generation: u64",
-            "FlutterHandler { service_generation }",
-            "start_listen(cm, rx, terminal, tx)",
-        ),
-        "connection generation transfer into callback handler",
-    )
     server_connection = sources["server_connection"]
     require(
         server_connection,
@@ -2632,140 +2620,6 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require_count(server_connection, helper, expected_count, label)
-    require(
-        server_connection,
-        "start_channel(\n"
-        "            rx_to_cm,\n"
-        "            cm_terminal_rx,\n"
-        "            tx_from_cm,\n"
-        "            conn.android_server_generation,\n"
-        "        )",
-        "generation-bound connection-manager channel start",
-    )
-    direct_service = sources["direct_service"]
-    require_order(
-        direct_service,
-        (
-            "reserved: bool",
-            "active: bool",
-            "fn begin_generation(&mut self) -> Option<u64>",
-            "if self.reserved || self.active",
-            "self.reserved = true",
-            "self.active = false",
-            "fn activate_generation(&mut self, expected_generation: u64) -> bool",
-            "self.reserved = false",
-            "self.active = true",
-        ),
-        "inactive reservation before exact Android listener activation",
-    )
-    exact_stop = extract_item(
-        direct_service, "pub fn android_request_stop", "exact Android server stop"
-    )
-    require_order(
-        exact_stop,
-        (
-            "ANDROID_LISTENER_LIFECYCLE.lock().unwrap()",
-            "if lifecycle.stop_generation(expected_generation)",
-            "deactivated owned listener generation",
-            "true",
-            "else",
-            "false",
-        ),
-        "exact serialized generation stop",
-    )
-    flutter_ffi = sources["flutter_ffi"]
-    start_server = extract_item(
-        flutter_ffi, "Java_ffi_FFI_startServer", "MainService native generation start"
-    )
-    require_order(
-        start_server,
-        (
-            "service: JObject",
-            "bind_main_service_generation(",
-            "&env",
-            "&service",
-            "android_begin_generation",
-            "android_request_stop(generation)",
-            "generation as jlong",
-        ),
-        "object-authorized listener and callback generation reservation",
-    )
-    forbid(start_server, "start_server(true, generation)", "pre-admission listener spawn")
-    activate_server = extract_item(
-        flutter_ffi, "Java_ffi_FFI_activateServer", "MainService exact generation activation"
-    )
-    require_order(
-        activate_server,
-        (
-            "service: JObject",
-            "claim_main_service_listener_start(&env, &service, generation)",
-            "android_activate_generation(generation)",
-            "std::thread::Builder::new()",
-            ".spawn(move || {",
-            "let _worker_guard = AndroidDirectServerWorkerGuard(generation)",
-            "start_server(true, generation)",
-        ),
-        "post-admission listener activation with terminal worker ownership",
-    )
-    generation_health = extract_item(
-        flutter_ffi,
-        "Java_ffi_FFI_isServerGenerationActive",
-        "MainService exact generation health",
-    )
-    require_order(
-        generation_health,
-        (
-            "service: JObject",
-            "generation: jlong",
-            "owns_main_service_generation(&env, &service, generation)",
-            "android_generation_is_active(generation)",
-        ),
-        "exact object-and-active-listener generation health",
-    )
-    native_generation_health = extract_item(
-        android_ffi,
-        "pub fn owns_main_service_generation",
-        "native MainService generation health owner",
-    )
-    require_order(
-        native_generation_health,
-        (
-            "current.generation.is_activation_claimed(generation)",
-            "env.is_same_object(current.owner.as_obj(), service)",
-        ),
-        "native exact object, generation, and listener-start health",
-    )
-    stop_server = extract_item(
-        flutter_ffi, "Java_ffi_FFI_deactivateServer", "MainService exact listener stop"
-    )
-    require_order(
-        stop_server,
-        (
-            "generation: jlong",
-            "if generation <= 0",
-            "generation as u64",
-            "scrap::android::deactivate_main_service_generation(",
-            "android_request_stop_or_confirm_inactive,",
-        ),
-        "positive exact-object proof before native stop or worker-exit convergence",
-    )
-    retire_generation = extract_item(
-        flutter_ffi,
-        "Java_ffi_FFI_retireServerGeneration",
-        "MainService exact generation finalization",
-    )
-    require_order(
-        retire_generation,
-        (
-            "generation: jlong",
-            "if generation <= 0",
-            "generation as u64",
-            "scrap::android::retire_main_service_generation(",
-            "android_generation_is_inactive",
-        ),
-        "inactive exact generation resource finalization",
-    )
-
     io_loop = sources["io_loop"]
     accepted_voice_call = extract_item(
         io_loop,
@@ -5757,7 +5611,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("connection_type_test", "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)", "owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)", "duplicate same-ID capture-owner replacement regression"),
     ("connection_type_test", "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)", "owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)", "stale same-ID capture-owner replacement regression"),
     ("connection_type_test", "owners.isCurrent(41, 11)", "owners.isCurrent(41, 10)", "current same-ID capture-owner regression"),
-    ("service", "FFI.releaseService(this)", "true", "exact service callback-owner release"),
     ("service", "VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "true", "task-removal owner teardown"),
     ("activity", "VoiceCallAudioCoordinator.invalidateOutgoingOwner()", "true", "new-isolate invalidation"),
     ("activity", "internal data class ClientSessionOwner", "data class ClientSessionOwner", "Activity owner visibility"),
@@ -5783,13 +5636,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "android_server_generation: u64", "android_server_generation: i64", "connection service-generation ownership"),
     ("server_connection", "call_main_service_pointer_input_for_generation", "call_main_service_pointer_input", "generation-bound controlled pointer dispatch"),
     ("server_connection", "call_main_service_key_event_for_generation", "call_main_service_key_event", "generation-bound controlled key dispatch"),
-    ("direct_service", "lifecycle.stop_generation(expected_generation)", "lifecycle.stop_generation(lifecycle.generation)", "exact serialized server-generation stop"),
-    ("flutter_ffi", "crate::direct_service::android_begin_generation,", "|| 1,", "object-authorized listener/callback generation binding"),
-    ("flutter_ffi", "if !crate::direct_service::android_activate_generation(generation)", "if false", "reserved listener generation activation"),
-    ("flutter_ffi", "let _worker_guard = AndroidDirectServerWorkerGuard(generation);", "// terminal worker exit retained active ownership", "terminal listener-worker generation retirement"),
-    ("flutter_ffi", "scrap::android::owns_main_service_generation(&env, &service, generation)", "true", "exact object-bound generation health"),
-    ("direct_service", "self.reserved = true;\n        self.active = false;", "self.reserved = false;\n        self.active = true;", "inactive listener generation reservation"),
-    ("direct_service", "if self.reserved || self.active", "if false", "single reserved or active listener generation"),
     ("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),
     ("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),
     ("flutter", "acquire_android_client_owner(&client_owner_id)?", "acquire_android_client_owner(&session_id)?", "existing-session owner admission"),

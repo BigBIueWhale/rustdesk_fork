@@ -6285,15 +6285,6 @@ if grep -qF 'let _res = timeout(1_000, _rx_desktop_ready.recv()).await' <<<"$cm_
   || grep -qF 'Keep behavior unchanged for now' <<<"$cm_ipc_bootstrap"; then
   r_s11c27t="$r_s11c27t obsolete-closed-readiness-retry-present"
 fi
-grep -qF 'Every pre-bridge connection-manager wait' requirements.html \
-  || r_s11c27t="$r_s11c27t normative-cancellation-clause-missing"
-grep -qF 'dedicated per-connection cancellation receiver' requirements.html \
-  || r_s11c27t="$r_s11c27t normative-owner-channel-clause-missing"
-grep -qF 'independent one-shot terminal lane' requirements.html \
-  || r_s11c27t="$r_s11c27t normative-terminal-lane-clause-missing"
-grep -qF '<tr><td>204</td>' requirements.html || r_s11c27t="$r_s11c27t appendix-row-missing"
-grep -qF 'R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership' HARDENING_STATUS.md \
-  || r_s11c27t="$r_s11c27t hardening-ledger-missing"
 if [ -n "$r_s11c27t" ]; then echo "  FAIL R-T4/R-S11c-27t Linux CM bootstrap owner-loss cancellation:$r_s11c27t"; rc=1; else
   echo "  ok  R-T4/R-S11c-27t connection-owner loss terminates every CM pre-bridge retry; bounded live commands cannot outrun or starve exact terminal ownership"; fi
 
@@ -8700,6 +8691,9 @@ r_s11c4d=
 cm_command_sender=$(awk '/async fn send_to_cm\(/,/fn publish_cm_terminal/' src/server/connection.rs)
 cm_file_sender=$(awk '/async fn send_fs\(/,/async fn send_login_error/' src/server/connection.rs)
 cm_android_bridge=$(awk '/pub async fn start_listen/,/fn get_transfer_job_for_connection/' src/ui_cm_interface.rs)
+cm_android_task_owner=$(awk '/struct CmClientTaskOwner/,/pub async fn start_listen/' src/ui_cm_interface.rs)
+cm_android_channel=$(awk '/pub async fn run_channel\(/,/^    }/' src/flutter.rs)
+cm_android_owner=$(awk '/let mut cm_channel = Some\(Box::pin\(run_channel\(/,/log::info!\("#\{\} connection loop exited"/' src/server/connection.rs)
 cm_ipc_owner=$(awk '/fn try_start_cm_ipc\(/,/async fn on_message/' src/server/connection.rs)
 cm_ipc_bootstrap=$(awk '/async fn start_ipc\(/,/\/\/ in case screen is sleep and blank/' src/server/connection.rs)
 for binding in \
@@ -8762,6 +8756,51 @@ android_command_line=$(grep -nF -m 1 'command = rx.recv() => command' <<<"$cm_an
 if [ -z "$android_terminal_line" ] || [ -z "$android_command_line" ] || [ "$android_terminal_line" -ge "$android_command_line" ]; then
   r_s11c4d="$r_s11c4d android-terminal-not-before-ordinary-command"
 fi
+for binding in \
+  'pub async fn run_channel(' \
+  'service_generation: u64' \
+  'if service_generation == 0' \
+  'FlutterHandler { service_generation }' \
+  'start_listen(cm, rx, terminal, tx).await;' \
+  'Ok(())'; do
+  grep -qF "$binding" <<<"$cm_android_channel" || r_s11c4d="$r_s11c4d android-retained-child-handoff-missing"
+done
+if grep -qF 'std::thread' <<<"$cm_android_channel" || grep -qF '#[tokio::main' <<<"$cm_android_channel"; then
+  r_s11c4d="$r_s11c4d android-detached-thread-or-nested-runtime-present"
+fi
+for binding in \
+  'owner: CmClientOwner' \
+  'impl<T: InvokeUiCM> Drop for CmClientTaskOwner<T>' \
+  'self.cm.remove_connection(self.owner, true);'; do
+  grep -qF "$binding" <<<"$cm_android_task_owner" || r_s11c4d="$r_s11c4d android-exact-task-owner-retirement-missing"
+done
+for binding in \
+  'current_owner = Some(CmClientTaskOwner::new(cm.clone(), owner));' \
+  'drop(current_owner);'; do
+  grep -qF "$binding" <<<"$cm_android_bridge" || r_s11c4d="$r_s11c4d android-exact-task-owner-lifetime-missing"
+done
+grep -qF 'conn.android_server_generation' <<<"$cm_android_owner" \
+  || r_s11c4d="$r_s11c4d android-connection-generation-transfer-missing"
+android_child_create_line=$(grep -nF -m 1 'let mut cm_channel = Some(Box::pin(run_channel(' <<<"$cm_android_owner" | cut -d: -f1)
+android_child_poll_line=$(grep -nF -m 1 'cm_result = async {' <<<"$cm_android_owner" | cut -d: -f1)
+android_child_take_line=$(grep -nF -m 1 'cm_channel.take();' <<<"$cm_android_owner" | cut -d: -f1)
+android_child_early_close_line=$(grep -nF -m 1 'conn.on_close(reason, false).await;' <<<"$cm_android_owner" | cut -d: -f1)
+android_network_close_line=$(grep -nF -m 1 'conn.on_close("End", true).await;' <<<"$cm_android_owner" | cut -d: -f1)
+android_child_join_line=$(grep -nF -m 1 'if let Some(channel) = cm_channel {' <<<"$cm_android_owner" | cut -d: -f1)
+android_child_await_line=$(grep -nF 'channel.await' <<<"$cm_android_owner" | tail -n 1 | cut -d: -f1)
+if [ -z "$android_child_create_line" ] || [ -z "$android_child_poll_line" ] \
+    || [ -z "$android_child_take_line" ] || [ -z "$android_child_early_close_line" ] \
+    || [ "$android_child_create_line" -ge "$android_child_poll_line" ] \
+    || [ "$android_child_poll_line" -ge "$android_child_take_line" ] \
+    || [ "$android_child_take_line" -ge "$android_child_early_close_line" ]; then
+  r_s11c4d="$r_s11c4d android-child-completion-not-connection-terminal"
+fi
+if [ -z "$android_network_close_line" ] || [ -z "$android_child_join_line" ] \
+    || [ -z "$android_child_await_line" ] \
+    || [ "$android_network_close_line" -ge "$android_child_join_line" ] \
+    || [ "$android_child_join_line" -ge "$android_child_await_line" ]; then
+  r_s11c4d="$r_s11c4d android-network-close-not-before-child-finality"
+fi
 cm_failure_sender_line=$(grep -nF -m 1 'let tx_from_cm_failure = p.tx_from_cm.clone();' <<<"$cm_ipc_owner" | cut -d: -f1)
 cm_failure_result_line=$(grep -nF -m 1 'if let Some(Err(err)) = result {' <<<"$cm_ipc_owner" | cut -d: -f1)
 cm_failure_publish_line=$(grep -nF -m 1 'tx_from_cm_failure.send(Data::CmErr(err.to_string()))' <<<"$cm_ipc_owner" | cut -d: -f1)
@@ -8788,16 +8827,6 @@ fi
 if grep -qF 'self.tx_to_cm.send(ipc::Data::Close)' src/server/connection.rs; then
   r_s11c4d="$r_s11c4d terminal-still-shares-ordinary-command-queue"
 fi
-grep -qF 'finite per-connection CM command queue' requirements.html \
-  || r_s11c4d="$r_s11c4d normative-command-budget-missing"
-grep -qF 'R-S11c-4d — bounded exact-owner CM command publication' HARDENING_STATUS.md \
-  || r_s11c4d="$r_s11c4d hardening-ledger-missing"
-grep -qF '<span class="id">R-S11iy</span>' requirements.html \
-  || r_s11c4d="$r_s11c4d bridge-failure-requirement-missing"
-grep -qF '<tr><td>410</td>' requirements.html \
-  || r_s11c4d="$r_s11c4d bridge-failure-appendix-missing"
-grep -qF 'R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality' HARDENING_STATUS.md \
-  || r_s11c4d="$r_s11c4d bridge-failure-ledger-missing"
 if [ -n "$r_s11c4d" ]; then echo "  FAIL R-S11c-4d bounded exact-owner CM command publication:$r_s11c4d"; rc=1; else
   echo "  ok  R-S11c-4d/R-S11e-288 every Connection-to-CM command is finite and terminal-first; authenticated desktop bridge EOF/failure retires its exact network owner"; fi
 

@@ -10177,6 +10177,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   - Both named runs used an unprivileged zero-interface Windows VM with no host
     device/filesystem passthrough and loopback-only VNC; their tracked ledger records no host
     RustDesk/service/configuration, firewall, route, or network mutation.
+  - The focused source gate binds the presentation harness to the shared private-libvirt
+    transaction lifecycle, its scrubbed client environment, absolute `setsid`/`virt-install`
+    launchers, session URI, zero guest NICs, and loopback-only VNC. This is supplementary static
+    regression protection, not native evidence for current source or release artifacts.
 
   Evidence retention and limits:
 

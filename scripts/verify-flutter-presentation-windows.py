@@ -154,7 +154,8 @@ def validate(sources: dict[str, str]) -> None:
         host,
         (
             "CURRENT_DOMAIN_CREATION_STARTED=1",
-            "setsid --wait virt-install --connect qemu:///session",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            "/usr/bin/virt-install --connect qemu:///session",
             '--network none --graphics vnc,listen=127.0.0.1',
             "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
             "verify_domain_xml",
@@ -163,8 +164,25 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "unprivileged loopback-only VM admission",
     )
+    require_order(
+        host,
+        (
+            'source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"',
+            'windows_libvirt_transaction_open "$RUN_ROOT"',
+            'capture_listeners >"$LISTENERS_BEFORE"',
+            "launch_domain",
+            "wait_for_domain",
+            "windows_libvirt_transaction_close",
+            "extract_and_validate",
+        ),
+        "private libvirt transaction lifecycle",
+    )
     require(host, 'root.findall("./devices/interface")', "zero-interface XML check")
-    require(host, "virsh --connect qemu:///session", "unprivileged virsh URI")
+    require(
+        host,
+        'windows_libvirt_virsh_bounded "$@"',
+        "private bounded virsh delegation",
+    )
     forbid(host, "qemu:///system", "system libvirt URI")
     require(host, 'graphics[0].get("listen") != "127.0.0.1"', "VNC parent check")
     require(host, 'listens[0].get("address") != "127.0.0.1"', "VNC child check")
@@ -1472,7 +1490,42 @@ def self_test(sources: dict[str, str]) -> int:
     mutations = (
         ("host", "--network none", "--network default"),
         ("host", "--graphics vnc,listen=127.0.0.1", "--graphics vnc"),
-        ("host", "virsh --connect qemu:///session", "virsh --connect qemu:///system"),
+        (
+            "host",
+            'source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"',
+            "# private libvirt authority removed",
+        ),
+        (
+            "host",
+            'windows_libvirt_transaction_open "$RUN_ROOT"',
+            "true # private libvirt transaction removed",
+        ),
+        (
+            "host",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            'setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+        ),
+        (
+            "host",
+            '"${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            '"${PATH}"',
+        ),
+        (
+            "host",
+            "/usr/bin/virt-install --connect qemu:///session",
+            "virt-install --connect qemu:///session",
+        ),
+        (
+            "host",
+            'windows_libvirt_virsh_bounded "$@"',
+            'virsh --connect qemu:///system "$@"',
+        ),
+        (
+            "host",
+            "    windows_libvirt_transaction_close \\\n"
+            "        || die \"presentation libvirt authority did not retire after domain finality\"",
+            "    true # private libvirt cleanup removed",
+        ),
         ("host", "if not parsed.is_loopback:", "if False:"),
         (
             "host",

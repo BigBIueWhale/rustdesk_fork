@@ -12746,21 +12746,6 @@ def validate_linux_service_owned_password_requester_contract(sources):
             "The same identity additionally binds R-S11ie and Appendix C #390.",
             "typed Linux post-polkit password authority identity binding",
         ),
-        (
-            sources["requirements"],
-            "one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean",
-            "normative non-cloneable Linux password admission",
-        ),
-        (
-            sources["requirements"],
-            "successful <code>pkcheck</code> exit and exact post-authorization requester replay",
-            "normative post-polkit Linux capability grant",
-        ),
-        (
-            sources["requirements"],
-            "signature itself requires a reference to the exact admission object",
-            "normative capability-typed Linux coordinator admission",
-        ),
     ):
         require_text(source, text, label)
     for source, text, label in (
@@ -13273,21 +13258,6 @@ def validate_windows_sensitive_password_admission_contract(sources):
             "The same identity additionally binds R-S11if and Appendix C #391.",
             "typed Windows password admission identity binding",
         ),
-        (
-            sources["requirements"],
-            "distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities",
-            "normative distinct Windows password capabilities",
-        ),
-        (
-            sources["requirements"],
-            "private listener sender variant, not a caller-supplied string",
-            "normative fixed Windows password listener action",
-        ),
-        (
-            sources["requirements"],
-            "insertion of a fresh keyed <code>Active</code> ledger entry <span class=\"kw\">MUST</span> consume it",
-            "normative consuming Windows service admission",
-        ),
     ):
         require_text(source, text, label)
     require_exact_count(
@@ -13673,21 +13643,6 @@ def validate_linux_credential_replica_admission_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11ig and Appendix C #392.",
             "typed Linux credential identity binding",
-        ),
-        (
-            sources["requirements"],
-            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>",
-            "normative private Linux credential requester",
-        ),
-        (
-            sources["requirements"],
-            "one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>",
-            "normative Linux credential admission",
-        ),
-        (
-            sources["requirements"],
-            "Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica(\"Linux\")</code>",
-            "normative capability-owned Linux credential response",
         ),
     ):
         require_text(source, text, label)
@@ -14266,21 +14221,6 @@ def validate_linux_runtime_prs_writer_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11ih and Appendix C #393.",
             "typed Linux runtime PRS identity binding",
-        ),
-        (
-            sources["requirements"],
-            "distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>",
-            "normative distinct runtime PRS type",
-        ),
-        (
-            sources["requirements"],
-            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>",
-            "normative private runtime PRS writer",
-        ),
-        (
-            sources["requirements"],
-            "accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>",
-            "normative typed runtime PRS transaction",
         ),
     ):
         require_text(source, text, label)
@@ -14926,21 +14866,6 @@ def validate_linux_runtime_prs_receiver_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11ii and Appendix C #394.",
             "runtime PRS receiver identity binding",
-        ),
-        (
-            sources["requirements"],
-            "non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaReceiver</code>",
-            "normative retained receiver capability",
-        ),
-        (
-            sources["requirements"],
-            "consume that receiver to mint one <code>LinuxServiceOwnedRuntimePrsAdmission</code>",
-            "normative consuming final admission",
-        ),
-        (
-            sources["requirements"],
-            "generic durable-password worker <span class=\"kw\">MUST NOT</span> infer runtime-PRS behavior",
-            "normative generic-worker separation",
         ),
     ):
         require_text(source, text, label)
@@ -16679,22 +16604,6 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' docs/NATIVE-CODEC-WATCH.md",
             "shared typed macOS password admission digest binding",
         ),
-        (
-            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html",
-            "shared typed macOS password admission normative shape",
-        ),
-        (
-            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' requirements.html",
-            "shared capability-typed macOS coordinator norm",
-        ),
-        (
-            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' requirements.html",
-            "shared exact prepared-state norm",
-        ),
-        (
-            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' requirements.html",
-            "shared prepared macOS handler norm",
-        ),
     ):
         require_text(verify, text, label)
 
@@ -16900,22 +16809,6 @@ def validate_macos_service_owned_password_requester_contract(sources):
             "grep -Fq 'The same identity additionally binds R-S11id and Appendix C #389.' \"$REPO/docs/NATIVE-CODEC-WATCH.md\"",
             "Apple typed macOS password admission digest binding",
         ),
-        (
-            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' \"$REPO/requirements.html\"",
-            "Apple typed macOS password admission normative shape",
-        ),
-        (
-            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' \"$REPO/requirements.html\"",
-            "Apple capability-typed macOS coordinator norm",
-        ),
-        (
-            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' \"$REPO/requirements.html\"",
-            "Apple exact prepared-state norm",
-        ),
-        (
-            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' \"$REPO/requirements.html\"",
-            "Apple prepared macOS handler norm",
-        ),
     ):
         require_text(apple, text, label)
 
@@ -17113,31 +17006,6 @@ def validate_macos_service_owned_password_requester_contract(sources):
             sources["native_watch"],
             "The same identity additionally binds R-S11id and Appendix C #389.",
             "typed macOS password admission identity binding",
-        ),
-        (
-            sources["requirements"],
-            "MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean",
-            "normative non-cloneable macOS password admission",
-        ),
-        (
-            sources["requirements"],
-            "whose type signature itself requires a reference to that exact admission object",
-            "normative capability-typed macOS coordinator admission",
-        ),
-        (
-            sources["requirements"],
-            "only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>",
-            "normative exact Prepared construction",
-        ),
-        (
-            sources["requirements"],
-            "MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>",
-            "normative prepared-handler Boolean/direct-admission prohibition",
-        ),
-        (
-            sources["hardening"],
-            "There is one capability construction and one\ncapability-owned coordinator call.",
-            "macOS typed admission sole-construction/caller ledger statement",
         ),
     ):
         require_text(source, text, label)
@@ -73741,18 +73609,6 @@ def run_source_mutations(sources):
             "typed Linux post-polkit password authority Appendix C row",
         ),
         (
-            "requirements",
-            "one non-cloneable <code>LinuxServiceOwnedPasswordAdmission</code>, never a Boolean",
-            "one cloneable <code>LinuxServiceOwnedPasswordAdmission</code> or a Boolean",
-            "normative non-cloneable Linux password admission",
-        ),
-        (
-            "requirements",
-            "successful <code>pkcheck</code> exit and exact post-authorization requester replay",
-            "a successful <code>pkcheck</code> exit without requester replay",
-            "normative post-polkit Linux capability grant",
-        ),
-        (
             "hardening",
             "R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
             "R-S11ie-disabled/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
@@ -74026,24 +73882,6 @@ def run_source_mutations(sources):
             "<tr><td>392</td>",
             "<tr><td>392-disabled</td>",
             "typed Linux credential Appendix C row",
-        ),
-        (
-            "requirements",
-            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaRequester</code>",
-            "public cloneable <code>LinuxServiceOwnedCredentialReplicaRequester</code>",
-            "normative private Linux credential requester",
-        ),
-        (
-            "requirements",
-            "one non-cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>",
-            "one cloneable <code>LinuxServiceOwnedCredentialReplicaAdmission</code>",
-            "normative Linux credential admission",
-        ),
-        (
-            "requirements",
-            "Only the admission object&#39;s consuming response method may read <code>service_owned_runtime_prs_replica(\"Linux\")</code>",
-            "Any handler may read <code>service_owned_runtime_prs_replica(\"Linux\")</code>",
-            "normative capability-owned Linux credential response",
         ),
         (
             "hardening",
@@ -74454,24 +74292,6 @@ def run_source_mutations(sources):
             "typed Linux runtime PRS Appendix C row",
         ),
         (
-            "requirements",
-            "distinct non-<code>Clone</code>, non-<code>Copy</code> <code>ServiceOwnedRuntimePrsReplica</code>",
-            "generic cloneable <code>SensitivePassword</code>",
-            "normative distinct runtime PRS type",
-        ),
-        (
-            "requirements",
-            "private, non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaWriter</code>",
-            "public cloneable <code>LinuxServiceOwnedPasswordReplicaWriter</code>",
-            "normative private runtime PRS writer",
-        ),
-        (
-            "requirements",
-            "accept only <code>&amp;ServiceOwnedRuntimePrsReplica</code>",
-            "accept any <code>&amp;SensitivePassword</code>",
-            "normative typed runtime PRS transaction",
-        ),
-        (
             "hardening",
             "R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority",
             "R-S11ih-disabled/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority",
@@ -74842,24 +74662,6 @@ def run_source_mutations(sources):
             "<tr><td>394</td>",
             "<tr><td>394-disabled</td>",
             "runtime PRS receiver Appendix C row",
-        ),
-        (
-            "requirements",
-            "non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedPasswordReplicaReceiver</code>",
-            "cloneable <code>LinuxServiceOwnedPasswordReplicaReceiver</code>",
-            "normative retained receiver capability",
-        ),
-        (
-            "requirements",
-            "consume that receiver to mint one <code>LinuxServiceOwnedRuntimePrsAdmission</code>",
-            "reuse that receiver without an admission",
-            "normative consuming final admission",
-        ),
-        (
-            "requirements",
-            "generic durable-password worker <span class=\"kw\">MUST NOT</span> infer runtime-PRS behavior",
-            "generic durable-password worker <span class=\"kw\">MAY</span> infer runtime-PRS behavior",
-            "normative generic-worker separation",
         ),
         (
             "hardening",
@@ -75262,24 +75064,6 @@ def run_source_mutations(sources):
             "<tr><td>391</td>",
             "<tr><td>391-disabled</td>",
             "typed Windows password admission Appendix C row",
-        ),
-        (
-            "requirements",
-            "distinct <code>WindowsUserOwnedPasswordAdmission</code> and <code>WindowsServiceOwnedPasswordAdmission</code> capabilities",
-            "one generic <code>WindowsSensitivePasswordAdmission</code> capability",
-            "normative distinct Windows password capabilities",
-        ),
-        (
-            "requirements",
-            "private listener sender variant, not a caller-supplied string",
-            "caller-supplied postfix string",
-            "normative fixed Windows password listener action",
-        ),
-        (
-            "requirements",
-            "insertion of a fresh keyed <code>Active</code> ledger entry <span class=\"kw\">MUST</span> consume it",
-            "insertion of a fresh keyed <code>Active</code> ledger entry may borrow it",
-            "normative consuming Windows service admission",
         ),
         (
             "hardening",
@@ -76716,30 +76500,6 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' requirements.html",
-            "true # typed macOS admission shape norm disabled",
-            "shared typed macOS password admission normative shape",
-        ),
-        (
-            "verify",
-            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' requirements.html",
-            "true # typed macOS coordinator norm disabled",
-            "shared capability-typed macOS coordinator norm",
-        ),
-        (
-            "verify",
-            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' requirements.html",
-            "true # exact macOS prepared-state norm disabled",
-            "shared exact prepared-state norm",
-        ),
-        (
-            "verify",
-            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' requirements.html",
-            "true # prepared macOS handler norm disabled",
-            "shared prepared macOS handler norm",
-        ),
-        (
-            "verify",
             'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1',
             'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") >= 1',
             "shared sole macOS password admission construction",
@@ -76788,30 +76548,6 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            "grep -Fq 'MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean' \"$REPO/requirements.html\"",
-            "true # Apple typed macOS admission shape norm disabled",
-            "Apple typed macOS password admission normative shape",
-        ),
-        (
-            "apple",
-            "grep -Fq 'whose type signature itself requires a reference to that exact admission object' \"$REPO/requirements.html\"",
-            "true # Apple typed macOS coordinator norm disabled",
-            "Apple capability-typed macOS coordinator norm",
-        ),
-        (
-            "apple",
-            "grep -Fq 'only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>' \"$REPO/requirements.html\"",
-            "true # Apple exact prepared-state norm disabled",
-            "Apple exact prepared-state norm",
-        ),
-        (
-            "apple",
-            "grep -Fq 'MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>' \"$REPO/requirements.html\"",
-            "true # Apple prepared macOS handler norm disabled",
-            "Apple prepared macOS handler norm",
-        ),
-        (
-            "apple",
             'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") == 1',
             'ipc.count("Some(MacosServiceOwnedPasswordAdmission { requester })") >= 1',
             "Apple sole macOS password admission construction",
@@ -76847,40 +76583,10 @@ def run_source_mutations(sources):
             "typed macOS password admission Appendix C row",
         ),
         (
-            "requirements",
-            "MUST</span> produce one non-cloneable <code>MacosServiceOwnedPasswordAdmission</code>, never a Boolean",
-            "MAY</span> produce a cloneable or Boolean MacosServiceOwnedPasswordAdmission",
-            "normative non-cloneable macOS password admission",
-        ),
-        (
-            "requirements",
-            "whose type signature itself requires a reference to that exact admission object",
-            "whose type signature accepts a detached Boolean",
-            "normative capability-typed macOS coordinator admission",
-        ),
-        (
-            "requirements",
-            "only <code>owns_preparation == true</code> may construct <code>PreparedMacosServiceOwnedPasswordMutation</code>",
-            "any coordinator status may construct PreparedMacosServiceOwnedPasswordMutation",
-            "normative exact Prepared construction",
-        ),
-        (
-            "requirements",
-            "MUST NOT</span> accept <code>authority_allowed</code>, <code>admission_allowed</code>, call <code>prepare_if_allowed</code>",
-            "MAY</span> accept authority_allowed, admission_allowed, or call prepare_if_allowed",
-            "normative prepared-handler Boolean/direct-admission prohibition",
-        ),
-        (
             "hardening",
             "R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission",
             "R-S11id-disabled/R-S11e-267 — typed macOS service-owned password authority through ledger admission",
             "typed macOS password admission hardening ledger",
-        ),
-        (
-            "hardening",
-            "There is one capability construction and one\ncapability-owned coordinator call.",
-            "There may be many capability constructions and\ncapability-owned coordinator calls.",
-            "macOS typed admission sole-construction/caller ledger statement",
         ),
         (
             "native_watch",

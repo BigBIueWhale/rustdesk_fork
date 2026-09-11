@@ -19014,11 +19014,6 @@ def validate_portable_quick_support_excision_contract(sources):
         "R-X9 — portable-packer Quick Support residue excised",
         "portable Quick Support residue hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -19033,7 +19028,6 @@ def validate_portable_quick_support_excision_contract(sources):
         ("Windows run-mode excision requirement", "requirement mutation"),
         ("portable Quick Support residue Appendix C row", "Appendix mutation"),
         ("portable Quick Support residue hardening ledger", "hardening-ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -19095,11 +19089,6 @@ def validate_windows_installer_application_launch_excision_contract(sources):
         "R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application",
         "Windows MSI application-launch hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -19117,7 +19106,6 @@ def validate_windows_installer_application_launch_excision_contract(sources):
         ("Windows installation application-authority requirement", "requirement mutation"),
         ("Windows MSI application-launch Appendix C row", "Appendix mutation"),
         ("Windows MSI application-launch hardening ledger", "hardening-ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -19274,11 +19262,6 @@ def validate_windows_installer_api_contract(sources):
         "R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API",
         "Windows Installer API hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -19302,7 +19285,6 @@ def validate_windows_installer_api_contract(sources):
         ("protected Windows typed Installer API requirement", "requirement mutation"),
         ("Windows Installer API Appendix C row", "Appendix mutation"),
         ("Windows Installer API hardening ledger", "hardening-ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -19408,11 +19390,6 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
         "R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state",
         "unowned Windows certificate cleanup hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -19428,7 +19405,6 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
         ("unowned Windows certificate cleanup excision requirement", "requirement mutation"),
         ("unowned Windows certificate cleanup Appendix C row", "Appendix mutation"),
         ("unowned Windows certificate cleanup hardening ledger", "hardening-ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -19592,11 +19568,6 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
         "R-S11e-156 recursive Windows Amyuni absence-scan authority",
         "Windows Amyuni recursive-scan hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -19626,7 +19597,6 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
         ("unowned Windows Amyuni cleanup excision requirement", "requirement mutation"),
         ("unowned Windows Amyuni cleanup Appendix C row", "Appendix mutation"),
         ("unowned Windows Amyuni cleanup hardening ledger", "hardening-ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -19798,11 +19768,6 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         "R-S11e-157 Windows custom-action ignore-surface excision",
         "Windows custom-action ignore-surface hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -19829,7 +19794,6 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("declarative Windows runtime-cleanup Appendix C row", "Appendix mutation"),
         ("declarative Windows runtime-cleanup hardening ledger", "hardening-ledger mutation"),
         ("Windows custom-action ignore-surface hardening ledger", "ignore-surface ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -20087,11 +20051,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
         "Debian package-owned command-symlink hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -20112,7 +20071,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         ("Debian vendor-unit ownership requirement", "requirement mutation"),
         ("Debian vendor-unit ownership Appendix C row", "Appendix mutation"),
         ("Debian vendor-unit ownership hardening ledger", "hardening-ledger mutation"),
-        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
         ("Debian command-symlink constructor", "command constructor mutation"),
         ("Debian preinst /usr/bin mutation absence", "preinst command-path mutation"),
         ("Debian postinst /usr/bin mutation absence", "postinst command-path mutation"),
@@ -48085,13 +48043,6 @@ def validate_cleanup_docker_authority_contract(sources):
         "R-S11dp/R-S11e-134 — generic cleanup has no daemon-global Docker",
         "generic cleanup Docker authority hardening ledger",
     )
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\n"
-        "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -48139,10 +48090,6 @@ def validate_cleanup_docker_authority_contract(sources):
         (
             "generic cleanup Docker authority hardening ledger",
             "cleanup hardening-ledger mutation",
-        ),
-        (
-            "current GitHub-automation requirements-hash scope",
-            "cleanup hash-scope mutation",
         ),
     ):
         require_text(mutation_matrix, text, label)
@@ -48272,14 +48219,6 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
         ),
     ):
         require_text(focused, text, label)
-
-    require_text(
-        sources["hardening"],
-        "R-S11n through R-S11dz, R-SV4a,\n"
-        "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-        "current GitHub-automation requirements-hash scope",
-    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -82764,12 +82703,6 @@ def run_source_mutations(sources):
             "R-X9 — portable-packer Quick Support residue excised",
             "R-X9 — portable-packer Quick Support residue retained",
             "portable Quick Support residue hardening ledger",
-        ),
-        (
-            "hardening",
-            "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
-            "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
-            "current GitHub-automation requirements-hash scope",
         ),
         (
             "windows_service_wxs",

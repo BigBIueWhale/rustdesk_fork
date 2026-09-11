@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2fa453373ed7f75079bc13119f67a04d02aad848f00dcd7516c142ee0e2ada18  requirements.html
+623a53c40d1f6fdc3c8de69125fefa217a8a42ae5fb0682c0596bad2a40fa0a1  requirements.html
 ```
 
 ## Current Verdict
@@ -12538,482 +12538,89 @@ reproduction, R-V3 external review, causation, and proof that the complete conne
 flow is correct and performant remain explicit release obligations and explicit user
 requests.
 
-### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership (2026-08-22)
+### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 
-**SOURCE IMPLEMENTED/GATED; EXACT DART/FLUTTER/NATIVE AND PHYSICAL-PLATFORM
-EVIDENCE OPEN.** Platform: the shared native Flutter viewer on Android, iOS,
-Windows, Linux, and macOS. Endpoint/action: native upload/download digest handling
-publishes `override_file_confirm`; Dart validates, queues, presents, remembers, and
-returns the required overwrite/skip/cancel decision. Boundary: the exact native
-file job and exact Flutter session generation ↔ the one UI dialog callback and
-native confirmation/cancellation call that advances that job.
+**Status: SOURCE IMPLEMENTED AND FOCUSED-GATED; EXECUTABLE DART/FLUTTER/NATIVE
+AND TARGET-PLATFORM EVIDENCE OPEN.**
 
-Read-only source and history review found that the inherited
-`flutter/lib/utils/event_loop.dart` used an unbounded `List`, accepted work while
-closed, removed index zero in linear time, and kept a `Timer.periodic` wakeup
-running every 100 milliseconds while idle. A later exact-generation correction
-prevented a retired callback from committing after replacement, but did not bound
-retention or make refusal terminal. `FileModel` retained the complete decoded raw
-map, parsed integer and boolean fields late and permissively, substituted job ID
-zero on malformed input, exposed an unused `unknown` operation, and ignored the
-queue admission result because there was none. A missing callback returned as if
-the required confirmation had been consumed. When task-swipe/reopen preserves an
-Android process and foreground service while Force Stop destroys them, that shape
-is a plausible cleanup-mediated stale-state mechanism. It is nonetheless shared
-Flutter source and therefore was never Android-only. This is source proof of
-resource/order/finality debt, not proof that an unidentified weeks-old Android,
-Windows, or Debian artifact exercised it and not a cause claim for the separately
-reported display-only delay.
+Current source admits each required overwrite/skip decision as one immutable canonical
+payload: positive signed-32-bit job ID, nonnegative signed-32-bit file number, exact
+lowercase booleans, and a nonempty NUL-free read path capped at 32,768 UTF-16 code
+units. One exact session generation owns an event-driven FIFO capped at 64
+running-plus-pending confirmations. Close retires the generation, pending work, and
+remembered policy before replacement. Malformed or refused admission, missing job,
+and callback failure use the visible exact-session terminal path; stale failures
+cannot close a replacement. Required work is never silently dropped, coalesced, or
+overwritten, and the idle owner has no timer or polling wakeup.
 
-The corrected local abstraction owns one `Queue` and one exact generation. It
-admits at most 64 confirmations total, including the callback currently running,
-only while open; returns a checked boolean result; inserts and removes FIFO; and
-schedules one microtask drain only when work exists. There is no timer, poll,
-retry, concurrent drain, detached callback, head-shifting list, secondary queue,
-silent drop, coalescing, or overwrite. Close invalidates the generation before
-clearing pending work and the remembered overwrite/skip policy. If a prior
-generation's callback is still settling, a replacement generation may retain
-bounded pending work but cannot run it concurrently; the old drain's finalizer
-schedules the current generation after the old callback settles. Stale scheduled
-microtasks cannot clear or redirect a replacement schedule.
+Focused Dart regressions are authored for FIFO, capacity, closed admission,
+replacement serialization, callback failure, typed parsing, and path bounds.
+scripts/verify-file-dialog-event-ownership.py and the independent workspace
+contract protect the load-bearing source shape and fallback absence. They are
+supplementary: exact Dart execution and installed target-native file-transfer,
+replacement, Android task-swipe/reopen/Force-Stop, cross-version, latency/resource,
+and cleanup evidence remain open under the global STOP-SHIP matrix. Historical
+implementation and run details remain in Git at
+11402b7ba925a283b8284a14a194c59af9d98e3f.
 
-The native JSON event is synchronously converted into immutable
-`FileOverrideConfirmation`: exact event name; positive canonical signed-32-bit job
-ID; nonnegative canonical signed-32-bit file number; exact lowercase boolean
-strings; and a nonempty, NUL-free read path bounded to 32,768 UTF-16 code units.
-The raw map is not retained. Consumption validates the matching Dart job before
-showing a dialog or answering native code and uses only typed fields afterward.
-The operation vocabulary is exactly `overwrite`. Remembered policy applies only
-to the current contiguous FIFO batch and resets on empty or retirement.
+### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership
 
-A malformed payload, closed loop, or running-plus-pending saturation makes
-`postOverrideFileConfirm` return false; the session-event handler immediately
-uses the existing visible exact-session stream-failure path. A missing live job,
-missing callback, or pre/consume/post callback failure terminally closes the loop,
-clears successors and remembered policy, and invokes the same narrow
-`reportFileDialogFailure(expectedSessionId)` facade. That facade reuses
-`_reportSessionStreamFailure`, dismisses only the owning current session, presents
-the generic file-transfer inconsistency error, and initiates exact native-session
-close; a stale failure cannot close a replacement. Required digest confirmations
-are never silently discarded because doing so would strand native file-job
-protocol state.
+**Status: SOURCE IMPLEMENTED AND FOCUSED-GATED; EXECUTABLE DART/FLUTTER/NATIVE
+AND TARGET-PLATFORM EVIDENCE OPEN.**
 
-Eight focused Dart regressions cover FIFO order, running-plus-pending capacity,
-closed admission and pending retirement, active old-generation versus replacement
-serialization, terminal callback failure and successor retirement, valid typed
-parsing, malformed scalar/canonical boolean/ID refusal, and empty/NUL/overlong path
-refusal. The pinned `dart-verify.sh` transaction formats the new source/test and
-runs the focused test with the rest of its exact offline Flutter analysis. The
-focused `scripts/verify-file-dialog-event-ownership.py` validator independently
-parses the native producer, both upload/download producer calls, Dart parser,
-queue, lifecycle, terminal facade, tests, shared/Apple/Dart wiring,
-R-S11hk/Appendix C #371/this ledger/current requirements digest, and attacks the
-contract with deliberate mutations. The older Android exact-generation verifier
-now binds the stronger event-driven retirement shape rather than the deleted
-timer. The independent workspace validator separately parses the focused verifier
-and mutation inventory, derives the product contract directly, and carries its
-own deliberate source mutations.
+Current source reserves one exact session/operation/key/side response owner before
+each normal-directory, empty-directory, or recursive-directory native dispatch.
+Active, dispatch-draining, and timed-out owners share a capacity of 64. The response
+deadline remains live while dispatch is suspended; completion requires every
+correlation dimension; recursive errors select only their exact positive action
+owner. Wrong, malformed, negative-ID, unsolicited, and stale responses consume no
+authority. Because path-only wire responses have no request nonce, timeout retains
+a bounded tombstone and refuses same-key retry until an owned late response is
+discarded or the session retires. Exact close/replacement clears ownership before
+settling waiters, and the native producer preserves the actual local/remote side.
 
-Confined red/green verification on 2026-08-22 passed the focused validator in
-normal mode and all 40 focused mutations, the older Android/session ownership
-validator in normal mode and all 536 of its mutations, and the independent
-workspace validator in normal mode. The first focused run fail-closed because
-its braced-item helper selected the named-argument brace rather than the Dart
-method body; after exact parameter-depth parsing was added, its self-test then
-identified a non-singular admission mutation and that mutation was scoped to the
-admission method. The independent normal validator separately exposed and
-removed stale `clear()`/double-retirement expectations and corrected its exact
-session-handler boundary. The first complete repository-wide semantic mutation
-run then proved the weakened generation equality was rejected earlier by the
-older Android verifier than the catalog's expected independent-verifier label.
-Only that expected first-rejection label was corrected; a new uninterrupted
-run restarted at mutation one and exited zero with
-`verify-verifier-workspace: ok`. No sampled or earlier run is substituted.
-
-On these documentation bytes, Python AST parsing without bytecode, Bash syntax
-for the modified shared/Apple/Dart/native-codec scripts, requirements HTML
-parsing plus exact hardening/native-watch digest identity, native-codec watch
-normal/self-test, and `git diff --check` also passed. Shared and Apple source
-wiring is thus checked, but neither complete gate was executed. The sole
-authorized image has no Dart/Flutter or Rust/Cargo/native platform toolchain, so
-the eight committed Dart regressions, analyzer/formatter, native compilation,
-and platform execution remain explicitly unexecuted rather than being replaced
-by a host run or an unapproved image.
-
-This correction adds no retry, reconnect, timer, poller, isolate, worker, thread,
-runtime, listener, port, service restart, Android activity/service kill, privilege,
-dependency, alternate route, network change, or weakening of Android's intended
-persistent foreground service. No host RustDesk process, service, binary,
-configuration, listener, firewall/UFW/nftables/iptables state, network setting,
-device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated container/image
-was inspected or changed, and no root/sudo/privileged container was requested or
-used. Exact Dart/Flutter/native execution, current physical Android
-task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
-Linux/macOS/iOS/web and cross-version transfer behavior, capture-through-compositor
-timestamps and explicit end-to-end latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-clean cold R-B2/R-B10 equality, installed artifacts/service behavior, fresh
-independent reproduction, R-V3 external review, causation, and proof that the
-complete connection flow is correct and performant remain explicit release
-obligations and explicit user requests.
-
-### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership (2026-08-22)
-
-**SOURCE IMPLEMENTED AND CONFINED SOURCE-GATED; EXACT DART/FLUTTER/NATIVE AND
-PHYSICAL-PLATFORM EVIDENCE OPEN.** Platform: the
-shared native Flutter file-transfer viewer on Android, iOS, Windows, Linux, and
-macOS. Endpoint/action: a Dart directory operation emits one native remote-read
-command and later consumes its asynchronous `file_dir`, `empty_dirs`, or
-recursive-read/error event. Boundary: the exact current Flutter session and
-typed operation/key/side reservation ↔ the one native response allowed to
-complete that request.
-
-Read-only source and history review found that all three inherited remote
-directory paths awaited native dispatch before calling their respective
-`registerRead*Task` method. The event stream could therefore deliver and discard
-a sufficiently fast response while no completer existed, after which the UI
-reported only the artificial two-second timeout. Session replacement while the
-bridge dispatch was suspended was worse: `beginSession` could clear the old
-maps, then the resumed old call could register stale work after that cleanup.
-The three public registration APIs also owned independent unbounded maps, and
-successful responses removed a completer without cancelling the timer that
-continued retaining its closure. Native `update_folder_files` compounded the
-ambiguity by ignoring its `is_local` argument and always labeling the event
-remote even though the local recursive-read branch deliberately passes true.
-The source's existing recursive-job error
-comment already described the resulting two-second lost-completion symptom, but
-its stated step order did not match the actual send-before-register code. This
-is shared source-proven file request/response order and resource-finality debt,
-not evidence that an unidentified deployed artifact exercised it and not a
-cause claim for the separately reported display-only delay.
-
-The corrected `FileFetcher` has no public register-after-send API. It reserves
-one `_PendingFileRequest` before invoking the typed `FileFetcherRequests`
-operation. One total count caps normal-directory, empty-directory, and
-recursive-directory maps at 64, including timed-out tombstones and a completed
-response retained while bridge dispatch drains. Each reservation retains the
-exact session ID, expected local/remote side, operation-specific map, and path
-or positive action key. Duplicate or saturated admission fails before native
-dispatch. Successful directory completion requires the exact key plus session
-and side on the correct response method; a recursive job error requires its
-exact current-session positive action key on the recursive map. Wrong-session,
-wrong-side, wrong-operation, wrong-key, negative-ID, malformed/non-string,
-unsolicited, and stale events cannot consume an active waiter. No guessed
-authority is derived from an ID-zero generic error: that event has no
-path or operation discriminator, so it cannot select a normal/empty-directory
-owner and the bounded deadline/tombstone behavior remains authoritative.
-`FfiModel` now carries the event-stream session ID through `FileModel` into both success and
-recursive-error completion instead of consulting a replaceable current-session
-value. Native
-`update_folder_files` serializes the actual boolean side, so a local recursive
-response and remote directory response retain their distinct identities.
-
-One exact timer belongs to each admitted reservation, and its caller-visible
-deadline remains live even while the bridge dispatch Future is suspended.
-Success or exact recursive error completes the caller and cancels the timer,
-while the exact map owner remains until dispatch settles so a stuck dispatch
-cannot escape total capacity. Normal and empty-directory wire responses have no
-per-request nonce. Their timeout therefore cannot safely authorize a same-path
-replacement: it converts the owner into a bounded tombstone, refuses that key,
-and consumes a matching late response without completing later work. Exact
-session retirement is the other safe way to clear that tombstone. Dispatch
-failure removes only its still-current owner and completes it if no earlier
-terminal edge won. Session replacement and explicit exact-session file-model
-close clear all maps before completing active waiters with the retirement
-error, so a suspended dispatch may drain but cannot register afterward or
-authorize a replacement generation. The small typed request dependency exists
-to deterministically suspend the three existing generated native calls in
-tests; production constructs it solely from those calls. It adds no alternate
-transport, buffer, retry, reconnect, timer beyond the already required bounded
-request deadline, poller, worker, isolate, thread, runtime, service restart,
-listener, port, privilege, dependency, or network behavior.
-
-Six focused Dart regressions cover caller-visible response completion plus
-retained capacity while dispatch remains blocked; exact
-session/side/operation/key, negative-ID, and malformed-type refusal; retirement
-during dispatch and exact-generation same-key replacement; dispatch-failure
-cleanup; one capacity shared by all maps; timeout tombstone/same-key refusal and
-late-response consumption; and successful timer cancellation. The existing
-`dart-verify.sh` transaction owns that test. The focused
-`scripts/verify-file-response-ownership.py` validator independently parses the
-closed three-operation native dependency, all reserve/dispatch/complete paths,
-the exact pending owner and timer finality, lifecycle/event routing, tests,
-requirements/Appendix/ledger identity, shared and Apple wiring, and independent
-workspace binding; its deliberate mutations attack each boundary. The
-independent workspace validator separately derives the product contract from
-the Dart source and carries its own product, test, focused-verifier, wiring, and
-ledger mutations.
-
-Final confined source verification used only the approved immutable image as
-numeric UID:GID 1000:1000, with no pull or network, a read-only repository,
-all capabilities dropped, no-new-privileges, and bounded processes, memory,
-swap, CPU, and private tmpfs. The focused file-response validator passes its
-baseline and rejects all 36 deliberate mutations. The file-dialog ownership
-validator rejects all 40 deliberate mutations, and the shared Android
-voice-call ownership validator passes its baseline and rejects all 536
-deliberate mutations after being brought forward to the current lifecycle
-contract. The independent workspace baseline passes. After every catalog
-correction below, one fresh complete, unsliced
-`--source-mutations-only` execution from mutation 1 completed with exit code 0
-and `verify-verifier-workspace: ok`; only that final uninterrupted execution is
-represented as the complete catalog pass. The native-codec requirements watch
-passes in normal and hostile-mutation modes. Python AST compilation, HTML
-parsing, Bash parsing, the requirements digest, and Git whitespace validation
-also pass.
-
-Verification was allowed to fail loudly and its diagnostic history is retained.
-Review first corrected a focused-parser prefix collision, outdated assumptions
-in the shared Android ownership verifier, and the native `is_local` hardcode;
-deeper response-lifetime review then replaced a dispatch-awaited deadline with
-a live caller deadline and retained no-nonce timeout tombstones. Before the
-final complete catalog pass, five complete catalog attempts exposed independent
-fixture defects in sequence: missing `beginSession` retirement coverage;
-ambiguous begin/close cancellation labels; an over-broad timer-cancellation
-target; duplicate Dart-wiring authority already owned by the Android validator;
-and the two differently labelled focused session-identity occurrences. Each was
-corrected and the catalog restarted from mutation 1. One subsequent short
-preflight rejected an incorrectly quoted split target before product mutations
-began; the target was replaced with two exact multiline fixtures before the
-final run. None of those incomplete or failed attempts is represented as a
-pass.
-
-The sole authorized image has no Dart/Flutter or Rust/Cargo/native platform
-toolchain, so the six committed Dart regressions, analyzer/formatter, generated
-bridge, native compilation, and platform execution remain explicitly
-unexecuted rather than being replaced by a host run or an unapproved image.
-
-This slice does not inspect, stop, restart, modify, or connect to a host
-RustDesk process or service; inspect or change host firewall/network/listener
-state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated container/image; or request/acquire root. Exact Dart/Flutter/native
-execution, current physical Android task-swipe/reopen/Force-Stop and Windows
-focus/minimize/reconnect reproduction, Linux/macOS/iOS/web and cross-version
-transfer behavior, capture-through-compositor timestamps and explicit
-end-to-end latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-clean cold R-B2/R-B10 equality, installed artifacts/service behavior, fresh
-independent reproduction, R-V3 external review, causation, and proof that the
-complete connection flow is correct and performant remain explicit release
-obligations and explicit user requests.
-
-**Active native-codec requirements ledger.** The SHA-256 consumed by
-`scripts/native-codec-watch.sh` and recorded identically in
-`docs/NATIVE-CODEC-WATCH.md` is:
-
-```text
-requirements.html: b17bd020762ea77e711388b6a9688380014137daf2dc7e6dd4ad4d46629d6e95
-```
-
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It also binds the later R-S11ea through R-S11em and Appendix C #280–#295 additions. It is a source-ledger identity; exact-commit artifact evidence is carried separately
-by the R-B2 manifest.
-The same identity additionally binds R-S11ea and Appendix C #280.
-The same identity additionally binds R-S11eb and Appendix C #281.
-The same identity additionally binds R-S11ec and Appendix C #282.
-The same identity additionally binds R-S11ed and Appendix C #283.
-The same identity additionally binds R-S11ee and Appendix C #284.
-The same identity additionally binds R-S11ef and Appendix C #285.
-The same identity additionally binds R-S11eg and Appendix C #286.
-The same identity additionally binds R-S11eh and Appendix C #287.
-The same identity additionally binds R-S11ei and Appendix C #288.
-The same identity additionally binds R-S11ej and Appendix C #289.
-The same identity additionally binds R-S11ek and Appendix C #290.
-The same identity additionally binds R-S11em and Appendix C #295.
-The same identity additionally binds R-S11et and Appendix C #302.
-The same identity additionally binds R-S11eu and Appendix C #303.
-The same identity additionally binds R-S11ev and Appendix C #304.
-The same identity additionally binds R-S11ew and Appendix C #305.
-The same identity additionally binds R-S11ex and Appendix C #306.
-The same identity additionally binds R-S11ey and Appendix C #307.
-The same identity additionally binds R-S11ez and Appendix C #308.
-The same identity additionally binds R-S11fa and Appendix C #309.
-The same identity additionally binds R-S11fb and Appendix C #310.
-The same identity additionally binds R-S11ff and Appendix C #314.
-The same identity additionally binds R-S11fg and Appendix C #315.
-The same identity additionally binds R-S11fh and Appendix C #316.
-The same identity additionally binds R-S11fi and Appendix C #317.
-The same identity additionally binds R-S11fj and Appendix C #318.
-The same identity additionally binds R-S11fk and Appendix C #319.
-The same identity additionally binds R-S11fl and Appendix C #320.
-The same identity additionally binds R-S11fn and Appendix C #322.
-The same identity additionally binds R-S11fo and Appendix C #323.
-The same identity additionally binds R-S11fp and Appendix C #324.
-The same identity additionally binds R-S11fr and Appendix C #326.
-The same identity additionally binds R-S11fs and Appendix C #327.
-The same identity additionally binds R-S11fu and Appendix C #329.
-The same identity additionally binds R-S11fv and Appendix C #330.
-The same identity additionally binds R-S11fw and Appendix C #331.
-The same identity additionally binds R-S11fx and Appendix C #332.
-The same identity additionally binds R-S11fy and Appendix C #333.
-The same identity additionally binds R-S11fz and Appendix C #334.
-The same identity additionally binds R-S11ga and Appendix C #335.
-The same identity additionally binds R-S11gb and Appendix C #337.
-The same identity additionally binds R-S11gc and Appendix C #338.
-The same identity additionally binds R-S11gd and Appendix C #339.
-The same identity additionally binds R-S11ge and Appendix C #340.
-The same identity additionally binds R-S11gg and Appendix C #342.
-The same identity additionally binds R-S11gh and Appendix C #343.
-The same identity additionally binds R-S11gj and Appendix C #345.
-The same identity additionally binds R-S11gk and Appendix C #346.
-The same identity additionally binds R-S11gl and Appendix C #347.
-The same identity additionally binds R-S11gm and Appendix C #348.
-The same identity additionally binds R-S11gn and Appendix C #349.
-The same identity additionally binds R-S11go and Appendix C #350.
-The same identity additionally binds R-S11gp and Appendix C #351.
-The same identity additionally binds R-S11gq and Appendix C #352.
-The same identity additionally binds R-S11gr and Appendix C #353.
-The same identity additionally binds R-S11gs and Appendix C #354.
-The same identity additionally binds R-S11gt and Appendix C #355.
-The same identity additionally binds R-S11gu and Appendix C #356.
-The same identity additionally binds R-S11gv and Appendix C #357.
-The same identity additionally binds R-S11gw and Appendix C #358.
-The same identity additionally binds R-S11gx and Appendix C #359.
-The same identity additionally binds R-S11gy and Appendix C #360.
-The same identity additionally binds R-S11gz and Appendix C #361.
-The same identity additionally binds R-S11ha and Appendix C #362.
-The same identity additionally binds R-S11hb and Appendix C #363.
-The same identity additionally binds R-S11hc and Appendix C #364.
-The same identity additionally binds R-S11hd and Appendix C #365.
-The same identity additionally binds R-S11he and Appendix C #366.
-The same identity additionally binds R-S11hf and Appendix C #367.
-The same identity additionally binds R-S11hg and Appendix C #368.
-The same identity additionally binds R-S11hi and Appendix C #369.
-The same identity additionally binds R-S11hj and Appendix C #370.
-The same identity additionally binds R-S11hk and Appendix C #371.
-The same identity additionally binds R-S11hl and Appendix C #372.
-The same identity additionally binds R-S11hm and Appendix C #373.
-The same identity additionally binds R-S11hn and Appendix C #374.
-The same identity additionally binds R-S11ho and Appendix C #375.
-The same identity additionally binds R-S11hp and Appendix C #376.
+Focused Dart regressions are authored for reserve-before-dispatch, blocked-dispatch
+capacity, correlation refusal, retirement/replacement, dispatch failure, the shared
+bound, tombstones, late response consumption, and timer cancellation.
+scripts/verify-file-response-ownership.py and the independent workspace contract
+protect those source invariants. They do not prove the still-open exact Dart/native
+execution, installed cross-platform bridge behavior, fast/late response behavior,
+timeouts, reconnect, cross-version operation, latency/resource soak, or exact
+cleanup required by the global STOP-SHIP matrix. Historical implementation and run
+details—including the deleted stale requirements-hash recital—remain in Git at
+7595f363961c3a15b718e99848c63e440ac73718. The sole authoritative current
+requirements identity is the top-level digest in this ledger and its exact
+docs/NATIVE-CODEC-WATCH.md mirror.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**Status:** SOURCE IMPLEMENTED / FOCUSED DART TESTS AUTHORED / EXACT
-DART-FLUTTER-NATIVE AND DEPLOYED LIFECYCLE EVIDENCE OPEN.
+**Status: SOURCE IMPLEMENTED AND FOCUSED-GATED; EXECUTABLE DART/FLUTTER/NATIVE
+AND TARGET-PLATFORM EVIDENCE OPEN.**
 
-This continuation selected one file-transfer lifetime slice under the binding
-R-S11b/R-S11c loop. The old shared Flutter model had corrected directory
-response ownership, but higher-level commands still borrowed the mutable
-process-lifetime current session. `sendFiles` iterated live `SelectedItems`,
-added a job, awaited a native request using whatever `sessionId` the reused
-model exposed at that instant, then repeated. It later reread live source and
-destination directory state while discovering empty directories. Recursive
-delete, remove/create/rename helpers, job cancel/resume/load, web
-file-picker/empty-directory creation, and the desktop Windows-drive menu
-carried the same class of borrowed authority across asynchronous boundaries.
-On mobile, a new
-connection deliberately reuses the Flutter model and persistent service. Its
-session replacement clears the old tables, but an already-running old
-continuation could resume afterward, resolve the replacement UUID, repopulate
-the replacement job table, dismiss a replacement dialog, refresh replacement
-directories, or send an old action/path to the new peer.
+Current source captures the exact session and immutable entries, roots, direction,
+path style, hidden-file policy, peer compatibility inputs, and native paths before
+the first asynchronous boundary. Closed typed dependencies carry that session
+through send/remove/create/rename/cancel/add/resume operations; post-await job,
+directory, dialog, navigation, and refresh mutations revalidate it. Delete results
+reserve before dispatch in one map capped at 64 active, dispatch-draining, and
+timed-out exact session/action/file owners. A response cannot report success before
+dispatch settles, dispatch failure wins over an early response, exact job errors
+remain caller-visible, and tombstones prevent late-result reuse. Session replacement
+synchronously retires file-dialog admission, response and result waiters, job and
+policy state, dialogs, and page-owned wakelocks before awaited persistence/native
+cleanup. Old continuations cannot target or mutate a replacement.
 
-Delete completion had an independent correlation defect. The controller first
-awaited `sessionRemoveFile` and only afterward installed one global anonymous
-`JobResultListener`. A fast `job_done`/`job_error` could arrive before the
-listener existed. Once installed, any delete job's result could complete it:
-the listener carried no session generation, action ID, or file number. A
-persisted `load_last_job` event was also launched without awaiting its Future;
-after its add-job request settled, it reread current session state and could
-auto-resume across replacement. These were shared Flutter source defects, not
-Android-only behavior and not proof about the unidentified operational builds
-or the separately reported display-only latency.
-
-The corrected authority model has three parts:
-
-1. `FileControllerRequests` and `JobControllerRequests` are closed typed
-   dependencies over only the existing generated send/remove/remove-empty,
-   create/rename, cancel/add/resume operations. Production constructs them
-   solely from those native bindings. `FileController` no longer retains a
-   broad `WeakReference<FFI>`; it receives exact current-session, dialog,
-   peer-platform, and peer-version capabilities. Every file action captures
-   one session before its first await and snapshots selected entry fields,
-   source/destination roots, path styles, direction, hidden-file policy, and
-   compatibility version. Every native request receives that exact ID. Every
-   post-await job, directory, history, dialog, and refresh mutation first
-   proves the same generation. Rename owns and disposes its text controller;
-   delete-checkbox memory is operation-local. Desktop drive discovery routes
-   through an exact-session controller method instead of calling `FileFetcher`
-   directly. The web file-picker command dispatches immediately instead of
-   being deferred onto an unowned Future, and its desktop callback proves the
-   captured session before and after awaiting it. Mobile and desktop
-   file-manager widgets retain the session that created the page and pass it
-   through navigation, selection, sort, drive,
-   transfer, and job controls instead of resolving a replacement session when
-   a late callback runs. Both file pages release their page-owned wakelock
-   synchronously before starting unawaited native cleanup, so a stalled close
-   cannot preserve that already-retired UI resource. The mobile Local and
-   Remote views have distinct stable keys, so switching sides disposes the old
-   controller-bound directory subscription, timer, and scroll controllers
-   instead of reusing that State against the other controller.
-2. `JobResultListener` is now a bounded map of exact
-   `(SessionID, action ID, file number)` owners. At most 64 active,
-   dispatch-draining, or timed-out results exist. Ownership is published and
-   its five-second deadline starts before native remove dispatch. Wrong,
-   malformed, anonymous, unsolicited, or stale results cannot complete it.
-   A matching result is retained but cannot complete caller-visible success or
-   cancel the deadline until dispatch also settles; therefore a later dispatch
-   failure wins over an early response. A timeout retains a bounded exact-key
-   tombstone so a late response cannot complete same-key replacement work. If
-   that response arrives before dispatch settles, it records the response edge
-   but the owner remains capacity-accounted and refuses same-key replacement
-   until the dispatch edge also settles; exact session retirement is the other
-   terminal cleanup. All job events now receive the stream session explicitly.
-   Load-last-job is awaited, and add/resume plus cancel/resume UI continuations
-   prove their captured session before observable mutation.
-3. `FileModel` owns an explicit session generation. Begin and close clear that
-   owner, close confirmation admission, cancel directory and job-result
-   waiters, clear job state, dismiss dialogs, and reset per-session state
-   synchronously before any cleanup await. `FFI.close` centrally awaits
-   idempotent file-model cleanup while the captured native handler still
-   exists. A replacement may reopen the same Android process and intentionally
-   persistent foreground service, but an old continuation cannot authorize or
-   clear it. No service/activity kill, retry, reconnect, poller, isolate,
-   worker, thread, runtime, listener, port, privilege, dependency, alternate
-   transport, or network behavior was added.
-
-Eight focused Dart regressions suspend command dispatch and bind the critical
-edges: an old two-file send cannot issue its second command to a replacement
-session; caller mutation cannot alter the admitted second source/destination;
-job completion requires the exact session/action/file tuple and a draining
-owner cannot be reused or report success before dispatch settles; dispatch
-failure wins over an early matching response; a timed-out late response cannot
-release its same-key owner before dispatch settles; retirement visibly
-completes a pending result with an error; an exact peer job error is
-caller-visible rather than successful completion; and a suspended persisted-job
-add cannot auto-resume after replacement.
-`dart-verify.sh` owns that test. The focused
-`scripts/verify-file-command-session-ownership.py` validator parses the closed
-request surfaces, absence of broad/dynamic authority, command snapshots,
-bounded result state machine including late-response dispatch retention,
-synchronous lifecycle and page-wakelock retirement, controller-keyed mobile
-view resources, immediate web-picker dispatch, event/UI
-routing, tests, requirements/Appendix/ledger identity, shared and Apple wiring,
-and independent workspace binding. Its self-test deliberately mutates each
-boundary. The workspace verifier independently derives the same product
-contract and carries separate product, test, focused-verifier, wiring, and
-ledger mutations.
-
-The sole authorized verifier image has Python and a shell but no Dart/Flutter,
-Rust/Cargo, or native platform toolchain. Consequently the authored Dart
-regressions, Flutter analyzer/formatter, generated bridge, native compilation,
-and platform execution remain explicitly unexecuted rather than being run on
-the host or substituted with an unapproved image. This slice does not inspect,
-stop, restart, modify, or connect to a host RustDesk process/service; inspect or
-change host firewall/network/listener state; touch an Android device, VM,
-Haggai/Desktop_Haggai_computer workload, or unrelated container/image; or
-request/acquire root.
-
-Exact Dart/Flutter/native execution, physical Android
-task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
-Linux/macOS/iOS/web and cross-version transfer behavior,
-capture-through-compositor timing and explicit end-to-end
-latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-clean committed cold R-B2/R-B10 equality, installed artifacts/service
-behavior, fresh independent reproduction, R-V3 external review, causation, and
-proof that the complete connection flow is correct and performant remain
-explicit release obligations and explicit user requests.
+Focused Dart regressions are authored for immutable snapshots, no retarget after
+replacement, exact result correlation, response/dispatch finality, tombstone
+retention, visible error/retirement, and persisted-job isolation.
+scripts/verify-file-command-session-ownership.py and the independent workspace
+contract protect the corresponding source topology and absence of ambient-session
+or anonymous-result fallbacks. Exact Dart/Flutter/native execution, installed
+Android/iOS/Windows/Linux/macOS and applicable web behavior, task-swipe/reopen/
+Force-Stop, desktop focus/replacement, reordered-result behavior, cross-version
+transfer, performance/resource soak, and cleanup remain open under the global
+STOP-SHIP matrix. Historical implementation and run details remain in Git at
+56e48c7a3628b921bb01cabcb3b8455f2c58f001.
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 

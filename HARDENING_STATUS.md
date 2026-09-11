@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-511f81cd3f2c1cec261eabb04aba011461b4d48214b401808c9d4d6caf85c4fb  requirements.html
+f2c21dffc593d5d35777a7fc11647aab5182918d6fe649a28149913a0b4edec7  requirements.html
 ```
 
 ## Current Verdict
@@ -30859,1263 +30859,164 @@ causation analysis, external review, and the broader correct-and-performant conn
 
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
+**State.** The source implements checked creator-reference cleanup and output commit. Focused source
+validation exists, but no exact-current signed macOS execution proves the native resource and failure
+semantics. This item is source-supported and native-evidence-open.
 
-**Platform, action, and boundary.** This slice is limited to the macOS UI-side
-creation of the external Authorization Services form used by the existing
-service-owned unattended-password transaction. The boundary is exact current
-administrator-only right definition -> local preauthorization and external form
--> release of only the creator's `AuthorizationRef` -> caller-owned
-self-wiping `SensitiveAuthorization`. It does not change the separately typed
-LaunchDaemon readiness writer or the helper-side noninteractive verification and
-rights destruction from R-S11in.
+**Boundary and current implementation.** The UI-side creator validates the exact administrator-only
+right, clears the validated caller buffer before fallible work, keeps the external form in a zeroed
+local object, and uses the existing interactive preauthorization flags. It releases exactly the
+creator reference with `kAuthorizationFlagDefaults`, retains that status, publishes the form exactly
+once only when externalization and release both succeed, wipes the local form, and returns their
+conjunction. Creator-side rights destruction is forbidden because it would invalidate the transferable
+authorization before helper import. The Rust wrapper owns the result in bounded, zeroizing
+`SensitiveAuthorization` storage.
 
-**Source-proven defect.** Read-only tracing found that
-`MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm` correctly
-required the exact right definition, created and preauthorized one
-`AuthorizationRef`, made an external form, wiped its local stack copy, and
-called `AuthorizationFree` with `kAuthorizationFlagDefaults`. That default flag
-is load-bearing: the authorization is deliberately externalized for later
-helper import, so creator-side `kAuthorizationFlagDestroyRights` would revoke
-the transferred capability prematurely. The function nevertheless copied the
-external form into the caller buffer before releasing its creator reference,
-discarded `AuthorizationFree`'s returned `OSStatus`, and returned only the
-earlier operation status. Release failure could therefore be reported as a
-successfully completed creation transaction while native resource ownership was
-ambiguous and capability bytes had already escaped. The root helper still had
-to import and noninteractively verify the exact right, destroy the imported
-rights, replay the exact requester, and obtain typed credential-ledger
-admission. This is source-proven creator-side resource, return-value, and output
-commit finality debt, not evidence of authorization bypass, unauthorized
-password mutation, exploitation, host RustDesk/service/configuration/network
-mutation, public exposure, operational failure, or deployed-artifact causation.
+**Evidence.** `src/platform/macos.mm` contains the native transaction and distinct creator/verifier
+cleanup flags; `src/platform/macos.rs` contains the bounded sensitive wrapper. The focused password
+IPC, Apple conformance, independent workspace, and native-watch validators bind output preclear,
+release cardinality/flag/status/order, conditional single publication, local wipe, conjunctive return,
+and the R-S11io/Appendix C #400 documentation identity. This is source evidence only.
 
-**Cleanup and output correction.** After validating pointer and exact external
-form length, the native creator explicitly clears the caller buffer before any
-fallible policy or Authorization Services operation. It keeps the external form
-in a zero-initialized local object while it creates the authorization, requests
-the exact right with the unchanged interactive/preauthorize/extend flags, and
-externalizes the result. It then calls `AuthorizationFree` exactly once with
-`kAuthorizationFlagDefaults` and retains the returned status. Only when both the
-preauthorization/externalization status and creator-reference release status are
-successful does it copy the form to the caller, exactly once. It wipes the local
-form after that conditional commit and returns the conjunction of the two
-statuses. Every policy, creation, authorization, externalization, or cleanup
-failure therefore leaves no published capability in the caller buffer and
-returns failure. The existing Rust wrapper returns its bounded zeroed
-`SensitiveAuthorization` only on native success and zeroizes the allocation on
-failure/drop.
-
-This changes no right name or dictionary, readiness action, prompt or retry
-semantics, external-form representation, endpoint, wire frame or payload kind,
-requester role or identity proof, credential value, mutation ledger, persistence
-sink, listener, socket mode, port, network behavior, timeout, capacity,
-task/runtime/process/service lifecycle, display/control path, Android/Windows
-behavior, dependency, or artifact. The separately observed macOS recovery path
-may still repeat the complete readiness-and-prompt flow after delivery
-uncertainty, as explicitly permitted by the existing R-S11g complete-operation
-replay contract; this slice neither redesigns nor claims to validate that user
-experience. Exact-current signed macOS compilation/execution, real
-Authorization Services release-failure/resource behavior, installed
-LaunchDaemon behavior, sustained latency/CPU/memory/resource soak, clean
-committed cold R-B2/R-B10 artifact equality, independent reproduction, and
-external review remain open.
-
-The normative requirements identity verified for this source slice is:
-
-```text
-b3539935b020163723d1e75873d04eee6f31eaa16643dc5cd48c7ef92daa712a  requirements.html
-```
-
-**Verification receipt — 2026-09-06.** Every credited executable check in this
-receipt ran as UID/GID 1000:1000 inside a temporary Docker container with
-network mode `none`, a read-only root filesystem, the repository mounted
-read-only at `/repo`, all capabilities dropped, `no-new-privileges`, private IPC
-and cgroup namespaces, finite PID/memory/no-extra-swap/CPU limits, a bounded
-private `nosuid,nodev,noexec` tmpfs, and no port binding, device, host namespace,
-Docker socket, or added capability. No build, package installation, listener,
-service start/stop/restart, native macOS execution, or host-privilege operation
-occurred.
-
-The locked fast set passed Bash syntax for the shared and Apple gates, isolated
-Python AST parsing for the independent verifier, HTML parsing, focused password
-IPC baseline and complete deliberate-mutation self-test, direct execution of the
-shared raw-password architecture analyzer, the complete Apple embedded password
-matrix including all eight new R-S11io mutations, the independently implemented
-workspace baseline, and native-codec-watch baseline/self-test. A separate
-targeted independent run passed all eight new native mutations through the
-normal verifier entry point without changing the repository: output-preclear
-removal, creator-side rights destruction, synthesized release success,
-publication before release, release-result omission from the publication guard,
-release-result omission from the return, disjunctive return, and duplicate
-publication were each rejected with their exact intended diagnostic.
-
-The first complete-catalog attempt correctly rejected output-preclear removal,
-but the fixture expected the broader ordered-flow diagnostic while the
-independent verifier emitted its earlier and more precise exact-cardinality
-diagnostic. This was a test-of-the-test label mismatch, not a product or source
-gate failure. The expected label alone was narrowed, all eight new mutations
-were then exercised directly, and the independent baseline passed again. The
-failed run is not credited:
-
-```text
-container: 6ee7caae6ba92aea3e7eda997586c16754cb2bef0bf953a689745af01e4e57c0
-started:   2026-09-06T00:49:26.740357019Z
-finished:  2026-09-06T01:14:40.357920723Z
-exit:      1
-OOMKilled: false
-error:     ""
-```
-
-The corrected complete in-memory semantic source-mutation catalog restarted
-from mutation one and evaluated all 5,961 AST-counted tuples before reaching its
-sole terminal success line:
-
-```text
-container: ab2e7a9fd27e140dd8654f625182c8dec39ca5773b46ef72844c2ecfe5c91185
-image:     sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3
-started:   2026-09-06T01:18:00.226801445Z
-finished:  2026-09-06T05:06:24.182200319Z
-exit:      0
-OOMKilled: false
-error:     ""
-output:    verify-verifier-workspace: ok
-```
-
-That retained container was inspected before execution and after exit. It used
-numeric user `1000:1000`, workdir `/repo`, network `none`, read-only root and
-read-only source bind, `CapAdd=null`, `CapDrop=["ALL"]`,
-`SecurityOpt=["no-new-privileges"]`, 64 PIDs, 2 GiB memory with memory-swap
-equal to memory, two CPUs, private IPC/cgroup namespaces, no host PID/UTS
-namespace, no ports or devices, and one 512 MiB
-`rw,nosuid,nodev,noexec` `/tmp`. Its exact command was
-`/usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .
---source-mutations-only`. Live inspection showed one process, roughly 310 MiB
-memory, and zero block/network I/O. It was removed by exact name after its final
-state and log were captured; the failed named attempt was likewise inspected
-and removed. No `rustdesk-rs11io*` container residue remained.
-
-One procedural command before the credited runs attempted to combine a
-host-side read-only Bash syntax parse with a Python parse/cleanup command. The
-Python command was rejected before execution because of its cleanup operation;
-the Bash parse may have executed on the host. It had no write, privilege,
-network, listener, build, service, or product-runtime effect. Its result is not
-credited anywhere in this receipt, and every listed parse and verification
-result was rerun inside the locked container profile. This disclosure preserves
-the user's Docker-only execution requirement rather than silently treating that
-attempt as evidence.
-
-Exact pre-receipt identities were:
-
-```text
-88debfadcf7fca1b146dff16d9ffd7359f05b042194f09b415f794d39c95c7d7  src/platform/macos.mm
-fd28686595dea7bccdcb3f176223581cd652c2905dcdde639e68b3eb2fd1da00  scripts/verify.sh
-537984b24c44c59d780bb6d5cf4591b3b8e8c7e817f31ac13e4c2f51c4598bed  scripts/apple-conform-check.sh
-459f4a53d3e774e7070f9302298977a2d323a1c161d1e4f02fd7aa11412ca0b5  scripts/verify-verifier-workspace.py
-snapshot b3539935b020163723d1e75873d04eee6f31eaa16643dc5cd48c7ef92daa712a  requirements.html
-23e1f456280b091f22de9a833dbde49417dfdbaae71d48a62b3ee0396a43ade1  docs/NATIVE-CODEC-WATCH.md
-3f9f328de14bb7ecab63ccc8a23d05b29f86cc8df6fa31f6ffd27b660600ea56  HARDENING_STATUS.md
-```
-
-The corresponding pre-receipt binary Git diff SHA-256 was
-`cde30611fee3293472efe720f5e004e1db7d4da6d5a2f18ec3c0252f563f1bcd`.
-This evidence-ledger update changes only `HARDENING_STATUS.md`; it is followed
-by locked reruns of the focused, shared, Apple, independent-baseline,
-native-watch, syntax/HTML/hash, and diff-hygiene gates. The complete 5,961-tuple
-catalog is not rerun after this receipt because the catalogued product,
-normative requirements, native-watch ledger, shared/Apple gates, and independent
-verifier bytes identified above remain unchanged.
-
-The immutable verifier image does not contain this repository's exact-current
-signed macOS SDK/build closure. No exact-current native compile/unit test,
-installed LaunchDaemon/Authorization Services execution, real cleanup-failure
-injection, prompt/retry behavior, adversarial policy/resource race,
-latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact
-equality, independent reproduction, or external review claim is made. No host
-RustDesk process, service, configuration, listener, firewall/UFW/nftables/
-iptables state, network namespace, Android device, VM,
-Haggai/Desktop_Haggai_computer workload, or unrelated Docker object was
-inspected, stopped, restarted, modified, or connected to. The persistent
-Android service, cross-platform reconnect/focus flow, display-only delay,
-complete connection-flow correctness/performance request, and every other
-explicit open hardening item remain active.
+**Open evidence.** Run the exact signed candidate on macOS and inject authorization creation,
+preauthorization, externalization, and creator-release failures; prove zero output on every failure,
+successful later helper import, bounded handles/memory, prompt and retry behavior, installed
+LaunchDaemon interaction, repeated-operation cleanup, artifact identity, cold R-B2/R-B10 equality,
+independent reproduction, and external review.
 
 ### R-S11in/R-S11e-277 — read-only macOS password authorization verification
 
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
+**State.** Verification is separated from policy creation in source and requires checked imported-right
+cleanup. Focused source validation exists; exact-current native Authorization Services behavior remains
+unproved.
 
-**Platform, action, and boundary.** This slice is limited to the macOS
-service-owned password transaction after the separately authenticated and typed
-`EnsurePasswordRightReady` action has normalized the fixed
-`com.carriez.RustDesk.set-unattended-password` Authorization Services right and
-the UI has obtained and externalized authorization for that right. The protected
-boundary is one exact external authorization form from one retained signed
-installed administrative requester generation -> read-only evaluation against
-the exact current policy definition -> the existing non-cloneable password
-admission and mutation ledger. Machine-policy creation or normalization belongs
-only to the typed readiness capability and is not verification authority.
+**Boundary and current implementation.** `AuthorizationRightSet` is reachable only through the typed
+readiness action. Password admission performs read-only external-form verification, then fresh complete
+requester-generation replay, then constructs the typed admission. Native verification requires the
+exact right definition before import, evaluates the named right without interaction, calls
+`AuthorizationFree` exactly once with `kAuthorizationFlagDestroyRights`, requires its status, repeats
+the exact definition read after cleanup, and accepts only the conjunction of evaluation, cleanup, and
+final-policy success. Missing, malformed, denied, expired, cleanup-failed, or drifted state fails closed
+and is never repaired by verification.
 
-**Source-proven residual.** Read-only tracing found two policy writes and one
-unchecked cleanup result inside the later verification transaction.
-`src/ipc.rs::grant_macos_service_owned_password_admission`
-called `ensure_service_owned_unattended_password_authorization_right` before it
-called the native external-form verifier. That native
-`MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm` independently
-called `EnsureRustDeskSetUnattendedPasswordRight` before importing and checking
-the submitted authorization. Both calls reached `AuthorizationRightSet`, whose
-documented operation creates or updates a right in the policy database. Thus an
-operation named and used as verification could create or replace machine policy
-after the UI authorization reference had already been created. The native
-verifier also requested `kAuthorizationFlagDestroyRights` but discarded
-`AuthorizationFree`'s returned status, so failure to revoke/free the imported
-authorization could not fail the credential mutation closed. The rewritten
-definition remained fixed and administrator-only, the exact requester proof
-remained mandatory, and the typed password admission plus final socket replay
-still guarded persistence. This is therefore policy/verification separation,
-temporal-correctness, and cleanup-finality debt, not evidence of an authorization
-bypass, unauthorized password mutation, exploitation, host RustDesk/service/
-configuration/network mutation, public exposure, operational failure, or
-deployed-artifact causation.
+**Evidence.** `src/ipc.rs` contains the ordered Rust admission grant; `src/platform/macos.mm` contains
+the read-only native verifier and sole policy writer. Focused password IPC, Apple conformance,
+independent workspace, and native-watch validators bind writer cardinality and absence, the two policy
+reads, noninteractive evaluation, checked destroy/free ordering, the three-result conjunction, and the
+R-S11in/Appendix C #399 identity. These validators do not execute Authorization Services.
 
-**Authority and API correction.** The only native `AuthorizationRightSet` call
-remains inside `EnsureRustDeskSetUnattendedPasswordRight`, reached from Rust only
-through `MacosServiceOwnedPasswordRightAdmission::ensure_ready`. The Rust
-password-admission grant no longer calls the right creator/normalizer. It now
-orders only native external-form verification -> fresh complete requester role
-and generation replay -> sole `MacosServiceOwnedPasswordAdmission` construction.
-
-The native external-form verifier is policy-read-only. It first requires
-`RustDeskSetUnattendedPasswordRightMatchesExpected`, which obtains the current
-definition with `AuthorizationRightGet` and checks the complete fixed
-administrator-only dictionary. It then copies the submitted bytes into a
-self-wiped `AuthorizationExternalForm`, internalizes them, evaluates only the
-named right with noninteractive `AuthorizationCopyRights`, calls
-`AuthorizationFree` exactly once with `kAuthorizationFlagDestroyRights` and
-retains its returned `OSStatus`, repeats the exact read-only definition check
-after that cleanup, and returns true only when authorization, revocation/free,
-and final definition checks all succeed. Missing or mismatched policy,
-malformed/expired/denied external authorization, failed import/evaluation,
-failed cleanup/revocation, or observed policy drift therefore produces no
-password admission and no mutation. The verifier cannot repair the policy;
-recovery requires a new readiness-and-prompt flow.
-
-This bracketing is application-side last-observed policy consistency. It does not
-claim an atomic lock on macOS's authorization database or protection against an
-independently privileged administrator racing policy changes. Apple documents
-`AuthorizationRightSet` as creating or updating policy, `AuthorizationRightGet`
-as retrieving a definition, `AuthorizationCopyRights` as synchronously
-authorizing rights, `AuthorizationFree` as returning a result while the destroy
-flag revokes shared and non-shared authorization, and external forms as
-transferable authorization references:
-https://developer.apple.com/documentation/security/authorizationrightset%28_%3A_%3A_%3A_%3A_%3A_%3A%29,
-https://developer.apple.com/documentation/security/authorization-services,
-https://developer.apple.com/documentation/security/authorizationfree%28_%3A_%3A%29,
-https://developer.apple.com/documentation/security/authorizationexternalform,
-and
-https://developer.apple.com/documentation/security/authorizationcreatefromexternalform%28_%3A_%3A%29.
-
-This changes no right name or dictionary, endpoint, request/response frame,
-payload kind, requester role, socket identity proof, administrator prompt,
-authorization bytes, credential transport, mutation ledger, persistence sink,
-listener, socket mode, port, network behavior, timeout, capacity, retry/reconnect
-policy, task/runtime/process/service lifecycle, display/control path,
-Android/Windows behavior, dependency, or artifact. Focused, shared, Apple, and
-independently implemented source gates and mutations bind verification-side
-writer absence, sole native writer cardinality, checked destroy/free cardinality
-and result, final-policy-after-cleanup ordering, the three-result conjunction,
-Rust grant ordering, R-S11in, Appendix C #399, the requirements digest, and this
-ledger entry.
-
-The normative requirements identity currently under verification is:
-
-```text
-840c0a6116284cbb7e115a3ece735e729f4956ccd946264c4573e06a121ade69  requirements.html
-```
-
-**Verification receipt (2026-09-05 through 2026-09-06).** All executable
-verification in this receipt ran as UID/GID 1000:1000 inside temporary Docker
-containers with network mode `none`, a read-only root filesystem, the repository
-mounted read-only at `/repo`, all capabilities dropped, `no-new-privileges`,
-private IPC/cgroup namespaces, finite PID/memory/no-swap/CPU limits, a bounded
-private `noexec` tmpfs, and no port bindings, devices, host namespaces, Docker
-socket, or added capabilities. No build, package installation, listener, service
-start/stop/restart, native macOS execution, or host-privilege operation occurred.
-
-The final bounded set passed Bash parsing for the shared, Apple, and native-watch
-gates; isolated Python parsing for the focused and independent verifiers; HTML
-parsing; requirements/native-watch digest equality; the focused password-IPC
-baseline and its complete deliberate-mutation self-test; the independently
-implemented workspace baseline; and native-watch baseline and self-test. The
-shared embedded analyzer and the eight explicit R-S11in requirement/Appendix/
-ledger/digest/normative bindings passed directly. The fresh Apple embedded matrix
-reported empty `r_s11b`, `r_s11b2`, and `r_s11e16` finding sets and
-`apple-rs11in-embedded-matrix: ok`. Its retained container was
-`84df1c1e778c001867f4a1364b0dd51a47eb9945db764a2d6ef66f2e0724dc31`,
-using image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`;
-it ran from `2026-09-05T19:51:12.974178012Z` through
-`2026-09-05T20:03:01.611854622Z`, exited 0, was not OOM-killed, and had no
-container error. Its product mutations included reintroduced Rust/native policy
-writes, removed final policy read, non-destroying cleanup, fabricated or ignored
-cleanup results, final-policy-before-cleanup ordering, omitted final-policy
-result, and disjunctive acceptance. The exact container was inspected before it
-alone was removed.
-
-The final independent catalog was derived structurally as exactly 5,927
-four-field mutation tuples and was restarted from mutation one after the last
-gate edit. Container
-`952ddf6b659e2aac7e20eacfbbe82cc7f50f6c479433ff9ef2b95d2af64bbf1f`
-used the same immutable image and the command
-`python3 -I -S scripts/verify-verifier-workspace.py` with
-`--repo . --source-mutations-only`. It ran uninterrupted from
-`2026-09-05T20:29:05.624509064Z` through
-`2026-09-06T00:07:31.826759609Z`, exited 0, was not OOM-killed, was not
-restarted, had no container error, and emitted only
-`verify-verifier-workspace: ok`. Inspection confirmed UID/GID 1000:1000,
-`network=none`, read-only root/source, unprivileged execution, no added and all
-dropped capabilities, `no-new-privileges`, PID limit 64, 2 GiB memory with equal
-memory/swap limits, two CPUs, private IPC/cgroup namespaces, one 512 MiB private
-`noexec` tmpfs, no host PID/UTS namespace, no ports, and no devices. The exact
-container was inspected before it alone was removed.
-
-The complete catalog froze the following pre-receipt inputs; post-run hashing
-reproduced every value exactly, and `git diff --check` remained clean:
-
-```text
-fbb596283c640f17b14fa45f124556147f8d684407620676bdf30ce05df4dfd3  HARDENING_STATUS.md
-c276a54cd36a9ed6f41cbc9235732608effbb127e010049873601042a5b00764  docs/NATIVE-CODEC-WATCH.md
-840c0a6116284cbb7e115a3ece735e729f4956ccd946264c4573e06a121ade69  requirements.html  (catalog-frozen input)
-f4dbf58c2e3b3edd91375fc3b1d5fc55c57cd750822303fa469e3e920c9d2fda  scripts/apple-conform-check.sh
-ca71dec044554a3befc3f458581c434f5f6854bb4062f88d697456901239b548  scripts/verify-linux-service-password-ipc.py
-902021b8bb92f5bd1ec1fcf82230b5e6037bd090e89f8d72119cc364a05b6677  scripts/verify-verifier-workspace.py
-d9394950dd494896a8828bf00ce086c4d264977e49bcfed3b44c40f86ff5c21c  scripts/verify.sh
-cfe13704821f30ee2fcf71f45d74de04ef36294376a3c5cf20771a0b06b31ee0  src/ipc.rs
-ec75d57a3c4ae8efab2603caa8c595bc18f76c331d8550ecc8c85c3e3f5340e1  src/platform/macos.mm
-87e3df9f19b48d8e14442f1534e5f5788b8490027949b95590a981dfc569ef3a  git diff --binary (the nine files above)
-```
-
-Three pre-receipt diagnostics are deliberately not credited as passing evidence. An Apple
-wrapper attempt in retained container
-`22148fee6442d387ca283247ee9df6ce8c1817c7b8927564cafae48784dae1b6`
-stopped at the wrapper boundary because the deliberately locked inner container
-had no Docker client; it exited 1 without OOM or product/gate findings and was
-inspected before exact removal. An earlier Apple embedded attempt rejected a
-non-unique mutation fixture; the fixture was narrowed before the final passing
-Apple matrix. The first 5,927-case catalog attempt, retained as
-`a169b8df78ed307177ab36b4f527cedb2f184cd329b406739f3bd277723c40a4`,
-correctly rejected the non-destroying-cleanup product mutation but reported the
-broader ordered-flow verdict before that fixture's intended cleanup/revocation
-verdict. It ran from `2026-09-05T20:03:50.444620078Z` through
-`2026-09-05T20:27:33.916282479Z`, exited 1 without OOM/container error, and was
-inspected before exact removal. Moving the already-enforced forbidden-defaults
-check before the ordered-flow assertion changed no product predicate, made the
-diagnostic exact, passed the independent baseline, and preceded the final full
-restart from mutation one. The older 5,914-case passing catalog in container
-`436e8fb0e5463b2fc04c1bac43e30781e82eb5096134b2b9eba5d4a469518dc6`
-also remains valid only for its earlier frozen source: it ran from
-`2026-09-04T07:03:27.755804107Z` through
-`2026-09-04T10:53:17.242321484Z` and exited 0 without OOM/error, but it is
-superseded rather than credited for the current tree because the subsequently
-found unchecked `AuthorizationFree` result required product, requirement, and
-mutation additions.
-
-Only this receipt/status text was added after the complete catalog. Bounded
-parsing, digest, focused, shared, independent, native-watch, and diff checks are
-rerun below against the receipt-bearing tree; no recursive claim is made that a
-catalog can verify its own subsequently written receipt bytes. The first
-receipt-bearing native-watch pass correctly rejected a duplicated exact
-requirements-identity line introduced by the receipt itself; labeling the
-catalog-frozen copy restored one canonical identity line, and the affected
-receipt-bearing checks then passed. One intervening shell command had unmatched
-quoting and produced no gate verdict; it is not credited as verification.
-
-No exact-current signed macOS compilation/execution, installed LaunchDaemon or
-real Authorization Services allow/deny/missing/cleanup/drift/race behavior,
-adversarial requester exit/PID reuse/UID/audit-token/argv/descriptor-handoff/socket races,
-sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10
-artifact equality, independent reproduction, or external review is claimed. The
-persistent Android service, cross-platform reconnect/focus flow, display-only
-delay, complete connection-flow correctness/performance request, and every other
-explicit open hardening item remain active.
+**Open evidence.** Run real allow, deny, malformed, expired, missing-definition, drift, cleanup-failure,
+and privileged concurrent-policy-change cases on the exact signed macOS candidate. Measure rights and
+handle cleanup, repeated prompt/recovery behavior, installed LaunchDaemon behavior, latency and resource
+bounds, artifact identity, cold R-B2/R-B10 equality, independent reproduction, and external review.
+The two policy reads provide last-observed consistency, not an atomic lock against another privileged
+administrator.
 
 ### R-S11im/R-S11e-276 — typed macOS password-right policy-write authority
 
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
+**State.** The source carries exact requester authority through a typed consuming policy-write action.
+Focused source validation exists; exact-current signed macOS and installed Authorization Services
+execution remain open.
 
-**Platform, action, and boundary.** This slice is limited to the root macOS
-LaunchDaemon handling the existing bodyless
-`ServiceIpcRequest::EnsurePasswordRightReady` operation on the existing
-`_service` Unix socket. The protected action is creation or normalization of
-the fixed admin-only `com.carriez.RustDesk.set-unattended-password`
-Authorization Services right. The boundary is one accepted signed installed
-interactive UI, `--password`, or `--password-stdin` requester generation ->
-one post-request exact service-socket identity admission -> the fixed native
-policy write.
+**Boundary and current implementation.** A private, non-cloneable
+`MacosServiceOwnedPasswordRightAdmission` retains the complete exact administrative requester. Its sole
+grant consumes that requester and the fresh post-request service-socket authorization and requires the
+fixed endpoint plus exact UID, effective PID, and audit-token equality. Only its consuming
+`ensure_ready` action may replay installed-app identity, argv, finite administrative role, and process
+generation, then invoke the fixed policy writer as the final conjunct. The response Boolean reports
+only the completed operation and carries no authority.
 
-**Source-proven residual.** R-S11hz already captured the accepted `_service`
-UID, effective PID, and full audit token before task transfer; restricted the
-action to the finite administrative requester roles; required fresh
-post-request endpoint, UID-authority, UID, PID, and full-token equality; replayed
-the exact live installed-app identity, complete argv, role, and token
-generation; and placed the native policy write last in the same bounded,
-short-circuiting proof. In `src/ipc.rs`, however,
-`macos_service_owned_password_authorization_right_is_ready` still named the
-post-request equality predicate and
-`ensure_service_owned_unattended_password_authorization_right` directly and
-reduced their result to a bare readiness Boolean. There was no async gap and
-the sole path was correctly checked, so this was internal action-authority
-lifetime and API-shape debt. It is not evidence of an unauthorized policy or
-credential mutation, exploitation, deployed-artifact causation, operational
-RustDesk failure, or any host service, configuration, listener, firewall, or
-network change.
+**Evidence.** `src/ipc.rs` contains the admission, sole grant, consuming action, and closed
+authenticate-to-grant-to-action flow. Focused password IPC, Apple conformance, independent workspace,
+and native-watch validators bind type privacy/non-cloneability, consuming requester ownership, exact
+post-request equality, sole construction, final live replay/write, direct-writer absence, and the
+R-S11im/Appendix C #398 identity. This is source evidence, not a native policy-write result.
 
-**Authority and API correction.** `src/ipc.rs` now defines one private,
-non-`Clone`, non-`Copy` `MacosServiceOwnedPasswordRightAdmission` retaining the
-complete non-cloneable `MacosServiceOwnedPasswordRequester`. Its sole grant
-function consumes that requester and the fresh post-request
-`ServiceScopedIpcAuthorization`; only the existing exact endpoint, fresh UID
-authority, UID, PID, and full-audit-token equality predicate may mint the
-admission. The admission exposes only a consuming `ensure_ready` action. That
-action replays the exact installed-app identity, complete argv, finite role,
-and audit-token generation and calls the fixed native policy writer as its
-final conjunct. The bounded readiness closure now composes only exact requester
-authentication -> consuming admission -> consuming action. It no longer names
-the equality predicate, live-requester predicate, or native writer and has no
-detached authority Boolean, borrowed requester, alternate constructor,
-clone/copy route, direct writer, or disjunctive fallback. Its returned Boolean
-is only the operation result sent in `PasswordRightReady`, not reusable
-authority.
-
-The right name and hardened dictionary, request and response frames, requester
-roles, UID and identity rules, deadlines and proof budgets, administrator
-prompt, credential transport and sinks, listener/socket behavior, retry or
-reconnect policy, process/service lifecycle, display/control paths, Android and
-Windows behavior, dependencies, and artifacts are unchanged. Apple documents
-`AuthorizationRightSet` as an operation that creates or updates a policy-
-database right; that machine-policy effect is why the internal API now carries
-the exact action authority through the call even though the wire request has no
-secret and the native dictionary was already fixed.
-
-The focused semantic verifier binds the private capability shape,
-non-cloneability/non-copyability, consuming requester and final action, exact
-post-request equality, sole construction, final live replay/write conjunction,
-closed handler call graph, and direct-writer absence. Its complete deliberate-
-mutation suite rejects cloneable or requester-free admissions, borrowed
-requesters, skipped identity equality, reusable actions, skipped final replay,
-disjunctive policy writes, bypassed grants, and direct handler writes. Focused,
-shared, Apple, independent-workspace, complete-catalog, normative-digest,
-parsing, and diff verification passed as recorded below.
-
-The normative `requirements.html` identity currently under verification is:
-
-```text
-139cf28619fce9dccbfb3fc06e4ce9037f655bc38a7c9cce96caf5f72d2b876f  requirements.html
-```
-
-No exact-current signed macOS compilation or execution, installed LaunchDaemon
-or real Authorization Services behavior, adversarial requester-exit/PID-reuse/
-UID/audit-token/argv/descriptor-handoff/socket-race execution, sustained
-latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact
-equality, independent reproduction, or external review is claimed. The
-persistent Android service, cross-platform reconnect/focus flow, display-only
-delay, complete connection-flow correctness/performance request, and every
-other explicit open hardening item remain active.
-
-#### Verification receipt — 2026-09-04
-
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
-
-The final product source for this slice passed the focused service-password IPC
-semantic verifier and its complete deliberate-mutation self-test. The focused
-gate requires the private `MacosServiceOwnedPasswordRightAdmission` to retain
-the exact non-cloneable requester, requires its sole grant function to consume
-that requester and the fresh post-request service-socket authorization, and
-requires an explicit fail-closed exact-identity branch before the sole
-admission construction. It also requires the admission's `ensure_ready` method
-to consume itself, replay the complete live requester generation, and invoke
-the fixed native policy writer only as the final short-circuiting conjunct. The
-bounded readiness handler must compose authentication -> consuming grant ->
-consuming action and may not name the equality predicate or native writer.
-
-The focused mutation suite rejected a cloneable admission, an admission that
-dropped the exact requester, a borrowed requester grant, bypassed post-request
-identity equality, a reusable action, bypassed final live replay, a disjunctive
-policy write, bypassed admission grant, and a direct-handler policy write. The
-focused program intentionally prints only its pass verdict, so this receipt
-does not invent a focused mutation cardinality.
-
-The shared service-credential architecture analyzer passed by direct extraction
-and execution of its exact embedded Python program. The complete Apple embedded
-password/credential matrix passed and required every generated `r_s11b`,
-`r_s11b2`, and `r_s11e16` finding file to exist and be empty; the independently
-implemented workspace validator additionally requires exactly 13 occurrences
-of the Apple password-right policy-write authority verdict, covering the
-existing requester checks and the new typed-admission/action mutations. The
-successful Apple matrix ran as:
-
-```text
-container: rustdesk-rs11im-apple-final
-started:   2026-09-03T23:44:56.687779881Z
-finished:  2026-09-03T23:56:34.046649568Z
-id:        2378f32139b1d22a3dd620e3390790c300f2e34ec7762d14359c94b69889c8e7
-exit:      0
-OOMKilled: false
-findings:  r_s11b=0, r_s11b2=0, r_s11e16=0
-```
-
-The separately implemented workspace baseline passed with independent product,
-focused, shared, Apple, normative, hardening-ledger, digest, and dispatch
-checks. The 5,897-entry in-memory semantic source-mutation catalog then
-restarted from mutation one and passed in one uninterrupted canonical run. The
-entry count was derived exactly from the `run_source_mutations` tuple in the
-verifier's parsed AST after completion; it is not inferred from the terse
-success output:
-
-```text
-container: rustdesk-rs11im-workspace-mutations-final5
-started:   2026-09-04T02:15:13.368906877Z
-finished:  2026-09-04T05:57:08.654819985Z
-id:        2d9d0f798c901f48a2eceac6a183ff4246431b89fa79dded337de6ba3092922c
-exit:      0
-OOMKilled: false
-output:    verify-verifier-workspace: ok
-```
-
-Both named passing verifiers used immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-with `--network=none`, user `1000:1000`, a read-only root filesystem, all
-capabilities dropped, `no-new-privileges`, PID limit 64, 2 GiB memory and equal
-memory-plus-swap limit, two CPUs, a read-only
-`/home/user/Desktop/rustdesk_fork:/repo` bind, workdir `/repo`, and only a
-256 MiB `rw,nosuid,nodev,noexec` `/tmp` tmpfs. Each named container was
-inspected after exit and then removed. No source tree was writable from a
-verifier and no network or listener was available.
-
-Five earlier complete-catalog executions are development diagnostics and are
-not credited as passes. In order, they correctly stopped on: stale expected
-diagnostics after the old direct Boolean graph became a typed action graph; an
-independent-validator gap that did not require the explicit fail-closed `if !`
-identity guard; a narrower-than-actual expected diagnostic for the deliberate
-policy-write disjunction; shared-versus-Apple expected-label mismatches for a
-disabled R-S11im gate; and a global-documentation diagnostic that preceded the
-more specific expected R-S11im diagnostic. Each failed non-OOM, was inspected,
-and was removed; the relevant verifier assertion or expected diagnostic was
-corrected, affected baselines passed, and the complete catalog restarted from
-mutation one. An earlier Apple diagnostic run likewise exposed verifier-shape
-issues, was not credited, and was removed before the successful complete Apple
-matrix. No filtered, partial, failed, stale, or corrected-before-rerun result is
-credited.
-
-The normative `requirements.html` identity is exactly
-`139cf28619fce9dccbfb3fc06e4ce9037f655bc38a7c9cce96caf5f72d2b876f`
-and matches both `docs/NATIVE-CODEC-WATCH.md` and this ledger. Before this
-receipt, `scripts/native-codec-watch.sh`, Bash parsing of the changed shell
-gates, Python bytecode parsing of the changed Python gates, HTML parsing and
-unique R-S11im and Appendix C #398 records, requirement/native-watch/hardening
-digest synchronization, pinned Rust 1.75
-`rustfmt --emit stdout --config skip_children=true` parsing of `src/ipc.rs`, and
-`git diff --check` passed. The added production Rust contains no `unwrap`,
-`expect`, nested runtime, `block_on`, blocking sleep, new dependency, or new
-unsafe block.
-
-Exact pre-receipt identities were:
-
-```text
-e513b501189220348f3eea9dd253a20cdb89a6b9b138572d4c888795df5c6daf  src/ipc.rs
-9b930ca67703d2ee44b4dbf2acde8e30996667b6a6b1c7ef2ee37cd615f98a59  scripts/verify-linux-service-password-ipc.py
-60e14be7391bb66743c44fa54d2514bbebe374cb64efc14f1c10145250ba653d  scripts/verify.sh
-7dc16a83e39133f96ecf6c7aa22a2ec48b2861c235fa75b48f2c91e59c7986ca  scripts/apple-conform-check.sh
-9b816ede619a5dfaf1f03533e279833f7111686fa01b2d455b4194b6c7a0a4a0  scripts/verify-verifier-workspace.py
-snapshot 139cf28619fce9dccbfb3fc06e4ce9037f655bc38a7c9cce96caf5f72d2b876f  requirements.html
-385c6a0e86a40e5933d28c3dd8a935ef84973a7d184ce38e700fd6e3bb7625a6  docs/NATIVE-CODEC-WATCH.md
-6dac012bf3977cc04a8c9466c52eb2a74fe8e4cfea5a3d26a9df706e783eeddb  HARDENING_STATUS.md
-```
-
-The corresponding pre-receipt binary Git diff SHA-256 was
-`f528e7280653709f2430f9fade8cd73f48c748543b089ee44d554c137d7599c1`.
-Only this documentation status/receipt changed afterward. Bounded reruns of the
-focused gate, shared and Apple embedded analyzers, independent baseline,
-native-watch and its complete self-test, parsing/hash, Rust-parse, and diff
-gates bind the receipt before commit. The complete source-mutation catalog is
-not rerun after the receipt because every catalogued product, normative
-requirement, native-watch, focused/shared/Apple verifier, and independent-
-verifier byte identified above remains unchanged.
-
-The immutable verifier does not contain this repository's exact-current
-offline native dependency closure. No exact-current signed macOS compilation
-or execution, installed LaunchDaemon or real Authorization Services behavior,
-adversarial requester-exit/PID-reuse/UID/audit-token/argv/descriptor-handoff/
-socket-race execution, sustained latency/CPU/memory/resource soak, clean
-committed cold R-B2/R-B10 artifact equality, independent reproduction, or
-external review is claimed. This slice did not inspect, stop, restart, modify,
-or connect to a host RustDesk process/service; inspect or change host listener,
-firewall/UFW/nftables/iptables, network namespace, or configuration state;
-touch Android, a VM, Haggai/Desktop_Haggai_computer, or unrelated Docker state;
-or use root, sudo, privileged containers, host networking, published ports,
-devices, or a Docker socket inside a verifier. The persistent Android service,
-cross-platform reconnect/focus flow, display-only delay, complete connection-
-flow correctness/performance request, and every other explicit open hardening
-item remain active.
+**Open evidence.** Exercise the exact signed macOS candidate against installed LaunchDaemon and
+Authorization Services with authorized and unauthorized roles, requester exit, PID reuse, UID,
+audit-token, argv, descriptor-handoff, and socket races. Measure prompt/failure finality, latency,
+handles and memory, repeated operations, artifact identity, cold R-B2/R-B10 equality, independent
+reproduction, and external review.
 
 ### R-S11il/R-S11e-275 — typed macOS credential-replica response authority
 
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
+**State.** The source binds the password-equivalent PRS response to a consuming exact-requester
+admission. Focused source validation exists; no exact-current signed macOS execution proves the
+LaunchDaemon/LaunchAgent transaction.
 
-The continuing action-by-action privileged IPC review traced the root-side half
-of the macOS raw `_service_credential` exchange after R-S11ij closed the child-side
-runtime install. R-S11ia had already made the LaunchDaemon retain the accepted
-socket authorization across task dispatch and the bodyless request, prove the
-fresh signed installed `--server --service-owned-server` generation and trusted
-LaunchAgent record, replay complete argv, and take a final same-stream endpoint,
-fresh UID-authority, UID, effective-PID, and full-audit-token snapshot immediately
-before reading and sending the password-equivalent PRS. The handler nevertheless
-received the exact requester, passed only its identity into a Boolean final matcher,
-discarded the requester, and then called the root PRS reader and generic raw response
-writer directly. Every current call was correctly guarded and ordered, so this is
-source-proven internal action-authority lifetime and response-API debt. It is not
-evidence of credential disclosure, unauthorized mutation, authentication bypass,
-exploitation, host RustDesk/service/configuration/firewall/network mutation, public
-exposure, operational RustDesk failure, or causation of the older Android/Windows
-display-delay reports. No claim is made about an unidentified deployed artifact.
+**Boundary and current implementation.** The private non-cloneable
+`MacosServiceOwnedCredentialRequester` retains the complete signed installed-app socket identity and
+exact argv. After a canonical bodyless request, only its consuming `admit` method may take a fresh
+fixed-`_service_credential` same-stream snapshot and require exact UID, effective-PID, and audit-token
+continuity. The resulting private non-cloneable
+`MacosServiceOwnedCredentialReplicaAdmission` retains the requester and wire UUID. Only its consuming
+`respond` method may read the root runtime PRS and send it under that UUID while retaining the
+requester. The handler has no Boolean-authority, generic-secret, raw-writer, or direct-read fallback.
 
-The private, non-cloneable `MacosServiceOwnedCredentialRequester` now owns the
-final admission step. After the canonical bodyless request, its consuming `admit`
-method snapshots the retained stream only at the fixed `_service_credential`
-endpoint and requires the existing exact requester-versus-current UID, PID, and
-full-audit-token equality with fresh UID authority. Only that conjunction constructs
-one private, non-cloneable `MacosServiceOwnedCredentialReplicaAdmission` retaining
-the complete requester and wire operation UUID. Its consuming `respond` method is
-the only path that loads `service_owned_runtime_prs_replica("macOS")` and invokes
-the raw credential-replica writer under that retained UUID while the requester
-remains owned. The transaction handler now composes only request decoding, bounded
-exact-requester authentication, consuming admission, and consuming response; it no
-longer names the final socket snapshot, identity matcher, PRS reader, raw writer,
-generic secret, or an authority Boolean.
+**Evidence.** `src/ipc.rs` contains the requester, sole consuming admission, response owner, and
+closed handler call graph. The focused macOS credential IPC, Apple conformance, independent workspace,
+and native-watch validators bind the final snapshot/equality, sole construction, retained UUID and
+requester, capability-owned PRS read/write, and the R-S11il/Appendix C #397 identity. This proves source
+structure only and retains the documented last-owner limitation.
 
-This preserves the exact endpoint, wire kinds and bytes, operation-ID source,
-credential derivation/storage, installed-app/LaunchAgent proofs, mutable-last-owner
-limitation, deadline, transaction/proof budgets, listener, process and service
-lifecycle, port and network behavior, retry/reconnect policy, display/control path,
-Android/Windows behavior, dependencies, and artifacts. It is connected-process and
-last-owner consistency under the Darwin socket audit-token API, not proof of
-exclusive frame authorship or complete detection of descriptor handoff followed by
-restored activity from the retained requester. Focused/shared/Apple/independent
-semantic gates, deliberate mutations, exact normative/digest bindings, and final
-diff/receipt verification bind this exact slice.
-
-The normative requirements identity for this slice is:
-
-```text
-a186877ab91b07a37ea4f69e0a250f810e8b2e21d8ca4cc19c391afa80b1bbc0  requirements.html
-```
-
-Exact-current signed macOS compilation/execution, installed LaunchDaemon/LaunchAgent
-behavior, adversarial exit/PID-reuse/audit-token/descriptor-handoff/socket races,
-sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10 artifact
-equality, independent reproduction, and R-V3 external review remain open. This slice
-does not inspect, stop, restart, modify, or connect to a host RustDesk process/service;
-inspect or change host listener, firewall/UFW/nftables/iptables, network namespace, or
-configuration state; touch Android, a VM, Haggai/Desktop_Haggai_computer, or unrelated
-Docker state; or use root, sudo, privileged containers, host networking, published
-ports, devices, or a Docker socket inside a verifier. The persistent Android service,
-cross-platform reconnect/focus flow, display-only delay, complete connection-flow
-correctness/performance request, and every other explicit open hardening item remain
-active.
-
-#### Verification receipt — 2026-09-04
-
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
-
-The final source state for this slice passed the focused macOS
-service-credential IPC verifier and all 122 of its deliberate mutations. The
-new checks require the private, non-`Clone`, non-`Copy`
-`MacosServiceOwnedCredentialReplicaAdmission` to retain both the exact
-`MacosServiceOwnedCredentialRequester` and wire operation UUID; require the
-requester's `admit` method to consume it, take a fresh fixed
-`_service_credential` same-stream identity snapshot, require the established
-exact requester-versus-current UID, effective-PID, and full-audit-token match,
-and be the sole constructor of that admission; and require the admission's
-`respond` method to consume it before loading the macOS runtime PRS replica and
-sending the raw response under the retained UUID. The focused gate also
-requires the transaction handler's exact decode -> authenticate requester ->
-consume requester into admission -> consume admission into response graph and
-forbids the handler from naming the final snapshot, identity matcher, runtime
-PRS reader, raw writer, generic secret, or an authority Boolean.
-
-The focused mutation catalog rejected weakened admission fields, visibility,
-or cloneability; borrowed requester or admission authority; final admission on
-the wrong endpoint; missing or displaced fresh final snapshot; bypassed exact
-identity equality; direct construction outside the consuming requester;
-discarded requester or operation UUID; generic-secret substitution; loading or
-sending the credential outside the consuming admission; replacement response
-UUID; raw-writer bypass; and handler call-graph reordering or bypass. The
-focused Linux service-password verifier and its complete self-test also passed
-after the now-parallel macOS response/admission anchors made its requester,
-admission, response, UUID, and handler mutations explicitly Linux-specific.
-That Linux edit is cross-platform verifier disambiguation only; it changes no
-Linux product behavior. Its focused program does not print a mutation
-cardinality, so this receipt does not invent one.
-
-The shared service-credential architecture analyzer passed by direct extraction
-and execution of its exact embedded Python program. The complete Apple embedded
-password/credential matrix passed and required every generated `r_s11b`,
-`r_s11b2`, and `r_s11e16` finding file to exist and be empty. Its new response
-analyzer structurally selects the exact embedded `need` call by parsed Python
-function and argument value instead of borrowing an adjacent analyzer's marker
-as a text delimiter. The separately implemented workspace baseline passed with
-distinct product, focused, shared, Apple, normative, hardening-ledger, digest,
-and dispatch checks. Targeted executions of the 11 new product mutations, 13
-handler/gate/normative mutations, and 5 parsed-analyzer-helper and adjacent-
-analyzer mutations passed before the complete run; none is substituted for the
-complete result below.
-
-The 5,881-entry in-memory semantic source-mutation catalog restarted from
-mutation one and passed in one uninterrupted canonical run. The entry count was
-derived exactly from the `run_source_mutations` tuple in the verifier's parsed
-AST after completion; it is not inferred from the intentionally terse success
-output:
-
-```text
-container: rustdesk-rs11il-workspace-mutations-final
-started:   2026-09-03T18:14:45.602901656Z
-finished:  2026-09-03T22:05:35.684059879Z
-id:        5396b80c5e45b83ab81f9e002950d28717cef334a732eb520886f4e0deb55909
-exit:      0
-OOMKilled: false
-output:    verify-verifier-workspace: ok
-```
-
-The passing verifier used immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-with `--network=none`, user `1000:1000`, a read-only root filesystem, all
-capabilities dropped, `no-new-privileges`, PID limit 64, 2 GiB memory and equal
-memory-plus-swap limit, two CPUs, a read-only
-`/home/user/Desktop/rustdesk_fork:/repo` bind, workdir `/repo`, and only a
-256 MiB `rw,nosuid,nodev,noexec` `/tmp` tmpfs. The named container was inspected
-after exit and then removed. No source tree was writable from the verifier and
-no socket was exposed.
-
-Several development diagnostics are deliberately not credited as passes.
-Early ordinary-Python wrapper filters were discarded when the workspace
-verifier's canonical self-reexecution bypassed those filters and began partial
-full catalogs; those partial runs nevertheless exposed a stale Linux mutation
-anchor plus requester/admission/UUID/handler expected-diagnostic mismatches. A
-malformed token-filter Python launch stopped before repository validation. The
-first named canonical run,
-`rustdesk-rs11il-workspace-mutations`, started at
-`2026-09-03T16:46:48.445632985Z` and failed non-OOM at
-`2026-09-03T18:06:00.261058740Z` with exit 1 after an adjacent shared receiver
-mutation removed the text token then incorrectly used as the response
-analyzer's closing delimiter. Its retained container
-`9e5c0554e9772019bb9af3f3d51b1438a7446818948050727cd8242e28973c93`
-was inspected under the exact locked profile and removed. The analyzer was
-changed to AST-select its own exact embedded call, affected baselines and five
-targeted mutations passed, and the complete catalog then restarted from
-mutation one. After the receipt was first written, the independent workspace
-baseline passed but native-watch correctly rejected a duplicate canonical
-requirements-digest line in the historical identity block; that historical line
-was labeled `snapshot`, and the affected gates then passed. No filtered,
-malformed, partial, failed, stale, or corrected-before-rerun result is credited.
-
-The normative `requirements.html` identity is exactly
-`a186877ab91b07a37ea4f69e0a250f810e8b2e21d8ca4cc19c391afa80b1bbc0`
-and matches both `docs/NATIVE-CODEC-WATCH.md` and this ledger. Before the
-complete catalog, `scripts/native-codec-watch.sh` and its mutation self-test,
-Bash parsing of the changed shell gates, Python bytecode parsing of the changed
-Python gates, HTML parsing and unique R-S11il and Appendix C #397 records,
-requirement/native-watch/hardening digest synchronization, pinned Rust 1.75
-`rustfmt --emit stdout --config skip_children=true` parsing of `src/ipc.rs`, and
-`git diff --check` passed. The added production Rust contains no `unwrap`,
-`expect`, nested runtime, `block_on`, blocking sleep, new dependency, or new
-unsafe block.
-
-Exact pre-receipt identities were:
-
-```text
-6c38fa3ee43a8320c94255b4ffe31c1c46e98877f45276df02519eb900ebcd34  src/ipc.rs
-2c7c9ee2916769001feef36789f1e6b2e8f05801b1fb2161978dc3d5762e4ae1  scripts/verify-linux-service-password-ipc.py
-127a7739b827c20de7830034340821a56f9f24498f8fa23d33e869e432a981f1  scripts/verify-macos-service-credential-ipc.py
-52dad8643f175198a6bfb90b822f303fa8ac340e5a4c21d0dffc120f68fa4d22  scripts/verify.sh
-d56a2de6783accd59cfe7da1d0f557e4917ebb6c2d2469530d2e51854c7e9f98  scripts/apple-conform-check.sh
-2b36a65849d4432269dc634a608c5f5963b01e24a344ed6fdd483b4269e1cb40  scripts/verify-verifier-workspace.py
-snapshot a186877ab91b07a37ea4f69e0a250f810e8b2e21d8ca4cc19c391afa80b1bbc0  requirements.html
-beee1cd8c4e5e67354e198514152177680a83043f909a1eb753ef3cf9362e101  docs/NATIVE-CODEC-WATCH.md
-c99cd80e681347c2d66550e6250ba8dbb51073fdabff0883475847930b261527  HARDENING_STATUS.md
-```
-
-The corresponding pre-receipt binary Git diff SHA-256 was
-`2bbb9e6c659c364a6751d2a50834c42db26fd70be5d04043e084f6e2582f31ff`.
-Only this documentation status/receipt changed afterward. Bounded reruns of the
-focused Linux and macOS gates, shared and Apple embedded analyzers, independent
-baseline, native-watch, parsing/hash, Rust-parse, and diff gates follow this
-receipt. The complete source-mutation catalog is not rerun after the receipt
-because every catalogued product, normative requirement, native-watch,
-focused/shared/Apple verifier, and independent-verifier byte identified above
-remains unchanged.
-
-The immutable verifier does not provide this repository's exact-current offline
-native dependency closure. No exact-current signed macOS compile/unit,
-installed LaunchDaemon/LaunchAgent, real Authorization Services, adversarial
-requester-exit/PID-reuse/UID/effective-PID/audit-token/descriptor-handoff/socket
-race, replay/shutdown/error-finality execution, sustained latency/CPU/memory/
-resource soak, clean committed cold R-B2/R-B10 artifact equality, independent
-reproduction, or external review claim is made. No host RustDesk process,
-service, configuration, listener, firewall/UFW/nftables/iptables state, network
-namespace, Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated Docker object was inspected, stopped, restarted, modified, or
-connected to. The persistent Android service, cross-platform reconnect/focus
-flow, display-only delay, complete connection-flow correctness/performance
-request, and every other explicit open hardening item remain active.
+**Open evidence.** Run the exact signed installed macOS transaction with legitimate and adversarial
+LaunchAgent/requester generations, exit, PID reuse, audit-token, descriptor-handoff, request/response,
+timeout, shutdown, and socket races. Measure response finality, latency, memory and handle cleanup,
+artifact identity, cold R-B2/R-B10 equality, independent reproduction, and external review. Darwin
+last-owner continuity is not exclusive request-frame authorship or complete handoff detection.
 
 ### R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority
 
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT LINUX EXECUTION REMAINS OPEN.
+**State.** The source retains the exact root-parent generation through typed runtime-only installation.
+Focused source validation exists; exact-current installed Linux service execution remains open.
 
-**Platform, endpoint, action, and boundary.** This slice is limited to the Linux
-service-owned `--server --service-owned-server` child receiving its initial
-password-equivalent CPace PRS from the root service supervisor over the existing
-raw `_service_credential` Unix socket. The protected action is nonpersistent
-installation of that canonical PRS into the child runtime. The boundary is the
-connected UID-0 launch/direct parent and its kernel PID/UID plus proc start-time
-generation -> one operation-bound raw response -> the child-only runtime PRS
-sink. This initial credential response is distinct from the later `_password`
-update transaction hardened by R-S11ii.
+**Boundary and current implementation.** A private non-cloneable
+`LinuxServiceOwnedCredentialReplicaReceiver` owns the fixed-`_service_credential` stream and accepted
+PID/UID/start-time `LinuxProcessIdentity`. Connection requires the exact service-owned child role,
+UID-0 endpoint, root launch/direct-parent proof, and deadline. Its consuming transaction uses one UUID,
+validates the complete canonical response, reauthenticates the retained stream, rechecks the deadline,
+and requires complete parent-generation equality. Only the resulting typed admission may consume the
+runtime-only PRS sink. The normal wrapper is `connect -> receive_and_admit -> install`; the debug-only
+unsupervised fixture receives no credential and may only clear runtime PRS.
 
-**Source-proven defect.** Read-only tracing of
-`refresh_linux_service_owned_permanent_password_snapshot` showed that the child
-already required its exact service-owned role and selected only UID 0's fixed
-credential endpoint. It authenticated the connected peer as root, required its
-PID to equal both the recorded launch parent and live direct parent, retained the
-peer's proc-derived PID/UID/start-time generation long enough to complete that
-check, then discarded it. The wrapper subsequently sent one canonical bodyless
-request, received a same-UUID bounded canonical `SensitivePassword`, and called
-`Config::set_permanent_password_prs_for_runtime` directly. The endpoint, first
-parent proof, one-stream ordering, operation-bound decoder, and validating
-nonpersistent sink remained load-bearing. This is internal action-authority,
-parent-generation-lifetime, and final-sink type debt. It is not evidence that a
-credential was substituted or disclosed, that an unauthorized persistent write
-occurred, that RustDesk was exploited or operationally broken, or that a host
-service, configuration, listener, firewall, or network state changed.
+**Evidence.** `src/ipc.rs` contains the receiver/admission graph and
+`libs/hbb_common/src/config.rs` contains the canonical validating nonpersistent sink. The focused
+Linux password IPC, shared, Apple, independent workspace, and native-watch validators bind fixed
+endpoint and role, retained stream/generation, same-UUID exchange, final proof/deadline/equality,
+consuming install, debug-fixture separation, and the R-S11ik/Appendix C #396 identity. This is source
+evidence rather than an installed-service result.
 
-**Authority and ownership correction.** `src/ipc.rs` now gives one private,
-non-`Clone`, non-`Copy` `LinuxServiceOwnedCredentialReplicaReceiver` ownership
-of both the raw `ConnClient` and the accepted full `LinuxProcessIdentity`. Its
-private `connect` constructor requires the exact child role, chooses only UID
-0's fixed `_service_credential` path, applies the caller's absolute deadline to
-connection, authenticates the same stream through the parent-module-private
-root/launch-parent/direct-parent generation proof, checks the deadline again,
-and retains the returned PID, UID, and start time.
-
-The receiver's `receive_and_admit` method consumes it, freshly rechecks the
-exact child role, generates one operation UUID, sends the canonical bodyless
-snapshot request, and accepts only the complete canonical response for that
-same UUID and deadline. It then reauthenticates the retained stream at the
-fixed credential endpoint, rechecks the absolute deadline, and requires exact
-accepted/refreshed PID, UID, and start-time equality. Any missing, exited,
-PID-reused, changed-UID, indirect-parent, changed-launch-parent, wrong-role,
-wrong-path, wrong-kind, mismatched-UUID, malformed, oversized, trailing,
-timed-out, or otherwise inconclusive evidence returns no admission and makes no
-runtime change.
-
-That conjunction is the sole constructor of the private non-cloneable
-`LinuxServiceOwnedCredentialRuntimePrsAdmission`, which retains the consumed
-receiver and wraps the decoded value in the already-distinct
-`ServiceOwnedRuntimePrsReplica`. Only its consuming `install` delegates to the
-typed replica's consuming `install_for_runtime`; the single shared config sink
-still validates canonical PRS and changes process runtime state only. The public
-normal path now composes `connect -> receive_and_admit -> install` and no longer
-names the endpoint, raw codec, parent proof, generic secret, or nonempty config
-sink. The debug-only unsupervised-recovery fixture remains intentionally
-separate: it receives no credential and only clears runtime PRS so the existing
-source test can model parentless recovery without weakening production builds.
-The receiver and its stream live through installation.
-
-This changes no raw frame, payload-kind number, endpoint name or mode,
-credential derivation, durable password write, authorization rule, listener,
-port, network behavior, capacity, timeout, retry/reconnect policy, process
-launch, service transition, display/control path, Android/Windows lifecycle
-behavior, dependency, or artifact. Exact-current Linux compilation and
-execution, installed root-service/active-user-child behavior, adversarial
-parent-exit/PID-reuse/UID/PPID/launch-parent/descriptor-handoff/socket races,
-sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10
-artifact equality, independent reproduction, and external review remain open.
-The persistent Android service, cross-platform reconnect/focus flow,
-display-only delay, complete connection-flow correctness/performance request,
-and every other explicit open hardening item remain active.
-
-The normative requirements identity currently under verification for R-S11ik is:
-
-```text
-6ca9a2536fe60138a0c472cad81c06a25406e9d0bcd1ef007470ae446695fb6c  requirements.html
-```
-
-#### Verification receipt — 2026-09-03
-
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT LINUX EXECUTION REMAINS OPEN.
-
-The final source state for this slice passed the focused Linux
-service-password IPC verifier and its complete deliberate-mutation catalog. The
-new checks require the private, non-`Clone`, non-`Copy`
-`LinuxServiceOwnedCredentialReplicaReceiver` to own both the one raw credential
-stream and accepted full Linux parent identity; require its fixed UID-0
-`_service_credential` constructor to prove the exact service-owned child role,
-apply the caller's absolute deadline to connection, authenticate the same stream
-as the root launch/direct parent, recheck the deadline, and retain the returned
-PID/UID/proc-start-time generation; and require its response method to consume
-the receiver across one operation UUID, the canonical bodyless request, the
-complete canonical same-UUID response, a fresh same-stream fixed-endpoint parent
-proof, a final deadline check, and exact accepted/refreshed identity equality.
-The focused gate also requires that conjunction to be the sole constructor of a
-private non-cloneable `LinuxServiceOwnedCredentialRuntimePrsAdmission`, requires
-its consuming `install` to delegate only to the typed replica's consuming
-`install_for_runtime`, and requires the public normal path to be exactly
-`connect -> receive_and_admit -> install` while preserving the separate
-debug-only empty-runtime recovery fixture.
-
-The focused mutation catalog rejected weakened receiver storage, cloneability
-or visibility; a generic-secret admission; initial or final child-role bypass;
-ordinary-password or caller-selected endpoint substitution; discarded initial
-parent generation; missing post-connect or final deadline checks; borrowed
-rather than consumed receiver/admission authority; a replacement response UUID
-or decoder; final reauthentication of the wrong endpoint; bypassed exact parent
-generation equality; disabled admission construction; direct config-sink
-installation; and typed-client call-graph bypass. The focused program does not
-print a mutation cardinality, so this receipt does not invent one.
-
-The focused macOS service-credential IPC verifier also passed all 103 of its
-deliberate mutations after its consuming-receiver, response, and install
-mutation anchors were made explicitly macOS-specific in the now-parallel Linux
-and macOS type graph. This is cross-platform verifier disambiguation, not a new
-macOS product change. The shared service-credential architecture analyzer
-passed by direct extraction and execution of its exact embedded Python program;
-its older Linux receiver extraction now ends at the new Linux initial-credential
-receiver implementation rather than accidentally spanning both Linux receiver
-types. The complete Apple embedded matrix passed with the new Linux initial
-credential receiver/admission mutations included and required each of its
-`r_s11b`, `r_s11b2`, and `r_s11e16` finding files to exist and be empty. The
-separately implemented workspace baseline passed with distinct product,
-focused, shared, Apple, normative, hardening-ledger, digest, and dispatch
-checks. A targeted execution of all 33 newly added workspace mutations passed
-before the complete run; a later diagnostic run of all 3,232 catalog entries
-after the final corrected macOS wrapper mutation also passed, but neither
-bounded diagnostic is substituted for the complete result below.
-
-The complete in-memory semantic source-mutation catalog restarted from mutation
-one and passed in one uninterrupted final run:
-
-```text
-container: rustdesk-rs11ik-workspace-mutations-final8
-started:   2026-09-03T07:45:08.066796691Z
-finished:  2026-09-03T11:11:10.349704268Z
-id:        8cfcbd23f61677c8953a530551ee8640fa1a2f4222c73676a8a569d46a91f320
-exit:      0
-OOMKilled: false
-output:    verify-verifier-workspace: ok
-```
-
-The `--source-mutations-only` implementation executes the complete
-`run_source_mutations` matrix but deliberately prints no tuple cardinality; its
-only success output is the exact line above. Therefore this receipt does not
-infer a catalog count from that output. The clean exit proves that every
-catalogued effective source occurrence, including the Linux initial credential
-receiver/admission product graph and its focused/shared/Apple/independent/
-normative bindings, was rejected when independently weakened.
-
-The passing verifier used immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-with `--network=none`, user `1000:1000`, a read-only root filesystem, all
-capabilities dropped, `no-new-privileges`, PID limit 64, 2 GiB memory and equal
-memory-plus-swap limit, two CPUs, a read-only
-`/home/user/Desktop/rustdesk_fork:/repo` bind, workdir `/repo`, and only a
-256 MiB `rw,nosuid,nodev,noexec` `/tmp` tmpfs. The named container was inspected
-after exit and then removed. No source tree was writable from the verifier and
-no socket was exposed.
-
-One earlier catalog process was deliberately stopped as stale after its verifier
-inputs changed and is not a pass claim. Seven later failed complete-catalog
-attempts are likewise diagnostics, not passes. They successively exposed a
-missing independent binding for the shared sole-config-sink predicate; two
-established diagnostic-label mismatches for the adjacent exact typed-install
-cardinalities; an over-broad expected label for a borrowed Linux receiver; the
-Linux and then macOS direct-admission sink mutations being correctly rejected
-first by the exact three typed-install-call invariant; and the macOS client
-call-graph bypass being correctly rejected first by the exact two-platform
-receiver-admission-call invariant. Each correction changed verifier expectation
-or binding only, each baseline was rerun, and the complete catalog restarted
-from mutation one. Every retained failed named container was inspected as
-non-OOM with its actual exit and exact locked profile and removed; no stale,
-stopped, partial, malformed, or failed run is credited.
-
-The normative `requirements.html` identity is exactly
-`6ca9a2536fe60138a0c472cad81c06a25406e9d0bcd1ef007470ae446695fb6c`
-and matches `docs/NATIVE-CODEC-WATCH.md`. `scripts/native-codec-watch.sh`
-mutation self-test passed. Bash parsing of the changed shell gates, Python AST
-parsing of the changed Python gates, HTML parsing and unique R-S11ik and Appendix
-C #396 records, requirement/native-watch digest synchronization, and `git diff
---check` passed. Pinned Rust 1.75 `rustfmt --emit stdout --config
-skip_children=true` parsed changed `src/ipc.rs`. The added production Rust
-contains no `unwrap`, `expect`, nested runtime, `block_on`, blocking sleep, or
-new unsafe block.
-
-Exact pre-receipt identities were:
-
-```text
-f8530907391d63881c3317f1b53542a423968f5ff8550505f308b9a5610ef771  src/ipc.rs
-fb90a27c9e354c87b38adb5f33663350d0131029eb23e1c94feabc1a1d4a9e7e  scripts/verify-linux-service-password-ipc.py
-8e076592bb0a2e8bd3b51be6f898f87a52ed7fe05517afbeb01c92182453adfa  scripts/verify-macos-service-credential-ipc.py
-5bd58c2b4ec74284b2ab8a2014742c99f9a3b07d5ea362b9043b8b1d60978101  scripts/verify.sh
-e81d5cec1b611e6b53cff40cc7941a949730d06cb64319ada25f5c1502a5ea49  scripts/apple-conform-check.sh
-8a129ca932cb392bdf98461066993c6c3d2d93e63e46c1e9f78d284936bca863  scripts/verify-verifier-workspace.py
-snapshot 6ca9a2536fe60138a0c472cad81c06a25406e9d0bcd1ef007470ae446695fb6c  requirements.html
-a26b5d6bf4c111c8ce3ea05f5f67ce8a428372aadbd22343ad0e8ba1452d0051  docs/NATIVE-CODEC-WATCH.md
-77605264000367bc1f00a9171e839ac627a42e1a44ab5aed81f38cb6c5e74b08  HARDENING_STATUS.md
-```
-
-The corresponding pre-receipt binary Git diff SHA-256 was
-`be7e2d4ef68421cb5325acb0d95448332ce40cbe31969fdaeace63c2d09f0901`.
-This documentation-only status/receipt update is followed by bounded reruns of
-the focused Linux and macOS gates, shared and Apple embedded analyzers,
-independent baseline, native-watch, parsing/hash, Rust-parse, and diff gates.
-The complete source-mutation catalog is not rerun after this receipt because the
-catalogued product, normative requirement, native-watch, focused/shared/Apple
-verifier, and independent-verifier bytes identified above remain unchanged.
-
-The immutable verifier does not provide this repository's exact-current offline
-native dependency closure. No exact-current Linux compile/unit, installed-root-
-service/active-user-child, real-polkit, adversarial parent-exit/PID-reuse/UID/
-PPID/launch-parent/runtime-generation/descriptor-handoff/socket-race,
-replay/shutdown/error-finality execution, sustained latency/CPU/memory/resource
-soak, clean committed cold R-B2/R-B10 artifact equality, independent
-reproduction, or external review claim is made. No host RustDesk process,
-service, configuration, listener, firewall/UFW/nftables/iptables state, network
-namespace, Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated Docker object was inspected, stopped, restarted, modified, or
-connected to. The persistent Android service, cross-platform reconnect/focus
-flow, display-only delay, complete connection-flow correctness/performance
-request, and every other explicit open hardening item remain active.
+**Open evidence.** Run the exact candidate as an installed root supervisor and active-user child
+inside a disposable Linux VM across supported desktops and init systems. Test parent exit and restart,
+PID reuse, UID/PPID/start-time, launch-parent, descriptor-handoff, timeout, malformed response, socket
+race, replay, shutdown, and error finality. Measure latency, CPU, memory, descriptors and cleanup; bind
+the Debian artifact; complete cold R-B2/R-B10 equality, independent reproduction, and external review.
 
 ### R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority
 
-**Status:** SOURCE VERIFIED / EXACT-CURRENT SIGNED macOS EXECUTION EVIDENCE
-PENDING.
+**State.** The source retains exact privileged-helper authority through typed runtime-only
+installation. Focused source validation exists; exact-current signed macOS and installed helper
+execution remain open.
 
-**Platform, endpoint, action, and boundary.** This slice is limited to the macOS
-service-owned `--server --service-owned-server` child receiving its initial or
-refreshed password-equivalent CPace PRS from the root PrivilegedHelperTools
-process on the existing raw `_service_credential` Unix socket. The protected
-action is nonpersistent installation of that validated PRS into the child
-runtime. The boundary is the connected root signed helper and its kernel
-UID/effective-PID/full-`LOCAL_PEERTOKEN` identity -> one operation-bound raw
-response -> the child-only runtime PRS sink.
+**Boundary and current implementation.** `MacosServiceServerAuthorization` privately retains the
+socket-derived UID, effective PID, and full audit token after UID-0 and exact signed-helper validation.
+A private non-cloneable `MacosServiceOwnedCredentialReplicaReceiver` owns that authorization and the
+fixed-`_service_credential` stream. Its consuming transaction freshly checks the exact child role,
+uses one UUID for request and response, validates the complete canonical PRS, snapshots and reproves
+the retained peer, and requires full UID/PID/audit-token equality. Only the resulting typed admission
+may consume the validating nonpersistent runtime sink; the public wrapper has no raw, generic-secret,
+proof, endpoint, config-sink, or Boolean fallback.
 
-**Source-proven defect.** Read-only tracing of
-`refresh_macos_service_owned_permanent_password_snapshot` in `src/ipc.rs`
-showed that the child already required its exact service-owned role, selected
-UID 0's fixed credential endpoint, captured the socket peer identity, and ran
-the bounded root/trusted-helper code-signing proof before sending the request.
-The raw codec then required the same nonnil operation UUID, credential-replica
-kind, canonical 44-byte PRS, UTF-8, and EOF before returning a self-wiping
-`SensitivePassword`. However,
-`authorize_macos_service_server_snapshot_for_task` collapsed the complete
-helper proof to `()`. The public refresh function therefore discarded the
-accepted helper generation before sending and invoked
-`Config::set_permanent_password_prs_for_runtime` directly after receipt,
-without a final helper proof or an action-bearing type at the sink. The fixed
-local endpoint, initial complete audit-token proof, signed helper identity,
-single ordered stream, operation-bound decoder, and validating nonpersistent
-sink remained load-bearing, so this is internal action-authority,
-helper-generation-lifetime, and API/sink debt. It is not evidence that a
-credential was substituted or disclosed, that any unauthorized persistent
-write occurred, that RustDesk was exploited or operationally broken, or that a
-host service, configuration, listener, firewall, or network state changed.
+**Evidence.** `src/ipc/auth.rs` contains the opaque helper authorization and exact continuity
+comparison; `src/ipc.rs` contains the receiver, admission, and closed wrapper; the shared sink is in
+`libs/hbb_common/src/config.rs`. The focused macOS credential IPC, shared, Apple, independent
+workspace, and native-watch validators bind the typed proof return, fixed role/path, retained stream
+and full identity, same-UUID exchange, final proof/equality, consuming install, and the
+R-S11ij/Appendix C #395 identity. This is source evidence only.
 
-**Authority and ownership correction.** `src/ipc/auth.rs` now makes
-`authorize_macos_service_server_snapshot` return the original field-private,
-crate-visible, non-`Clone`, non-`Copy` `MacosServiceServerAuthorization` after
-its unchanged
-UID-0 and trusted-signed-helper proof instead of returning `()`. The capability
-retains the complete private `MacosPeerProcessIdentity`. The new exact
-continuity predicate compares the accepted and refreshed UID, PID, and every
-audit-token byte; no reduced PID, detached Boolean, or public identity field can
-stand in for that equality. The existing exactly owned bounded macOS security
-proof thread now returns this capability to its caller.
-
-`src/ipc.rs` adds one private, non-`Clone`, non-`Copy`
-`MacosServiceOwnedCredentialReplicaReceiver` which owns both the raw
-`ConnClient` and the typed accepted helper authorization. Only its `connect`
-method may choose UID 0's fixed `_service_credential` path, and only while the
-process has the exact service-owned-server role. Its consuming
-`receive_and_admit` method freshly checks that role, generates one operation
-UUID, sends the canonical bodyless request, receives the canonical replica for
-that same UUID, re-snapshots the retained stream, repeats the bounded
-root/trusted-helper proof, and exact-matches the complete accepted/refreshed
-identity. Any missing, exited, reused, changed-token, nonroot, untrusted,
-wrong-role, wrong-path, malformed, mismatched, trailing, timed-out, or otherwise
-inconclusive evidence returns no admission and makes no runtime change.
-
-That conjunction is the sole constructor of the private non-cloneable
-`MacosServiceOwnedRuntimePrsAdmission`, which retains the consuming receiver
-and wraps the received secret as the already-distinct
-`ServiceOwnedRuntimePrsReplica`. Its consuming `install` is the only final
-action and delegates to the typed replica's consuming `install_for_runtime`;
-that method is now shared by Linux and macOS but still has exactly one
-validating nonpersistent config sink. The public refresh wrapper only composes
-`connect -> receive_and_admit -> install`; it no longer names a path, raw codec,
-helper proof, generic secret, or config sink. The receiver retains the socket
-through install. This proves exact connected-peer/last-owner consistency under
-the available macOS socket audit-token API; it does not claim exclusive frame
-authorship or complete detection of arbitrary descriptor handoff followed by a
-restored last owner.
-
-This changes no raw frame, payload-kind number, endpoint name or mode,
-credential derivation, durable password write, Authorization Services rule,
-listener, port, network behavior, capacity, deadline, retry/reconnect policy,
-process launch, service transition, display/control path, Android/Windows
-lifecycle behavior, dependency, or artifact. Exact-current signed macOS
-compilation and execution, installed LaunchDaemon/LaunchAgent behavior,
-adversarial helper exit/PID reuse/audit-token/descriptor-handoff/socket races,
-sustained latency/CPU/memory/resource soak, clean committed cold R-B2/R-B10
-artifact equality, independent reproduction, and external review remain open.
-The persistent Android service, cross-platform reconnect/focus flow,
-display-only delay, complete connection-flow correctness/performance request,
-and every other explicit open hardening item remain active.
-
-The normative requirements identity currently under verification for this slice
-is:
-
-```text
-b7652ab970a786399d0500d1dd769b22cc95ebb9fffa4811caf2329173b6497c  requirements.html
-```
-
-#### Verification receipt — 2026-09-03
-
-**Status:** SOURCE VERIFIED / FOCUSED, SHARED, APPLE, INDEPENDENT, AND COMPLETE
-SOURCE-MUTATION GATES PASS / EXACT-CURRENT SIGNED macOS EXECUTION REMAINS OPEN.
-
-The final source state for this slice passed the focused macOS service-credential
-IPC verifier and all 103 of its deliberate mutations. Those mutations attack the
-private/non-cloneable receiver and admission types, retained socket and accepted
-helper authorization, both exact service-owned-server role checks, fixed UID-0
-`_service_credential` endpoint selection, one bodyless operation-bound request,
-matching canonical response, fresh same-stream peer snapshot, fresh bounded
-signed-helper proof, exact UID/PID/full-audit-token continuity, consuming final
-admission and install, sole typed runtime sink, helper-task authorization return,
-public-wrapper call graph, focused-validator dispatch, cross-gate bindings, and
-mutation-fixture reachability.
-
-The shared service-credential architecture analyzer passed by direct extraction
-and execution of its exact embedded Python program. Its receiver extraction was
-corrected to cover both methods of the private receiver implementation rather
-than stopping at the first method-closing brace. The complete Apple embedded
-matrix passed, including all 23 new R-S11ij mutations, and required each of its
-`r_s11b`, `r_s11b2`, and `r_s11e16` finding files to exist and be empty. The
-separately implemented workspace baseline passed with distinct product, focused,
-shared, Apple, normative, hardening-ledger, digest, and dispatch checks.
-
-The complete in-memory semantic source-mutation catalog then restarted from
-mutation one and passed in one uninterrupted final run:
-
-```text
-container: rustdesk-rs11ij-workspace-mutations
-started:   2026-09-02T22:34:43.072119926Z
-id:        78c5b8cbe683e023c96fd8b1da19ae8b1e9ec509d078d7caebf791686c555e14
-exit:      0
-OOMKilled: false
-output:    verify-verifier-workspace: ok
-```
-
-The `--source-mutations-only` implementation executes the complete
-`run_source_mutations` matrix but deliberately prints no tuple cardinality; its
-only success output is the exact line above. Therefore this receipt does not
-invent or claim a catalog count. The clean exit proves that every catalogued
-effective source occurrence, including the new macOS receiver/admission product
-graph and all focused/shared/Apple/independent/normative bindings, was rejected
-when independently weakened.
-
-Three earlier complete-catalog attempts are useful diagnostics and are not pass
-claims. One exposed a quoted-marker workspace mutation with no executable target;
-that cosmetic fixture was removed rather than counted. A later attempt showed
-that the initial-role bypass was correctly rejected by the more precise
-`detached macOS receiver authority bypass` diagnostic instead of the fixture's
-over-broad expected label. The next showed that direct typed-sink replacement was
-correctly rejected earlier by the exact Linux-worker/macOS-admission runtime-install
-cardinality check. Each expected diagnostic was narrowed to the actual semantic
-authority failure, every affected baseline was rerun, and the full catalog was
-restarted from mutation one. Each retained failed named catalog container was
-inspected as exit 1/non-OOM with the exact locked profile and removed; no stopped,
-partial, malformed, or failed run is credited.
-
-`scripts/native-codec-watch.sh` mutation self-test passed. The normative
-`requirements.html` identity is exactly
-`b7652ab970a786399d0500d1dd769b22cc95ebb9fffa4811caf2329173b6497c`
-and matches `docs/NATIVE-CODEC-WATCH.md`; Bash parsing of the changed shell gates,
-Python AST parsing of both changed Python gates, HTML parsing and unique R-S11ij
-and Appendix C #395 records, requirement/native-watch digest synchronization,
-and `git diff --check` passed. Pinned Rust 1.75 `rustfmt --emit stdout --config
-skip_children=true` parsed both changed production Rust files. The added
-production Rust contains no `unwrap`, `expect`, nested runtime, `block_on`,
-blocking sleep, or new unsafe block.
-
-Exact pre-receipt identities were:
-
-```text
-5c7f808ba00bfeb251465599f8a6fddf0670dda5c2e4d7a9e78c79de01c1e17f  src/ipc.rs
-1503c3fc485a9762aae07880a5f1816362e3d8d7a5a1e8793385199af4be1490  src/ipc/auth.rs
-490d528c5d15b1349b12ddc65ea230e1dc6c0f53e58fef7191ae09978ab71c15  scripts/verify-macos-service-credential-ipc.py
-b1b7725bddaae0db2f90434cd01fbacfdfada8a6d557248c311cf95995f1c5ad  scripts/verify.sh
-711d0d0537b8ad05e1a2ce42ad2214d7a92f21a4b741fcdccc07317032249f13  scripts/apple-conform-check.sh
-bc7bd5c1a0f7cd786e138a32659960d86d2465e83bfd8be05eca9c16ef708d04  scripts/verify-verifier-workspace.py
-snapshot b7652ab970a786399d0500d1dd769b22cc95ebb9fffa4811caf2329173b6497c  requirements.html
-ae00455a1f669489b8c5c38ec8a2a32a98e50b7bfa40a447dc61a24e6c8dcf70  docs/NATIVE-CODEC-WATCH.md
-d96cbbd5f7fc103469ebbbfdd14261bf47f87c39c6d4d5a767cfca01ec8c7df5  HARDENING_STATUS.md
-```
-
-The corresponding pre-receipt binary Git diff SHA-256 was
-`fbc324f32fab6b6dd694fdd94b7b2461c69bb3058cae9a88ad52a8c89b05c585`.
-This documentation-only status/receipt update is followed by bounded reruns of
-the focused, shared, Apple, independent-baseline, native-watch, parsing/hash,
-Rust-parse, and diff gates. The complete source-mutation catalog is not rerun
-after this receipt because the catalogued product, normative requirement,
-native-watch, focused/shared/Apple verifier, and independent-verifier bytes
-identified above remain unchanged.
-
-Every executable gate used immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-with `--network=none`, UID/GID 1000, a read-only repository bind, read-only root
-filesystem, all capabilities dropped, `no-new-privileges`, 64 PIDs, two CPUs,
-2 GiB memory with no additional swap, and a 256 MiB `nosuid,nodev,noexec` tmpfs.
-The credited catalog container recorded exactly those settings, used the pinned
-image content ID, exited zero without OOM, was inspected, and was then removed.
-Rust parsing additionally mounted only the pinned Rust 1.75 toolchain read-only.
-No image was built or pulled, listener or port was opened, root/sudo or privileged
-container was used, host networking or device was attached, or Docker socket was
-exposed inside a verifier. Only exact verifier containers created for this slice
-were inspected and removed.
-
-The immutable verifier does not provide this repository's exact-current offline
-native dependency closure. No exact-current signed macOS compile/unit,
-installed-LaunchDaemon/LaunchAgent, trusted-helper/Authorization Services,
-adversarial helper-exit/PID-reuse/audit-token/descriptor-handoff/socket-race,
-replay/shutdown/error-finality, sustained latency/CPU/memory/resource-soak, clean
-committed cold R-B2/R-B10 artifact-equality, independent-reproduction, or external
-review claim is made. No host RustDesk process/service/configuration, listener,
-firewall/UFW/nftables/iptables state, network namespace, Android device, VM,
-Haggai/Desktop_Haggai_computer workload, or unrelated Docker object was inspected,
-stopped, restarted, modified, or connected to. The persistent Android service,
-cross-platform reconnect/focus flow, display-only delay, complete connection-flow
-correctness/performance request, and every other explicit open hardening item
-remain active.
+**Open evidence.** Run the exact signed installed macOS child/helper flow with authorized and
+unauthorized peers, helper exit, PID reuse, changed audit token, descriptor handoff, malformed and
+mismatched responses, timeout, shutdown, and socket races. Measure install/reconnect finality,
+latency, CPU, memory and handles, bind exact artifacts, and complete cold R-B2/R-B10 equality,
+independent reproduction, and external review. The source model proves connected-peer/last-owner
+consistency, not exclusive frame authorship or complete descriptor-handoff detection.

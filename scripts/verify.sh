@@ -2902,6 +2902,7 @@ fi
 echo "== (3b-iii-c) dedicated raw password IPC authority and finality (R-S11b/R-S11c/R-S11g/R-S11h/R-S11i) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config password_mutation --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config windows_credential_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e97_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e262_ --color never
 r_s11b2=
@@ -2913,11 +2914,6 @@ if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
     --repo . --self-test >"$VERIFY_TMP/rd_verify_macos_service_credential_ipc" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_macos_service_credential_ipc"
   r_s11b2="$r_s11b2 macos-raw-credential-semantic-verifier-failed"
-fi
-if ! python3 scripts/verify-windows-service-channel-protocols.py --repo . --self-test \
-    >"$VERIFY_TMP/rd_verify_windows_service_channel_protocols" 2>&1; then
-  cat "$VERIFY_TMP/rd_verify_windows_service_channel_protocols"
-  r_s11b2="$r_s11b2 windows-service-channel-protocol-verifier-failed"
 fi
 grep -Fq '<span class="id">R-S11ep</span>' requirements.html || r_s11b2="$r_s11b2 macos-raw-credential-requirement-missing"
 grep -Fq 'R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-raw-credential-ledger-missing"

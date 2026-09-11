@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0d973dde8dffd4019a0a659f7b6fcee593d4e6ed313389239ba71593db48702d  requirements.html
+ab83c130b398109f29b589261b6e41650c39cfebf032adbc8ced70d74744e26a  requirements.html
 ```
 
 ## Current Verdict
@@ -11724,110 +11724,40 @@ desktop and web routing, Windows focus/minimize/reconnect, other-platform/cross-
 capture-through-presentation latency, sustained resource soak, cold R-B2/R-B10 equality, installed
 artifacts, independent reproduction, causation, and external review remain STOP-SHIP.
 
-### R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols (2026-08-22)
+### R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols
 
-**SOURCE IMPLEMENTED; CONFINED SOURCE AND DELIBERATE-MUTATION VERIFICATION RECORDED
-BELOW; EXACT WINDOWS COMPILATION, NATIVE SERVICE/CHILD EXCHANGE, INSTALLED ARTIFACT,
-COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW EVIDENCE OPEN.** Platform:
-the Windows installed service supervisor's exact retained `--server` child. Endpoints:
-the existing protected `_service_credential` replica channel and independently budgeted
-`_service_main_control` lifecycle/query channel. This slice does not change the ordinary
-main IPC, general `_service`, `_service_sas`, password mutation wire, service supervisor,
-listener inventory, named-pipe paths or DACLs, process roles, service lifecycle, or any
-network surface.
+**SOURCE IMPLEMENTED; ONE EXECUTABLE CROSS-PLATFORM WIRE REGRESSION RETAINED AND
+DIRECTLY WIRED; SOURCE/MUTATION THEATER DELETED; EXACT CURRENT INSTALLED WINDOWS
+AUTHORITY, LIFECYCLE, RESOURCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
 
-Read-only source tracing proved a narrower protocol-authority defect than an
-authentication bypass. The two privileged endpoints already had separate listeners,
-independent transaction semaphores, protected 32-KiB frame codecs, request deadlines,
-exact retained-child PID/creation-time client proof, LocalSystem/exact-generation server
-admission, and a second authorization check after parsing and before action. However,
-both listeners called one `handle_windows_service_main_transaction`, which first
-deserialized the shared `WindowsServiceMainRequest` union. Only its later match arms
-compared a separately supplied `WindowsServiceMainEndpoint` discriminator. Consequently
-`_service_credential` parsed `PortForwardSessionCount` and `Shutdown`, while
-`_service_main_control` parsed complete credential replica payloads, before rejecting
-them. The response side likewise shared `WindowsServiceMainResponse`. Blame attributes
-the surrounding authenticated service-main path to `57bcb529` (2026-07-13); the later
-closed-directional generic service/SAS correction in `85604a6b` (2026-07-27) did not
-split this Windows service-main union.
+The inherited `_service_credential` and `_service_main_control` listeners authenticated distinct
+protected endpoints but deserialized one shared request/response union before a later discriminator
+rejected the wrong operation. The current source instead defines four closed, disjoint,
+unknown-field-rejecting types: credential requests/responses and control requests/responses. Each
+listener owns its own budget, requester capability, typed reader, handler, writer, and client
+endpoint. Credential operations, port-forward count, and shutdown remain reachable only through
+their endpoint-specific capability; shutdown retains control authority across acknowledgement and
+revalidates before its latch. No listener, operation, retry, runtime, service transition, or network
+surface was added.
 
-The existing endpoint guards were load-bearing and no action path bypass was found.
-This ledger therefore makes no claim that an unprivileged or cross-endpoint caller
-could execute the rejected operation, no claim of compromise, and no claim that this
-source debt caused any reported Android/Windows display symptom. The defect was that
-wire vocabulary and compile-time receiver authority were broader than the endpoint,
-leaving future match-arm changes, reused helpers, and response handling able to
-reactivate cross-purpose behavior after successful parsing.
+The platform-neutral Rust regression
+`ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols`
+serializes the exact credential/control request and response forms and rejects opposite-direction,
+cross-endpoint, unknown-field, nested-unknown-field, and generic-`Data` inputs. The shared verifier
+now invokes that test directly. Its execution is wire/parser evidence only: it does not exercise a
+Windows named pipe, LocalSystem, a retained supervisor process, protected action, acknowledgement,
+restart, or cleanup.
 
-The shared endpoint enum, request union, response union, generic service-main transport
-methods, and shared handler are deleted. `_service_credential` now owns the closed
-`WindowsServiceCredentialRequest` variants `QuiesceCredentialReplica`,
-`ApplyCredentialReplica`, `QueryCredentialReplica`, and `ResumeCredentialReplica`, plus
-the closed `WindowsServiceCredentialResponse` variants `State` and `Rejected`.
-`_service_main_control` owns the closed `WindowsServiceControlRequest` variants
-`PortForwardSessionCount` and `Shutdown`, plus the closed
-`WindowsServiceControlResponse` variants `PortForwardSessionCount` and
-`ShutdownAccepted`. All four adjacent-tag JSON envelopes use `deny_unknown_fields`.
-Credential/control request and response tags are disjoint, so opposite-direction,
-unknown-field, generic-`Data`, and cross-endpoint input fails during typed
-deserialization rather than entering a shared dispatch allowlist.
+The deleted `scripts/verify-windows-service-channel-protocols.py` was a 1,538-line source parser
+that conflated R-S11hg, R-S11ib, R-S11ic, R-S11iq, and R-S11ir and attacked them only by replacing
+source strings. Its duplicate workspace validator, mutation inventory, source-map entry, and
+dispatch were deleted, and its shared/Apple calls were removed. No product source changed.
 
-Each accept branch now acquires its pre-existing endpoint semaphore directly and
-spawns only its endpoint-specific handler. Each handler reads and writes only its own
-types and preserves the exact reauthorization check before action. Endpoint-specific
-client helpers retain the exact expected child-generation proof and cannot compile
-with the other endpoint's request or response. The existing frame bounds, timeouts,
-transaction drain, shutdown acknowledgement-before-latch order, credential validation,
-replica state transitions, listeners, roles, and LocalSystem policy are unchanged.
-No retry, reconnect, timer, poller, worker class, runtime, listener, port, dependency,
-privilege transition, service restart, network change, or new credential operation is
-introduced.
-
-R-S11ic/R-S11e-266 and Appendix C #388 later supersede only the preserved
-Boolean-reauthorization lifetime: the closed protocols and independent budgets remain,
-while endpoint-specific authority-bearing capabilities now retain the exact supervisor
-generation from admission across request parsing and through each protected action.
-
-The deterministic Rust wire regression (compiled on every test target through test-only
-type visibility) fixes exact credential/control request and response encodings and
-requires own-direction acceptance plus opposite-direction, cross-endpoint,
-unknown-field, and generic `Data::Close` rejection. The focused
-`scripts/verify-windows-service-channel-protocols.py` gate independently parses exact
-variant inventories, envelopes, listener-to-budget/handler mapping, endpoint-specific
-readers/writers, receiver vocabulary, exact-server clients, wire fixtures, requirements,
-ledger, source map, and shared/Apple/independent wiring, then attacks those obligations
-with deliberate source mutations. The independent workspace validator separately
-models the four protocols, deleted union residue, listener dispatch, receiver types,
-regressions, focused verifier structure, and documentation rather than trusting the
-focused gate's verdict.
-
-Final verification is confined to the authorized immutable local inspection image with
-network disabled, a read-only repository bind, non-root UID/GID 1000, all capabilities
-dropped, `no-new-privileges`, a read-only root filesystem, bounded PIDs/memory/CPU, and
-no Docker socket, device, host namespace, or published port. That image has Python and
-shell but no Rust/Cargo or Windows target toolchain; the exact pinned development image
-is absent and no authenticated local `online/` toolchain/vendor closure exists. Current
-Rust compilation and execution are therefore explicitly not claimed, and no substitute
-image, network pull, dependency acquisition, or long release build is used. On the final
-implementation and verifier bytes, the focused Windows service channel gate rejected all
-30 deliberate mutations; the adjacent desktop IPC lifecycle, Windows production-listener
-DACL, and macOS service credential gates rejected all 26, 36, and 53 deliberate mutations,
-respectively. The independent workspace validator passed in normal mode and its complete
-source-mutation matrix rejected all 4,812 registered mutations. Both native-codec ledger
-modes passed, the three modified shell gates passed syntax parsing, `requirements.html`
-parsed successfully, and its independently computed SHA-256 was
-`1b8eed7f43451114b78cf336d29777aed73096479e7104a16a0df87eed2e64aa`. After this
-evidence-only ledger paragraph was recorded, the focused gate, independent normal mode,
-requirements parse/hash checks, and native-codec ledger modes were rerun against the final
-documentation bytes.
-
-This slice does not inspect, stop, restart, modify, or connect to a host RustDesk process
-or service; does not inspect or change host firewall/network/listener state; does not
-touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated
-container/image; and does not request or acquire root. Exact current Windows build and
-native supervisor/child transactions, malformed/cross-endpoint live named-pipe tests,
-cold R-B2/R-B10 equality, installed service behavior, independent reproduction, and
-R-V3 external review remain explicit release obligations.
+STOP-SHIP evidence remains exact current installed Windows credential/control transactions with the
+intended LocalSystem supervisor and unauthorized or wrong-generation actors; malformed and
+cross-endpoint frames; PID/creation-time/token/image/argv changes; request and acknowledgement
+failure; restart; bounded CPU/memory/handles/tasks; and cleanup. Cold R-B2/R-B10 equality,
+independent reproduction, and external review remain open.
 
 ### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
 
@@ -12816,8 +12746,8 @@ independent reproduction and R-V3 external review.
 
 ### R-S11ib/R-S11e-265 — retained Windows RDP-policy requester through final mutation
 
-**State.** Source implementation is present and focused source checks cover the retained capability,
-fresh final replay, direct-writer absence, and writer-last ordering. Native installed Windows,
+**State.** Source implementation is present and the Windows-only exact-role regression remains.
+Dedicated requester-capability and installed policy-mutation evidence is missing; native Windows,
 adversarial race, resource/performance, release-artifact, independent-reproduction, and
 external-review evidence remain open for this action.
 
@@ -12836,8 +12766,10 @@ PID, generation, executable, argv, token, elevation, role, or liveness change st
 
 **Evidence.** Current source inspection finds the capability, retained process/token fields, full
 admission and final replay in `src/ipc/auth.rs`, and capability-only dispatch in `src/ipc.rs`.
-The focused Windows service-channel checker protects these source relationships. It does not prove
-an installed SCM transaction through the real settings page.
+`ipc::ipc_auth::tests::windows_service_owned_share_rdp_client_role_is_exact_interactive_ui` executes
+the finite role predicate only on Windows. It does not exercise process retention, revalidation,
+named-pipe impersonation, or the final registry mutation. The deleted combined Python checker only
+matched source text and was not an installed SCM transaction through the real settings page.
 
 **Open evidence.** Compile and run the exact candidate in a disposable Windows VM; exercise the
 real settings-page request against an installed LocalSystem SCM service with allowed/denied actors,
@@ -12848,11 +12780,10 @@ review.
 
 ### R-S11ic/R-S11e-266 — retained Windows service-main supervisor authority through exact actions
 
-**State.** Source implementation is present and focused source checks cover endpoint-specific
-capabilities, retained authority across request parsing, action-final replay, direct-sink absence,
-and shutdown acknowledgement ordering. Native installed Windows, adversarial race,
-resource/performance, release-artifact, independent-reproduction, and external-review evidence
-remain open.
+**State.** Source implementation and the closed-protocol wire regression are present. Dedicated
+current installed supervisor-authority and protected-action evidence is missing. Native Windows,
+adversarial race, resource/performance, release-artifact, independent-reproduction, and
+external-review evidence remain open.
 
 **Boundary and current implementation.** The SYSTEM-only `_service_credential` and
 `_service_main_control` listeners construct distinct `WindowsServiceCredentialRequester` and
@@ -12875,9 +12806,10 @@ pipe-handle-handoff detection.
 
 **Evidence.** Current source inspection finds the distinct capability types, retained shared proof,
 admission, and common revalidation in `src/ipc/auth.rs`; listener ownership across await and
-capability-only action dispatch are in `src/ipc.rs`. The focused Windows service-channel checker
-protects these source relationships and shutdown ordering. It is not installed-SCM credential or
-control execution.
+capability-only action dispatch are in `src/ipc.rs`. The retained executable R-S11hg regression
+proves closed wire deserialization only. It cannot prove LocalSystem authorization, launch-bound
+supervisor identity, capability lifetime across `await`, protected-action ordering, or
+post-acknowledgement replay. The deleted Python checker executed none of those properties.
 
 **Open evidence.** Compile and run the exact candidate in a disposable Windows VM; exercise real
 installed LocalSystem credential/control exchanges with authorized and wrong principals,
@@ -13268,9 +13200,9 @@ independent reproduction, and external review.
 
 ### R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority
 
-**State.** The purpose-specific source path is implemented and statically gated. Exact-current
-generated bridge, native Windows, installed, performance, artifact, independent-reproduction, and
-external-review evidence remains open.
+**State.** The purpose-specific source path is implemented and the fresh-bridge naming gate remains.
+Exact-current generated bridge, native Windows, installed, performance, artifact,
+independent-reproduction, and external-review evidence remains open.
 
 **Boundary and current implementation.** The desktop control asks only
 `main_can_request_share_rdp_change` / `mainCanRequestShareRdpChange`. On Windows,
@@ -13281,11 +13213,10 @@ return false. This Boolean is presentation state only. The LocalSystem receiver 
 mutation authority and retains `WindowsServiceOwnedShareRdpRequester` across handling through its
 final generation-, image-, token-, role-, liveness-, and pipe-revalidated HKLM write.
 
-**Evidence.** `scripts/verify-windows-service-channel-protocols.py`, the shared/Apple entrypoints,
-and `scripts/verify-verifier-workspace.py` bind the purpose-specific naming, exact local predicate,
-generic-root-bridge absence, logged fail-closed wrapper, and retained service capability. Their
-current baseline passes; it is source evidence, not execution of the Windows UI, UAC token, SCM
-service, or registry mutation.
+**Evidence.** The full verifier retains fresh generated Rust/Dart checks for the removed generic
+`main_is_root` / `mainIsRoot` bridge and the purpose-specific replacement. The deleted combined
+Python parser did not execute the predicate, bridge, UI, UAC token, SCM service, or registry
+mutation; source-string mutations are not evidence for those behaviors.
 
 **Open evidence.** Freshly generate and compile the Rust/Dart bridge; run an installed native
 Windows administrative UI through allow and deny cases; exercise real SCM mutations and adversarial
@@ -13294,9 +13225,10 @@ cold R-B2/R-B10, independent reproduction, and external review.
 
 ### R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership
 
-**State.** The bounded client-owner source design is implemented and statically gated. Fresh
-generated-bridge, native Windows, installed, resource-soak, artifact, independent-reproduction, and
-external-review evidence remains open.
+**State.** The bounded client-owner source design is implemented, but dedicated executable
+client-lifecycle and UI-latch regressions are missing. Fresh generated-bridge, native Windows,
+installed, resource-soak, artifact, independent-reproduction, and external-review evidence remains
+open.
 
 **Boundary and current implementation.** One lazy process-lifetime
 `WindowsShareRdpClientOwner` owns one named OS thread, one fallibly built current-thread Tokio
@@ -13309,11 +13241,11 @@ work. Errors remain `Result<()>` through the shared and Flutter FFI surfaces. Da
 synchronous mounted-lifetime latch, disables duplicate row/checkbox actions, surfaces errors, and
 refreshes service-owned state only after latch release.
 
-**Evidence.** `scripts/verify-windows-service-channel-protocols.py`, shared/Apple wiring checks, and
-`scripts/verify-verifier-workspace.py` bind the single owner, fallible runtime, nonblocking bounded
-admission, terminal joins, serial runner, exact result propagation, obsolete per-call-runtime
-absence, and UI latch. The current baseline passes; this is static evidence and does not execute
-the bridge worker, Windows UI, SCM transaction, timeout, panic, or race behavior.
+**Evidence.** The deleted combined Python parser only matched and mutated source wording; it did not
+execute the bridge worker, Windows UI, SCM transaction, timeout, panic, race, or resource behavior.
+No dedicated executable regression currently drives startup failure, queue full/closed, serial
+execution, timeout uncertainty, lost caller, terminal join, worker panic, or the Dart latch despite
+R-S11ir requiring those cases. This is an explicit STOP-SHIP test gap, not source-proven behavior.
 
 **Open evidence.** Freshly generate the bridge and run exact-current Rust/Dart/Flutter on native
 Windows. Exercise allow, refusal, queue-full, timeout uncertainty, startup failure, worker panic,

@@ -5256,6 +5256,10 @@ fn poll_descriptor_is_live(fd: c_int) -> bool {
     (unsafe { hbb_common::libc::poll(&mut pollfd, 1, 0) }) == 0
 }
 
+fn x11_server_uid_is_admissible(server_uid: u32, selected_uid: u32) -> bool {
+    server_uid == selected_uid || server_uid == 0
+}
+
 fn x11_socket_peer_pidfd(socket: &File) -> Option<File> {
     let mut pidfd = -1;
     let mut len = std::mem::size_of::<c_int>() as hbb_common::libc::socklen_t;
@@ -5380,11 +5384,19 @@ fn connect_x11_socket(path: &Path, deadline: Instant) -> Option<File> {
         .then_some(socket)
 }
 
-fn x11_socket_peer_is_in_session(socket: &File, uid: u32, scope: &str) -> bool {
+fn x11_socket_peer_is_in_session(
+    socket: &File,
+    selected_uid: u32,
+    server_uid: u32,
+    scope: &str,
+) -> bool {
     let Some(cred) = x11_socket_peer_cred(socket) else {
         return false;
     };
-    if cred.pid <= 0 || cred.uid != uid {
+    if cred.pid <= 0
+        || cred.uid != server_uid
+        || !x11_server_uid_is_admissible(cred.uid, selected_uid)
+    {
         return false;
     }
     let Some(pidfd) = x11_socket_peer_pidfd(socket) else {
@@ -5408,7 +5420,7 @@ fn x11_socket_peer_is_in_session(socket: &File, uid: u32, scope: &str) -> bool {
     let Ok(metadata) = process_dir.metadata() else {
         return false;
     };
-    if !metadata.is_dir() || metadata.uid() != uid {
+    if !metadata.is_dir() || metadata.uid() != cred.uid {
         return false;
     }
     let mut budget = ProcSnapshotBudget::default();
@@ -5473,18 +5485,27 @@ fn selected_session_x11_socket_display(uid: &str, scope: &str) -> Option<String>
             continue;
         };
         let metadata = fs::symlink_metadata(entry.path()).ok()?;
-        if !metadata.file_type().is_socket() || metadata.uid() != uid {
+        let server_uid = metadata.uid();
+        if !metadata.file_type().is_socket()
+            || !x11_server_uid_is_admissible(server_uid, uid)
+        {
             continue;
         }
         if candidates.len() == X11_SOCKET_MAX_CANDIDATES {
             return None;
         }
-        candidates.push((display, entry.path(), metadata.dev(), metadata.ino()));
+        candidates.push((
+            display,
+            entry.path(),
+            metadata.dev(),
+            metadata.ino(),
+            server_uid,
+        ));
     }
     candidates.sort_by_key(|candidate| candidate.0);
 
     let mut validated = Vec::new();
-    for (display, path, device, inode) in candidates {
+    for (display, path, device, inode, server_uid) in candidates {
         if Instant::now() >= deadline {
             return None;
         }
@@ -5495,10 +5516,10 @@ fn selected_session_x11_socket_display(uid: &str, scope: &str) -> Option<String>
             continue;
         };
         if !metadata.file_type().is_socket()
-            || metadata.uid() != uid
+            || metadata.uid() != server_uid
             || metadata.dev() != device
             || metadata.ino() != inode
-            || !x11_socket_peer_is_in_session(&socket, uid, scope)
+            || !x11_socket_peer_is_in_session(&socket, uid, server_uid, scope)
         {
             continue;
         }
@@ -5731,6 +5752,13 @@ mod desktop {
             assert_eq!(unique_x11_socket_display([7]).as_deref(), Some(":7"));
             assert_eq!(unique_x11_socket_display([]), None);
             assert_eq!(unique_x11_socket_display([0, 7]), None);
+        }
+
+        #[test]
+        fn r_s11hs_x11_server_principal_is_selected_user_or_root() {
+            assert!(x11_server_uid_is_admissible(1000, 1000));
+            assert!(x11_server_uid_is_admissible(0, 1000));
+            assert!(!x11_server_uid_is_admissible(999, 1000));
         }
 
         #[test]

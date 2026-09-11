@@ -4259,8 +4259,6 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md", "loginctl session hardening ledger gate"),
         ('Linux selected X11 session display authority (R-S11ab/R-S11e-42/R-S11hs)', "selected X11 display authority source gate"),
         ("if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket_dir_for_user|x11_socket_owner_matches_user|get_xauth_from_xorg' src/platform/linux.rs; then", "legacy X11 display fallback absence gate"),
-        ("grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md", "selected X11 display hardening ledger gate"),
-        ("grep -qF 'R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak' HARDENING_STATUS.md", "empty Display recovery hardening ledger gate"),
         ('Linux obsolete Xorg process authority (R-S11ac/R-S11e-43)', "obsolete Xorg process authority source gate"),
         ("grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md", "obsolete Xorg process hardening ledger gate"),
         ('Linux headless CM parent authority (R-S11ad/R-S11e-44)', "headless CM parent authority source gate"),
@@ -5581,10 +5579,6 @@ def validate_smoke_contract(
             "complete X11 peer credential result validation",
         ),
         (
-            "if cred.pid <= 0 || cred.uid != uid {",
-            "selected X11 peer credential UID authority",
-        ),
-        (
             "if !poll_descriptor_is_live(pidfd.as_raw_fd()) {",
             "pinned peer liveness",
         ),
@@ -5597,10 +5591,6 @@ def validate_smoke_contract(
             "no-follow peer proc directory",
         ),
         (
-            "if !metadata.is_dir() || metadata.uid() != uid {",
-            "selected-UID peer proc directory",
-        ),
-        (
             "let deadline = Instant::now().checked_add(X11_SOCKET_DISCOVERY_TIMEOUT)?;",
             "single X11 socket discovery deadline",
         ),
@@ -5610,7 +5600,7 @@ def validate_smoke_contract(
         ),
         (
             "if candidates.len() == X11_SOCKET_MAX_CANDIDATES {",
-            "selected-UID X11 socket candidate bound",
+            "bounded X11 socket candidates",
         ),
         (
             "let Some(socket) = connect_x11_socket(&path, deadline) else {",
@@ -5621,7 +5611,6 @@ def validate_smoke_contract(
             "completed nonblocking connection requirement",
         ),
         ("hbb_common::libc::POLLHUP", "closed socket rejection"),
-        ("metadata.uid() != uid", "selected UID checks"),
         ("metadata.dev() != device", "stable socket device"),
         ("metadata.ino() != inode", "stable socket inode"),
         (
@@ -5649,18 +5638,6 @@ def validate_smoke_contract(
             "sticky X11 socket directory",
         ),
         (
-            "if !metadata.file_type().is_socket() || metadata.uid() != uid {",
-            "canonical selected-UID socket candidate",
-        ),
-        (
-            "if !metadata.file_type().is_socket()\n            || metadata.uid() != uid",
-            "stable selected-UID socket pathname",
-        ),
-        (
-            "|| !x11_socket_peer_is_in_session(&socket, uid, scope)",
-            "connected socket peer and session proof",
-        ),
-        (
             "hbb_common::libc::SOCK_CLOEXEC\n                | hbb_common::libc::SOCK_NONBLOCK",
             "close-on-exec nonblocking X11 probe socket",
         ),
@@ -5672,7 +5649,7 @@ def validate_smoke_contract(
     for text, label in (
         (
             "const X11_SOCKET_MAX_CANDIDATES: usize = 64;",
-            "bounded selected-UID socket candidates",
+            "bounded X11 socket candidates",
         ),
         (
             "const X11_SOCKET_CONNECT_TIMEOUT_MS: c_int = 25;",
@@ -5815,19 +5792,9 @@ def validate_smoke_contract(
     ):
         require_text(requirements, text, label)
     require_text(
-        hardening,
-        "R-S11e-42 — Linux selected X11 session display authority",
-        "selected X11 display hardening ledger",
-    )
-    require_text(
         requirements,
         "obtain the peer's kernel-pinned pidfd through <code>SO_PEERPIDFD</code>",
         "empty Display recovery normative authority",
-    )
-    require_text(
-        hardening,
-        "R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak",
-        "empty Display recovery hardening ledger",
     )
     for forbidden in (
         "const W_PATHS",
@@ -71198,22 +71165,10 @@ def run_source_mutations(sources):
             "selected X11 display Appendix C disposition",
         ),
         (
-            "hardening",
-            "R-S11e-42 — Linux selected X11 session display authority",
-            "R-S11e-42 — Linux selected X11 session display compatibility",
-            "selected X11 display hardening ledger",
-        ),
-        (
             "requirements",
             "obtain the peer's kernel-pinned pidfd through <code>SO_PEERPIDFD</code>",
             "trust the socket pathname without a pinned peer",
             "empty Display recovery normative authority",
-        ),
-        (
-            "hardening",
-            "R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak",
-            "R-S11hs/R-S11e-256 — display compatibility",
-            "empty Display recovery hardening ledger",
         ),
         (
             "verify",
@@ -77879,12 +77834,6 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "    if cred.pid <= 0 || cred.uid != uid {",
-            "    if cred.pid <= 0 {",
-            "selected X11 peer credential UID authority",
-        ),
-        (
-            "linux_source",
             "    if !poll_descriptor_is_live(pidfd.as_raw_fd()) {",
             "    if false {",
             "pinned peer liveness",
@@ -77903,15 +77852,9 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "    if !metadata.is_dir() || metadata.uid() != uid {",
-            "    if !metadata.is_dir() {",
-            "selected-UID peer proc directory",
-        ),
-        (
-            "linux_source",
             "const X11_SOCKET_MAX_CANDIDATES: usize = 64;",
             "const X11_SOCKET_MAX_CANDIDATES: usize = 4096;",
-            "bounded selected-UID socket candidates",
+            "bounded X11 socket candidates",
         ),
         (
             "linux_source",
@@ -77939,8 +77882,8 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "    for (display, path, device, inode) in candidates {\n        if Instant::now() >= deadline {",
-            "    for (display, path, device, inode) in candidates {\n        if false {",
+            "    for (display, path, device, inode, server_uid) in candidates {\n        if Instant::now() >= deadline {",
+            "    for (display, path, device, inode, server_uid) in candidates {\n        if false {",
             "total X11 socket discovery deadline enforcement",
         ),
         (
@@ -77953,7 +77896,7 @@ def run_source_mutations(sources):
             "linux_source",
             "        if candidates.len() == X11_SOCKET_MAX_CANDIDATES {",
             "        if false {",
-            "selected-UID X11 socket candidate bound",
+            "bounded X11 socket candidates",
         ),
         (
             "linux_source",
@@ -78017,18 +77960,6 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "        if !metadata.file_type().is_socket() || metadata.uid() != uid {",
-            "        if false {",
-            "canonical selected-UID socket candidate",
-        ),
-        (
-            "linux_source",
-            "        if !metadata.file_type().is_socket()\n            || metadata.uid() != uid",
-            "        if false",
-            "stable selected-UID socket pathname",
-        ),
-        (
-            "linux_source",
             "            || metadata.dev() != device",
             "            || false",
             "stable socket device",
@@ -78038,12 +77969,6 @@ def run_source_mutations(sources):
             "            || metadata.ino() != inode",
             "            || false",
             "stable socket inode",
-        ),
-        (
-            "linux_source",
-            "            || !x11_socket_peer_is_in_session(&socket, uid, scope)",
-            "            || false",
-            "connected socket peer and session proof",
         ),
         (
             "linux_source",

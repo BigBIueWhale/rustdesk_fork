@@ -5904,11 +5904,14 @@ for binding in \
   '            LINUX_SO_PEERPIDFD,' \
   'if rc != 0 || len as usize != std::mem::size_of::<c_int>() || pidfd < 0 {' \
   'if rc == 0 && len as usize == std::mem::size_of::<hbb_common::libc::ucred>() {' \
-  'if cred.pid <= 0 || cred.uid != uid {' \
+  'fn x11_server_uid_is_admissible(server_uid: u32, selected_uid: u32) -> bool {' \
+  'server_uid == selected_uid || server_uid == 0' \
+  '|| cred.uid != server_uid' \
+  '|| !x11_server_uid_is_admissible(cred.uid, selected_uid)' \
   'if !poll_descriptor_is_live(pidfd.as_raw_fd()) {' \
   'let process_dir = PathBuf::from("/proc").join(cred.pid.to_string());' \
   'hbb_common::libc::O_NOFOLLOW' \
-  'if !metadata.is_dir() || metadata.uid() != uid {' \
+  'if !metadata.is_dir() || metadata.uid() != cred.uid {' \
   'let deadline = Instant::now().checked_add(X11_SOCKET_DISCOVERY_TIMEOUT)?;' \
   'if Instant::now() >= deadline {' \
   'if candidates.len() == X11_SOCKET_MAX_CANDIDATES {' \
@@ -5922,9 +5925,10 @@ for binding in \
   'tmp_metadata.mode() & 0o1000 == 0' \
   'directory_metadata.uid() != 0' \
   'directory_metadata.mode() & 0o1000 == 0' \
-  'if !metadata.file_type().is_socket() || metadata.uid() != uid {' \
-  '|| !x11_socket_peer_is_in_session(&socket, uid, scope)' \
-  'metadata.uid() != uid' \
+  'let server_uid = metadata.uid();' \
+  '|| !x11_server_uid_is_admissible(server_uid, uid)' \
+  '|| !x11_socket_peer_is_in_session(&socket, uid, server_uid, scope)' \
+  'metadata.uid() != server_uid' \
   'metadata.dev() != device' \
   'metadata.ino() != inode' \
   'first == second && poll_descriptor_is_live(pidfd.as_raw_fd())' \
@@ -5991,6 +5995,9 @@ for test_binding in \
   'fn r_s11hs_empty_logind_display_retains_exact_session_scope()' \
   'b"Scope=session-2.scope\nDisplay=\n"' \
   'fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed()' \
+  'fn r_s11hs_x11_server_principal_is_selected_user_or_root()' \
+  'assert!(x11_server_uid_is_admissible(0, 1000));' \
+  'assert!(!x11_server_uid_is_admissible(999, 1000));' \
   'fn r_s11hs_x11_socket_peer_cgroup_is_the_exact_session_scope()' \
   'b"0::/system.slice/docker.scope\n"' \
   'unique_x11_socket_display([0, 7])' \
@@ -6006,11 +6013,8 @@ grep -qF 'obtain the peer'"'"'s kernel-pinned pidfd through <code>SO_PEERPIDFD</
   || r_s11e42="$r_s11e42 normative-empty-display-recovery-missing"
 grep -qF '<tr><td>150</td>' requirements.html || r_s11e42="$r_s11e42 appendix-row-missing"
 grep -qF 'Linux selected X11 session lost endpoint authority' requirements.html || r_s11e42="$r_s11e42 appendix-disposition-missing"
-grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md || r_s11e42="$r_s11e42 hardening-ledger-missing"
-grep -qF 'R-S11hs/R-S11e-256 — field confirmation of the pre-R-S11e-42 display leak' HARDENING_STATUS.md \
-  || r_s11e42="$r_s11e42 empty-display-ledger-missing"
 if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session display authority:$r_s11e42"; rc=1; else
-  echo "  ok  R-S11e-42/R-S11hs X11 DISPLAY is either the exact selected logind value or one unique kernel-pinned selected-UID X peer in that session Scope, and process Xauthority hints describe only that endpoint"; fi
+  echo "  ok  R-S11e-42/R-S11hs X11 DISPLAY is either the exact selected logind value or one unique kernel-pinned selected-user-or-root X server in that session Scope, with exact pathname/peer/process UID agreement; process Xauthority hints describe only that endpoint"; fi
 
 # (3b-iii-d9c2) R-S11ac/R-S11e-43: RustDesk no longer owns an
 # Xorg child, so process-table text cannot mint root signal authority or

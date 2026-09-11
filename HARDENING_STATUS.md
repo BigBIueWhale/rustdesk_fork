@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ab83c130b398109f29b589261b6e41650c39cfebf032adbc8ced70d74744e26a  requirements.html
+d917100379179777d52f46c53f7fc2fea4a99c2f39327fe5739a550655cb5527  requirements.html
 ```
 
 ## Current Verdict
@@ -706,9 +706,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   capacity-eight generation/GOP-aware mailbox replaces the split token/frame queues, every retained frame is
   directly reachable, receipt-through-decode freshness is bounded, and endpoint loss is terminal rather than a
   healthy empty queue.
-- **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source closed. Each
-  `(session, display)` owns one immutable published frame plus at most one latest pending frame and exact event
-  generation; stale consumers/acknowledgements cannot publish or retain another session’s pixels.
+- **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source implementation
+  and five directly wired executable Rust regressions remain. Each `(session, display)` owns one immutable
+  published frame plus at most one latest pending frame and exact event generation; stale consumers or
+  acknowledgements cannot publish or retain another session's pixels. Generated-bridge and native presentation,
+  lifecycle, performance, and artifact evidence remain open.
 - **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source closed.
   Native texture pointer creation, publication, replacement, view transfer, and retirement are tied to the exact
   asynchronous UI owner; callbacks cannot use or retire a replacement owner.
@@ -777,9 +779,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   one fixed literal `TERM` from service-owned platform policy after `env_clear`; it does not enumerate user
   processes, ingest their environment, or parse an ambient-selected terminfo database. Installed-service execution
   remains open.
-- **R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order** — Source closed.
-  Recovery rotates/re-delivers the exact bounded software publication before native re-notification and peer
-  refresh; only the newest still-current asynchronous Dart decode may replace the displayed `ui.Image`.
+- **R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order** — Source
+  implementation, three directly wired executable Rust regressions, and six directly wired pure-Dart ordering
+  regressions remain. Recovery rotates and redelivers the exact bounded software publication before native
+  re-notification and peer refresh; only the newest still-current asynchronous Dart decode may replace the
+  displayed `ui.Image`. Generated-bridge and native lifecycle/presentation/performance evidence remain open.
 - **R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery** — Source closed. A pointer event delivered
   to the exact Windows remote canvas while blur state is stale clears that state and runs the same coalesced exact-
   owner presentation recovery used by a real focus event; it cannot restore control alone while display remains
@@ -10893,143 +10897,66 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
   timestamps and budgets, sustained reconnect/focus/resource soak, cold R-B2/R-B10 equality, installed-service proof,
   independent reproduction, and external review remain open.
 
-### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority (2026-08-14)
+### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority
 
-- **SOURCE IMPLEMENTED; FOCUSED AND COMPLETE EXACT-BYTES SOURCE/MUTATION VERIFICATION GREEN; EXACT
-  DART/NATIVE/DEVICE/RELEASE EVIDENCE OPEN.** Read-only tracing of
-  the shared focus/background recovery path found a remaining authority inversion. `sessionRefreshVideo` accepted the
-  mutable Dart `PeerInfo`, selected `currentDisplay` or enumerated `displays`, and awaited one generated native call per
-  index. Focus/resume, the Windows missed-focus pointer fallback, manual Refresh, recording start, and transferred-window
-  initialization all used that helper. A native topology event could update the shared object between awaits, and the
-  FFI accepted the resulting caller-selected display even though the exact native UI handler already owns the
-  authoritative bounded set. Recovery could therefore become partial or target a stale/no-longer-owned display while
-  input/control remained on the live connection. This is a current shared source defect consistent with display-only
-  incoherence; it is not causal proof for the weeks-old deployed Android, Windows, or Debian binaries and is not native
-  reproduction of their symptoms.
-- Presentation refresh is now one call carrying only the immutable connection-session UUID and UI-owner UUID. The Dart
-  helper, web compatibility bridge, and Rust FFI no longer accept `PeerInfo` or a display index. Under the exact handler-
-  owner read guard, native code rejects a stale owner or empty display set, then walks only `handler.displays`: every
-  owned software-RGBA mailbox is re-armed, every owned desktop pending texture is re-notified where applicable, and the
-  viewer refresh mailbox receives the same complete set before the owner guard is released. Concurrent replacement
-  therefore linearizes wholly before or after the transaction; a caller cannot select another UI owner's display.
-  Existing bounded/coalescing refresh mailboxes and peer-inventory validation remain the admission boundary.
-- This deletes caller display policy rather than adding a second recovery system. It adds no retry, reconnect, timer,
-  poller, queue, worker, isolate, runtime, service restart, protocol field, listener, port, dependency, or privilege
-  transition. The exact-owner Rust regression now covers stale owner, empty set, a handler-owned display outside the
-  current peer inventory, and ordered two-display derivation. Focused presentation and display/session validators plus
-  the independent workspace validator bind the native authority, Dart/web/FFI surface removal, all seven production
-  callers, normative R-S11gs/Appendix C #354, and their deliberate mutations.
-- Numeric-nonroot, networkless, capability-free, read-only-source verification passed in-memory Python parsing, shell
-  syntax, exact requirements-hash consistency, the viewer-RGBA self-test with all 63 deliberate mutations rejected,
-  the desktop presentation self-test with all 206 deliberate mutations rejected, the display/session self-test with
-  all 145 deliberate mutations rejected, and the independent workspace baseline. Review also found that the separately
-  wired viewer-RGBA focused verifier still encoded the deleted single-display refresh shape; that stale gate now binds
-  the same exact-owner display derivation, empty-set refusal, pending-texture notification, native regression, and
-  normative identity, with independent meta/mutation coverage. Preliminary complete-catalog runs are not counted as
-  passes: they exposed stronger-earlier diagnostic collisions, ambiguous meta-mutation targets, and a meta-check that
-  failed to distinguish the two intentional native display loops. Each problem was corrected without weakening product
-  validation. The complete unsliced independent source-mutation catalog then restarted from mutation one against the
-  frozen tracked bytes and returned terminal `verify-verifier-workspace: ok`, exit zero. After that evidence-ledger
-  freeze, the mandatory final exact-bytes catalog restarted from mutation one and again returned terminal
-  `verify-verifier-workspace: ok`, exit zero; no preliminary result alone authorized commit. The available verifier
-  image has Python and Bash but no Rust, Dart, Flutter, or generated-bridge toolchain, and the previously named immutable
-  builder image is absent locally, so no compilation, native test, generated-bridge, device, VM, artifact,
-  focus-performance, or release result is claimed.
-- No host RustDesk service/process/configuration, listener, firewall, network namespace, persistent Android service,
-  unrelated image, VM, or OS privilege boundary is inspected or changed by this source slice. Exact-current physical
-  Android task-swipe/reopen/Force-Stop recovery; real Windows full-peer focus/minimize behavior; Linux/macOS/iOS and web
-  behavior; deployed/cross-version operation; concurrent feature interaction; capture-through-compositor timestamps
-  and explicit budgets; sustained reconnect/focus/resource/performance soak; cold R-B2/R-B10 equality; installed-service
-  proof; independent reproduction; external review; and the user's requirement that the whole connection flow be
-  correct and performant on every supported platform remain open release obligations.
+**SOURCE IMPLEMENTED; ONE EXECUTABLE RUST REGRESSION RETAINED AND DIRECTLY WIRED;
+SOURCE/MUTATION THEATER DELETED; EXACT GENERATED-BRIDGE, TARGET-RUNTIME,
+PRESENTATION, PERFORMANCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
 
-### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership (2026-08-15)
+The production refresh surface carries only the immutable connection-session and UI-owner UUIDs.
+Under the exact handler-owner guard, native code rejects a stale owner or empty display set, derives
+the bounded display inventory solely from that handler, re-arms each owned software-RGBA mailbox,
+re-notifies each applicable pending desktop texture, and admits peer refresh for the same displays
+before releasing the guard. Dart cannot enumerate or choose the native refresh display, and no
+retry, reconnect, timer, worker, queue, service transition, or privilege surface was added.
 
-- **SOURCE IMPLEMENTED; EXACT DART/NATIVE/DEVICE/RELEASE EVIDENCE OPEN.** Read-only tracing found that the first
-  ordinary viewer's native `SessionHandler` began with an empty `displays` set and initial `PeerInfo.current_display`
-  never committed it. The one-handler software path nevertheless accepted every decoded display. Desktop texture
-  delivery for peers without multi-UI support selected the first renderer `HashMap` entry rather than the decoded
-  display; texture dispatch did not first prove handler membership; and `remaining_displays` treated registered
-  renderer resources as capture ownership. Renderer sizing both created display authority and carried only the
-  reusable connection UUID, allowing delayed work from a retired view to target a replacement owner after a
-  tab/window transfer reused that UUID. Exact-owner refresh could consequently reject an empty initial set while
-  ordinary frames followed different implicit or stale authority. This is current shared source debt consistent with
-  display-only incoherence while control remains responsive; it is not causal proof for the older deployed Android,
-  Windows, or Debian binaries and is not native/device reproduction.
-- Before its first fresh video network round starts, only the exact first unselected UI handler is now marked as awaiting
-  initial ownership. Every initial login response, including reconnects, preserves the peer's claimed
-  `PeerInfo.current_display` before generic bounding can normalize it to zero and validates the original claim against
-  the bounded inventory. Before an existing explicit selection is preserved, every committed handler display is also
-  validated against that new bounded inventory; a stale selection fails before decoder metadata, persistence, or UI
-  publication. A fresh marked handler binds that display once before decoder metadata, persistent peer
-  configuration, or Flutter publication consumes the peer information. A reconnect or already-connected
-  existing-window route with no marker is admitted only when every live handler already has a nonempty explicit native
-  selection; those selections are preserved rather than rebound to the peer's default display. No handler, an
-  unselected handler without its marker, multiple markers, or an invalid/conflicting marker or claim returns an error
-  through the result-bearing network/UI boundary, reports the visible connection failure, and terminates the exact
-  round. File transfer, port forwarding, terminal, stream replacement, and explicitly selected existing-window
-  handlers never use this marker. Only a first, streamless, unselected handler starts peer I/O; a marker-bearing
-  pre-`PeerInfo` stream replacement may attach without restarting it, even if no prior UI stream remains; and stream attachment for an explicitly selected
-  existing-window replacement cannot restart the already-running connection merely because its new handler has no
-  event stream yet. Any other unselected video route is refused before its stream is touched instead of hanging on an
-  existing connection with no display owner and no guaranteed new `PeerInfo`. Immediately before any existing stream
-  is closed/replaced or that marker and peer start are admitted, the exact client-owner UUID is rechecked while the same
-  handler map is write-locked. The peer worker slot is acquired before that handler-owner guard, and both are retained
-  through the actual worker-start call; this avoids inversion with reconnect/final teardown, which can hold the worker
-  slot while joining an old worker whose terminal event delivery needs the handler guard. The earlier association lookup
-  cannot authorize mutation of a concurrently installed replacement owner. Start-admission,
-  worker-start, and pending-frame replay failures carry the same exact UI-owner UUID into rollback; a tab/window
-  replacement that reused the connection UUID is refused rather than removed. Later topology messages have no
-  initial-binding path and cannot rebind ownership.
-- A new controlled-side connection begins on its own current/primary display, so native-owner preservation alone would
-  leave an established display-2 or all-monitor view waiting for a capture the new round never subscribed. On fresh,
-  noncached `peer_info`, an already-established Dart model now preserves its prior single-display or all-display intent
-  and resubmits that bounded set through the existing ordered exact-owner display transaction before geometry sizing.
-  Cached existing-window state preserves the selection already admitted by `sessionAddExistedSync` and does not submit
-  a duplicate transaction. Invalid, stale, or refused restoration visibly retires the exact session rather than
-  leaving control responsive against divergent display capture. No new reconnect path, queue, worker, or timer is used.
-- Software RGBA and desktop texture dispatch now require exact handler display membership regardless of handler count,
-  render mode, or peer version. Texture frame writes and pending-frame notifications use only the exact display-keyed
-  renderer slot; the old first-map-entry/version fallback is deleted. Cross-owner capture derivation uses only committed
-  `handler.displays`; texture registration, size, pointer, and notification resources are presentation state, never
-  capture authority. Dart captures the exact UI-owner UUID before asynchronous display-geometry work, rechecks that
-  same session/owner pair afterward, and carries both UUIDs through the FFI. Each bounded size call is awaited inside
-  the existing topology lane instead of being detached onto the bridge worker pool; native admission is result-bearing,
-  holds the handler-owner guard, and visibly refuses a missing session, retired owner, or unowned display. An older
-  topology therefore cannot silently execute after and overwrite a newer renderer size, mutate a replacement renderer,
-  or add display authority. Old-peer compatibility remains only in the typed wire refresh plan. The correction adds no timer,
-  retry, reconnect, queue, worker, isolate, runtime, service restart, protocol field, listener, port, dependency,
-  privilege transition, or background-service change.
-- Deterministic Rust regressions bind one-time fresh exact initial ownership, reconnect preservation, missing/ambiguous/invalid/conflicting refusal,
-  and renderer-resource exclusion from capture authority. Focused software-RGBA, desktop-texture, and display-selection
-  validators plus the independent workspace validator bind raw-claim preservation before generic normalization, early
-  result-bearing terminal admission, initial marker/start order, exact software/texture membership, exact renderer
-  lookup, reconnect selection restoration, awaited/result-bearing exact-owner renderer sizing and non-authority,
-  fresh/pre-`PeerInfo`/explicit attachment state admission, unselected-route refusal, and under-guard exact-owner stream
-  admission, capture-resource separation, normative R-S11gt/Appendix C #355, behavior-test wiring, and deliberate
-  mutations. In the approved immutable, nonroot, networkless, read-only Python/Bash verifier image, the normal
-  software-RGBA, display-selection, desktop-texture, Android ownership, main-verifier-authority, and independent
-  workspace baselines passed on the pre-ledger-freeze source bytes. Their focused self-tests rejected all 115, 186,
-  253, 534, and 137 deliberate mutations respectively. Earlier preliminary attempts are excluded: source review first
-  invalidated a candidate by finding the pre-admission normalization and renderer-size authority defects described
-  above; later complete-catalog attempts correctly rejected mutations under broader/different diagnostics or exposed
-  ambiguous mutation-inventory and exact-cardinality checks. Exact-condition extraction, mutation-inventory scoping,
-  function-boundary selection, cardinality checks, and duplicate expected-diagnostic accounting were corrected rather
-  than counting those attempts as passes. A zero-identical-mutation/divergent-diagnostic inventory audit then passed,
-  and a complete independent workspace source-mutation catalog restarted from mutation one and terminated with
-  `verify-verifier-workspace: ok`. Those are source-verifier construction results, not a substitute for the final
-  frozen-byte rerun: Python syntax, Bash syntax, every normal baseline, every focused self-test, the complete workspace
-  source-mutation catalog, ledger-hash equality, and diff hygiene remain mandatory again on the exact bytes admitted to
-  commit, with their terminal results bound by the commit/audit receipt. The available verifier image contains Python
-  and Bash but no Rust, Dart, Flutter, generated-bridge, or native platform toolchain, so no compilation, formatting,
-  native test, device, artifact, focus-performance, or release result is claimed.
-- No host RustDesk service/process/configuration, listener, firewall, network namespace, persistent Android service,
-  unrelated image, VM, or OS privilege boundary is inspected or changed by this source slice. Exact Rust/Dart/Flutter
-  compilation and tests, generated bridge, physical Android task-swipe/reopen/Force-Stop behavior, real Windows full-
-  peer focus/minimize behavior, Linux/macOS/iOS/web and cross-version operation, concurrent-feature interaction,
-  capture-through-compositor timestamps and explicit latency budgets, sustained reconnect/focus/resource/performance
-  soak, cold R-B2/R-B10 equality, installed-service proof, independent reproduction, external review, and the user's
-  requirement that the complete connection flow be correct and performant remain open release obligations.
+The executable Rust regression
+`r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays` exercises exact-owner
+and empty-set refusal, invalid owned inventory, and canonical multi-display derivation; the shared
+verifier invokes the `r_s11ff_` family directly. The deleted 1,339-line
+`scripts/verify-viewer-rgba-mailbox.py` only matched source and test names and applied 137 textual
+substitutions while conflating R-S11ew, R-S11fr, R-S11gs, R-S11gt, and R-S11iw. Its 2,028 lines of
+workspace validator, mutations, source binding, dispatch, and documentation/wiring coupling were
+also deleted. No product source or executable regression changed.
+
+Fresh generated Rust/Dart bridges and exact-current target execution remain STOP-SHIP. Android
+task-swipe/reopen/Force-Stop, Windows focus/minimize, other-platform and cross-version behavior,
+capture-through-presentation timestamps, explicit latency/queue/CPU/memory budgets, sustained
+reconnect/resource soak, cold R-B2/R-B10 equality, independent reproduction, and external review
+remain open.
+
+### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership
+
+**SOURCE IMPLEMENTED; SIX EXECUTABLE RUST REGRESSIONS RETAINED AND DIRECTLY WIRED;
+SOURCE/MUTATION THEATER DELETED; EXACT GENERATED-BRIDGE, TARGET-RUNTIME,
+PRESENTATION, PERFORMANCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
+
+Only the first fresh, streamless, unselected video UI handler may start peer I/O and await initial
+display ownership. The initial login response preserves the raw peer display before generic
+normalization and either binds exactly one valid marked handler once or preserves a completely
+explicit reconnect selection. Missing, ambiguous, stale, conflicting, unowned, or out-of-inventory
+state is terminal before peer metadata is consumed. The worker slot is acquired before and retained
+with the handler-owner guard through stream installation and peer start, and failed start rolls back
+only the same exact UI owner.
+
+Software-RGBA and desktop-texture delivery require the handler's exact display membership. Renderer
+resources never create capture authority; texture selection is display-keyed; renderer sizing
+carries and rechecks the exact UI-owner UUID, is awaited in the existing topology lane, and cannot
+add display ownership. Established noncached reconnects restore their prior bounded selection
+through the existing ordered display transaction. No alternate owner, compatibility presentation
+path, reconnect mechanism, queue, task, worker, timer, or privilege transition was added.
+
+The directly wired `r_s11gt_` Rust family covers one-time binding, invalid and ambiguous refusal,
+reconnect preservation, session-start admission, renderer-resource exclusion, and exact-owner
+sizing. The `r_s11ff_` family covers exact-owner refresh. These tests execute deterministic Rust
+state and ownership transitions; the deleted Python parser executed none of the Rust, Dart,
+generated bridge, renderer, focus, lifecycle, or peer behavior.
+
+Fresh bridge generation and exact-current Rust/Dart/Flutter execution remain STOP-SHIP, including
+physical Android task-swipe/reopen/Force-Stop and Windows focus/minimize/window-transfer; all
+supported platform and cross-version behavior; capture-through-compositor timing; sustained
+reconnect/focus/resource soak; cold R-B2/R-B10 equality; independent reproduction; and external
+review.
 
 ### R-S11gu/R-S11e-233 — bounded exact-owner native-to-Dart cursor publication (2026-08-15)
 
@@ -13004,40 +12931,32 @@ active-user child with authorized and unauthorized principals; attack parent exi
 launch-parent, socket, malformed/trailing input, replay, shutdown, and error-finality cases; measure
 latency, CPU, memory, handles, and cleanup; prove clean cold R-B2/R-B10 artifact equality; obtain
 independent reproduction and R-V3 external review.
+
 ### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement
 
-**State:** Source implementation and focused source/regression gates exist.
-Exact generated-bridge and native-platform execution, device lifecycle and
-performance evidence, current artifacts, independent reproduction, and external
-review remain pending.
+**SOURCE IMPLEMENTED; TWO EXECUTABLE RUST REGRESSIONS RETAINED AND DIRECTLY WIRED;
+SOURCE/MUTATION THEATER DELETED; EXACT GENERATED-BRIDGE, TARGET-RUNTIME,
+PRESENTATION, PERFORMANCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
 
-**Boundary and current implementation.** This is the software-RGBA presentation
-path shared by Flutter viewers on Android, iOS, Windows, Linux, and macOS. One
-exact connection session, UI owner, replacement transaction, display, and checked
-publication token own each handoff. In `src/flutter.rs`, `session_start_` retains
-the worker and exact handler-owner guards while installing the supplied stream;
-`rearm_rgba_for_stream_replacement` rearms every live mailbox for that session
-under the mailbox write guard, assigns fresh checked tokens, keeps only the latest
-pending frame, sorts at most 16 publications by display, and posts them to that
-exact stream. A predecessor token is inert. Exhaustion, excess state, or refused
-publication retires only the exact session and fails the start transaction;
-unrelated sessions remain intact. No replay queue or reconnect policy is added.
+One exact connection session, UI owner, replacement transaction, display, and checked publication
+token own each handoff. `session_start_` retains the worker and exact handler-owner guards through
+stream replacement. `rearm_rgba_for_stream_replacement` holds the mailbox write guard, rotates
+every live exact-session publication to a fresh checked token, promotes only the newest pending
+frame, bounds and canonically sorts at most 16 displays, and posts to the supplied stream before a
+predecessor acknowledgement can interleave. Exhaustion, excess state, or post refusal retires only
+that exact session and fails visibly; unrelated sessions remain intact.
 
-**Evidence.** Rust regressions `r_s11iw_stream_replacement_*` cover fresh-token
-replacement, latest-pending promotion, stale acknowledgement refusal, unrelated-
-session preservation, and exact-session refusal cleanup. The focused
-`scripts/verify-viewer-rgba-mailbox.py`, shared gate, Apple gate, and independent
-workspace baseline bind those source and test contracts. This is source and
-in-repository regression evidence, not native/device behavior evidence.
+The directly wired `r_s11iw_stream_replacement_*` Rust regressions exercise fresh-token rotation,
+latest-pending promotion, predecessor copy/acknowledgement refusal, unrelated-session preservation,
+and exact-session refusal cleanup. They do not execute a generated bridge, Flutter event stream,
+target renderer, Android Activity/service lifecycle, Windows window transfer, or compositor.
 
-**Open evidence.** Run the exact current generated bridge and artifact on target
-platforms, including physical Android task-swipe/reopen/Force-Stop and native
-Windows focus/minimize/window-transfer. Measure capture-through-presentation
-latency, queues, CPU, memory, and cleanup under sustained lifecycle/reconnect
-soak. Current signed artifacts, cross-version behavior, clean cold R-B2/R-B10
-equality, independent reproduction, causation, external review, and proof that
-the complete connection flow is correct and performant remain open STOP-SHIP
-obligations.
+Exact-current generated-bridge and target-artifact scenarios remain STOP-SHIP: replace a live stream,
+delay predecessor completion, observe successor pixels and predecessor inactivity, and verify
+bounded latency, CPU, memory, handles/tasks, and cleanup across Android task-swipe/reopen/Force-Stop,
+Windows focus/minimize/window transfer, other supported platforms, and reconnect soak. Cross-version
+behavior, cold R-B2/R-B10 equality, independent reproduction, causation, and external review remain
+open.
 
 ### R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality
 

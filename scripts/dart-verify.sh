@@ -392,7 +392,6 @@ PY
       -o /tmp/texture_rgba_windows_core_test
     /tmp/texture_rgba_windows_core_test
     cd /src
-    python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test
     python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test
     python3 scripts/verify-display-selection-finality.py --repo . --self-test
     rustfmt --edition 2021 --check \

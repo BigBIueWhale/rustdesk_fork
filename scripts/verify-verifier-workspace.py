@@ -68172,18 +68172,6 @@ def run_source_mutations(sources):
             "exact-current native-Windows verifier boundary",
         ),
         (
-            "hardening",
-            "EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`",
-            "EXACT-CURRENT NATIVE TRANSACTION PENDING",
-            "installed-SCM exact-commit evidence boundary",
-        ),
-        (
-            "hardening",
-            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`",
-            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-B`",
-            "installed-SCM exact-run evidence boundary",
-        ),
-        (
             "requirements",
             '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
             '<span class="pill p-open">EXACT-CURRENT NATIVE RUN PENDING</span>',

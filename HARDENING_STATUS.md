@@ -14578,641 +14578,94 @@ reopens the affected claim; the removed historical “do not re-open” instruct
 
 ### R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting (2026-08-09)
 
-- A clean native rerun from pushed commit `1ba57ce66930fc70f608d699b376bde8e2286c72`, tree
-  `da695f4f4dcfec34717d8c675c96063d5d157aee`, again completed both production-secondary
-  presentation cycles. It observed the minimize/restore and real focus-loss/pointer-return events, delivered
-  128 direct-ABI frames per cycle, accepted both explicit re-notifications, matched both final composed colors,
-  delivered the second pointer-down, retired the probe resources, and durably published `app-finished=ok` with
-  exactly empty stdout and stderr. The exact process nevertheless remained alive for the controller's 15-second
-  exit bound, so the strict result correctly remained `fail`; no pass evidence was published. The retained run is
-  `.harness-state/windows-presentation-run.whDlDbe8`.
-- Source tracing corrects the prior quit-owner assumption. The runner calls
-  `RegisterPlugins(flutter_controller_->engine())` before
-  `SetChildContent(flutter_controller_->view()->GetNativeWindow())`. During registration, the vendored Windows
-  plugin obtained the Flutter view HWND and immediately cached `GetAncestor(hwnd, GA_ROOT)` as main window ID 0.
-  Because the view was not parented yet, that call returned the view itself. Later
-  `WindowController.main().close()` therefore posted `SC_CLOSE` to the child instead of the outer
-  `Win32Window`; the outer `quit_on_close_` `WM_DESTROY` path never posted `WM_QUIT`. The same cached identity
-  was wrong for every other ID-0 window operation. The plugin logic came from upstream commit
-  `b47e8385e5a75d38319ad706a64b0ead3108b093` and became locally tracked when the dependency was vendored in
-  commit `1603c0fe3457e38c677fcac573eac9c1447ce79c`; that attribution does not imply the defect was authored by
-  the vendoring commit.
-- The narrow production correction retains the exact registrar view handle, checks that it is still a live HWND,
-  and resolves `GetAncestor(view_handle_, GA_ROOT)` inside `FlutterMainWindow::GetWindowHandle()` when an
-  operation occurs. It does not reorder all plugin registration and does not add a probe-only termination path.
-  `UPSTREAM.md` records the deviation. The focused verifier binds the real registration-before-parenting trigger,
-  raw-view attachment, validity guard, operation-time resolution, and requirements/ledger contract and rejects
-  173 deliberate mutations. This is source verification only until a fresh exact-commit native rerun proves app
-  exit, strict pass publication, guest shutdown, and exact owned cleanup.
-- The failed `1ba57ce` domain remained an unprivileged `qemu:///session` transaction with no NIC, host device, or
-  filesystem passthrough and only temporary VNC on `127.0.0.1:5900`. Exact cleanup removed its domain,
-  QEMU/wrapper, and listener. No root or sudo was used, and no host RustDesk process, service, configuration,
-  firewall, route, or network setting was changed. This correction does not close the separate response-bound
-  Windows subwindow-destruction defect or any Android/real-peer/cross-version/performance/release obligation.
-- The first clean native run of the operation-time handle correction used pushed commit
-  `5c597fd2792261f1f846ac9065f119eaeb1ac249`, tree
-  `67469429390910930840cf4ca5521894968c9b7e`, and is retained at
-  `.harness-state/windows-presentation-run.DRM8NH6m`. It again completed both lifecycle/pixel cycles, both
-  re-notifications, the real pointer return, texture/resource retirement, and `app-finished=ok` with empty app
-  stdout/stderr. Unlike every prior run, the exact app process then exited inside the unchanged 15-second bound.
-  This natively proves that the corrected ID-0 operation reached the outer quit-on-close HWND and retired the old
-  process-hang boundary. The strict transaction nevertheless remained `fail`: Windows PowerShell returned a blank
-  `Process.ExitCode`, and the controller correctly refused to publish a pass without an exact zero status.
-- The new failure is a controller process-object provenance defect. Unlike the already-hardened D3D-preflight and
-  outer-controller launchers, the app launcher did not materialize its native `Process.Handle` immediately, did
-  not perform the parameterless completion wait and `Refresh()` after the bounded wait, and neither retained a
-  typed integer status before cleanup nor disposed its two owned `Process` objects. The narrow harness correction
-  now mirrors the established pattern: retain the exact handle immediately; preserve the 15-second bound; complete
-  the wait; refresh; reject null/non-integer status; copy the integer before pass publication; and dispose the app
-  and focus-fixture process objects in `finally`. The focused verifier rejects 180 deliberate mutations, including
-  every one of those ownership/status edges. This is not an accepted native transaction until another clean pushed
-  commit produces an exact zero status, strict pass envelope, guest shutdown, and exact cleanup.
-- The failed `5c597fd` domain also had zero NICs and passthroughs and only temporary VNC on
-  `127.0.0.1:5900`. Read-only post-run inspection found no session domain, owned QEMU/virt-install process, or
-  listener on port 5900. No root/sudo or host RustDesk/service/configuration/firewall/routing/network mutation
-  occurred. The successful app exit does not close any broader real-peer, Android, cross-version, performance,
-  production secondary-window destruction, artifact, independent-reproduction, or release obligation.
-- The clean exact-commit rerun from pushed harness commit
-  `fd1d6d8f2d06f42f8c421d08a25f89185db0cf9c`, tree
-  `411984b952233a33c8a35169bafc26ee83c4af98`, then completed the strict transaction. Its ignored evidence
-  directory was named `.harness-state/windows-presentation-evidence-fd1d6d8f2d06` at the time but is no
-  longer present locally as of 2026-09-11; the tracked run summary reports that the 509-file source manifest,
-  pinned golden/helper/cache/lock identities, both default-adapter and WARP D3D11 preflights, exact production
-  `RustdeskMultiWindow` event class, real minimize/restore and focus-loss/pointer-return events, two 128-frame
-  direct-ABI queues, both explicit re-notifications, composed pixels, pointer delivery, texture/resource
-  retirement, durable `app-finished`, typed zero app status, pass envelope, guest shutdown, and host extraction
-  all succeeded. The final green frame was already visible before explicit re-arm and appeared 312 ms after
-  minimize/restore authorization; the final magenta frame was visible while blurred and before explicit re-arm
-  and appeared 172 ms after focus-return authorization, both inside the unchanged 2500-ms limit. App
-  stdout/stderr and controller stderr were empty.
-- The accepted domain `rustdesk-presentation-fd1d6d8f-dd6047e7`, UUID
-  `dd6047e7-b320-49bd-8b04-36a257b76c5b`, had zero network interfaces, no host-device/filesystem passthrough,
-  and VNC parent/child listen records only at `127.0.0.1`; its only new listener was `127.0.0.1:5900`.
-  Independent read-only postconditions found no session domain, QEMU/virt-install process, or 5900 listener, and
-  the tracked worktree remained clean. No root/sudo or host RustDesk/service/configuration/firewall/routing/
-  network mutation occurred. This closes only R-S11gb's narrow native Windows Flutter texture/presentation and
-  process-finality transaction. It does not establish the full RustDesk peer/capture/transport/decode/control
-  flow, cause or repair of an older deployed Windows artifact, Android service/task-swipe/Force-Stop recovery,
-  production response-bound secondary-window destruction, cross-version behavior, latency/performance soak,
-  release artifacts, independent reproduction, or external review; all remain stop-ship.
+**Source closed; one historical narrow native transaction passed; current release evidence remains open.**
+The vendored Windows multi-window plugin had cached the Flutter view as window ID 0 before that view was
+parented, so closing ID 0 could destroy only the child and leave the outer quit-on-close window alive. The
+current code retains the registrar view and resolves its live `GA_ROOT` at operation time. After two failed
+diagnostic runs exposed app-exit and PowerShell process-status ownership defects, the exact transaction at
+`fd1d6d8f2d06f42f8c421d08a25f89185db0cf9c` passed both production-secondary texture cycles,
+minimize/restore, real focus loss and pointer return, typed-zero app exit, guest shutdown, and cleanup. Its
+tracked summary reports 312-ms restore and 172-ms focus-return presentation, zero VM NICs, loopback-only VNC,
+and no surviving owned listener/process/domain. The raw ignored evidence directory is no longer present, so
+this is historical tracked evidence rather than a current rerun. It proves only the narrow ID-0/window-exit
+boundary, not a real RustDesk peer, current packaged bytes, Android lifecycle, sustained latency, or release
+readiness.
 
 ### R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup (2026-08-10)
 
-- The source defect is concrete. The vendored Windows `desktop_multi_window` close path sent Dart
-  `onDestroy` without a result callback and then, from `WM_DESTROY`, cleared the channel and asked
-  `MultiWindowManager` to erase the `FlutterWindow`. Erasing that entry destroys its Flutter engine.
-  Production remote-control and camera handlers await `tabController.closeAll()`, and the terminal handler awaits
-  `_closeAllTabs()`, so the native owner could disappear while the engine-dependent cleanup continuation was still
-  suspended. Erasing the object from `WM_DESTROY` also left `GWLP_USERDATA` pointing at it while Windows could
-  still deliver the terminal `WM_NCDESTROY`, creating a separate potential use-after-free edge. The corresponding
-  Linux path already retains its owner until the Dart response and retires it from a later GTK idle callback. This
-  proves Windows engine/session and HWND/object lifetime errors in current source; it does not prove causation for
-  the user's older Windows display-delay observation or Android stale-service reproduction.
-- The narrow correction makes ordinary `WM_CLOSE` idempotently pending and invokes `onDestroy` with one owned
-  `MethodResultFunctions` completion. Success, error, and not-implemented outcomes all release that completion
-  exactly once, with non-success outcomes reported. Its callback captures only the immutable HWND and ID and posts
-  a collision-resistant registered Windows message. Only the later message validates the exact ID/pending/live
-  state and calls `DestroyWindow`. `WM_DESTROY` records terminal state without erasing the owner. `WM_NCDESTROY`
-  first completes Flutter/default handling, clears and verifies the exact `GWLP_USERDATA` owner, closes native
-  handle/channel admission, and records exact native finality. Only after `DestroyWindow` has returned to the
-  registered-message handler does that handler erase the manager owner. Destructor-owned shutdown has no such
-  erasure step and therefore cannot recursively mutate an owner map already being destroyed. Failure to clear the
-  exact user-data owner prevents the finality flag and retains the manager entry rather than risking a stale native
-  pointer. The old fire-and-forget and in-destroy-message erasure paths are absent. `UPSTREAM.md` records the
-  deviation.
-- The existing Windows presentation transaction is extended only as a focused ownership witness. Its secondary
-  isolate submits a new blue texture frame and deliberately withholds the Dart method response for at least 1000
-  measured monotonic milliseconds. The
-  native controller must prove throughout that interval that the exact production-class `RustdeskMultiWindow`
-  HWND is still visible and that the engine composes the new blue frame. It then authorizes Dart cleanup and
-  requires the cleanup receipt before native HWND retirement, manager-entry retirement, primary-window close,
-  typed-zero app exit, strict result publication, guest shutdown, and exact host cleanup.
-- That exact transaction passed at commit `7ad3e34f2eed70711a31e7880302b4047524dac3`, tree
-  `2abc30f594cfaa5a4d4b50f519b698f1e744d580`, with the repository's 509-file source manifest reverified in the
-  guest. The real `RustdeskMultiWindow` HWND and Flutter engine remained live while Dart withheld its method result
-  for 1013 measured monotonic milliseconds and composed the newly submitted blue frame in 139 ms; cleanup then
-  completed before HWND and manager retirement, and the app exited zero with empty app/controller stderr. The
-  existing real minimize/restore and focus-loss/guest-pointer-return cycles also remained green at 301 ms and
-  223 ms respectively. Result SHA-256 `6f791d8b890abb5cfcfc122cf8d46ef8f3b3fda40ea559a19303ecc03d7862c7`,
-  domain XML SHA-256 `34be4d0915ba89c204ecc3bd2e22cd4c0f8ecf138088d9c28581143b0fb1e630`,
-  and D3D11 preflight SHA-256 `3d90936efc61865bda667869edc36eb19bdc077e446fecf45ba33ee1f785e621`
-  were recorded under `.harness-state/windows-presentation-evidence-7ad3e34f2eed/` at the time; that ignored
-  directory is no longer present locally as of 2026-09-11. The tracked summary says host validation proved zero
-  domain network interfaces, VNC parent/child listen records only at `127.0.0.1`, and an exact listener delta of
-  only `127.0.0.1:5900`; independent postconditions found no session domain, QEMU process, or VNC listener and the
-  tracked tree remained clean. No root/sudo or host RustDesk/service/configuration/firewall/routing/network
-  mutation occurred. This closes only R-S11gh's narrow native Windows engine/Dart/HWND ownership transaction.
-- The user's accumulated-change risk assessment remains binding. Even a green run here proves only this one
-  production Windows engine-versus-Dart teardown boundary. It does not run a real RustDesk peer, identify or repair
-  the weeks-old operational artifact, validate Android Activity/foreground-service/task-swipe/Force-Stop recovery,
-  establish cross-version interoperability, exercise concurrent control/file/audio, supply sustained reconnect/
-  focus/latency/resource soak, produce cold release artifacts, provide independent reproduction, or substitute for
-  external review. Those remain explicit release-blocking evidence gaps.
+**Source closed; one historical narrow native transaction passed; current release evidence remains open.**
+The old Windows close path destroyed the native owner and Flutter engine before the asynchronous Dart
+`onDestroy` cleanup response, and could leave `GWLP_USERDATA` referring to a retired object. The current
+path makes close idempotently pending, owns the method result, posts a private completion message, validates
+the exact live window/ID, clears and verifies user data at `WM_NCDESTROY`, and erases the manager owner only
+after `DestroyWindow` returns. Commit `7ad3e34f2eed70711a31e7880302b4047524dac3` historically passed
+the production-class native witness: the secondary engine/window stayed live for 1013 ms while Dart withheld
+completion, presented the new blue frame in 139 ms, then cleaned up before window/manager retirement and a
+zero app exit. Its raw ignored evidence is no longer local. This does not prove a real peer, current packaged
+artifacts, Android service/task lifecycle, cross-version behavior, or sustained resource/latency behavior.
 
 ### R-S11gk/R-S11e-223 real Windows full-peer focus/presentation transaction (2026-08-12)
 
-- The user's request is binding: connection establishment, recovery, teardown, and presentation must be correct and
-  performant in general, not merely patched around individual complaints. In particular, the reported Windows case is
-  display-only delay after focus loss while input stays responsive and reconnect clears the delay. The existing exact
-  Windows texture/compositor transaction and Linux full-peer transaction are relevant but do not jointly prove one real
-  native Windows viewer-to-controlled-peer session. That evidence gap remains release-blocking.
-- The new transaction deliberately separates artifact and runtime authority. `build-windows.ps1` first completes the
-  ordinary Windows setup/MSI and freezes the exact four-file `dist` size/SHA-256 inventory. A non-default
-  `windows-full-peer-presentation-probe` feature then changes only the Windows probe build's existing direct listener to
-  an exclusive `127.0.0.1:21118` bind and produces a private full Flutter bundle. A post-build assertion requires the
-  release `dist` inventory and `Cargo.lock` to remain byte-identical. The probe is not a release artifact and a future
-  pass cannot be credited as packaged-byte or cold R-B2 evidence.
-- The zero-interface Windows guest will run a controlled top-left fixture, a real portable RustDesk `--server`, and a
-  real RustDesk `--connect 127.0.0.1` viewer. The server starts parked and receives a random credential through bounded
-  redirected stdin; the viewer receives it through its actual CPace password dialog using checked Unicode input. The
-  controller requires real composed remote pixels, one hundred twenty ordered color changes over at least sixty
-  seconds while a separate window continuously retains foreground focus, twenty-one changes over at least ten
-  minimized seconds, the
-  queued final frame and a newly generated post-restore frame within 2500 ms each, and a mapped pointer movement from a
-  local viewer-only coordinate into the non-overlapping source fixture. This avoids treating a same-desktop click as
-  remote-input proof. It rechecks the exact loopback TCP owner rows after every observation and refuses any reconnect
-  or process/port replacement. Cleanup visits all owned trees and requires no live listener/established row before the installed
-  LocalSystem transaction begins.
-- The release build and installed-SCM order was corrected during pre-run review: the installed transaction deliberately
-  leaves its LocalSystem listener alive until the disposable VM powers off, so the portable full-peer transaction must
-  run and prove cleanup before installation. The independent host verifier binds source identity, unchanged artifacts,
-  exact listener/TCP rows, latency/count/order/measured-duration, remote input, and zero-interface/loopback-VNC domain
-  XML. Its behavioral self-test rejects wildcard-listener, >2500-ms, deficient minimized duration,
-  artifact-substitution, and VM-NIC mutations. Confined static Windows harness verification, all 267 deliberate
-  mutations, seven bounded behavioral suites, Bash parsing, and PowerShell lexical parsing pass. The native Windows
-  parser remains the first guest build preflight. The pinned Rust 1.75 container lacks an offline `rustfmt` component;
-  no network/toolchain mutation was permitted to conceal that gap.
-- **First exact native attempt: failed before peer runtime.** Zero-interface run
-  `8d440dc1-c367-4702-bdeb-93963389d2e1-A` used clean commit
-  `c85c792e0172ceee1a2313370398baf66cc05ddc`, tree
-  `2dcd6c0d5dcdb6e601b0601f34df369ffb413cee`, source manifest
-  `a62d02b9106661251339af410fc41a1f611417a41e6dcf2e2282c9a34ccbb7b5`, and offline manifest
-  `5f73c336c9ff43f850a0d9643fb76b97f2cfe9a81c8bd37f4b94ed68c6f0687a`. Source/offline identity,
-  selected Rust tests, ordinary Flutter build, native texture-core tests, setup/MSI construction, CPace probe
-  construction, and the probe-feature Rust library build passed. The harness then rejected the exact four-file
-  release inventory because Windows returned the same set in MSI-first order and the check compared it to a
-  hardcoded order. No private probe bundle, server, or viewer launched. The retained domain XML SHA-256 is
-  `fb2420356d2d10fc41248cb7032ccd5f566bbcea9a0f698548a870999387d81a` and contains no network interface.
-  This is negative harness evidence only. The corrected check sorts both sides case-sensitively while retaining the
-  exact count and complete size/SHA-256 equality gate. Therefore native peer execution remains pending; no real
-  Windows peer result, focus-delay cause, repair, or release-readiness claim exists. Even a future pass remains
-  narrower than the user's complete
-  request: Android Activity/foreground-service/task-swipe/reopen/Force-Stop behavior, the weeks-old deployed Windows
-  artifact, cross-version interoperability, packaged-byte presentation, macOS/iOS, concurrent feature interaction,
-  long reconnect/resource/performance soak, cold R-B2 equality, independent reproduction, and external review remain
-  explicit stop-ship work.
+**OPEN / STOP-SHIP: no valid Windows full-peer runtime result exists.** The source harness is designed to run
+a real Flutter viewer and controlled `--server` inside one zero-interface Windows VM, require continuous and
+minimized color changes, post-focus/restore freshness within 2500 ms, actual mapped remote input, exact
+loopback TCP ownership without reconnect, unchanged release artifacts, and complete process/listener/domain
+cleanup. Its first exact native attempt at `c85c792e0172ceee1a2313370398baf66cc05ddc` built the ordinary
+artifacts but failed an order-sensitive inventory check before either peer launched; the check was corrected,
+but later attempts produced no admissible peer result. Read-only inventory on 2026-09-11 finds no repository
+`.harness-state`, owned Windows domain, golden, input closure, or pinned builder/helper image. A future run
+must provision authenticated disposable assets and execute exact-current source; source conformance, the two
+narrow compositor transactions above, and Linux peer evidence cannot substitute for it. The reported
+display-only delay after Windows focus loss while control remains responsive, reconnect recovery,
+cross-version behavior, soak, and current release artifacts all remain open.
 
 ### R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle (2026-08-12)
 
-- The user's storage concern was correct. Read-only accounting measured `.harness-state` at exactly
-  `1,657,673,850,880` bytes. Sixteen retained `windows-build-*` roots created between 2026-08-10 and
-  2026-08-12 accounted for `1,152,846,229,504` bytes. Individual roots occupied roughly 48–98 GB:
-  each contained an implicit approximately 35-GiB private golden copy, most contained an 8–17-GB pass-A tree,
-  and many contained an approximately 38-GiB private online snapshot. The implementation attempted a reflink
-  but fell back to a complete golden byte copy; every non-green exit then preserved the complete private run
-  root. Repeated negative native attempts therefore accumulated more than a terabyte. This is confirmed harness
-  lifecycle breakage, not speculation.
-- The attribution is confined. Docker accounting found 246.7 GB of images, 178.9 GB of container writable
-  layers, 79.96 GB of volumes, and 275.9 GB of build cache, but the largest 151-GB writable layer belonged to the
-  user's running `haggai_computer` container and is not attributed to this Windows harness. No Docker object was
-  removed. The storage audit did not inspect or mutate host RustDesk, services, configuration, firewall, routing,
-  or network state and did not use root or sudo. No public listener or compromise evidence follows from these
-  measurements.
-- The outer harness now owns exactly one fixed private directory lease. It refuses a second invocation and
-  refuses allocation while any retained `windows-build-*`, unfinished `.windows-failure-*`, or unfinished
-  `.windows-online-snapshot-*` transaction exists. At correction time, the 16 historical roots still present on
-  this host therefore blocked a future main-path invocation before it could create another run root. They were not
-  auto-deleted: the operator separately authorized historical-state cleanup on 2026-08-12/13, after which each
-  root was independently reconciled and removed by exact device/inode identity as recorded below.
-- The golden lifecycle is zero-copy. Provisioning seals only the same current-principal, single-link, pinned and
-  receipt-complete qcow2 inode from mode 0600/0400 to exact mode 0400. A build records stable device/inode/mode/
-  owner/group/link/size/nanosecond-time metadata plus a full SHA-256 through a no-follow read. Its run root contains
-  only a symbolic edge to that canonical read-only image, and each disposable overlay names that relative edge as
-  its CoW backing. Complete identity is revalidated before overlay creation, between passes, and before publication;
-  the former reflink/full-copy fallback is absent. The currently retained canonical golden was not chmodded by this
-  correction; an explicitly invoked future provisioning preflight owns that seal transition.
-- The canonical 38-GB-class online closure now has one build-scoped snapshot transaction, not a persistent harness
-  cache. Under the build lease, the harness creates one digest-named identity-bound private transaction outside the
-  run root, verifies the snapshot there, and consumes it directly for both passes. It never publishes or moves that
-  tree into a reusable fixed path. After process, domain, and helper authority are conclusively retired, cleanup
-  independently attempts exact removal of the run root and build-snapshot transaction on success, failure, timeout,
-  and signal before releasing the lease. A bounded-evidence failure or failure to remove either exact bulk object
-  does not suppress the independent attempt to remove the other; any unresolved object keeps the lease. The same
-  transaction remover accepts the identity-bound partially materialized state, before `ONLINE_DIR` switches from the
-  canonical input, so a snapshot-copy failure does not strand its already-created transaction. A caller-provided
-  release snapshot is separately recognized as borrowed read-only input, reverified, and never removed by the child
-  Windows harness. Preflight also rejects any legacy fixed `windows-online-snapshot-*` root for explicit
-  reconciliation rather than silently reusing or deleting it.
-- Before snapshot or run-root allocation, the harness uses unprivileged `statvfs` available bytes and requires the
-  golden virtual size plus 24 GiB of fixed run/media/output allowance, 48 GiB when the build-scoped snapshot must be
-  created, and a final 32-GiB emergency reserve. This makes low-space execution a fail-closed preflight condition
-  rather than a mid-build host exhaustion event.
-- Reconciled cleanup no longer treats failure as authority for bulk retention. After the exact owned process group,
-  UUID-bound session domain, and helper authority are conclusively retired, every success, failure, timeout, or
-  signal exact-removes the private run root. A failed run may transactionally retain only an explicit manifest,
-  domain/source-identity, build/progress, and peer-probe diagnostic allowlist, each no-follow copied as a stable
-  current-UID single-link regular file. Each file is capped at 16 MiB and aggregate copied diagnostics at 64 MiB;
-  setup/MSI artifacts, overlays, golden/output disks, ISO/source media, and online snapshots are excluded. A
-  diagnostic failure cannot preserve the bulk tree. Its unfinished bounded transaction is exact-retired first; if
-  that retirement is inconclusive, bulk cleanup still proceeds and the persistent lease blocks another invocation.
-  Only inconclusive process/domain/helper cleanup or exact-object removal may retain bulk state.
-- Confined verification is green: Bash parsing and Python compilation pass; the static verifier passes; and the
-  pinned immutable Windows-helper image ran networkless, read-only, capability-free, no-new-privileges, numeric-
-  nonroot verification that rejected all 286 deliberate mutations and passed all seven bounded behavioral suites.
-  The behavior suite uses only disposable tmpfs fixtures and a synthetic owned process group. It did not invoke the
-  builder main path, create a VM, start RustDesk, or create a network listener.
-- The independent workspace verifier's later red result was verifier drift, not a regression of this cleanup
-  implementation. Its old global check still required bulk retirement only when
-  `RUN_COMPLETE=1 && CLEANUP_FAILED=0`, contradicting R-S11gl and the focused verifier: once the exact process group,
-  domain, and helper are reconciled, bulk run state must retire on every terminal outcome, independently of bounded
-  diagnostic publication. The corrected gate parses `cleanup`, bounded-evidence publication/retirement, and `main`
-  as separate shell functions; binds their complete process/domain/helper/evidence/bulk/transaction/lease order;
-  requires the failure receipt to demand bulk retirement; excludes setup/MSI, overlay, output/golden disk, and
-  offline-media retention; binds the 16-MiB file, 64-MiB aggregate, and 32-GiB reserve bounds; and binds R-S11gl,
-  Appendix C #347, and this ledger. Publication checking also follows the current stronger order through active
-  snapshot and golden revalidation, helper closure, publication phase entry, artifact publication, and only then
-  `RUN_COMPLETE=1`. The generic HTML requirement extractor now recognizes a final requirement followed by a
-  single-newline section heading, rather than falsely reporting R-S11gl's closing boundary absent.
-- Negative-proof maintenance found and corrected two unrelated stale fixtures instead of hiding them. The retired
-  mobile-rendezvous mutation had used `_zeroClientLengthCounter` as an insertion anchor after R-S11gic correctly
-  removed that graphical-CM idle-exit counter; it now inserts the same forbidden `_connectStatus` state beside the
-  still-live approval-mode field. The Windows Amyuni-excision mutation formerly matched both the artifact `Build`
-  call and the explicitly non-artifact full-peer probe call; it is now scoped to the artifact-build function and its
-  checked exit path. All 4,041 mutation anchors were present after correction. The positive independent workspace
-  gate and the unmodified complete 4,041-source-mutation run then exited zero in the pinned devcheck image with
-  numeric UID/GID 1000, no network, a read-only repository and container root, no capabilities, no-new-privileges,
-  bounded PIDs/memory/CPU, and tmpfs-only scratch. No builder main path, VM, RustDesk process, listener, host service,
-  firewall, or unrelated Docker object was exercised or changed.
-- The later operator-authorized Docker cleanup removed the previously retained 13.7-MB failed-build envelope and
-  duplicate `cleanup-failed` CM envelope as exact RustDesk residue. Current read-only accounting is
-  `36,588,786,660` apparent bytes and exactly five top-level entries: the canonical `win11-golden.qcow2`, Android
-  signing keystore, two successful Windows presentation evidence roots, and one successful CM-lifecycle evidence
-  root. There is no `windows-build-*`, `.windows-failure-*`, or failed CM bulk/evidence root left. This updates current
-  state without rewriting the earlier historical measurements or treating affirmative evidence/canonical input as
-  disposable residue.
-- The first post-cleanup exact-current retry at clean pushed commit
-  `adda2eece59cf5824ca5ef6d537ca28ed7caf7ef` failed closed during storage admission, before shared-snapshot or run-root
-  allocation, VM creation, VNC, or product execution. `golden_virtual_size()` parsed valid `qemu-img` JSON with a
-  conditional expression used as the operand of `raise`; the valid branch printed the positive size and then tried
-  to raise the resulting `None`, producing `TypeError: exceptions must derive from BaseException`. The static storage
-  gate had required the capacity components but had not behaviorally exercised the size producer. Cleanup retired
-  the exact build lease and helper authority; no failure envelope, snapshot transaction, domain, listener, output,
-  or run root remained, and the host RustDesk listener was unchanged.
-- The corrected local surface separates `parse_golden_virtual_size` from `qemu-img` execution. It accepts only a JSON
-  object with a positive value whose exact Python type is `int`; missing, zero, negative, boolean, string, non-object,
-  malformed, and non-UTF-8 values fail. The shell self-test now reads a real one-MiB qcow2 and requires exactly
-  `1048576` bytes, then rejects seven malformed/type/value fixtures. The focused current-source gate passes 288
-  mutations and all seven bounded behavioral suites; deliberate parser weakening and replacement of the real qcow2
-  read with a constant are rejected. This corrects the executable storage gate but is not Windows peer evidence; a
-  clean committed retry remains required.
-- **Persistent-snapshot recurrence found and removed before another native retry.** The second post-cleanup attempt
-  at clean pushed commit `99e6b7caba05157915ee57f7e2632d7e4dee48c9` passed the corrected capacity gate and
-  materialized the then-current fixed `windows-online-snapshot-<digest>` cache. Its zero-interface guest ran for
-  approximately 43 minutes and then recorded `build-windows.ps1 exit=1`, before either the real full-peer transaction
-  or installed-SCM transaction. The operator stopped the work and ordered cleanup before the bounded diagnostics were
-  causally classified, so no product, Windows-peer, focus, service, or package verdict survives from that run. Exact
-  operator-directed Docker cleanup removed the 29-GiB cache, 13.7-MiB failure envelope, and two exact temporary image
-  IDs, recovering `34,885,271,552` bytes without a global prune or any Haggai, unrelated Docker, or host RustDesk
-  mutation. Current `.harness-state` accounting is again exactly `36,588,786,660` apparent bytes and five intended
-  entries: the canonical golden, Android keystore, two successful presentation evidence roots, and one successful
-  CM-lifecycle evidence root.
-- Source review proved the recurrence rather than treating cleanup as the fix: `select_shared_online_snapshot`
-  reused the fixed cache, `materialize_shared_online_snapshot` moved the verified candidate out of its cleanup
-  transaction into that cache, and terminal cleanup could therefore retire only the now-empty transaction. The
-  replacement has no selection, publication, rename, or reuse surface. A standalone build creates one digest-named
-  identity-bound transaction, consumes its snapshot directly there for both passes, and exact-removes the transaction
-  on every conclusive terminal path. A release-orchestrator snapshot remains borrowed, reverified, and child-preserved;
-  a legacy fixed cache blocks for explicit reconciliation rather than being adopted or auto-deleted. Cleanup records
-  process/domain/helper reconciliation independently of later deletion results, attempts run-root and snapshot
-  retirement independently, and keeps the lease if either exact object remains. The snapshot remover also accepts the
-  already identity-bound partially materialized state, before `ONLINE_DIR` changes, closing copy-failure residue.
-- Current confined verification uses authenticated local Windows-helper archive SHA-256
-  `468f99ec23c4f3bc45599ee98c01163249f4d611f2f5545b45373455c3a5e795` and immutable image ID
-  `sha256:bfc0d46a9c3806e2ac44ab66337f42ee7c46ff0b5f3fd35c5a6768883d19791e`. Numeric UID/GID
-  1000, no network, read-only root/repository, all capabilities dropped, `no-new-privileges`, exact descriptor limit,
-  bounded PIDs/memory/CPU, and tmpfs-only writes are used. Bash parsing, Python compilation, both positive semantic
-  gates, the focused 298-mutation/seven-behavioral-suite gate, native-codec normal/self-test, requirements-hash
-  synchronization, and the complete unsliced 4,056-source-mutation catalog pass. These checks invoke neither the
-  builder main path nor a VM, RustDesk process, listener, host service, firewall, or unrelated Docker object.
-- Excluded attempts are recorded rather than credited. One read-only host `bash -n` invocation violated the user's
-  container-only code-execution rule but created no file or runtime state. A first focused container omitted the
-  exact `RLIMIT_NOFILE`; a combined positive invocation later lacked `git`; and two broad executable-workspace
-  self-test invocations respectively omitted required scratch and lacked `/run/user/1000`. The host user bus was not
-  mounted to force those fixtures. Three complete-catalog runs are also uncounted: they exposed one stale old cleanup
-  anchor and then two expected-failure routing ambiguities for terminal snapshot retirement and cleanup independence.
-  Each was corrected; the counted catalog restarted at mutation one against the final tracked candidate and exited
-  zero. All test containers were disposable and wrote only to tmpfs.
-- No fresh R-S11gk native result is claimed. The interrupted retry was stopped and its exact newly created disposable
-  state was retired before the later measure-only boundary. At commit `a43310a`, the 16 historical bulk roots and
-  separately retained small failure evidence still remained untouched; the first explicitly authorized cleanup phase
-  below removed bulk history while retaining the bounded evidence, and the subsequent exact RustDesk-residue cleanup
-  removed that envelope as recorded above. A real native retry still requires an explicit invocation
-  and provisioning preflight to seal the canonical golden. The display-focus/session investigation, deployed weeks-old
-  artifact behavior, Android persistent-service task-swipe/reopen/Force-Stop recovery, cross-version behavior,
-  sustained performance/resource soak, cold release equality, independent reproduction, and external review remain
-  explicit stop-ship obligations.
+**Source closed; current VM execution evidence remains open.** The former harness copied a roughly 35-GiB
+golden and often a large online snapshot into every failed run, retaining more than one terabyte across failed
+attempts. That obsolete data and the detailed cleanup chronology are intentionally removed from the live
+ledger; Git history is the audit archive. The current harness uses one nonroot build lease, a sealed canonical
+golden as a zero-copy backing edge, one build-scoped snapshot transaction, admission based on fixed allowance
+plus a 32-GiB emergency reserve, and identity-bound cleanup on every conclusive outcome. Failure evidence is
+allowlisted and bounded to 16 MiB per file and 64 MiB total; bulk disks, overlays, media, artifacts, and
+snapshots cannot be retained as diagnostics. Inconclusive identity/process/domain/helper cleanup preserves
+state and blocks another run rather than guessing. Current read-only inventory finds no `.harness-state`,
+lease, owned domain, or retained run to reconcile.
 
 ### R-S11gm/R-S11e-225 release-parent writable-bind principal closure (2026-08-13)
 
-- **SOURCE IMPLEMENTED; TARGETED CONFINED SOURCE/BEHAVIOR/FOCUSED-MUTATION VERIFICATION GREEN; COMMIT
-  CONTINGENT ON A COMPLETE INDEPENDENT SOURCE-MUTATION CATALOG FROM MUTATION ONE.** Platform:
-  the unprivileged Linux release host. Endpoint/action: the five `local_docker run` sites in
-  `scripts/build-release.sh`, the authenticated descriptor-bound private-tree helper, generated-state reset, and
-  terminal release-workspace cleanup. Boundary: invoking numeric non-root release principal ↔ Docker's rootful
-  daemon applying a container principal/capability set to writable persistent host binds.
-- Proven old path: `offline_normalize_exact_tree` launched UID `0:0` with `DAC_READ_SEARCH` and `CHOWN`, then accepted
-  caller-selected destination ownership; `offline_remove_exact_tree_contents` launched UID `0:0` with
-  `DAC_OVERRIDE` and `FOWNER`; `verify_private_tree_removal_capability` deliberately created root-owned mode-0000
-  entries; `run_reset_self_test` used UID 0 plus `CHOWN` to manufacture root-owned ignored output; and the retained-
-  descriptor capacity check used UID 0 without needing it. Exact bind roots, authenticated helper bytes, mount/inode/
-  hardlink closure, no network, read-only container roots, dropped default capabilities, and no-new-privileges
-  constrained those operations, but the abstraction still converted persistent workspace ownership and made later
-  cleanup depend on repeating Docker-root authority. This is concrete release-host principal, cleanup, and residue-
-  lifecycle debt. It is not evidence that host RustDesk/service/configuration, a listener, firewall/network state,
-  or an unrelated project was changed, or that a container escaped.
-- Intended authority is now structural: every persistent release-workspace object remains owned by the invoking
-  numeric non-root UID/GID. Every one of the five release-parent launches uses that principal, drops all capabilities,
-  and has no `--cap-add`. The public helper API is `--normalize-owned-root` and
-  `--remove-owned-tree-contents`; caller-selected owner/group arguments, `ctypes` ownership bridges, `fchown`, and
-  mixed-owner cleanup are absent. Normalization changes only modes through retained descriptors. Terminal removal
-  acts only after exact root identity, same mount, bounded complete inventory, uniform current-principal ownership,
-  and complete internal hardlink closure are acquired and revalidated. Foreign/root-owned state, a non-traversable
-  directory, changed identity/owner, external hardlink, special object, or descendant mount is preserved and fails
-  closed for explicit operator reconciliation; it never authorizes privilege acquisition or a recursive pathname
-  fallback.
-- The preflight and reset fixtures now model hostile state without manufacturing foreign ownership: current-owner
-  mode-0000 regular files, mode-0500 traversable directories, internal hardlinks, stripped special modes, and an
-  external symlink. The negative `git clean` control still fails on the locked directories; owner-only normalization
-  restores only the access needed for exact cleanup. Requirements R-S11dm/R-S11gm and Appendix C #266/#348 bind this
-  model. The focused release-parent gate and independent workspace gate bind all five launch identities, capability
-  absence, renamed owner-only operations, foreign-principal rejection, descriptor/mount/inode/hardlink closure,
-  cleanup preservation, and deliberate mutations.
-- Counted targeted evidence used the already-present local `rust:1.84` image by its exact immutable content ID
-  `sha256:738ae99a3d75623f41e6882566b4ef37e38a9840244a47efd4a0ca22e9628b88`, with the repository read-only,
-  numeric invoking UID/GID, all capabilities dropped, no new privileges,
-  no network, a read-only container root, bounded resources, and disposable tmpfs only. Container-confined Bash
-  parsing and isolated Python compilation passed; the focused release-parent gate and its 38 deliberate mutations
-  passed; the independent workspace baseline passed; and the private-tree helper self-test passed with the exact
-  descriptor budget. A separate behavioral fixture proved current-owner normalization of a mode-0500 directory and
-  mode-0000 file, current-owner removal of the same hostile-mode shape, and preservation plus rejection of a mode-0000
-  non-traversable directory. No image was pulled or built. The commit remains forbidden unless
-  `verify-verifier-workspace.py --source-mutations-only` returns zero from mutation one against these exact candidate
-  bytes; any failure requires correction and a complete restart, so a resulting commit is itself contingent evidence
-  that the complete catalog was green.
-- No full release transaction, package build, VM, RustDesk process, listener, host service, firewall/network
-  inspection, root/sudo, privileged container, or unrelated Docker object is authorized or claimed by this source
-  slice. Exact cold committed R-B2/R-B10 artifacts, installed/native/device behavior, the reported Android/Windows
-  lifecycle and display-latency obligations, independent reproduction, and external review remain open.
-
-### Explicitly authorized historical storage cleanup (2026-08-12/13)
-
-- The operator explicitly expanded cleanup beyond the 16 obvious build roots to every attributable artifact that was
-  demonstrably disposable. During that first phase, no root, sudo, Docker, VM, host RustDesk/service, firewall/network,
-  or unrelated host path was used or modified. Before deletion, the 16 roots were current-principal mode-0700
-  directories with their canonical
-  device/inode identities, no lease, no live session domain, and no matching builder/QEMU process. Exact descriptor-
-  bound removal deleted all 16. The same closure remover then deleted 29 additional authenticated directories: all 19
-  `windows-presentation-run.*` roots, both VGA diagnostic roots, the obsolete `winvm`, the cloned
-  `windows-v3-authority-*`, two `r-s11gf-*` Rust target trees, the 42-GB Android current-evidence clone/cache, the old
-  Debian smoke image root, retired online-input receipts, and the WiX probe root.
-- Read-only `qemu-img --backing-chain` inspection established that all nine top-level qcow2 files were standalone; none
-  backed another. The cleanup retained only the pinned canonical `win11-golden.qcow2` inode and removed eight obsolete,
-  superseded, or failed goldens. It also exact-unlinked 137 legacy top-level APK/EXE/MSI/ISO/log/script/marker outputs
-  (145 legacy files including the eight qcow2 images), totaling `284,875,452,416` allocated bytes. `.harness-state`
-  therefore fell from `1,657,673,850,880` to `36,607,299,584` allocated bytes, an exact reduction of
-  `1,621,066,551,296` bytes. The survivors are the canonical golden, Android signing keystore, two presentation
-  evidence roots, two CM-lifecycle evidence roots, and the bounded 13.7-MB first-attempt failure envelope.
-- Workspace-wide reconciliation additionally removed three current-principal retired `online` cache trees and one
-  unlinkable root-owned retired archive. The cleanup initially claimed that the canonical offline input closure was
-  preserved; later full-closure verification contradicted that claim as recorded below. The removal reduced `online` from
-  `39,981,027,328` to `32,283,910,144` bytes. Normal-user Git cleanup reduced the main Rust `target` from at least
-  `30,607,900,672` to at least `227,487,744` visible bytes, removed generated `dist`, Python, Dart, JNI, and other
-  accessible Flutter outputs, deleted the clean detached `/tmp/rd-hardening-candidate` worktree, and removed no unique
-  source. The clean branch worktree with commit `de66fae` and the modified detached `/tmp/rustdesk-pf-verify` worktree
-  were preserved because each contains unique Git work, although the former's build cache could not be removed.
-- A prior privilege violation remains visible and was not concealed: at least `8,508,489,728` bytes of generated data
-  is trapped behind `root:root` ownership—`6,058,209,280` bytes in the clean branch worktree target (created 2026-07-02),
-  `490,438,656` bytes in Flutter build/ephemeral output (created/modified through 2026-07-12), `1,732,354,048` bytes in
-  three retired online cache directories (created 2026-06-22/23), and at least `227,487,744` bytes in the main Rust
-  target (root products created 2026-07-18; unreadable directories make this a lower bound). All predate the later
-  continuous loop. Normal-user deletion stopped on permission errors. Cleanup did not invoke privilege escalation,
-  change ownership, or use a container to bypass those permissions. From the post-16-root measurement to final
-  accounting, filesystem available space increased by `505,958,469,632` bytes despite unrelated concurrent host use.
-- The operator then explicitly authorized Docker to remove that root-owned RustDesk residue. A one-shot container had
-  no network, a read-only container root, bounded memory/PIDs, no-new-privileges, only `DAC_OVERRIDE`/`FOWNER`, and ten
-  separate writable bind mounts naming the authenticated victim directories. It reverified every host device/inode
-  from inside the container before deleting anything. It removed the main and clean-worktree Rust `target` trees,
-  Flutter build/Gradle/Linux/macOS/Windows ephemeral trees, and the three retired online cache trees: exactly
-  `9,069,543,424` allocated bytes. A second identically confined pass removed the remaining root-owned generated
-  Android Kotlin/JNI/plugin registrant directories and empty log tree; the generated root-owned `.deb` was truncated
-  through an exact file bind and unlinked by its writable repository parent. No host RustDesk/service, VM, listener,
-  firewall/network state, `haggai_computer`, or path outside the authenticated RustDesk development objects was touched.
-- Docker-daemon reconciliation found 15 unused `rd-*` Cargo/Git/Pub/target volumes, all unreferenced by every container;
-  exact deletion removed `80,989,589,504` allocated bytes. It removed 31 RustDesk-prefixed tags naming 25 unused unique
-  images (`19,490,545,443` virtual bytes), then exact-removed eight dangling images carrying `org.rustdesk.*` labels and
-  three unlabelled legacy images whose layer histories exactly matched the retired Debian, Android, and Windows helper
-  recipes. Observed available space increased by `16,643,817,472` bytes for the tagged images and
-  `8,612,048,896` bytes for the dangling images after shared layers were accounted for. No running/stopped
-  RustDesk-development container, `rd-*` volume, RustDesk tag, or `org.rustdesk.*` image remains. The unrelated
-  `ab-*` Angry Birds images/container churn, live `haggai_computer`, VibeVoice, Benayahu/swing-scanner, audit containers,
-  their images/volumes, and generic images were explicitly excluded.
-- BuildKit cache cleanup used only exact record-ID filters derived from fork-specific provenance/toolchain paths and
-  exact retired Dockerfile command descriptions. Every selected cache-descendant closure was checked to reject Haggai,
-  Angry Birds, VibeVoice, Benayahu, and audit-task descriptions before deletion. Leaf-first scoped passes reclaimed
-  `18.79 GB`, `17.59 GB`, `6.163 GB`, and a final bounded metadata slice. Five immutable Dart-audit input records still
-  name the same shared 56.69-MB OSV-scanner layer; Docker reports them reclaimable but returns `0B` and retains them for
-  both exact-ID and exact-description `buildx prune --all`. No RustDesk image, container, active build, or named volume
-  references them. Removing those five records would therefore require daemon-wide BuildKit pruning/restart or direct
-  shared-daemon state manipulation, which was deliberately refused because it would cross into unrelated projects.
-  Across this Docker-authorized phase, observed filesystem availability rose from `1,781,466,738,688` to
-  `1,939,370,483,712` bytes, an observed increase of `157,903,745,024` bytes despite concurrent unrelated host use.
-  The final repository scan finds none of the authenticated generated/root-owned victims and no root-owned path outside
-  the deliberately retained `online` and `.harness-state` input/evidence trees. It is not evidence that the retained
-  `online` tree still matched its recorded canonical closure.
-
-### Explicitly authorized Codex/Docker residual cleanup (2026-08-13)
-
-- A follow-up inventory found additional task-attributable residue that the earlier RustDesk-prefix cleanup did not
-  include. Two stopped `claude-codex-usage-audit` containers each retained a 13.8-GB writable layer; one created
-  `exact-codex-audit-export` container, their two purpose-built images, a 13-GB host-side
-  `/tmp/claude-codex-usage-audit.*` snapshot, the temporary untagged pinned Windows-helper image, approximately
-  1.7 GB of old top-level `/tmp/rd-*` target/log/scratch state, and the accidentally created empty
-  `rust1.75.0-x86_64-unknown-linux-gnu` volume remained. These objects came from this Codex/RustDesk work and were
-  not treated as unrelated merely because two of the container names described the agent-usage audit rather than
-  RustDesk itself.
-- The operator explicitly directed Docker cleanup. Exact-ID/name deletion removed only the three stopped/created
-  audit containers, the two audit images, the untagged Windows-helper image, and the accidental empty volume. Scoped
-  BusyBox cleanup containers had no network, a read-only container root, bounded PIDs/CPU/memory, and only exact
-  temporary roots mounted writable. User-owned files were removed as UID/GID 1000. Three scratch roots contained
-  old UID-0 build output; their one-shot cleanup used container UID 0 with only `DAC_OVERRIDE`, no privileged mode,
-  no host/PID/network namespace, and only those three exact bind mounts. A final UID-1000 pass restored owner
-  traversal on one mode-000 child and removed the empty parent. Every cleanup container used `--rm`.
-- BuildKit reconciliation selected the usage-audit cache by exact record ID, audit-only timestamps/descriptions, and
-  `Shared: false`. Leaf-first exact-ID passes removed 27 unshared audit records, including the 1.191-GB
-  `cargo build --release --package exact-audit` cache leaf. One 28.23-MB record marked `Shared: true` was deliberately
-  preserved; no daemon-wide builder/image/container/volume prune ran. Docker's remaining 36.62-GB reclaimable cache
-  and 65.03-GB reclaimable image accounting mix live or unrelated Angry Birds, Haggai, VibeVoice, Benayahu, and other
-  projects and were not treated as cleanup authority.
-- Verification found no remaining top-level `rd-*`, `rustdesk-*`, audit-snapshot, or exact-audit temporary root; no
-  deleted container/image/volume ID; no Windows harness process or session-domain VM; and no generated repository
-  change. `HEAD` and `origin/master` both remained `ae2ee8c2d0f796f263633d4f6a838e540acf61d0` before this ledger-only
-  update. The pre-existing host RustDesk listener remained present at `0.0.0.0:21118`; it was not stopped,
-  reconfigured, rebuilt, or replaced. A concurrent unrelated container was positively identified as
-  `/home/user/original_angry_birds/apk-binary-analysis` running `ab-arm64x` and was left untouched, as were the live
-  Haggai, VibeVoice, and Swing/Benayahu containers.
-- Observed filesystem use fell from `1,656,125,480,960` to `1,605,678,878,720` bytes during the scoped cleanup, a
-  net recovery of `50,446,602,240` bytes (about 50.45 GB / 46.99 GiB) despite concurrent unrelated activity. The
-  canonical 35-GB-class Windows golden, Android signing keystore, and three successful Windows evidence roots remain
-  intentionally preserved under `.harness-state`: they are authenticated reusable input or affirmative evidence,
-  not failed-run/Docker residue. No fresh Windows transaction or native-result claim was started.
+**Source closed; cold release execution remains open.** Every persistent release-workspace object is intended
+to remain owned by the invoking numeric nonroot principal. The five release-parent container launches use
+that UID/GID with all capabilities dropped and no `--cap-add`; owner/group-selection, `fchown`, and
+container-root cleanup APIs are absent. Descriptor-bound normalization changes only modes, and cleanup
+requires exact root identity, same mount, uniform current-principal ownership, bounded inventory, and complete
+internal hardlink closure. Foreign ownership, non-traversable or changed state, external hardlinks, special
+objects, and descendant mounts are preserved for explicit reconciliation. The pinned release builder images
+and authenticated complete offline input closure are currently absent, so this source design has not been
+rerun as a current cold release transaction.
 
 ### R-B10 reproducible consumer-only online closure after cleanup regression (2026-08-13)
 
-- **SOURCE GUARD AND OPERATIONAL CONSUMER-ONLY CLOSURE GREEN; COLD R-B2/R-B10 RELEASE EQUALITY,
-  NATIVE PLATFORM EVIDENCE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.** The cleanup above
-  removed objects that were in fact members of pinned closure
-  `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24`. That pin deliberately
-  included preservation-only `.rustdesk-retired-*` historical objects: 266,866 files, 80,019 directories,
-  76 symlinks, and 38,967,060,125 logical regular-file bytes. The surviving tree plus its final 65-byte
-  retired libvpx-key marker instead calculated as
-  `73fd7b5b095995e57f7b67e9b35864d7677c57877ab28e94b4af791d10c676b6`; after exact Docker removal
-  of that marker it calculates as
-  `07ab1dc7151619b6a1b212ee888332a6aba7386b3a890b610b043125e6658028`, with 152,793 files,
-  43,971 directories, 35 symlinks, and 29,979,415,022 logical regular-file bytes. The stale record and pin
-  were not changed on the strength of either initial measurement; the independently replayed acquisition and
-  final publication evidence below now authenticate the same consumer-only result.
-- This exposed a closure-design defect as well as an inaccurate cleanup claim. R-B10 requires the ignored input
-  cache to be re-creatable from `pins.env`; a closure whose digest depends on historical displaced outputs cannot
-  satisfy that contract. `online-input-provenance.py` now rejects every path component beginning
-  `.rustdesk-retired-` before hashing it. Such an object is not silently ignored and cannot be blessed by
-  `maintenance-write-record`: preservation-first replacement may leave it temporarily, but canonical acquisition
-  remains fail-closed until the exact residue is separately reconciled. The self-test creates that forbidden shape
-  and requires rejection; the independent workspace validator and source-mutation catalog bind the guard.
-- A confined exact-marker negative control rejected the surviving marker with the new diagnostic. A one-shot
-  no-network, read-only-root Docker container then matched its device/inode, UID/GID, mode, link count, size, and
-  SHA-256 before unlinking only that file; no `.rustdesk-retired-*` entry remains under `online`. The focused
-  provenance self-test passed in the pinned numeric-nonroot devcheck image. The broader independent workspace
-  baseline is presently red on a separate Windows-harness clean-completion contract and is not claimed green.
-- The first canonical reacquisition attempt reverified all seven exact offline image archives plus the fixed Dart
-  advisory and toolchain archives, then correctly stopped before Gradle warming because the closure-guard source
-  changes were uncommitted. No clean-source gate was bypassed. Guard commit
-  `d9bd7c652dbd30d9bd6261b63ffa0f2c4fa4416f` was then pushed to `master`, and the canonical acquisition reran
-  from that exact clean source. It passed Cargo vendor/source-map and installed-tool semantics, both Pub lock
-  replays, libvpx/libyuv plus x64/ARM64 native projections, exact NDK/SDK closures, Gradle 8.7 semantics, Windows
-  engine/Flutter-tools cache, WiX, every fixed SHA-256 archive, and the libyuv SHA-512. It stopped only at the
-  expected obsolete whole-tree pin: old `eacb4d0...ab24` versus new `07ab1dc7...8028`.
-- Two fresh, separate, networkless full-tree calculations after that transaction agreed on the complete root and all
-  seven counters. A numeric-nonroot container with only `online/` writable atomically replaced the self-excluded
-  record; a separate read-only full-tree pass verified it. The record is current-user-owned, mode 0600, and
-  single-link. `pins.env` and its focused Cargo-vendor authority contract now name the exact new root.
-  `scripts/online-fetch.sh --verify-offline-inputs` then reverified every fixed archive, all seven image archives,
-  the SHA-512 input, the canonical record, and the complete tree, exiting zero. This proves current operational
-  input coherence only. It does not build Debian, Android, or Windows release artifacts, prove cold A==B equality,
-  execute a native client/service, resolve the separate independent-workspace failure, supply independent
-  reproduction/external review, or close any display/lifecycle/performance gap.
-- Final negative-control review found that the first retired-object self-test used `verify` against the pre-mutation
-  root. Any added file therefore produced an ordinary root mismatch even with the dedicated rule neutralized. That
-  false-positive test shape was not accepted. The regression now calls raw `calculate`: with the guard present the
-  retired component is rejected before a root exists; with only the guard condition neutralized the calculation
-  succeeds and the self-test fails with `self-test mutation was accepted: preservation-only retired input`. The
-  corrected positive self-test, exact guard-neutralization negative, focused authority baseline, and all 23 focused
-  mutations pass in the pinned numeric-nonroot, networkless devcheck image. The broad independent workspace baseline
-  remains separately red and is not inferred green from these focused results.
+**Source rule retained; current input/release evidence is absent.** The acquisition model rejects
+`.rustdesk-retired-*` preservation objects rather than allowing historical displaced outputs to become
+canonical build input. A prior consumer-only closure was reacquired and checked, but that was operational
+input-coherence evidence only, not a Debian/Android/Windows build or A==B release result. The repository's
+ignored `online/` closure and the pinned builder images are absent in the current 2026-09-11 inventory.
+Therefore the clean committed R-B2/R-B10 acquisition, two-pass artifact equality, independent reproduction,
+native/package lifecycle, and external review remain open.
 
 ### R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership (2026-08-13)
 
-- **SOURCE CORRECTION, CONFINED SOURCE/FAKE-LIBVIRT, AND REAL NONROOT LIBVIRT DAEMON/POOL LIFECYCLE GREEN;
-  QEMU/VM EXECUTION OPEN; NO PRODUCT-RUNTIME RESULT CLAIMED.** Platform/surface: the Linux-hosted, per-user
-  `qemu:///session` launch paths in
-  `build-windows-vm.sh`, `provision-windows-vm.sh`, and
-  `smoke-flutter-presentation-windows.sh`. Boundary: private Windows build/golden/presentation disk parents and
-  their exact creating transaction ↔ user-session libvirt storage-pool/config/runtime/QEMU-log state. This is build
-  harness authority and resource-lifecycle work, not product IPC, host RustDesk, firewall, or public-listener work.
-- The old reachable path is concrete. All three launchers passed unmanaged absolute `--disk`/`--cdrom` paths to
-  host `virt-install 4.1.0` and owned only the resulting domain UUID and backing directory. The installed
-  `virtinst/diskbackend.py::manage_path()` checks whether each local path is already managed; when it is not, lines
-  156–167 take the exact parent directory, derive a basename pool name, create a `type=dir` pool, and call
-  `poolxml.install(build=False, create=True, autostart=True)`. Backing-tree cleanup could not retire that persistent
-  autostart definition, its runtime poolstate, or the per-domain QEMU log. Mutable/generated pool names also made a
-  filename-pattern cleanup incomplete.
-- The corrected model does not merely make pools explicit inside the same ambient daemon. Each harness invocation
-  refuses root UID/GID, passwd/`HOME` disagreement, caller XDG cache/config overrides, a standard user-session
-  libvirt socket/PID, any same-UID libvirt management/storage/proxy/log/lock daemon, nonempty ambient persistent-pool
-  configuration, or stale transaction. It creates private `HOME`, `TMPDIR`, and XDG cache/config/data/state roots
-  beneath one unpredictable control tree plus a separate short private runtime root. One foreground
-  `/usr/sbin/libvirtd` runs in the retained nonroot session/process group under an exact PID/start identity, without
-  `--listen`, with `listen_tcp=0` and `listen_tls=0`. Its private `qemu.conf` fixes `lock_manager="nop"` and
-  `stdio_handler="file"`; therefore `virtlockd` and `virtlogd` are not detached transaction authorities. All
-  `/usr/bin/virsh` and `/usr/bin/virt-install` calls receive one empty client environment naming only those private
-  roots and `qemu:///session`; neither daemon nor clients can fall back to the real user cache, home, or `/tmp`.
-- Inside that private daemon, the harness creates one random-name/random-version-4-UUID **transient** directory pool
-  for each distinct exact disk parent before any domain-create attempt, records the exclusive mode-0600 request and
-  target device/inode before `pool-create`, and refuses every pre-managed target rather than adopting it. It proves
-  bidirectional name/UUID identity, exact type/source/target XML—including any live target-permissions projection
-  exactly equal to the target's current mode, UID, and GID—the same target inode, unique target mapping, running
-  state, `Persistent: no`, `Autostart: no`, and private persistent-config absence before and after `virt-install`.
-- Domain/QEMU-log authority is separately receipt-bound before launch: the exact name/UUID, fixed log basename,
-  log-directory inode, and current numeric principal are recorded only while that log path is absent. Cleanup first
-  joins the creating process group and proves the exact domain absent. It then visits every independent pool even
-  after another pool failure, destroys only a still-exact transient UUID, proves live/config/target absence, removes
-  only a bounded no-follow, current-principal, single-link regular mode-0600 runtime poolstate whose bytes bind the
-  exact pool, and removes only a receipt-bound current-principal single-link non-writable QEMU log. Only after that
-  authority retires may backing trees,
-  build-scoped snapshots, helper authority, or leases retire. Ambiguous create/destroy, a live domain, changed
-  target/name/UUID/XML/inode, persistent/autostart state, pre-managed target, substituted receipt, symlink, hardlink,
-  or changed log directory preserves state and fails closed. After pool/log cleanup it stops, joins, and reaps the
-  exact private daemon, proves no same-UID libvirt auxiliary escaped, then descriptor-retires only the private
-  runtime and control trees. This is the closure that prevents another user-home cache residue from being created.
-- Historical cleanup was separately and explicitly authorized by the operator. Target-parsed reconciliation removed
-  152 inactive harness-attributable persistent autostart pools and 108 exact QEMU logs whose backing targets were
-  already absent. A subsequent target-based pass found and removed one generically named poolstate XML that a
-  filename filter missed. A later follow-up removed the per-user libvirt daemon cache subtrees and two QEMU
-  capability-cache XMLs, but its finality claim was itself incomplete: it missed the separate empty
-  `~/.cache/libvirt/qemu/cache` chain. Exact UID-1000 Docker `rmdir` removed that empty chain and its empty parents.
-  A still later user-directed inventory contradicted that second finality claim: it found 89 stale session-libvirt
-  runtime files, six harness-only `virt-install` logs, an empty `~/.config/libvirt` tree, and the empty task lock.
-  Exact UID-1000 Docker cleanup removed those objects—60,701 payload bytes of runtime state and 5,358,960 log
-  bytes—and final target assertions passed; unrelated inaccessible systemd state was not a cleanup target. The same
-  scoped cleanup history removed its own inspection outputs. The final loop-window residue sweep then found and
-  exact-Docker-removed one 17,594-byte verifier excerpt and five ignored bridge/plugin code-generation outputs
-  totalling 557,495 bytes; an ignored-file date sweep now returns zero. No attributable transaction receipt, private
-  runtime, poolstate, QEMU log, stopped/created test container, or RustDesk/libvirt/harness-named Docker object
-  remains. Live `/tmp/RustDesk*` IPC state and all Haggai, Angry Birds, VibeVoice, Swing/Benayahu, and other unrelated
-  Docker/filesystem state were deliberately preserved. The large remaining Docker cache graph was not globally
-  pruned because the RustDesk-bearing layers belong to Haggai, not this fork's verification.
-- Verification contract: `verify-windows-libvirt-storage-pools.py` structurally binds the helper, shared library,
-  all three launchers, requirements, hardening ledger, normal verifier, and independent workspace verifier. Its
-  bounded helper fixtures cover exact/dynamic XML, oversize and malformed XML, target matching, exclusive receipts,
-  pre-existing/symlink/hardlink/writable log refusal, exact log cleanup, exact/mismatched poolstate, and missing
-  runtime state. Its fake-libvirt shell suites cover visit-all retryable teardown, success-with-error pool creation,
-  pre-managed target refusal, persistent-state refusal, changed target refusal, and target-inode substitution. The
-  deliberate-mutation matrix rejects 68 weakenings. In local immutable image content ID
-  `sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54`, numeric UID/GID 1000:1000,
-  network-none, read-only-root/source, all-capabilities-dropped, no-new-privileges, bounded-resource Docker, it passed
-  20 helper fixtures and 7 fake-libvirt shell scenarios. Adjacent source/behavior gates passed: the Windows
-  harness rejected 298 mutations and completed 7 bounded behavioral suites (including a real 1-MiB qcow2 operation
-  inside Docker, but no VM), golden-domain authority rejected 45 mutations, and helper authority rejected 82
-  mutations. The independent semantic baseline passed. The first complete unsliced independent source-mutation
-  catalog failed closed because its golden-provision absence mutation still expected the old adjacency between
-  `require_domain_identity_absent` and the TPM comment; the new storage-pool admission calls correctly separate
-  them. The fixture was rebound to the complete current admission block without weakening a product or verifier
-  check. The focused 20/7/68 gate and independent baseline passed again, then the complete catalog restarted at
-  mutation one and returned terminal `verify-verifier-workspace: ok`. The publication gate repeats that complete
-  catalog once more after this evidence-ledger edit and permits no later tracked-byte change.
-- A locked-down numeric-nonroot Docker transaction ran this host's installed libvirt 10.0.0 binaries through the
-  real private-daemon/transient-pool lifecycle. Its first attempt exposed libvirt's live `<target><permissions>`
-  projection; the source and regression fixture were corrected to require those exact current mode/UID/GID values.
-  The final transaction created and destroyed one exact transient directory pool, stopped and reaped the private
-  daemon, left no private runtime/control state, and preserved the before/during/after `/proc/net/tcp*` listener
-  count. Host `/usr`, `/lib`, and `/lib64` were read-only inside the networkless container; no QEMU process, domain,
-  VM, RustDesk process, public listener, or release build ran. Installed QEMU/domain/log/auxiliary-process cleanup
-  therefore remains open. This slice does not close the user's general connection-correctness/performance request or
-  the reported display-only delay. Exact cold
-  R-B2/R-B10 release equality; a fresh exact-current real Windows capture/encode/transport/decode/Flutter presentation
-  transaction through sustained focus loss and minimize/restore; physical Android persistent-service task-swipe,
-  reopen, and Force-Stop recovery; installed Apple/native behavior; deployed/cross-version behavior; concurrent
-  feature interaction; sustained reconnect/focus/resource/performance soak; independent reproduction; and external
-  review all remain explicit release blockers.
+**Source closed; real QEMU/VM execution remains open.** The old unmanaged absolute disk paths allowed
+user-session libvirt to create persistent autostart pools and logs outside the harness's owned backing tree.
+The current launchers create a private nonroot foreground `libvirtd` with private HOME/XDG/runtime state and
+no listening transport, then create one exact transient, nonpersistent, non-autostart directory pool for each
+disk parent before domain creation. Receipts bind pool name/UUID/XML/target inode and QEMU log identity;
+domain-first teardown visits every pool, retires exact poolstate/log objects, joins the private daemon and
+auxiliaries, and only then retires backing storage. Ambiguous or changed identity preserves state and fails
+closed. Historical fake-libvirt fixtures and one private-daemon/transient-pool lifecycle ran without QEMU;
+they are not product or VM evidence. Current inventory finds no owned session domain or private harness state.
+Exact-current zero-interface QEMU execution, Windows peer/service behavior, and release evidence remain open.
 
 ### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality (2026-08-13)
 

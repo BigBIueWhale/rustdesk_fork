@@ -2646,17 +2646,6 @@ def validate_sources(sources: dict[str, str]) -> None:
         "R-S11gj/R-S11e-222 — exact installed Windows SCM credential authority",
         "installed-SCM hardening ledger",
     )
-    for literal, description in (
-        (
-            "EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`",
-            "installed-SCM exact-commit native status",
-        ),
-        (
-            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`",
-            "installed-SCM exact native run identity",
-        ),
-    ):
-        require(hardening, literal, description)
     require(
         requirements,
         '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
@@ -4657,18 +4646,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "requirements",
             "The Windows client <span class=\"kw\">MUST</span> prove its own current executable is the fixed installed runtime before it opens the service-password transport",
             "The Windows client may open the service-password transport before proving its own executable",
-        ),
-        (
-            "installed-SCM exact-commit native status",
-            "hardening",
-            "EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`",
-            "EXACT-CURRENT NATIVE TRANSACTION PENDING",
-        ),
-        (
-            "installed-SCM exact native run identity",
-            "hardening",
-            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`",
-            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-B`",
         ),
         (
             "installed-SCM Appendix native status",

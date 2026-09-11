@@ -617,22 +617,13 @@ cross-compile gates for the same implementation; their native builders must exec
 the platform bind test, including the Windows hostile-`SO_REUSEADDR` case. This Linux
 host does not claim native Windows execution.
 
-**RESOLVED (2026-07-04) — the GUI/coherence backlog is CLOSED.** The six-audit sweep found the
-cryptographic/transport core clean (0 security hazards) and enumerated the surrounding
-structural-coherence debt (~80 orphaned-scaffolding sites, 7 user-visible correctness defects, 1 live
-latent race). That backlog is now IMPLEMENTED in full (36 files, +441/−1790, reviewed to standard):
-the re-key "Password Required" loop is fixed, and the whole dead-scaffolding stratum
-(2FA/trusted-devices, the attended-accept + permission-widener IPC pipelines, the rendezvous
-online-status cluster, socks/change_id/relay/`IdPk` residue) is excised. **Superseded (host-key
-retirement):** the R-S17 fingerprint/first-contact-pin/`--get-fingerprint` GUI items in that sweep
-were subsequently RETIRED with the whole host-key subsystem — the CPace PRS is now derived from the
-password alone (fixed salt, R-P1) and there is no host identity, host-proof, or local pin (R-P5), so
-the fingerprint boards, the pin/known-hosts dialogs, and the `--get-fingerprint`/`--pin-host` CLI are
-removed, not fixed. All source gates green (the
-`verify-release` bundle + `flutter-verify`), zero dangling references across all five platforms, and
-R-B2 reproducibility re-proven per release (build-release.sh → dist/SHA256SUMS, double-build A==B per
-target). Detail is retained as the implementation record in the
-`## ✅ CLOSED — the excision-vestige backlog` section below.
+**Resolved source topology — excision and direct-only presentation backlog.** The obsolete host-pin,
+2FA/trusted-device, attended-accept, permission-widener, rendezvous-presence, relay-choice, account, numeric-ID,
+proxy, and dead presentation surfaces are absent. R-S17 is retired: R-P1/R-P5 define password-only CPace with no
+host identity, host proof, known-hosts store, fingerprint UI, or pin CLI. The compact current disposition is in
+`## Closed excision and direct-only presentation backlog`; commits `5a371ae`, `d5aec5b`, `6e9086d`, and
+`02320c1` retain the implementation history. Source closure does not satisfy the exact-current packaged/native,
+cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **§20 TCP active-router audit (2026-06-29).** The full TCP transport — both the
 controlled (responder) and viewer (initiator) sides — was audited under the
@@ -15824,217 +15815,29 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   winapi `ntdef`/`fileapi` features. (The `fs.rs` module doc-comment describes the walk in full; the
   code + the VM-run tests are the record.)
 
-## ✅ CLOSED — the excision-vestige backlog + the R-S17 pin-GUI defects (implemented 2026-07-04)
+## Closed excision and direct-only presentation backlog
 
-> **⤷ SUPERSEDED (2026-07-04, host-key retirement).** The R-S17 pin-GUI items in this record — I-1
-> (fingerprint boards render), I-2 (first-contact fingerprint-entry pin dialog), I-3 (host-key-mismatch
-> re-key loop), and I-8 (`--get-fingerprint` phantom-key race) — described fixes to the host-key /
-> fingerprint / known-hosts subsystem, which has since been **RETIRED in full** (spec `16b67a2`). The
-> CPace PRS is now derived from the password alone (fixed salt, R-P1); there is no host identity,
-> host-proof, or local pin (R-P5). So the fingerprint boards, the pin/known-hosts dialogs, the
-> `HostIdentity` frame, and the `--get-fingerprint`/`--pin-host`/`--forget-host` CLI are **removed, not
-> fixed**. The detailed obsolete pin-item fixes are not retained as live implementation guidance. The
-> non-pin items in this backlog (the dead-scaffolding excisions) stand.
+**State: current source topology closed; exact-current artifact evidence remains open.** Normative behavior is in
+R-P1, R-P5, R-G1, R-G2, R-G4a, R-G6, R-G9, R-S12, R-S17, R-S19, R-X7, R-X9, R-SV4a, R-SV5, R-SV5a, and
+R-SV6a through R-SV6d. Git history retains the original findings, implementation sequence, source counts, and
+per-run gate receipts; this section retains only present disposition and evidence limits.
 
-**✅ STATUS: ALL CLOSED — 2026-07-04.** The backlog enumerated below was IMPLEMENTED in full by a
-single coherent excision pass (36 files, **+441 / −1790**) and reviewed to standard: all source gates
-green (the `verify-release` bundle — verify.sh / Windows harness self-test / smoke-server / dart-verify /
-native-codec-watch / apple-conform / audit / dart-audit / test-build-faillo — plus `flutter-verify` for the flutter-feature
-Rust), **zero dangling references across all five platforms** (Rust / Dart / Kotlin / Swift / proto /
-tests), and R-B2 reproducibility re-proven per release (build-release.sh → dist/SHA256SUMS, double-build
-A==B per target). The four tiers below are **retained as the implementation record** — each item's
-problem statement and the fix that closed it.
+| Finding / requirement | Current source disposition |
+| --- | --- |
+| I-1/I-2/I-3/I-8; R-S17/R-P1/R-P5 | Host-key/fingerprint/pin behavior was retired rather than repaired. CPace derives its PRS from the password and fixed domain-separation salt. `HostIdentity`, host proof, known-hosts/pin storage, fingerprint boards/dialogs, and `--get-fingerprint`/`--pin-host`/`--forget-host` are absent. Mobile legacy `key_pair` is device metadata plus decrypt-only migration input, not a host identity. |
+| I-4/I-5/I-6/I-7; R-G1/R-G2/R-SV5/R-SV6c | Rendezvous-presence sorting is absent; the viewer labels and controllers use direct addresses; recent/favorite peer cards query the real per-address saved PRS; and the excised QR scanner leaves no iOS camera/photo-library usage declarations. The controlled-side status is direct-listener state, not rendezvous presence. |
+| I-9/I-10/I-11/I-12; R-X7/R-S19 | Credential prompting occurs before CPace keying. The post-key password/2FA dialogs and senders, attended `Data::Authorize`, runtime `Data::SwitchPermission`, trusted-device/2FA field and widgets, `IdPk`, and `decode_id_pk` are absent. Permission chips are presentation only; live capabilities derive from the authenticated `AuthConnType`. |
+| R-SV4a/R-SV5a/R-SV6a/R-SV6b/R-SV6c/R-SV6d | Viewer/session/bridge APIs carry no relay discriminator or public/custom-server predicate. Numeric-ID query/routing, account deployment/logout/audit/avatar control plane, proxy/rendezvous/NAT resolver and persistence, cross-server grammar, online map/query/polling, and their compatibility aliases are absent. The one initiation model is exact direct address over keyed TCP. |
+| Dead Dart policy-option aliases — CLOSED/GATED (R-G1) | The retired server/proxy/change-ID/deep-link option aliases and their raw authored-Dart vocabulary are absent. Pinned native stale-value masks are not Flutter controls. |
+| Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5) | `id_formatter.dart`, numeric-ID formatter/controller APIs, numeric-only autocomplete normalization, relay suffix handling, and bare-ID admission are absent. `direct_address.dart` trims only outer whitespace; the shared connect choke point validates the same exact address; persisted peer addresses render without numeric grouping. |
+| R-G4a/R-G6/R-G9 | Role-swap fields/events/FFI/serialization, relay/WOL fallback UI, `forceAlwaysRelay`, unread CM copies of controlled capability flags, and account provenance fields are absent. Direct-only errors point to address/port reachability; live capability refusal is distinct; authenticated connection capability state and the post-key viewer permission protocol remain. |
+| Other protocol/config closure | `LoginRequest` carries only the retained session metadata; obsolete host-key, OS-login, elevation, role-swap, and legacy hash authentication messages are absent. The baked rendezvous trust constant cannot be overridden by config; deep links cannot write config/password state; settings expose no deleted identity/relay/key/proxy/whitelist authority; voice-call audio remains AuthConnType-gated; remember/forget password handles both legacy and PRS fields coherently. |
 
-**The original finding (2026-07-03).** Six independent Opus-1M code audits swept the entire auth /
-identity / online-status / connection-manager / server-config / viewer-peer-list surface, every
-load-bearing claim re-verified against source by hand. The verdict was **behaviorally sound but
-structurally incomplete** — every user-visible control and every security path was correctly
-neutralized and failed closed (**zero security hazards, zero peer-reachable bugs**), but the excisions
-had left a large stratum of **orphaned plumbing**: dialogs that could never open, FFI shims with no
-caller, IPC enum variants nothing sent, state flags stuck forever in one branch, and helpers that
-returned the semantic opposite of their name — **~80 distinct dead-or-wrong sites, ~15 root excisions**
-(rendezvous/`register_pk`, relay, 2FA/OTP, TOFU→R-P1 salt-is-the-pin, account/address-book, QR,
-numeric-ID→direct-address, socks/proxy, attended-accept, permission-widener).
-
-**Why it was non-negotiable.** "Excise, don't disable," **R-G1 "remove, don't grey,"** and **R-S12 "no
-defaulted-off-but-present"** are the whole point of this project — and they apply one level down, to
-plumbing, exactly as they apply to visible toggles. A codebase that advertises itself as
-secure-by-assertion and "correct as if written correctly from the first place" could not carry a
-rendezvous signed-id verifier nothing calls, a two-factor-auth pipe wired end-to-end behind a trigger
-that never fires, or a "Password Required" dialog whose OK button authenticates nothing. Dead code that
-*looks alive* is worse than a stale comment: it makes the next auditor reason about a data flow that
-does not exist. That entire stratum is now gone — the tiers below record each site and its fix.
-
-### Tier 1 — user-visible correctness defects ✅ DONE (a user SAW these)
-
-- **[I-1/I-2/I-3] Retired host-key/fingerprint/pin GUI defects.** Closed by deleting the host-key
-  identity, pin store, fingerprint surfaces, first-contact/mismatch dialogs, and related CLI/FFI
-  rather than repairing them. The live design is pure password-PAKE with no per-box identity.
-
-- **[I-4] A dead "Sort by → Status" option in the peer menu.** `PeerSortType.status = 'Status'`
-  (`flutter/lib/common/widgets/peers_view.dart:28`) is offered in the Favorites sort menu; its
-  comparator `peers.sort((p1, p2) => p1.online ? -1 : 1)` (`peers_view.dart:389`) reads `peer.online`,
-  which is **always false** (the rendezvous online query is a no-egress stub, Tier 4), so the sort is
-  a visible no-op. **FIX:** remove `status` from `PeerSortType.values`.
-
-- **[I-5] Stale numeric-ID-era labels "Remote ID" / "Search ID" render literally.**
-  `PeerSortType.remoteId = 'Remote ID'` (`peers_view.dart:25`) and the "Search ID" hint
-  (`flutter/lib/desktop/pages/peer_tab_page.dart:727`) are absent from `src/lang/en.rs`, so they
-  display verbatim — numeric-rendezvous-ID wording in a fork whose identity is a direct address.
-  **FIX:** relabel to "Remote address" / "Search address."
-
-- **[I-6] There is NO saved-credential indicator anywhere, and the one that exists is misdesigned.**
-  The peer-card key/lock badge `_shouldBuildPasswordIcon` (`flutter/lib/common/widgets/peer_card.dart:163`)
-  is gated on `currentTab == PeerTabIndex.ab.index` — the address-book tab, structurally disabled
-  (`isEnabled = [true,true,false,false]`) — so it **never renders**, and it reads the old shared-AB
-  `peer.password` field rather than the per-address PRS the fork actually stores. **FIX:** re-gate on
-  `mainPeerHasPassword(peer.id)` for the recent/favorite tabs so the lock reflects the real PRS.
-
-- **[I-7] iOS advertises camera + photo-library access "to scan QR codes" for a scanner that was
-  excised.** `flutter/ios/Runner/Info.plist:73-76` still declares `NSCameraUsageDescription`
-  ("…to scan QR codes") and `NSPhotoLibraryUsageDescription` ("…to get QR codes from image"), but the
-  QR scanner (`scan_page.dart`) and its `rustdesk://config` import backend are gone. A straight R-G1
-  "defaulted-off-but-present" trap and an **App-Store-review privacy red flag** — permissions
-  requested for a capability that does not exist. **FIX:** delete both plist keys.
-
-### Tier 2 — a LIVE latent bug ✅ DONE (not merely dead code)
-
-- **[I-8] Retired `--get-fingerprint` phantom-key race.** Closed by deleting the fingerprint/pin
-  workflow with R-S17/R-P5. Desktop no longer mints a host key while answering metadata; mobile's
-  legacy `key_pair` is now device-id metadata plus decrypt-only migration fallback after the OS-key
-  mobile at-rest wrapper source slice.
-
-### Tier 3 — "live-looking dead" code ✅ DONE (deleted — it had lied to the next auditor)
-
-- **[I-9] Post-key password re-prompt UI — CLOSED/GATED 2026-07-18.** The live pre-keying
-  credential path is `connect-password-prompt`; the old post-key `enterPasswordDialog` /
-  `wrongPasswordDialog` Flutter dialogs are absent, and Rust no longer emits `input-password`,
-  `re-input-password`, or `input-2fa` msgboxes from the login-error path. `src/client.rs`
-  routes password prompting to pre-keying establishment failures, while keyed login errors are
-  non-credential errors. `scripts/verify.sh` gates the deleted Flutter dialog names and the
-  absence of Rust msgbox senders for the retired prompt types. The remaining literal strings in
-  generic Dart msgbox color/icon classification are inert display taxonomy, not an authentication
-  sender or dialog construction path.
-
-- **[I-10] Connection-manager `SwitchPermission` receiver — CLOSED/GATED 2026-07-18.** The CM
-  receive loop in `src/ui_cm_interface.rs` contains no `Data::SwitchPermission` arm or stale
-  "backend sends SwitchPermission back to CM" comment. `src/ipc.rs` contains no
-  `SwitchPermission` data variant, and `src/server/connection.rs` has no runtime permission-widener
-  handler. The desktop permission chips are read-only status indicators. `scripts/verify.sh` now
-  gates the CM receiver/IPC variant absence in addition to the existing connection-side
-  `ipc::Data::SwitchPermission` widener gate.
-
-- **[I-11] Trusted-devices/2FA pipe — CLOSED/GATED 2026-07-18.** `LoginResponse` no longer carries
-  the old trusted-devices bit; tag 3 is reserved in `libs/hbb_common/protos/message.proto`.
-  `LoginConfigHandler` has no trusted-device field, the viewer has no 2FA login-response reader or
-  `input-2fa` sender, the 2FA/trusted-device Dart widgets are gone, and the broader R-X7 gate keeps
-  the responder 2FA machinery absent. `scripts/verify.sh` now also asserts the reserved proto tag and
-  the absence of the retired constants/widgets/senders.
-
-- **[I-12] `IdPk` + `decode_id_pk` rendezvous crypto — CLOSED/GATED 2026-07-18.** The direct-IP fork
-  has no rendezvous id→public-key binding message: `libs/hbb_common/protos/message.proto` contains no
-  `message IdPk`, and `src/common.rs` contains no `decode_id_pk` helper. `scripts/verify.sh` gates
-  both source absences so the dead rendezvous crypto cannot silently return.
-
-### Tier 4 — inert dead scaffolding (itemized dispositions; no blanket completion claim)
-
-Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never contain:
-
-- **Rendezvous peer-presence/status cluster — CLOSED/GATED (R-SV6c):** the latency map, generic IPC/
-  FFI status payload, peer query/backend/runner, Dart state/callback/sort/dot/visibility/polling pipeline, and
-  compatibility names are absent. The separately retained typed main-status synchronizer is native-desktop-only;
-  the local status widget is explicitly direct-listener reachability and is gated to the real listener-bound fact.
-  Exact artifact evidence remains R-B2/R-B10.
-- **Public/custom-server predicate — CLOSED/GATED (R-SV6d):** `using_public_server`, its Rust FFI,
-  generated/authored/web/JavaScript spellings, and both caller dependencies are absent. Direct pre-login custom
-  quality/FPS has no public/relay cap; custom-quality presentation is peer-version-only; and the saved-peer
-  rendezvous-presence cadence loop is absent. Exact artifact evidence remains R-B2/R-B10.
-- **Viewer `direct`/relay residue — CLOSED/GATED 2026-07-20 (R-SV4a):** the keyed connection
-  constructor returns only its stream and fixed `TCP` label; login state and interfaces carry no
-  direct/relay discriminator; custom quality/FPS is unconditionally direct before login; FPS control
-  has one direct policy; first-message retry is named for receiver evidence; and session add/reconnect,
-  FRB, authored Dart, and the web bridge carry no relay-choice parameter. Focused Rust regressions and
-  Rust/Dart source gates bind the behavior and API absence. Exact artifact evidence remains R-B2/R-B10.
-- **Dead FFI exports — CLOSED/GATED:** `main_test_if_valid_server`, `main_get_proxy_status`,
-  `main_handle_relay_id`, and `main_resolve_avatar_url` were already absent on re-audit; R-SV6a additionally deletes
-  the account deployment FFI and generated/authored bridge surface.
-- **Dead Rust backends named by this row — CLOSED/GATED:** the structured proxy store, alternate proxy/TLS connector,
-  proxy-only validator, and their package records are deleted by R-S11b-3j. R-SV6a deletes the account
-  API/audit/avatar builder cluster. The numeric-ID change backend/export and IPC rendezvous-server query are absent on
-  current-source re-audit; R-SV6b additionally deletes the independently surviving Config resolver, cross-server
-  client grammar, and persisted rendezvous/NAT/serial state. The separately listed Dart constants and address-display
-  formatting are not covered by this Rust-backend closure.
-- **Dead Dart policy-option aliases — CLOSED/GATED (R-G1):** `kOptionHideServerSetting`,
-  `kOptionHideProxySetting`, `kOptionDisableChangeId`, and `kOptionAllowDeepLinkServerSettings` were
-  deleted from `flutter/lib/consts.dart` by `d5aec5b`; no authored Dart file retains those names or
-  the corresponding `hide-server-settings`, `hide-proxy-settings`, `disable-change-id`, or
-  `allow-deep-link-server-settings` string vocabulary. The native built-in-key inventory is a
-  separate stale-value/config-input boundary and is not represented as a Flutter control. The shared,
-  Dart, and Apple source gates reject both the retired aliases and raw Dart string replacements; the
-  independent verifier binds those gates and deliberately regrows an alias to prove rejection.
-- **The attended-accept IPC pipeline (8 sites, A1–A8) — CLOSED/GATED 2026-07-18:** because
-  `approve-mode` is pinned to `"password"` (`config.rs` `PINNED_SETTINGS`), every connection is
-  authorized before the CM sees it. `buildUnAuthorized`, `showLoginDialog`, `cmLoginRes`, the CM
-  `authorize()` accept path, and the `Data::Authorize` IPC variant are absent; `scripts/verify.sh`
-  gates the deleted UI/IPC senders and enum variant. The generic local function name
-  `authorize()` in unrelated IPC helpers is not this CM accept authority.
-- **The runtime permission-widener IPC pipeline (5 sites, B1–B5) — CLOSED/GATED 2026-07-18:** the
-  CM permission chips are read-only and the runtime widener surface is deleted. `src/ipc.rs` has no
-  `Data::SwitchPermission` variant, `src/ui_cm_interface.rs` has no receiver arm, and
-  `src/server/connection.rs` has no handler that can reassign connection capabilities mid-session;
-  `scripts/verify.sh` gates those absences.
-- **Numeric-ID query CLI — CLOSED/GATED 2026-07-20 (R-SV5a):** `--get-id` no longer has a desktop handler and
-  cannot select the installed-root Unix `UserMainIpcScope`; focused/source/mutation gates bind both absences.
-  Internal side-effect-free stored-ID reads remain separately audited compatibility metadata, not a supported CLI
-  identity capability. Exact packaged-artifact evidence remains R-B2.
-- **Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5):** the obsolete
-  `id_formatter.dart`, `formatID`, `trimID`, `IDTextEditingController`, and the desktop/mobile
-  numeric-only autocomplete normalization are deleted. The replacement `direct_address.dart` API
-  trims only surrounding whitespace, preserves malformed interior whitespace for fail-closed
-  validation, and names its controller/accessor for the direct-address authority. The shared
-  `connect()` choke point normalizes once and validates the same exact target; peer cards,
-  autocomplete, and delete confirmation render the persisted address verbatim instead of
-  space-grouping numeric-looking values. The already-deleted `server_model.dart` `_serverId`/
-  `fetchID` machinery leaves no stale formatter import. Focused Flutter tests cover normalization,
-  malformed interior whitespace, controller semantics, bare-ID rejection, and the valid address
-  forms; shared, Dart, Apple, semantic, and deliberate-mutation gates bind the source closure.
-- **Serialized-but-unread presentation fields — CLOSED/GATED (R-G9):** `sameServer`/`same_server` and the
-  CM-only copies of `recording`/`block_input`/`restart` are deleted after exact producer/consumer history and source
-  proof; the real connection capability fields and viewer permission protocol remain. `forceAlwaysRelay` was
-  already deleted and gated by R-G6 and was stale in this row.
-- **Miscellaneous named residue — CLOSED/GATED:** `logOut(apiServer)` is closed by R-SV6a-1 after history proved
-  that its callers, network sink, stub, and containing account model were already deleted; the later API-server IPC
-  presentation arm and the dead localization key are now deleted and gated as the actual surviving residue. The
-  stale `switch_sides()` entry is closed by R-G4a after source/history proof expanded it to, and deleted, the complete
-  residual role-swap state chain. This closes only this itemized Tier 4 row, not the independent release/artifact,
-  device, advisory, Apple-toolchain, or external-audit residuals above.
-
-### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
-
-The security-critical excisions were done correctly and must not be re-litigated: the `LoginRequest`
-proto is stripped to session metadata (password/os_login/hwid fields reserved+deleted,
-`connection.rs:2000`); the top-level auth message types (`SignedId`, `PublicKey`, `Auth2FA`,
-`SwitchSides`, `OSLogin`, `Hash`) are absent; **elevation/OS-login proto fields are retired, nothing
-dangles on the wire** (`elevation_request`/`_response`/`portable_service_running`, `message.proto:839-842`
-— this closes the old "R-X9 Windows-deferred" worry: there is no dangling handler); `get_key` is
-pinned to `RS_PUB_KEY` ignoring any `option("key")` override (regression-tested, `common.rs:1500`);
-the deep-link `config`/`password` write authorities return `null` (`common.dart:2352`); the settings
-surface carries no id/relay/key/proxy/whitelist row; voice-call accept gates host audio (R-S19); the
-status dot was correctly rewired to a service-listening indicator ("Listening on :21118"); and
-"Remember/Forget password" are PRS-coherent (both check/clear `password` and `password_prs`).
-(Corrected stale note: `maxTabCount` is **4**, not the "5→3" in an earlier record; all parallel tab
-arrays are consistent at 4, no out-of-bounds risk.)
-
-### Discipline for closing this
-
-Excise by root cause, not by scattered line. Each source change reruns the applicable focused gates; R-B2
-reproducibility is established only by the final clean committed Debian/Android/Windows cold double-build, not
-separately claimed for every `.6` removal. Any code-audit help
-uses **Opus-1M subagents told to research extensively** — the recurring failure mode in this very
-sweep was agents trusting a stale comment (e.g. "the dialog shows the fingerprint" — it does not), so
-every claim must be verified against source. Tiers 1–2 are the priority (a user sees them / a box can
-mis-pin); Tiers 3–4 are the coherence work that lets this tree finally read as
-correct-from-the-first-place. This section supersedes the "Inert dead-code leftovers" sample above.
+**Evidence boundary.** Focused source, serialization, and Flutter behavior gates protect the named invariants, but their
+presence is supplementary and does not prove exact packaged bytes or native behavior. The clean committed cold
+Debian/Android/Windows R-B2/R-B10 transaction, native Apple/device coverage where applicable, independent
+reproduction, and external review remain governed by their open ledger rows. A regression or contrary runtime result
+reopens the affected claim; the removed historical “do not re-open” instruction carried no authority.
 
 ### R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting (2026-08-09)
 

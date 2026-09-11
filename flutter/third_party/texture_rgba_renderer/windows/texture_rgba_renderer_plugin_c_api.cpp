@@ -49,10 +49,3 @@ int FlutterRgbaRendererPluginTryNotifyPending(void* texture_rgba) {
     return 0;
   }
 }
-
-void FlutterRgbaRendererPluginOnRgba(void* texture_rgba, const uint8_t* buffer,
-                                     int len, int width, int height,
-                                     int stride_align) {
-  (void)FlutterRgbaRendererPluginTryOnRgba(texture_rgba, buffer, len, width,
-                                          height, stride_align);
-}

@@ -153,12 +153,18 @@ PY
     readonly PLUGIN=$BUNDLE/lib/libtexture_rgba_renderer_plugin.so
     [ -f "$PLUGIN" ] && [ ! -L "$PLUGIN" ] \
       || fail 'RustDesk texture plugin is missing from the Flutter bundle'
+    plugin_symbols="$(readelf --wide --dyn-syms "$PLUGIN")" \
+      || fail 'cannot inspect bundled texture plugin symbols'
     for symbol in \
       FlutterRgbaRendererPluginTryOnRgba \
       FlutterRgbaRendererPluginTryNotifyPending; do
-      readelf --wide --dyn-syms "$PLUGIN" | grep -Eq "[[:space:]]$symbol$" \
+      grep -Eq "[[:space:]]$symbol$" <<<"$plugin_symbols" \
         || fail "bundled texture plugin does not export $symbol"
     done
+    if grep -Eq '[[:space:]]FlutterRgbaRendererPluginOnRgba$' \
+      <<<"$plugin_symbols"; then
+      fail 'bundled texture plugin exports the retired void frame-admission ABI'
+    fi
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       /source/scripts/flutter-presentation-probe-x11.c \
       $(pkg-config --cflags --libs x11) \
@@ -169,7 +175,7 @@ PY
       || fail 'build output contains a symlink'
     [ -z "$(find /out -xdev -type f -perm /6000 -print -quit)" ] \
       || fail 'build output contains a setuid or setgid file'
-    printf 'flutter=%s direct_abi=true app=rustdesk_presentation_probe\n' \
+    printf 'flutter=%s direct_abi=true rgba_abi=try-only app=rustdesk_presentation_probe\n' \
       "$RUSTDESK_FLUTTER_VERSION" > /out/build.identity
     find /out -xdev -type f -exec chmod 0444 {} +
     chmod 0555 \
@@ -185,7 +191,7 @@ PY
     ) > /out/manifest.sha256
     chmod 0444 /out/manifest.sha256
     find /out -xdev -type d -exec chmod 0555 {} +
-    printf 'FLUTTER_PRESENTATION_BUILD_OK flutter=%s files=%s direct_abi_symbols=2\n' \
+    printf 'FLUTTER_PRESENTATION_BUILD_OK flutter=%s files=%s direct_abi_symbols=2 obsolete_void_abi=absent\n' \
       "$RUSTDESK_FLUTTER_VERSION" \
       "$(grep -cE '  (bundle/|build[.]identity$|flutter-presentation-probe-x11$)' /out/manifest.sha256)"
     ;;

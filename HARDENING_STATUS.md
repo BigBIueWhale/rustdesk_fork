@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-72f97533ef0dc1ed3fc533fb302f9a28e4d79d4e60b31f85b4c1958149cc7edb  requirements.html
+f341415e6a9f2872c2fe79faee9f6fe20aaf2e145572c518ed3975571eede1da  requirements.html
 ```
 
 ## Current Verdict
@@ -72,6 +72,16 @@ this ledger by 14,447 bytes. The focused checker was reduced by 50,580 bytes to 
 source-contract check, and 7,992 bytes of duplicate workspace mutations/loaders were deleted. The
 actual full-peer build/runtime harness remains unchanged and is the only test in this family that can
 establish pixel freshness, stable-connection focus recovery, or joined teardown.
+
+R-S11fc and Appendix C #311 now state the timeless first-image transaction and its native, packaged,
+and renderer evidence boundary rather than narrating the implementation or carrying a `FIX` badge. This
+reduced `requirements.html` by 1,420 bytes. Three verifier mutations that tested only requirement/ledger
+wording were deleted; the executable Rust behavior gate and native plugin test remain. The obsolete void
+frame-admission declarations and exports were deleted on Windows, Linux, and macOS, and the Linux bundle
+stage now rejects that symbol. A real Linux production-translation-unit build and its pre-change negative
+control distinguish the one canonical fallible ABI from the retired dual-ABI artifact. Native Windows and
+macOS compilation, exact packaged bundles, real renderer presentation, and current lifecycle/reconnect
+execution remain open.
 
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,
@@ -825,8 +835,10 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   controlled connection has constant-space GOP-aware video state and at most one tracked sole-writer send rather
   than a second 512-command application backlog. Local socket acceptance is not peer or presentation receipt.
 - **R-S11fc/R-S11e-190 exact desktop first-image admission** — Source closed. The fallible native RGBA bridge and
-  exact UI event must both accept the first frame before the session records its one-time image notification;
-  callback acceptance is not proof that pixels reached the compositor or display.
+  exact UI event must both accept the first frame before the session records its one-time image notification.
+  The obsolete void frame-admission export is absent on Windows, Linux, and macOS; the package contract permits
+  only the canonical result-bearing ABI. Callback acceptance is not proof that pixels reached the compositor or
+  display.
 - **R-S11fd/R-S11e-191 exact macOS launchd service-record authority** — Source closed. Launchd corroboration
   accepts one exact top-level service record with canonical PID/path fields matching the already-authenticated
   peer and trusted root-owned LaunchAgent definition; nested/duplicate diagnostic fields fail closed.

@@ -28,12 +28,6 @@ int FlutterRgbaRendererPluginTryNotifyPending(void* texture_rgba_ptr) {
   return [texture_rgba notifyPendingFrame] ? 1 : 0;
 }
 
-void FlutterRgbaRendererPluginOnRgba(void* texture_rgba_ptr, const uint8_t* buffer, int len,
-                                     int width, int height, int stride_align) {
-  (void)FlutterRgbaRendererPluginTryOnRgba(texture_rgba_ptr, buffer, len, width, height,
-                                          stride_align);
-}
-
 #if __cplusplus
 }
 #endif

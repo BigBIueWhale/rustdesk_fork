@@ -66326,24 +66326,6 @@ def run_source_mutations(sources):
             "writer receipt behavior proof source r_s11fk_real_tcp_receipt_can_precede_peer_read",
         ),
         (
-            "requirements",
-            '<div class="req"><span class="id">R-S11fc</span>',
-            '<div class="req"><span class="id">R-S11fc-disabled</span>',
-            "exact first-image admission requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>311</td>",
-            "<tr><td>311-disabled</td>",
-            "exact first-image admission Appendix C row",
-        ),
-        (
-            "hardening",
-            "**R-S11fc/R-S11e-190 exact desktop first-image admission",
-            "**R-S11fc-disabled/R-S11e-190 exact desktop first-image admission",
-            "exact first-image admission hardening ledger",
-        ),
-        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never",
             "true # exact first-image admission behavior gate disabled",

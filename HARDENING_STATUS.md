@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ad639fe843ab37e08bfff1896957ebddc284fc1e4c9977712ef2e6a25fd3e544  requirements.html
+1c5471693891fc45aaea25bfda3eb421ba874ba8ebadc8df50046f074f136202  requirements.html
 ```
 
 ## Current Verdict
@@ -54,12 +54,14 @@ deliberate integration/release checkpoint.
 ## Documentation architecture
 
 `requirements.html` is the timeless normative specification; this file alone records implementation and evidence
-status. Appendix C rows #25–#29 now state their local-privilege-boundary risks and required dispositions without
+status. Appendix C rows #24–#29 now state their capability/local-privilege risks and required dispositions without
 `FIX` badges, implementation narration, verifier receipts, or claims of native validation, reducing the normative
-document by 7,530 bytes. Their unique rules remain explicit in R-S11/R-S11b/R-S11c/R-S11i/R-S19 and the rows point
-to those owners. This is one completed cleanup slice, not completion of the documentation work item: other Appendix
-C rows still contain progress/history prose and must be classified and rewritten or deleted without losing live
-security requirements.
+document by 9,276 bytes. Their unique rules remain explicit in R-S11/R-S11b/R-S11c/R-S11i/R-S19 and the rows point
+to those owners. The corresponding R-S19 status was reduced by 4,529 bytes to current source disposition and open
+native evidence, and two checks that required particular documentation prose were deleted while the product-source
+authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
+Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
+without losing live security requirements.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -155,86 +157,34 @@ greps). The full server binary builds and the loopback runtime smoke
 startup, graceful shutdown, and the no-plaintext wire-capture. Reproducible-build checks passed for the
 historical commits recorded with that validation; this paragraph is not artifact evidence for the current tree.
 
-**R-S19 — capability-confinement class (CWE-863) — status.** requirements.html §7 R-S19 pins
-the class: every peer-triggerable capability MUST key on the session's `AuthConnType`, not on the
-upstream decoupled per-capability booleans / broad `self.authorized`. **The named instance
-CVE-2026-58056 (a FileTransfer session injecting input + capturing the screen — Appendix C #24) is
-FIXED and gated** (`0150cde`): an `AuthConnType` allowlist in `on_message` (input=Remote-only,
-desktop-capture=Remote|ViewCamera) + a FileTransfer capability-flag clear. **The full structural
-closure is DONE and gated** (`3afc51b`, after a four-agent all-platform research pass): a
-`confine_capabilities_to_conn_type` derivation keys every capability boolean off the `AuthConnType`
-at authorization time — *before* any peer login-option is applied, closing a real login-time ordering
-window (a FileTransfer peer's `LoginRequest.option{block_input:Yes}` fired a Windows console-freeze
-once before the old in-branch clear landed); the `on_message` guard is a 3-way allowlist (input +
-remote-*control* reboot/privacy/virtual-display = Remote-only; desktop *capture* = Remote|ViewCamera);
-and the flag-gated sinks the guard's message set misses now key on `AuthConnType`/exact voice-call
-input ownership —
-host clipboard-*text* write (Remote-only; the FileTransfer *file*-clipboard stays), peer→host audio
-(voice-call only), cursor/window capture + whiteboard spawn + the Windows RDP session-switch
-(Remote-only). The research surfaced **two instances beyond the known set**, both closed: a **HIGH**
-outbound host-audio-*capture* by FileTransfer/Terminal (the audio analog of the CVE's screen capture —
-closed by deriving `self.audio` from `AuthConnType`, since the `audio_service` subscribe reads
-`audio_enabled()`), and cursor-position/window-focus capture. Validated: docker `cargo check` (both
-feature sets), `verify.sh` all-green incl. the generalized R-S19 gate (asserts derivation-before-options
-+ the 3-way guard + the sink gates), `apple-conform-check` PASS (iOS/macOS source-conformant). The
-Windows-cfg `SelectedSid` edit is type-trivial (the R-B2 Windows build re-prove confirms it). `MessageQuery`
-(which answers `make_display_changed_msg` — monitor geometry/resolution) is now confined to the
-Remote-or-ViewCamera `is_desktop_capture` allowlist too, so a FileTransfer/Terminal/PortForward peer can no
-longer read display metadata (verify.sh R-S19 asserts it). Not a §2 exposure
-(all instances moot for the trusted password-holder); least-privilege coherence the actually-secure fork
-carries as a MUST. **The final dedicated all-platform Opus sweep is DONE** (`60f8904`): PART 1 confirmed
-the connection.rs fix is sound / not bypassable (cross-confirmed by multiple independent passes — SAS is
-Remote-gated, peer-elevation is proto-excised, the headless `--service` trust model holds); PART 2 found
-**four more edge instances of the same shape** the on_message dispatch didn't reach, all now closed with a
-`verify.sh` "R-S19 edge residuals" gate: (1) a **screenshot** cross-source leak — SCREENSHOTS was keyed by
-display index alone, so a concurrent Remote monitor loop could serve a ViewCamera peer a desktop frame
-(now keyed by `(VideoSource, idx)`); (2) the **viewer-side clipboard reciprocal** — a hostile peer in a
-non-default session the viewer opened could write the viewer's OS clipboard (now `is_default()`-gated,
-the viewer analog of `AuthConnType::Remote`); (3) the **Windows CLIPRDR→CM** forward was unconditional
-(now gated on the confined `self.clipboard && self.file`, removing a latent approve-mode-pin dependence);
-(4) **Android MediaProjection** fired for view-camera/terminal (now excluded in both the Dart and Kotlin
-gates). All moot under §2; validated via docker cargo check + verify.sh + apple-conform + dart-verify.
-Accepted low-severity residual (no host action/capability): the video-QoS metadata arms
-(`ClientRecordStatus`/`AutoAdjustFps`). Remaining: R-B2 all-3-platform build
-re-prove at this HEAD (a background build loop is handling it; the connection.rs/video_service.rs changes
-are in all builds, and the Windows/Kotlin edges are validated by the win-exe/apk builds).
+**R-S19 — `AuthConnType` capability confinement (CWE-863).**
 
-**R-S19 voice-call close/reset authority — CLOSED / GATED (2026-07-11).**
-Platforms: all connection.rs targets. Endpoint/action: peer `VoiceCallRequest(false)`,
-CM `Data::CloseVoiceCall`, voice-call accept/refuse, and connection teardown global
-voice-call input reset. Boundary: authenticated narrow session type
-(`FileTransfer`/`Terminal`) or its CM helper ↔ Remote/ViewCamera-only voice-call
-state. Attack surface closed: `can_drive_voice_call()` admits only Remote/ViewCamera;
-`handle_voice_call()` rejects non-voice session types before accepting/refusing;
-`close_voice_call()` is result-bearing and returns false unless the connection is
-Remote/ViewCamera and owns pending or active voice-call state; CM close sends a peer
-close notification only after that state closes; and `on_close` resets the global
-voice-call input device only for an active voice-call owner. Verification closure:
-`scripts/verify.sh` now asserts the helper, Remote/ViewCamera predicate, accept
-guard, result-bearing close, state-owned close condition, CM result gate, and teardown
-reset guard. This is not a root/LPE path; it closes the remaining voice-call state
-member of the R-S19 capability-confinement class.
+**Source disposition: implemented; exact-current native/product evidence remains open.** After CPace
+authentication, the connection's validated `AuthConnType`—not broad `self.authorized` state or an
+independent permission Boolean—is the authority for every peer-triggerable capability. The server derives
+capability state from that type before applying peer login options. Its dispatcher admits desktop input and
+host control only for `Remote`, and capture/display metadata only for the appropriate `Remote` or
+`ViewCamera` source. Sink checks separately confine clipboard text, audio and voice-call state,
+cursor/window capture, whiteboard, Windows session behavior, and file clipboard. `FileTransfer` retains only
+its connection-owned filesystem and file-clipboard authority. This is the required structural disposition
+for CVE-2026-58056 and the broader R-S19 class; the §2 trusted-password-holder model does not remove this
+defense-in-depth requirement.
 
-**R-S19 Linux FUSE file-content response provenance — CLOSED / GATED (2026-07-11).**
-Platform: Linux `unix-file-copy-paste`. Endpoint/action: CLIPRDR
-`FileContentsResponse` delivery into the local FUSE file-clipboard read path.
-Boundary: one authenticated file-clipboard-capable connection ↔ another concurrent
-file-clipboard-capable connection sharing the process-wide FUSE context for the same
-side. Attack surface closed: `FuseServer::read_node` generates a fresh stream id
-for each read, registers a bounded active response route keyed by `(conn_id,
-stream_id)` before sending `FileContentsRequest`, and `src/clipboard_file.rs`
-passes the response-supplying connection id into
-`handle_file_content_response`. The handler dispatches `FuseFileContentResponse { conn_id, clip }`
-only to the matching active route; responses that do not match the fresh active key
-are dropped before they can occupy another read path. Verification
-closure: `libs/clipboard` has regression tests for bounded route admission, wrong
-connection/stream rejection, stale route removal, duplicate-route rejection, and a
-real `read_node` request/response path where wrong-connection and wrong-stream replies
-are ignored before the correct response supplies the bytes. `scripts/verify.sh` asserts
-the keyed router type, caller wiring, active-route registration, bounded nonblocking
-admission, fresh per-read stream ids, stale global-queue absence, and regression tests.
-This is not a root/LPE path; it closes a Linux file-clipboard cross-session
-capability/provenance member of R-S19.
+Exact-owner adjuncts keep authority from crossing otherwise valid sessions: screenshot requests are keyed by
+connection, capture source, and display; viewer clipboard application is limited to the default remote-control
+session; Android MediaProjection demand comes from the typed Remote owner set; and Windows CLIPRDR forwarding
+requires the confined file/clipboard authority. Voice-call accept, close, and teardown admit only an owning
+`Remote`/`ViewCamera` connection with pending or active call state. On Linux, each FUSE file-content read uses
+a fresh bounded `(connection_id, stream_id)` route and rejects wrong-connection, wrong-stream, stale, or
+duplicate responses. The non-actuating `ClientRecordStatus` and `AutoAdjustFps` video-QoS metadata arms remain
+an accepted low-severity residual.
+
+Focused source gates in `scripts/verify.sh` bind derivation-before-options, dispatcher and sink allowlists,
+exact screenshot ownership, viewer/mobile confinement, voice-call ownership, and the Linux response router;
+`libs/clipboard` tests exercise the route state machine and request/response behavior. Those checks establish
+source/model disposition only. The global OPEN tables remain authoritative for exact-current native packages,
+cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
+bounds, cleanup, cold artifacts, independent reproduction, and external review.
 
 **R-S14 macOS hardened-runtime JIT entitlement minimization — CLOSED / GATED (2026-07-11).**
 Platform: retained macOS source-conformance path. Endpoint/action: Xcode entitlement selection for

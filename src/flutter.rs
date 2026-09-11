@@ -3695,6 +3695,7 @@ pub mod sessions {
         // entering after emptiness was observed and then being removed as part of the old round.
         let mut sessions = SESSIONS.write().unwrap();
         let mut remove_peer_key = None;
+        let mut displaced_handlers = Vec::new();
         for (peer_key, session) in sessions.iter_mut() {
             let mut handlers = session.ui_handler.session_handlers.write().unwrap();
             let Some(handler) = handlers.get(id) else {
@@ -3703,18 +3704,48 @@ pub mod sessions {
             if handler.client_owner_id.as_ref() != Some(client_owner_id) {
                 return None;
             }
-            if handlers.remove(id).is_none() {
-                return None;
-            }
-            session.ui_handler.retire_rgba_session(id);
-            if handlers.is_empty() {
-                remove_peer_key = Some(peer_key.clone());
+
+            let remains_displays = match remaining_displays(Some(id), &handlers) {
+                Ok(displays) => displays,
+                Err(error) => {
+                    log::error!(
+                        "viewer handler retirement found an invalid remaining capture set; retiring the peer: {error}"
+                    );
+                    drain_peer_handlers(session, &mut handlers, Some(id), &mut displaced_handlers);
+                    remove_peer_key = Some(peer_key.clone());
+                    break;
+                }
+            };
+            let retire_exact_handler = || {
+                let Some(_handler) = handlers.remove(id) else {
+                    log::error!("exact viewer handler disappeared during its retirement commit");
+                    std::process::abort();
+                };
+                session.ui_handler.retire_rgba_session(id);
+            };
+            let retirement = if remains_displays.is_empty() {
+                retire_exact_handler();
+                Ok(())
             } else {
-                check_remove_unused_displays(None, session, &handlers);
+                session.try_capture_displays_with_commit(remains_displays, retire_exact_handler)
+            };
+            if let Err(error) = retirement {
+                log::error!(
+                    "viewer handler retirement could not update its terminal command round; retiring the peer: {error}"
+                );
+                drain_peer_handlers(session, &mut handlers, Some(id), &mut displaced_handlers);
+                remove_peer_key = Some(peer_key.clone());
+            } else if handlers.is_empty() {
+                remove_peer_key = Some(peer_key.clone());
             }
             break;
         }
-        sessions.remove(&remove_peer_key?)
+        let session = sessions.remove(&remove_peer_key?)?;
+        drop(sessions);
+        for handler in displaced_handlers {
+            super::try_send_close_event(&handler.event_stream);
+        }
+        Some(session)
     }
 
     pub(super) fn remaining_displays(
@@ -3739,22 +3770,70 @@ pub mod sessions {
         Ok(remains_displays)
     }
 
-    fn check_remove_unused_displays(
-        excluded_session_id: Option<&SessionID>,
-        session: &FlutterSession,
+    fn remaining_displays_after_retiring(
+        retiring_session_ids: &[SessionID],
         handlers: &HashMap<SessionID, SessionHandler>,
-    ) {
-        // Set capture displays if some are not used any more.
-        let remains_displays = match remaining_displays(excluded_session_id, handlers) {
-            Ok(displays) => displays,
-            Err(err) => {
-                log::error!("failed to derive the remaining display capture set: {err}");
-                return;
+    ) -> ResultType<Vec<i32>> {
+        let retiring_session_ids = retiring_session_ids.iter().copied().collect::<HashSet<_>>();
+        let retained_handlers = handlers.iter().filter_map(|(session_id, handler)| {
+            (!retiring_session_ids.contains(session_id)).then_some(handler)
+        });
+        let mut remains_displays = HashSet::new();
+        for handler in retained_handlers {
+            remains_displays.extend(handler.displays.iter().copied());
+        }
+        let mut remains_displays = remains_displays
+            .into_iter()
+            .map(|display| {
+                i32::try_from(display)
+                    .map_err(|_| anyhow!("viewer display index does not fit the peer protocol"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        remains_displays.sort_unstable();
+        Ok(remains_displays)
+    }
+
+    fn retire_handlers_after_capture_admission(
+        session: &FlutterSession,
+        handlers: &mut HashMap<SessionID, SessionHandler>,
+        retiring_session_ids: &[SessionID],
+    ) -> ResultType<Vec<SessionHandler>> {
+        if retiring_session_ids
+            .iter()
+            .any(|session_id| !handlers.contains_key(session_id))
+        {
+            bail!("viewer handler disappeared before its retirement transaction");
+        }
+        let remains_displays = remaining_displays_after_retiring(retiring_session_ids, handlers)?;
+        let mut removed_handlers = Vec::with_capacity(retiring_session_ids.len());
+        let commit = || {
+            for session_id in retiring_session_ids {
+                let Some(handler) = handlers.remove(session_id) else {
+                    log::error!("viewer handler disappeared during its retirement commit");
+                    std::process::abort();
+                };
+                session.ui_handler.retire_rgba_session(session_id);
+                removed_handlers.push(handler);
             }
         };
-        if !remains_displays.is_empty() {
-            if let Err(error) = session.try_capture_displays(remains_displays) {
-                log::error!("failed to admit the remaining display capture set: {error}");
+        if remains_displays.is_empty() {
+            commit();
+        } else {
+            session.try_capture_displays_with_commit(remains_displays, commit)?;
+        }
+        Ok(removed_handlers)
+    }
+
+    fn drain_peer_handlers(
+        session: &FlutterSession,
+        handlers: &mut HashMap<SessionID, SessionHandler>,
+        silent_session_id: Option<&SessionID>,
+        displaced_handlers: &mut Vec<SessionHandler>,
+    ) {
+        for (session_id, handler) in handlers.drain() {
+            session.ui_handler.retire_rgba_session(&session_id);
+            if silent_session_id != Some(&session_id) {
+                displaced_handlers.push(handler);
             }
         }
     }
@@ -4010,16 +4089,24 @@ pub mod sessions {
                     .then_some(*handler_session_id)
                 })
                 .collect::<Vec<_>>();
-            for stale_handler_id in stale_handler_ids {
-                if let Some(handler) = handlers.remove(&stale_handler_id) {
-                    session.ui_handler.retire_rgba_session(&stale_handler_id);
-                    removed_handlers.push(handler);
+            if stale_handler_ids.is_empty() {
+                continue;
+            }
+            match retire_handlers_after_capture_admission(
+                session,
+                &mut handlers,
+                &stale_handler_ids,
+            ) {
+                Ok(retired_handlers) => removed_handlers.extend(retired_handlers),
+                Err(error) => {
+                    log::error!(
+                        "mobile replacement could not update its terminal command round; retiring the peer: {error}"
+                    );
+                    drain_peer_handlers(session, &mut handlers, None, &mut removed_handlers);
                 }
             }
             if handlers.is_empty() {
                 removed_keys.push(key.clone());
-            } else {
-                check_remove_unused_displays(None, session, &handlers);
             }
         }
 
@@ -4048,19 +4135,24 @@ pub mod sessions {
                         .then_some(*session_id)
                 })
                 .collect::<Vec<_>>();
-            for owned_handler_id in &owned_handler_ids {
-                if let Some(handler) = handlers.remove(owned_handler_id) {
-                    session.ui_handler.retire_rgba_session(owned_handler_id);
-                    removed_handlers.push(handler);
-                }
-            }
             if owned_handler_ids.is_empty() {
                 continue;
             }
+            match retire_handlers_after_capture_admission(
+                session,
+                &mut handlers,
+                &owned_handler_ids,
+            ) {
+                Ok(retired_handlers) => removed_handlers.extend(retired_handlers),
+                Err(error) => {
+                    log::error!(
+                        "client-owner retirement could not update its terminal command round; retiring the peer: {error}"
+                    );
+                    drain_peer_handlers(session, &mut handlers, None, &mut removed_handlers);
+                }
+            }
             if handlers.is_empty() {
                 removed_keys.push(key.clone());
-            } else {
-                check_remove_unused_displays(None, session, &handlers);
             }
         }
 
@@ -6130,8 +6222,8 @@ mod mobile_session_lifecycle_tests {
         sessions::clear_for_test();
     }
 
-    #[test]
-    fn r_s11hu_registry_retirement_requires_exact_owner_and_removes_last_peer_atomically() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11hu_registry_retirement_requires_exact_owner_and_removes_last_peer_atomically() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 
@@ -6154,6 +6246,13 @@ mod mobile_session_lifecycle_tests {
             initialized_test_session("retirement-host", ConnType::DEFAULT_CONN),
         )
         .expect("second UI session admission");
+        {
+            let mut handlers = installed.session_handlers.write().unwrap();
+            handlers.get_mut(&first_session_id).unwrap().displays = vec![0];
+            handlers.get_mut(&second_session_id).unwrap().displays = vec![1];
+        }
+        let (sender, mut receiver) = viewer_command_channel();
+        *installed.sender.write().unwrap() = Some(sender);
 
         assert!(sessions::remove_session_by_exact_ui_owner(
             &first_session_id,
@@ -6178,18 +6277,118 @@ mod mobile_session_lifecycle_tests {
             "retirement-host",
             ConnType::DEFAULT_CONN,
         ));
+        let command = receiver
+            .recv()
+            .await
+            .expect("the admitted capture shrink remains owned by its round")
+            .expect("the viewer command round remains healthy");
+        let Data::DisplaySelection(command) = command else {
+            panic!("non-last retirement must publish one typed capture shrink");
+        };
+        let (switch_display, capture_set, refresh) = command.into_parts();
+        assert!(switch_display.is_none());
+        assert_eq!(&*capture_set, &[1]);
+        assert!(refresh.is_none());
 
-        let retired = sessions::remove_session_by_exact_ui_owner(
-            &second_session_id,
-            &second_owner_id,
-        )
-        .expect("last exact UI owner retires the peer");
+        let retired =
+            sessions::remove_session_by_exact_ui_owner(&second_session_id, &second_owner_id)
+                .expect("last exact UI owner retires the peer");
         assert!(Arc::ptr_eq(&retired, &installed));
         assert!(!sessions::contains_peer(
             "retirement-host",
             ConnType::DEFAULT_CONN,
         ));
         retired.close_and_join();
+
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn r_s11hu_exact_retirement_evicts_the_peer_when_capture_shrink_cannot_be_admitted() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let first_session_id = SessionID::new_v4();
+        let first_owner_id = SessionID::new_v4();
+        let peer = initialized_test_session("terminal-retirement-host", ConnType::DEFAULT_CONN);
+        let installed = sessions::insert_session(
+            first_session_id,
+            first_owner_id,
+            ConnType::DEFAULT_CONN,
+            peer,
+        )
+        .expect("first UI session admission");
+        let second_session_id = SessionID::new_v4();
+        let second_owner_id = SessionID::new_v4();
+        sessions::insert_session(
+            second_session_id,
+            second_owner_id,
+            ConnType::DEFAULT_CONN,
+            initialized_test_session("terminal-retirement-host", ConnType::DEFAULT_CONN),
+        )
+        .expect("second UI session admission");
+        {
+            let mut handlers = installed.session_handlers.write().unwrap();
+            handlers.get_mut(&first_session_id).unwrap().displays = vec![0];
+            handlers.get_mut(&second_session_id).unwrap().displays = vec![1];
+        }
+        let (sender, receiver) = viewer_command_channel();
+        drop(receiver);
+        *installed.sender.write().unwrap() = Some(sender);
+
+        let retired =
+            sessions::remove_session_by_exact_ui_owner(&first_session_id, &first_owner_id)
+                .expect("capture-shrink refusal retires the exact terminal peer");
+        assert!(Arc::ptr_eq(&retired, &installed));
+        assert!(!sessions::contains_peer(
+            "terminal-retirement-host",
+            ConnType::DEFAULT_CONN,
+        ));
+        assert!(retired.session_handlers.read().unwrap().is_empty());
+        retired.close_and_join();
+
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn r_s11hu_bulk_owner_retirement_evicts_the_peer_when_capture_shrink_is_terminal() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let first_session_id = SessionID::new_v4();
+        let first_owner_id = SessionID::new_v4();
+        let peer = initialized_test_session("bulk-retirement-host", ConnType::DEFAULT_CONN);
+        let installed = sessions::insert_session(
+            first_session_id,
+            first_owner_id,
+            ConnType::DEFAULT_CONN,
+            peer,
+        )
+        .expect("first UI session admission");
+        let second_session_id = SessionID::new_v4();
+        let second_owner_id = SessionID::new_v4();
+        sessions::insert_session(
+            second_session_id,
+            second_owner_id,
+            ConnType::DEFAULT_CONN,
+            initialized_test_session("bulk-retirement-host", ConnType::DEFAULT_CONN),
+        )
+        .expect("second UI session admission");
+        {
+            let mut handlers = installed.session_handlers.write().unwrap();
+            handlers.get_mut(&first_session_id).unwrap().displays = vec![0];
+            handlers.get_mut(&second_session_id).unwrap().displays = vec![1];
+        }
+        let (sender, receiver) = viewer_command_channel();
+        drop(receiver);
+        *installed.sender.write().unwrap() = Some(sender);
+
+        assert_eq!(close_sessions_owned_by(&first_owner_id), (1, 2));
+        assert!(!sessions::contains_peer(
+            "bulk-retirement-host",
+            ConnType::DEFAULT_CONN,
+        ));
+        assert!(installed.session_handlers.read().unwrap().is_empty());
 
         sessions::clear_for_test();
     }

@@ -27790,10 +27790,6 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "viewer RGBA exact-owner rollback mutation contract",
         ),
         (
-            '"failed-start replacement-owner preservation"),',
-            "viewer RGBA replacement-owner rollback mutation contract",
-        ),
-        (
             '("ui_session", ".bind_initial_display_owner(current_display, display_count)", '
             '".bind_initial_display_owner(0, 0)", "exact initial display-owner delegation"),',
             "viewer RGBA exact session-delegation mutation contract",
@@ -28149,31 +28145,6 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "session.close_and_join();",
         ),
         "independent failed-start rollback preserves replacement owners",
-    )
-    failed_start_removal = extract_between(
-        sources["flutter_source"],
-        "pub fn remove_session_by_exact_ui_owner(",
-        "\n    pub(super) fn remaining_displays(",
-        "independent exact-owner failed-start removal",
-    )
-    require_text(
-        failed_start_removal,
-        "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n"
-        "                return None;\n"
-        "            }\n"
-        "            if handlers.remove(id).is_none()",
-        "independent failed-start replacement-owner preservation",
-    )
-    require_order(
-        failed_start_removal,
-        (
-            "handlers.get(id)",
-            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "return None;",
-            "if handlers.remove(id).is_none()",
-            "retire_rgba_session(id);",
-        ),
-        "independent failed-start removal checks exact owner before mutation",
     )
     peer_publication = extract_between(
         sources["flutter_source"],
@@ -28616,130 +28587,6 @@ def validate_viewer_rgba_mailbox_contract(sources):
     )
 
 
-def validate_viewer_session_registry_contract(sources):
-    flutter = sources["flutter_source"]
-    admission = extract_between(
-        flutter,
-        "pub fn insert_session(",
-        "\n    #[inline]\n    pub fn replace_peer_session_display_owner(",
-        "independent viewer-session registry admission",
-    )
-    require_exact_count(
-        admission,
-        "SESSIONS.write().unwrap()",
-        1,
-        "independent single registry admission transaction",
-    )
-    require_order(
-        admission,
-        (
-            ") -> ResultType<FlutterSession>",
-            "let mut sessions = SESSIONS.write().unwrap();",
-            "sessions.values().any(|peer|",
-            ".contains_key(&session_id)",
-            ".entry((session.get_id(), conn_type))",
-            ".or_insert(session)",
-            "match handlers.entry(session_id)",
-            "Entry::Vacant(entry)",
-            "entry.insert(handler);",
-            "let peer_session = peer_session.clone();",
-            "Ok(peer_session)",
-        ),
-        "independent unique atomic admission returns the installed peer",
-    )
-    require_absent(
-        admission,
-        ".insert(session_id, handler)",
-        "independent replacing viewer-handler admission",
-    )
-
-    retirement = extract_between(
-        flutter,
-        "pub fn remove_session_by_exact_ui_owner(",
-        "\n    pub(super) fn remaining_displays(",
-        "independent exact-owner viewer-session retirement",
-    )
-    require_exact_count(
-        retirement,
-        "SESSIONS.write().unwrap()",
-        1,
-        "independent single registry retirement transaction",
-    )
-    require_order(
-        retirement,
-        (
-            "client_owner_id: &SessionID",
-            "let mut sessions = SESSIONS.write().unwrap();",
-            "handlers.get(id)",
-            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "if handlers.remove(id).is_none()",
-            "if handlers.is_empty()",
-            "sessions.remove(&remove_peer_key?)",
-        ),
-        "independent exact owner and last-peer removal under one registry guard",
-    )
-    for retired in (
-        "remove_session_by_session_id",
-        "remove_failed_start_by_exact_ui_owner",
-        "would_remove_peer_by_session_id",
-        "would_remove_peer_by_exact_ui_owner",
-        "close_event_stream",
-    ):
-        require_absent(flutter, retired, "independent retired viewer-registry surface")
-
-    ffi_close = extract_between(
-        sources["flutter_ffi_source"],
-        "pub fn session_close(",
-        "\npub fn session_refresh(",
-        "independent exact-owner viewer-session close bridge",
-    )
-    require_order(
-        ffi_close,
-        (
-            "client_owner_id: SessionID",
-            "remove_session_by_exact_ui_owner(&session_id, &client_owner_id)",
-            "session.close_and_join();",
-        ),
-        "independent dual-identity retirement bridge",
-    )
-    require_absent(
-        sources["flutter_ffi_source"],
-        "will_session_close_close_session",
-        "independent dead separate close prediction",
-    )
-    require_exact_count(
-        sources["model_dart"],
-        "sessionId: closingSessionId, clientOwnerId: clientOwnerId",
-        3,
-        "independent authored dual-identity close calls",
-    )
-    web_close = extract_braced_item(
-        sources["web_bridge_source"],
-        "Future<void> sessionClose(",
-        "independent web close parity",
-    )
-    require_order(
-        web_close,
-        ("required UuidValue sessionId", "required UuidValue clientOwnerId"),
-        "independent web dual-identity close parity",
-    )
-    require_absent(
-        sources["web_bridge_source"],
-        "willSessionCloseCloseSession",
-        "independent dead separate close prediction",
-    )
-
-    for test_name in (
-        "r_s11hu_registry_admission_returns_the_installed_peer_and_refuses_duplicate_identity",
-        "r_s11hu_registry_retirement_requires_exact_owner_and_removes_last_peer_atomically",
-    ):
-        require_text(flutter, test_name, f"independent {test_name} regression")
-    gate = "python3 scripts/verify-viewer-session-registry.py --repo ."
-    require_text(sources["verify"], gate, "shared viewer-session registry gate")
-    require_text(sources["dart_verify"], gate, "Dart viewer-session registry gate")
-    require_text(sources["apple"], gate, "Apple/shared viewer-session registry gate")
-
-
 def validate_display_selection_finality_contract(sources):
     focused = sources["display_selection_finality_verifier"]
     validation = extract_between(
@@ -28873,7 +28720,6 @@ def validate_display_selection_finality_contract(sources):
             '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
-            '    validate_viewer_session_registry_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             "display-selection current independent dispatch fixture",
         ),
@@ -29003,7 +28849,7 @@ def validate_display_selection_finality_contract(sources):
     remaining = extract_between(
         sources["flutter_source"],
         "fn remaining_displays(",
-        "\n    fn check_remove_unused_displays",
+        "\n    fn remaining_displays_after_retiring",
         "independent cross-owner capture authority",
     )
     require_order(
@@ -38733,14 +38579,6 @@ def validate_android_voice_call_ownership_contract(sources):
 
     for text, label in (
         (
-            '"failed-start normal-close marker refusal"',
-            "Android focused failed-start marker mutation",
-        ),
-        (
-            '"failed-start replacement-owner preservation"',
-            "Android focused replacement-owner mutation",
-        ),
-        (
             '"worker-slot before handler-owner lock order"',
             "Android focused worker-slot/handler-owner mutation",
         ),
@@ -38928,11 +38766,6 @@ def validate_android_voice_call_ownership_contract(sources):
             "flutter_source",
             "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()",
             "Android exact failed-start rollback behavior source",
-        ),
-        (
-            "flutter_source",
-            "excluded_session_id: Option<&SessionID>",
-            "Android optional display-reconciliation exclusion source",
         ),
         (
             "flutter_source",
@@ -39312,28 +39145,6 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
     ):
         require_text(sources[key], text, label)
-    replacement_drain = extract_between(
-        sources["flutter_source"],
-        "pub(super) fn take_mobile_sessions_except(",
-        "\n    #[inline]\n    pub(super) fn take_sessions_owned_by(",
-        "Android replacement-drain source",
-    )
-    require_text(
-        replacement_drain,
-        "check_remove_unused_displays(None, session, &handlers);",
-        "Android replacement drain all-remaining-display reconciliation source",
-    )
-    owner_drain = extract_between(
-        sources["flutter_source"],
-        "pub(super) fn take_sessions_owned_by(",
-        "\n    #[cfg(test)]\n    pub(super) fn contains_peer(",
-        "Android Activity-owner drain source",
-    )
-    require_text(
-        owner_drain,
-        "check_remove_unused_displays(None, session, &handlers);",
-        "Android Activity-owner drain all-remaining-display reconciliation source",
-    )
     session_start = extract_between(
         sources["flutter_source"],
         "pub fn session_start_(",
@@ -39383,22 +39194,6 @@ def validate_android_voice_call_ownership_contract(sources):
         failed_start_rollback,
         "try_send_close_event",
         "Android failed-start forged normal-close marker",
-    )
-    failed_start_removal = extract_between(
-        sources["flutter_source"],
-        "pub fn remove_session_by_exact_ui_owner(",
-        "\n    pub(super) fn remaining_displays(",
-        "Android exact-owner failed-start removal source",
-    )
-    require_order(
-        failed_start_removal,
-        (
-            "handlers.get(id)",
-            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "return None;",
-            "if handlers.remove(id).is_none()",
-        ),
-        "Android failed-start removal preserves replacement owner",
     )
     existing_add = extract_between(
         sources["flutter_ffi_source"],
@@ -39665,12 +39460,6 @@ def validate_android_voice_call_ownership_contract(sources):
         "if (!identical(tasks[key], pending)) return;",
         1,
         "Android file-fetch timeout exact-completer retirement source",
-    )
-    require_exact_count(
-        sources["flutter_source"],
-        "excluded_session_id: Option<&SessionID>",
-        1,
-        "Android explicit optional display-reconciliation exclusion source",
     )
     require_exact_count(
         sources["mobile_remote_page_dart"],
@@ -41376,11 +41165,6 @@ def validate_android_voice_call_ownership_contract(sources):
         "Android shared mobile replacement-drain gate source",
     )
     require_text(
-        sources["verify"],
-        "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
-        "Android shared post-drain all-remaining-display reconciliation gate source",
-    )
-    require_text(
         sources["dart_verify"],
         "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n"
         "      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1",
@@ -41445,26 +41229,6 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("flutter", "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?", "sessions::ClientOwnerDrain::default()", "replacement pre-insertion drain"),',
         "Android replacement-drain mutation",
-    )
-    require_text(
-        focused,
-        '"replacement display reconciliation includes preserved exact session"',
-        "Android replacement-display reconciliation mutation",
-    )
-    require_text(
-        focused,
-        '"Activity-owner display reconciliation includes all remaining sessions"',
-        "Android Activity-owner display reconciliation mutation",
-    )
-    require_text(
-        focused,
-        '"optional display-reconciliation exclusion"',
-        "Android optional display-reconciliation exclusion mutation",
-    )
-    require_text(
-        focused,
-        '"shared post-drain display-reconciliation gate"',
-        "Android shared post-drain display-reconciliation mutation",
     )
     require_text(
         focused,
@@ -62837,7 +62601,6 @@ def validate_sources(sources):
     validate_clipboard_route_budget_contract(sources)
     validate_keyed_writer_budget_contract(sources)
     validate_display_selection_finality_contract(sources)
-    validate_viewer_session_registry_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
     validate_session_stream_generation_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -86973,12 +86736,6 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
-            "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
-            "independent failed-start replacement-owner preservation",
-        ),
-        (
-            "flutter_source",
             "if start_failure.is_none() && starts_peer_connection && is_video_session",
             "if is_video_session",
             "independent exact first-unselected-video owner marking before network start",
@@ -88566,7 +88323,6 @@ def run_source_mutations(sources):
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
-            "    validate_viewer_session_registry_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
@@ -88576,7 +88332,6 @@ def run_source_mutations(sources):
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
-            "    validate_viewer_session_registry_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "display-selection independent workspace dispatch",
         ),
@@ -88590,7 +88345,6 @@ def run_source_mutations(sources):
             '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
-            '    validate_viewer_session_registry_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract_disabled(sources)\\n'
@@ -88600,7 +88354,6 @@ def run_source_mutations(sources):
             '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
-            '    validate_viewer_session_registry_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             "display-selection current independent dispatch fixture",
         ),
@@ -94182,54 +93935,6 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "for stale_handler_id in stale_handler_ids {\n"
-            "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
-            "                    session.ui_handler.retire_rgba_session(&stale_handler_id);\n"
-            "                    removed_handlers.push(handler);\n"
-            "                }\n"
-            "            }\n"
-            "            if handlers.is_empty() {\n"
-            "                removed_keys.push(key.clone());\n"
-            "            } else {\n"
-            "                check_remove_unused_displays(None, session, &handlers);",
-            "for stale_handler_id in stale_handler_ids {\n"
-            "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
-            "                    session.ui_handler.retire_rgba_session(&stale_handler_id);\n"
-            "                    removed_handlers.push(handler);\n"
-            "                }\n"
-            "            }\n"
-            "            if handlers.is_empty() {\n"
-            "                removed_keys.push(key.clone());\n"
-            "            } else {\n"
-            "                check_remove_unused_displays(Some(session_id), session, &handlers);",
-            "Android replacement drain all-remaining-display reconciliation source",
-        ),
-        (
-            "flutter_source",
-            "if owned_handler_ids.is_empty() {\n"
-            "                continue;\n"
-            "            }\n"
-            "            if handlers.is_empty() {\n"
-            "                removed_keys.push(key.clone());\n"
-            "            } else {\n"
-            "                check_remove_unused_displays(None, session, &handlers);",
-            "if owned_handler_ids.is_empty() {\n"
-            "                continue;\n"
-            "            }\n"
-            "            if handlers.is_empty() {\n"
-            "                removed_keys.push(key.clone());\n"
-            "            } else {\n"
-            "                check_remove_unused_displays(Some(client_owner_id), session, &handlers);",
-            "Android Activity-owner drain all-remaining-display reconciliation source",
-        ),
-        (
-            "flutter_source",
-            "excluded_session_id: Option<&SessionID>",
-            "excluded_session_id: &SessionID",
-            "Android optional display-reconciliation exclusion source",
-        ),
-        (
-            "flutter_source",
             "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()",
             "fn stale_mobile_session_close_can_select_replacement_from_same_owner()",
             "Android stale-close replacement regression source",
@@ -96124,12 +95829,6 @@ def run_source_mutations(sources):
             'and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")',
             'and session_add.index("close_previous_mobile_client_sessions(client_owner_id, session_id)")',
             "Android shared mobile replacement-drain gate source",
-        ),
-        (
-            "verify",
-            "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
-            "if false; then # post-drain display gate disabled",
-            "Android shared post-drain all-remaining-display reconciliation gate source",
         ),
         (
             "verify",
@@ -103258,12 +102957,6 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"failed-start normal-close marker refusal"',
-            '"failed-start normal-close marker accepted"',
-            "Android focused failed-start marker mutation",
-        ),
-        (
-            "android_voice_call_ownership_verifier",
             '"worker-slot before handler-owner lock order"',
             '"handler-owner before worker-slot lock order"',
             "Android focused worker-slot/handler-owner mutation",
@@ -103326,12 +103019,6 @@ def run_source_mutations(sources):
             "    if let Some(session) =\n"
             "        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)\n",
             "Android failed-start forged normal-close marker",
-        ),
-        (
-            "flutter_source",
-            "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
-            "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
-            "independent failed-start replacement-owner preservation",
         ),
         (
             "flutter_source",

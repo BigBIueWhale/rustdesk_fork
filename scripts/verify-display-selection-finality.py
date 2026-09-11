@@ -282,15 +282,18 @@ def validate(sources: Dict[str, str]) -> None:
         forbid(selection_branch, forbidden, "display-selection bypass/background work")
 
     typed_capture = extract_braced_item(
-        ui_session, "pub fn try_capture_displays", "typed capture maintenance sender"
+        ui_session,
+        "pub fn try_capture_displays_with_commit",
+        "typed capture maintenance sender",
     )
     require_order(
         typed_capture,
         (
+            "commit: F",
             "DisplaySelectionCommand::capture_set(set)?",
-            "self.try_send(Data::DisplaySelection(command))",
+            "send_display_selection_with_commit(command, commit)",
         ),
-        "typed capture maintenance admission",
+        "typed capture maintenance reserve-before-commit admission",
     )
     typed_selection = extract_braced_item(
         ui_session, "pub fn try_select_displays", "typed selection sender"
@@ -1967,7 +1970,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_verify", "display selection is not a normal worker-pool bridge call", "display selection worker mode is unchecked", "generated display-selection worker-mode gate"),
     ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "Apple gate"),
     ("workspace", '"display_selection_finality_verifier": (', '"display_selection_finality_verifier_disabled": (', "independent source binding"),
-    ("workspace", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)\n    validate_viewer_session_registry_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract_disabled(sources)\n    validate_viewer_session_registry_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "independent verifier dispatch"),
+    ("workspace", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract_disabled(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "independent verifier dispatch"),
 )
 
 

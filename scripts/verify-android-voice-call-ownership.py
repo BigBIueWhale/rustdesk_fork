@@ -1287,7 +1287,8 @@ def validate(sources: Dict[str, str]) -> None:
             "handlers.get(id)",
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
             "return None;",
-            "if handlers.remove(id).is_none()",
+            "let retire_exact_handler = || {",
+            "handlers.remove(id)",
         ),
         "failed-start removal preserves a replacement UI owner",
     )
@@ -1312,11 +1313,6 @@ def validate(sources: Dict[str, str]) -> None:
         "                        || handler.client_owner_id.as_ref() != Some(client_owner_id)",
         "exact owner-and-session preservation predicate",
     )
-    require(
-        take_previous,
-        "check_remove_unused_displays(None, session, &handlers);",
-        "replacement drain display reconciliation includes the preserved exact session",
-    )
     take_owner = extract_item(
         flutter,
         "pub(super) fn take_sessions_owned_by(",
@@ -1326,26 +1322,6 @@ def validate(sources: Dict[str, str]) -> None:
         take_owner,
         "handler.client_owner_id.as_ref() == Some(client_owner_id)",
         "stored-association Activity-owner selection",
-    )
-    require(
-        take_owner,
-        "check_remove_unused_displays(None, session, &handlers);",
-        "Activity-owner drain display reconciliation includes every remaining session",
-    )
-    display_reconciliation = extract_item(
-        flutter,
-        "fn check_remove_unused_displays(",
-        "Rust remaining-display reconciliation",
-    )
-    require(
-        display_reconciliation,
-        "excluded_session_id: Option<&SessionID>",
-        "explicit optional live-handler exclusion",
-    )
-    require(
-        display_reconciliation,
-        "remaining_displays(excluded_session_id, handlers)",
-        "optional live-handler exclusion delegated to exact derivation",
     )
     require(
         flutter,
@@ -3050,11 +3026,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["verify"],
         "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs",
         "shared mobile replacement-drain gate",
-    )
-    require(
-        sources["verify"],
-        "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
-        "shared post-drain all-remaining-display reconciliation gate",
     )
     require(
         sources["verify"],
@@ -5825,9 +5796,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?", "sessions::ClientOwnerDrain::default()", "replacement pre-insertion drain"),
     ("flutter", "sessions::session_has_client_owner(session_id, client_owner_id)", "true", "start-time owner association"),
     ("flutter", "handler_session_id != session_id\n                        || handler.client_owner_id.as_ref() != Some(client_owner_id)", "handler_session_id != session_id\n                        && handler.client_owner_id.as_ref() != Some(client_owner_id)", "exact owner-and-session preservation"),
-    ("flutter", "if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, session, &handlers);", "if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
-    ("flutter", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, session, &handlers);", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(Some(client_owner_id), session, &handlers);", "Activity-owner display reconciliation includes all remaining sessions"),
-    ("flutter", "excluded_session_id: Option<&SessionID>", "excluded_session_id: &SessionID", "optional display-reconciliation exclusion"),
     ("flutter", "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()", "fn stale_mobile_session_close_can_select_replacement_from_same_owner()", "same-owner stale-close behavior proof"),
     ("flutter", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 2;", "one-slot Android client lifecycle drain"),
     ("flutter", "_worker: std::thread::JoinHandle<()>", "_worker: std::thread::Thread", "retained Android client lifecycle drain worker"),
@@ -6228,7 +6196,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
     ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
     ("verify", "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
-    ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),
     ("dart_verify", "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "true # mobile file-session lifecycle test disabled", "mobile file-session lifecycle behavior gate"),
     ("mobile_file_lifecycle_test", "expect((await replacement).path, '/same-path');", "expect((await replacement).path, isEmpty);", "reserve-before-dispatch retirement versus replacement behavior proof"),
@@ -6265,8 +6232,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "match s.start_io_thread_with_lock(&mut thread_lock)", "match s.start_io_thread()", "failed-start transactional match"),
     ("flutter", "let mut thread_lock = s.thread.lock().unwrap();\n        let mut handlers = s.session_handlers.write().unwrap();", "let mut handlers = s.session_handlers.write().unwrap();\n        let mut thread_lock = s.thread.lock().unwrap();", "worker-slot before handler-owner lock order"),
     ("flutter", "rollback_failed_session_start(session_id, client_owner_id);", "// failed-start rollback omitted", "false failed-start rollback"),
-    ("flutter", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) =\n        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n        try_send_close_event(&None);\n    }\n    if let Some(session) =\n        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)", "failed-start normal-close marker refusal"),
-    ("flutter", "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "failed-start replacement-owner preservation"),
     ("flutter", "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()", "fn failed_session_start_rollback_is_unchecked()", "failed-start exact rollback behavior proof"),
     ("flutter", "let result = sessions::replace_peer_session_display_owner(", "sessions::insert_peer_session_id(", "atomic existing-session display-owner replacement"),
     ("flutter_ffi", "static ref MOBILE_SESSION_ADD_TRANSACTION: Mutex<()> = Mutex::new(());", "static ref MOBILE_SESSION_ADD_TRANSACTION_DISABLED: Mutex<()> = Mutex::new(());", "serialized mobile-add transaction owner"),

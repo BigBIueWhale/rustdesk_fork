@@ -959,9 +959,21 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::Message(msg_out));
     }
 
-    pub fn try_capture_displays(&self, set: Vec<i32>) -> ResultType<()> {
+    pub fn try_capture_displays_with_commit<F>(&self, set: Vec<i32>, commit: F) -> ResultType<()>
+    where
+        F: FnOnce(),
+    {
         let command = DisplaySelectionCommand::capture_set(set)?;
-        self.try_send(Data::DisplaySelection(command))
+        let sender = self
+            .sender
+            .read()
+            .unwrap()
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow!("no active viewer connection round"))?;
+        sender
+            .send_display_selection_with_commit(command, commit)
+            .map_err(|err| anyhow!(err.to_string()))
     }
 
     pub fn try_select_displays<F>(

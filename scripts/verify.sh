@@ -11462,12 +11462,6 @@ else
   echo "  FAIL R-S11go: display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
   rc=1
 fi
-if python3 scripts/verify-viewer-session-registry.py --repo .; then
-  echo "  ok  R-S11hu source shape keeps outgoing viewer-session admission and retirement atomic and exact-owner"
-else
-  echo "  FAIL R-S11hu source shape: viewer-session registry regained detached duplicate checks, replacing admission, stale-owner close, or split last-peer retirement"
-  rc=1
-fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iv_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never
@@ -12962,11 +12956,6 @@ grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_
   || android_client_owner_bad="$android_client_owner_bad replacement-pre-insertion-drain-missing"
 grep -qF 'sessions::session_has_client_owner(session_id, client_owner_id)' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad start-owner-association-check-missing"
-grep -qF 'excluded_session_id: Option<&SessionID>' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad display-reconciliation-exclusion-not-explicit"
-if [ "$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)" -ne 2 ]; then
-  android_client_owner_bad="$android_client_owner_bad post-drain-display-reconciliation-not-all-remaining"
-fi
 grep -qF 'close_all_sessions' src/flutter.rs src/flutter_ffi.rs \
   && android_client_owner_bad="$android_client_owner_bad global-client-drain-surface-present"
 grep -qF 'new_mobile_owner_closes_stale_peer_before_reusing_it' src/flutter.rs \

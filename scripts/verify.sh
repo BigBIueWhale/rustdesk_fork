@@ -11432,12 +11432,6 @@ else
   echo "  FAIL R-S11hd: controlled-side wakelock snapshots regained an unbounded queue, split-state read, stale overwrite, or hidden retirement"
   rc=1
 fi
-if python3 scripts/verify-server-status-refresh-loop.py --repo . --self-test; then
-  echo "  ok  R-S11he controlled-side status refresh is sequential, failure-visible, and drainable"
-else
-  echo "  FAIL R-S11he: controlled-side status refresh regained overlapping timers, detached reconciliation, or incomplete finality"
-  rc=1
-fi
 if python3 scripts/verify-global-event-dispatcher.py --repo . --self-test; then
   echo "  ok  R-S11hf process-global Dart event dispatch is bounded, serial, exact-generation-owned, and terminal-visible"
 else

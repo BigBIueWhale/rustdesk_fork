@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-8a00090d3ef0cc26c953dcdfad715b4cfb15d30f497c388ef4cbddb1c3ae1f71  requirements.html
+72f97533ef0dc1ed3fc533fb302f9a28e4d79d4e60b31f85b4c1958149cc7edb  requirements.html
 ```
 
 ## Current Verdict
@@ -816,7 +816,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   registrar until unregister finality. Native ABI/engine and sanitizer evidence remains open.
 - **R-S11fa/R-S11e-188 exact viewer presentation-resume recovery** — Source closed. Mobile resume, desktop
   focus/restore/maximize, and tab reselection coalesce recovery for the exact live UI/session owner before the
-  exact refresh path; the persistent Android controlled service is intentionally not killed as recovery.
+  exact refresh path. A failed visible refresh stays pending, and the exact peer/display-ready transition retries
+  it without a timer or another lifecycle event; readiness alone creates no refresh. The callback registration is
+  exact-session/generation retired, so delayed mobile-route cleanup cannot clear or invoke its replacement. The
+  persistent Android controlled service is intentionally not killed as recovery. Current Android/Windows native
+  focus/background/presentation evidence remains open under the release-blocking matrix.
 - **R-S11fb/R-S11e-189 controlled video exact-writer egress** — Source closed for local writer ownership. Each
   controlled connection has constant-space GOP-aware video state and at most one tracked sole-writer send rather
   than a second 512-command application backlog. Local socket acceptance is not peer or presentation receipt.

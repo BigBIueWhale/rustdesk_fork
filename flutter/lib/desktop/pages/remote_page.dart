@@ -91,6 +91,7 @@ class _RemotePageState extends State<RemotePage>
   String keyboardMode = "legacy";
   bool _isWindowBlur = false;
   final _presentationRecovery = PresentationRecovery();
+  int? _presentationReadyRegistration;
   final _cursorOverImage = false.obs;
   late RxBool _showRemoteCursor;
   late RxBool _zoomCursor;
@@ -157,6 +158,8 @@ class _RemotePageState extends State<RemotePage>
     WakelockManager.enable(_uniqueKey);
 
     _ffi.ffiModel.updateEventListener(sessionId, widget.id);
+    _presentationReadyRegistration = _ffi.ffiModel
+        .registerPresentationReadyCallback(sessionId, _presentationReady);
     _ffi.qualityMonitorModel.checkShowQualityMonitor(sessionId);
     _ffi.dialogManager.loadMobileActionsOverlayVisible();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -345,6 +348,12 @@ class _RemotePageState extends State<RemotePage>
   }
 
   Future<void> _cleanupResources({required bool closeSession}) async {
+    final presentationReadyRegistration = _presentationReadyRegistration;
+    _presentationReadyRegistration = null;
+    if (presentationReadyRegistration != null) {
+      _ffi.ffiModel.unregisterPresentationReadyCallback(
+          sessionId, presentationReadyRegistration);
+    }
     _presentationRecovery.retire();
     debugPrint("REMOTE PAGE cleanup session $sessionId ${widget.id}");
 
@@ -428,14 +437,25 @@ class _RemotePageState extends State<RemotePage>
   void _resumePresentationIfNeeded() {
     unawaited(_presentationRecovery.resume(
       selected: _isPresentationSelected,
-      refresh: () async {
-        if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
-        await sessionRefreshVideo(sessionId, _ffi.clientOwnerId);
-      },
-      onError: (error, stackTrace) {
-        debugPrint('Desktop presentation refresh failed: ${error.runtimeType}');
-      },
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
     ));
+  }
+
+  void _presentationReady() {
+    unawaited(_presentationRecovery.readinessChanged(
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
+    ));
+  }
+
+  Future<void> _refreshPresentation() async {
+    if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
+    await sessionRefreshVideo(sessionId, _ffi.clientOwnerId);
+  }
+
+  void _onPresentationRefreshError(Object error, StackTrace stackTrace) {
+    debugPrint('Desktop presentation refresh failed: ${error.runtimeType}');
   }
 
   Widget emptyOverlay() => BlockableOverlay(

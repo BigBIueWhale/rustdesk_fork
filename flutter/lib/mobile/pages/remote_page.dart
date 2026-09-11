@@ -62,6 +62,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final _uniqueKey = UniqueKey();
   Timer? _iosKeyboardWorkaroundTimer;
   final _presentationRecovery = PresentationRecovery();
+  int? _presentationReadyRegistration;
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -92,6 +93,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       isSharedPassword: widget.isSharedPassword,
     );
     gFFI.ffiModel.updateEventListener(sessionId, widget.id);
+    _presentationReadyRegistration = gFFI.ffiModel
+        .registerPresentationReadyCallback(sessionId, _presentationReady);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
@@ -124,6 +127,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
+    final presentationReadyRegistration = _presentationReadyRegistration;
+    _presentationReadyRegistration = null;
+    if (presentationReadyRegistration != null) {
+      gFFI.ffiModel.unregisterPresentationReadyCallback(
+          sessionId, presentationReadyRegistration);
+    }
     _presentationRecovery.retire();
     // Start exact route cleanup immediately. State persistence may await before native close, but
     // the Activity owner transition and the next mobile start also synchronously retire/join this
@@ -175,14 +184,25 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void _resumePresentation() {
     unawaited(_presentationRecovery.resume(
       selected: true,
-      refresh: () async {
-        if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
-        await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);
-      },
-      onError: (error, stackTrace) {
-        debugPrint('Mobile presentation refresh failed: ${error.runtimeType}');
-      },
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
     ));
+  }
+
+  void _presentationReady() {
+    unawaited(_presentationRecovery.readinessChanged(
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
+    ));
+  }
+
+  Future<void> _refreshPresentation() async {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
+    await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);
+  }
+
+  void _onPresentationRefreshError(Object error, StackTrace stackTrace) {
+    debugPrint('Mobile presentation refresh failed: ${error.runtimeType}');
   }
 
   // For client side

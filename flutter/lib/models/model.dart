@@ -40,6 +40,7 @@ import 'input_model.dart';
 import 'latest_frame_queue.dart';
 import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
+import 'presentation_recovery.dart';
 import 'rgba_publication_order.dart';
 import 'session_event_queue.dart';
 import 'session_stream_finality.dart';
@@ -252,6 +253,7 @@ class FfiModel with ChangeNotifier {
   bool _showMyCursor = false;
   int? _eventListenerGeneration;
   SessionID? _eventListenerSessionId;
+  final _presentationReady = ExactPresentationReadyCallback<SessionID>();
   WeakReference<FFI> parent;
   SessionID get sessionId => parent.target!.sessionId;
 
@@ -301,6 +303,26 @@ class FfiModel with ChangeNotifier {
 
   bool _isCurrentSession(SessionID expectedSessionId) =>
       parent.target?.isCurrentSession(expectedSessionId) == true;
+
+  int? registerPresentationReadyCallback(
+      SessionID expectedSessionId, void Function() callback) {
+    if (!_isCurrentSession(expectedSessionId)) {
+      return null;
+    }
+    return _presentationReady.register(expectedSessionId, callback);
+  }
+
+  void unregisterPresentationReadyCallback(
+      SessionID expectedSessionId, int expectedGeneration) {
+    _presentationReady.unregister(expectedSessionId, expectedGeneration);
+  }
+
+  void _notifyPresentationReady(SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) {
+      return;
+    }
+    _presentationReady.notify(expectedSessionId);
+  }
 
   int? _beginDisplayTopologyMutation(SessionID expectedSessionId) {
     if (!_isCurrentSession(expectedSessionId)) {
@@ -385,6 +407,7 @@ class FfiModel with ChangeNotifier {
   bool get keyboard => _permissions['keyboard'] != false;
 
   clear() {
+    _presentationReady.clear();
     ++_displayTopologyRevision;
     cachedPeerData = CachedPeerData();
     _pi = PeerInfo();
@@ -1345,6 +1368,13 @@ class FfiModel with ChangeNotifier {
     if (!isCache) {
       await tryUseAllMyDisplaysForTheRemoteSession(
           peerId, expectedSessionId, topologyRevision);
+    }
+    if (_isCurrentSession(expectedSessionId)) {
+      // Rust binds the exact peer display to this UI owner before publishing
+      // PeerInfo. Notify only after Dart has committed the corresponding
+      // topology, so a lifecycle refresh that raced connection readiness can
+      // retry without a timer or a second OS resume/focus event.
+      _notifyPresentationReady(expectedSessionId);
     }
   }
 

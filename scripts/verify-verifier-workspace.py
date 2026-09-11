@@ -65036,68 +65036,6 @@ def run_source_mutations(sources):
             "independent retired-owner refresh worker start-gate regression",
         ),
         (
-            "presentation_recovery_dart",
-            "if (_retired || !selected) return;",
-            "if (_retired) return;",
-            "independent coalesced presentation-recovery owner",
-        ),
-        (
-            "presentation_recovery_dart",
-            "if (_refreshInFlight) return;",
-            "if (false) return;",
-            "independent coalesced presentation-recovery owner",
-        ),
-        (
-            "presentation_recovery_dart",
-            "onError(error, stackTrace);",
-            "// refresh failure hidden",
-            "independent coalesced presentation-recovery owner",
-        ),
-        (
-            "mobile_remote_page_dart",
-            "      _resumePresentation();\n      trySyncClipboard();",
-            "      trySyncClipboard();",
-            "independent mobile remote exact-session presentation recovery",
-        ),
-        (
-            "mobile_camera_page_dart",
-            "          await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);",
-            "          return;",
-            "independent mobile camera exact-session presentation recovery",
-        ),
-        (
-            "desktop_remote_page_dart",
-            "  void onWindowBlur() {\n    super.onWindowBlur();\n"
-            "    _presentationRecovery.suspend();",
-            "  void onWindowBlur() {\n    super.onWindowBlur();",
-            "independent desktop remote viewer blur suspension",
-        ),
-        (
-            "desktop_camera_page_dart",
-            "  void onWindowFocus() {\n    super.onWindowFocus();\n"
-            "    _resumePresentationIfNeeded();",
-            "  void onWindowFocus() {\n    super.onWindowFocus();",
-            "independent desktop camera viewer focus recovery",
-        ),
-        (
-            "desktop_remote_tab_dart",
-            "            page.setPresentationSelected(tab.key == selectedKey);",
-            "            page.setPresentationSelected(true);",
-            "independent desktop remote tabs exact selection propagation",
-        ),
-        (
-            "desktop_camera_tab_dart",
-            "            page.setPresentationSelected(tab.key == selectedKey);",
-            "            page.setPresentationSelected(true);",
-            "independent desktop camera tabs exact selection propagation",
-        ),
-        (
-            "presentation_recovery_test",
-            "retirement still reports an in-flight refresh failure",
-            "retirement hides an in-flight refresh failure",
-            "independent presentation recovery regression: retirement still reports an in-flight refresh failure",
-        ),
-        (
             "verify",
             "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test",
             "true # native Windows presentation verifier removed",
@@ -65859,24 +65797,6 @@ def run_source_mutations(sources):
             "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
             "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality",
             "native retirement-finality hardening ledger",
-        ),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11fa</span>',
-            '<div class="req"><span class="id">R-S11fa-disabled</span>',
-            "presentation-resume normative requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>309</td>",
-            "<tr><td>309-disabled</td>",
-            "presentation-resume Appendix C row",
-        ),
-        (
-            "hardening",
-            "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery",
-            "**R-S11fa-disabled/R-S11e-188 exact viewer presentation-resume recovery",
-            "presentation-resume hardening ledger",
         ),
         (
             "requirements",

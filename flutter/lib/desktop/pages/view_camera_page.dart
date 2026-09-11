@@ -88,6 +88,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   String keyboardMode = "legacy";
   bool _isWindowBlur = false;
   final _presentationRecovery = PresentationRecovery();
+  int? _presentationReadyRegistration;
   final _cursorOverImage = false.obs;
   final _uniqueKey = UniqueKey();
 
@@ -141,6 +142,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     WakelockManager.enable(_uniqueKey);
 
     _ffi.ffiModel.updateEventListener(sessionId, widget.id);
+    _presentationReadyRegistration = _ffi.ffiModel
+        .registerPresentationReadyCallback(sessionId, _presentationReady);
     _ffi.qualityMonitorModel.checkShowQualityMonitor(sessionId);
     _ffi.dialogManager.loadMobileActionsOverlayVisible();
     DesktopMultiWindow.addListener(this);
@@ -258,6 +261,12 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   }
 
   Future<void> _cleanupResources({required bool closeSession}) async {
+    final presentationReadyRegistration = _presentationReadyRegistration;
+    _presentationReadyRegistration = null;
+    if (presentationReadyRegistration != null) {
+      _ffi.ffiModel.unregisterPresentationReadyCallback(
+          sessionId, presentationReadyRegistration);
+    }
     _presentationRecovery.retire();
     debugPrint("VIEW CAMERA PAGE cleanup session $sessionId ${widget.id}");
     // Invalidate texture publication before any asynchronous page cleanup.
@@ -335,15 +344,26 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   void _resumePresentationIfNeeded() {
     unawaited(_presentationRecovery.resume(
       selected: _isPresentationSelected,
-      refresh: () async {
-        if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
-        await sessionRefreshVideo(sessionId, _ffi.clientOwnerId);
-      },
-      onError: (error, stackTrace) {
-        debugPrint(
-            'Desktop camera presentation refresh failed: ${error.runtimeType}');
-      },
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
     ));
+  }
+
+  void _presentationReady() {
+    unawaited(_presentationRecovery.readinessChanged(
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
+    ));
+  }
+
+  Future<void> _refreshPresentation() async {
+    if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
+    await sessionRefreshVideo(sessionId, _ffi.clientOwnerId);
+  }
+
+  void _onPresentationRefreshError(Object error, StackTrace stackTrace) {
+    debugPrint(
+        'Desktop camera presentation refresh failed: ${error.runtimeType}');
   }
 
   Widget emptyOverlay() => BlockableOverlay(

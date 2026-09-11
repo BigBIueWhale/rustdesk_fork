@@ -60,6 +60,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   final _uniqueKey = UniqueKey();
   Timer? _timerDidChangeMetrics;
   final _presentationRecovery = PresentationRecovery();
+  int? _presentationReadyRegistration;
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -90,6 +91,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       isSharedPassword: widget.isSharedPassword,
     );
     gFFI.ffiModel.updateEventListener(sessionId, widget.id);
+    _presentationReadyRegistration = gFFI.ffiModel
+        .registerPresentationReadyCallback(sessionId, _presentationReady);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
@@ -118,6 +121,12 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
+    final presentationReadyRegistration = _presentationReadyRegistration;
+    _presentationReadyRegistration = null;
+    if (presentationReadyRegistration != null) {
+      gFFI.ffiModel.unregisterPresentationReadyCallback(
+          sessionId, presentationReadyRegistration);
+    }
     _presentationRecovery.retire();
     final closeFuture = gFFI.close(expectedSessionId: sessionId);
     // https://github.com/flutter/flutter/issues/64935
@@ -152,20 +161,35 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
     if (state == AppLifecycleState.resumed) {
-      unawaited(_presentationRecovery.resume(
-        selected: true,
-        refresh: () async {
-          if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
-          await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);
-        },
-        onError: (error, stackTrace) {
-          debugPrint(
-              'Mobile camera presentation refresh failed: ${error.runtimeType}');
-        },
-      ));
+      _resumePresentation();
     } else {
       _presentationRecovery.suspend();
     }
+  }
+
+  void _resumePresentation() {
+    unawaited(_presentationRecovery.resume(
+      selected: true,
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
+    ));
+  }
+
+  void _presentationReady() {
+    unawaited(_presentationRecovery.readinessChanged(
+      refresh: _refreshPresentation,
+      onError: _onPresentationRefreshError,
+    ));
+  }
+
+  Future<void> _refreshPresentation() async {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
+    await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);
+  }
+
+  void _onPresentationRefreshError(Object error, StackTrace stackTrace) {
+    debugPrint(
+        'Mobile camera presentation refresh failed: ${error.runtimeType}');
   }
 
   @override

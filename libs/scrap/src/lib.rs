@@ -28,4 +28,8 @@ pub mod android;
 #[path = "android/frame_raw_generation.rs"]
 mod android_frame_raw_generation_tests;
 
+#[cfg(all(test, not(target_os = "android")))]
+#[path = "android/main_service_generation.rs"]
+mod android_main_service_generation_tests;
+
 mod common;

@@ -2414,12 +2414,12 @@ pub mod server_side {
             log::error!(
                 "activateServer could not activate reserved listener generation {generation}"
             );
-            let _ = scrap::android::retire_main_service_generation(
+            let _ = scrap::android::deactivate_main_service_generation(
                 &env,
                 &service,
                 generation,
+                crate::direct_service::android_request_stop_or_confirm_inactive,
             );
-            let _ = crate::direct_service::android_request_stop(generation);
             return jboolean::from(false);
         }
         match std::thread::Builder::new()
@@ -2427,19 +2427,18 @@ pub mod server_side {
             .spawn(move || {
                 let _worker_guard = AndroidDirectServerWorkerGuard(generation);
                 start_server(true, generation);
-            })
-        {
+            }) {
             Ok(_) => jboolean::from(true),
             Err(error) => {
                 log::error!(
                     "activateServer could not spawn listener generation {generation}: {error}"
                 );
-                let _ = scrap::android::retire_main_service_generation(
+                let _ = scrap::android::deactivate_main_service_generation(
                     &env,
                     &service,
                     generation,
+                    crate::direct_service::android_request_stop_or_confirm_inactive,
                 );
-                let _ = crate::direct_service::android_request_stop(generation);
                 jboolean::from(false)
             }
         }
@@ -2463,44 +2462,57 @@ pub mod server_side {
     }
 
     #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_stopServer(
+    pub unsafe extern "system" fn Java_ffi_FFI_deactivateServer(
         env: JNIEnv,
         _class: JClass,
         service: JObject,
         generation: jlong,
     ) -> jboolean {
-        // R-D7a/R-S11hq: retire one exact MainService startup transaction. Listener deactivation
-        // is generation-bound, while raw-video/screen state retirement is bound to both that
-        // generation and the exact retained Service object. Keeping the callback object with a
-        // cleared generation lets a later explicit Android start retry without process death.
-        log::debug!("stopServer from jvm");
+        log::debug!("deactivateServer from jvm");
         if generation <= 0 || service.is_null() {
-            log::error!("stopServer rejected invalid generation {generation}");
+            log::error!("deactivateServer rejected invalid generation {generation}");
             return jboolean::from(false);
         }
         let generation = generation as u64;
-        let Some(retirement) = scrap::android::retire_main_service_generation(
+        let retired = scrap::android::deactivate_main_service_generation(
             &env,
             &service,
             generation,
-        ) else {
+            crate::direct_service::android_request_stop_or_confirm_inactive,
+        );
+        if !retired {
             log::warn!(
-                "stopServer rejected an unowned MainService object or generation {generation}"
-            );
-            return jboolean::from(false);
-        };
-        let listener_retired =
-            crate::direct_service::android_request_stop_or_confirm_inactive(generation);
-        if !listener_retired {
-            log::warn!(
-                "stopServer found no reserved or active exact Android listener generation {generation}"
+                "deactivateServer could not stop the exact owned MainService listener generation {generation}"
             );
         }
-        jboolean::from(
-            listener_retired
-                && retirement.raw_video_retired
-                && retirement.screen_size_retired,
-        )
+        jboolean::from(retired)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_retireServerGeneration(
+        env: JNIEnv,
+        _class: JClass,
+        service: JObject,
+        generation: jlong,
+    ) -> jboolean {
+        log::debug!("retireServerGeneration from jvm");
+        if generation <= 0 || service.is_null() {
+            log::error!("retireServerGeneration rejected invalid generation {generation}");
+            return jboolean::from(false);
+        }
+        let generation = generation as u64;
+        let retired = scrap::android::retire_main_service_generation(
+            &env,
+            &service,
+            generation,
+            crate::direct_service::android_generation_is_inactive,
+        );
+        if !retired {
+            log::warn!(
+                "retireServerGeneration could not finalize the exact inactive MainService generation {generation}"
+            );
+        }
+        jboolean::from(retired)
     }
 
     fn parse_client_session_owner(env: &mut JNIEnv, value: &JString) -> Option<SessionID> {

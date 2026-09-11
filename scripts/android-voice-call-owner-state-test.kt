@@ -149,12 +149,24 @@ fun main() {
     requireState(state.registerControlledConnection(10, 22, 6), "clear controlled registration failed")
     requireState(state.setControlledVoiceCallActive(10, 22, 6, true), "clear controlled activation failed")
     requireState(
+        !state.beginControlledServiceGeneration(11),
+        "replacement controlled service generation bypassed exact retirement",
+    )
+    requireState(
+        state.requiresVoiceCapture,
+        "rejected replacement changed the prior controlled voice owner",
+    )
+    requireState(
+        state.clearControlledConnections(10),
+        "predecessor controlled generation did not retire exactly",
+    )
+    requireState(
         state.beginControlledServiceGeneration(11),
-        "replacement controlled service generation was rejected",
+        "replacement controlled service generation was rejected after retirement",
     )
     requireState(
         !state.requiresVoiceCapture,
-        "replacement generation retained the prior controlled voice owner",
+        "replacement generation inherited prior controlled voice demand",
     )
     requireState(
         !state.registerControlledConnection(10, 22, 7),
@@ -197,8 +209,20 @@ fun main() {
         "replacement-overlap outgoing activation failed",
     )
     requireState(
+        !state.beginControlledServiceGeneration(12),
+        "newer controlled service generation bypassed exact retirement",
+    )
+    requireState(
+        state.requiresVoiceCapture,
+        "rejected controlled-service replacement changed active demand",
+    )
+    requireState(
+        state.clearControlledConnections(11),
+        "current controlled generation did not retire before replacement",
+    )
+    requireState(
         state.beginControlledServiceGeneration(12),
-        "newer controlled service generation was rejected",
+        "newer controlled service generation was rejected after retirement",
     )
     requireState(
         state.requiresVoiceCapture,
@@ -226,11 +250,27 @@ fun main() {
     )
     requireState(!state.requiresVoiceCapture, "controlled owner clear retained voice capture")
     requireState(
+        state.clearControlledConnections(12),
+        "exact controlled teardown retry was not idempotent",
+    )
+    requireState(
+        state.mayClearControlledServiceResources(12),
+        "retired controlled generation could not finish resource cleanup",
+    )
+    requireState(
         !state.beginControlledServiceGeneration(12),
         "retired generation was reactivated",
     )
     requireState(
         state.beginControlledServiceGeneration(13),
         "newer controlled service generation was rejected after retirement",
+    )
+    requireState(
+        !state.clearControlledConnections(12),
+        "retired predecessor cleanup changed its replacement",
+    )
+    requireState(
+        !state.mayClearControlledServiceResources(12),
+        "retired predecessor retained cleanup authority over its replacement",
     )
 }

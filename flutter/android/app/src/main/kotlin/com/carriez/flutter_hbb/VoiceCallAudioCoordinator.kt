@@ -78,10 +78,14 @@ internal object VoiceCallAudioCoordinator {
 
     @Synchronized
     fun clearControlledConnections(generation: Long): Boolean {
+        val currentProjection = playbackProjection
+        if (currentProjection != null && currentProjection.first != generation) {
+            return false
+        }
         if (!owners.clearControlledConnections(generation)) {
             return false
         }
-        if (playbackProjection?.first == generation) {
+        if (currentProjection != null) {
             playbackProjection = null
         }
         return reconcileRecorder()
@@ -127,10 +131,21 @@ internal object VoiceCallAudioCoordinator {
         generation: Long,
         projection: MediaProjection?,
     ): Boolean {
-        if (!owners.isControlledServiceGeneration(generation)) {
+        if (projection != null && !owners.isControlledServiceGeneration(generation)) {
             return false
         }
-        playbackProjection = projection?.let { generation to it }
+        if (projection == null) {
+            if (!owners.mayClearControlledServiceResources(generation)) {
+                return false
+            }
+            val current = playbackProjection
+            if (current != null && current.first != generation) {
+                return false
+            }
+            playbackProjection = null
+        } else {
+            playbackProjection = generation to projection
+        }
         return reconcileRecorder()
     }
 

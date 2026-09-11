@@ -223,18 +223,18 @@ def validate(sources: Dict[str, str]) -> None:
         begin_controlled,
         (
             "generation <= 0",
-            "generation < greatestControlledServiceGeneration",
-            "generation == greatestControlledServiceGeneration",
-            "activeControlledServiceGeneration != generation",
             "return false",
             "if (activeControlledServiceGeneration == generation)",
             "return true",
+            "activeControlledServiceGeneration != null",
+            "generation <= greatestControlledServiceGeneration",
+            "return false",
             "greatestControlledServiceGeneration = generation",
             "activeControlledServiceGeneration = generation",
             "controlledConnections.clear()",
             "activeControlledConnections.clear()",
         ),
-        "positive monotonic idempotent controlled-service generation admission",
+        "positive monotonic controlled-service admission after exact predecessor retirement",
     )
     forbid(
         begin_controlled,
@@ -312,7 +312,11 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         clear_controlled,
         (
-            "if (!isControlledServiceGeneration(generation))",
+            "if (generation <= 0)",
+            "return false",
+            "activeControlledServiceGeneration == null",
+            "greatestControlledServiceGeneration == generation",
+            "activeControlledServiceGeneration != generation",
             "return false",
             "controlledConnections.clear()",
             "activeControlledConnections.clear()",
@@ -481,9 +485,11 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         coordinator_clear,
         (
+            "val currentProjection = playbackProjection",
+            "currentProjection.first != generation",
             "if (!owners.clearControlledConnections(generation))",
             "return false",
-            "if (playbackProjection?.first == generation)",
+            "if (currentProjection != null)",
             "playbackProjection = null",
             "return reconcileRecorder()",
         ),
@@ -497,9 +503,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         coordinator_projection,
         (
-            "if (!owners.isControlledServiceGeneration(generation))",
+            "projection != null && !owners.isControlledServiceGeneration(generation)",
             "return false",
-            "playbackProjection = projection?.let { generation to it }",
+            "if (projection == null)",
+            "owners.mayClearControlledServiceResources(generation)",
+            "current.first != generation",
+            "playbackProjection = null",
+            "playbackProjection = generation to projection",
             "return reconcileRecorder()",
         ),
         "coordinator exact-generation playback update",
@@ -941,10 +951,12 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         generation_retirement,
         (
-            "serviceGenerationOwner.retire(generation)",
-            "FFI.stopServer(this, retirement.generation)",
+            "serviceGenerationOwner.beginRetirement(generation)",
+            "FFI.deactivateServer(this, retirement.generation)",
             "VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)",
-            "statusOwner.retire(retirement.generation)",
+            "statusOwner.retireOrConfirmInactive(retirement.generation)",
+            "FFI.retireServerGeneration(this, retirement.generation)",
+            "serviceGenerationOwner.completeRetirement(retirement.generation)",
         ),
         "exact attempted-owner retirement after admission closes",
     )
@@ -2512,8 +2524,13 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         ffi_kt,
-        "external fun stopServer(service: Context, generation: Long): Boolean",
-        "exact native server object-and-generation stop",
+        "external fun deactivateServer(service: Context, generation: Long): Boolean",
+        "exact native listener object-and-generation stop",
+    )
+    require(
+        ffi_kt,
+        "external fun retireServerGeneration(service: Context, generation: Long): Boolean",
+        "exact native resource-generation finalization",
     )
     android_ffi = sources["android_ffi"]
     service_init = extract_item(
@@ -2528,9 +2545,9 @@ def validate(sources: Dict[str, str]) -> None:
             "env.new_global_ref(application_context)",
             "install_application_context_once(java_vm, application_context)",
             "env.is_same_object(context.owner.as_obj(), &service)",
-            "Ok(false) if context.generation.is_some()",
+            "Ok(false) if context.generation.has_generation()",
             "Some(MainServiceContext",
-            "generation: None",
+            "generation: MainServiceGenerationState::default()",
             "owner: retained_service",
             "jboolean::from(true)",
         ),
@@ -2561,7 +2578,8 @@ def validate(sources: Dict[str, str]) -> None:
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
             "let Some(owner) = current.as_ref()",
             "env.is_same_object(owner.owner.as_obj(), &service)",
-            "if is_current",
+            "if !is_current",
+            "if !owner.generation.may_release_callback_owner()",
             "current.take()",
         ),
         "exact MainService callback-owner release",
@@ -2575,10 +2593,10 @@ def validate(sources: Dict[str, str]) -> None:
             "if service.is_null()",
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
             "env.is_same_object(current.owner.as_obj(), service)",
-            "if current.generation.is_some()",
+            "if !current.generation.may_release_callback_owner()",
             "let generation = begin_generation()",
             "if generation == 0",
-            "current.generation = Some(generation)",
+            "current.generation.begin(generation)",
             "Some(generation)",
         ),
         "single exact-object-authorized MainService generation reservation",
@@ -2592,7 +2610,7 @@ def validate(sources: Dict[str, str]) -> None:
         generation_dispatch,
         (
             "let context = MAIN_SERVICE_CTX.read().unwrap()",
-            "if generation == 0 || context.generation != Some(generation)",
+            "if generation == 0 || !context.generation.is_activation_claimed(generation)",
             "env.call_method(",
             "&context.owner",
         ),
@@ -2736,14 +2754,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         native_generation_health,
         (
-            "current.generation != Some(generation)",
-            "if !current.listener_started",
+            "current.generation.is_activation_claimed(generation)",
             "env.is_same_object(current.owner.as_obj(), service)",
         ),
         "native exact object, generation, and listener-start health",
     )
     stop_server = extract_item(
-        flutter_ffi, "Java_ffi_FFI_stopServer", "MainService exact generation stop"
+        flutter_ffi, "Java_ffi_FFI_deactivateServer", "MainService exact listener stop"
     )
     require_order(
         stop_server,
@@ -2751,12 +2768,26 @@ def validate(sources: Dict[str, str]) -> None:
             "generation: jlong",
             "if generation <= 0",
             "generation as u64",
-            "let Some(retirement) = scrap::android::retire_main_service_generation(",
-            "android_request_stop_or_confirm_inactive(generation)",
-            "retirement.raw_video_retired",
-            "retirement.screen_size_retired",
+            "scrap::android::deactivate_main_service_generation(",
+            "android_request_stop_or_confirm_inactive,",
         ),
         "positive exact-object proof before native stop or worker-exit convergence",
+    )
+    retire_generation = extract_item(
+        flutter_ffi,
+        "Java_ffi_FFI_retireServerGeneration",
+        "MainService exact generation finalization",
+    )
+    require_order(
+        retire_generation,
+        (
+            "generation: jlong",
+            "if generation <= 0",
+            "generation as u64",
+            "scrap::android::retire_main_service_generation(",
+            "android_generation_is_inactive",
+        ),
+        "inactive exact generation resource finalization",
     )
 
     io_loop = sources["io_loop"]
@@ -2787,8 +2818,12 @@ def validate(sources: Dict[str, str]) -> None:
             "closed-before-service-generation admission",
         ),
         (
-            "replacement generation retained the prior controlled voice owner",
-            "replacement-generation retirement",
+            "replacement controlled service generation bypassed exact retirement",
+            "replacement-before-retirement refusal",
+        ),
+        (
+            "replacement generation inherited prior controlled voice demand",
+            "replacement-after-retirement isolation",
         ),
         (
             "stale generation registered a same-number controlled owner",
@@ -3008,8 +3043,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
-        "shared Android recorder gate wiring",
+        "python3 scripts/verify-android-voice-call-ownership.py --repo .",
+        "shared Android recorder source-gate wiring",
     )
     require(
         sources["verify"],
@@ -5532,8 +5567,9 @@ def validate(sources: Dict[str, str]) -> None:
             "generation: u64",
             "connection_id: i32",
             ") -> JniResult<bool>",
-            "generation == 0 || connection_id <= 0",
-            "context.generation != Some(generation)",
+            "generation == 0",
+            "connection_id <= 0",
+            "!context.generation.is_activation_claimed(generation)",
             '"(IIIII)Z"',
             "JValue::Int(connection_id)",
             ".z()",
@@ -5551,8 +5587,9 @@ def validate(sources: Dict[str, str]) -> None:
             "generation: u64",
             "connection_id: i32",
             ") -> JniResult<bool>",
-            "generation == 0 || connection_id <= 0",
-            "context.generation != Some(generation)",
+            "generation == 0",
+            "connection_id <= 0",
+            "!context.generation.is_activation_claimed(generation)",
             '"(I[B)Z"',
             "JValue::Int(connection_id)",
             ".z()",

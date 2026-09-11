@@ -19,7 +19,7 @@ impl FrameRawGenerationOwner {
         if self.active_generation == Some(generation) {
             return BeginGeneration::Current;
         }
-        if generation <= self.greatest_generation {
+        if self.active_generation.is_some() || generation <= self.greatest_generation {
             return BeginGeneration::Rejected;
         }
         self.greatest_generation = generation;
@@ -33,6 +33,22 @@ impl FrameRawGenerationOwner {
         }
         self.active_generation = None;
         true
+    }
+
+    pub(crate) fn retire_or_confirm_inactive(&mut self, generation: u64) -> bool {
+        if self.retire(generation) {
+            return true;
+        }
+        generation != 0
+            && self.active_generation.is_none()
+            && self.greatest_generation == generation
+    }
+
+    pub(crate) fn admits_cleanup(&self, generation: u64) -> bool {
+        self.admits(generation)
+            || (generation != 0
+                && self.active_generation.is_none()
+                && self.greatest_generation == generation)
     }
 
     pub(crate) fn admits(&self, generation: u64) -> bool {
@@ -59,7 +75,7 @@ impl GenerationOwnedScreenSize {
     }
 
     pub(crate) fn retire_generation(&mut self, generation: u64) -> bool {
-        if !self.owner.retire(generation) {
+        if !self.owner.retire_or_confirm_inactive(generation) {
             return false;
         }
         self.size = None;
@@ -89,18 +105,19 @@ mod tests {
     use super::{BeginGeneration, FrameRawGenerationOwner, GenerationOwnedScreenSize};
 
     #[test]
-    fn stale_generation_cannot_mutate_replacement() {
+    fn successor_cannot_bypass_exact_generation_retirement() {
         let mut owner = FrameRawGenerationOwner::default();
         assert_eq!(owner.begin(0), BeginGeneration::Rejected);
         assert_eq!(owner.begin(7), BeginGeneration::New);
         assert_eq!(owner.begin(7), BeginGeneration::Current);
         assert!(owner.admits(7));
 
+        assert_eq!(owner.begin(8), BeginGeneration::Rejected);
+        assert!(owner.admits(7));
+        assert!(owner.retire(7));
         assert_eq!(owner.begin(8), BeginGeneration::New);
-        assert!(!owner.admits(7));
         assert!(owner.admits(8));
         assert!(!owner.retire(7));
-        assert!(owner.admits(8));
     }
 
     #[test]
@@ -111,10 +128,14 @@ mod tests {
         assert!(owner.admits(12));
         assert!(owner.retire(12));
         assert!(!owner.admits(12));
+        assert!(owner.retire_or_confirm_inactive(12));
+        assert!(owner.admits_cleanup(12));
         assert_eq!(owner.begin(12), BeginGeneration::Rejected);
 
         assert_eq!(owner.begin(13), BeginGeneration::New);
         assert!(owner.admits(13));
+        assert!(!owner.retire_or_confirm_inactive(12));
+        assert!(!owner.admits_cleanup(12));
     }
 
     #[test]
@@ -137,8 +158,10 @@ mod tests {
         assert!(screen.update(7, (1920, 1080, 1)));
         assert_eq!(screen.get(7), Some((1920, 1080, 1)));
 
+        assert!(!screen.begin_generation(8));
+        assert_eq!(screen.get(7), Some((1920, 1080, 1)));
+        assert!(screen.retire_generation(7));
         assert!(screen.begin_generation(8));
-        assert_eq!(screen.get(7), None);
         assert_eq!(screen.get(8), None);
         assert!(!screen.update(7, (1280, 720, 2)));
         assert!(screen.update(8, (1280, 720, 2)));
@@ -152,6 +175,7 @@ mod tests {
         assert!(screen.update(12, (2560, 1440, 1)));
         assert!(!screen.retire_generation(11));
         assert_eq!(screen.get(12), Some((2560, 1440, 1)));
+        assert!(screen.retire_generation(12));
         assert!(screen.retire_generation(12));
         assert_eq!(screen.current(), None);
         assert!(!screen.begin_generation(12));

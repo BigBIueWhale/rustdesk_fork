@@ -105,7 +105,7 @@ impl GenerationOwnedFrameRaw {
     }
 
     pub(crate) fn retire_generation(&mut self, generation: u64) -> bool {
-        if !self.owner.retire(generation) {
+        if !self.owner.retire_or_confirm_inactive(generation) {
             return false;
         }
         self.frame.set_enable(false);
@@ -113,7 +113,9 @@ impl GenerationOwnedFrameRaw {
     }
 
     pub(crate) fn set_enable(&mut self, generation: u64, value: bool) -> bool {
-        if !self.owner.admits(generation) {
+        if (value && !self.owner.admits(generation))
+            || (!value && !self.owner.admits_cleanup(generation))
+        {
             return false;
         }
         self.frame.set_enable(value);

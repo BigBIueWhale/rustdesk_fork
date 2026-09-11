@@ -187,13 +187,13 @@ impl Drop for ListenerBoundGuard {
 ///     (through `start_server` -> `start_direct_only` -> `direct_server`). The accept loop +
 ///     keep-alive therefore run under EXACTLY that active generation and cannot accept before
 ///     callback admission — never a late lifecycle-state read inside the thread. That distinction
-///     is load-bearing (N1/F1): a late load could read a generation a concurrent `stopServer`/
+///     is load-bearing (N1/F1): a late load could read a generation a concurrent `deactivateServer`/
 ///     `startServer` had already superseded (or the post-stop value itself), letting a stopped
 ///     service's thread believe it was current and keep the listener bound ("Stop doesn't stop").
 ///     No later begin can change the generation until its exact stop deactivates it; after that
 ///     stop, a fresh reservation advances the generation, so the same lifecycle snapshot rejects
 ///     the retired thread in either case.
-///   - `MainService.onDestroy` -> exact-object JNI `stopServer` calls
+///   - `MainService.onDestroy` -> exact-object JNI `deactivateServer` calls
 ///     `android_request_stop_or_confirm_inactive()` with the exact generation it owns. A delayed
 ///     obsolete Service cannot supersede a replacement generation, while a generation already
 ///     deactivated by its terminal worker guard converges successfully.
@@ -214,9 +214,7 @@ pub fn android_begin_generation() -> u64 {
     match lifecycle.begin_generation() {
         Some(generation) => generation,
         None => {
-            log::error!(
-                "R-D7a: Android server generation reservation refused or exhausted"
-            );
+            log::error!("R-D7a: Android server generation reservation refused or exhausted");
             0
         }
     }
@@ -229,9 +227,7 @@ pub fn android_begin_generation() -> u64 {
 pub fn android_activate_generation(expected_generation: u64) -> bool {
     let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
     if lifecycle.activate_generation(expected_generation) {
-        log::info!(
-            "R-S11hq: activated reserved Android listener generation {expected_generation}"
-        );
+        log::info!("R-S11hq: activated reserved Android listener generation {expected_generation}");
         true
     } else {
         log::warn!(
@@ -242,7 +238,7 @@ pub fn android_activate_generation(expected_generation: u64) -> bool {
     }
 }
 
-/// R-D7a: deactivate the exact owned Android server generation (JNI `stopServer` on
+/// R-D7a: deactivate the exact owned Android server generation (JNI `deactivateServer` on
 /// `MainService.onDestroy`). The graceful teardown twin of process-death fd close: the running
 /// accept loop + keep-alive observe that exact generation becoming inactive and unwind, closing the
 /// listening socket. A not-yet-activated reservation is retired by the same exact operation. Stop
@@ -252,12 +248,12 @@ pub fn android_request_stop(expected_generation: u64) -> bool {
     let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
     if lifecycle.stop_generation(expected_generation) {
         log::info!(
-            "R-D7a: Android stopServer — deactivated owned listener generation {expected_generation}"
+            "R-D7a: Android listener stop — deactivated owned listener generation {expected_generation}"
         );
         true
     } else {
         log::warn!(
-            "R-D7a: rejected stale or inactive Android stopServer generation {expected_generation}; current generation is {}",
+            "R-D7a: rejected stale or inactive Android listener-stop generation {expected_generation}; current generation is {}",
             lifecycle.generation
         );
         false
@@ -271,9 +267,7 @@ pub fn android_request_stop(expected_generation: u64) -> bool {
 pub fn android_request_stop_or_confirm_inactive(expected_generation: u64) -> bool {
     let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
     if lifecycle.stop_generation(expected_generation) {
-        log::info!(
-            "R-D7a: deactivated owned Android listener generation {expected_generation}"
-        );
+        log::info!("R-D7a: deactivated owned Android listener generation {expected_generation}");
         true
     } else if lifecycle.is_exact_inactive(expected_generation) {
         log::info!(
@@ -300,7 +294,15 @@ pub fn android_generation_is_active(expected_generation: u64) -> bool {
         .is_some()
 }
 
-/// RAII worker-exit convergence. This is intentionally distinct from stopServer logging: it runs
+#[cfg(target_os = "android")]
+pub fn android_generation_is_inactive(expected_generation: u64) -> bool {
+    ANDROID_LISTENER_LIFECYCLE
+        .lock()
+        .unwrap()
+        .is_exact_inactive(expected_generation)
+}
+
+/// RAII worker-exit convergence. This is intentionally distinct from explicit-stop logging: it runs
 /// when the JNI-owned server thread returns or unwinds and makes committed-generation health false.
 #[cfg(target_os = "android")]
 pub fn android_note_worker_exit(expected_generation: u64) -> bool {
@@ -902,7 +904,7 @@ pub async fn start_direct_only(
         }
         // Android (R-D7a): the listener is OWNED by `MainService` and shares its lifetime. Poll the
         // service-owned-listener generation this server thread runs under; when `MainService.onDestroy`
-        // -> `stopServer` deactivates it, return so this `#[tokio::main]` runtime (the JNI-spawned
+        // -> `deactivateServer` deactivates it, return so this `#[tokio::main]` runtime (the JNI-spawned
         // thread) unwinds — dropping the runtime aborts the live `direct_server` accept task, closing
         // the listening socket. A graceful "Stop service" closes the socket via this teardown; an
         // OS/OEM/battery kill closes it by process death (onStartCommand is START_NOT_STICKY, so no
@@ -911,7 +913,7 @@ pub async fn start_direct_only(
         {
             // R-D7a (N1/F1 fix): compare against the generation CAPTURED at service start and passed
             // in by value — NOT a late lifecycle-state read, which could adopt the newer generation
-            // from a concurrent `stopServer`/`startServer` and so keep this (stopped) service's
+            // from a concurrent `deactivateServer`/`startServer` and so keep this service's
             // thread alive. On the legitimate Android path this is always `Some`
             // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
             loop {
@@ -961,7 +963,7 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
     // return, via start_server -> start_direct_only), NOT re-loaded from the global here. A late
     // `load()` could adopt a generation a concurrent stop/re-start already superseded — the N1/F1
     // orphaned-listener race — so a "stopped" service's accept task could keep the socket bound.
-    // Using the captured value, `MainService.onDestroy` -> `stopServer` deactivates this exact
+    // Using the captured value, `MainService.onDestroy` -> `deactivateServer` deactivates this exact
     // generation, so the loop-top snapshot below fails, drops the `listener` local, and stops
     // accepting. Desktop/iOS: absent — the listener lifetime is the process/unit lifetime (R-X9).
     #[cfg(target_os = "android")]
@@ -1009,7 +1011,7 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
             return;
         }
         // R-D7a (Android): the foreground service that owns this listener was destroyed
-        // (MainService.onDestroy -> stopServer -> exact stop convergence deactivated the generation).
+        // (MainService.onDestroy -> deactivateServer -> exact stop convergence deactivated it).
         // Return so the `listener` local drops and the listening socket closes; the accept task
         // ends. No config write — symmetric with the desktop R-T9 edge above; a "service stopped,
         // listener still bound" half-state is unrepresentable. (Desktop/iOS never take this branch.)

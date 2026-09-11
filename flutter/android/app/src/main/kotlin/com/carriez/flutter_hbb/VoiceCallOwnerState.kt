@@ -19,15 +19,16 @@ internal class VoiceCallOwnerState {
         get() = activeControlledConnections.isNotEmpty() || outgoingVoiceCallActive
 
     fun beginControlledServiceGeneration(generation: Long): Boolean {
-        if (generation <= 0 ||
-            generation < greatestControlledServiceGeneration ||
-            (generation == greatestControlledServiceGeneration &&
-                activeControlledServiceGeneration != generation)
-        ) {
+        if (generation <= 0) {
             return false
         }
         if (activeControlledServiceGeneration == generation) {
             return true
+        }
+        if (activeControlledServiceGeneration != null ||
+            generation <= greatestControlledServiceGeneration
+        ) {
+            return false
         }
         greatestControlledServiceGeneration = generation
         activeControlledServiceGeneration = generation
@@ -101,13 +102,26 @@ internal class VoiceCallOwnerState {
     }
 
     fun clearControlledConnections(generation: Long): Boolean {
-        if (!isControlledServiceGeneration(generation)) {
+        if (generation <= 0) {
+            return false
+        }
+        if (activeControlledServiceGeneration == null) {
+            return greatestControlledServiceGeneration == generation
+        }
+        if (activeControlledServiceGeneration != generation) {
             return false
         }
         controlledConnections.clear()
         activeControlledConnections.clear()
         activeControlledServiceGeneration = null
         return true
+    }
+
+    fun mayClearControlledServiceResources(generation: Long): Boolean {
+        return generation > 0 &&
+            (activeControlledServiceGeneration == generation ||
+                (activeControlledServiceGeneration == null &&
+                    greatestControlledServiceGeneration == generation))
     }
 
     fun invalidateOutgoingOwner() {

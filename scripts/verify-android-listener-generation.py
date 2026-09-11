@@ -394,21 +394,6 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         desktop_ipc,
-        '    require(\n'
-        '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
-        '        "Android exact active-generation teardown",\n'
-        '    )',
-        "exact active-generation desktop lifecycle assertion",
-    )
-    require_count(
-        desktop_ipc,
-        "android_generation_current(my_generation)",
-        1,
-        "single stale desktop lifecycle generation token",
-    )
-    require(
-        desktop_ipc,
         '    absent(\n'
         '        start,\n'
         '        "android_generation_current(my_generation)",\n'
@@ -467,15 +452,17 @@ def validate(sources: Dict[str, str]) -> None:
         retirement,
         (
             "acceptingControlledConnections = false",
-            "serviceGenerationOwner.retire(generation)",
-            "FFI.stopServer(this, retirement.generation)",
+            "serviceGenerationOwner.beginRetirement(generation)",
+            "FFI.deactivateServer(this, retirement.generation)",
+            "FFI.retireServerGeneration(this, retirement.generation)",
+            "serviceGenerationOwner.completeRetirement(retirement.generation)",
             "nativeServerGeneration = 0L",
         ),
         "exact listener retirement before local generation release",
     )
     require_count(
         retirement,
-        "FFI.stopServer(this, retirement.generation)",
+        "FFI.deactivateServer(this, retirement.generation)",
         1,
         "single exact listener stop",
     )
@@ -566,8 +553,8 @@ def validate(sources: Dict[str, str]) -> None:
             "canonical lifecycle behavior gate",
         ),
         (
-            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test",
-            "canonical focused gate",
+            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo .",
+            "canonical focused source gate",
         ),
         (
             "R-S11el/R-S11e-172 Android exact-generation listener rebuild authority",

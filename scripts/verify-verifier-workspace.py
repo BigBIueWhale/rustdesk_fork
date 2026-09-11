@@ -926,14 +926,13 @@ def validate_verify_workspace(source):
     )
     require_text(
         source,
-        'readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"',
-        "verifier fixture scratch ownership",
+        'verify-verifier-workspace.py --repo .',
+        "focused workspace baseline dispatch",
     )
-    require_text(source, 'install -d -m 0700 "$VERIFIER_FIXTURE_TMP"', "verifier fixture scratch allocation")
-    require_text(
+    require_absent(
         source,
-        'verify-verifier-workspace.py --repo . --self-test --scratch "$VERIFIER_FIXTURE_TMP"',
-        "verifier fixture scratch dispatch",
+        'verify-verifier-workspace.py --repo . --self-test',
+        "ordinary-loop full workspace mutation catalog",
     )
     for line_number, line in enumerate(lines, 1):
         if OLD_SCRATCH_PREFIX.search(line):
@@ -39236,7 +39235,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android generation-and-connection-type controlled-resource admission contract",
         ),
         (
-            '"positive monotonic idempotent controlled-service generation admission"',
+            '"positive monotonic controlled-service admission after exact predecessor retirement"',
             "Android monotonic controlled-service generation contract",
         ),
         (
@@ -42693,7 +42692,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
+        "python3 scripts/verify-android-voice-call-ownership.py --repo .",
         "Android voice-call ownership shared focused-verifier wiring",
     )
     require_text(
@@ -43419,7 +43418,7 @@ def validate_android_voice_call_ownership_contract(sources):
     for text, label in (
         ("connection_id: i32", "independent Android JNI connection identity source"),
         (
-            "generation == 0 || connection_id <= 0 || context.generation != Some(generation)",
+            "!context.generation.is_activation_claimed(generation)",
             "independent Android JNI generation/connection validation source",
         ),
         ('"(IIIII)Z"', "independent Boolean pointer JNI signature source"),
@@ -43914,10 +43913,6 @@ def validate_android_listener_generation_contract(sources):
             "focused stale-callback mutation",
         ),
         (
-            "exact active-generation desktop lifecycle assertion",
-            "focused desktop-lifecycle integration binding",
-        ),
-        (
             "shared exact listener rebind selection",
             "focused shared-rebind integration binding",
         ),
@@ -43927,8 +43922,8 @@ def validate_android_listener_generation_contract(sources):
     require_exact_count(
         focused,
         "android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
-        2,
-        "Android listener focused desktop-lifecycle assertion and mutation",
+        1,
+        "Android listener stale-lifecycle mutation fixture",
     )
     require_exact_count(
         focused,
@@ -44172,7 +44167,7 @@ def validate_android_listener_generation_contract(sources):
         ),
         (
             sources["verify"],
-            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test",
+            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo .",
             "shared focused gate",
         ),
         (
@@ -44218,9 +44213,12 @@ def validate_android_frame_raw_generation_contract(sources):
             "Validate exact MainService-generation ownership of Android video state and workers.",
             "focused verifier purpose",
         ),
-        ("checked monotonic raw-video begin", "focused monotonic-state binding"),
         (
-            "exact-object release retires only its raw-video generation",
+            "checked monotonic raw-video begin after exact predecessor retirement",
+            "focused monotonic-state binding",
+        ),
+        (
+            "exact-object release refuses best-effort generation cleanup",
             "focused exact-object release binding",
         ),
         (
@@ -44263,7 +44261,7 @@ def validate_android_frame_raw_generation_contract(sources):
             "active_generation: Option<u64>",
             "if generation == 0",
             "if self.active_generation == Some(generation)",
-            "if generation <= self.greatest_generation",
+            "self.active_generation.is_some() || generation <= self.greatest_generation",
             "self.greatest_generation = generation",
             "self.active_generation = Some(generation)",
         ),
@@ -44279,16 +44277,16 @@ def validate_android_frame_raw_generation_contract(sources):
             "exact admission",
         ),
         (
-            "stale_generation_cannot_mutate_replacement",
-            "stale-generation behavior regression",
+            "successor_cannot_bypass_exact_generation_retirement",
+            "successor-before-retirement behavior regression",
         ),
         (
             "exact_retirement_prevents_same_generation_reactivation",
             "retired-generation behavior regression",
         ),
         (
-            "assert!(!owner.retire(7));\n        assert!(owner.admits(8));",
-            "replacement preservation behavior assertion",
+            "assert_eq!(owner.begin(8), BeginGeneration::Rejected);",
+            "successor-before-retirement refusal assertion",
         ),
     ):
         require_text(owner, text, f"independent raw-video owner {label}")
@@ -44325,7 +44323,7 @@ def validate_android_frame_raw_generation_contract(sources):
             "generation begin forwarding",
         ),
         (
-            "if !self.owner.retire(generation)",
+            "if !self.owner.retire_or_confirm_inactive(generation)",
             "exact retirement forwarding",
         ),
         (
@@ -44460,12 +44458,12 @@ def validate_android_frame_raw_generation_contract(sources):
         bind,
         (
             "env.is_same_object(current.owner.as_obj(), service)",
-            "if current.generation.is_some()",
+            "if !current.generation.may_release_callback_owner()",
             "let generation = begin_generation()",
             "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
             "rollback_generation(generation)",
             "SCREEN_SIZE.lock().unwrap().begin_generation(generation)",
-            "current.generation = Some(generation)",
+            "current.generation.begin(generation)",
             "Some(generation)",
         ),
         "independent object-authorized raw generation before callback publication",
@@ -44808,7 +44806,7 @@ def validate_android_frame_raw_generation_contract(sources):
         ),
         (
             sources["verify"],
-            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test",
+            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo .",
             "shared focused gate",
         ),
         (
@@ -44889,9 +44887,8 @@ def validate_android_main_service_status_contract(sources):
             "private var greatestGeneration = 0L",
             "private var activeGeneration: Long? = null",
             "generation <= 0L",
-            "generation < greatestGeneration",
-            "generation == greatestGeneration && activeGeneration != generation",
             "if (activeGeneration == generation)",
+            "activeGeneration != null || generation <= greatestGeneration",
             "greatestGeneration = generation",
             "activeGeneration = generation",
             "mediaProjectionReady = false",
@@ -44906,9 +44903,14 @@ def validate_android_main_service_status_contract(sources):
     )
     require_exact_count(
         owner,
-        "generation <= 0L || activeGeneration != generation",
+        "if (activeGeneration != generation)",
         2,
-        "independent stale status generation retirement",
+        "independent stale status generation refusal",
+    )
+    require_text(
+        owner,
+        "activeGeneration != null || generation <= greatestGeneration",
+        "independent status replacement refusal before exact retirement",
     )
     require_text(
         owner,
@@ -44956,7 +44958,7 @@ def validate_android_main_service_status_contract(sources):
             "exact generation begin",
         ),
         (
-            "statusOwner.retire(retirement.generation)",
+            "statusOwner.retireOrConfirmInactive(retirement.generation)",
             "exact generation retirement",
         ),
         (
@@ -45094,7 +45096,7 @@ def validate_android_main_service_status_contract(sources):
     for source, text, label in (
         (
             sources["verify"],
-            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test",
+            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo .",
             "shared focused gate",
         ),
         (
@@ -45122,21 +45124,20 @@ def validate_android_service_startup_transaction_contract(sources):
         ) from error
     for text, label in (
         (
-            "Validate Android MainService exact-generation startup and rollback.",
+            "Check the load-bearing Android MainService generation-retirement ordering.",
             "focused verifier purpose",
         ),
-        ("closed-until-complete startup and rollback", "focused startup transaction"),
-        ("listener-first attempt-aware exact rollback", "focused exact rollback"),
-        ("one transaction attempt per explicit start callback", "focused explicit retry"),
+        ("two-phase Kotlin generation owner", "focused startup transaction"),
+        ("deactivate-clean-finalize-complete order", "focused exact rollback"),
         (
-            "app-open health start before bind and capture-consent decision",
-            "focused app-open health reachability",
+            "incomplete cleanup retains the exact Service for a later explicit retry",
+            "focused explicit retry",
         ),
         (
-            "exact old-generation controlled resource retirement",
-            "focused retry resource transfer",
+            "native cleanup acknowledgement before authority release",
+            "focused native retirement finality",
         ),
-        ("run_mutations(sources)", "focused mutation dispatch"),
+        ("source invariant only", "focused evidence boundary"),
     ):
         require_text(focused, text, f"independent Android startup {label}")
 
@@ -45154,9 +45155,11 @@ def validate_android_service_startup_transaction_contract(sources):
             "VOICE_ATTEMPTED",
             "ACTIVATION_ATTEMPTED",
             "COMMITTED",
+            "RETIRING",
             "private var greatestGeneration = 0L",
             "private var activeGeneration: Long? = null",
             "private var phase: Phase? = null",
+            "private var retirement: MainServiceGenerationRetirement? = null",
         ),
         "independent closed MainService startup owner",
     )
@@ -45207,7 +45210,7 @@ def validate_android_service_startup_transaction_contract(sources):
         )
     retirement = extract_braced_item(
         owner,
-        "fun retire(generation: Long): MainServiceGenerationRetirement?",
+        "fun beginRetirement(generation: Long): MainServiceGenerationRetirement?",
         "independent startup retirement plan",
     )
     require_order(
@@ -45219,10 +45222,26 @@ def validate_android_service_startup_transaction_contract(sources):
             "retireVoice = currentPhase == Phase.VOICE_ATTEMPTED",
             "currentPhase == Phase.ACTIVATION_ATTEMPTED",
             "currentPhase == Phase.COMMITTED",
+            "phase = Phase.RETIRING",
+            "retirement = plan",
+        ),
+        "independent attempt-aware retained retirement plan",
+    )
+    retirement_completion = extract_braced_item(
+        owner,
+        "fun completeRetirement(generation: Long): Boolean",
+        "independent startup retirement completion",
+    )
+    require_order(
+        retirement_completion,
+        (
+            "phase != Phase.RETIRING",
+            "retirement?.generation != generation",
             "activeGeneration = null",
             "phase = null",
+            "retirement = null",
         ),
-        "independent attempt-aware exact retirement plan",
+        "independent exact retirement completion",
     )
 
     behavior = sources["android_main_service_generation_owner_test"]
@@ -45403,13 +45422,15 @@ def validate_android_service_startup_transaction_contract(sources):
         service_retirement,
         (
             "acceptingControlledConnections = false",
-            "serviceGenerationOwner.retire(generation)",
-            "FFI.stopServer(this, retirement.generation)",
+            "serviceGenerationOwner.beginRetirement(generation)",
+            "FFI.deactivateServer(this, retirement.generation)",
             "VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)",
-            "statusOwner.retire(retirement.generation)",
+            "statusOwner.retireOrConfirmInactive(retirement.generation)",
+            "FFI.retireServerGeneration(this, retirement.generation)",
+            "serviceGenerationOwner.completeRetirement(retirement.generation)",
             "nativeServerGeneration = 0L",
         ),
-        "independent listener-first exact generation retirement",
+        "independent two-phase exact generation retirement",
     )
     on_create = extract_between(
         service,
@@ -45445,6 +45466,9 @@ def validate_android_service_startup_transaction_contract(sources):
             "val generationReady = initializeControlledServiceGeneration()",
             "publishControlledServiceStatus(generationReady)",
             "if (!generationReady)",
+            "if (nativeServerGeneration > 0L)",
+            "Retaining foreground MainService for explicit retry",
+            "return START_NOT_STICKY",
             "stopForeground(STOP_FOREGROUND_REMOVE)",
             "stopSelfResult(startId)",
             "return START_NOT_STICKY",
@@ -45574,8 +45598,13 @@ def validate_android_service_startup_transaction_contract(sources):
     )
     require_text(
         ffi_kt,
-        "external fun stopServer(service: Context, generation: Long): Boolean",
-        "independent exact Service-and-generation Kotlin retirement",
+        "external fun deactivateServer(service: Context, generation: Long): Boolean",
+        "independent exact Service-and-generation Kotlin listener deactivation",
+    )
+    require_text(
+        ffi_kt,
+        "external fun retireServerGeneration(service: Context, generation: Long): Boolean",
+        "independent exact Service-and-generation Kotlin resource finalization",
     )
     reserve_jni = extract_between(
         sources["flutter_ffi_source"],
@@ -45602,7 +45631,7 @@ def validate_android_service_startup_transaction_contract(sources):
     activate_jni = extract_between(
         sources["flutter_ffi_source"],
         'pub unsafe extern "system" fn Java_ffi_FFI_activateServer(',
-        'pub unsafe extern "system" fn Java_ffi_FFI_stopServer(',
+        'pub unsafe extern "system" fn Java_ffi_FFI_isServerGenerationActive(',
         "independent exact generation activation",
     )
     require_order(
@@ -45610,8 +45639,8 @@ def validate_android_service_startup_transaction_contract(sources):
         (
             "claim_main_service_listener_start(&env, &service, generation)",
             "android_activate_generation(generation)",
-            "retire_main_service_generation(",
-            "android_request_stop(generation)",
+            "deactivate_main_service_generation(",
+            "android_request_stop_or_confirm_inactive",
             "std::thread::Builder::new()",
             '.name("android-direct-service".to_owned())',
             ".spawn(move || {",
@@ -45623,7 +45652,7 @@ def validate_android_service_startup_transaction_contract(sources):
     health_jni = extract_between(
         sources["flutter_ffi_source"],
         'pub unsafe extern "system" fn Java_ffi_FFI_isServerGenerationActive(',
-        'pub unsafe extern "system" fn Java_ffi_FFI_stopServer(',
+        'pub unsafe extern "system" fn Java_ffi_FFI_deactivateServer(',
         "independent exact generation health JNI",
     )
     require_order(
@@ -45638,7 +45667,7 @@ def validate_android_service_startup_transaction_contract(sources):
     )
     stop_jni = extract_between(
         sources["flutter_ffi_source"],
-        'pub unsafe extern "system" fn Java_ffi_FFI_stopServer(',
+        'pub unsafe extern "system" fn Java_ffi_FFI_deactivateServer(',
         "fn parse_client_session_owner",
         "independent exact generation JNI retirement",
     )
@@ -45648,15 +45677,16 @@ def validate_android_service_startup_transaction_contract(sources):
             "env: JNIEnv",
             "service: JObject",
             "generation: jlong",
-            "let Some(retirement) = scrap::android::retire_main_service_generation(",
+            "scrap::android::deactivate_main_service_generation(",
             "&env",
             "&service",
             "generation",
-            "android_request_stop_or_confirm_inactive(generation)",
-            "retirement.raw_video_retired",
-            "retirement.screen_size_retired",
+            "android_request_stop_or_confirm_inactive",
+            "Java_ffi_FFI_retireServerGeneration",
+            "scrap::android::retire_main_service_generation(",
+            "android_generation_is_inactive",
         ),
-        "independent object proof before listener and callback generation retirement",
+        "independent object proof before listener deactivation and resource finalization",
     )
     native_bind = extract_between(
         sources["android_scrap_ffi"],
@@ -45668,12 +45698,12 @@ def validate_android_service_startup_transaction_contract(sources):
         native_bind,
         (
             "env.is_same_object(current.owner.as_obj(), service)",
-            "current.generation.is_some()",
+            "!current.generation.may_release_callback_owner()",
             "let generation = begin_generation()",
             "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
             "rollback_generation(generation)",
             "SCREEN_SIZE.lock().unwrap().begin_generation(generation)",
-            "current.generation = Some(generation)",
+            "current.generation.begin(generation)",
             "Some(generation)",
         ),
         "independent object-authorized inactive native reservation",
@@ -45691,7 +45721,7 @@ def validate_android_service_startup_transaction_contract(sources):
             "env.new_global_ref(&service)",
             "env.is_same_object(context.owner.as_obj(), &service)",
             "Ok(true) => return jboolean::from(true)",
-            "Ok(false) if context.generation.is_some()",
+            "Ok(false) if context.generation.has_generation()",
             "return jboolean::from(false)",
             "owner: retained_service",
             "jboolean::from(true)",
@@ -45705,51 +45735,49 @@ def validate_android_service_startup_transaction_contract(sources):
     )
     native = extract_between(
         sources["android_scrap_ffi"],
-        "pub fn retire_main_service_generation(",
+        "pub fn retire_main_service_generation<ConfirmInactive>(",
         '#[no_mangle]\npub extern "system" fn Java_ffi_FFI_releaseService',
         "independent exact native Service generation retirement",
     )
     require_order(
         native,
         (
-            "current.generation != Some(generation)",
             "env.is_same_object(current.owner.as_obj(), service)",
+            "current.generation.can_finalize(generation)",
+            "confirm_listener_inactive(generation)",
             "VIDEO_RAW.lock().unwrap().retire_generation(generation)",
             "SCREEN_SIZE.lock().unwrap().retire_generation(generation)",
-            "current.generation = None",
-            "Some(MainServiceGenerationRetirement",
-            "raw_video_retired: video_retired",
-            "screen_size_retired: screen_retired",
+            "if video_retired && screen_retired",
+            "current.generation.complete_retirement(generation)",
         ),
         "independent exact object/generation native retry release",
     )
     native_claim = extract_between(
         sources["android_scrap_ffi"],
         "pub fn claim_main_service_listener_start(",
-        "pub fn retire_main_service_generation(",
+        "pub fn owns_main_service_generation(",
         "independent native listener-start claim",
     )
     require_order(
         native_claim,
         (
-            "current.generation != Some(generation) || current.listener_started",
+            "current.generation.is_current(generation)",
             "env.is_same_object(current.owner.as_obj(), service)",
-            "current.listener_started = true",
+            "current.generation.claim_activation(generation)",
         ),
         "independent single exact Service generation listener-start claim",
     )
     native_health = extract_between(
         sources["android_scrap_ffi"],
         "pub fn owns_main_service_generation(",
-        "pub fn retire_main_service_generation(",
+        "pub fn deactivate_main_service_generation<Stop>(",
         "independent exact native generation health owner",
     )
     require_order(
         native_health,
         (
             "generation == 0 || service.is_null()",
-            "current.generation != Some(generation)",
-            "if !current.listener_started",
+            "current.generation.is_activation_claimed(generation)",
             "env.is_same_object(current.owner.as_obj(), service)",
         ),
         "independent exact Service object and generation health",
@@ -45806,12 +45834,12 @@ def validate_android_service_startup_transaction_contract(sources):
     for source, text, label in (
         (
             sources["verify"],
-            "/usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo . --self-test",
+            "/usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo .",
             "shared focused gate",
         ),
         (
             sources["dart_verify"],
-            "python3 scripts/verify-android-service-startup-transaction.py --repo . --self-test",
+            "python3 scripts/verify-android-service-startup-transaction.py --repo .",
             "Dart/Android focused gate",
         ),
         (
@@ -54816,10 +54844,12 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         generation_retirement,
         (
-            "serviceGenerationOwner.retire(generation)",
-            "FFI.stopServer(this, retirement.generation)",
+            "serviceGenerationOwner.beginRetirement(generation)",
+            "FFI.deactivateServer(this, retirement.generation)",
             "VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)",
-            "statusOwner.retire(retirement.generation)",
+            "statusOwner.retireOrConfirmInactive(retirement.generation)",
+            "FFI.retireServerGeneration(this, retirement.generation)",
+            "serviceGenerationOwner.completeRetirement(retirement.generation)",
         ),
         "Android exact attempted-owner generation retirement",
     )
@@ -54933,12 +54963,12 @@ def validate_android_media_projection_finality_contract(sources):
         owner_begin,
         (
             "generation <= 0",
-            "generation < greatestControlledServiceGeneration",
-            "generation == greatestControlledServiceGeneration",
-            "activeControlledServiceGeneration != generation",
             "return false",
             "if (activeControlledServiceGeneration == generation)",
             "return true",
+            "activeControlledServiceGeneration != null",
+            "generation <= greatestControlledServiceGeneration",
+            "return false",
             "greatestControlledServiceGeneration = generation",
             "activeControlledServiceGeneration = generation",
             "controlledConnections.clear()",
@@ -55034,7 +55064,10 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         owner_clear,
         (
-            "if (!isControlledServiceGeneration(generation))",
+            "if (generation <= 0)",
+            "activeControlledServiceGeneration == null",
+            "greatestControlledServiceGeneration == generation",
+            "activeControlledServiceGeneration != generation",
             "return false",
             "controlledConnections.clear()",
             "activeControlledConnections.clear()",
@@ -55109,9 +55142,11 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         coordinator_clear,
         (
+            "val currentProjection = playbackProjection",
+            "currentProjection.first != generation",
             "if (!owners.clearControlledConnections(generation))",
             "return false",
-            "if (playbackProjection?.first == generation)",
+            "if (currentProjection != null)",
             "playbackProjection = null",
             "return reconcileRecorder()",
         ),
@@ -55126,9 +55161,12 @@ def validate_android_media_projection_finality_contract(sources):
     require_order(
         coordinator_projection,
         (
-            "if (!owners.isControlledServiceGeneration(generation))",
+            "projection != null && !owners.isControlledServiceGeneration(generation)",
             "return false",
-            "playbackProjection = projection?.let { generation to it }",
+            "owners.mayClearControlledServiceResources(generation)",
+            "current.first != generation",
+            "playbackProjection = null",
+            "playbackProjection = generation to projection",
             "return reconcileRecorder()",
         ),
         "Android audio coordinator exact-generation playback update",
@@ -55194,8 +55232,13 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         ffi_kt,
-        "external fun stopServer(service: Context, generation: Long): Boolean",
-        "Android exact native server object-and-generation stop",
+        "external fun deactivateServer(service: Context, generation: Long): Boolean",
+        "Android exact native listener object-and-generation stop",
+    )
+    require_text(
+        ffi_kt,
+        "external fun retireServerGeneration(service: Context, generation: Long): Boolean",
+        "Android exact native resource-generation finalization",
     )
     service_init = extract_between(
         android_ffi,
@@ -55212,9 +55255,9 @@ def validate_android_media_projection_finality_contract(sources):
             "env.new_global_ref(application_context)",
             "install_application_context_once(java_vm, application_context)",
             "env.is_same_object(context.owner.as_obj(), &service)",
-            "Ok(false) if context.generation.is_some()",
+            "Ok(false) if context.generation.has_generation()",
             "Some(MainServiceContext",
-            "generation: None",
+            "generation: MainServiceGenerationState::default()",
             "owner: retained_service",
             "jboolean::from(true)",
         ),
@@ -55249,7 +55292,8 @@ def validate_android_media_projection_finality_contract(sources):
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
             "let Some(owner) = current.as_ref()",
             "env.is_same_object(owner.owner.as_obj(), &service)",
-            "if is_current",
+            "if !is_current",
+            "if !owner.generation.may_release_callback_owner()",
             "current.take()",
         ),
         "Android exact-object callback-owner release",
@@ -55266,10 +55310,10 @@ def validate_android_media_projection_finality_contract(sources):
             "if service.is_null()",
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
             "env.is_same_object(current.owner.as_obj(), service)",
-            "if current.generation.is_some()",
+            "if !current.generation.may_release_callback_owner()",
             "let generation = begin_generation()",
             "if generation == 0",
-            "current.generation = Some(generation)",
+            "current.generation.begin(generation)",
             "Some(generation)",
         ),
         "Android single exact-object-authorized MainService generation reservation",
@@ -55284,7 +55328,7 @@ def validate_android_media_projection_finality_contract(sources):
         generation_dispatch,
         (
             "let context = MAIN_SERVICE_CTX.read().unwrap()",
-            "if generation == 0 || context.generation != Some(generation)",
+            "if generation == 0 || !context.generation.is_activation_claimed(generation)",
             "env.call_method(",
             "&context.owner",
         ),
@@ -55300,7 +55344,7 @@ def validate_android_media_projection_finality_contract(sources):
         half_scale_dispatch,
         (
             "let context = MAIN_SERVICE_CTX.read().unwrap()",
-            "if generation == 0 || context.generation != Some(generation)",
+            "if generation == 0 || !context.generation.is_activation_claimed(generation)",
             "env.call_method(",
             "&context.owner",
             '"rustSetHalfScale"',
@@ -55411,7 +55455,7 @@ def validate_android_media_projection_finality_contract(sources):
     native_activation = extract_between(
         flutter_ffi,
         "Java_ffi_FFI_activateServer",
-        "#[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_stopServer",
+        "#[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_isServerGenerationActive",
         "Android native server generation activation",
     )
     require_order(
@@ -55429,7 +55473,7 @@ def validate_android_media_projection_finality_contract(sources):
     native_health = extract_between(
         flutter_ffi,
         "Java_ffi_FFI_isServerGenerationActive",
-        "Java_ffi_FFI_stopServer",
+        "Java_ffi_FFI_deactivateServer",
         "Android exact server-generation health",
     )
     require_order(
@@ -55444,7 +55488,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     native_stop = extract_between(
         flutter_ffi,
-        "Java_ffi_FFI_stopServer",
+        "Java_ffi_FFI_deactivateServer",
         "fn parse_client_session_owner",
         "Android native exact server-generation stop",
     )
@@ -55454,10 +55498,11 @@ def validate_android_media_projection_finality_contract(sources):
             "generation: jlong",
             "if generation <= 0",
             "generation as u64",
-            "let Some(retirement) = scrap::android::retire_main_service_generation(",
-            "android_request_stop_or_confirm_inactive(generation)",
-            "retirement.raw_video_retired",
-            "retirement.screen_size_retired",
+            "scrap::android::deactivate_main_service_generation(",
+            "android_request_stop_or_confirm_inactive",
+            "Java_ffi_FFI_retireServerGeneration",
+            "scrap::android::retire_main_service_generation(",
+            "android_generation_is_inactive",
         ),
         "Android positive exact-object proof before server generation stop",
     )

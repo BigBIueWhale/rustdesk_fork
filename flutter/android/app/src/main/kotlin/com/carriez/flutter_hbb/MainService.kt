@@ -448,12 +448,7 @@ class MainService : Service() {
         nativeServerGeneration = generation
         if (!serviceGenerationOwner.beginReservation(generation)) {
             Log.e(logTag, "Failed to own the new MainService native generation reservation")
-            if (!FFI.stopServer(this, generation)) {
-                Log.e(logTag, "Failed to retire the unowned MainService listener generation")
-            }
-            if (nativeServerGeneration == generation) {
-                nativeServerGeneration = 0L
-            }
+            retireUnownedNativeGenerationLocked(generation, "Kotlin reservation failure")
             return false
         }
         if (!publishScreenInfo()) {
@@ -516,34 +511,67 @@ class MainService : Service() {
         reason: String,
     ): Boolean {
         acceptingControlledConnections = false
-        val retirement = serviceGenerationOwner.retire(generation)
+        val retirement = serviceGenerationOwner.beginRetirement(generation)
         if (retirement == null) {
             Log.e(logTag, "Rejected unknown MainService generation retirement: $generation ($reason)")
-            val retiredNative = FFI.stopServer(this, generation)
-            if (nativeServerGeneration == generation) {
-                nativeServerGeneration = 0L
+            if (nativeServerGeneration != generation ||
+                serviceGenerationOwner.hasActiveGeneration()
+            ) {
+                return false
             }
-            return retiredNative
+            return retireUnownedNativeGenerationLocked(generation, reason)
         }
 
-        var retired = FFI.stopServer(this, retirement.generation)
-        if (!retired) {
-            Log.e(logTag, "Failed to retire the exact native MainService generation ($reason)")
+        if (!FFI.deactivateServer(this, retirement.generation)) {
+            Log.e(logTag, "Failed to deactivate the exact MainService listener ($reason)")
+            return false
         }
+        var retired = true
         if (retirement.retireVoice &&
             !VoiceCallAudioCoordinator.clearControlledConnections(retirement.generation)
         ) {
             Log.e(logTag, "Failed to retire exact controlled audio ownership ($reason)")
             retired = false
         }
-        if (retirement.retireStatus && !statusOwner.retire(retirement.generation)) {
+        if (retirement.retireStatus &&
+            !statusOwner.retireOrConfirmInactive(retirement.generation)
+        ) {
             Log.e(logTag, "Failed to retire exact MainService status ownership ($reason)")
             retired = false
+        }
+        if (!retired) {
+            return false
+        }
+        if (!FFI.retireServerGeneration(this, retirement.generation)) {
+            Log.e(logTag, "Failed to finalize the exact native MainService generation ($reason)")
+            return false
+        }
+        if (!serviceGenerationOwner.completeRetirement(retirement.generation)) {
+            Log.e(logTag, "Failed to complete exact MainService generation retirement ($reason)")
+            return false
         }
         if (nativeServerGeneration == retirement.generation) {
             nativeServerGeneration = 0L
         }
-        return retired
+        return true
+    }
+
+    private fun retireUnownedNativeGenerationLocked(
+        generation: Long,
+        reason: String,
+    ): Boolean {
+        if (!FFI.deactivateServer(this, generation)) {
+            Log.e(logTag, "Failed to deactivate an unowned native listener generation ($reason)")
+            return false
+        }
+        if (!FFI.retireServerGeneration(this, generation)) {
+            Log.e(logTag, "Failed to finalize an unowned native generation ($reason)")
+            return false
+        }
+        if (nativeServerGeneration == generation) {
+            nativeServerGeneration = 0L
+        }
+        return true
     }
 
     @Synchronized
@@ -598,10 +626,10 @@ class MainService : Service() {
         val generation = nativeServerGeneration
         publishControlledServiceStatus(false)
         releaseControlledConnectionResources()
-        if (generation > 0L &&
-            !retireControlledServiceGeneration(generation, "MainService destruction")
-        ) {
-            Log.d(logTag, "MainService generation was already retired or replaced")
+        val generationRetired = generation <= 0L ||
+            retireControlledServiceGeneration(generation, "MainService destruction")
+        if (!generationRetired) {
+            Log.e(logTag, "MainService destruction retained incomplete generation authority")
         }
         serviceLooper?.quitSafely()
         serviceHandler = null
@@ -609,11 +637,12 @@ class MainService : Service() {
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
-        // R-D7a: the direct listener is owned by this foreground service. Exact generation
-        // retirement above makes the accept loop drop its TcpListener; releaseService now drops
-        // only the exact callback object retained for this Service instance.
-        if (!FFI.releaseService(this)) {
-            Log.d(logTag, "MainService callback owner was already replaced or released")
+        if (generationRetired && nativeServerGeneration == 0L) {
+            if (!FFI.releaseService(this)) {
+                Log.d(logTag, "MainService callback owner was already replaced or released")
+            }
+        } else {
+            Log.e(logTag, "Retaining MainService callback authority for exact cleanup retry")
         }
         super.onDestroy()
     }
@@ -726,12 +755,20 @@ class MainService : Service() {
         Log.d("whichService", "this service: ${Thread.currentThread()}")
         super.onStartCommand(intent, flags, startId)
         // A foreground-service start must publish its notification promptly. If the generation
-        // transaction cannot commit, exact startId retirement below removes only this started
-        // request; a bound Service remains inert and a later explicit start may retry once.
+        // transaction cannot commit after complete cleanup, exact startId retirement below removes
+        // only this started request. Incomplete exact cleanup retains this foreground Service so a
+        // later explicit start can retry the same generation without process death.
         createForegroundNotification()
         val generationReady = initializeControlledServiceGeneration()
         publishControlledServiceStatus(generationReady)
         if (!generationReady) {
+            if (nativeServerGeneration > 0L) {
+                Log.e(
+                    logTag,
+                    "Retaining foreground MainService for explicit retry of incomplete generation cleanup",
+                )
+                return START_NOT_STICKY
+            }
             stopForeground(STOP_FOREGROUND_REMOVE)
             if (!stopSelfResult(startId)) {
                 Log.d(logTag, "A newer MainService start request retained the started state")

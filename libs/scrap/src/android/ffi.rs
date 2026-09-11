@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use super::frame_raw::{FrameRaw, GenerationOwnedFrameRaw};
 use super::frame_raw_generation::GenerationOwnedScreenSize;
+use super::main_service_generation::MainServiceGenerationState;
 
 lazy_static! {
     static ref JVM: RwLock<Option<JavaVM>> = RwLock::new(None);
@@ -46,14 +47,8 @@ const MAX_ANDROID_CLIPBOARD_UPDATE_BYTES: usize =
     ANDROID_CLIPBOARD_SIDE_PREFIX_BYTES + MAX_ANDROID_CLIPBOARD_PROTO_BYTES;
 
 struct MainServiceContext {
-    generation: Option<u64>,
-    listener_started: bool,
+    generation: MainServiceGenerationState,
     owner: GlobalRef,
-}
-
-pub struct MainServiceGenerationRetirement {
-    pub raw_video_retired: bool,
-    pub screen_size_retired: bool,
 }
 
 pub fn get_video_raw(generation: u64, dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
@@ -266,7 +261,7 @@ pub extern "system" fn Java_ffi_FFI_init(
     if let Some(context) = current.as_ref() {
         match env.is_same_object(context.owner.as_obj(), &service) {
             Ok(true) => return jboolean::from(true),
-            Ok(false) if context.generation.is_some() => {
+            Ok(false) if context.generation.has_generation() => {
                 log::error!(
                     "refusing to replace an active MainService callback owner without exact retirement"
                 );
@@ -280,8 +275,7 @@ pub extern "system" fn Java_ffi_FFI_init(
         }
     }
     *current = Some(MainServiceContext {
-        generation: None,
-        listener_started: false,
+        generation: MainServiceGenerationState::default(),
         owner: retained_service,
     });
     jboolean::from(true)
@@ -312,7 +306,7 @@ where
             return None;
         }
     }
-    if current.generation.is_some() {
+    if !current.generation.may_release_callback_owner() {
         return None;
     }
     // The direct-listener reservation is allocated only after the retained Service object has
@@ -337,16 +331,25 @@ where
         rollback_generation(generation);
         return None;
     }
-    current.generation = Some(generation);
-    current.listener_started = false;
+    if !current.generation.begin(generation) {
+        log::error!("failed to record Android MainService generation {generation}");
+        if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
+            log::error!(
+                "failed to roll back Android raw-video generation {generation} after MainService ownership failure"
+            );
+        }
+        if !SCREEN_SIZE.lock().unwrap().retire_generation(generation) {
+            log::error!(
+                "failed to roll back Android screen-size generation {generation} after MainService ownership failure"
+            );
+        }
+        rollback_generation(generation);
+        return None;
+    }
     Some(generation)
 }
 
-pub fn claim_main_service_listener_start(
-    env: &JNIEnv,
-    service: &JObject,
-    generation: u64,
-) -> bool {
+pub fn claim_main_service_listener_start(env: &JNIEnv, service: &JObject, generation: u64) -> bool {
     if generation == 0 || service.is_null() {
         return false;
     }
@@ -354,14 +357,11 @@ pub fn claim_main_service_listener_start(
     let Some(current) = current.as_mut() else {
         return false;
     };
-    if current.generation != Some(generation) || current.listener_started {
+    if !current.generation.is_current(generation) {
         return false;
     }
     match env.is_same_object(current.owner.as_obj(), service) {
-        Ok(true) => {
-            current.listener_started = true;
-            true
-        }
+        Ok(true) => current.generation.claim_activation(generation),
         Ok(false) => false,
         Err(error) => {
             log::error!("failed to compare MainService listener owner: {error}");
@@ -370,11 +370,7 @@ pub fn claim_main_service_listener_start(
     }
 }
 
-pub fn owns_main_service_generation(
-    env: &JNIEnv,
-    service: &JObject,
-    generation: u64,
-) -> bool {
+pub fn owns_main_service_generation(env: &JNIEnv, service: &JObject, generation: u64) -> bool {
     if generation == 0 || service.is_null() {
         return false;
     }
@@ -382,10 +378,7 @@ pub fn owns_main_service_generation(
     let Some(current) = current.as_ref() else {
         return false;
     };
-    if current.generation != Some(generation) {
-        return false;
-    }
-    if !current.listener_started {
+    if !current.generation.is_activation_claimed(generation) {
         return false;
     }
     match env.is_same_object(current.owner.as_obj(), service) {
@@ -397,28 +390,68 @@ pub fn owns_main_service_generation(
     }
 }
 
-pub fn retire_main_service_generation(
+pub fn deactivate_main_service_generation<Stop>(
     env: &JNIEnv,
     service: &JObject,
     generation: u64,
-) -> Option<MainServiceGenerationRetirement> {
+    stop_listener: Stop,
+) -> bool
+where
+    Stop: FnOnce(u64) -> bool,
+{
     if generation == 0 || service.is_null() {
-        return None;
+        return false;
     }
     let mut current = MAIN_SERVICE_CTX.write().unwrap();
     let Some(current) = current.as_mut() else {
-        return None;
+        return false;
     };
-    if current.generation != Some(generation) {
-        return None;
-    }
     match env.is_same_object(current.owner.as_obj(), service) {
         Ok(true) => {}
-        Ok(false) => return None,
+        Ok(false) => return false,
         Err(error) => {
             log::error!("failed to compare MainService generation owner: {error}");
-            return None;
+            return false;
         }
+    }
+    if current.generation.is_retired(generation) {
+        return true;
+    }
+    if !current.generation.is_current(generation) || !stop_listener(generation) {
+        return false;
+    }
+    current.generation.confirm_deactivated(generation)
+}
+
+pub fn retire_main_service_generation<ConfirmInactive>(
+    env: &JNIEnv,
+    service: &JObject,
+    generation: u64,
+    confirm_listener_inactive: ConfirmInactive,
+) -> bool
+where
+    ConfirmInactive: FnOnce(u64) -> bool,
+{
+    if generation == 0 || service.is_null() {
+        return false;
+    }
+    let mut current = MAIN_SERVICE_CTX.write().unwrap();
+    let Some(current) = current.as_mut() else {
+        return false;
+    };
+    match env.is_same_object(current.owner.as_obj(), service) {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(error) => {
+            log::error!("failed to compare MainService generation owner: {error}");
+            return false;
+        }
+    }
+    if current.generation.is_retired(generation) {
+        return true;
+    }
+    if !current.generation.can_finalize(generation) || !confirm_listener_inactive(generation) {
+        return false;
     }
 
     let video_retired = VIDEO_RAW.lock().unwrap().retire_generation(generation);
@@ -433,12 +466,11 @@ pub fn retire_main_service_generation(
             "failed to retire Android screen-size generation {generation} during exact generation retirement"
         );
     }
-    current.generation = None;
-    current.listener_started = false;
-    Some(MainServiceGenerationRetirement {
-        raw_video_retired: video_retired,
-        screen_size_retired: screen_retired,
-    })
+    if video_retired && screen_retired {
+        current.generation.complete_retirement(generation)
+    } else {
+        false
+    }
 }
 
 #[no_mangle]
@@ -455,7 +487,6 @@ pub extern "system" fn Java_ffi_FFI_releaseService(
     let Some(owner) = current.as_ref() else {
         return jboolean::from(false);
     };
-    let generation = owner.generation;
     let is_current = match env.is_same_object(owner.owner.as_obj(), &service) {
         Ok(is_current) => is_current,
         Err(error) => {
@@ -463,22 +494,17 @@ pub extern "system" fn Java_ffi_FFI_releaseService(
             return jboolean::from(false);
         }
     };
-    if is_current {
-        if let Some(generation) = generation {
-            if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
-                log::warn!(
-                    "failed to retire Android raw-video generation {generation} during MainService release"
-                );
-            }
-            if !SCREEN_SIZE.lock().unwrap().retire_generation(generation) {
-                log::warn!(
-                    "failed to retire Android screen-size generation {generation} during MainService release"
-                );
-            }
-        }
-        current.take();
+    if !is_current {
+        return jboolean::from(false);
     }
-    jboolean::from(is_current)
+    if !owner.generation.may_release_callback_owner() {
+        log::error!(
+            "refusing to release MainService callback authority before exact generation retirement"
+        );
+        return jboolean::from(false);
+    }
+    current.take();
+    jboolean::from(true)
 }
 
 #[no_mangle]
@@ -577,7 +603,10 @@ pub fn call_main_service_pointer_input_for_generation(
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation == 0 || connection_id <= 0 || context.generation != Some(generation) {
+    if generation == 0
+        || connection_id <= 0
+        || !context.generation.is_activation_claimed(generation)
+    {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;
@@ -607,7 +636,10 @@ pub fn call_main_service_key_event_for_generation(
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation == 0 || connection_id <= 0 || context.generation != Some(generation) {
+    if generation == 0
+        || connection_id <= 0
+        || !context.generation.is_activation_claimed(generation)
+    {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;
@@ -681,7 +713,7 @@ pub fn call_main_service_set_by_name_for_generation(
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation == 0 || context.generation != Some(generation) {
+    if generation == 0 || !context.generation.is_activation_claimed(generation) {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;
@@ -713,7 +745,7 @@ pub fn call_main_service_set_half_scale_for_generation(
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation == 0 || context.generation != Some(generation) {
+    if generation == 0 || !context.generation.is_activation_claimed(generation) {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;

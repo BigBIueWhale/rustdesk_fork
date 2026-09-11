@@ -89,7 +89,7 @@ def validate(sources: Dict[str, str]) -> None:
     for function in (
         "begin(generation: Long)",
         "setMediaProjectionReady(generation: Long, ready: Boolean)",
-        "retire(generation: Long)",
+        "retireOrConfirmInactive(generation: Long)",
         "snapshot(): MainServiceStatus?",
     ):
         require(
@@ -108,29 +108,33 @@ def validate(sources: Dict[str, str]) -> None:
         begin,
         (
             "generation <= 0L",
-            "generation < greatestGeneration",
-            "generation == greatestGeneration && activeGeneration != generation",
             "return false",
             "if (activeGeneration == generation)",
             "return true",
+            "activeGeneration != null || generation <= greatestGeneration",
+            "return false",
             "greatestGeneration = generation",
             "activeGeneration = generation",
             "mediaProjectionReady = false",
             "return true",
         ),
-        "positive monotonic status generation begin",
+        "positive monotonic status generation begin after exact predecessor retirement",
     )
     readiness = extract(
         owner,
         "    fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean {",
-        "\n    @Synchronized\n    fun retire",
+        "\n    @Synchronized\n    fun retireOrConfirmInactive",
         "status MediaProjection readiness",
     )
     require_order(
         readiness,
         (
-            "generation <= 0L || activeGeneration != generation",
+            "generation <= 0L",
             "return false",
+            "activeGeneration != generation",
+            "return !ready",
+            "activeGeneration == null",
+            "greatestGeneration == generation",
             "mediaProjectionReady = ready",
             "return true",
         ),
@@ -138,14 +142,18 @@ def validate(sources: Dict[str, str]) -> None:
     )
     retire = extract(
         owner,
-        "    fun retire(generation: Long): Boolean {",
+        "    fun retireOrConfirmInactive(generation: Long): Boolean {",
         "\n    @Synchronized\n    fun snapshot",
         "status generation retirement",
     )
     require_order(
         retire,
         (
-            "generation <= 0L || activeGeneration != generation",
+            "generation <= 0L",
+            "return false",
+            "activeGeneration == null",
+            "return greatestGeneration == generation",
+            "activeGeneration != generation",
             "return false",
             "activeGeneration = null",
             "mediaProjectionReady = false",
@@ -354,10 +362,12 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         generation_retirement,
         (
-            "serviceGenerationOwner.retire(generation)",
-            "FFI.stopServer(this, retirement.generation)",
+            "serviceGenerationOwner.beginRetirement(generation)",
+            "FFI.deactivateServer(this, retirement.generation)",
             "retirement.retireStatus",
-            "statusOwner.retire(retirement.generation)",
+            "statusOwner.retireOrConfirmInactive(retirement.generation)",
+            "FFI.retireServerGeneration(this, retirement.generation)",
+            "serviceGenerationOwner.completeRetirement(retirement.generation)",
             "nativeServerGeneration = 0L",
         ),
         "attempt-aware exact status retirement",
@@ -600,8 +610,8 @@ def validate(sources: Dict[str, str]) -> None:
 
     for token, label in (
         (
-            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test",
-            "shared focused mutation gate",
+            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo .",
+            "shared focused source gate",
         ),
         (
             "R-S11en/R-S11e-175 Android exact-generation service status and explicit-stop authority",

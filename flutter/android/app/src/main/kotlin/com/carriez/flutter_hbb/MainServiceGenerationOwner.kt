@@ -13,11 +13,13 @@ internal class MainServiceGenerationOwner {
         VOICE_ATTEMPTED,
         ACTIVATION_ATTEMPTED,
         COMMITTED,
+        RETIRING,
     }
 
     private var greatestGeneration = 0L
     private var activeGeneration: Long? = null
     private var phase: Phase? = null
+    private var retirement: MainServiceGenerationRetirement? = null
 
     @Synchronized
     fun beginReservation(generation: Long): Boolean {
@@ -30,6 +32,7 @@ internal class MainServiceGenerationOwner {
         greatestGeneration = generation
         activeGeneration = generation
         phase = Phase.RESERVED
+        retirement = null
         return true
     }
 
@@ -77,20 +80,50 @@ internal class MainServiceGenerationOwner {
     }
 
     @Synchronized
-    fun retire(generation: Long): MainServiceGenerationRetirement? {
+    fun beginRetirement(generation: Long): MainServiceGenerationRetirement? {
         if (generation <= 0L || activeGeneration != generation) {
             return null
         }
+        retirement?.let { current ->
+            return if (current.generation == generation && phase == Phase.RETIRING) {
+                current
+            } else {
+                null
+            }
+        }
         val currentPhase = phase ?: return null
-        val retirement = MainServiceGenerationRetirement(
+        if (currentPhase == Phase.RETIRING) {
+            return null
+        }
+        val plan = MainServiceGenerationRetirement(
             generation = generation,
             retireStatus = currentPhase != Phase.RESERVED,
             retireVoice = currentPhase == Phase.VOICE_ATTEMPTED ||
                 currentPhase == Phase.ACTIVATION_ATTEMPTED ||
                 currentPhase == Phase.COMMITTED,
         )
+        phase = Phase.RETIRING
+        retirement = plan
+        return plan
+    }
+
+    @Synchronized
+    fun completeRetirement(generation: Long): Boolean {
+        if (generation <= 0L ||
+            activeGeneration != generation ||
+            phase != Phase.RETIRING ||
+            retirement?.generation != generation
+        ) {
+            return false
+        }
         activeGeneration = null
         phase = null
-        return retirement
+        retirement = null
+        return true
+    }
+
+    @Synchronized
+    fun hasActiveGeneration(): Boolean {
+        return activeGeneration != null
     }
 }

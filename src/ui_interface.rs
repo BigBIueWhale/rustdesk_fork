@@ -341,7 +341,7 @@ pub fn set_option(key: String, value: String) {
     // macos.rs, any ipc::set_option). The key stays pinned "N" + in the is_option_can_save reject set
     // (R-S16/R-S11), so a write now falls through inert. On Android there is no stop-service config toggle at all: the
     // controlled-side stop is the OS foreground-service lifecycle (MainService.onDestroy -> the JNI
-    // stopServer, which drives the direct listener's service-owned-generation teardown, R-D7a), not
+    // deactivateServer, which drives the direct listener's exact-generation teardown, R-D7a), not
     // a Config write — so no option-write path reaches the Android listener either.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {

@@ -20,7 +20,8 @@ object FFI {
     external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long
     external fun activateServer(service: Context, generation: Long): Boolean
     external fun isServerGenerationActive(service: Context, generation: Long): Boolean
-    external fun stopServer(service: Context, generation: Long): Boolean
+    external fun deactivateServer(service: Context, generation: Long): Boolean
+    external fun retireServerGeneration(service: Context, generation: Long): Boolean
     external fun beginClientSessionOwner(): Long
     external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean
     external fun resumeClientSessionOwner(generation: Long, sessionId: String): Long

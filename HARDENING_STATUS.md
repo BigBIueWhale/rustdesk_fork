@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2b94f9df3978be5d7dbd1f9a76010cecda525fca8b63503474186d44ab32b05e  requirements.html
+6eee7fe26dd6e7bae11449f00dd4ee1b27615d54ee3d7b1e207487a756143041  requirements.html
 ```
 
 ## Current Verdict
@@ -27461,194 +27461,71 @@ performant remain explicit release obligations and explicit user requests.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 
-**Status:** SOURCE IMPLEMENTED / DETERMINISTIC KOTLIN TEST AUTHORED BUT
-UNEXECUTED / CONFINED SOURCE AND MUTATION VERIFICATION COMPLETE / EXACT
-KOTLIN/RUST/JNI, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.
+**Status:** SOURCE CORRECTED / EXECUTABLE KOTLIN AND RUST STATE TESTS GREEN IN
+A CONFINED CONTAINER / ANDROID JNI, APK, EMULATOR/DEVICE, PERFORMANCE,
+ARTIFACT, INDEPENDENT-REPRODUCTION, AND RELEASE EVIDENCE OPEN — STOP-SHIP.
 
-Read-only continuation review found a concrete controlled-side Android startup
-split. `MainService.onCreate` called `FFI.startServer`, which established and
-spawned a live native direct-listener generation, and only afterward attempted
-screen-information publication, process-wide status ownership, and
-process-wide controlled-audio ownership. Any later false return left that
-listener live while `acceptingControlledConnections` remained false. Creation
-nevertheless foregrounded the Service, acquired the partial keepalive
-wakelock, and registered its network callback. Android task removal
-deliberately preserves this foreground Service. This source shape can explain
-the narrow condition “file transfer still works while controlled display and
-input callbacks are dead” until Force Stop or process death, because native
-file work can continue through the listener while Kotlin rejects controlled
-connection admission. It does not establish that an unidentified installed
-artifact exercised the path or that it caused the separately reported
-outgoing-viewer Android or Windows focus-delay symptoms.
+**Current state.** `MainService` startup keeps the listener inactive until the
+same positive generation owns screen, status, voice, committed callback
+admission, and one exact activation claim. Listener-task or worker termination
+deactivates only its captured generation, and health requires the retained
+Service object, generation, and active native lifecycle. Bound-only creation
+remains inert; each explicit start performs one bounded health/start attempt;
+task swipe does not weaken foreground-service persistence.
 
-The native ownership review found that stopping the direct listener alone was
-not sufficient for a correct in-process retry. `bind_main_service_generation`
-also retained the active raw-video and screen-size generation in the exact
-`MainService` callback context and refused a second generation until complete
-Service release. Releasing the entire callback object on a transient startup
-failure would make a bound persistent Service unusable or require ambient
-reinitialization. Callback-context installation now returns a Boolean admission
-result: it is idempotent for the same Service object, permits a different object
-only while the retained context owns no generation, and refuses to replace an
-active foreign owner. `MainService` records that result as cross-thread-visible
-state and cannot enter its startup transaction without it. Thus abnormal
-replacement cannot silently retire raw/screen state while leaving the old
-direct listener alive. The correction also adds an exact object-and-generation
-native retirement operation. `retire_main_service_generation` first proves
-both the retained Service object and exact generation, retires raw-video and
-screen-size state, and clears only that generation binding; only a successful
-proof may then deactivate the matching reserved or active direct-listener
-lifecycle. The Service callback object remains retained, so a later explicit
-Android start can bind a strictly higher generation. A stale object or
-generation cannot stop or clear a replacement.
+**Retirement boundary.** `MainServiceGenerationOwner` now adds a `RETIRING`
+phase and retains one immutable cleanup plan until `completeRetirement`.
+Replacement remains blocked throughout, and the process-wide status, voice,
+raw-video, and screen-size owners independently refuse successor admission
+until their exact predecessor has retired. Retirement closes callback admission,
+then exact-object-and-generation `deactivateServer` stops or confirms the
+reserved/active/terminally-stopped listener without discarding raw-video,
+screen, or callback ownership. Voice and status cleanup accept an exact retry
+but reject a stale generation after replacement. Only after those steps succeed
+may `retireServerGeneration` prove listener inactivity, retire-or-confirm both
+native resource owners, and clear native generation authority. Kotlin ownership
+and `nativeServerGeneration` clear only after that acknowledgement.
+`releaseService` has no best-effort cleanup fallback and refuses while any
+generation remains. Activation failure deactivates but leaves cleanup authority
+for Kotlin rollback. If an explicit start cannot finish cleanup, the inactive
+generation, exact callback object, foreground Service, and notification remain
+available for a later explicit retry; the Service publishes failure and neither
+accepts callbacks nor retries automatically. A fully retired failure stops only
+its exact start request. Any false cleanup result therefore retains an exact
+retry path rather than requiring Force Stop or process death.
 
-One private serialized `MainServiceGenerationOwner` now models Reserved,
-StatusAttempted, VoiceAttempted, ActivationAttempted, and Committed phases.
-Only a fresh positive strictly increasing generation may begin while no
-transaction is active. Status, voice, and listener-activation attempts are
-recorded before invoking their corresponding potentially state-mutating
-operations. The generated retirement plan therefore selects no unrelated owner
-for reservation-only failure, status only for a status attempt, and status plus
-voice for a voice, activation, or committed generation. Commit is possible
-only after every predecessor.
+**Evidence on the current worktree.** In the immutable local verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+running as UID 1000 with `--network=none`, all capabilities dropped, a read-only
+repository, and no published ports, the real production Kotlin owner classes
+compiled with the locally cached Kotlin 2.2.10 compiler on Temurin 17 and their
+three executable state programs passed. This is not the project-pinned Kotlin
+2.0.21 Android Gradle/APK build. The pinned Rust 1.75 compiler built and ran two native
+MainService-generation tests and five raw/screen-generation tests; all seven
+passed, and both dependency-free production state modules compiled for the
+installed `aarch64-linux-android` standard library. The focused startup,
+listener, status, raw/screen, and voice source baselines passed after the startup
+verifier was reduced from a mutation catalog to a load-bearing
+ordering/fallback-absence check. The shared workspace source baseline was
+updated for the two-phase model and passed in 6.7 seconds; its multi-hour
+mutation catalog is no longer part of the ordinary `verify.sh` path and was not
+run or credited. Pre/post read-only host
+listener inventories were identical for every confined run. This evidence
+proves the pure state transitions and current source ordering only; it does not
+execute JNI or Android framework behavior.
 
-The native startup edge is also two-phase now. `FFI.startServer` enters
-`bind_main_service_generation`, which proves the exact retained Service object
-under the callback-context write lock before its supplied allocator may advance
-the listener generation. It then binds raw-video/screen state while leaving the
-positive Kotlin-`Long`-range generation Reserved and inactive; no server thread
-or socket can exist, and the listener lifecycle itself refuses another
-reservation while any generation remains Reserved or Active. Kotlin completes
-screen/status/voice publication, records
-activation, commits its closed state machine, and opens cross-thread-visible
-controlled callback admission. Only then does exact-object-and-generation
-`FFI.activateServer` claim the single start, perform the one-way Reserved to
-Active transition, and use a named fallible thread constructor to run the
-direct server with that generation captured by value. A duplicate, stale,
-foreign, already-active, or never-reserved activation is refused. If activation
-or thread construction fails, JNI retires the exact native claim before
-deactivating its lifecycle; Kotlin then converges the attempt-recorded owners.
-Consequently there is no pre-admission interval in which a successfully
-starting listener can accept a connection whose one `add_connection` callback
-is rejected and never replayed, and an obsolete Service cannot supersede the
-current listener merely by requesting a generation.
-
-Continuation review then found a second, subtler terminal-state hole in that
-two-phase correction. A successful thread spawn is not proof that the spawned
-server worker or its `direct_server` task remains alive. Without a terminal
-edge, either could return after activation while Kotlin continued treating the
-Committed generation as idempotently healthy indefinitely. The JNI-spawned
-worker now owns an exact-generation RAII guard, and `start_direct_only`
-retains and selects on the direct-listener `JoinHandle` instead of observing
-only the one-second lifecycle poll. Listener-task return or failure makes the
-server worker return; normal return and unwind both drop the guard and
-deactivate only its captured generation. A late guard from an obsolete worker
-cannot touch a replacement. Exact JNI health now requires both the retained
-Service-object/generation owner and that same active listener generation.
-`MainService` accepts Committed as idempotent only while that proof succeeds.
-At the next explicit start callback, a Committed-but-inactive generation is
-exact-retired and one fresh generation is attempted in the same bounded call.
-Service-requested exact retirement accepts an already-inactive same generation
-after terminal-worker convergence, but continues to reject stale objects and
-generations. This adds no monitor, retry timer, reconnect loop, or second
-worker.
-
-The whole Kotlin startup/retirement transaction uses
-`controlledServiceGenerationLock`, deliberately distinct from the
-`MainService` monitor used by synchronized JNI callbacks. Admission is
-`@Volatile`. This avoids a native/Kotlin lock inversion: a native callback may
-hold the callback-context read lease while waiting for the Service monitor,
-whereas startup or retirement needs the callback-context write lease. Sharing
-the Service monitor for both sides could deadlock teardown; the dedicated lock
-serializes lifecycle transactions without blocking callback admission checks.
-
-Every failed stage closes admission and deactivates the exact native generation
-before clearing its attempt-recorded voice and status owners. It clears the
-Service's local generation only when it still names that exact generation.
-Normal `onDestroy` first closes admission and releases capture, projection,
-input, and per-connection state while the exact voice generation still exists;
-then it invokes the same generation retirement and finally releases the exact
-Service callback object. If the worker already terminated, exact-object native
-retirement first clears raw/screen and one-start ownership, then confirms the
-same listener generation is already inactive. A queued network callback
-observes generation zero or native exact-generation refusal and cannot rebuild
-a replacement listener.
-
-`onCreate` now initializes only the retained callback context, handler, screen
-metadata, and notification builder. It does not start a generation, publish
-foreground state, acquire the keepalive wakelock, or register the network
-callback, so an Activity-bound-only instance remains inert. `onStartCommand`
-publishes the foreground notification first to satisfy Android's foreground
-start deadline, and performs one bounded health/transaction attempt for that
-explicit start callback. A fully healthy Committed generation returns
-idempotently; an unhealthy Committed generation is exact-retired before at most
-one fresh reservation in the same callback. Keepalive/network resources are
-acquired only after successful listener activation. On failure it removes the
-foreground notification, uses
-`stopSelfResult(startId)` so only that exact started request is retired, and
-returns `START_NOT_STICKY`. An Activity-bound Service therefore remains inert
-rather than pretending to be available; a later explicit start is the only
-retry edge and may reserve a fresh generation. There is no timer, delayed or
-automatic retry, reconnect loop, sticky/redelivered restart, Service/Activity
-or process kill, weakening of swipe-away persistence, new worker/task/thread
-or runtime, alternate listener/transport/port, dependency, privilege
-transition, or host/network behavior.
-
-The deterministic Kotlin regression covers invalid and reused generations,
-single active ownership, stale retirement, reservation-only, status-failure,
-voice-failure, and pre-activation commit behavior, refusal to commit before all
-stages, committed retirement, and a fresh higher generation after rollback.
-The focused listener lifecycle contract additionally binds inactive
-reservation, single activation, terminal task observation, exact
-already-inactive convergence, active-generation health, worker-exit
-deactivation, and positive Kotlin-`Long` exhaustion. The focused
-`scripts/verify-android-service-startup-transaction.py` contract derives that
-state machine, MainService initialization/rollback/create/start/destroy order,
-the deferred exact Service-and-generation listener activation and retirement
-paths, canonical gate wiring, the normative requirement, Appendix disposition,
-and independent workspace binding. Its deliberate mutations reject weakening
-of each boundary. Continuation verification also hardened the independent
-workspace catalog itself: stale expected-diagnostic names were synchronized to
-the contracts that actually rejected the mutations, ambiguous short targets
-were narrowed to their intended production paths, and the startup verifier's
-own source binding and dispatch are now checked as exact multiline/indented
-statements rather than short substrings that also occurred as catalog data.
-
-On the final frozen source and verifier bytes, the confined focused startup,
-MainService-status, listener-generation, raw/screen-generation, and adjacent
-voice/cross-cutting gates rejected 72, 36, 49, 68, and 545 deliberate
-mutations respectively. The independent workspace baseline returned
-`verify-verifier-workspace: ok`; its complete unsliced source-mutation entry
-point then rejected all 5,118 catalog entries from mutation one through the
-final tail and returned `verify-verifier-workspace: ok`. In-memory Python AST
-parsing covered all 134 `scripts/*.py` modules; Bash syntax parsing passed for
-`scripts/verify.sh`, `scripts/dart-verify.sh`, and
-`scripts/native-codec-watch.sh`; `requirements.html` parsed and its synchronized
-SHA-256 remained
-`b65752b291b2887a1f0909fd8b09b0d49359850a1ec08d99fcd858314120970b`;
-and native-codec-watch normal and self-test modes passed. These are source and
-deliberate-mutation results only: the approved verifier image has no applicable
-Kotlin/Rust/JNI compiler/runtime execution evidence, and no device, installed
-artifact, or physical-platform run is inferred from them.
-
-This slice does not inspect, stop, restart, modify, or connect to a host
-RustDesk process or service; inspect or change host firewall/network/listener
-state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated container/image; or request/acquire root. It is source-proven Android
-controlled-Service startup/resource/finality debt, not evidence of compromise,
-exploitation, public exposure, privilege escalation, or host/service/network
-modification.
-
-Exact Kotlin/Rust/JNI compilation and execution, injected failure at every
-startup stage, physical Android task-swipe/reopen/Force-Stop behavior, Windows
-focus/minimize/reconnect reproduction, Linux/macOS/iOS and cross-version
-behavior, capture-through-compositor timestamps, explicit end-to-end
-latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-clean committed cold R-B2/R-B10 equality, installed artifacts/service
-behavior, fresh independent reproduction, R-V3 external review, causation,
-and proof that the complete connection flow is correct and performant remain
-explicit release obligations and explicit user requests.
+**Still open / STOP-SHIP.** No locally owned Android emulator/device system image,
+Android NDK, or complete offline Android build dependency closure is present, so
+the project-pinned Kotlin/Gradle build, exact JNI compilation, candidate APK
+installation, injected failure at every startup and retirement stage,
+task-swipe/reopen/Service-recreation/Force-Stop behavior, connection and
+reconnection, real file/display/control/capture/audio operation, listener and
+thread finality, memory/handle/queue/CPU/latency measurement, and sustained
+resource soak remain unproved. Windows focus/minimize display latency,
+Linux/macOS/iOS and cross-version behavior, signed/installed artifacts, clean
+committed cold R-B2/R-B10 equality, independent reproduction, R-V3 external
+review, causation, and proof that the complete connection flow is correct and
+performant also remain explicit release obligations.
 
 ### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
 

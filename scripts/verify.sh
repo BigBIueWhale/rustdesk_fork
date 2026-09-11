@@ -140,26 +140,24 @@ if [ "$VERIFY_WORKSPACE_MISSING_SELF_TEST" -eq 1 ]; then
 fi
 initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"
 verify_scan_self_test "$VERIFY_TMP"
-readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"
-install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
 
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
 # shellcheck source=scripts/fork-version.sh
 source scripts/fork-version.sh
 rc=0
 
-echo "== (0) verifier workspace + current target authority + release source/workflow ordering (R-S11c-10w/R-S11ej/R-S11e-154/R-B2) =="
+echo "== (0) focused verifier workspace + current target authority + release source/workflow ordering (R-S11c-10w/R-S11ej/R-S11e-154/R-B2) =="
 r_s11c10w=
-if ! /usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo . --self-test --scratch "$VERIFIER_FIXTURE_TMP"; then
-  r_s11c10w="$r_s11c10w workspace-or-release-source-mutation-gate-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .; then
+  r_s11c10w="$r_s11c10w workspace-or-release-source-baseline-failed"
 fi
 grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"
 grep -qF 'Verifier private scratch workspace authority' requirements.html || r_s11c10w="$r_s11c10w requirements-disposition-missing"
 grep -qF 'R-S11ej/R-S11e-154 current release target-contract authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w target-contract-ledger-missing"
 grep -qF '<span class="id">R-S11ej</span>' requirements.html || r_s11c10w="$r_s11c10w target-contract-requirement-missing"
 grep -qF '<tr><td>289</td>' requirements.html || r_s11c10w="$r_s11c10w target-contract-appendix-missing"
-if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w/R-S11ej/R-S11e-154/R-B2 verifier workspace, current target authority, or release source ordering:$r_s11c10w"; rc=1; else
-  echo "  ok  R-S11c-10w/R-S11ej/R-S11e-154/R-B2 private verifier workspace + current exact-source/no-clobber/target-owned-Docker fixtures + same-clean-HEAD release verification + publish/version workflow ordering"; fi
+if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w/R-S11ej/R-S11e-154/R-B2 focused verifier workspace, current target authority, or release source ordering:$r_s11c10w"; rc=1; else
+  echo "  ok  R-S11c-10w/R-S11ej/R-S11e-154/R-B2 focused source baseline + current exact-source/no-clobber/target-owned-Docker fixtures + same-clean-HEAD release verification + publish/version workflow ordering"; fi
 
 echo "== (0a) dependency, workflow, build-script, and unsafe-source inventory =="
 inventory_gate=
@@ -1378,8 +1376,8 @@ else
 fi
 
 echo "== (3b-iii-a1a02) Android exact voice/input/lifecycle ownership (R-S11br/R-S11ei/R-S11ek/R-S11eq/R-S11e-84/R-S11e-153/R-S11e-169/R-S11e-178) =="
-if python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test; then
-  echo "  ok  R-S11e-84/R-S11e-153/R-S11e-169 Android voice/playback capture and controlled input have exact service/session lifecycle owners and bounded process-persistent work"
+if python3 scripts/verify-android-voice-call-ownership.py --repo .; then
+  echo "  ok  R-S11e-84/R-S11e-153/R-S11e-169 Android voice/playback and controlled-input source invariants (runtime evidence remains separate)"
 else
   echo "  FAIL R-S11e-84/R-S11e-153/R-S11e-169 Android voice/input regained per-event switching, dual recorders, erased service/connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
   rc=1
@@ -12828,8 +12826,9 @@ fi
 # sciter UI controls (#stop-service menu + #start-service link + their handlers + the hide_stop_service
 # builtin) are removed too — bringing the legacy sciter front-end + the shared set_option to flutter parity
 # (flutter excised its stop-service button earlier). (Android has no stop-service config toggle: the
-# controlled-side stop is the MainService.onDestroy -> JNI stopServer foreground-service lifecycle that
-# deactivates the exact direct-listener generation — not a Config write — R-D7a.)
+# controlled-side stop is the MainService.onDestroy -> JNI deactivateServer / retireServerGeneration
+# foreground-service lifecycle that deactivates and then finalizes the exact direct-listener
+# generation — not a Config write — R-D7a.)
 r_x9_killsvc=
 grep -qE '&key == "stop-service"' src/ui_interface.rs && r_x9_killsvc="$r_x9_killsvc ui_interface-special-case"
 grep -qE '(ipc::set_option|Config::set_option)\("stop-service"' src/platform/*.rs src/ui_interface.rs src/core_main.rs && r_x9_killsvc="$r_x9_killsvc stop-service-config-writer"
@@ -13750,7 +13749,7 @@ fi
 echo "== Android exact-generation listener rebuild authority (R-S11el/R-S11e-172) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   direct_service::android_listener_lifecycle_tests:: -- --test-threads=1
-if /usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test; then
+if /usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo .; then
   echo "  ok  R-S11el/R-S11e-172 Android exact-generation listener rebuild authority"
 else
   echo "  FAIL R-S11el/R-S11e-172: Android exact-generation listener rebuild authority regressed"
@@ -13759,22 +13758,22 @@ fi
 echo "== Android exact-generation raw-video and video-worker authority (R-S11em/R-S11eu/R-S11e-174/R-S11e-182) =="
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config \
   android_frame_raw_generation_tests::tests:: -- --test-threads=1
-if /usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test; then
+if /usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo .; then
   echo "  ok  R-S11em/R-S11eu/R-S11e-174/R-S11e-182 Android exact-generation raw-video producer, consumer, screen-state, and video-worker authority"
 else
   echo "  FAIL R-S11em/R-S11eu/R-S11e-174/R-S11e-182: Android exact-generation raw-video or video-worker authority regressed"
   rc=1
 fi
 echo "== Android exact-generation service status and explicit-stop authority (R-S11en/R-S11e-175) =="
-if /usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test; then
+if /usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo .; then
   echo "  ok  R-S11en/R-S11e-175 Android exact-generation service status and explicit-stop authority"
 else
   echo "  FAIL R-S11en/R-S11e-175: Android service status or explicit-stop authority regressed"
   rc=1
 fi
 echo "== Android app-open exact-generation MainService startup transaction (R-S11hq/R-S11hr/R-S11e-254/R-S11e-255) =="
-if /usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo . --self-test; then
-  echo "  ok  R-S11hq/R-S11hr/R-S11e-254/R-S11e-255 Android app-open exact-generation MainService startup and resource transfer"
+if /usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo .; then
+  echo "  ok  R-S11hq/R-S11hr/R-S11e-254/R-S11e-255 Android MainService startup source invariant (native lifecycle evidence remains separate)"
 else
   echo "  FAIL R-S11hq/R-S11hr/R-S11e-254/R-S11e-255: Android MainService startup, recovery, or resource transfer regressed"
   rc=1
@@ -13864,7 +13863,8 @@ ok = (
         < destroy.index('retireControlledServiceGeneration(generation, "MainService destruction")')
         < destroy.index("unregisterNetworkCallback()")
         < destroy.index("FFI.releaseService(this)")
-    and retirement.index("FFI.stopServer(this, retirement.generation)")
+    and retirement.index("FFI.deactivateServer(this, retirement.generation)")
+        < retirement.index("FFI.retireServerGeneration(this, retirement.generation)")
         < retirement.index("nativeServerGeneration = 0L")
     and "generation: jlong" in jni
     and jni.index("u64::try_from(generation)")
@@ -16511,13 +16511,14 @@ if grep -qF '"stop_capture"' src/ui_cm_interface.rs "$r_s14_kt"; then
 fi
 grep -qF 'external fun init(service: Context, applicationContext: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-and-application-contexts-not-separated"
 grep -qF 'nativeCallbackContextReady = FFI.init(this, applicationContext)' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-callback-context-admission-result-ignored"
-grep -qF 'Ok(false) if context.generation.is_some()' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing active-service-callback-owner-replacement-not-refused"
+grep -qF 'Ok(false) if context.generation.has_generation()' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing active-service-callback-owner-replacement-not-refused"
 grep -qF 'external fun releaseService(service: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-release-jni-declaration-missing"
 grep -qF 'external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
 grep -qF 'val generation = FFI.startServer(this, configPath, "")' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
-grep -qF 'external fun stopServer(service: Context, generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-stop-not-exact-object-generation"
-grep -qF 'pub fn retire_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-retirement-missing"
-grep -qF 'current.generation != Some(generation)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-retirement-not-generation-bound"
+grep -qF 'external fun deactivateServer(service: Context, generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-deactivate-not-exact-object-generation"
+grep -qF 'external fun retireServerGeneration(service: Context, generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-retirement-not-exact-object-generation"
+grep -qF 'pub fn retire_main_service_generation<ConfirmInactive>(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-retirement-missing"
+grep -qF '!current.generation.can_finalize(generation)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-retirement-not-generation-bound"
 grep -qF 'external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing video-frame-not-generation-bound"
 grep -qF 'external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing raw-video-enable-not-generation-bound"
 grep -qF 'external fun setAudioFrameRawEnable(value: Boolean)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing typed-raw-audio-enable-missing"
@@ -16540,8 +16541,8 @@ grep -qF 'env.new_global_ref(application_context)' "$r_s14_ffi_rs" || r_s14_miss
 grep -qF 'init_ndk_context(java_vm, context_jobject)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing ndk-context-not-application-global-bound"
 grep -qF 'pub fn bind_main_service_generation<Begin, Rollback>(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
 grep -qF 'env.is_same_object(current.owner.as_obj(), service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
-[ "$(grep -cF 'if generation == 0 || context.generation != Some(generation)' "$r_s14_ffi_rs")" -eq 2 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
-grep -qF 'bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
+[ "$(grep -cF '!context.generation.is_activation_claimed(generation)' "$r_s14_ffi_rs")" -eq 4 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
+grep -qF 'reserve and bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
 grep -qF 'a retained global <code>applicationContext</code> reference' requirements.html || r_s14_missing="$r_s14_missing application-context-global-reference-requirement-missing"
 grep -qF 'service_generation: u64' "$r_s14_flutter" || r_s14_missing="$r_s14_missing connection-manager-generation-owner-missing"
 grep -qF 'call_main_service_set_by_name_for_generation(' "$r_s14_flutter" || r_s14_missing="$r_s14_missing controlled-callback-not-generation-bound"

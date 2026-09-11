@@ -12,14 +12,14 @@ internal class MainServiceStatusOwner {
 
     @Synchronized
     fun begin(generation: Long): Boolean {
-        if (generation <= 0L ||
-            generation < greatestGeneration ||
-            (generation == greatestGeneration && activeGeneration != generation)
-        ) {
+        if (generation <= 0L) {
             return false
         }
         if (activeGeneration == generation) {
             return true
+        }
+        if (activeGeneration != null || generation <= greatestGeneration) {
+            return false
         }
         greatestGeneration = generation
         activeGeneration = generation
@@ -29,16 +29,27 @@ internal class MainServiceStatusOwner {
 
     @Synchronized
     fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean {
-        if (generation <= 0L || activeGeneration != generation) {
+        if (generation <= 0L) {
             return false
+        }
+        if (activeGeneration != generation) {
+            return !ready &&
+                activeGeneration == null &&
+                greatestGeneration == generation
         }
         mediaProjectionReady = ready
         return true
     }
 
     @Synchronized
-    fun retire(generation: Long): Boolean {
-        if (generation <= 0L || activeGeneration != generation) {
+    fun retireOrConfirmInactive(generation: Long): Boolean {
+        if (generation <= 0L) {
+            return false
+        }
+        if (activeGeneration == null) {
+            return greatestGeneration == generation
+        }
+        if (activeGeneration != generation) {
             return false
         }
         activeGeneration = null

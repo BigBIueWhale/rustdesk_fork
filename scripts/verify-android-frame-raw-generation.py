@@ -103,13 +103,13 @@ def validate(sources: Dict[str, str]) -> None:
             "BeginGeneration::Rejected",
             "if self.active_generation == Some(generation)",
             "BeginGeneration::Current",
-            "if generation <= self.greatest_generation",
+            "self.active_generation.is_some() || generation <= self.greatest_generation",
             "BeginGeneration::Rejected",
             "self.greatest_generation = generation",
             "self.active_generation = Some(generation)",
             "BeginGeneration::New",
         ),
-        "checked monotonic raw-video begin",
+        "checked monotonic raw-video begin after exact predecessor retirement",
     )
     retire = extract(
         owner,
@@ -141,8 +141,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     for token, label in (
         (
-            "stale_generation_cannot_mutate_replacement",
-            "stale-generation behavior regression",
+            "successor_cannot_bypass_exact_generation_retirement",
+            "successor-before-retirement behavior regression",
         ),
         (
             "exact_retirement_prevents_same_generation_reactivation",
@@ -153,8 +153,8 @@ def validate(sources: Dict[str, str]) -> None:
             "monotonic behavior regression",
         ),
         (
-            "assert!(!owner.retire(7));\n        assert!(owner.admits(8));",
-            "stale retirement preserves replacement assertion",
+            "assert_eq!(owner.begin(8), BeginGeneration::Rejected);",
+            "successor cannot bypass active owner assertion",
         ),
         (
             "assert_eq!(owner.begin(12), BeginGeneration::Rejected);",
@@ -186,7 +186,7 @@ def validate(sources: Dict[str, str]) -> None:
             "self.owner.begin(generation)",
             "BeginGeneration::New",
             "self.size = None",
-            "if !self.owner.retire(generation)",
+            "if !self.owner.retire_or_confirm_inactive(generation)",
             "self.size = None",
             "if !self.owner.admits(generation)",
             "!matches!(size.2, 1 | 2)",
@@ -253,7 +253,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         retire_wrapper,
         (
-            "if !self.owner.retire(generation)",
+            "if !self.owner.retire_or_confirm_inactive(generation)",
             "return false",
             "self.frame.set_enable(false)",
             "true",
@@ -269,7 +269,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         set_wrapper,
         (
-            "if !self.owner.admits(generation)",
+            "if (value && !self.owner.admits(generation))",
+            "|| (!value && !self.owner.admits_cleanup(generation))",
             "return false",
             "self.frame.set_enable(value)",
             "true",
@@ -429,10 +430,10 @@ def validate(sources: Dict[str, str]) -> None:
             "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
             "env.is_same_object(context.owner.as_obj(), &service)",
             "Ok(true) => return jboolean::from(true)",
-            "Ok(false) if context.generation.is_some()",
+            "Ok(false) if context.generation.has_generation()",
             "return jboolean::from(false)",
             "*current = Some(MainServiceContext {",
-            "generation: None",
+            "generation: MainServiceGenerationState::default()",
             "owner: retained_service",
             "jboolean::from(true)",
         ),
@@ -451,14 +452,14 @@ def validate(sources: Dict[str, str]) -> None:
             "service.is_null()",
             "MAIN_SERVICE_CTX.write().unwrap()",
             "env.is_same_object(current.owner.as_obj(), service)",
-            "if current.generation.is_some()",
+            "if !current.generation.may_release_callback_owner()",
             "let generation = begin_generation()",
             "if generation == 0",
             "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
             "rollback_generation(generation)",
             "SCREEN_SIZE.lock().unwrap().begin_generation(generation)",
             "rollback_generation(generation)",
-            "current.generation = Some(generation)",
+            "current.generation.begin(generation)",
             "Some(generation)",
         ),
         "object-authorized raw-video begin before callback generation publication",
@@ -472,16 +473,16 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         release,
         (
-            "let generation = owner.generation",
             "env.is_same_object(owner.owner.as_obj(), &service)",
-            "if is_current",
-            "VIDEO_RAW.lock().unwrap().retire_generation(generation)",
-            "SCREEN_SIZE.lock().unwrap().retire_generation(generation)",
+            "if !is_current",
+            "if !owner.generation.may_release_callback_owner()",
+            "return jboolean::from(false)",
             "current.take()",
-            "jboolean::from(is_current)",
+            "jboolean::from(true)",
         ),
-        "exact-object release retires only its raw-video generation",
+        "exact-object release refuses best-effort generation cleanup",
     )
+    forbid(release, "retire_generation(generation)", "best-effort release cleanup")
     for token, label in (
         ("call_main_service_get_by_name", "ambient MainService getter"),
         ("pub fn call_main_service_set_by_name(", "generationless MainService setter"),
@@ -499,7 +500,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "generation: u64",
             "half_scale: bool",
-            "context.generation != Some(generation)",
+            "!context.generation.is_activation_claimed(generation)",
             '"rustSetHalfScale"',
             '"(Z)V"',
             "JValue::Bool(jboolean::from(half_scale))",
@@ -859,8 +860,8 @@ def validate(sources: Dict[str, str]) -> None:
             "shared pure behavior gate",
         ),
         (
-            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test",
-            "shared focused mutation gate",
+            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo .",
+            "shared focused source gate",
         ),
         (
             "R-S11em/R-S11eu/R-S11e-174/R-S11e-182 Android exact-generation raw-video producer, consumer, screen-state, and video-worker authority",

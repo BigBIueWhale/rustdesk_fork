@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-dde1ac621888423ca89cd83363a6c9583ab075fa9d487d2b7cdadc7e80e3e797  requirements.html
+da20fe9d326752970c985b505fd4e559087d165e384befd782e4e2c537bb3172  requirements.html
 ```
 
 ## Current Verdict
@@ -3920,105 +3920,56 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   superseded and closed by R-S11cr/R-S11e-110 below; other archive producers and host-side acquisition
   and maintenance candidate-image publication, exact cold R-B2 artifacts, native/device evidence,
   and external R-V3 review remain open.
-- **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — SOURCE IMPLEMENTED
-  2026-07-24; CONFINED TRANSACTION/FIXTURE EVIDENCE RECORDED; OTHER ONLINE PRODUCERS AND EXACT COLD
-  RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the immutable
-  Debian/Android builder containers. Endpoint/action: `scripts/online-fetch.sh::build_frb_codegen` and
-  `stage_cargo_ndk`, which use networked Cargo registry resolution to install
-  `flutter_rust_bridge_codegen` 1.80.1 and `cargo-ndk` 3.1.2. Boundary: registry package/build-script
-  execution ↔ the complete pinned offline-input closure and durable tool-root publication.
+- **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — CURRENT
+  NUMERIC-NONROOT FILESYSTEM TRANSACTION GREEN 2026-09-12; COLD ACQUISITION AND RELEASE EVIDENCE
+  OPEN.** The closed FRB/cargo-ndk producer funnel still gives each pinned builder read-only access to
+  `online` and exactly one private writable Cargo-install root. Exact package, version, feature,
+  binary, target, profile, Rust-archive, pre/post-input, and independent publication-verdict bindings
+  remain in force.
 
-  Before this slice each installer bind-mounted `$ONLINE_DIR` read-write at `/online` and wrote its
-  final Cargo installation root there directly. The legitimate output was one small host-tool tree,
-  but the same mount gave package and build-script execution write/delete authority over all Cargo/Pub
-  state, NDK/vcpkg/native trees, toolchain and builder archives, Windows inputs, and every other cached
-  release input. R-S11cj's numeric non-root container limited that authority to the invoking user's
-  files but did not make the broad bind admissible. This is source-proven acquisition-input and
-  output-publication authority, not evidence that a cached input changed, a container escaped, host
-  root was acquired, a listener was exposed, host RustDesk/service/firewall/network state changed,
-  exploitation occurred, or the host was compromised.
+  A follow-up audit found that the first publication helper did not implement the recovery promise it
+  documented. Its v1 state was durable before producer bytes existed but contained no verified digest
+  or publication-selection phase. `recover()` then classified the recorded inode as published solely
+  because it appeared under `frb-tool` or `cargo-ndk-tool`; it neither validated the tree nor proved
+  that publication had been selected. `online-fetch.sh` subsequently ran `check-complete`, so malformed
+  bytes still failed closed, but recovery had already discarded the transaction distinction and could
+  accept a manually moved, semantically valid yet unselected tree. New current-user-owned outputs also
+  remained owner-writable after publication. This was transaction finality, durability, and immutable-
+  input correctness debt—not evidence of exploitation, host root, a container escape, a listener,
+  host RustDesk/service/firewall/network mutation, or compromise.
 
-  `online-fetch.sh` now routes both operations through one closed two-kind producer funnel. The FRB
-  kind is accepted only with the immutable Debian builder, exact package/binary/version pin, and sole
-  `uuid` feature; cargo-ndk is accepted only with the immutable Android builder, exact package/binary/
-  version pin, and no feature override. The existing acquisition confinement remains unchanged:
-  intentional outbound bridge egress, immutable already-loaded image ID, numeric UID:GID, no pull,
-  read-only root, all capabilities dropped, no-new-privileges, bounded resources/tmpfs, no published
-  port, no Docker socket, and no host namespace.
+  The v2 state now starts explicitly `unselected` with no digest. Post-producer verification normalizes
+  the current-user-owned tree to a private mode-0700 root, mode-0500 descendants/executable, and
+  mode-0400 Cargo metadata; rejects foreign ownership, mounts, links, special files, xattrs, unsafe
+  modes, unstable reads, excess bounds, noncanonical metadata, or a wrong ELF; and computes a domain-
+  separated path/type/mode/content digest. Every file and directory is fsynced and the candidate is
+  revalidated before a replacement state record durably selects that digest. Only that selection may
+  precede `renameat2(RENAME_NOREPLACE)`. Publication changes the root to mode 0500, fsyncs the output and
+  both namespaces, and revalidates the exact identity, digest, modes, and semantics. Rollback returns
+  only that inode to private mode without clobbering.
 
-  The host holds an exclusive lock over the complete tool transaction, verifies the exact pinned Rust
-  1.75 archive SHA-256 before launch and after producer termination, and reconciles every matching
-  reserved transaction before inspecting a final name. A cold run creates unpredictable mode-0700
-  same-filesystem staging and a bounded, mode-0600, fsynced state record binding the exact online,
-  staging, output, kind, tool-version, and Rust-version identities. The producer sees all of `/online`
-  only through `readonly,bind-recursive=disabled`; its sole writable host mount is the exact staged
-  root at `/outputs/tool`. Cargo home, target, and process home stay in bounded container scratch.
-  Cargo receives the fixed package and bare exact version plus `--locked`, exact `--bin`, release
-  profile, `x86_64-unknown-linux-gnu` target, pinned Rust compiler, and only the fixed kind feature.
-  Neither producer retains a path that writes `frb-tool` or `cargo-ndk-tool` directly.
+  Recovery now distinguishes authority from topology. A selected private tree is accepted only after
+  exact digest/semantic validation; a selected tree interrupted after rename is validated in mode 0700,
+  sealed to 0500, fsynced, and validated again. A changed selected tree, ambiguous topology, moved
+  unselected tree, or moved legacy-v1 tree is preserved and rejected. A preparation interrupted before
+  a state record may retire only its still-private output. Existing root-owned complete tools remain
+  non-mutatingly checkable; new current-user-owned tools have one exact sealed form.
 
-  `scripts/online-cargo-tool-output.py` rejects noncanonical roots, descendant mounts, filesystem
-  crossings, nonportable names, symlinks, special objects, external hardlinks/multiply linked files,
-  set-id/sticky mode bits, extended attributes, foreign ownership, group/world-writable published
-  state, unstable reads, changed root identity, or excess depth/count/bytes. It admits exactly
-  `.crates.toml`, `.crates2.json`, and one `bin` child.
-  Both Cargo metadata forms must canonically identify the exact crates.io registry package/version,
-  expected binary, exact features, release profile, host target, and complete pinned Rust 1.75 compiler
-  build record. The sole binary must be nonempty/executable and have a bounded canonical 64-bit
-  little-endian System V x86-64 ELF header and valid program-header bounds. Existing historical
-  root-owned output is only read-only checked by this same semantic validator; a new transaction
-  accepts only current-identity-owned staged bytes.
+  The current executable self-test passed for both tool kinds in a networkless, read-only-root,
+  capability-free, no-new-privileges container as numeric UID/GID 1000:1000. It performs real temporary-
+  filesystem writes, fsyncs, renames, mode transitions, rollback cleanup, and tampering, covering normal
+  publication; selected pre-rename and post-rename recovery; moved-unselected and moved-v1 refusal with
+  preservation; selected digest change; exact final modes; occupied destination; wrong metadata;
+  symlink, external hardlink, xattr, and set-id rejection; and interrupted preparation. The compact
+  focused source contract also passed, binding only the producer envelope and validate-sync-select-
+  rename-seal-postcheck order. The obsolete 36-string mutation catalog and 289-line duplicate workspace
+  verifier were deleted; they did not observe the transaction behavior and had missed this defect.
+  Host listening sockets were identical before and after each confined run.
 
-  Producer, Rust-input, output, and publication verdicts are accumulated independently. Publication
-  is attempted only when the first three are green. Every output file and directory is fsynced before
-  descriptor-relative `renameat2(RENAME_NOREPLACE)` installs the still-absent final name and the two
-  namespace directories are fsynced. A later identity/semantic failure moves that exact inode back
-  without clobber. Restart recovery accepts only the exact recorded unpublished or published inode
-  arrangement; every incoherent state is preserved and rejected. The established exact-owner/mount-
-  bound directory restorer and external-inode-closure remover retire reconciled private staging.
-
-  The design follows primary contracts. Cargo documents `cargo install` exact version, `--locked`,
-  `--root`, binary, feature, target, and profile selection and the installation metadata under the
-  selected root: https://doc.rust-lang.org/cargo/commands/cargo-install.html. Docker documents that
-  bind mounts are writable by default and defines `readonly` plus recursive bind controls:
-  https://docs.docker.com/engine/storage/bind-mounts/. Linux documents descriptor-relative
-  `RENAME_NOREPLACE` and the explicit directory fsync required for durable names:
-  https://man7.org/linux/man-pages/man2/renameat2.2.html and
-  https://man7.org/linux/man-pages/man2/fsync.2.html.
-
-  The executable helper self-test covers both kinds' normal validation, no-clobber publication,
-  completed and unpublished recovery, an occupied destination, wrong Cargo metadata, and symlink
-  rejection. A Cargo 1.75 fixture independently confirmed the real `.crates.toml`/`.crates2.json`
-  layouts used by the validator, and read-only inspection of the established cached tools confirmed
-  the exact registry/version/features/target/compiler records for both pinned packages without
-  changing them. Because the live host cache root is currently mode 0775 and this slice was forbidden
-  to normalize host state merely for a test, both exact tool trees were copied from the read-only
-  source mount into a mode-0700 verifier-tmpfs online root; the production `check-complete` command
-  accepted both complete byte trees there. The focused Cargo-tool verifier passes and rejects all 36
-  deliberate mutations. The independent workspace verifier passes normally and with its complete
-  source-mutation inventory after that inventory exposed and closed older cross-producer Gradle/Cargo
-  mount-token masking. The adjacent Gradle source gate rejects all 34 mutations, the Gradle output gate
-  rejects all 30, and the acquisition-container gate rejects all 29. Directory-restoration, Android
-  exact-source comparison, Gradle and Cargo output transaction, and offline image-provenance self-tests
-  pass. Dependency inventory passes normally and rejects all 103 mutations (905 Cargo packages/36 Git
-  records, 199 Flutter lock packages, and 871 lexical `unsafe {` blocks across 247 tracked Rust files);
-  native-codec normal/mutation, Bash/Python syntax, requirements hash
-  `f4a9f588f536111f9068153169cd5fcdf08d5b782ad4f5d4b7cef3a4c32ec9b5`, and diff-hygiene
-  checks pass. These gates bind the closed kind/image/package/version/feature mapping, exact mounts and
-  Cargo arguments, pre/post input checks, verdict barrier, structural/semantic checks, durability,
-  no-clobber rollback/recovery, shared gate, R-S11cm, Appendix C #232, and this ledger.
-
-  No real networked Cargo installation was run, so this is source, transaction, real-metadata,
-  negative-fixture, and authority-boundary evidence rather than cold acquisition reproduction.
-  Cargo's packaged lockfile is enforced but independent registry-package provenance/reproducible
-  binary hashing remains outside this output-authority slice. The Pub output is closed separately by
-  R-S11cn/R-S11e-106 below, and the libyuv single-file archive is closed by R-S11co/R-S11e-107
-  below. Both x64-linux/arm64-android vcpkg native outputs are closed by R-S11cp/R-S11e-108 below.
-  SDK and other archive producers, host-side downloads/extractions, maintenance candidate-image
-  publication, exact cold R-B2 artifacts,
-  native/device evidence, and external R-V3 review remain open. No online acquisition, networked
-  producer, image pull/build/tag, release build, root command, or host RustDesk process/service/
-  config/listener/firewall/network operation was executed for this slice.
+  No networked Cargo installation, online-cache mutation, image pull/build/tag, release build, root
+  command, or host RustDesk process/service/config/listener/firewall/network operation was performed.
+  Cold acquisition with the exact pinned builders, reproducible tool-binary provenance, exact release
+  artifacts, native/device evidence, and external R-V3 review remain open.
 - **R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority — SOURCE AND
   CURRENT NUMERIC-NONROOT FILESYSTEM SELF-TEST GREEN; CURRENT SEALED CACHE/OFFLINE-REPLAY
   EVIDENCE RETAINED; COLD ACQUISITION, CANONICAL REPLACEMENT, AND RELEASE EVIDENCE OPEN.**

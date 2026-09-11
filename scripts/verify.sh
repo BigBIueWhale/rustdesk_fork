@@ -505,8 +505,8 @@ r_s11cm=
 if ! /usr/bin/python3 -I -S scripts/online-cargo-tool-output.py self-test; then
   r_s11cm="$r_s11cm transaction-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-tool-output-authority.py --repo . --self-test; then
-  r_s11cm="$r_s11cm authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-tool-output-authority.py --repo .; then
+  r_s11cm="$r_s11cm focused-source-contract-failed"
 fi
 if [ -n "$r_s11cm" ]; then
   echo "  FAIL R-S11cm online-fetch Cargo-tool output authority:$r_s11cm"

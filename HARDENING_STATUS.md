@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-845420bcd797d4fb9158c1d01d16ed966e74b870e24659dcbaa7d7e18633bd30  requirements.html
+6215158a351ffbe5208159551abf15a9211027657e0be73cafa534e6756738a1  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,15 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
+texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,
+and pointer-recovery contracts. Their `FIX`/`PARTIAL` badges, implementation narratives, verifier receipts,
+test counts, and open-evidence narration were deleted, reducing `requirements.html` by 7,753 bytes while
+retaining every stable requirement/row identity and its normative owner. R-S11fs now makes the actual rule
+explicit: pointer-down always consults exact presentation recovery independently of `_isWindowBlur`, and the
+owner is a no-op when no suspension is pending. No product source or verifier changed in this cleanup, and it
+creates no new native/runtime evidence.
 
 The R-S11el cleanup rewrote Appendix C #293 as a timeless lifecycle/worker risk and required
 disposition, deleted the verifier-progress-only #294 row, deleted the stale 1,006-line dedicated

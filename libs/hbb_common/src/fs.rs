@@ -616,7 +616,7 @@ impl DataStream {
     }
 }
 
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Default, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct FileDigest {
     pub size: u64,
     pub modified: u64,
@@ -643,7 +643,7 @@ pub struct TransferJob {
     #[serde(skip_serializing)]
     data_stream: Option<DataStream>,
     #[serde(skip_serializing)]
-    receive_write_path: Option<PathBuf>,
+    receive_write_claim: Option<ReceiveWriteClaim>,
     pub total_size: u64,
     finished_size: u64,
     transferred: u64,
@@ -1305,130 +1305,122 @@ mod nt_nofollow {
         }
     }
 
-    /// Delete a child by bare name, handle-relative + no-follow. A reparse-point child is refused by
-    /// `nt_open_at` (never followed, never deleted); a missing child is a no-op (ENOENT twin).
-    fn delete_child(parent: HANDLE, name: &[u16]) -> io::Result<()> {
-        let h =
-            match unsafe { nt_open_at(parent, name, DELETE, FILE_OPEN, FILE_NON_DIRECTORY_FILE) } {
-                Ok(h) => h,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-                Err(e) => return Err(e),
-            };
-        unsafe { nt_set_dispose_delete(h.as_raw_handle() as HANDLE) }
-    }
-
     // ---- crate-facing entry points (called by the `#[cfg(windows)]` branches of the receive path) ----
 
     /// R-S8/R-A5: open a receive-WRITE target reparse-safely (parent walk + no-follow child open).
-    /// Uses FILE_OPEN_IF (never OVERWRITE_IF), so a reparse-point final component is rejected BEFORE
-    /// any truncation; the (verified-regular) file is then truncated explicitly — the exact parity
-    /// of the Unix `openat(O_CREAT|O_NOFOLLOW|O_TRUNC)`.
-    pub(super) fn open_recv_write(path: &Path, truncate: bool) -> io::Result<std::fs::File> {
-        let parent = walk_to_parent(parent_dir(path)?, true)?;
+    /// Uses FILE_OPEN_IF (never OVERWRITE_IF), so a reparse-point final component is rejected before
+    /// the caller validates ownership/link authority and explicitly truncates the admitted handle.
+    pub(super) fn open_recv_write(
+        path: &Path,
+        create_file: bool,
+        create_parent: bool,
+        readable: bool,
+    ) -> io::Result<std::fs::File> {
+        let parent = walk_to_parent(parent_dir(path)?, create_parent)?;
         let name = file_name_wide(path)?;
+        let mut access = FILE_GENERIC_WRITE | DELETE | FILE_WRITE_ATTRIBUTES;
+        if readable {
+            access |= FILE_GENERIC_READ;
+        }
         let owned = unsafe {
             nt_open_at(
                 parent.as_raw_handle() as HANDLE,
                 &name,
-                FILE_GENERIC_WRITE,
-                FILE_OPEN_IF,
+                access,
+                if create_file { FILE_OPEN_IF } else { FILE_OPEN },
                 FILE_NON_DIRECTORY_FILE,
             )?
         };
-        let file = std::fs::File::from(owned);
-        if truncate {
-            file.set_len(0)?;
-        }
-        Ok(file)
+        Ok(std::fs::File::from(owned))
     }
 
-    /// R-S8/R-A5: remove the `.download`/`.digest` artifacts handle-relative (best-effort cleanup).
-    pub(super) fn remove_recv_artifacts(download_path: &Path, digest_path: &Path) {
-        let parent_path = match parent_dir(download_path) {
-            Ok(parent) => parent,
-            Err(err) => {
-                log::warn!(
-                    "cannot clean receive artifacts without a parent for {}: {}",
-                    download_path.display(),
-                    err
-                );
-                return;
+    pub(super) fn delete_open_recv_file(file: &std::fs::File) -> io::Result<()> {
+        unsafe { nt_set_dispose_delete(file.as_raw_handle() as HANDLE) }
+    }
+
+    pub(super) fn ensure_recv_path_matches_open_file(
+        path: &Path,
+        file: &std::fs::File,
+    ) -> io::Result<()> {
+        use winapi::um::fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+
+        fn identity(handle: HANDLE) -> io::Result<(u32, u32, u32)> {
+            let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
+            if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
+                return Err(io::Error::last_os_error());
             }
-        };
-        let parent = match walk_to_parent(parent_path, false) {
-            Ok(parent) => parent,
-            Err(err) => {
-                log::warn!(
-                    "cannot open receive-artifact parent {} for cleanup: {}",
-                    parent_path.display(),
-                    err
-                );
-                return;
-            }
-        };
-        let ph = parent.as_raw_handle() as HANDLE;
-        for p in [download_path, digest_path] {
-            match file_name_wide(p) {
-                Ok(name) => {
-                    if let Err(err) = delete_child(ph, &name) {
-                        log::warn!("cannot clean receive artifact {}: {}", p.display(), err);
-                    }
-                }
-                Err(err) => {
-                    log::warn!("cannot name receive artifact {}: {}", p.display(), err);
-                }
-            }
+            Ok((
+                info.dwVolumeSerialNumber,
+                info.nFileIndexHigh,
+                info.nFileIndexLow,
+            ))
         }
+
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        let named = unsafe {
+            nt_open_at(
+                parent.as_raw_handle() as HANDLE,
+                &name,
+                FILE_READ_ATTRIBUTES,
+                FILE_OPEN,
+                FILE_NON_DIRECTORY_FILE,
+            )?
+        };
+        if identity(named.as_raw_handle() as HANDLE)? != identity(file.as_raw_handle() as HANDLE)? {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "receive artifact generation changed while its lease was held",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate_recv_file_authority(file: &std::fs::File) -> io::Result<()> {
+        use winapi::um::fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle() as HANDLE, &mut info) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if info.nNumberOfLinks != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "receive artifact must have exactly one filesystem link",
+            ));
+        }
+        Ok(())
     }
 
     /// R-S8/R-A5: finalize the receive write handle-relative — set the mtime on the admitted
-    /// `.download` handle, rename that SAME handle onto the final name via
-    /// `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)`, and then discard the
-    /// digest. The rename is the last fallible commit step, so an error cannot be reported after the
-    /// final name has already become visible. Mirrors the Unix `renameat` finalize.
+    /// `.download` handle, discard the exact digest handle, and rename that SAME download handle
+    /// onto the final name via `NtSetInformationFile(FileRenameInformation,
+    /// RootDirectory=parent)`. The rename is the last fallible commit step, so an error cannot be
+    /// reported after the final name has already become visible. Mirrors the Unix `renameat`
+    /// finalize.
     pub(super) fn finish_recv_write(
         final_path: &Path,
-        download_path: &Path,
-        digest_path: &Path,
+        download_file: &std::fs::File,
+        digest_file: &std::fs::File,
         mtime: filetime::FileTime,
     ) -> io::Result<()> {
         let parent = walk_to_parent(parent_dir(final_path)?, false)?;
         let ph = parent.as_raw_handle() as HANDLE;
         let final_name = file_name_wide(final_path)?;
-        let download_name = file_name_wide(download_path)?;
-        // Open `.download` (must exist) with DELETE (for the rename) + FILE_WRITE_ATTRIBUTES (for the
-        // mtime), no-follow. Set metadata before the commit rename so every returned error still
-        // leaves the resumable sidecars at their old names.
-        let src = unsafe {
-            nt_open_at(
+        // Both handles were opened only after the caller acquired the destination lease. Delete the
+        // exact digest object before publication, then make the exact admitted download handle the
+        // final name. The rename remains the last fallible operation.
+        filetime::set_file_handle_times(download_file, None, Some(mtime))?;
+        download_file.sync_all()?;
+        delete_open_recv_file(digest_file)?;
+        unsafe {
+            nt_rename_at(
+                download_file.as_raw_handle() as HANDLE,
                 ph,
-                &download_name,
-                DELETE | FILE_WRITE_ATTRIBUTES,
-                FILE_OPEN,
-                FILE_NON_DIRECTORY_FILE,
+                &final_name,
+                true,
             )?
         };
-        let file = std::fs::File::from(src);
-        filetime::set_file_handle_times(&file, None, Some(mtime))?;
-        unsafe { nt_rename_at(file.as_raw_handle() as HANDLE, ph, &final_name, true)? };
-        match file_name_wide(digest_path) {
-            Ok(digest_name) => {
-                if let Err(err) = delete_child(ph, &digest_name) {
-                    log::warn!(
-                        "committed receive file but could not clean digest {}: {}",
-                        digest_path.display(),
-                        err
-                    );
-                }
-            }
-            Err(err) => {
-                log::warn!(
-                    "committed receive file but could not name digest {}: {}",
-                    digest_path.display(),
-                    err
-                );
-            }
-        }
         Ok(())
     }
 
@@ -1458,51 +1450,103 @@ mod nt_nofollow {
 }
 
 /// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics across the
-/// whole parent path, not just the final component. The Unix path creates/opens every parent
-/// directory via `mkdirat`/`openat(O_DIRECTORY|O_NOFOLLOW)` and then opens the target with
-/// `openat(O_NOFOLLOW)`, rejecting symlinks, FIFOs, devices, and other non-regular targets; the
-/// Windows path performs the identical walk with `NtCreateFile` + `OBJECT_ATTRIBUTES.RootDirectory`
-/// (see the `nt_nofollow` module above), rejecting NTFS junctions and symlinks on every component.
-/// Both close the intermediate-directory race documented in HARDENING_STATUS: a local user cannot
-/// swap a parent directory for a reparse point between validation and the peer's write.
-fn open_recv_write_no_follow_std(path: &Path, truncate: bool) -> std::io::Result<std::fs::File> {
+/// whole parent path, not just the final component. When parent creation is authorized, the Unix
+/// path creates/opens every parent directory via `mkdirat`/`openat(O_DIRECTORY|O_NOFOLLOW)`; resume
+/// and confirmation use the same walk without creation. The target opens with `openat(O_NOFOLLOW)`,
+/// rejecting symlinks, FIFOs, devices, and other non-regular targets. Windows performs the identical
+/// create-or-open walk with `NtCreateFile` + `OBJECT_ATTRIBUTES.RootDirectory` (see the
+/// `nt_nofollow` module above), rejecting NTFS junctions and symlinks on every component. Both close
+/// the intermediate-directory race documented in HARDENING_STATUS: a local user cannot swap a
+/// parent directory for a reparse point between validation and the peer's write.
+fn open_recv_file_no_follow_std(
+    path: &Path,
+    truncate: bool,
+    create_file: bool,
+    create_parent: bool,
+    readable: bool,
+) -> std::io::Result<std::fs::File> {
+    let file = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+
+            let parent = open_parent_dir_no_follow(
+                path.parent().unwrap_or_else(|| Path::new(".")),
+                create_parent,
+            )?;
+            let name = cstring_file_name(path)?;
+            let mut flags = (if readable {
+                crate::libc::O_RDWR
+            } else {
+                crate::libc::O_WRONLY
+            }) | crate::libc::O_CLOEXEC
+                | crate::libc::O_NOFOLLOW
+                | crate::libc::O_NONBLOCK
+                | crate::libc::O_NOCTTY;
+            if create_file {
+                flags |= crate::libc::O_CREAT;
+            }
+            open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0o600)
+        }
+
+        #[cfg(windows)]
+        {
+            nt_nofollow::open_recv_write(path, create_file, create_parent, readable)
+        }
+
+        #[cfg(all(not(unix), not(windows)))]
+        {
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true)
+                .read(readable)
+                .create(create_file)
+                .truncate(false);
+            opts.open(path)
+        }
+    }?;
+    validate_recv_file_authority(&file)?;
+    if truncate {
+        file.set_len(0)?;
+    }
+    Ok(file)
+}
+
+fn validate_recv_file_authority(file: &std::fs::File) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::io::AsRawFd;
+        use std::os::unix::fs::MetadataExt;
 
-        let parent =
-            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), true)?;
-        let name = cstring_file_name(path)?;
-        let mut flags = crate::libc::O_WRONLY
-            | crate::libc::O_CREAT
-            | crate::libc::O_CLOEXEC
-            | crate::libc::O_NOFOLLOW
-            | crate::libc::O_NONBLOCK
-            | crate::libc::O_NOCTTY;
-        if truncate {
-            flags |= crate::libc::O_TRUNC;
+        let metadata = file.metadata()?;
+        if metadata.uid() != unsafe { crate::libc::geteuid() as u32 } {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "receive artifact is not owned by the receiving process identity",
+            ));
         }
-        open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0o666)
+        if metadata.nlink() != 1 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "receive artifact must have exactly one filesystem link",
+            ));
+        }
+        return Ok(());
     }
 
     #[cfg(windows)]
     {
-        nt_nofollow::open_recv_write(path, truncate)
+        nt_nofollow::validate_recv_file_authority(file)
     }
 
     #[cfg(all(not(unix), not(windows)))]
     {
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(truncate);
-        opts.open(path)
+        let _ = file;
+        Ok(())
     }
 }
 
-/// Async wrapper over [`open_recv_write_no_follow_std`] for the tokio receive-write path (R-S8).
-async fn open_recv_write_no_follow(path: &Path, truncate: bool) -> ResultType<File> {
-    Ok(File::from_std(open_recv_write_no_follow_std(
-        path, truncate,
-    )?))
+#[cfg(test)]
+fn open_recv_write_no_follow_std(path: &Path, truncate: bool) -> std::io::Result<std::fs::File> {
+    open_recv_file_no_follow_std(path, truncate, true, true, false)
 }
 
 #[cfg(unix)]
@@ -1519,78 +1563,64 @@ fn unlink_recv_child_no_follow(parent_fd: i32, name: &std::ffi::CStr) -> std::io
     }
 }
 
-fn remove_recv_write_artifacts_no_follow(path: &Path) {
-    let digest_path = recv_sidecar_path(path, ".digest");
-    let download_path = recv_sidecar_path(path, ".download");
+#[cfg(any(unix, windows))]
+fn ensure_recv_path_matches_open_file(path: &Path, file: &std::fs::File) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::io::AsRawFd;
-        let parent_path = path.parent().unwrap_or_else(|| Path::new("."));
-        let parent = match open_parent_dir_no_follow(parent_path, false) {
-            Ok(parent) => parent,
-            Err(err) => {
-                log::warn!(
-                    "cannot open receive-artifact parent {} for cleanup: {}",
-                    parent_path.display(),
-                    err
-                );
-                return;
-            }
-        };
-        match cstring_file_name(&download_path) {
-            Ok(download_name) => {
-                if let Err(err) = unlink_recv_child_no_follow(parent.as_raw_fd(), &download_name) {
-                    log::warn!(
-                        "cannot clean receive artifact {}: {}",
-                        download_path.display(),
-                        err
-                    );
-                }
-            }
-            Err(err) => log::warn!(
-                "cannot name receive artifact {}: {}",
-                download_path.display(),
-                err
-            ),
+        use std::os::unix::{fs::MetadataExt, io::AsRawFd};
+
+        let parent =
+            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+        let name = cstring_file_name(path)?;
+        let named = fstatat_regular_no_follow(parent.as_raw_fd(), &name)?
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        let opened = file.metadata()?;
+        if named.st_dev as u64 != opened.dev() || named.st_ino as u64 != opened.ino() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "receive artifact generation changed while its lease was held",
+            ));
         }
-        match cstring_file_name(&digest_path) {
-            Ok(digest_name) => {
-                if let Err(err) = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name) {
-                    log::warn!(
-                        "cannot clean receive artifact {}: {}",
-                        digest_path.display(),
-                        err
-                    );
-                }
-            }
-            Err(err) => log::warn!(
-                "cannot name receive artifact {}: {}",
-                digest_path.display(),
-                err
-            ),
-        }
+        return Ok(());
     }
+
     #[cfg(windows)]
     {
-        nt_nofollow::remove_recv_artifacts(&download_path, &digest_path);
-    }
-    #[cfg(all(not(unix), not(windows)))]
-    {
-        for artifact in [download_path, digest_path] {
-            if let Err(err) = std::fs::remove_file(&artifact) {
-                if err.kind() != std::io::ErrorKind::NotFound {
-                    log::warn!(
-                        "cannot clean receive artifact {}: {}",
-                        artifact.display(),
-                        err
-                    );
-                }
-            }
-        }
+        nt_nofollow::ensure_recv_path_matches_open_file(path, file)
     }
 }
 
-fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Result<()> {
+fn remove_open_recv_file_no_follow(path: &Path, file: &std::fs::File) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        ensure_recv_path_matches_open_file(path, file)?;
+        let parent =
+            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+        let name = cstring_file_name(path)?;
+        return unlink_recv_child_no_follow(parent.as_raw_fd(), &name);
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = path;
+        return nt_nofollow::delete_open_recv_file(file);
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        let _ = file;
+        std::fs::remove_file(path)
+    }
+}
+
+fn finish_recv_write_no_follow(
+    path: &Path,
+    download_file: &std::fs::File,
+    digest_file: &std::fs::File,
+    modified_time: u64,
+) -> std::io::Result<()> {
     let mtime = filetime::FileTime::from_unix_time(modified_time as _, 0);
     #[cfg(unix)]
     {
@@ -1601,10 +1631,10 @@ fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Resu
         let final_name = cstring_file_name(path)?;
         let download_path = recv_sidecar_path(path, ".download");
         let download_name = cstring_file_name(&download_path)?;
-        let digest_name = cstring_file_name(&recv_sidecar_path(path, ".digest"))?;
-        let download_file = open_existing_regular_no_follow(&download_path)?;
         filetime::set_file_handle_times(&download_file, None, Some(mtime))?;
         download_file.sync_all()?;
+        ensure_recv_path_matches_open_file(&download_path, download_file)?;
+        remove_open_recv_file_no_follow(&recv_sidecar_path(path, ".digest"), digest_file)?;
         if unsafe {
             crate::libc::renameat(
                 parent.as_raw_fd(),
@@ -1616,38 +1646,22 @@ fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Resu
         {
             return Err(std::io::Error::last_os_error());
         }
-        if let Err(err) = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name) {
-            log::warn!(
-                "committed receive file but could not clean digest {}: {}",
-                recv_sidecar_path(path, ".digest").display(),
-                err
-            );
-        }
         return Ok(());
     }
 
     #[cfg(windows)]
     {
-        let download_path = recv_sidecar_path(path, ".download");
-        let digest_path = recv_sidecar_path(path, ".digest");
-        nt_nofollow::finish_recv_write(path, &download_path, &digest_path, mtime)
+        nt_nofollow::finish_recv_write(path, download_file, digest_file, mtime)
     }
 
     #[cfg(all(not(unix), not(windows)))]
     {
         let download_path = recv_sidecar_path(path, ".download");
         let digest_path = recv_sidecar_path(path, ".digest");
-        filetime::set_file_mtime(&download_path, mtime)?;
+        filetime::set_file_handle_times(download_file, None, Some(mtime))?;
+        download_file.sync_all()?;
+        remove_open_recv_file_no_follow(&digest_path, digest_file)?;
         std::fs::rename(download_path, path)?;
-        if let Err(err) = std::fs::remove_file(&digest_path) {
-            if err.kind() != std::io::ErrorKind::NotFound {
-                log::warn!(
-                    "committed receive file but could not clean digest {}: {}",
-                    digest_path.display(),
-                    err
-                );
-            }
-        }
         Ok(())
     }
 }
@@ -1675,6 +1689,311 @@ fn read_recv_sidecar_to_string_no_follow(path: &Path, max_bytes: u64) -> std::io
     {
         let _ = max_bytes;
         std::fs::read_to_string(path)
+    }
+}
+
+fn acquire_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        if unsafe {
+            crate::libc::flock(
+                file.as_raw_fd(),
+                crate::libc::LOCK_EX | crate::libc::LOCK_NB,
+            )
+        } == 0
+        {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(crate::libc::EWOULDBLOCK)
+            || err.raw_os_error() == Some(crate::libc::EAGAIN)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "another receive job owns this destination",
+            ));
+        }
+        return Err(err);
+    }
+
+    #[cfg(windows)]
+    {
+        use std::{mem::zeroed, os::windows::io::AsRawHandle};
+        use winapi::um::{
+            fileapi::LockFileEx,
+            minwinbase::OVERLAPPED,
+            winbase::{LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY},
+            winnt::HANDLE,
+        };
+
+        let mut overlapped: OVERLAPPED = unsafe { zeroed() };
+        if unsafe {
+            LockFileEx(
+                file.as_raw_handle() as HANDLE,
+                LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                0,
+                u32::MAX,
+                u32::MAX,
+                &mut overlapped,
+            )
+        } != 0
+        {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(winapi::shared::winerror::ERROR_LOCK_VIOLATION as i32) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "another receive job owns this destination",
+            ));
+        }
+        return Err(err);
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        let _ = file;
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "receive destination leases are unsupported on this platform",
+        ))
+    }
+}
+
+fn release_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        if unsafe { crate::libc::flock(file.as_raw_fd(), crate::libc::LOCK_UN) } == 0 {
+            return Ok(());
+        }
+        return Err(std::io::Error::last_os_error());
+    }
+
+    #[cfg(windows)]
+    {
+        use std::{mem::zeroed, os::windows::io::AsRawHandle};
+        use winapi::um::{fileapi::UnlockFileEx, minwinbase::OVERLAPPED, winnt::HANDLE};
+
+        let mut overlapped: OVERLAPPED = unsafe { zeroed() };
+        if unsafe {
+            UnlockFileEx(
+                file.as_raw_handle() as HANDLE,
+                0,
+                u32::MAX,
+                u32::MAX,
+                &mut overlapped,
+            )
+        } != 0
+        {
+            return Ok(());
+        }
+        return Err(std::io::Error::last_os_error());
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        let _ = file;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ReceivePathLease {
+    path: PathBuf,
+    file: std::fs::File,
+    retire_on_drop: bool,
+}
+
+impl ReceivePathLease {
+    fn acquire(final_path: &Path, create_parent: bool) -> std::io::Result<Self> {
+        let path = recv_sidecar_path(final_path, ".download.lock");
+        let file = open_recv_file_no_follow_std(&path, false, true, create_parent, false)?;
+        acquire_receive_path_lock(&file)?;
+        #[cfg(any(unix, windows))]
+        ensure_recv_path_matches_open_file(&path, &file)?;
+        Ok(Self {
+            path,
+            file,
+            retire_on_drop: false,
+        })
+    }
+
+    fn retire(&mut self) {
+        self.retire_on_drop = true;
+    }
+}
+
+impl Drop for ReceivePathLease {
+    fn drop(&mut self) {
+        // A pathname-based advisory lock must keep one stable inode for as long as resumable state
+        // exists. Once the owner has committed or removed every admitted artifact, it is safe to
+        // retire that inode while still holding its lock: a new owner may start on a new inode, but
+        // this retiring owner has no destination state left to mutate.
+        if self.retire_on_drop {
+            if let Err(err) = remove_open_recv_file_no_follow(&self.path, &self.file) {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    log::warn!(
+                        "cannot retire receive destination lease {}: {}",
+                        self.path.display(),
+                        err
+                    );
+                }
+            }
+        }
+        if let Err(err) = release_receive_path_lock(&self.file) {
+            log::warn!(
+                "cannot release receive destination lease {}: {}",
+                self.path.display(),
+                err
+            );
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ReceiveWriteClaim {
+    final_path: PathBuf,
+    download_file: std::fs::File,
+    digest_file: std::fs::File,
+    _lease: ReceivePathLease,
+}
+
+impl ReceiveWriteClaim {
+    fn start_new(final_path: PathBuf, digest: FileDigest) -> ResultType<(Self, std::fs::File)> {
+        use std::io::Write;
+
+        let mut lease = ReceivePathLease::acquire(&final_path, true)?;
+        let download_path = recv_sidecar_path(&final_path, ".download");
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let download_file =
+            match open_recv_file_no_follow_std(&download_path, true, true, false, false) {
+                Ok(file) => file,
+                Err(err) => {
+                    lease.retire();
+                    return Err(err.into());
+                }
+            };
+        let mut digest_file =
+            match open_recv_file_no_follow_std(&digest_path, true, true, false, true) {
+                Ok(file) => file,
+                Err(err) => {
+                    if let Err(cleanup_err) =
+                        remove_open_recv_file_no_follow(&download_path, &download_file)
+                    {
+                        log::warn!(
+                            "cannot clean admitted receive artifact {}: {}",
+                            download_path.display(),
+                            cleanup_err
+                        );
+                    }
+                    lease.retire();
+                    return Err(err.into());
+                }
+            };
+        let prepared = (|| -> ResultType<_> {
+            digest_file.write_all(json!(digest).to_string().as_bytes())?;
+            digest_file.sync_all()?;
+            Ok(download_file.try_clone()?)
+        })();
+        let stream_file = match prepared {
+            Ok(file) => file,
+            Err(err) => {
+                for (path, file) in [
+                    (&digest_path, &digest_file),
+                    (&download_path, &download_file),
+                ] {
+                    if let Err(cleanup_err) = remove_open_recv_file_no_follow(path, file) {
+                        log::warn!(
+                            "cannot clean admitted receive artifact {}: {}",
+                            path.display(),
+                            cleanup_err
+                        );
+                    }
+                }
+                lease.retire();
+                return Err(err);
+            }
+        };
+        Ok((
+            Self {
+                final_path,
+                download_file,
+                digest_file,
+                _lease: lease,
+            },
+            stream_file,
+        ))
+    }
+
+    fn resume(
+        final_path: PathBuf,
+        expected_digest: FileDigest,
+    ) -> ResultType<(Self, std::fs::File)> {
+        use std::io::Read;
+
+        let lease = ReceivePathLease::acquire(&final_path, false)?;
+        let download_path = recv_sidecar_path(&final_path, ".download");
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let mut digest_file =
+            open_recv_file_no_follow_std(&digest_path, false, false, false, true)?;
+        let mut content = String::new();
+        (&mut digest_file).take(4097).read_to_string(&mut content)?;
+        if content.len() > 4096 {
+            bail!("resume digest is too large");
+        }
+        let stored_digest: FileDigest = serde_json::from_str(&content)?;
+        if stored_digest != expected_digest {
+            bail!("resume digest does not match the active transfer");
+        }
+        let download_file =
+            open_recv_file_no_follow_std(&download_path, false, false, false, false)?;
+        let stream_file = download_file.try_clone()?;
+        Ok((
+            Self {
+                final_path,
+                download_file,
+                digest_file,
+                _lease: lease,
+            },
+            stream_file,
+        ))
+    }
+
+    fn finish(&mut self, modified_time: u64) -> std::io::Result<()> {
+        let result = finish_recv_write_no_follow(
+            &self.final_path,
+            &self.download_file,
+            &self.digest_file,
+            modified_time,
+        );
+        if result.is_ok() {
+            self._lease.retire();
+        }
+        result
+    }
+
+    fn cleanup(mut self) {
+        for (path, file) in [
+            (
+                recv_sidecar_path(&self.final_path, ".digest"),
+                &self.digest_file,
+            ),
+            (
+                recv_sidecar_path(&self.final_path, ".download"),
+                &self.download_file,
+            ),
+        ] {
+            if let Err(err) = remove_open_recv_file_no_follow(&path, file) {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    log::warn!("cannot clean receive artifact {}: {}", path.display(), err);
+                }
+            }
+        }
+        self._lease.retire();
     }
 }
 
@@ -1873,7 +2192,12 @@ impl TransferJob {
         let path = self
             .resolve_entry_path(base, &entry.name)
             .ok_or_else(|| anyhow!("invalid receive-write path for file {}", self.file_num))?;
-        if self.receive_write_path.as_ref() != Some(&path) {
+        if self
+            .receive_write_claim
+            .as_ref()
+            .map(|claim| &claim.final_path)
+            != Some(&path)
+        {
             bail!(
                 "write file {} does not own its receive artifact",
                 self.file_num
@@ -1889,8 +2213,21 @@ impl TransferJob {
                 bail!("file-backed write job owns an in-memory data stream")
             }
         }
-        finish_recv_write_no_follow(&path, modified_time)?;
-        self.receive_write_path = None;
+        let claim = self
+            .receive_write_claim
+            .take()
+            .ok_or_else(|| anyhow!("write file {} lost its receive claim", self.file_num))?;
+        let (claim, result) = tokio::task::spawn_blocking(move || {
+            let mut claim = claim;
+            let result = claim.finish(modified_time);
+            (claim, result)
+        })
+        .await?;
+        if let Err(err) = result {
+            self.receive_write_claim = Some(claim);
+            return Err(err.into());
+        }
+        drop(claim);
         Ok(())
     }
 
@@ -1942,8 +2279,8 @@ impl TransferJob {
         if self.role != TransferRole::Receive {
             return;
         }
-        if let Some(path) = self.receive_write_path.take() {
-            remove_recv_write_artifacts_no_follow(&path);
+        if let Some(claim) = self.receive_write_claim.take() {
+            claim.cleanup();
         }
     }
 
@@ -1991,6 +2328,9 @@ impl TransferJob {
                 self.file_num = block.file_num;
             }
             if self.data_stream.is_none() {
+                if self.receive_write_claim.is_some() {
+                    bail!("receive write claim exists without its data stream");
+                }
                 let base = match &self.data_source {
                     DataSource::FilePath(base) => base,
                     DataSource::MemoryCursor(_) => {
@@ -1999,24 +2339,13 @@ impl TransferJob {
                 };
                 let entry = &self.files[file_num];
                 let final_path = join_validated_path(base, &entry.name)?;
-                let file_path = get_string(&final_path);
-                let download_path = format!("{}.download", &file_path);
-                let digest_path = format!("{}.digest", &file_path);
-                // R-S8/R-A5: no-follow parent walk + no-follow regular-file open. On Unix this
-                // creates/opens every parent via mkdirat/openat(O_NOFOLLOW) before opening the
-                // `.download` target, so neither intermediate symlink swaps nor final symlinks can
-                // redirect the write.
-                self.data_stream = Some(DataStream::FileStream(
-                    open_recv_write_no_follow(Path::new(&download_path), true).await?,
-                ));
-                self.receive_write_path = Some(final_path);
-                // R-S8: the digest sidecar is a write too — no-follow it for the same reason.
-                let mut digest_file =
-                    open_recv_write_no_follow(Path::new(&digest_path), true).await?;
-                digest_file
-                    .write_all(json!(self.digest).to_string().as_bytes())
-                    .await?;
-                digest_file.sync_all().await?;
+                let digest = self.digest;
+                let (claim, stream_file) = tokio::task::spawn_blocking(move || {
+                    ReceiveWriteClaim::start_new(final_path, digest)
+                })
+                .await??;
+                self.data_stream = Some(DataStream::FileStream(File::from_std(stream_file)));
+                self.receive_write_claim = Some(claim);
             }
         } else if self.data_stream.is_none() {
             let cursor = match &self.data_source {
@@ -2366,21 +2695,25 @@ impl TransferJob {
                 .resolve_entry_path(p, &entry.name)
                 .ok_or_else(|| anyhow!("invalid confirmation path for file {}", file_num))?;
             let file_path = get_string(&path);
-            let download_path = format!("{}.download", &file_path);
-            let digest_path = format!("{}.digest", &file_path);
-
-            let (mut f, receive_write_path) = match self.role {
+            let transferred = self
+                .transferred
+                .checked_add(offset)
+                .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
+            let finished_size = self
+                .finished_size
+                .checked_add(offset)
+                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
+            let (mut f, receive_write_claim) = match self.role {
                 TransferRole::Receive => {
-                    if !Path::new(&digest_path).try_exists()? {
-                        bail!("resume digest {} is absent", digest_path);
+                    if self.receive_write_claim.is_some() {
+                        bail!("receive write job already owns a destination claim");
                     }
-                    // R-S8/R-A5: no-follow parent walk + reopen of the receive sidecar
-                    // (truncate=false keeps the partial download). A symlink swapped in here fails
-                    // rather than redirecting the write.
-                    (
-                        open_recv_write_no_follow(Path::new(&download_path), false).await?,
-                        Some(path),
-                    )
+                    let digest = self.digest;
+                    let (claim, stream_file) = tokio::task::spawn_blocking(move || {
+                        ReceiveWriteClaim::resume(path, digest)
+                    })
+                    .await??;
+                    (File::from_std(stream_file), Some(claim))
                 }
                 TransferRole::Send => (File::open(&file_path).await?, None),
             };
@@ -2393,16 +2726,8 @@ impl TransferJob {
                 );
             }
             f.seek(std::io::SeekFrom::Start(offset)).await?;
-            let transferred = self
-                .transferred
-                .checked_add(offset)
-                .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
-            let finished_size = self
-                .finished_size
-                .checked_add(offset)
-                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             self.data_stream = Some(DataStream::FileStream(f));
-            self.receive_write_path = receive_write_path;
+            self.receive_write_claim = receive_write_claim;
             self.transferred = transferred;
             self.finished_size = finished_size;
             return Ok(());
@@ -2738,61 +3063,83 @@ pub fn is_write_need_confirmation(
     digest: &FileTransferDigest,
 ) -> ResultType<DigestCheckResult> {
     let path = Path::new(file_path);
-    let digest_file = format!("{}.digest", file_path);
-    let download_file = format!("{}.download", file_path);
-    if is_resume && Path::new(&digest_file).exists() && Path::new(&download_file).exists() {
-        // If the digest file exists, it means the file was transferred before.
-        // We can use the digest file to check whether the file is the same.
-        if let Ok(content) = read_recv_sidecar_to_string_no_follow(Path::new(&digest_file), 4096) {
-            if let Ok(local_digest) = serde_json::from_str::<FileDigest>(&content) {
-                let is_identical = local_digest.modified == digest.last_modified
-                    && local_digest.size == digest.file_size;
-                if is_identical {
-                    if let Ok(download_metadata) = std::fs::metadata(download_file) {
-                        // Get the file size of the local file
-                        // Only send confirmation if the file is not empty.
-                        let transferred_size = download_metadata.len();
-                        if transferred_size > 0 {
-                            return Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
-                                id: digest.id,
-                                file_num: digest.file_num,
-                                last_modified: digest.last_modified,
-                                file_size: digest.file_size,
-                                is_identical,
-                                transferred_size,
-                                ..Default::default()
-                            }));
+    // Inspection and mutation use the same destination lease. This makes the observed digest and
+    // partial length one coherent snapshot; the later resume/open reacquires the lease and validates
+    // the digest again before publishing stream ownership.
+    let mut lease = match ReceivePathLease::acquire(path, false) {
+        Ok(lease) => lease,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(DigestCheckResult::NoSuchFile)
+        }
+        Err(err) => return Err(err.into()),
+    };
+    let result = (|| {
+        let digest_file = format!("{}.digest", file_path);
+        let download_file = format!("{}.download", file_path);
+        if is_resume && Path::new(&digest_file).exists() && Path::new(&download_file).exists() {
+            // If the digest file exists, it means the file was transferred before.
+            // We can use the digest file to check whether the file is the same.
+            if let Ok(content) =
+                read_recv_sidecar_to_string_no_follow(Path::new(&digest_file), 4096)
+            {
+                if let Ok(local_digest) = serde_json::from_str::<FileDigest>(&content) {
+                    let is_identical = local_digest.modified == digest.last_modified
+                        && local_digest.size == digest.file_size;
+                    if is_identical {
+                        if let Ok(download_file) = open_recv_file_no_follow_std(
+                            Path::new(&download_file),
+                            false,
+                            false,
+                            false,
+                            false,
+                        ) {
+                            // Get the file size of the local file
+                            // Only send confirmation if the file is not empty.
+                            let transferred_size = download_file.metadata()?.len();
+                            if transferred_size > 0 {
+                                return Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
+                                    id: digest.id,
+                                    file_num: digest.file_num,
+                                    last_modified: digest.last_modified,
+                                    file_size: digest.file_size,
+                                    is_identical,
+                                    transferred_size,
+                                    ..Default::default()
+                                }));
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    if path.exists() && path.is_file() {
-        let metadata = std::fs::metadata(path)?;
-        let modified_time = metadata.modified()?;
-        let remote_mt = Duration::from_secs(digest.last_modified);
-        let local_mt = modified_time.duration_since(UNIX_EPOCH)?;
-        // [Note]
-        // We decide to give the decision whether to override the existing file to users,
-        // which obey the behavior of the file manager in our system.
-        let mut is_identical = false;
-        if remote_mt == local_mt && digest.file_size == metadata.len() {
-            is_identical = true;
+        if path.exists() && path.is_file() {
+            let metadata = std::fs::metadata(path)?;
+            let modified_time = metadata.modified()?;
+            let remote_mt = Duration::from_secs(digest.last_modified);
+            let local_mt = modified_time.duration_since(UNIX_EPOCH)?;
+            // [Note]
+            // We decide to give the decision whether to override the existing file to users,
+            // which obey the behavior of the file manager in our system.
+            let mut is_identical = false;
+            if remote_mt == local_mt && digest.file_size == metadata.len() {
+                is_identical = true;
+            }
+            Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
+                id: digest.id,
+                file_num: digest.file_num,
+                last_modified: local_mt.as_secs(),
+                file_size: metadata.len(),
+                is_identical,
+                ..Default::default()
+            }))
+        } else {
+            // If the file does not exist, or the digest file and download file do not exist, we return NoSuchFile.
+            Ok(DigestCheckResult::NoSuchFile)
         }
-        Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
-            id: digest.id,
-            file_num: digest.file_num,
-            last_modified: local_mt.as_secs(),
-            file_size: metadata.len(),
-            is_identical,
-            ..Default::default()
-        }))
-    } else {
-        // If the file does not exist, or the digest file and download file do not exist, we return NoSuchFile.
-        Ok(DigestCheckResult::NoSuchFile)
-    }
+    })();
+    lease.retire();
+    result
 }
 
 pub fn serialize_transfer_jobs(jobs: &[TransferJob]) -> String {
@@ -3015,10 +3362,18 @@ mod tests {
 
         let final_path = downloads.join("incoming.txt");
         let download_path = recv_sidecar_path(&final_path, ".download");
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
         std::fs::write(&download_path, b"payload").expect("write download");
+        std::fs::write(&digest_path, b"{}").expect("write digest");
         std::os::unix::fs::symlink(&secret, &final_path).expect("create symlink final");
+        let download_file =
+            open_recv_file_no_follow_std(&download_path, false, false, false, false)
+                .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
+            .expect("open exact digest");
 
-        finish_recv_write_no_follow(&final_path, 1).expect("finish receive write");
+        finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1)
+            .expect("finish receive write");
 
         assert_eq!(
             std::fs::read(&secret).expect("read secret"),
@@ -3202,8 +3557,14 @@ mod tests {
         let digest_path = recv_sidecar_path(&final_path, ".digest");
         std::fs::write(&download_path, b"payload").expect("write download");
         std::fs::write(&digest_path, b"{}").expect("write digest");
+        let download_file =
+            open_recv_file_no_follow_std(&download_path, false, false, false, false)
+                .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
+            .expect("open exact digest");
 
-        finish_recv_write_no_follow(&final_path, 1_600_000_000).expect("finish receive write");
+        finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1_600_000_000)
+            .expect("finish receive write");
 
         assert_eq!(
             std::fs::read(&final_path).expect("read final"),
@@ -3225,7 +3586,15 @@ mod tests {
         std::fs::create_dir_all(&downloads).expect("create downloads");
         std::fs::create_dir_all(&outside).expect("create outside");
         // stage the .download inside `outside` so it is reachable through the junction
-        std::fs::write(outside.join("incoming.txt.download"), b"payload").expect("write download");
+        let download_path = outside.join("incoming.txt.download");
+        let digest_path = outside.join("incoming.txt.digest");
+        std::fs::write(&download_path, b"payload").expect("write download");
+        std::fs::write(&digest_path, b"{}").expect("write digest");
+        let download_file =
+            open_recv_file_no_follow_std(&download_path, false, false, false, false)
+                .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
+            .expect("open exact digest");
 
         let link = downloads.join("link");
         assert!(
@@ -3234,7 +3603,7 @@ mod tests {
         );
         let final_path = link.join("incoming.txt");
 
-        let res = finish_recv_write_no_follow(&final_path, 1);
+        let res = finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1);
         assert!(
             res.is_err(),
             "finalize must refuse a junction parent component (no rename through the junction)"
@@ -3315,6 +3684,292 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receive_destination_lease_is_cross_process_and_crash_resumable() {
+        const TEST_NAME: &str =
+            "fs::tests::receive_destination_lease_is_cross_process_and_crash_resumable";
+        const ROLE_ENV: &str = "RUSTDESK_TEST_RECEIVE_LEASE_ROLE";
+        const PATH_ENV: &str = "RUSTDESK_TEST_RECEIVE_LEASE_PATH";
+        const FIRST: &[u8] = b"first-";
+        const SECOND: &[u8] = b"second";
+        const TOTAL_SIZE: u64 = (FIRST.len() + SECOND.len()) as u64;
+        const MODIFIED: u64 = 17;
+
+        if let Some(role) = std::env::var_os(ROLE_ENV) {
+            let path = PathBuf::from(
+                std::env::var_os(PATH_ENV).expect("receive lease worker path must be provided"),
+            );
+            if role == std::ffi::OsStr::new("owner") {
+                let mut job =
+                    new_write_job(90, path, "incoming.bin").expect("create owning receive job");
+                job.set_digest(TOTAL_SIZE, MODIFIED);
+                job.write(FileTransferBlock {
+                    id: 90,
+                    file_num: 0,
+                    data: FIRST.to_vec().into(),
+                    ..Default::default()
+                })
+                .await
+                .expect("admit the first process-owned partial download");
+                let ready_path = match &job.data_source {
+                    DataSource::FilePath(path) => path.join("receive-owner-ready"),
+                    DataSource::MemoryCursor(_) => panic!("receive owner must use a filesystem"),
+                };
+                std::fs::write(ready_path, b"ready")
+                    .expect("publish receive-owner readiness marker");
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                panic!("receive-owner worker was not terminated by its parent");
+            }
+            if role == std::ffi::OsStr::new("contender") {
+                let mut job =
+                    new_write_job(91, path, "incoming.bin").expect("create competing receive job");
+                job.set_digest(TOTAL_SIZE, MODIFIED);
+                let error = job
+                    .write(FileTransferBlock {
+                        id: 91,
+                        file_num: 0,
+                        data: b"must-not-win".to_vec().into(),
+                        ..Default::default()
+                    })
+                    .await
+                    .expect_err("a second process must not acquire the live destination");
+                assert!(
+                    error
+                        .to_string()
+                        .contains("another receive job owns this destination"),
+                    "unexpected competing-owner error: {}",
+                    error
+                );
+                return;
+            }
+            if role == std::ffi::OsStr::new("resume") {
+                let mut job =
+                    new_write_job(92, path, "incoming.bin").expect("create resumed receive job");
+                job.is_resume = true;
+                job.set_digest(TOTAL_SIZE, MODIFIED);
+                job.confirm(&FileTransferSendConfirmRequest {
+                    id: 92,
+                    file_num: 0,
+                    union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(
+                        FIRST.len() as u32,
+                    )),
+                    ..Default::default()
+                })
+                .await
+                .expect("reclaim the process-death-released destination lease");
+                job.write(FileTransferBlock {
+                    id: 92,
+                    file_num: 0,
+                    data: SECOND.to_vec().into(),
+                    ..Default::default()
+                })
+                .await
+                .expect("continue the exact partial download");
+                job.finalize_write(1)
+                    .await
+                    .expect("commit the resumed destination generation");
+                return;
+            }
+            panic!("unknown receive lease worker role: {:?}", role);
+        }
+
+        let tmp = TestTempDir::new("rustdesk_receive_process_lease");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let run_worker = |role: &str| {
+            std::process::Command::new(
+                std::env::current_exe().expect("test executable path must be available"),
+            )
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ROLE_ENV, role)
+            .env(PATH_ENV, &tmp.path)
+            .output()
+            .expect("launch receive lease worker")
+        };
+
+        let mut owner = std::process::Command::new(
+            std::env::current_exe().expect("test executable path must be available"),
+        )
+        .args(["--exact", TEST_NAME, "--nocapture"])
+        .env(ROLE_ENV, "owner")
+        .env(PATH_ENV, &tmp.path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("launch owning receive process");
+        let ready_path = tmp.join("receive-owner-ready");
+        for _ in 0..500 {
+            if ready_path.exists() {
+                break;
+            }
+            if owner
+                .try_wait()
+                .expect("inspect owning receive process")
+                .is_some()
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if !ready_path.exists() {
+            if owner
+                .try_wait()
+                .expect("inspect failed owning receive process")
+                .is_none()
+            {
+                owner
+                    .kill()
+                    .expect("terminate unresponsive owning receive process");
+                owner
+                    .wait()
+                    .expect("reap unresponsive owning receive process");
+            }
+            panic!("owning receive process did not publish readiness");
+        }
+
+        let contender = run_worker("contender");
+        assert!(
+            contender.status.success(),
+            "competing process failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&contender.stdout),
+            String::from_utf8_lossy(&contender.stderr)
+        );
+        assert_eq!(
+            std::fs::read(tmp.join("incoming.bin.download")).expect("read owner partial"),
+            FIRST,
+            "the rejected process must not truncate or replace the owner's generation"
+        );
+        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(tmp.join("incoming.bin.download.lock").exists());
+
+        // Termination bypasses every Rust destructor. The kernel must release the advisory lock,
+        // while the stable lock inode and exact partial generation remain available for resume.
+        owner.kill().expect("terminate the owning receive process");
+        let owner_status = owner.wait().expect("reap the owning receive process");
+        assert!(!owner_status.success());
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(tmp.join("incoming.bin.download.lock").exists());
+
+        let resumed = run_worker("resume");
+        assert!(
+            resumed.status.success(),
+            "resume process failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&resumed.stdout),
+            String::from_utf8_lossy(&resumed.stderr)
+        );
+        assert_eq!(
+            std::fs::read(tmp.join("incoming.bin")).expect("read resumed final file"),
+            [FIRST, SECOND].concat()
+        );
+        assert!(!tmp.join("incoming.bin.download").exists());
+        assert!(!tmp.join("incoming.bin.digest").exists());
+        assert!(!tmp.join("incoming.bin.download.lock").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn receive_sidecar_hard_links_are_refused_before_truncation() {
+        async fn exercise(sidecar_suffix: &str, job_id: i32) {
+            let tmp = TestTempDir::new(&format!("rustdesk_receive_hardlink_{job_id}"));
+            std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+            let secret = tmp.join("must-not-truncate");
+            let secret_contents = format!("secret-{job_id}").into_bytes();
+            std::fs::write(&secret, &secret_contents).expect("write hard-link target");
+            std::fs::hard_link(&secret, tmp.join(&format!("incoming.bin{sidecar_suffix}")))
+                .expect("precreate receive sidecar as a hard link");
+
+            let mut job = new_write_job(job_id, tmp.path.clone(), "incoming.bin")
+                .expect("create receive-write job");
+            let error = job
+                .write(FileTransferBlock {
+                    id: job_id,
+                    file_num: 0,
+                    data: b"attacker-controlled-write".to_vec().into(),
+                    ..Default::default()
+                })
+                .await
+                .expect_err("a hard-linked receive sidecar must not be admitted");
+            assert!(
+                error.to_string().contains("exactly one filesystem link"),
+                "unexpected hard-link rejection: {}",
+                error
+            );
+            assert_eq!(
+                std::fs::read(&secret).expect("read protected hard-link target"),
+                secret_contents,
+                "authority validation must precede every sidecar truncation"
+            );
+            assert!(!tmp.join("incoming.bin").exists());
+            assert!(!tmp.join("incoming.bin.download.lock").exists());
+            if sidecar_suffix == ".download" {
+                assert!(!tmp.join("incoming.bin.digest").exists());
+            } else {
+                assert!(
+                    !tmp.join("incoming.bin.download").exists(),
+                    "a separately admitted download must be cleaned by exact handle"
+                );
+            }
+        }
+
+        exercise(".download", 94).await;
+        exercise(".digest", 95).await;
+    }
+
+    #[test]
+    fn receive_confirmation_probe_retires_its_snapshot_lease() {
+        let tmp = TestTempDir::new("rustdesk_receive_confirmation_lease");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+            .expect("stage resumable download");
+        let stored = FileDigest {
+            size: 7,
+            modified: 19,
+        };
+        std::fs::write(tmp.join("incoming.bin.digest"), json!(stored).to_string())
+            .expect("stage matching resume digest");
+        let final_path = tmp.join("incoming.bin");
+        let final_path = final_path
+            .to_str()
+            .expect("temporary receive path must be UTF-8");
+        let result = is_write_need_confirmation(
+            true,
+            final_path,
+            &FileTransferDigest {
+                id: 96,
+                file_num: 0,
+                last_modified: stored.modified,
+                file_size: stored.size,
+                ..Default::default()
+            },
+        )
+        .expect("take a coherent receive confirmation snapshot");
+        match result {
+            DigestCheckResult::NeedConfirm(digest) => assert_eq!(digest.transferred_size, 7),
+            _ => panic!("matching resumable state must require confirmation"),
+        }
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(
+            !tmp.join("incoming.bin.download.lock").exists(),
+            "a read-only confirmation snapshot must not leave a lease inode behind"
+        );
+
+        let absent_parent = tmp.join("must-not-be-created");
+        let absent_final = absent_parent.join("incoming.bin");
+        let absent_final = absent_final
+            .to_str()
+            .expect("temporary absent receive path must be UTF-8");
+        assert!(matches!(
+            is_write_need_confirmation(false, absent_final, &FileTransferDigest::default())
+                .expect("an absent confirmation path is not an error"),
+            DigestCheckResult::NoSuchFile
+        ));
+        assert!(
+            !absent_parent.exists(),
+            "a read-only confirmation probe must not create destination directories"
+        );
+    }
+
+    #[tokio::test]
     async fn receive_write_rejects_non_monotonic_file_transition() {
         let tmp = TestTempDir::new("rustdesk_receive_transition");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
@@ -3362,6 +4017,49 @@ mod tests {
         job.remove_download_file();
         assert!(!tmp.join("zero.bin.download").exists());
         assert!(!tmp.join("zero.bin.digest").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn receive_finalize_refuses_a_replaced_staging_inode() {
+        let tmp = TestTempDir::new("rustdesk_receive_replaced_inode");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job =
+            new_write_job(93, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
+        job.write(FileTransferBlock {
+            id: 93,
+            file_num: 0,
+            data: b"owned-payload".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write the admitted staging inode");
+
+        let download = tmp.join("incoming.bin.download");
+        let displaced = tmp.join("displaced.download");
+        std::fs::rename(&download, &displaced).expect("displace the admitted staging inode");
+        std::fs::write(&download, b"replacement-must-survive")
+            .expect("install a different regular staging inode");
+
+        let error = job
+            .finalize_write(1)
+            .await
+            .expect_err("finalize must not publish a re-resolved staging name");
+        assert!(error.to_string().contains("generation changed"));
+        assert!(!tmp.join("incoming.bin").exists());
+
+        job.remove_download_file();
+        assert_eq!(
+            std::fs::read(&download).expect("read replacement staging inode"),
+            b"replacement-must-survive",
+            "cleanup must not unlink an inode outside the job's generation"
+        );
+        assert_eq!(
+            std::fs::read(&displaced).expect("read displaced admitted inode"),
+            b"owned-payload"
+        );
+        assert!(!tmp.join("incoming.bin.digest").exists());
+        assert!(!tmp.join("incoming.bin.download.lock").exists());
     }
 
     #[tokio::test]
@@ -3472,7 +4170,11 @@ mod tests {
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         std::fs::write(tmp.join("incoming.bin.download"), b"partial")
             .expect("stage partial download");
-        std::fs::write(tmp.join("incoming.bin.digest"), b"{}").expect("stage resume digest");
+        std::fs::write(
+            tmp.join("incoming.bin.digest"),
+            json!(FileDigest::default()).to_string(),
+        )
+        .expect("stage resume digest");
         let mut job =
             new_write_job(85, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
         let mut request = FileTransferSendConfirmRequest {
@@ -3532,7 +4234,7 @@ mod tests {
         assert!(error.to_string().contains("counter overflow"));
         assert!(!job.file_confirmed());
         assert!(job.data_stream.is_none());
-        assert!(job.receive_write_path.is_none());
+        assert!(job.receive_write_claim.is_none());
         assert_eq!(job.transferred(), u64::MAX);
         assert_eq!(job.finished_size(), 0);
     }

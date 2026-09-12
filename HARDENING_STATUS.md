@@ -12587,8 +12587,8 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
-**SOURCE IMPLEMENTED; PINNED LINUX RUST REGRESSIONS PASS; INSTALLED AND
-CROSS-PROCESS OWNERSHIP EVIDENCE OPEN.** A transfer job now has one immutable send or receive role.
+**SOURCE IMPLEMENTED; PINNED LINUX CROSS-PROCESS/PROCESS-DEATH REGRESSIONS PASS;
+NATIVE INSTALLED AND POWER-LOSS EVIDENCE OPEN.** A transfer job has one immutable send or receive role.
 Only receive jobs may write, own receive sidecars, clean them, or commit them; only send jobs may
 read. File-list admission rejects invalid initial indexes and aggregate-size overflow. Confirmation
 requires the exact job and active file, refuses duplicates, and publishes a resumed stream only
@@ -12598,33 +12598,44 @@ explicit write failure rather than a successful empty block.
 
 Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index,
 after the active handle is synced and the staged file's time is set; incomplete or stale terminal
-indexes fail. Final-name publication precedes best-effort digest cleanup, so digest-cleanup refusal
-is logged without falsely reporting that an already-visible file did not commit. Direct viewer,
-controlled-side, and CM call sites propagate confirmation/finalization failure, retire the exact
-in-memory job, and clean only a receive path that the job successfully claimed. CM terminal results
-remain bound to connection ID, generation, job, and phase; peer error and local commit outcome remain
-distinct.
+indexes fail. The admitted digest handle is removed before the exact final rename, leaving the rename
+as the last fallible publication step; no post-publication cleanup error can be reported as a failed
+commit. Direct viewer, controlled-side, and CM call sites propagate confirmation/finalization failure,
+retire the exact in-memory job, and clean only a receive generation the job admitted. CM terminal
+results remain bound to connection ID, generation, job, and phase; peer error and local commit outcome
+remain distinct.
 
-The exact current source passes ten focused `hbb_common` Rust 1.75 regressions covering role and
-terminal boundaries, monotonic transition, claimed-artifact cleanup, send-versus-receive resume,
-wrong-job and duplicate confirmation, counter and total-size overflow, malformed compression, and
-the empty-list bound. Four top-level `ui_cm_interface` regressions exercise real temporary-file
-commit, stale generation, incomplete `Done`, peer-error cleanup, and resume refusal through the CM
-dispatcher. Compilation and execution used a numeric nonroot, capability-free, no-new-privileges,
-network-disabled container with read-only source/toolchain/sysroot, disposable tmpfs Cargo/target
-state, no published ports, and unchanged host-listener inventory. This is Linux container behavior,
-not an installed desktop or Android result.
+Each destination now acquires a nonblocking OS advisory lease on a stable owner-only
+`<final>.download.lock` inode before any sidecar is opened or truncated. The opened lock pathname is
+identity-revalidated after acquisition. A live contender fails without modifying the owner's data.
+Kernel lock release on process death leaves the stable inode plus exact `.download`/`.digest` state
+available for explicit resume; successful commit, exact cleanup, failed admission, and read-only
+confirmation retire the lock inode. Resume and confirmation never create missing destination
+directories. Resume reacquires the lease, requires the exact stored digest,
+and retains the exact open download and digest handles. Cleanup checks that each Unix pathname still
+names its admitted device/inode; Windows deletes the admitted handle. Unix validates effective-UID
+ownership and one-link authority, and Windows validates one-link authority, before any truncation, so
+a precreated hard link cannot redirect sidecar truncation.
 
-The inherited fixed `<final>.download` and `<final>.digest` names still lack a cross-process or
-cross-job generation lease. Concurrent jobs targeting the same final path can therefore interfere,
-and automatic owner-loss cleanup cannot safely unlink a path that a successor may have claimed.
-Unix finalization still re-resolves the staged filename for `renameat` after syncing an opened handle,
-so exact-inode publication under a hostile same-directory rename race is not proved; parent-directory
-fsync/power-loss durability is also open. These limits must not be hidden by RAII cleanup that can
-delete a successor's artifact. Required follow-up is one generation-owned staging/lease design with
-real concurrent-process and crash/reconnect tests, followed by exact installed Windows, Linux,
-macOS, and Android file transactions, bounded resource/latency soak, current artifact binding, cold
-R-B2/R-B10 equality, independent reproduction, and external review.
+The exact current source passes all 35 `fs::tests` and the complete 145-test `hbb_common` Rust 1.75
+suite. The focused behaviors include a real competing process, forced termination of the process
+holding the lease with resume/commit by a third process, `.download` and `.digest` hard-link attacks,
+deterministic staging-inode replacement, false-resume refusal, exact cleanup, and confirmation-lease
+retirement. Tests ran as numeric UID/GID 1000 in a capability-free, no-new-privileges,
+network-disabled container with read-only source/caches and disposable tmpfs Cargo, target, home,
+machine identity, and filesystem fixtures; no ports were published. This is Linux container behavior,
+not an installed or native cross-platform result. The four earlier top-level CM regressions remain
+useful prior evidence but were not rerun against this exact tree.
+
+Windows publication is handle-relative through `NtSetInformationFile`, but current Windows compile and
+runtime evidence is absent. Unix has no general rename-by-file-descriptor primitive: it revalidates the
+staged device/inode immediately before `renameat`, so deterministic substitution fails closed, but a
+narrow hostile same-UID pathname race between the last check and rename/unlink remains unproved.
+Advisory leases do not constrain a noncooperating process with the receiver's own filesystem identity.
+Parent-directory fsync and power-loss durability also remain open. Required follow-up is exact
+installed Windows, Linux, macOS, Android, and iOS file transactions; native contention/crash/reconnect;
+power-loss fault injection; bounded resource/latency soak; current artifact binding; cold R-B2/R-B10
+equality; independent reproduction; and external review.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 

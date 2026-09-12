@@ -8,11 +8,13 @@ class _FakeTexture implements RetirableDesktopTexture {
     this.activationBarrier,
     this.retirementBarrier,
     this.activationResult = true,
+    this.retirementError,
   });
 
   final Completer<bool>? activationBarrier;
   final Completer<void>? retirementBarrier;
   final bool activationResult;
+  final Object? retirementError;
   int activateCalls = 0;
   int retireCalls = 0;
 
@@ -31,6 +33,9 @@ class _FakeTexture implements RetirableDesktopTexture {
     if (retirementBarrier != null) {
       await retirementBarrier!.future;
     }
+    if (retirementError != null) {
+      throw retirementError!;
+    }
   }
 }
 
@@ -44,7 +49,10 @@ void main() {
       initialize: () => initialized.future,
       publish: () => events.add('publish'),
       unpublish: () => events.add('unpublish'),
-      release: () async => events.add('release'),
+      release: () async {
+        events.add('release');
+        return true;
+      },
       onError: (operation, error, stackTrace) => errors.add(operation),
     );
 
@@ -67,7 +75,10 @@ void main() {
       },
       publish: () => events.add('publish'),
       unpublish: () => events.add('unpublish'),
-      release: () async => events.add('release'),
+      release: () async {
+        events.add('release');
+        return true;
+      },
       onError: (operation, error, stackTrace) =>
           fail('unexpected $operation error: $error'),
     );
@@ -89,7 +100,10 @@ void main() {
       initialize: () async => throw StateError('expected'),
       publish: () => events.add('publish'),
       unpublish: () => events.add('unpublish'),
-      release: () async => events.add('release'),
+      release: () async {
+        events.add('release');
+        return true;
+      },
       onError: (operation, error, stackTrace) => errors.add(operation),
     );
 
@@ -108,7 +122,10 @@ void main() {
       initialize: () async => false,
       publish: () => events.add('publish'),
       unpublish: () => events.add('unpublish'),
-      release: () async => events.add('release'),
+      release: () async {
+        events.add('release');
+        return true;
+      },
       onError: (operation, error, stackTrace) => errors.add(operation),
     );
 
@@ -129,7 +146,10 @@ void main() {
         throw StateError('expected');
       },
       unpublish: () => events.add('unpublish'),
-      release: () async => events.add('release'),
+      release: () async {
+        events.add('release');
+        return true;
+      },
       onError: (operation, error, stackTrace) => errors.add(operation),
     );
 
@@ -140,7 +160,8 @@ void main() {
     expect(events, ['publish', 'unpublish', 'release']);
   });
 
-  test('unpublication failure cannot prevent exact release', () async {
+  test('unpublication failure retains native allocation and fails retirement',
+      () async {
     final events = <String>[];
     final errors = <String>[];
     final lifecycle = DesktopTextureLifecycle(
@@ -152,17 +173,51 @@ void main() {
       },
       release: () async {
         events.add('release');
-        throw StateError('expected release failure');
+        return true;
       },
       onError: (operation, error, stackTrace) => errors.add(operation),
     );
 
     expect(await lifecycle.activate(), isTrue);
-    await lifecycle.retire();
-    await lifecycle.retire();
+    final first = lifecycle.retire();
+    final second = lifecycle.retire();
 
-    expect(errors, ['unpublish', 'release']);
-    expect(events, ['publish', 'unpublish', 'release']);
+    expect(identical(first, second), isTrue);
+    await expectLater(first, throwsStateError);
+    await expectLater(second, throwsStateError);
+    expect(errors, ['unpublish']);
+    expect(events, ['publish', 'unpublish']);
+  });
+
+  test('release refusal and exception remain visible through exact retirement',
+      () async {
+    for (final throwDuringRelease in [false, true]) {
+      final events = <String>[];
+      final errors = <String>[];
+      final lifecycle = DesktopTextureLifecycle(
+        initialize: () async => true,
+        publish: () => events.add('publish'),
+        unpublish: () => events.add('unpublish'),
+        release: () async {
+          events.add('release');
+          if (throwDuringRelease) {
+            throw StateError('expected release failure');
+          }
+          return false;
+        },
+        onError: (operation, error, stackTrace) => errors.add(operation),
+      );
+
+      expect(await lifecycle.activate(), isTrue);
+      final first = lifecycle.retire();
+      final second = lifecycle.retire();
+
+      expect(identical(first, second), isTrue);
+      await expectLater(first, throwsStateError);
+      await expectLater(second, throwsStateError);
+      expect(errors, ['release']);
+      expect(events, ['publish', 'unpublish', 'release']);
+    }
   });
 
   test('failed slot creation is bounded and a later demand can retry',
@@ -276,6 +331,37 @@ void main() {
 
     await slot.dispose();
     expect(created.last.retireCalls, 1);
+  });
+
+  test('failed retirement blocks replacement and remains terminal', () async {
+    final created = <_FakeTexture>[];
+    final errors = <String>[];
+    final slot = LatestDesktopTextureSlot<_FakeTexture>(
+      create: () {
+        final texture = _FakeTexture(
+          retirementError: StateError('expected retirement failure'),
+        );
+        created.add(texture);
+        return texture;
+      },
+      onError: (operation, error, stackTrace) => errors.add(operation),
+    );
+
+    slot.setWanted(true);
+    await slot.drain();
+    slot.setWanted(false);
+    slot.setWanted(true);
+
+    await expectLater(slot.drain(), throwsStateError);
+    expect(created, hasLength(1));
+    expect(created.single.retireCalls, 1);
+    expect(slot.hasCurrent, isTrue);
+    expect(errors, ['retire']);
+
+    await expectLater(slot.dispose(), throwsStateError);
+    expect(created, hasLength(1));
+    expect(created.single.retireCalls, 1);
+    expect(errors, ['retire']);
   });
 
   test('withdrawal during successful activation retires before replacement',

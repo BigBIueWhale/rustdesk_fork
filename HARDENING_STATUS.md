@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-f341415e6a9f2872c2fe79faee9f6fe20aaf2e145572c518ed3975571eede1da  requirements.html
+895a906955e95eaaec4e6ca6103a53a81aa43f72a48c73a578206f6c477ec74f  requirements.html
 ```
 
 ## Current Verdict
@@ -82,6 +82,19 @@ stage now rejects that symbol. A real Linux production-translation-unit build an
 control distinguish the one canonical fallible ABI from the retired dual-ABI artifact. Native Windows and
 macOS compilation, exact packaged bundles, real renderer presentation, and current lifecycle/reconnect
 execution remain open.
+
+R-S11ex and Appendix C #306 now state the timeless cross-language texture-lifetime contract instead of
+an implementation history, `FIX` badge, verifier receipts, or current evidence narration, reducing
+`requirements.html` by 3,672 bytes. The contract makes Rust-pointer unpublication a mandatory safety gate
+before native storage release and makes release refusal terminal for that exact display slot. A throwing bridge
+registration retains possibly-published state until compensating unpublication; only explicit refusal clears it.
+The prior Dart
+test that required both failures to be swallowed was replaced with executable failure-finality behaviors;
+fatal cleanup reporting carries the texture's immutable session/UI-owner pair, so stale failure cannot close a
+replacement session. The generic display slot does not infer ownership from mutable current-session state. The
+documentation/source/test-name mutation tuples and now-unused loaders were deleted rather than expanded.
+Git history retains the superseded narrative. Native renderer, cleanup-fault injection, installed-artifact,
+and sustained focus/window-transfer evidence remain open.
 
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,
@@ -817,7 +830,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   lifecycle, performance, and artifact evidence remain open.
 - **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source closed.
   Native texture pointer creation, publication, replacement, view transfer, and retirement are tied to the exact
-  asynchronous UI owner; callbacks cannot use or retire a replacement owner.
+  asynchronous UI owner. Failed Rust-pointer unpublication retains native storage; failed native release remains
+  one visible terminal predecessor and cannot admit a replacement. Callback cleanup cannot use or retire a
+  replacement owner.
 - **R-S11ey/R-S11e-186 software-RGBA-only desktop presentation** — Source/build topology closed. The unsupported
   GPU/VRAM texture plugin and its registration/packaging path are absent; supported desktop presentation uses the
   repository-owned software-RGBA plugin. Native renderer and packaged-plugin execution remain open.

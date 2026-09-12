@@ -4398,6 +4398,15 @@ class FFI {
         'The remote file transfer became inconsistent');
   }
 
+  void reportPresentationResourceFailure(
+      SessionID expectedSessionId, SessionID expectedClientOwnerId) {
+    if (!isCurrentSessionOwner(expectedSessionId, expectedClientOwnerId)) {
+      return;
+    }
+    _reportSessionStreamFailure(expectedSessionId, id,
+        'The remote display resource lifecycle became inconsistent');
+  }
+
   Future<int?> _displayTopologyAfterCheckpoint(
       SessionEventQueue<_SessionOwner> sessionEvents,
       _SessionOwner streamOwner,

@@ -16,7 +16,7 @@ class DesktopTextureLifecycle implements RetirableDesktopTexture {
     required Future<bool> Function() initialize,
     required void Function() publish,
     required void Function() unpublish,
-    required Future<void> Function() release,
+    required Future<bool> Function() release,
     required DesktopTextureLifecycleError onError,
   })  : _initialize = initialize,
         _publish = publish,
@@ -27,7 +27,7 @@ class DesktopTextureLifecycle implements RetirableDesktopTexture {
   final Future<bool> Function() _initialize;
   final void Function() _publish;
   final void Function() _unpublish;
-  final Future<void> Function() _release;
+  final Future<bool> Function() _release;
   final DesktopTextureLifecycleError _onError;
 
   bool _started = false;
@@ -102,9 +102,12 @@ class DesktopTextureLifecycle implements RetirableDesktopTexture {
     }
     _unpublicationAttempted = true;
     try {
+      // Rust may still call the published raw pointer until this succeeds.
+      // Propagating failure prevents native storage from being released under it.
       _unpublish();
     } catch (error, stackTrace) {
       _onError('unpublish', error, stackTrace);
+      rethrow;
     }
   }
 
@@ -112,9 +115,12 @@ class DesktopTextureLifecycle implements RetirableDesktopTexture {
 
   Future<void> _releaseAndReportFailure() async {
     try {
-      await _release();
+      if (!await _release()) {
+        throw StateError('Desktop texture release was rejected');
+      }
     } catch (error, stackTrace) {
       _onError('release', error, stackTrace);
+      rethrow;
     }
   }
 }
@@ -138,6 +144,8 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
   T? _current;
   Future<void>? _currentRetirement;
   Future<void>? _reconcileFuture;
+  Object? _retirementFailure;
+  StackTrace? _retirementFailureStackTrace;
 
   bool get wanted => _wanted;
   bool get hasCurrent => _current != null;
@@ -164,18 +172,18 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
       return;
     }
     try {
-      final retirement = current.retire();
-      _currentRetirement = _observeRetirement(retirement);
+      _currentRetirement = current.retire();
     } catch (error, stackTrace) {
-      _onError('retire', error, stackTrace);
-      _currentRetirement = Future<void>.value();
+      _recordRetirementFailure(error, stackTrace);
     }
   }
 
-  Future<void> _observeRetirement(Future<void> retirement) async {
-    try {
-      await retirement;
-    } catch (error, stackTrace) {
+  void _recordRetirementFailure(Object error, StackTrace stackTrace) {
+    if (_retirementFailure == null) {
+      // The predecessor remains the exact slot owner. Treating this as completion
+      // would allow a successor to overlap native storage whose cleanup failed.
+      _retirementFailure = error;
+      _retirementFailureStackTrace = stackTrace;
       _onError('retire', error, stackTrace);
     }
   }
@@ -185,7 +193,12 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
     if (retirement == null) {
       return;
     }
-    await retirement;
+    try {
+      await retirement;
+    } catch (error, stackTrace) {
+      _recordRetirementFailure(error, stackTrace);
+      rethrow;
+    }
     if (identical(_current, current)) {
       _current = null;
       _currentRetirement = null;
@@ -201,7 +214,9 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
     future.then<void>(
       (_) => _finishReconcile(future),
       onError: (Object error, StackTrace stackTrace) {
-        _onError('reconcile', error, stackTrace);
+        if (_retirementFailure == null) {
+          _onError('reconcile', error, stackTrace);
+        }
         _finishReconcile(future);
       },
     );
@@ -212,14 +227,24 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
       return;
     }
     _reconcileFuture = null;
-    if (!_isSettled) {
+    if (_retirementFailure == null && !_isSettled) {
       _ensureReconcile();
     }
   }
 
-  bool get _isSettled => _wanted
-      ? (_current != null && _currentRetirement == null) || _creationFailed
-      : _current == null;
+  bool get _isSettled => _retirementFailure != null
+      ? true
+      : _wanted
+          ? (_current != null && _currentRetirement == null) || _creationFailed
+          : _current == null;
+
+  void _throwRetirementFailureIfAny() {
+    final failure = _retirementFailure;
+    final stackTrace = _retirementFailureStackTrace;
+    if (failure != null && stackTrace != null) {
+      Error.throwWithStackTrace(failure, stackTrace);
+    }
+  }
 
   Future<void> _reconcile() async {
     while (!_isSettled) {
@@ -267,7 +292,6 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
         continue;
       }
 
-      final retiring = _current;
       if (retiring == null) {
         continue;
       }
@@ -278,6 +302,7 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
 
   Future<void> drain() async {
     while (true) {
+      _throwRetirementFailureIfAny();
       if (!_isSettled) {
         _ensureReconcile();
       }
@@ -286,6 +311,7 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
         await pending;
         continue;
       }
+      _throwRetirementFailureIfAny();
       if (_isSettled) {
         return;
       }

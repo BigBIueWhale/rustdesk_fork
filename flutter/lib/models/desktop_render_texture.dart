@@ -32,8 +32,13 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
       publish: _publish,
       unpublish: _unpublish,
       release: _release,
-      onError: (operation, error, stackTrace) => _reportTextureLifecycleError(
-          'pixelbuffer', _display, operation, error, stackTrace),
+      onError: (operation, error, stackTrace) {
+        _reportTextureLifecycleError(
+            'pixelbuffer', _display, operation, error, stackTrace);
+        if (operation == 'unpublish' || operation == 'release') {
+          _ffi.reportPresentationResourceFailure(_sessionId, _clientOwnerId);
+        }
+      },
     );
   }
 
@@ -65,12 +70,15 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
     if (id == null || id == -1 || ptr == null || ptr == 0) {
       throw StateError('Pixelbuffer texture publication state is incomplete');
     }
+    // An exception has unknown commit status. Keep the conservative published
+    // state unless the bridge explicitly reports that registration was refused.
+    _nativePublished = true;
     final published = platformFFI.registerPixelbufferTexture(
         _sessionId, _clientOwnerId, _display, ptr, true);
     if (!published) {
+      _nativePublished = false;
       throw StateError('Pixelbuffer texture publication was refused');
     }
-    _nativePublished = true;
     _ffi.textureModel.setTextureId(display: _display, id: id);
     debugPrint(
         "create pixelbuffer texture: peerId: ${_ffi.id} display:$_display, textureId:$id, texturePtr:$ptr");
@@ -96,18 +104,17 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
     }
   }
 
-  Future<void> _release() async {
+  Future<bool> _release() async {
     final id = _id;
     if (id == null || id == -1) {
-      return;
+      return true;
     }
     final closed = await textureRenderer.closeTexture(_textureKey);
-    if (!closed) {
+    if (closed) {
       debugPrint(
-          'Failed to close pixelbuffer texture key $_textureKey for display $_display');
+          "destroy pixelbuffer texture: peerId: ${_ffi.id} display:$_display, textureId:$id");
     }
-    debugPrint(
-        "destroy pixelbuffer texture: peerId: ${_ffi.id} display:$_display, textureId:$id");
+    return closed;
   }
 
   @override

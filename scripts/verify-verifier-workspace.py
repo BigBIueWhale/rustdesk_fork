@@ -64720,114 +64720,6 @@ def run_source_mutations(sources):
             "Linux texture-plugin fresh-bridge behavior gate",
         ),
         (
-            "desktop_texture_lifecycle_source",
-            "activated = await candidate.activate();",
-            "activated = true;",
-            "independent activation cancellation and replacement after exact retirement",
-        ),
-        (
-            "desktop_texture_lifecycle_source",
-            "if (_wanted && _demandRevision == demandRevision)",
-            "if (_wanted)",
-            "independent activation cancellation and replacement after exact retirement",
-        ),
-        (
-            "desktop_texture_lifecycle_source",
-            "if (!wanted) {\n      _requestCurrentRetirement();\n    }",
-            "if (!wanted) {\n      _ensureReconcile();\n    }",
-            "independent synchronous display-withdrawal invalidation",
-        ),
-        (
-            "desktop_texture_lifecycle_source",
-            "Future<void>? _currentRetirement;",
-            "Future<void>? ignoredRetirement;",
-            "independent result-bearing desktop texture activation ownership",
-        ),
-        (
-            "desktop_texture_lifecycle_source",
-            "final retirement = current.retire();",
-            "final retirement = Future<void>.value();",
-            "independent one-shot retained texture retirement request",
-        ),
-        (
-            "desktop_texture_lifecycle_source",
-            "await _finishCurrentRetirement(candidate);",
-            "_current = null;",
-            "independent activation cancellation and replacement after exact retirement",
-        ),
-        (
-            "desktop_render_texture_source",
-            "Future<bool> activate() => _lifecycle.activate();",
-            "Future<bool> activate() async => true;",
-            "independent slot-owned pixelbuffer activation",
-        ),
-        (
-            "desktop_render_texture_source",
-            "if (!published)",
-            "if (false)",
-            "independent result-bearing exact-pointer pixelbuffer lifetime",
-        ),
-        (
-            "desktop_render_texture_source",
-            "_sessionId, _clientOwnerId, _display, ptr, false",
-            "_sessionId, _sessionId, _display, ptr, false",
-            "independent result-bearing exact-pointer pixelbuffer lifetime",
-        ),
-        (
-            "flutter_source",
-            "if register && !handler.displays.contains(&display)",
-            "if false",
-            "independent exact owner and selected-display publication admission",
-        ),
-        (
-            "flutter_source",
-            "info.texture_rgba_ptr == ptr",
-            "info.texture_rgba_ptr != ptr",
-            "independent nonzero exact-pointer register/unregister semantics",
-        ),
-        (
-            "flutter_ffi_source",
-            ") -> SyncReturn<bool> {\n    SyncReturn(super::flutter::session_register_pixelbuffer_texture(",
-            ") -> SyncReturn<()> {\n    SyncReturn(super::flutter::session_register_pixelbuffer_texture(",
-            "independent result-bearing exact-pointer FFI propagation",
-        ),
-        (
-            "native_model_source",
-            "int ptr, bool register) =>",
-            "int ptr, bool ignoredRegister) =>",
-            "independent native_model_source exact-pointer operation propagation",
-        ),
-        (
-            "web_bridge_source",
-            "required bool register,\n      dynamic hint}) {\n    return false;",
-            "required bool register,\n      dynamic hint}) {\n    return true;",
-            "independent result-bearing web pixelbuffer parity",
-        ),
-        (
-            "desktop_texture_lifecycle_test",
-            "rejected initialization is reported and the allocation is released",
-            "rejected initialization is ignored",
-            "independent desktop texture regression: rejected initialization is reported and the allocation is released",
-        ),
-        (
-            "desktop_texture_lifecycle_test",
-            "failed asynchronous activation is retired and retry is bounded",
-            "failed asynchronous activation is retained",
-            "independent desktop texture regression: failed asynchronous activation is retired and retry is bounded",
-        ),
-        (
-            "desktop_texture_lifecycle_test",
-            "new demand during failed activation receives a fresh exact attempt",
-            "new demand during failed activation is discarded",
-            "independent desktop texture regression: new demand during failed activation receives a fresh exact attempt",
-        ),
-        (
-            "desktop_texture_lifecycle_test",
-            "withdrawal during successful activation retires before replacement",
-            "withdrawal during successful activation reuses predecessor",
-            "independent desktop texture regression: withdrawal during successful activation retires before replacement",
-        ),
-        (
             "flutter_source",
             "fn r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact()",
             "fn pixelbuffer_publication_is_not_pointer_exact()",
@@ -65554,12 +65446,6 @@ def run_source_mutations(sources):
         ),
         (
             "dart_verify",
-            "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
-            "true # desktop texture lifecycle test removed",
-            "desktop texture confined Dart behavior gate",
-        ),
-        (
-            "dart_verify",
             "flutter test --no-pub test/presentation_recovery_test.dart",
             "true # presentation recovery test removed",
             "independent confined presentation recovery behavior gate",
@@ -65575,24 +65461,6 @@ def run_source_mutations(sources):
             "\n    /tmp/texture_rgba_windows_core_test\n",
             "\n    true # portable Windows callback-core gate removed\n",
             "desktop texture portable Windows callback-core behavior gate",
-        ),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11ex</span>',
-            '<div class="req"><span class="id">R-S11ex-disabled</span>',
-            "desktop texture lifecycle requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>306</td>",
-            "<tr><td>306-disabled</td>",
-            "desktop texture lifecycle Appendix C row",
-        ),
-        (
-            "hardening",
-            "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
-            "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
-            "desktop texture lifecycle hardening ledger",
         ),
         (
             "requirements",
@@ -75033,12 +74901,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "build_windows_source": (
                 repo / "scripts/build-windows.ps1"
-            ).read_text(encoding="utf-8"),
-            "desktop_texture_lifecycle_source": (
-                repo / "flutter/lib/models/desktop_texture_lifecycle.dart"
-            ).read_text(encoding="utf-8"),
-            "desktop_texture_lifecycle_test": (
-                repo / "flutter/test/desktop_texture_lifecycle_test.dart"
             ).read_text(encoding="utf-8"),
             "texture_rgba_pubspec": (
                 repo / "flutter/third_party/texture_rgba_renderer/pubspec.yaml"

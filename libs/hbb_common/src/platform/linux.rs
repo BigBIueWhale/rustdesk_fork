@@ -1,5 +1,6 @@
 use crate::ResultType;
 use std::{
+    convert::TryInto,
     io,
     os::{
         fd::RawFd,

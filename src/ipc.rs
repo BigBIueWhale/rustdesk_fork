@@ -4034,13 +4034,14 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     let authorization = {
                         let deadline = tokio::time::Instant::now()
                             + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                        let Some(authorization) = authorize_macos_service_scoped_ipc_connection_for_task(
-                            authorization,
-                            authorization_permit,
-                            deadline,
-                        )
-                        .await
-                        {
+                        let Some(authorization) =
+                            authorize_macos_service_scoped_ipc_connection_for_task(
+                                authorization,
+                                authorization_permit,
+                                deadline,
+                            )
+                            .await
+                        else {
                             return;
                         };
                         authorization

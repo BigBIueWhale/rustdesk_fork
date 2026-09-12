@@ -91,7 +91,7 @@ pub fn run() {
         return;
     }
 
-    let event_loop = match EventLoop::<(String, CustomEvent)>::with_user_event().build() {
+    let event_loop = match EventLoop::<(i32, CustomEvent)>::with_user_event().build() {
         Ok(el) => el,
         Err(e) => {
             log::error!("Failed to create event loop: {}", e);

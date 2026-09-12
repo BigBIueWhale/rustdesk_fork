@@ -4096,7 +4096,7 @@ impl DisplaySelectionCommand {
                     bail!("display selection has too many refresh targets");
                 }
                 let mut refresh_seen = HashSet::with_capacity(displays.len());
-                for display in &displays {
+                for display in displays.iter() {
                     if *display >= MAX_PEER_VIDEO_DISPLAYS {
                         bail!("display selection refresh index exceeds the peer display cap");
                     }
@@ -5441,7 +5441,7 @@ mod tests {
 
     fn audio_frame(marker: u8) -> AudioFrame {
         let mut frame = AudioFrame::new();
-        frame.data = vec![marker];
+        frame.data = vec![marker].into();
         frame
     }
 

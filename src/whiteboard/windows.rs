@@ -27,7 +27,7 @@ pub(super) fn create_event_loop() -> ResultType<()> {
         }
     };
 
-    let event_loop = EventLoopBuilder::<(String, CustomEvent)>::with_user_event().build();
+    let event_loop = EventLoopBuilder::<(i32, CustomEvent)>::with_user_event().build();
     let mut window_builder = WindowBuilder::new()
         .with_title("RustDesk whiteboard")
         .with_transparent(true)
@@ -51,7 +51,7 @@ pub(super) fn create_event_loop() -> ResultType<()> {
             window_builder.with_fullscreen(Some(tao::window::Fullscreen::Borderless(None)));
     }
 
-    let window = Arc::new(window_builder.build::<(String, CustomEvent)>(&event_loop)?);
+    let window = Arc::new(window_builder.build::<(i32, CustomEvent)>(&event_loop)?);
     window.set_ignore_cursor_events(true)?;
 
     let context = Context::new(window.clone()).map_err(|e| {

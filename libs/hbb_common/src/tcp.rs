@@ -12,6 +12,7 @@ use futures::{
 };
 use protobuf::Message;
 use std::{
+    convert::TryFrom,
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     ops::{Deref, DerefMut},

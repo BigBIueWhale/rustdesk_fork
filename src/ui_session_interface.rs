@@ -1541,7 +1541,7 @@ impl<T: InvokeUiSession> Session<T> {
                 start,
             ) {
                 Ok(()) => {
-                    *thread_lock = Some(thread);
+                    **thread_lock = Some(thread);
                     Ok(true)
                 }
                 Err(err) => {

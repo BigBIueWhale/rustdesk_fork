@@ -12587,8 +12587,9 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
-**SOURCE IMPLEMENTED; PINNED LINUX CROSS-PROCESS/PROCESS-DEATH REGRESSIONS PASS;
-NATIVE INSTALLED AND POWER-LOSS EVIDENCE OPEN.** A transfer job has one immutable send or receive role.
+**SOURCE IMPLEMENTED; PINNED LINUX CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED
+DURABILITY-FAILURE REGRESSIONS PASS; NATIVE INSTALLED AND PHYSICAL POWER-LOSS EVIDENCE OPEN.**
+A transfer job has one immutable send or receive role.
 Only receive jobs may write, own receive sidecars, clean them, or commit them; only send jobs may
 read. File-list admission rejects invalid initial indexes and aggregate-size overflow. Confirmation
 requires the exact job and active file, refuses duplicates, and publishes a resumed stream only
@@ -12597,13 +12598,25 @@ succeeds, and byte accounting remains representable. Malformed or over-limit zst
 explicit write failure rather than a successful empty block.
 
 Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index,
-after the active handle is synced and the staged file's time is set; incomplete or stale terminal
-indexes fail. The admitted digest handle is removed before the exact final rename, leaving the rename
-as the last fallible publication step; no post-publication cleanup error can be reported as a failed
-commit. Direct viewer, controlled-side, and CM call sites propagate confirmation/finalization failure,
-retire the exact in-memory job, and clean only a receive generation the job admitted. CM terminal
-results remain bound to connection ID, generation, job, and phase; peer error and local commit outcome
-remain distinct.
+after the active stream and retained staged handle are synchronized and the staged file's time is set;
+incomplete or stale terminal indexes fail. The admitted digest handle is removed before the exact
+final rename. Publication is an irreversible in-memory state transition immediately after rename,
+before any post-rename barrier. Unix then synchronizes the retained containing-directory handle;
+failure is reported as **visible but commit-durability-uncertain**, never as an assertion that rename
+did not occur. Error cleanup for that state retries the namespace barrier and synchronizes the exact
+now-final handle, but can never delete or replace the published file. Direct viewer, controlled-side,
+and CM call sites propagate confirmation/finalization failure and clean only a receive generation the
+job admitted. CM terminal results remain bound to connection ID, generation, job, and phase; peer
+error, pre-publication failure, and post-publication durability uncertainty remain distinct.
+
+Namespace durability is now part of admission and cleanup rather than only final publication. Unix
+synchronizes the exact parent after creating the lock and staged sidecars, synchronizes each retained
+ancestor immediately after a successful `mkdirat`, and synchronizes the parent after exact-handle
+sidecar or lease removal. A cleanup attempt still persists removals that did succeed when another
+artifact fails its identity check; the stable lock pathname is retired only after the relevant
+cleanup barrier succeeds. A deterministic same-UID replacement therefore leaves the replacement and
+displaced admitted payload untouched and retains a zero-byte lock marker rather than claiming a fully
+retired transaction. The OS lock is released, so the marker does not block a later cooperative owner.
 
 Each destination now acquires a nonblocking OS advisory lease on a stable owner-only
 `<final>.download.lock` inode before any sidecar is opened or truncated. The opened lock pathname is
@@ -12617,25 +12630,41 @@ names its admitted device/inode; Windows deletes the admitted handle. Unix valid
 ownership and one-link authority, and Windows validates one-link authority, before any truncation, so
 a precreated hard link cannot redirect sidecar truncation.
 
-The exact current source passes all 35 `fs::tests` and the complete 145-test `hbb_common` Rust 1.75
+The exact current source passes all 37 `fs::tests` and the complete 147-test `hbb_common` Rust 1.75
 suite. The focused behaviors include a real competing process, forced termination of the process
 holding the lease with resume/commit by a third process, `.download` and `.digest` hard-link attacks,
-deterministic staging-inode replacement, false-resume refusal, exact cleanup, and confirmation-lease
-retirement. Tests ran as numeric UID/GID 1000 in a capability-free, no-new-privileges,
-network-disabled container with read-only source/caches and disposable tmpfs Cargo, target, home,
-machine identity, and filesystem fixtures; no ports were published. This is Linux container behavior,
-not an installed or native cross-platform result. The four earlier top-level CM regressions remain
-useful prior evidence but were not rerun against this exact tree.
+deterministic staging-inode replacement, false-resume refusal, exact cleanup, confirmation-lease
+retirement, ordinary post-rename durability, and a post-publication barrier failure that must preserve
+the visible final file. Tests ran as numeric UID/GID 1000 in a capability-free,
+no-new-privileges, network-disabled container with read-only source/caches and disposable tmpfs Cargo,
+target, home, machine identity, and filesystem fixtures; no ports were published. This is Linux
+container behavior, not an installed or native cross-platform result. The four earlier top-level CM
+regressions remain useful prior evidence but were not rerun against this exact tree.
 
-Windows publication is handle-relative through `NtSetInformationFile`, but current Windows compile and
-runtime evidence is absent. Unix has no general rename-by-file-descriptor primitive: it revalidates the
-staged device/inode immediately before `renameat`, so deterministic substitution fails closed, but a
-narrow hostile same-UID pathname race between the last check and rename/unlink remains unproved.
-Advisory leases do not constrain a noncooperating process with the receiver's own filesystem identity.
-Parent-directory fsync and power-loss durability also remain open. Required follow-up is exact
-installed Windows, Linux, macOS, Android, and iOS file transactions; native contention/crash/reconnect;
-power-loss fault injection; bounded resource/latency soak; current artifact binding; cold R-B2/R-B10
-equality; independent reproduction; and external review.
+An exact-production-path `strace` run observed the successful Linux sequence
+`fsync(download) -> unlinkat(digest) -> renameat(download, final) -> fsync(parent)`. Injecting `EIO`
+into that final parent `fsync` made the finalizer return the explicit visible-but-uncertain error while
+the test proved the final payload remained visible and both staging names were absent. A second trace
+drove the real `ReceiveWriteClaim`: after injected post-rename parent-sync failure, cleanup retried the
+same directory barrier, synchronized the exact published file handle, durably retired the lock, and
+again left the final payload intact. These are kernel-observed Linux syscall and fault-injection
+results, not source-string assertions. They are not a physical power-cut or filesystem-remount test.
+
+Windows publication remains handle-relative through `NtSetInformationFile` and now flushes the exact
+download handle both before and after it is renamed; post-rename failure uses the same irreversible
+published state. This is conservative source design, not current Windows compile/runtime or native
+namespace-durability evidence. On macOS/iOS, regular-file synchronization performs ordinary `fsync`
+followed by mandatory `F_FULLFSYNC`, and namespace transactions place another exact-file full-sync
+after the directory barrier. Apple documents `F_FULLFSYNC` as the stronger persistence request but a
+best-effort guarantee; the source has not been compiled or exercised on the current native Apple
+targets. Unix has no general rename-by-file-descriptor primitive: it revalidates the staged device/inode
+immediately before `renameat`, so deterministic substitution fails closed, but a narrow hostile
+same-UID pathname race between the last check and rename/unlink remains unproved. Advisory leases do
+not constrain a noncooperating process with the receiver's own filesystem identity. Required follow-up
+is exact installed Windows, Linux, macOS, Android, and iOS file transactions; native
+contention/crash/reconnect and storage-failure injection; physical power-loss/remount testing where
+practical; bounded resource/latency soak; current artifact binding; cold R-B2/R-B10 equality;
+independent reproduction; and external review.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 

@@ -885,6 +885,7 @@ fn open_parent_dir_no_follow(
             std::path::Component::RootDir | std::path::Component::CurDir => {}
             std::path::Component::Normal(name) => {
                 let name_c = cstring_from_os_str(name, "file-transfer parent")?;
+                let mut created = false;
                 if create_missing {
                     let rc = unsafe {
                         crate::libc::mkdirat(
@@ -893,12 +894,21 @@ fn open_parent_dir_no_follow(
                             0o777 as crate::libc::mode_t,
                         )
                     };
-                    if rc != 0 {
+                    if rc == 0 {
+                        created = true;
+                    } else {
                         let err = std::io::Error::last_os_error();
                         if err.raw_os_error() != Some(crate::libc::EEXIST) {
                             return Err(err);
                         }
                     }
+                }
+
+                // A successful mkdirat publishes a new entry in `dir`. Persist that entry before
+                // descending into it, otherwise a later file fsync cannot make a newly created
+                // ancestor survive a crash. Existing directories need no creation barrier here.
+                if created {
+                    sync_recv_directory(&dir)?;
                 }
 
                 let fd = unsafe {
@@ -932,6 +942,43 @@ fn open_parent_dir_no_follow(
     }
 
     Ok(dir)
+}
+
+fn sync_recv_regular_file(file: &std::fs::File) -> std::io::Result<()> {
+    file.sync_all()?;
+
+    // Darwin's fsync only pushes host caches to the drive. F_FULLFSYNC additionally asks the
+    // device to flush its own volatile cache. Keep this as one mandatory path rather than a
+    // best-effort fallback: a filesystem that cannot provide the requested barrier must fail the
+    // transaction instead of reporting durable completion.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        if unsafe {
+            crate::libc::fcntl(
+                file.as_raw_fd(),
+                crate::libc::F_FULLFSYNC,
+                0 as crate::libc::c_int,
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(unix)]
+fn sync_recv_directory(directory: &std::fs::File) -> std::io::Result<()> {
+    directory.sync_all()
+}
+
+#[cfg(unix)]
+fn sync_recv_parent_no_follow(path: &Path) -> std::io::Result<()> {
+    let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+    sync_recv_directory(&parent)
 }
 
 #[cfg(unix)]
@@ -1395,23 +1442,24 @@ mod nt_nofollow {
     /// R-S8/R-A5: finalize the receive write handle-relative — set the mtime on the admitted
     /// `.download` handle, discard the exact digest handle, and rename that SAME download handle
     /// onto the final name via `NtSetInformationFile(FileRenameInformation,
-    /// RootDirectory=parent)`. The rename is the last fallible commit step, so an error cannot be
-    /// reported after the final name has already become visible. Mirrors the Unix `renameat`
-    /// finalize.
+    /// RootDirectory=parent)`. A second flush through that exact renamed handle follows; failure
+    /// there is explicitly reported as visible-but-durability-uncertain. Mirrors the Unix
+    /// `renameat` finalize.
     pub(super) fn finish_recv_write(
         final_path: &Path,
         download_file: &std::fs::File,
         digest_file: &std::fs::File,
         mtime: filetime::FileTime,
+        published: &mut bool,
     ) -> io::Result<()> {
         let parent = walk_to_parent(parent_dir(final_path)?, false)?;
         let ph = parent.as_raw_handle() as HANDLE;
         let final_name = file_name_wide(final_path)?;
         // Both handles were opened only after the caller acquired the destination lease. Delete the
         // exact digest object before publication, then make the exact admitted download handle the
-        // final name. The rename remains the last fallible operation.
+        // final name. Any later flush failure is a distinct visible-but-uncertain outcome.
         filetime::set_file_handle_times(download_file, None, Some(mtime))?;
-        download_file.sync_all()?;
+        super::sync_recv_regular_file(download_file)?;
         delete_open_recv_file(digest_file)?;
         unsafe {
             nt_rename_at(
@@ -1421,6 +1469,11 @@ mod nt_nofollow {
                 true,
             )?
         };
+        *published = true;
+        // Flush again through the exact now-renamed handle. A failure is post-publication and must
+        // be surfaced as outcome-uncertain, never as a claim that the destination stayed absent.
+        super::sync_recv_regular_file(download_file)
+            .map_err(super::visible_receive_commit_durability_error)?;
         Ok(())
     }
 
@@ -1615,12 +1668,82 @@ fn remove_open_recv_file_no_follow(path: &Path, file: &std::fs::File) -> std::io
     }
 }
 
+fn remove_receive_artifacts_and_sync_parent(
+    final_path: &Path,
+    artifacts: &[(&Path, &std::fs::File)],
+) -> std::io::Result<()> {
+    let mut first_error = None;
+    for (path, file) in artifacts {
+        if let Err(error) = remove_open_recv_file_no_follow(path, file) {
+            if first_error.is_none() {
+                first_error = Some(error);
+            } else {
+                log::warn!(
+                    "additional receive cleanup failure for {}: {}",
+                    path.display(),
+                    error
+                );
+            }
+        }
+    }
+
+    // Persist every namespace removal that did succeed, even when another exact artifact could
+    // not be removed. Only a fully successful barrier permits retirement of the stable lock name.
+    #[cfg(unix)]
+    if let Err(error) = sync_recv_parent_no_follow(final_path) {
+        if first_error.is_none() {
+            first_error = Some(error);
+        } else {
+            log::warn!(
+                "additional receive cleanup directory synchronization failure for {}: {}",
+                final_path.display(),
+                error
+            );
+        }
+    }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    if let Some((_, file)) = artifacts.first() {
+        if let Err(error) = sync_recv_regular_file(file) {
+            if first_error.is_none() {
+                first_error = Some(error);
+            } else {
+                log::warn!(
+                    "additional receive cleanup full-storage synchronization failure for {}: {}",
+                    final_path.display(),
+                    error
+                );
+            }
+        }
+    }
+
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+fn visible_receive_commit_durability_error(error: std::io::Error) -> std::io::Error {
+    std::io::Error::new(
+        error.kind(),
+        format!(
+            "received file is visible, but commit durability is uncertain because the final namespace synchronization failed: {error}"
+        ),
+    )
+}
+
 fn finish_recv_write_no_follow(
     path: &Path,
     download_file: &std::fs::File,
     digest_file: &std::fs::File,
     modified_time: u64,
+    published: &mut bool,
 ) -> std::io::Result<()> {
+    if *published {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "receive generation is already published",
+        ));
+    }
     let mtime = filetime::FileTime::from_unix_time(modified_time as _, 0);
     #[cfg(unix)]
     {
@@ -1632,7 +1755,7 @@ fn finish_recv_write_no_follow(
         let download_path = recv_sidecar_path(path, ".download");
         let download_name = cstring_file_name(&download_path)?;
         filetime::set_file_handle_times(&download_file, None, Some(mtime))?;
-        download_file.sync_all()?;
+        sync_recv_regular_file(download_file)?;
         ensure_recv_path_matches_open_file(&download_path, download_file)?;
         remove_open_recv_file_no_follow(&recv_sidecar_path(path, ".digest"), digest_file)?;
         if unsafe {
@@ -1646,12 +1769,19 @@ fn finish_recv_write_no_follow(
         {
             return Err(std::io::Error::last_os_error());
         }
+        *published = true;
+        // File-data synchronization does not persist the containing directory entry. The rename
+        // is already visible if this barrier fails, so return an explicit outcome-uncertain error
+        // rather than pretending the publication did not happen.
+        sync_recv_directory(&parent).map_err(visible_receive_commit_durability_error)?;
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        sync_recv_regular_file(download_file).map_err(visible_receive_commit_durability_error)?;
         return Ok(());
     }
 
     #[cfg(windows)]
     {
-        nt_nofollow::finish_recv_write(path, download_file, digest_file, mtime)
+        nt_nofollow::finish_recv_write(path, download_file, digest_file, mtime, published)
     }
 
     #[cfg(all(not(unix), not(windows)))]
@@ -1659,9 +1789,11 @@ fn finish_recv_write_no_follow(
         let download_path = recv_sidecar_path(path, ".download");
         let digest_path = recv_sidecar_path(path, ".digest");
         filetime::set_file_handle_times(download_file, None, Some(mtime))?;
-        download_file.sync_all()?;
+        sync_recv_regular_file(download_file)?;
         remove_open_recv_file_no_follow(&digest_path, digest_file)?;
         std::fs::rename(download_path, path)?;
+        *published = true;
+        sync_recv_regular_file(download_file).map_err(visible_receive_commit_durability_error)?;
         Ok(())
     }
 }
@@ -1815,6 +1947,11 @@ impl ReceivePathLease {
         acquire_receive_path_lock(&file)?;
         #[cfg(any(unix, windows))]
         ensure_recv_path_matches_open_file(&path, &file)?;
+        sync_recv_regular_file(&file)?;
+        #[cfg(unix)]
+        sync_recv_parent_no_follow(final_path)?;
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        sync_recv_regular_file(&file)?;
         Ok(Self {
             path,
             file,
@@ -1834,14 +1971,14 @@ impl Drop for ReceivePathLease {
         // retire that inode while still holding its lock: a new owner may start on a new inode, but
         // this retiring owner has no destination state left to mutate.
         if self.retire_on_drop {
-            if let Err(err) = remove_open_recv_file_no_follow(&self.path, &self.file) {
-                if err.kind() != std::io::ErrorKind::NotFound {
-                    log::warn!(
-                        "cannot retire receive destination lease {}: {}",
-                        self.path.display(),
-                        err
-                    );
-                }
+            if let Err(err) =
+                remove_receive_artifacts_and_sync_parent(&self.path, &[(&self.path, &self.file)])
+            {
+                log::warn!(
+                    "cannot durably retire receive destination lease {}: {}",
+                    self.path.display(),
+                    err
+                );
             }
         }
         if let Err(err) = release_receive_path_lock(&self.file) {
@@ -1859,6 +1996,7 @@ struct ReceiveWriteClaim {
     final_path: PathBuf,
     download_file: std::fs::File,
     digest_file: std::fs::File,
+    published: bool,
     _lease: ReceivePathLease,
 }
 
@@ -1881,40 +2019,49 @@ impl ReceiveWriteClaim {
             match open_recv_file_no_follow_std(&digest_path, true, true, false, true) {
                 Ok(file) => file,
                 Err(err) => {
-                    if let Err(cleanup_err) =
-                        remove_open_recv_file_no_follow(&download_path, &download_file)
-                    {
+                    if let Err(cleanup_err) = remove_receive_artifacts_and_sync_parent(
+                        &final_path,
+                        &[(&download_path, &download_file)],
+                    ) {
                         log::warn!(
                             "cannot clean admitted receive artifact {}: {}",
                             download_path.display(),
                             cleanup_err
                         );
+                    } else {
+                        lease.retire();
                     }
-                    lease.retire();
                     return Err(err.into());
                 }
             };
         let prepared = (|| -> ResultType<_> {
+            sync_recv_regular_file(&download_file)?;
             digest_file.write_all(json!(digest).to_string().as_bytes())?;
-            digest_file.sync_all()?;
+            sync_recv_regular_file(&digest_file)?;
+            #[cfg(unix)]
+            sync_recv_parent_no_follow(&final_path)?;
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            sync_recv_regular_file(&digest_file)?;
             Ok(download_file.try_clone()?)
         })();
         let stream_file = match prepared {
             Ok(file) => file,
             Err(err) => {
-                for (path, file) in [
-                    (&digest_path, &digest_file),
-                    (&download_path, &download_file),
-                ] {
-                    if let Err(cleanup_err) = remove_open_recv_file_no_follow(path, file) {
-                        log::warn!(
-                            "cannot clean admitted receive artifact {}: {}",
-                            path.display(),
-                            cleanup_err
-                        );
-                    }
+                if let Err(cleanup_err) = remove_receive_artifacts_and_sync_parent(
+                    &final_path,
+                    &[
+                        (&digest_path, &digest_file),
+                        (&download_path, &download_file),
+                    ],
+                ) {
+                    log::warn!(
+                        "cannot durably clean failed receive setup for {}: {}",
+                        final_path.display(),
+                        cleanup_err
+                    );
+                } else {
+                    lease.retire();
                 }
-                lease.retire();
                 return Err(err);
             }
         };
@@ -1923,6 +2070,7 @@ impl ReceiveWriteClaim {
                 final_path,
                 download_file,
                 digest_file,
+                published: false,
                 _lease: lease,
             },
             stream_file,
@@ -1957,6 +2105,7 @@ impl ReceiveWriteClaim {
                 final_path,
                 download_file,
                 digest_file,
+                published: false,
                 _lease: lease,
             },
             stream_file,
@@ -1969,6 +2118,7 @@ impl ReceiveWriteClaim {
             &self.download_file,
             &self.digest_file,
             modified_time,
+            &mut self.published,
         );
         if result.is_ok() {
             self._lease.retire();
@@ -1977,23 +2127,41 @@ impl ReceiveWriteClaim {
     }
 
     fn cleanup(mut self) {
-        for (path, file) in [
-            (
-                recv_sidecar_path(&self.final_path, ".digest"),
-                &self.digest_file,
-            ),
-            (
-                recv_sidecar_path(&self.final_path, ".download"),
-                &self.download_file,
-            ),
-        ] {
-            if let Err(err) = remove_open_recv_file_no_follow(&path, file) {
-                if err.kind() != std::io::ErrorKind::NotFound {
-                    log::warn!("cannot clean receive artifact {}: {}", path.display(), err);
-                }
+        if self.published {
+            let result = (|| -> std::io::Result<()> {
+                #[cfg(unix)]
+                sync_recv_parent_no_follow(&self.final_path)?;
+                sync_recv_regular_file(&self.download_file)
+            })();
+            if let Err(error) = result {
+                log::warn!(
+                    "cannot recover uncertain published receive durability for {}: {}",
+                    self.final_path.display(),
+                    error
+                );
+            } else {
+                self._lease.retire();
             }
+            return;
         }
-        self._lease.retire();
+
+        let digest_path = recv_sidecar_path(&self.final_path, ".digest");
+        let download_path = recv_sidecar_path(&self.final_path, ".download");
+        if let Err(error) = remove_receive_artifacts_and_sync_parent(
+            &self.final_path,
+            &[
+                (&digest_path, &self.digest_file),
+                (&download_path, &self.download_file),
+            ],
+        ) {
+            log::warn!(
+                "cannot durably clean receive artifacts for {}: {}",
+                self.final_path.display(),
+                error
+            );
+        } else {
+            self._lease.retire();
+        }
     }
 }
 
@@ -3372,8 +3540,10 @@ mod tests {
         let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
             .expect("open exact digest");
 
-        finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1)
+        let mut published = false;
+        finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1, &mut published)
             .expect("finish receive write");
+        assert!(published);
 
         assert_eq!(
             std::fs::read(&secret).expect("read secret"),
@@ -3385,6 +3555,57 @@ mod tests {
             b"payload",
             "final path should contain the received payload"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recv_finish_reports_visible_but_uncertain_after_parent_sync_failure() {
+        const EXPECT_FAULT: &str = "RUSTDESK_TEST_EXPECT_RECEIVE_PARENT_SYNC_FAILURE";
+
+        let tmp = TestTempDir::new("rustdesk_finish_parent_sync");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let final_path = tmp.join("incoming.txt");
+        let download_path = recv_sidecar_path(&final_path, ".download");
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        std::fs::write(&download_path, b"durable-payload").expect("write download");
+        std::fs::write(&digest_path, b"{}").expect("write digest");
+        let download_file =
+            open_recv_file_no_follow_std(&download_path, false, false, false, false)
+                .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
+            .expect("open exact digest");
+
+        let mut published = false;
+        let result = finish_recv_write_no_follow(
+            &final_path,
+            &download_file,
+            &digest_file,
+            1_600_000_000,
+            &mut published,
+        );
+        if std::env::var_os(EXPECT_FAULT).is_some() {
+            let error = result.expect_err("injected parent-directory fsync must be reported");
+            assert!(
+                error
+                    .to_string()
+                    .contains("visible, but commit durability is uncertain"),
+                "post-publication failure must name the uncertain visible outcome: {}",
+                error
+            );
+        } else {
+            result.expect("ordinary parent-directory synchronization must succeed");
+        }
+        assert!(
+            published,
+            "rename success must irreversibly mark publication"
+        );
+
+        assert_eq!(
+            std::fs::read(&final_path).expect("read visible final file"),
+            b"durable-payload"
+        );
+        assert!(!download_path.exists(), ".download must be renamed away");
+        assert!(!digest_path.exists(), ".digest must be removed");
     }
 
     #[test]
@@ -3563,8 +3784,16 @@ mod tests {
         let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
             .expect("open exact digest");
 
-        finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1_600_000_000)
-            .expect("finish receive write");
+        let mut published = false;
+        finish_recv_write_no_follow(
+            &final_path,
+            &download_file,
+            &digest_file,
+            1_600_000_000,
+            &mut published,
+        )
+        .expect("finish receive write");
+        assert!(published);
 
         assert_eq!(
             std::fs::read(&final_path).expect("read final"),
@@ -3603,7 +3832,14 @@ mod tests {
         );
         let final_path = link.join("incoming.txt");
 
-        let res = finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1);
+        let mut published = false;
+        let res = finish_recv_write_no_follow(
+            &final_path,
+            &download_file,
+            &digest_file,
+            1,
+            &mut published,
+        );
         assert!(
             res.is_err(),
             "finalize must refuse a junction parent component (no rename through the junction)"
@@ -3612,6 +3848,7 @@ mod tests {
             !outside.join("incoming.txt").exists(),
             "the rename must not have completed through the junction parent"
         );
+        assert!(!published);
     }
 
     fn new_validation_job(id: i32) -> TransferJob {
@@ -3681,6 +3918,48 @@ mod tests {
         );
         assert!(!tmp.join("incoming.bin.download").exists());
         assert!(!tmp.join("incoming.bin.digest").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn receive_post_publish_sync_failure_never_deletes_visible_file() {
+        const EXPECT_FAULT: &str = "RUSTDESK_TEST_EXPECT_RECEIVE_JOB_SYNC_FAILURE";
+        use std::io::Write;
+
+        let tmp = TestTempDir::new("rustdesk_receive_job_sync_failure");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let final_path = tmp.join("incoming.bin");
+        let (mut claim, mut stream) =
+            ReceiveWriteClaim::start_new(final_path, FileDigest::default())
+                .expect("admit exact receive claim");
+        stream
+            .write_all(b"published-payload")
+            .expect("write receive payload");
+
+        let result = claim.finish(1_600_000_000);
+        if std::env::var_os(EXPECT_FAULT).is_some() {
+            let error = result.expect_err("injected final parent fsync must be reported");
+            assert!(
+                error
+                    .to_string()
+                    .contains("visible, but commit durability is uncertain"),
+                "post-publication failure must remain distinguishable: {}",
+                error
+            );
+            claim.cleanup();
+        } else {
+            result.expect("ordinary receive commit must be durable");
+            drop(claim);
+        }
+
+        assert_eq!(
+            std::fs::read(tmp.join("incoming.bin")).expect("read published file"),
+            b"published-payload",
+            "error cleanup must never delete or replace an irreversibly published generation"
+        );
+        assert!(!tmp.join("incoming.bin.download").exists());
+        assert!(!tmp.join("incoming.bin.digest").exists());
+        assert!(!tmp.join("incoming.bin.download.lock").exists());
     }
 
     #[tokio::test]
@@ -4059,7 +4338,10 @@ mod tests {
             b"owned-payload"
         );
         assert!(!tmp.join("incoming.bin.digest").exists());
-        assert!(!tmp.join("incoming.bin.download.lock").exists());
+        assert!(
+            tmp.join("incoming.bin.download.lock").exists(),
+            "uncertain exact-artifact cleanup must preserve the stable lease marker"
+        );
     }
 
     #[tokio::test]

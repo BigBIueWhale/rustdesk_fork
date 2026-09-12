@@ -8227,7 +8227,10 @@ impl Connection {
                             }
                             Some(file_action::Union::SendConfirm(r)) => {
                                 if let Some(job) = fs::get_job(r.id, &mut self.read_jobs) {
-                                    job.confirm(&r).await;
+                                    if let Err(error) = job.confirm(&r).await {
+                                        let _ = fs::remove_job(r.id, &mut self.read_jobs);
+                                        self.send(fs::new_error(r.id, error, r.file_num)).await;
+                                    }
                                 } else if let Some(generation) =
                                     self.consume_cm_read_confirmation(r.id, r.file_num, r.skip())
                                 {

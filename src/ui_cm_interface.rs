@@ -1961,14 +1961,27 @@ async fn handle_fs(
             conn_id,
             generation,
         } => {
-            let result = if let Some(job) =
+            let result = if let Some(mut job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                job.job.modify_time();
-                if return_job_log {
-                    job_log = Some(serialize_transfer_job(&job.job, true, false, ""));
+                let result = job
+                    .job
+                    .finalize_write(file_num)
+                    .await
+                    .map_err(|error| error.to_string());
+                if result.is_err() {
+                    job.job.remove_download_file();
                 }
-                Ok(())
+                if return_job_log {
+                    let error = result.as_ref().err().map(String::as_str).unwrap_or("");
+                    job_log = Some(serialize_transfer_job(
+                        &job.job,
+                        result.is_ok(),
+                        false,
+                        error,
+                    ));
+                }
+                result
             } else {
                 Err(format!(
                     "unknown write job id {} generation {} file {}",
@@ -1988,9 +2001,10 @@ async fn handle_fs(
             err,
             generation,
         } => {
-            let result = if let Some(job) =
+            let result = if let Some(mut job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
+                job.job.remove_download_file();
                 if return_job_log {
                     job_log = Some(serialize_transfer_job(&job.job, false, false, &err));
                 }
@@ -2058,41 +2072,49 @@ async fn handle_fs(
             let result = if let Some(job) =
                 get_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                let digest = FileTransferDigest {
-                    id,
-                    file_num,
-                    last_modified,
-                    file_size,
-                    ..Default::default()
-                };
-                match (job.job.files().get(file_num as usize), &job.job.data_source) {
-                    (Some(file), fs::DataSource::FilePath(base)) => {
-                        let path = get_string(&fs::TransferJob::join(base, &file.name));
-                        match is_write_need_confirmation(is_resume, &path, &digest) {
-                            Ok(DigestCheckResult::IsSame) => {
-                                job.job.set_digest(file_size, last_modified);
-                                ipc::CmWriteDigestResult::SendConfirm { skip: true }
-                            }
-                            Ok(DigestCheckResult::NoSuchFile) => {
-                                job.job.set_digest(file_size, last_modified);
-                                ipc::CmWriteDigestResult::SendConfirm { skip: false }
-                            }
-                            Ok(DigestCheckResult::NeedConfirm(digest)) => {
-                                job.job.set_digest(file_size, last_modified);
-                                ipc::CmWriteDigestResult::Digest {
-                                    last_modified: digest.last_modified,
-                                    file_size: digest.file_size,
-                                    is_identical: digest.is_identical,
-                                    transferred_size: digest.transferred_size,
+                if job.job.file_num() != file_num || file_num < 0 {
+                    ipc::CmWriteDigestResult::Error(format!(
+                        "digest file {} does not match active write file {}",
+                        file_num,
+                        job.job.file_num()
+                    ))
+                } else {
+                    let digest = FileTransferDigest {
+                        id,
+                        file_num,
+                        last_modified,
+                        file_size,
+                        ..Default::default()
+                    };
+                    match (job.job.files().get(file_num as usize), &job.job.data_source) {
+                        (Some(file), fs::DataSource::FilePath(base)) => {
+                            let path = get_string(&fs::TransferJob::join(base, &file.name));
+                            match is_write_need_confirmation(is_resume, &path, &digest) {
+                                Ok(DigestCheckResult::IsSame) => {
+                                    job.job.set_digest(file_size, last_modified);
+                                    ipc::CmWriteDigestResult::SendConfirm { skip: true }
                                 }
+                                Ok(DigestCheckResult::NoSuchFile) => {
+                                    job.job.set_digest(file_size, last_modified);
+                                    ipc::CmWriteDigestResult::SendConfirm { skip: false }
+                                }
+                                Ok(DigestCheckResult::NeedConfirm(digest)) => {
+                                    job.job.set_digest(file_size, last_modified);
+                                    ipc::CmWriteDigestResult::Digest {
+                                        last_modified: digest.last_modified,
+                                        file_size: digest.file_size,
+                                        is_identical: digest.is_identical,
+                                        transferred_size: digest.transferred_size,
+                                    }
+                                }
+                                Err(error) => ipc::CmWriteDigestResult::Error(error.to_string()),
                             }
-                            Err(error) => ipc::CmWriteDigestResult::Error(error.to_string()),
                         }
+                        _ => ipc::CmWriteDigestResult::Error(format!(
+                            "invalid write job file {}",
+                            file_num
+                        )),
                     }
-                    _ => ipc::CmWriteDigestResult::Error(format!(
-                        "invalid write job file {}",
-                        file_num
-                    )),
                 }
             } else {
                 ipc::CmWriteDigestResult::Error(format!(
@@ -2116,21 +2138,46 @@ async fn handle_fs(
             conn_id,
             generation,
         } => {
-            if let Some(job) = get_transfer_job_for_connection(write_jobs, id, conn_id, generation)
+            let result = if let Some(job) =
+                get_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                let request = FileTransferSendConfirmRequest {
-                    id,
-                    file_num,
-                    union: if skip {
-                        Some(file_transfer_send_confirm_request::Union::Skip(true))
-                    } else {
-                        Some(file_transfer_send_confirm_request::Union::OffsetBlk(
-                            offset_blk,
-                        ))
-                    },
-                    ..Default::default()
-                };
-                job.job.confirm(&request).await;
+                if job.job.file_num() != file_num {
+                    Err(format!(
+                        "confirmation file {} does not match active write file {}",
+                        file_num,
+                        job.job.file_num()
+                    ))
+                } else {
+                    let request = FileTransferSendConfirmRequest {
+                        id,
+                        file_num,
+                        union: if skip {
+                            Some(file_transfer_send_confirm_request::Union::Skip(true))
+                        } else {
+                            Some(file_transfer_send_confirm_request::Union::OffsetBlk(
+                                offset_blk,
+                            ))
+                        },
+                        ..Default::default()
+                    };
+                    job.job
+                        .confirm(&request)
+                        .await
+                        .map_err(|error| error.to_string())
+                }
+            } else {
+                Err(format!(
+                    "unknown write job id {} generation {}",
+                    id, generation
+                ))
+            };
+            if let Err(error) = result {
+                if let Some(mut job) =
+                    remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
+                {
+                    job.job.remove_download_file();
+                }
+                reject_write_job(responder, id, generation, file_num, error)?;
             }
         }
         ipc::FS::Rename {
@@ -2188,23 +2235,47 @@ async fn handle_fs(
             conn_id,
             generation,
         } => {
-            if let Some(job) = get_transfer_job_for_connection(read_jobs, id, conn_id, generation) {
+            let result = if let Some(job) =
+                get_transfer_job_for_connection(read_jobs, id, conn_id, generation)
+            {
                 if job.job.file_num() != file_num {
-                    return Ok(None);
+                    Err(format!(
+                        "confirmation file {} does not match active read file {}",
+                        file_num,
+                        job.job.file_num()
+                    ))
+                } else {
+                    let req = FileTransferSendConfirmRequest {
+                        id,
+                        file_num,
+                        union: if skip {
+                            Some(file_transfer_send_confirm_request::Union::Skip(true))
+                        } else {
+                            Some(file_transfer_send_confirm_request::Union::OffsetBlk(
+                                offset_blk,
+                            ))
+                        },
+                        ..Default::default()
+                    };
+                    job.job
+                        .confirm(&req)
+                        .await
+                        .map_err(|error| error.to_string())
                 }
-                let req = FileTransferSendConfirmRequest {
+            } else {
+                Err(format!(
+                    "unknown read job id {} generation {}",
+                    id, generation
+                ))
+            };
+            if let Err(error) = result {
+                let _ = remove_transfer_job_for_connection(read_jobs, id, conn_id, generation);
+                responder.send(ipc::CmFileResponseKind::ReadError {
                     id,
+                    generation,
                     file_num,
-                    union: if skip {
-                        Some(file_transfer_send_confirm_request::Union::Skip(true))
-                    } else {
-                        Some(file_transfer_send_confirm_request::Union::OffsetBlk(
-                            offset_blk,
-                        ))
-                    },
-                    ..Default::default()
-                };
-                job.job.confirm(&req).await;
+                    error,
+                })?;
             }
         }
         // Recursively list all files in a directory.
@@ -2745,6 +2816,52 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    #[cfg(not(target_os = "ios"))]
+    struct CmFileTestDir {
+        path: PathBuf,
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    impl CmFileTestDir {
+        fn new(label: &str) -> Self {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "rustdesk_cm_file_{}_{}_{}",
+                label,
+                std::process::id(),
+                nonce
+            ));
+            fs::create_dir(&path).expect("create CM file test directory");
+            Self { path }
+        }
+
+        fn join(&self, name: &str) -> PathBuf {
+            self.path.join(name)
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    impl Drop for CmFileTestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    async fn next_cm_file_test_response(rx: &mut CmEgressReceiver) -> ipc::CmFileResponseKind {
+        let item = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("CM file response must be bounded")
+            .expect("CM file response sender must remain live");
+        match item {
+            CmEgressItem::Data(Data::CmFileResponse(response)) => *response.response,
+            _ => panic!("unexpected CM file response item"),
+        }
+    }
+
     fn android_cm_test_login(id: i32) -> Data {
         Data::Login {
             id,
@@ -2771,7 +2888,7 @@ mod tests {
         future: &mut std::pin::Pin<Box<impl std::future::Future<Output = ()>>>,
         added: &AtomicBool,
     ) {
-        time::timeout(std::time::Duration::from_secs(1), async {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
             tokio::select! {
                 _ = future => panic!("Android CM future ended before terminal ownership"),
                 _ = async {
@@ -2800,7 +2917,7 @@ mod tests {
         wait_for_cm_test_admission(&mut future, &ui.added).await;
         assert!(CLIENTS.read().unwrap().clients.contains_key(&id));
         terminal_tx.send(CmConnectionTerminal::Close).unwrap();
-        time::timeout(std::time::Duration::from_secs(1), future)
+        tokio::time::timeout(std::time::Duration::from_secs(1), future)
             .await
             .expect("terminal Android CM cleanup must complete");
 
@@ -3141,6 +3258,321 @@ mod tests {
         .unwrap()
         .is_none());
         assert!(write_jobs.is_empty());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c_4d_cm_write_commit_is_truthful_and_generation_scoped() {
+        let temp = CmFileTestDir::new("commit");
+        let final_path = temp.join("payload.bin");
+        let download_path = temp.join("payload.bin.download");
+        let digest_path = temp.join("payload.bin.digest");
+        let payload = bytes::Bytes::from_static(b"exact committed payload");
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 51,
+            cm_auth_token: "token-51",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 71,
+                file_num: 0,
+                files: vec![("payload.bin".to_owned(), 1_600_000_000)],
+                overwrite_detection: false,
+                total_size: payload.len() as u64,
+                conn_id: 51,
+                generation: 9,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit exact CM write job");
+        handle_fs(
+            ipc::FS::WriteBlock {
+                id: 71,
+                file_num: 0,
+                conn_id: 51,
+                data: payload.clone(),
+                compressed: false,
+                generation: 9,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("write exact CM file block");
+        assert!(download_path.exists());
+        assert!(digest_path.exists());
+        assert!(!final_path.exists());
+
+        handle_fs(
+            ipc::FS::WriteDone {
+                id: 71,
+                file_num: 1,
+                conn_id: 51,
+                generation: 10,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("stale finalization must produce an explicit response");
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFinalized {
+                id,
+                generation,
+                result,
+            } => {
+                assert_eq!((id, generation), (71, 10));
+                assert!(result.unwrap_err().contains("unknown write job"));
+            }
+            response => panic!("unexpected stale finalization response: {response:?}"),
+        }
+        assert_eq!(write_jobs.len(), 1);
+        assert!(download_path.exists());
+        assert!(!final_path.exists());
+
+        handle_fs(
+            ipc::FS::WriteDone {
+                id: 71,
+                file_num: 1,
+                conn_id: 51,
+                generation: 9,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("exact finalization must produce an explicit response");
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFinalized {
+                id,
+                generation,
+                result,
+            } => {
+                assert_eq!((id, generation), (71, 9));
+                result.expect("exact receive write must commit");
+            }
+            response => panic!("unexpected exact finalization response: {response:?}"),
+        }
+        assert!(write_jobs.is_empty());
+        assert_eq!(fs::read(final_path).expect("read committed file"), payload);
+        assert!(!download_path.exists());
+        assert!(!digest_path.exists());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c_4d_cm_incomplete_done_fails_explicitly() {
+        let temp = CmFileTestDir::new("cleanup");
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 52,
+            cm_auth_token: "token-52",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 72,
+                file_num: 0,
+                files: vec![("incomplete.bin".to_owned(), 0)],
+                overwrite_detection: false,
+                total_size: 1,
+                conn_id: 52,
+                generation: 11,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit incomplete-write fixture");
+        handle_fs(
+            ipc::FS::WriteDone {
+                id: 72,
+                file_num: 1,
+                conn_id: 52,
+                generation: 11,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("incomplete finalization must produce an explicit response");
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFinalized { result, .. } => {
+                assert!(result.unwrap_err().contains("incomplete"));
+            }
+            response => panic!("unexpected incomplete finalization response: {response:?}"),
+        }
+        assert!(write_jobs.is_empty());
+        assert!(!temp.join("incomplete.bin").exists());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c_4d_cm_peer_error_discards_the_exact_partial_write() {
+        let temp = CmFileTestDir::new("peer_error");
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 53,
+            cm_auth_token: "token-53",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 74,
+                file_num: 0,
+                files: vec![("failed.bin".to_owned(), 0)],
+                overwrite_detection: false,
+                total_size: 7,
+                conn_id: 53,
+                generation: 13,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit peer-error fixture");
+        handle_fs(
+            ipc::FS::WriteBlock {
+                id: 74,
+                file_num: 0,
+                conn_id: 53,
+                data: bytes::Bytes::from_static(b"partial"),
+                compressed: false,
+                generation: 13,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("write peer-error fixture");
+        handle_fs(
+            ipc::FS::WriteError {
+                id: 74,
+                file_num: 0,
+                conn_id: 53,
+                err: "peer read failed".to_owned(),
+                generation: 13,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("peer error must produce exact cleanup finality");
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFinalized { result, .. } => {
+                result.expect("the exact partial job was found and retired");
+            }
+            response => panic!("unexpected peer-error finalization response: {response:?}"),
+        }
+        assert!(write_jobs.is_empty());
+        assert!(!temp.join("failed.bin").exists());
+        assert!(!temp.join("failed.bin.download").exists());
+        assert!(!temp.join("failed.bin.digest").exists());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c_4d_cm_resume_confirmation_fails_before_peer_progress() {
+        let temp = CmFileTestDir::new("resume_failure");
+        fs::create_dir(temp.join("resume.bin.download")).expect("stage an invalid resume target");
+        fs::write(temp.join("resume.bin.digest"), b"{}").expect("stage a matching digest name");
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 54,
+            cm_auth_token: "token-54",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 75,
+                file_num: 0,
+                files: vec![("resume.bin".to_owned(), 0)],
+                overwrite_detection: true,
+                total_size: 7,
+                conn_id: 54,
+                generation: 14,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit resume fixture");
+        handle_fs(
+            ipc::FS::SendConfirm {
+                id: 75,
+                file_num: 0,
+                skip: false,
+                offset_blk: 1,
+                conn_id: 54,
+                generation: 14,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("resume refusal must be published");
+
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFailed {
+                id,
+                generation,
+                file_num,
+                error,
+            } => {
+                assert_eq!((id, generation, file_num), (75, 14, 0));
+                assert!(!error.is_empty());
+            }
+            response => panic!("unexpected resume-refusal response: {response:?}"),
+        }
+        assert!(write_jobs.is_empty());
+        assert!(
+            temp.join("resume.bin.download").is_dir(),
+            "the failed job must not delete a path it never successfully claimed"
+        );
+        assert!(temp.join("resume.bin.digest").exists());
+        assert!(!temp.join("resume.bin").exists());
     }
 
     #[tokio::test(flavor = "current_thread")]

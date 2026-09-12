@@ -18,7 +18,7 @@ use tokio::{
 use crate::{anyhow::anyhow, bail, get_version_number, message_proto::*, ResultType, Stream};
 // https://doc.rust-lang.org/std/os/windows/fs/trait.MetadataExt.html
 use crate::{
-    compress::{compress, decompress},
+    compress::{compress, try_decompress},
     config::Config,
 };
 
@@ -31,6 +31,14 @@ pub const MAX_FILE_ENUM_SERIALIZED_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN: usize = 32;
 pub const MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN: usize = 32;
 const FILE_ENUMERATION_BUDGET_EXCEEDED: &str = "file enumeration budget exceeded";
+
+fn checked_file_total_size(files: &[FileEntry]) -> ResultType<u64> {
+    files.iter().try_fold(0u64, |total, file| {
+        total
+            .checked_add(file.size)
+            .ok_or_else(|| anyhow!("file-transfer total size overflow"))
+    })
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct FileEnumerationBudget {
@@ -570,6 +578,18 @@ enum DataStream {
     BufStream(TokioBufStream<Cursor<Vec<u8>>>),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TransferRole {
+    Send,
+    Receive,
+}
+
+impl Default for TransferRole {
+    fn default() -> Self {
+        Self::Send
+    }
+}
+
 impl Debug for DataStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -619,7 +639,11 @@ pub struct TransferJob {
     pub conn_id: i32, // server only
 
     #[serde(skip_serializing)]
+    role: TransferRole,
+    #[serde(skip_serializing)]
     data_stream: Option<DataStream>,
+    #[serde(skip_serializing)]
+    receive_write_path: Option<PathBuf>,
     pub total_size: u64,
     finished_size: u64,
     transferred: u64,
@@ -1320,24 +1344,48 @@ mod nt_nofollow {
 
     /// R-S8/R-A5: remove the `.download`/`.digest` artifacts handle-relative (best-effort cleanup).
     pub(super) fn remove_recv_artifacts(download_path: &Path, digest_path: &Path) {
-        let Ok(parent_path) = parent_dir(download_path) else {
-            return;
+        let parent_path = match parent_dir(download_path) {
+            Ok(parent) => parent,
+            Err(err) => {
+                log::warn!(
+                    "cannot clean receive artifacts without a parent for {}: {}",
+                    download_path.display(),
+                    err
+                );
+                return;
+            }
         };
-        let Ok(parent) = walk_to_parent(parent_path, false) else {
-            return;
+        let parent = match walk_to_parent(parent_path, false) {
+            Ok(parent) => parent,
+            Err(err) => {
+                log::warn!(
+                    "cannot open receive-artifact parent {} for cleanup: {}",
+                    parent_path.display(),
+                    err
+                );
+                return;
+            }
         };
         let ph = parent.as_raw_handle() as HANDLE;
         for p in [download_path, digest_path] {
-            if let Ok(name) = file_name_wide(p) {
-                let _ = delete_child(ph, &name);
+            match file_name_wide(p) {
+                Ok(name) => {
+                    if let Err(err) = delete_child(ph, &name) {
+                        log::warn!("cannot clean receive artifact {}: {}", p.display(), err);
+                    }
+                }
+                Err(err) => {
+                    log::warn!("cannot name receive artifact {}: {}", p.display(), err);
+                }
             }
         }
     }
 
-    /// R-S8/R-A5: finalize the receive write handle-relative — drop the digest, rename `.download`
-    /// onto the final name via `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)`,
-    /// and set the mtime on the SAME handle (no re-open, no path re-resolution). Mirrors the Unix
-    /// `renameat` finalize.
+    /// R-S8/R-A5: finalize the receive write handle-relative — set the mtime on the admitted
+    /// `.download` handle, rename that SAME handle onto the final name via
+    /// `NtSetInformationFile(FileRenameInformation, RootDirectory=parent)`, and then discard the
+    /// digest. The rename is the last fallible commit step, so an error cannot be reported after the
+    /// final name has already become visible. Mirrors the Unix `renameat` finalize.
     pub(super) fn finish_recv_write(
         final_path: &Path,
         download_path: &Path,
@@ -1348,12 +1396,9 @@ mod nt_nofollow {
         let ph = parent.as_raw_handle() as HANDLE;
         let final_name = file_name_wide(final_path)?;
         let download_name = file_name_wide(download_path)?;
-        if let Ok(digest_name) = file_name_wide(digest_path) {
-            let _ = delete_child(ph, &digest_name);
-        }
         // Open `.download` (must exist) with DELETE (for the rename) + FILE_WRITE_ATTRIBUTES (for the
-        // mtime), no-follow. Rename it onto `final_name` relative to the parent handle, then set the
-        // mtime on the same (now-renamed) handle.
+        // mtime), no-follow. Set metadata before the commit rename so every returned error still
+        // leaves the resumable sidecars at their old names.
         let src = unsafe {
             nt_open_at(
                 ph,
@@ -1363,9 +1408,27 @@ mod nt_nofollow {
                 FILE_NON_DIRECTORY_FILE,
             )?
         };
-        unsafe { nt_rename_at(src.as_raw_handle() as HANDLE, ph, &final_name, true)? };
         let file = std::fs::File::from(src);
         filetime::set_file_handle_times(&file, None, Some(mtime))?;
+        unsafe { nt_rename_at(file.as_raw_handle() as HANDLE, ph, &final_name, true)? };
+        match file_name_wide(digest_path) {
+            Ok(digest_name) => {
+                if let Err(err) = delete_child(ph, &digest_name) {
+                    log::warn!(
+                        "committed receive file but could not clean digest {}: {}",
+                        digest_path.display(),
+                        err
+                    );
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    "committed receive file but could not name digest {}: {}",
+                    digest_path.display(),
+                    err
+                );
+            }
+        }
         Ok(())
     }
 
@@ -1462,16 +1525,49 @@ fn remove_recv_write_artifacts_no_follow(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::io::AsRawFd;
-        let Ok(parent) =
-            open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)
-        else {
-            return;
+        let parent_path = path.parent().unwrap_or_else(|| Path::new("."));
+        let parent = match open_parent_dir_no_follow(parent_path, false) {
+            Ok(parent) => parent,
+            Err(err) => {
+                log::warn!(
+                    "cannot open receive-artifact parent {} for cleanup: {}",
+                    parent_path.display(),
+                    err
+                );
+                return;
+            }
         };
-        if let Ok(download_name) = cstring_file_name(&download_path) {
-            let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &download_name);
+        match cstring_file_name(&download_path) {
+            Ok(download_name) => {
+                if let Err(err) = unlink_recv_child_no_follow(parent.as_raw_fd(), &download_name) {
+                    log::warn!(
+                        "cannot clean receive artifact {}: {}",
+                        download_path.display(),
+                        err
+                    );
+                }
+            }
+            Err(err) => log::warn!(
+                "cannot name receive artifact {}: {}",
+                download_path.display(),
+                err
+            ),
         }
-        if let Ok(digest_name) = cstring_file_name(&digest_path) {
-            let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name);
+        match cstring_file_name(&digest_path) {
+            Ok(digest_name) => {
+                if let Err(err) = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name) {
+                    log::warn!(
+                        "cannot clean receive artifact {}: {}",
+                        digest_path.display(),
+                        err
+                    );
+                }
+            }
+            Err(err) => log::warn!(
+                "cannot name receive artifact {}: {}",
+                digest_path.display(),
+                err
+            ),
         }
     }
     #[cfg(windows)]
@@ -1480,8 +1576,17 @@ fn remove_recv_write_artifacts_no_follow(path: &Path) {
     }
     #[cfg(all(not(unix), not(windows)))]
     {
-        std::fs::remove_file(download_path).ok();
-        std::fs::remove_file(digest_path).ok();
+        for artifact in [download_path, digest_path] {
+            if let Err(err) = std::fs::remove_file(&artifact) {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    log::warn!(
+                        "cannot clean receive artifact {}: {}",
+                        artifact.display(),
+                        err
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -1494,9 +1599,12 @@ fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Resu
         let parent =
             open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
         let final_name = cstring_file_name(path)?;
-        let download_name = cstring_file_name(&recv_sidecar_path(path, ".download"))?;
+        let download_path = recv_sidecar_path(path, ".download");
+        let download_name = cstring_file_name(&download_path)?;
         let digest_name = cstring_file_name(&recv_sidecar_path(path, ".digest"))?;
-        let _ = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name);
+        let download_file = open_existing_regular_no_follow(&download_path)?;
+        filetime::set_file_handle_times(&download_file, None, Some(mtime))?;
+        download_file.sync_all()?;
         if unsafe {
             crate::libc::renameat(
                 parent.as_raw_fd(),
@@ -1508,8 +1616,13 @@ fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Resu
         {
             return Err(std::io::Error::last_os_error());
         }
-        let final_file = open_existing_regular_no_follow(path)?;
-        filetime::set_file_handle_times(&final_file, None, Some(mtime))?;
+        if let Err(err) = unlink_recv_child_no_follow(parent.as_raw_fd(), &digest_name) {
+            log::warn!(
+                "committed receive file but could not clean digest {}: {}",
+                recv_sidecar_path(path, ".digest").display(),
+                err
+            );
+        }
         return Ok(());
     }
 
@@ -1524,9 +1637,17 @@ fn finish_recv_write_no_follow(path: &Path, modified_time: u64) -> std::io::Resu
     {
         let download_path = recv_sidecar_path(path, ".download");
         let digest_path = recv_sidecar_path(path, ".digest");
-        std::fs::remove_file(digest_path).ok();
+        filetime::set_file_mtime(&download_path, mtime)?;
         std::fs::rename(download_path, path)?;
-        filetime::set_file_mtime(path, mtime)?;
+        if let Err(err) = std::fs::remove_file(&digest_path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                log::warn!(
+                    "committed receive file but could not clean digest {}: {}",
+                    digest_path.display(),
+                    err
+                );
+            }
+        }
         Ok(())
     }
 }
@@ -1581,6 +1702,7 @@ impl TransferJob {
             files: Vec::new(),
             total_size: 0,
             enable_overwrite_detection,
+            role: TransferRole::Receive,
             ..Default::default()
         }
     }
@@ -1630,7 +1752,7 @@ impl TransferJob {
             DataSource::FilePath(p) => {
                 let p = p.to_str().ok_or(anyhow!("Invalid path"))?;
                 let files = get_recursive_files_with_budget(p, show_hidden, budget)?;
-                let total_size = files.iter().map(|x| x.size).sum();
+                let total_size = checked_file_total_size(&files)?;
                 (files, total_size)
             }
             DataSource::MemoryCursor(c) => (Vec::new(), c.get_ref().len() as u64),
@@ -1646,6 +1768,7 @@ impl TransferJob {
             files,
             total_size,
             enable_overwrite_detection,
+            role: TransferRole::Send,
             ..Default::default()
         })
     }
@@ -1681,7 +1804,14 @@ impl TransferJob {
             DataSource::MemoryCursor(_) => None,
         };
         validate_transfer_file_list(base, &files, max_files)?;
-        self.total_size = files.iter().map(|x| x.size).sum();
+        if self.file_num < 0 || self.file_num as usize > files.len() {
+            bail!(
+                "initial file number {} is outside the admitted file list ({} files)",
+                self.file_num,
+                files.len()
+            );
+        }
+        self.total_size = checked_file_total_size(&files)?;
         self.files = files;
         Ok(())
     }
@@ -1731,41 +1861,89 @@ impl TransferJob {
         }
     }
 
-    pub fn modify_time(&self) {
-        if let DataSource::FilePath(p) = &self.data_source {
-            let file_num = self.file_num as usize;
-            if file_num < self.files.len() {
-                let entry = &self.files[file_num];
-                let Some(path) = self.resolve_entry_path(p, &entry.name) else {
-                    return;
-                };
-                if let Err(err) = finish_recv_write_no_follow(&path, entry.modified_time) {
-                    if err.kind() == std::io::ErrorKind::NotFound {
-                        return;
-                    }
-                    log::warn!(
-                        "Failed to finish receive-write target {}: {}",
-                        path.display(),
-                        err
-                    );
-                }
+    async fn finish_current_write_file(&mut self) -> ResultType<()> {
+        let DataSource::FilePath(base) = &self.data_source else {
+            return Ok(());
+        };
+        if self.file_num < 0 || self.file_num as usize >= self.files.len() {
+            bail!("invalid active write file number {}", self.file_num);
+        }
+        let entry = &self.files[self.file_num as usize];
+        let modified_time = entry.modified_time;
+        let path = self
+            .resolve_entry_path(base, &entry.name)
+            .ok_or_else(|| anyhow!("invalid receive-write path for file {}", self.file_num))?;
+        if self.receive_write_path.as_ref() != Some(&path) {
+            bail!(
+                "write file {} does not own its receive artifact",
+                self.file_num
+            );
+        }
+        let stream = self
+            .data_stream
+            .take()
+            .ok_or_else(|| anyhow!("write file {} has no admitted data stream", self.file_num))?;
+        match stream {
+            DataStream::FileStream(file) => file.sync_all().await?,
+            DataStream::BufStream(_) => {
+                bail!("file-backed write job owns an in-memory data stream")
             }
         }
+        finish_recv_write_no_follow(&path, modified_time)?;
+        self.receive_write_path = None;
+        Ok(())
+    }
+
+    /// Commit the exact receive-write job after the sender's terminal `Done` index.
+    ///
+    /// The sender advances its file number after emitting the final (possibly empty) block, so an
+    /// active stream must finish at `self.file_num + 1`. A job with no active stream is complete
+    /// only when its current index is already the end of the admitted list (an empty or skipped
+    /// transfer). Anything else is an incomplete or stale terminal command, not success.
+    pub async fn finalize_write(&mut self, done_file_num: i32) -> ResultType<()> {
+        if self.role != TransferRole::Receive {
+            bail!("cannot finalize a send job as a receive write");
+        }
+        if self.data_stream.is_some() {
+            let expected = self
+                .file_num
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("write file number overflow"))?;
+            if done_file_num != expected {
+                bail!(
+                    "terminal file number {} does not follow active file {}",
+                    done_file_num,
+                    self.file_num
+                );
+            }
+            self.finish_current_write_file().await?;
+            self.file_num = done_file_num;
+            return Ok(());
+        }
+
+        if self.file_num < 0
+            || self.file_num as usize != self.files.len()
+            || done_file_num != self.file_num
+        {
+            bail!(
+                "write job is incomplete at file {} of {} (terminal file {})",
+                self.file_num,
+                self.files.len(),
+                done_file_num
+            );
+        }
+        Ok(())
     }
 
     pub fn remove_download_file(&mut self) {
         // Close the receive handle before unlinking. Unix permits unlinking an open file, but
         // Windows does not generally permit deletion while this job still owns the handle.
         drop(self.data_stream.take());
-        if let DataSource::FilePath(p) = &self.data_source {
-            let file_num = self.file_num as usize;
-            if file_num < self.files.len() {
-                let entry = &self.files[file_num];
-                let Some(path) = self.resolve_entry_path(p, &entry.name) else {
-                    return;
-                };
-                remove_recv_write_artifacts_no_follow(&path);
-            }
+        if self.role != TransferRole::Receive {
+            return;
+        }
+        if let Some(path) = self.receive_write_path.take() {
+            remove_recv_write_artifacts_no_follow(&path);
         }
     }
 
@@ -1783,69 +1961,101 @@ impl TransferJob {
     }
 
     pub async fn write(&mut self, block: FileTransferBlock) -> ResultType<()> {
+        if self.role != TransferRole::Receive {
+            bail!("cannot write an incoming block into a send job");
+        }
         if block.id != self.id {
             bail!("Wrong id");
         }
-        match &self.data_source {
-            DataSource::FilePath(p) => {
-                let file_num = block.file_num as usize;
-                if file_num >= self.files.len() {
-                    bail!("Wrong file number");
-                }
-                if file_num != self.file_num as usize || self.data_stream.is_none() {
-                    let had_file_stream =
-                        matches!(self.data_stream, Some(DataStream::FileStream(_)));
-                    if let Some(DataStream::FileStream(file)) = self.data_stream.as_mut() {
-                        file.sync_all().await?;
-                    }
-                    if had_file_stream {
-                        self.modify_time();
-                    }
-                    self.file_num = block.file_num;
-                    let entry = &self.files[file_num];
-                    let path = join_validated_path(p, &entry.name)?;
-                    let file_path = get_string(&path);
-                    let path = format!("{}.download", &file_path);
-                    let digest_path = Some(format!("{}.digest", &file_path));
-                    // R-S8/R-A5: no-follow parent walk + no-follow regular-file open. On Unix this
-                    // creates/opens every parent via mkdirat/openat(O_NOFOLLOW) before opening the
-                    // `.download` target, so neither intermediate symlink swaps nor final symlinks can
-                    // redirect the write.
-                    self.data_stream = Some(DataStream::FileStream(
-                        open_recv_write_no_follow(Path::new(&path), true).await?,
-                    ));
-                    if let Some(dp) = digest_path.as_ref() {
-                        // R-S8: the digest sidecar is a write too — no-follow it for the same reason.
-                        if let Ok(mut f) = open_recv_write_no_follow_std(Path::new(dp), true) {
-                            use std::io::Write;
-                            let _ = f.write_all(json!(self.digest).to_string().as_bytes());
-                        }
-                    }
-                }
+        if matches!(&self.data_source, DataSource::FilePath(_)) {
+            if block.file_num < 0 {
+                bail!("Wrong file number");
             }
-            DataSource::MemoryCursor(c) => {
-                if self.data_stream.is_none() {
-                    self.data_stream = Some(DataStream::BufStream(TokioBufStream::new(c.clone())));
-                }
+            let file_num = block.file_num as usize;
+            if file_num >= self.files.len() {
+                bail!("Wrong file number");
             }
+            if block.file_num != self.file_num {
+                let expected = self
+                    .file_num
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow!("write file number overflow"))?;
+                if block.file_num != expected {
+                    bail!(
+                        "unexpected write file transition from {} to {}",
+                        self.file_num,
+                        block.file_num
+                    );
+                }
+                self.finish_current_write_file().await?;
+                self.file_num = block.file_num;
+            }
+            if self.data_stream.is_none() {
+                let base = match &self.data_source {
+                    DataSource::FilePath(base) => base,
+                    DataSource::MemoryCursor(_) => {
+                        bail!("file-path write branch changed data-source variant")
+                    }
+                };
+                let entry = &self.files[file_num];
+                let final_path = join_validated_path(base, &entry.name)?;
+                let file_path = get_string(&final_path);
+                let download_path = format!("{}.download", &file_path);
+                let digest_path = format!("{}.digest", &file_path);
+                // R-S8/R-A5: no-follow parent walk + no-follow regular-file open. On Unix this
+                // creates/opens every parent via mkdirat/openat(O_NOFOLLOW) before opening the
+                // `.download` target, so neither intermediate symlink swaps nor final symlinks can
+                // redirect the write.
+                self.data_stream = Some(DataStream::FileStream(
+                    open_recv_write_no_follow(Path::new(&download_path), true).await?,
+                ));
+                self.receive_write_path = Some(final_path);
+                // R-S8: the digest sidecar is a write too — no-follow it for the same reason.
+                let mut digest_file =
+                    open_recv_write_no_follow(Path::new(&digest_path), true).await?;
+                digest_file
+                    .write_all(json!(self.digest).to_string().as_bytes())
+                    .await?;
+                digest_file.sync_all().await?;
+            }
+        } else if self.data_stream.is_none() {
+            let cursor = match &self.data_source {
+                DataSource::MemoryCursor(cursor) => cursor.clone(),
+                DataSource::FilePath(_) => {
+                    bail!("in-memory write branch changed data-source variant")
+                }
+            };
+            self.data_stream = Some(DataStream::BufStream(TokioBufStream::new(cursor)));
         }
+        let transferred = self
+            .transferred
+            .checked_add(block.data.len() as u64)
+            .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
         if block.compressed {
-            let tmp = decompress(&block.data);
+            let tmp = try_decompress(&block.data)?;
+            let finished_size = self
+                .finished_size
+                .checked_add(tmp.len() as u64)
+                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             self.data_stream
                 .as_mut()
                 .ok_or(anyhow!("data stream is None"))?
                 .write_all(&tmp)
                 .await?;
-            self.finished_size += tmp.len() as u64;
+            self.finished_size = finished_size;
         } else {
+            let finished_size = self
+                .finished_size
+                .checked_add(block.data.len() as u64)
+                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             self.data_stream
                 .as_mut()
                 .ok_or(anyhow!("file is None"))?
                 .write_all(&block.data)
                 .await?;
-            self.finished_size += block.data.len() as u64;
+            self.finished_size = finished_size;
         }
-        self.transferred += block.data.len() as u64;
+        self.transferred = transferred;
         Ok(())
     }
 
@@ -1952,6 +2162,9 @@ impl TransferJob {
     }
 
     pub async fn read(&mut self) -> ResultType<Option<FileTransferBlock>> {
+        if self.role != TransferRole::Send {
+            bail!("cannot read an outgoing block from a receive job");
+        }
         if self.r#type == JobType::Generic {
             if self.enable_overwrite_detection && !self.file_confirmed() {
                 return Ok(None);
@@ -2013,7 +2226,10 @@ impl TransferJob {
             self.file_confirmed = false;
             self.file_is_waiting = false;
         } else {
-            self.finished_size += offset as u64;
+            let finished_size = self
+                .finished_size
+                .checked_add(offset as u64)
+                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             if matches!(self.data_source, DataSource::FilePath(_)) && !is_compressed_file(name) {
                 let tmp = compress(&buf);
                 if tmp.len() < buf.len() {
@@ -2021,7 +2237,12 @@ impl TransferJob {
                     compressed = true;
                 }
             }
-            self.transferred += buf.len() as u64;
+            let transferred = self
+                .transferred
+                .checked_add(buf.len() as u64)
+                .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
+            self.finished_size = finished_size;
+            self.transferred = transferred;
         }
         Ok(Some(FileTransferBlock {
             id: self.id,
@@ -2122,7 +2343,7 @@ impl TransferJob {
 
     pub fn set_file_skipped(&mut self) -> bool {
         log::debug!("skip file {} in job {}", self.file_num, self.id);
-        self.data_stream.take();
+        self.remove_download_file();
         self.set_file_confirmed(false);
         self.set_file_is_waiting(false);
         self.file_num += 1;
@@ -2130,7 +2351,7 @@ impl TransferJob {
         true
     }
 
-    async fn set_stream_offset(&mut self, file_num: usize, offset: u64) {
+    async fn set_stream_offset(&mut self, file_num: usize, offset: u64) -> ResultType<()> {
         if let DataSource::FilePath(p) = &self.data_source {
             // §20 post-key DoS bound (defensive — mirrors write()'s "Wrong file number" guard):
             // file_num arrives from a peer FileTransferSendConfirmRequest. confirm() gates it on
@@ -2138,82 +2359,96 @@ impl TransferJob {
             // empty-directory send job), so a crafted confirm(file_num=0, OffsetBlk>0) would index
             // out of bounds and panic the connection task. Fail closed instead of indexing.
             if file_num >= self.files.len() {
-                return;
+                bail!("confirmation file number {} is out of range", file_num);
             }
             let entry = &self.files[file_num];
-            let Some(path) = self.resolve_entry_path(p, &entry.name) else {
-                return;
-            };
+            let path = self
+                .resolve_entry_path(p, &entry.name)
+                .ok_or_else(|| anyhow!("invalid confirmation path for file {}", file_num))?;
             let file_path = get_string(&path);
             let download_path = format!("{}.download", &file_path);
             let digest_path = format!("{}.digest", &file_path);
 
-            let mut f = if Path::new(&download_path).exists() && Path::new(&digest_path).exists() {
-                // If both download and digest files exist, seek (writer) to the offset
-                // R-S8/R-A5: no-follow parent walk + reopen of the resume target (truncate=false
-                // keeps the partial download); a symlink swapped in here fails rather than
-                // redirecting the write.
-                match open_recv_write_no_follow(Path::new(&download_path), false).await {
-                    Ok(f) => f,
-                    Err(e) => {
-                        log::warn!("Failed to open file {}: {}", download_path, e);
-                        return;
+            let (mut f, receive_write_path) = match self.role {
+                TransferRole::Receive => {
+                    if !Path::new(&digest_path).try_exists()? {
+                        bail!("resume digest {} is absent", digest_path);
                     }
+                    // R-S8/R-A5: no-follow parent walk + reopen of the receive sidecar
+                    // (truncate=false keeps the partial download). A symlink swapped in here fails
+                    // rather than redirecting the write.
+                    (
+                        open_recv_write_no_follow(Path::new(&download_path), false).await?,
+                        Some(path),
+                    )
                 }
-            } else if Path::new(&file_path).exists() {
-                // If `file_path` exists, seek (reader) to the offset
-                match File::open(&file_path).await {
-                    Ok(f) => f,
-                    Err(e) => {
-                        log::warn!("Failed to open file {}: {}", file_path, e);
-                        return;
-                    }
-                }
-            } else {
-                log::warn!(
-                    "File {} not found, cannot seek to offset {}",
-                    file_path,
-                    offset
-                );
-                return;
+                TransferRole::Send => (File::open(&file_path).await?, None),
             };
-            if f.seek(std::io::SeekFrom::Start(offset)).await.is_ok() {
-                self.data_stream = Some(DataStream::FileStream(f));
-                self.transferred += offset;
-                self.finished_size += offset;
+            let available = f.metadata().await?.len();
+            if offset > available {
+                bail!(
+                    "confirmed offset {} exceeds file length {}",
+                    offset,
+                    available
+                );
             }
+            f.seek(std::io::SeekFrom::Start(offset)).await?;
+            let transferred = self
+                .transferred
+                .checked_add(offset)
+                .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
+            let finished_size = self
+                .finished_size
+                .checked_add(offset)
+                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
+            self.data_stream = Some(DataStream::FileStream(f));
+            self.receive_write_path = receive_write_path;
+            self.transferred = transferred;
+            self.finished_size = finished_size;
+            return Ok(());
         }
+        bail!("cannot seek an in-memory transfer to a confirmed file offset")
     }
 
-    pub async fn confirm(&mut self, r: &FileTransferSendConfirmRequest) -> bool {
-        if self.file_num() != r.file_num {
-            // This branch will always be hit if:
-            // 1. `confirm()` is called in `ui_cm_interface.rs`
-            // 2. Not resuming
-            //
-            // It is ok. Because `confirm()` in `ui_cm_interface.rs` is only used for resuming.
-            log::info!("file num truncated, ignoring");
-        } else {
-            match r.union {
-                Some(file_transfer_send_confirm_request::Union::Skip(s)) => {
-                    if s {
-                        self.set_file_skipped();
-                    } else {
-                        self.set_file_confirmed(true);
-                    }
-                }
-                Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)) => {
-                    self.set_file_confirmed(true);
-                    // If offset is greater than 0, we need to seek to the offset
-                    if offset > 0 {
-                        self.set_stream_offset(r.file_num as usize, offset as u64)
-                            .await;
-                    }
-                }
-                _ => {}
-            }
+    pub async fn confirm(&mut self, r: &FileTransferSendConfirmRequest) -> ResultType<()> {
+        if r.id != self.id {
+            bail!(
+                "confirmation job {} does not match active job {}",
+                r.id,
+                self.id
+            );
         }
-        true
+        if self.file_num() != r.file_num {
+            bail!(
+                "confirmation file {} does not match active file {}",
+                r.file_num,
+                self.file_num()
+            );
+        }
+        if self.file_confirmed() {
+            bail!("file {} is already confirmed", self.file_num());
+        }
+        match r.union {
+            Some(file_transfer_send_confirm_request::Union::Skip(s)) => {
+                if s {
+                    self.set_file_skipped();
+                } else {
+                    self.set_file_confirmed(true);
+                }
+            }
+            Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)) => {
+                // A nonzero resume offset is admitted only after the exact local stream is open
+                // and positioned. Publishing confirmation before that would let the peer continue
+                // from an offset against a truncated or absent destination.
+                if offset > 0 {
+                    self.set_stream_offset(r.file_num as usize, offset as u64)
+                        .await?;
+                }
+                self.set_file_confirmed(true);
+            }
+            None => bail!("confirmation has no action"),
+        }
+        Ok(())
     }
 
     #[inline]
@@ -3038,13 +3273,291 @@ mod tests {
         Ok(job)
     }
 
-    // §20 post-key DoS regression: a peer FileTransferSendConfirmRequest(file_num=0, OffsetBlk>0)
-    // against a SEND job whose self.files is empty (e.g. an empty-directory send) must NOT index
-    // self.files[0] out of bounds and panic the connection task. confirm() gates file_num on
-    // self.file_num() (default 0), but with empty files self.files[0] is OOB; set_stream_offset()
-    // now bounds-checks like write() does. Without that guard this test panics "index out of bounds".
+    #[tokio::test]
+    async fn receive_write_commits_only_the_exact_terminal_index() {
+        let tmp = TestTempDir::new("rustdesk_receive_finality");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job =
+            new_write_job(81, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
+        let payload = b"checked receive payload";
+
+        job.write(FileTransferBlock {
+            id: 81,
+            file_num: 0,
+            data: payload.to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write exact receive block");
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(!tmp.join("incoming.bin").exists());
+
+        let error = job
+            .finalize_write(0)
+            .await
+            .expect_err("a terminal index that does not follow the active file must fail");
+        assert!(error.to_string().contains("does not follow active file"));
+        assert_eq!(job.file_num(), 0);
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(!tmp.join("incoming.bin").exists());
+
+        job.finalize_write(1)
+            .await
+            .expect("the exact terminal index must commit");
+        assert_eq!(job.file_num(), 1);
+        assert_eq!(
+            std::fs::read(tmp.join("incoming.bin")).expect("read committed receive file"),
+            payload
+        );
+        assert!(!tmp.join("incoming.bin.download").exists());
+        assert!(!tmp.join("incoming.bin.digest").exists());
+    }
+
+    #[tokio::test]
+    async fn receive_write_rejects_non_monotonic_file_transition() {
+        let tmp = TestTempDir::new("rustdesk_receive_transition");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job = TransferJob::new_write(
+            82,
+            JobType::Generic,
+            "/fake/remote".to_owned(),
+            DataSource::FilePath(tmp.path.clone()),
+            0,
+            false,
+            true,
+            false,
+        )
+        .with_files(vec![
+            new_file_entry("zero.bin"),
+            new_file_entry("one.bin"),
+            new_file_entry("two.bin"),
+        ])
+        .expect("create multi-file receive job");
+
+        job.write(FileTransferBlock {
+            id: 82,
+            file_num: 0,
+            data: b"zero".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write first file");
+        let error = job
+            .write(FileTransferBlock {
+                id: 82,
+                file_num: 2,
+                data: b"gap".to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect_err("a gap in peer file numbering must fail");
+        assert!(error
+            .to_string()
+            .contains("unexpected write file transition"));
+        assert_eq!(job.file_num(), 0);
+        assert!(!tmp.join("zero.bin").exists());
+        assert!(tmp.join("zero.bin.download").exists());
+        assert!(!tmp.join("two.bin.download").exists());
+        job.remove_download_file();
+        assert!(!tmp.join("zero.bin.download").exists());
+        assert!(!tmp.join("zero.bin.digest").exists());
+    }
+
+    #[tokio::test]
+    async fn receive_write_rejects_malformed_compression_before_false_progress() {
+        let tmp = TestTempDir::new("rustdesk_receive_bad_compression");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job =
+            new_write_job(88, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
+
+        let error = job
+            .write(FileTransferBlock {
+                id: 88,
+                file_num: 0,
+                data: b"not a zstd frame".to_vec().into(),
+                compressed: true,
+                ..Default::default()
+            })
+            .await
+            .expect_err("malformed compressed data must not become an empty successful block");
+        assert!(!error.to_string().is_empty());
+        assert_eq!(job.finished_size(), 0);
+        assert_eq!(job.transferred(), 0);
+        assert!(!tmp.join("incoming.bin").exists());
+        job.remove_download_file();
+        assert!(!tmp.join("incoming.bin.download").exists());
+        assert!(!tmp.join("incoming.bin.digest").exists());
+    }
+
+    #[tokio::test]
+    async fn receive_write_refuses_false_resume_and_cleans_only_claimed_artifacts() {
+        let tmp = TestTempDir::new("rustdesk_receive_resume");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let download = tmp.join("incoming.bin.download");
+        let digest = tmp.join("incoming.bin.digest");
+        std::fs::create_dir(&download).expect("stage a non-file resume target");
+        std::fs::write(&digest, b"{}").expect("stage resume digest");
+        let mut job =
+            new_write_job(83, tmp.path.clone(), "incoming.bin").expect("create resume job");
+        job.is_resume = true;
+        let request = FileTransferSendConfirmRequest {
+            id: 83,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(1)),
+            ..Default::default()
+        };
+
+        let error = job
+            .confirm(&request)
+            .await
+            .expect_err("an unopenable resume target must not be confirmed");
+        assert!(!error.to_string().is_empty());
+        assert!(!job.file_confirmed());
+        assert!(job.data_stream.is_none());
+        job.remove_download_file();
+        assert!(
+            download.is_dir(),
+            "cleanup must not delete a sidecar this job never opened"
+        );
+        assert!(digest.exists());
+    }
+
+    #[tokio::test]
+    async fn send_resume_seeks_the_source_not_receive_sidecars() {
+        let tmp = TestTempDir::new("rustdesk_send_resume");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let source = tmp.join("source.bin");
+        std::fs::write(&source, b"source-bytes").expect("stage source file");
+        std::fs::write(tmp.join("source.bin.download"), b"wrong-sidecar")
+            .expect("stage unrelated receive sidecar");
+        std::fs::write(tmp.join("source.bin.digest"), b"{}")
+            .expect("stage unrelated digest sidecar");
+        let mut job = TransferJob::new_read(
+            84,
+            JobType::Generic,
+            "remote.bin".to_owned(),
+            DataSource::FilePath(source),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("create send job");
+        let request = FileTransferSendConfirmRequest {
+            id: 84,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(7)),
+            ..Default::default()
+        };
+
+        job.confirm(&request)
+            .await
+            .expect("seek the actual send source");
+        let block = job
+            .read()
+            .await
+            .expect("read resumed source")
+            .expect("source has bytes after the offset");
+        assert_eq!(block.data.as_ref(), b"bytes");
+        assert_eq!(
+            std::fs::read(tmp.join("source.bin.download")).expect("read unrelated receive sidecar"),
+            b"wrong-sidecar"
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmation_rejects_wrong_job_and_duplicate_progress() {
+        let tmp = TestTempDir::new("rustdesk_receive_confirm_identity");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+            .expect("stage partial download");
+        std::fs::write(tmp.join("incoming.bin.digest"), b"{}").expect("stage resume digest");
+        let mut job =
+            new_write_job(85, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
+        let mut request = FileTransferSendConfirmRequest {
+            id: 999,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(2)),
+            ..Default::default()
+        };
+
+        let error = job
+            .confirm(&request)
+            .await
+            .expect_err("a confirmation for another job must fail");
+        assert!(error.to_string().contains("does not match active job"));
+        assert!(!job.file_confirmed());
+        assert_eq!(job.transferred(), 0);
+
+        request.id = 85;
+        job.confirm(&request)
+            .await
+            .expect("the exact first confirmation must succeed");
+        assert!(job.file_confirmed());
+        assert_eq!(job.transferred(), 2);
+        assert_eq!(job.finished_size(), 2);
+
+        let error = job
+            .confirm(&request)
+            .await
+            .expect_err("a duplicate confirmation must not count progress twice");
+        assert!(error.to_string().contains("already confirmed"));
+        assert_eq!(job.transferred(), 2);
+        assert_eq!(job.finished_size(), 2);
+        job.remove_download_file();
+    }
+
+    #[tokio::test]
+    async fn resume_counter_overflow_does_not_publish_stream_ownership() {
+        let tmp = TestTempDir::new("rustdesk_receive_resume_overflow");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+            .expect("stage partial download");
+        std::fs::write(tmp.join("incoming.bin.digest"), b"{}").expect("stage resume digest");
+        let mut job =
+            new_write_job(86, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
+        job.transferred = u64::MAX;
+        let request = FileTransferSendConfirmRequest {
+            id: 86,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(1)),
+            ..Default::default()
+        };
+
+        let error = job
+            .confirm(&request)
+            .await
+            .expect_err("overflowing resume accounting must fail");
+        assert!(error.to_string().contains("counter overflow"));
+        assert!(!job.file_confirmed());
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_path.is_none());
+        assert_eq!(job.transferred(), u64::MAX);
+        assert_eq!(job.finished_size(), 0);
+    }
+
     #[test]
-    fn confirm_offset_blk_on_empty_files_job_does_not_panic() {
+    fn transfer_file_total_size_overflow_is_rejected_transactionally() {
+        let mut job = new_validation_job(87);
+        let mut first = new_file_entry("first.bin");
+        first.size = u64::MAX;
+        let mut second = new_file_entry("second.bin");
+        second.size = 1;
+
+        let error = job
+            .set_files(vec![first, second])
+            .expect_err("overflowing aggregate file sizes must fail");
+        assert!(error.to_string().contains("total size overflow"));
+        assert!(job.files().is_empty());
+        assert_eq!(job.total_size(), 0);
+    }
+
+    // §20 post-key DoS regression: a peer FileTransferSendConfirmRequest(file_num=0, OffsetBlk>0)
+    // against a job whose file list is empty must fail without
+    // indexing files[0] or falsely confirming a seek that did not happen.
+    #[tokio::test]
+    async fn confirm_offset_blk_on_empty_files_job_fails_explicitly() {
         let mut job = TransferJob::new_write(
             1,
             JobType::Generic,
@@ -3055,13 +3568,16 @@ mod tests {
             true,
             false,
         );
-        assert!(job.files.is_empty(), "precondition: empty-files send job");
+        assert!(job.files.is_empty(), "precondition: empty-files job");
         let mut r = FileTransferSendConfirmRequest::default();
+        r.id = 1;
         r.file_num = 0;
         r.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(1));
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let _ = job.confirm(&r).await;
-        });
+        let error = job
+            .confirm(&r)
+            .await
+            .expect_err("an offset into an empty file list must fail");
+        assert!(error.to_string().contains("out of range"));
     }
 
     fn assert_err_contains(err: anyhow::Error, expected: &str) {

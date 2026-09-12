@@ -485,6 +485,26 @@ async fn write_viewer_file_block(
     Ok(ViewerFileBlockWrite::Written { update_status })
 }
 
+async fn confirm_viewer_file_job(
+    jobs: &mut Vec<fs::TransferJob>,
+    request: &FileTransferSendConfirmRequest,
+    cleanup_receive_artifacts: bool,
+) -> Result<bool, String> {
+    let Some(job) = fs::get_job(request.id, jobs) else {
+        return Ok(false);
+    };
+    if let Err(error) = job.confirm(request).await {
+        let mut error = error.to_string();
+        match fs::remove_job(request.id, jobs) {
+            Some(mut job) if cleanup_receive_artifacts => job.remove_download_file(),
+            Some(_) => {}
+            None => error.push_str("; exact file job disappeared before failure retirement"),
+        }
+        return Err(error);
+    }
+    Ok(true)
+}
+
 fn inspect_viewer_download_digest(
     job: &mut fs::TransferJob,
     digest: &FileTransferDigest,
@@ -1848,7 +1868,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(super::DisplaySelectionRefresh::Displays(displays)) => {
-                        for display in displays {
+                        for display in displays.iter().copied() {
                             if !self
                                 .handle_video_refresh(
                                     ViewerVideoRefreshRequest::Display(display),
@@ -2071,23 +2091,36 @@ impl<T: InvokeUiSession> Remote<T> {
                         if remember {
                             job.set_overwrite_strategy(Some(need_override));
                         }
-                        job.confirm(&FileTransferSendConfirmRequest {
-                            id,
-                            file_num,
-                            union: if need_override {
-                                Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))
-                            } else {
-                                Some(file_transfer_send_confirm_request::Union::Skip(true))
-                            },
-                            ..Default::default()
-                        })
-                        .await;
+                    }
+                    let request = FileTransferSendConfirmRequest {
+                        id,
+                        file_num,
+                        union: if need_override {
+                            Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))
+                        } else {
+                            Some(file_transfer_send_confirm_request::Union::Skip(true))
+                        },
+                        ..Default::default()
+                    };
+                    if let Err(error) =
+                        confirm_viewer_file_job(&mut self.read_jobs, &request, false).await
+                    {
+                        return self.record_file_flow_failure(
+                            ViewerFileWriteContext::control(
+                                Some(id),
+                                file_num,
+                                "confirm local upload",
+                            ),
+                            error,
+                        );
                     }
                 } else {
                     if let Some(job) = fs::get_job(id, &mut self.write_jobs) {
                         if remember {
                             job.set_overwrite_strategy(Some(need_override));
                         }
+                    }
+                    if fs::get_job(id, &mut self.write_jobs).is_some() {
                         let mut msg = Message::new();
                         let mut file_action = FileAction::new();
                         let req = FileTransferSendConfirmRequest {
@@ -2100,7 +2133,18 @@ impl<T: InvokeUiSession> Remote<T> {
                             },
                             ..Default::default()
                         };
-                        job.confirm(&req).await;
+                        if let Err(error) =
+                            confirm_viewer_file_job(&mut self.write_jobs, &req, true).await
+                        {
+                            return self.record_file_flow_failure(
+                                ViewerFileWriteContext::control(
+                                    Some(id),
+                                    file_num,
+                                    "confirm local download",
+                                ),
+                                error,
+                            );
+                        }
                         file_action.set_send_confirm(req);
                         msg.set_file_action(file_action);
                         if !self.send_tracked_file_action(peer, &msg).await {
@@ -3057,7 +3101,20 @@ impl<T: InvokeUiSession> Remote<T> {
                                                     }),
                                                     ..Default::default()
                                                 };
-                                                job.confirm(&req).await;
+                                                if let Err(error) = job.confirm(&req).await {
+                                                    let _ = fs::remove_job(
+                                                        digest.id,
+                                                        &mut self.read_jobs,
+                                                    );
+                                                    return self.record_file_flow_failure(
+                                                        ViewerFileWriteContext::control(
+                                                            Some(digest.id),
+                                                            digest.file_num,
+                                                            "confirm peer download",
+                                                        ),
+                                                        error.to_string(),
+                                                    );
+                                                }
                                                 let msg = new_send_confirm(req);
                                                 if !self.send_tracked_file_action(peer, &msg).await
                                                 {
@@ -3127,7 +3184,22 @@ impl<T: InvokeUiSession> Remote<T> {
                                             ),
                                             ..Default::default()
                                         };
-                                        job.confirm(&req).await;
+                                        if let Err(error) = job.confirm(&req).await {
+                                            let error = error.to_string();
+                                            if let Some(mut job) =
+                                                fs::remove_job(digest.id, &mut self.write_jobs)
+                                            {
+                                                job.remove_download_file();
+                                            }
+                                            return self.record_file_flow_failure(
+                                                ViewerFileWriteContext::control(
+                                                    Some(digest.id),
+                                                    digest.file_num,
+                                                    "confirm peer upload",
+                                                ),
+                                                error,
+                                            );
+                                        }
                                         let msg = new_send_confirm(req);
                                         if !self.send_tracked_file_action(peer, &msg).await {
                                             return false;
@@ -3157,7 +3229,22 @@ impl<T: InvokeUiSession> Remote<T> {
                                                 }),
                                                 ..Default::default()
                                             };
-                                            job.confirm(&req).await;
+                                            if let Err(error) = job.confirm(&req).await {
+                                                let error = error.to_string();
+                                                if let Some(mut job) =
+                                                    fs::remove_job(digest.id, &mut self.write_jobs)
+                                                {
+                                                    job.remove_download_file();
+                                                }
+                                                return self.record_file_flow_failure(
+                                                    ViewerFileWriteContext::control(
+                                                        Some(digest.id),
+                                                        digest.file_num,
+                                                        "confirm peer upload",
+                                                    ),
+                                                    error,
+                                                );
+                                            }
                                             let msg = new_send_confirm(req);
                                             if !self.send_tracked_file_action(peer, &msg).await {
                                                 return false;
@@ -3183,7 +3270,22 @@ impl<T: InvokeUiSession> Remote<T> {
                                             ),
                                             ..Default::default()
                                         };
-                                        job.confirm(&req).await;
+                                        if let Err(error) = job.confirm(&req).await {
+                                            let error = error.to_string();
+                                            if let Some(mut job) =
+                                                fs::remove_job(digest.id, &mut self.write_jobs)
+                                            {
+                                                job.remove_download_file();
+                                            }
+                                            return self.record_file_flow_failure(
+                                                ViewerFileWriteContext::control(
+                                                    Some(digest.id),
+                                                    digest.file_num,
+                                                    "confirm peer upload",
+                                                ),
+                                                error,
+                                            );
+                                        }
                                         let msg = new_send_confirm(req);
                                         if !self.send_tracked_file_action(peer, &msg).await {
                                             return false;
@@ -3214,16 +3316,32 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                         Some(file_response::Union::Done(d)) => {
-                            let mut err: Option<String> = None;
-                            if let Some(job) = fs::remove_job(d.id, &mut self.write_jobs) {
-                                job.modify_time();
-                                err = job.job_error();
-                            }
+                            let err =
+                                if let Some(mut job) = fs::remove_job(d.id, &mut self.write_jobs) {
+                                    match job.finalize_write(d.file_num).await {
+                                        Ok(()) => job.job_error(),
+                                        Err(error) => {
+                                            job.remove_download_file();
+                                            Some(format!(
+                                                "local receive-write finalization failed: {}",
+                                                error
+                                            ))
+                                        }
+                                    }
+                                } else {
+                                    Some(format!(
+                                        "unknown receive-write job {} at terminal file {}",
+                                        d.id, d.file_num
+                                    ))
+                                };
                             self.handle_job_status(d.id, d.file_num, err);
                         }
                         Some(file_response::Union::Error(e)) => {
-                            let _ = fs::remove_job(e.id, &mut self.write_jobs)
-                                .or_else(|| fs::remove_job(e.id, &mut self.read_jobs));
+                            if let Some(mut job) = fs::remove_job(e.id, &mut self.write_jobs) {
+                                job.remove_download_file();
+                            } else {
+                                let _ = fs::remove_job(e.id, &mut self.read_jobs);
+                            }
                             self.handle_job_status(e.id, e.file_num, Some(e.error));
                         }
                         _ => {}
@@ -3471,7 +3589,18 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::FileAction(action)) => match action.union {
                     Some(file_action::Union::SendConfirm(c)) => {
                         if let Some(job) = fs::get_job(c.id, &mut self.read_jobs) {
-                            job.confirm(&c).await;
+                            if let Err(error) = job.confirm(&c).await {
+                                let error = error.to_string();
+                                let _ = fs::remove_job(c.id, &mut self.read_jobs);
+                                return self.record_file_flow_failure(
+                                    ViewerFileWriteContext::control(
+                                        Some(c.id),
+                                        c.file_num,
+                                        "apply peer file confirmation",
+                                    ),
+                                    error,
+                                );
+                            }
                         }
                     }
                     _ => {}

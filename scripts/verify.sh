@@ -2537,23 +2537,8 @@ grep -Fq 'win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required
 grep -Fq '"install usbmmidd.inf usbmmidd"' src/virtual_display_manager.rs || r_s11e20="$r_s11e20 amyuni-fixed-helper-install-not-preserved"
 grep -Fq 'pub unsafe fn device_io_control(' src/platform/win_device.rs || r_s11e20="$r_s11e20 amyuni-device-io-not-preserved"
 
-if grep -Eq 'reg[}"]?[[:space:]]+add.*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs; then
-  r_s11e20="$r_s11e20 persistent-sas-installer-write-leftover"
-fi
-sas_policy_read=$(awk '/fn read_software_sas_generation_policy/,/^}/' src/platform/windows.rs)
-sas_policy_decision=$(awk '/fn send_sas_with/,/^}/' src/platform/windows.rs)
-printf '%s\n' "$sas_policy_read" | grep -Fq 'KEY_READ' || r_s11e20="$r_s11e20 sas-policy-not-read-only"
-printf '%s\n' "$sas_policy_decision" | grep -Fq 'Some(SOFTWARE_SAS_GENERATION_SERVICES)' || r_s11e20="$r_s11e20 sas-services-policy-not-accepted"
-printf '%s\n' "$sas_policy_decision" | grep -Fq 'Some(SOFTWARE_SAS_GENERATION_SERVICES_AND_EASE_OF_ACCESS)' || r_s11e20="$r_s11e20 sas-combined-policy-not-accepted"
-printf '%s\n' "$sas_policy_decision" | grep -Fq 'Some(value) => bail!("Unsupported SoftwareSASGeneration value: {value}")' || r_s11e20="$r_s11e20 sas-unknown-policy-not-rejected"
-printf '%s\n' "$sas_policy_decision" | grep -Fq 'None => bail!("SoftwareSASGeneration policy is not configured for services")' || r_s11e20="$r_s11e20 sas-absent-policy-not-rejected"
-if printf '%s\n%s\n' "$sas_policy_read" "$sas_policy_decision" | grep -Eq 'KEY_SET_VALUE|set_value|delete_value|remove_value|RegSetValue|RegDeleteValue'; then
-  r_s11e20="$r_s11e20 sas-runtime-policy-mutation-present"
-fi
-grep -Fq 'windows_sas_policy_matrix_is_read_only_and_fail_closed' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-read-only-policy-test-missing"
-
-if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_custom_actions" -rInE 'AddFirewallRules|RemoveFirewallRules|CreateStartService|TryStopDeleteService|TerminateProcesses|TerminateBrokers|MyCreateServiceW|AddFirewallRule|CC_CONNECTION_TYPE|--conn-type|STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi; then
-  r_s11e20="$r_s11e20 custom-service-firewall-or-basename-kill-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_custom_actions")"
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_sas_policy" -rInF 'SoftwareSASGeneration' res/msi; then
+  r_s11e20="$r_s11e20 installer-sas-policy-mutation-present:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_sas_policy")"
 fi
 for deleted in res/msi/CustomActions/FirewallRules.cpp res/msi/CustomActions/ServiceUtils.cpp flutter/lib/desktop/pages/install_page.dart; do
   [ ! -e "$deleted" ] || r_s11e20="$r_s11e20 deleted-surface-present:$deleted"

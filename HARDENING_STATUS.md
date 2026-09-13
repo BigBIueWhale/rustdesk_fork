@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-7e7f70526f8b06a2948088156ea6d6ed95bbd5448d7d904b8b038ff9d1b25405  requirements.html
+1dc8cf18089c6f4df50d1cf14d4df0276d4545e818b4c20e79e7d002922b23ed  requirements.html
 ```
 
 ## Current Verdict
@@ -1164,7 +1164,7 @@ exists only to make the current source disposition discoverable.
 - R-S11d-29 — Windows service-adjacent path known-folder authority
 - R-S11d-31 — Windows privacy broker served-session authority
 - R-S11d-33 — Windows MSI deferred install-root provenance
-- R-S11d-16 — Windows MSI service-state and SAS policy persistence
+- R-S11d-16 — Windows Installer service and administrator-owned SAS-policy authority
 - R-S11b-2 — installed-service unattended password ownership.
 - R-S11e — Linux polkit policy/package assurance
 - R-S11e-1 — Linux pkcheck executable provenance

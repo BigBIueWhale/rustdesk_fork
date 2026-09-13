@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-895a906955e95eaaec4e6ca6103a53a81aa43f72a48c73a578206f6c477ec74f  requirements.html
+e71513e2dc2eca9dc1ba5765243d6b776edc27cd753b39b73f4f1839a33211e3  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,14 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+Appendix C rows #31–#37, including #36a, now state only the timeless Windows service-child shutdown,
+Amyuni helper/removal, Linux helper/account lookup, clipboard FUSE, and self-relaunch authority contracts.
+Their later-added implementation histories, `FIX` badges, supersession narratives, and verifier receipts were
+deleted, reducing `requirements.html` by 3,749 bytes. Twenty checks whose oracle was wording in the requirements,
+ledger, README, or advisory rationale were deleted from `scripts/verify.sh`, reducing it by 2,521 bytes; the focused
+source invariants and executable Rust tests for the same boundaries remain. No product source or native target ran
+or changed, and every item in the release-blocking matrix remains open.
 
 R-S11gc and Appendix C #338 now separate the enduring Linux full-peer acceptance contract from
 historical execution progress. The 21-attempt diary, superseded input digests, intermediate harness

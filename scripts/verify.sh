@@ -2456,12 +2456,11 @@ for disposition in \
   'Windows RDP viewer credential handling and command provenance' \
   'Windows terminal default-shell command provenance' \
   'Windows portable RuntimeBroker cleanup command provenance' \
-  'Windows Amyuni IDD helper launch provenance' \
   'Windows Amyuni SetupAPI install reboot-required completion' \
   'Windows inactive RustDesk IDD loader excision'; do
   grep -Fq "$disposition" requirements.html || r_s11d_retained="$r_s11d_retained requirements-missing:$disposition"
 done
-for ledger in R-S11d-1 R-S11d-8 R-S11d-9 R-S11d-10 R-S11d-25 R-S11d-38; do
+for ledger in R-S11d-8 R-S11d-9 R-S11d-10 R-S11d-25 R-S11d-38; do
   grep -Fq "$ledger —" HARDENING_STATUS.md || r_s11d_retained="$r_s11d_retained ledger-missing:$ledger"
 done
 if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance invariants:$r_s11d_retained"; rc=1; else
@@ -10709,8 +10708,6 @@ grep -q 'Command::new(loginctl)' libs/hbb_common/src/platform/linux.rs || r_s11c
 grep -q 'pub const REOPEN_AFTER_SERVICE_STOP_ARG' src/platform/linux.rs || r_s11c10m="$r_s11c10m no-delayed-reopen-argv-mode"
 grep -q 'schedule_reopen_after_service_stop(2)' src/platform/linux.rs || r_s11c10m="$r_s11c10m uninstall-reopen-not-argv-mode"
 grep -q 'reopen_after_service_stop(secs)' src/core_main.rs || r_s11c10m="$r_s11c10m delayed-reopen-arg-not-handled"
-grep -q 'Linux shared helper command provenance' requirements.html || r_s11c10m="$r_s11c10m requirements-disposition-missing"
-grep -q 'R-S11c-10m closes the shared Linux helper command-provenance residue' HARDENING_STATUS.md || r_s11c10m="$r_s11c10m hardening-ledger-missing"
 shared_linux_helper_blocks=$(
   awk '/const LOGINCTL_PATHS/,/pub fn get_wayland_displays/' libs/hbb_common/src/platform/linux.rs
   awk '/pub fn schedule_reopen_after_service_stop/,/fn trusted_fixed_executable/' src/platform/linux.rs
@@ -10732,8 +10729,6 @@ grep -q 'hbb_common::tokio::task::spawn_blocking' src/server/connection.rs || r_
 grep -q 'hbb_common::users::get_user_by_name(&lookup_name)' src/server/connection.rs || r_s11c10n="$r_s11c10n uid-lookup-not-structured-account-data"
 grep -q 'user.uid()' src/server/connection.rs || r_s11c10n="$r_s11c10n uid-lookup-not-user-uid"
 grep -q 'uid_for_username(&username).await?' src/server/connection.rs || r_s11c10n="$r_s11c10n headless-cm-not-using-uid-helper"
-grep -q 'Linux headless CM uid lookup' requirements.html || r_s11c10n="$r_s11c10n requirements-disposition-missing"
-grep -q 'R-S11c-10n closes the Linux headless CM uid lookup' HARDENING_STATUS.md || r_s11c10n="$r_s11c10n hardening-ledger-missing"
 headless_cm_uid_blocks=$(
   awk '/async fn uid_for_username/,/fn cm_launch_token/' src/server/connection.rs
   awk '/if headless_cm/,/user = Some/' src/server/connection.rs
@@ -10760,12 +10755,6 @@ grep -qF 'arg("-u")' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="
 grep -qF 'arg("-q")' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-fusermount-quiet-flag"
 grep -qF 'arg("-z")' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-fusermount-lazy-flag"
 grep -qF 'fuse_mount_path_cstring_rejects_nul' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10o="$r_s11c10o no-nul-path-regression-test"
-grep -q 'Linux clipboard FUSE stale unmount provenance' requirements.html || r_s11c10o="$r_s11c10o requirements-disposition-missing"
-grep -q 'R-A6 helper-provenance companion' requirements.html || r_s11c10o="$r_s11c10o requirements-helper-provenance-missing"
-grep -q 'R-S11c-10o closes the Linux clipboard FUSE stale-unmount provenance path' HARDENING_STATUS.md || r_s11c10o="$r_s11c10o hardening-ledger-missing"
-grep -qF 'direct no-follow' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
-grep -qF 'umount2()' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-not-updated"
-grep -qF 'fixed-path `fusermount -u -q -z --` helper fallback' libs/clipboard/README.md || r_s11c10o="$r_s11c10o clipboard-readme-no-fixed-fallback"
 if grep -RInE 'Command::new\("umount"\)|std::process::Command::new\("umount"\)|process::Command::new\("umount"\)' libs/clipboard/src/platform/unix/fuse/mod.rs >"$VERIFY_TMP/rd_verify_r_s11c10o"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10o"
   r_s11c10o="$r_s11c10o stale-path-selected-umount-command"
@@ -10782,10 +10771,6 @@ grep -qF 'let euid = unsafe { libc::geteuid() };' libs/clipboard/src/platform/un
 grep -qF 'fn linux_clipboard_fuse_euid_allowed(euid: libc::uid_t) -> bool' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q no-pure-euid-policy-helper"
 grep -qF 'euid != 0' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q euid-zero-not-rejected"
 grep -qF 'linux_clipboard_fuse_rejects_euid_zero' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10q="$r_s11c10q no-euid-zero-regression-test"
-grep -q 'Linux clipboard FUSE root-process denial' requirements.html || r_s11c10q="$r_s11c10q requirements-disposition-missing"
-grep -q 'R-S11c-10q closes the Linux clipboard FUSE root-process path' HARDENING_STATUS.md || r_s11c10q="$r_s11c10q hardening-ledger-missing"
-grep -q 'euid 0 refuse to initialize clipboard' libs/clipboard/README.md || r_s11c10q="$r_s11c10q clipboard-readme-not-updated"
-grep -q 'euid-0 FUSE initialization is refused' deny.toml || r_s11c10q="$r_s11c10q deny-accept-reason-not-updated"
 if [ -n "$r_s11c10q" ]; then echo "  FAIL R-S11c-10q Linux clipboard FUSE root-process denial:$r_s11c10q"; rc=1; else
   echo "  ok  R-S11c-10q Linux clipboard FUSE initialization fails closed in euid-0 processes"; fi
 
@@ -10816,9 +10801,6 @@ grep -qF 'trusted_fusermount_path_rejects_relative_path' libs/clipboard/src/plat
 grep -qF 'clipboard_fuse_mount_options_are_owner_only' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owner-only-option-test"
 grep -qF 'MountOption::AllowOther]).is_err()' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r allow-other-not-rejected"
 grep -qF 'MountOption::AutoUnmount]).is_err()' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r auto-unmount-not-rejected"
-grep -q 'R-S11c-10r removes fuser' requirements.html || r_s11c10r="$r_s11c10r requirements-disposition-missing"
-grep -q 'R-S11c-10r closes the Linux clipboard FUSE direct-mount/PATH-helper abstraction' HARDENING_STATUS.md || r_s11c10r="$r_s11c10r hardening-ledger-missing"
-grep -q 'fixed-path fusermount fd-passing path' deny.toml || r_s11c10r="$r_s11c10r deny-accept-reason-not-updated"
 if grep -qF 'fuser::spawn_mount2' libs/clipboard/src/platform/unix/fuse/mod.rs; then
   r_s11c10r="$r_s11c10r spawn-mount2-still-used"
 fi
@@ -10967,8 +10949,6 @@ grep -qF 'pub fn run_me_with_env<T, I, K, V>' src/common.rs || r_s11c10p="$r_s11
 grep -qF 'let cmd = std::env::current_exe()?;' src/common.rs || r_s11c10p="$r_s11c10p self-relaunch-not-current-exe"
 grep -qF 'let mut cmd = std::process::Command::new(cmd);' src/common.rs || r_s11c10p="$r_s11c10p self-relaunch-not-current-exe-command"
 grep -qF 'cmd.envs(envs.iter().map(|(k, v)| (k, v)));' src/common.rs || r_s11c10p="$r_s11c10p self-relaunch-env-forwarding-lost"
-grep -q 'Linux self-relaunch AppImage fallback' requirements.html || r_s11c10p="$r_s11c10p requirements-disposition-missing"
-grep -q 'R-S11c-10p closes the Linux self-relaunch AppImage fallback' HARDENING_STATUS.md || r_s11c10p="$r_s11c10p hardening-ledger-missing"
 self_relaunch_block=$(awk '/pub fn run_me_with_env/,/let result = cmd.args/' src/common.rs)
 if echo "$self_relaunch_block" | grep -Eq 'APPDIR|AppRun|AppImage|appimage_cmd|std::env::var\("APPDIR"\)'; then
   r_s11c10p="$r_s11c10p stale-appimage-relaunch-branch"

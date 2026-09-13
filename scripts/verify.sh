@@ -1477,8 +1477,6 @@ grep -q 'preserved_config_hardening_rejects_symlink_targets' libs/hbb_common/src
 if grep -q 'fs::set_permissions(&backup, fs::Permissions::from_mode(0o600))' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d corrupt-recovery-path-chmod-present"
 fi
-grep -q 'R-S11b-4d' requirements.html || index_s11b4d="$index_s11b4d requirements-disposition-missing"
-grep -q 'R-S11b-4d' HARDENING_STATUS.md || index_s11b4d="$index_s11b4d hardening-ledger-missing"
 if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing store hardening:$index_s11b4d"; rc=1; else
   echo "  ok  R-S11b-4d peer TOML uses the no-follow, owner-only, synchronized temp-and-replace transaction; cleanup remains exact-path, loaded-only, and semantically-empty-only; retired account raw stores are absent under R-S11hj"; fi
 
@@ -2091,8 +2089,6 @@ fi
 if grep -q 'fn get_shortcut_icon_location' src/platform/windows.rs; then
   r_s11d="$r_s11d user-shortcut:vbs-icon-helper-leftover"
 fi
-grep -q 'Windows privacy broker and user shortcut process provenance' requirements.html || r_s11d="$r_s11d privacy-shortcut-requirements-disposition-missing"
-grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenance' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-shortcut-hardening-ledger-missing"
 grep -q 'Windows privacy broker served-session authority' requirements.html || r_s11d="$r_s11d privacy-broker-session-requirements-disposition-missing"
 grep -q 'R-S11d-31 — Windows privacy broker served-session authority' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-broker-session-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows privacy-broker/shortcut/process provenance:$r_s11d"; rc=1; else

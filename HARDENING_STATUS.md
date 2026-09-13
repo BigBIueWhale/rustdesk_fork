@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a7937334a82eaf5ac2c502110b5cf475b89a9f7ec16c63f5221ec854b770cc23  requirements.html
+0b9494df7a93035567195d08e017d7ee04c7faefdab305ed14202a128c72067e  requirements.html
 ```
 
 ## Current Verdict
@@ -80,6 +80,17 @@ presence of those requirement titles or historical ledger IDs were deleted, redu
 ownership, declarative MSI removal, fixed System32 RDP execution without credential preseeding, absolute shell
 selection, absence of portable basename cleanup, and absence of unsupported WMIC probes. No product source,
 package, native target, or runtime changed, and every release-blocking item remains open.
+
+Appendix C rows #47–#49 now state only the timeless service-owned voice-input mutation, live peer-TOML
+finality, and Windows privacy-broker/shortcut provenance contracts. Their historical failure narratives,
+`FIX` badges, implementation receipts, and verifier narration were deleted, reducing `requirements.html` by
+1,582 bytes. Row #48 no longer preserves or hardens the retired account/address-book/group raw-store subsystem:
+R-S11hj requires that subsystem to be absent and leaves pre-existing legacy bytes inert, while the exact-path,
+typed-outcome, owner-only transaction remains mandatory for live peer TOML. Four verifier assertions whose only
+oracle was a requirement title or ledger ID were deleted, reducing `scripts/verify.sh` by 524 bytes; the compiled
+voice-input authority regression and focused source checks for the peer-file transaction, exact cleanup finality,
+broker image/session binding, and native shell-link construction remain. No product source or native target ran
+or changed, and every release-blocking item remains open.
 
 R-S11gc and Appendix C #338 now separate the enduring Linux full-peer acceptance contract from
 historical execution progress. The 21-attempt diary, superseded input digests, intermediate harness

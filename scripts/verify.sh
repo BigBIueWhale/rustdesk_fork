@@ -2154,8 +2154,6 @@ echo "$run_current_exe_session_body" | grep -Fq 'FALSE,' || r_s11d13="$r_s11d13 
 if grep -Fq 'pub fn launch_privileged_process' src/platform/windows.rs || grep -Fq 'launch_privileged_process' src/core_main.rs src/platform/windows.rs requirements.html HARDENING_STATUS.md; then
   r_s11d13="$r_s11d13 obsolete-launch-privileged-process-reference-leftover"
 fi
-grep -Fq 'Windows service and session-token process launch provenance' requirements.html || r_s11d13="$r_s11d13 requirements-disposition-missing"
-grep -Fq 'R-S11d-13 — Windows service and session-token process launch provenance' HARDENING_STATUS.md || r_s11d13="$r_s11d13 hardening-ledger-missing"
 if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token launch provenance:$r_s11d13"; rc=1; else
   echo "  ok  R-S11d-13 Windows service/session token launches bind lpApplicationName/current-directory, quote argv separately, and reject ambient executable identity"; fi
 
@@ -2310,8 +2308,6 @@ fi
 if grep -Fq 'EXPLORER_EXE' src/platform/windows.rs src/server/connection.rs; then
   r_s11d14="$r_s11d14 explorer-error-suppression-leftover"
 fi
-grep -Fq 'Windows service/session token source provenance' requirements.html || r_s11d14="$r_s11d14 requirements-disposition-missing"
-grep -Fq 'R-S11d-14 — Windows service/session token source provenance' HARDENING_STATUS.md || r_s11d14="$r_s11d14 hardening-ledger-missing"
 if [ -n "$r_s11d14" ]; then echo "  FAIL R-S11d-14 Windows service/session token source provenance:$r_s11d14"; rc=1; else
   echo "  ok  R-S11d-14 Windows session launches use WTS user tokens and validated LocalSystem winlogon tokens with minimum rights"; fi
 

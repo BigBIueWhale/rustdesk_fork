@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0b9494df7a93035567195d08e017d7ee04c7faefdab305ed14202a128c72067e  requirements.html
+095cbe5bcedc648b2fd12b8050f5459db78e1f9f58957f5086da3eb2537138c3  requirements.html
 ```
 
 ## Current Verdict
@@ -91,6 +91,16 @@ oracle was a requirement title or ledger ID were deleted, reducing `scripts/veri
 voice-input authority regression and focused source checks for the peer-file transaction, exact cleanup finality,
 broker image/session binding, and native shell-link construction remain. No product source or native target ran
 or changed, and every release-blocking item remains open.
+
+Appendix C rows #50–#51 now state only the timeless Windows token-switched image/argument and session-token
+source/access contracts. Their pre-fix implementation narratives, `FIX` badges, and verifier receipts were
+deleted, reducing `requirements.html` by 547 bytes. Four verifier assertions whose only oracle was a requirement
+title or historical ledger ID were deleted, reducing `scripts/verify.sh` by 576 bytes; the Windows
+`process_launch_tests` suite and focused source checks still bind explicit application/current-directory/argv,
+closed helper roles, WTS user-token selection, exact System32 winlogon image, token session/LocalSystem identity,
+minimum rights, handle ownership, and obsolete fallback absence. No product source or native Windows target ran
+or changed; current Windows package, installed-negative-principal, full-peer, focus/reconnect, resource/latency,
+and cold-equality evidence remains open.
 
 R-S11gc and Appendix C #338 now separate the enduring Linux full-peer acceptance contract from
 historical execution progress. The 21-attempt diary, superseded input digests, intermediate harness

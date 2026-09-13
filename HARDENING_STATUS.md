@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e71513e2dc2eca9dc1ba5765243d6b776edc27cd753b39b73f4f1839a33211e3  requirements.html
+a7937334a82eaf5ac2c502110b5cf475b89a9f7ec16c63f5221ec854b770cc23  requirements.html
 ```
 
 ## Current Verdict
@@ -70,6 +70,16 @@ deleted, reducing `requirements.html` by 3,749 bytes. Twenty checks whose oracle
 ledger, README, or advisory rationale were deleted from `scripts/verify.sh`, reducing it by 2,521 bytes; the focused
 source invariants and executable Rust tests for the same boundaries remain. No product source or native target ran
 or changed, and every item in the release-blocking matrix remains open.
+
+Appendix C rows #38, #39, and #43–#46 now state only the timeless Windows process, package-cleanup,
+RDP-viewer, terminal-shell, portable-wrapper, and supported-architecture authority contracts. Their original
+failure narratives, intermediate fixes, `FIX` badges, verifier receipts, and status-ledger dependencies were
+deleted, reducing `requirements.html` by 3,316 bytes. Twelve verifier assertions whose only oracle was the
+presence of those requirement titles or historical ledger IDs were deleted, reducing `scripts/verify.sh` by
+1,154 bytes; the focused source checks still bind exact consent image/session proof, exact privacy-process
+ownership, declarative MSI removal, fixed System32 RDP execution without credential preseeding, absolute shell
+selection, absence of portable basename cleanup, and absence of unsupported WMIC probes. No product source,
+package, native target, or runtime changed, and every release-blocking item remains open.
 
 R-S11gc and Appendix C #338 now separate the enduring Linux full-peer acceptance contract from
 historical execution progress. The 21-attempt diary, superseded input digests, intermediate harness

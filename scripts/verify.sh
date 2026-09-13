@@ -2052,8 +2052,6 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11d_wmic" -rInE --include='*.rs
   cat "$VERIFY_TMP/rd_verify_r_s11d_wmic"
   r_s11d="$r_s11d windows:unsupported-32bit-wmic-process-probe-leftover"
 fi
-grep -q 'Windows unsupported 32-bit WMIC process-probe deletion' requirements.html || r_s11d="$r_s11d wmic-process-probe-requirements-disposition-missing"
-grep -q 'R-S11d-11 — Windows unsupported 32-bit WMIC process-probe deletion' HARDENING_STATUS.md || r_s11d="$r_s11d wmic-process-probe-hardening-ledger-missing"
 privacy_broker_create=$(awk '/let create_res = CreateProcessAsUserW\(/,/^[[:space:]]*\);/' src/privacy_mode/win_topmost_window.rs)
 privacy_broker_create_one_line=$(printf '%s\n' "$privacy_broker_create" | tr '\n' ' ')
 echo "$privacy_broker_create" | grep -q 'broker_path_utf16.as_ptr() as _' || r_s11d="$r_s11d privacy-broker:not-explicit-application-name"
@@ -2097,8 +2095,6 @@ grep -q 'Windows privacy broker and user shortcut process provenance' requiremen
 grep -q 'R-S11d-12 — Windows privacy broker and user shortcut process provenance' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-shortcut-hardening-ledger-missing"
 grep -q 'Windows privacy broker served-session authority' requirements.html || r_s11d="$r_s11d privacy-broker-session-requirements-disposition-missing"
 grep -q 'R-S11d-31 — Windows privacy broker served-session authority' HARDENING_STATUS.md || r_s11d="$r_s11d privacy-broker-session-hardening-ledger-missing"
-grep -q 'Windows MSI runtime-generated executable cleanup completion authority' requirements.html || r_s11d="$r_s11d runtime-generated-cleanup-requirements-disposition-missing"
-grep -q 'R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority' HARDENING_STATUS.md || r_s11d="$r_s11d runtime-generated-cleanup-hardening-ledger-missing"
 if [ -n "$r_s11d" ]; then echo "  FAIL R-S11d Windows privacy-broker/shortcut/process provenance:$r_s11d"; rc=1; else
   echo "  ok  R-S11d unsupported 32-bit WMIC probes are absent; privacy broker launch is explicit and served-session-bound; user shortcuts use native ShellLink with validated inputs; runtime-generated broker cleanup remains package-authoritative"; fi
 
@@ -2453,14 +2449,11 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11d_retained_idd" -rInE 'rustde
 fi
 
 for disposition in \
-  'Windows RDP viewer credential handling and command provenance' \
-  'Windows terminal default-shell command provenance' \
-  'Windows portable RuntimeBroker cleanup command provenance' \
   'Windows Amyuni SetupAPI install reboot-required completion' \
   'Windows inactive RustDesk IDD loader excision'; do
   grep -Fq "$disposition" requirements.html || r_s11d_retained="$r_s11d_retained requirements-missing:$disposition"
 done
-for ledger in R-S11d-8 R-S11d-9 R-S11d-10 R-S11d-25 R-S11d-38; do
+for ledger in R-S11d-25 R-S11d-38; do
   grep -Fq "$ledger —" HARDENING_STATUS.md || r_s11d_retained="$r_s11d_retained ledger-missing:$ledger"
 done
 if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance invariants:$r_s11d_retained"; rc=1; else
@@ -2732,8 +2725,6 @@ grep -Fq 'candidate_session_id == expected_session_id' src/platform/windows.rs |
 grep -Fq 'normalized_windows_path_text(candidate_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-candidate-path-comparison-missing"
 grep -Fq 'normalized_windows_path_text(expected_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-system-path-comparison-missing"
 grep -Fq 'fn consent_candidate_requires_exact_system_image_and_current_session()' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-authority-regression-test-missing"
-grep -q 'Windows runtime process command provenance' requirements.html || r_s11d3="$r_s11d3 requirements-disposition-missing"
-grep -q 'R-S11d-3 — Windows runtime process command provenance' HARDENING_STATUS.md || r_s11d3="$r_s11d3 hardening-ledger-missing"
 grep -Fq '<span class="id">R-S11w</span>' requirements.html || r_s11d3="$r_s11d3 normative-requirement-missing"
 grep -Fq '<tr><td>145</td>' requirements.html || r_s11d3="$r_s11d3 appendix-disposition-missing"
 grep -Fq 'R-S11e-37 — Windows residual process-state authority' HARDENING_STATUS.md || r_s11d3="$r_s11d3 process-state-ledger-missing"

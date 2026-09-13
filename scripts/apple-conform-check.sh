@@ -4341,8 +4341,6 @@ grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 uninstall
 if grep -qE '/bin/launchctl (list|load|unload|remove)( |")' "$install_scpt" "$uninstall_scpt"; then
   r_s11c16="$r_s11c16 legacy-launchctl-lifecycle-present"
 fi
-grep -q 'R-S11c-16 and R-S11c-10j make service lifecycle completion status-authoritative' "$REPO/requirements.html" || r_s11c16="$r_s11c16 requirements-disposition-missing"
-grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' "$REPO/HARDENING_STATUS.md" || r_s11c16="$r_s11c16 hardening-ledger-missing"
 if [ -n "$r_s11c16" ]; then
   echo "  FAIL R-S11c-16 macOS privileged service completion authority:$r_s11c16"
   rc=1

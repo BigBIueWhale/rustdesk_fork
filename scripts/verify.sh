@@ -9444,8 +9444,6 @@ grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uni
 if grep -qE '/bin/launchctl (list|load|unload|remove)( |")' "$install_scpt" "$uninstall_scpt"; then
   r_s11c16="$r_s11c16 macos-legacy-launchctl-lifecycle-present"
 fi
-grep -q 'R-S11c-16 and R-S11c-10j make service lifecycle completion status-authoritative' requirements.html || r_s11c16="$r_s11c16 requirements-disposition-missing"
-grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' HARDENING_STATUS.md || r_s11c16="$r_s11c16 hardening-ledger-missing"
 if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle completion authority:$r_s11c16"; rc=1; else
   echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux service install does not import user config, and macOS AppleScript/launchctl/plist completion is checked"; fi
 

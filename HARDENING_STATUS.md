@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-095cbe5bcedc648b2fd12b8050f5459db78e1f9f58957f5086da3eb2537138c3  requirements.html
+7e7f70526f8b06a2948088156ea6d6ed95bbd5448d7d904b8b038ff9d1b25405  requirements.html
 ```
 
 ## Current Verdict
@@ -101,6 +101,17 @@ closed helper roles, WTS user-token selection, exact System32 winlogon image, to
 minimum rights, handle ownership, and obsolete fallback absence. No product source or native Windows target ran
 or changed; current Windows package, installed-negative-principal, full-peer, focus/reconnect, resource/latency,
 and cold-equality evidence remains open.
+
+Appendix C row #59 now states the timeless installed-service lifecycle finality contract instead of preserving
+the original failure inventory, successive implementation narrative, `FIX` badge, and verifier receipts, reducing
+`requirements.html` by 1,203 bytes. It distinguishes direct system-manager completion from Debian's
+policy-mediated helper semantics, keeps dpkg and administrator ownership separate, requires exact emitted-package
+validation, and binds macOS completion to explicit daemon/agent domains and postconditions. Four duplicate
+assertions whose only oracle was exact requirements or ledger prose were deleted, reducing `scripts/verify.sh` by
+305 bytes and `scripts/apple-conform-check.sh` by 321 bytes; their CLI, Linux, Debian package, AppleScript,
+launchctl, plist, and focused macOS lifecycle source checks remain. No product source, package, service, or native
+target ran or changed. Exact installed Linux and legitimate macOS allow/refusal, failure/retry, upgrade,
+administrator-override, restart, and cleanup evidence remains open in the release-blocking matrix.
 
 R-S11gc and Appendix C #338 now separate the enduring Linux full-peer acceptance contract from
 historical execution progress. The 21-attempt diary, superseded input digests, intermediate harness

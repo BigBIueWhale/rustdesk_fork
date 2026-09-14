@@ -17,8 +17,8 @@ import 'home_page.dart';
 
 // R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL reachability of the direct listener, read
 // synchronously from the Rust `direct-listener-bound` signal (the actual bound-TcpListener state) —
-// NOT Dart `serverModel.isStart`, whose optimistic start value is later reconciled from the exact
-// MainService startup transaction but remains a UI-lifecycle signal rather than socket state. On
+// NOT Dart `serverModel.isStart`, which observes the exact MainService lifecycle but remains a
+// service-lifecycle signal rather than socket state. On
 // Android the listener is FGS-owned (R-D7a): bound iff the service runs AND a permanent password is
 // set (R-S9 park), and Stop closes it.
 bool _directListenerBound() =>
@@ -201,10 +201,9 @@ class ServerInfo extends StatelessWidget {
       // "connecting"/"not ready" state. Report TWO distinct, honest facts instead of one static
       // green check:
       //  1. REACHABLE — driven by the REAL Rust `direct-listener-bound` signal (the actual bound
-      //     TcpListener), NOT `serverModel.isStart` (an optimistic Dart flag set before init_service
-      //     and never synced from the native service — false after a boot listener-only start even
-      //     though the listener is UP). `permanent-password-set` only picks the "why not reachable"
-      //     wording (no password vs service stopped).
+      //     TcpListener), NOT `serverModel.isStart` (an exact MainService lifecycle observation,
+      //     not proof that native listener activation succeeded). `permanent-password-set` only
+      //     picks the "why not reachable" wording (no password vs service stopped).
       //  2. Screen capture only actually flows once MediaProjection consent is in hand (mediaOk,
       //     re-synced from native MainService.isReady by the check_service poll) — so the card
       //     must not imply capture is ready before that consent, or after it is lost.

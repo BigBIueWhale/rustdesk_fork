@@ -15,6 +15,7 @@ import '../desktop/pages/server_page.dart' as desktop;
 import '../desktop/pages/desktop_home_page.dart' show setPasswordDialog;
 import '../desktop/widgets/tabbar_widget.dart';
 import '../mobile/pages/server_page.dart';
+import 'android_service_ui_state.dart';
 import 'model.dart';
 import 'server_status_refresh_loop.dart';
 
@@ -26,7 +27,7 @@ const kUsePermanentPassword = "use-permanent-password";
 const kUseBothPasswords = "use-both-passwords";
 
 class ServerModel with ChangeNotifier {
-  bool _isStart = false; // Android MainService status
+  final _androidServiceUiState = AndroidServiceUiState();
   bool _mediaOk = false;
   bool _inputOk = false;
   bool _audioOk = false;
@@ -54,7 +55,7 @@ class ServerModel with ChangeNotifier {
 
   final _wakelockKey = UniqueKey();
 
-  bool get isStart => _isStart;
+  bool get isStart => _androidServiceUiState.observedRunning;
 
   bool get mediaOk => _mediaOk;
 
@@ -283,7 +284,10 @@ class ServerModel with ChangeNotifier {
 
   /// Toggle the screen sharing service.
   toggleService() async {
-    if (_isStart) {
+    if (_androidServiceUiState.commandInFlight) {
+      return;
+    }
+    if (isStart) {
       final res = await parent.target?.dialogManager
           .show<bool>((setState, close, context) {
         submit() => close(true);
@@ -304,7 +308,7 @@ class ServerModel with ChangeNotifier {
         );
       });
       if (res == true) {
-        stopService();
+        await stopService();
       }
     } else {
       await checkRequestNotificationPermission();
@@ -344,110 +348,114 @@ class ServerModel with ChangeNotifier {
         );
       });
       if (res == true) {
-        startService();
+        await startService();
       }
     }
   }
 
   /// Start the screen sharing service.
   Future<void> startService() async {
-    // finding D / R-S9: on mobile the controlled side binds NO listener without a
-    // permanent password — the Rust core parks fail-closed and refuses every connection —
-    // and, before the crash fix, tapping "Start service" with no password bound nothing
-    // yet took down the WHOLE app, because the Android Rust core shares the app process
-    // and its startup self-check called std::process::exit(1). Gate here, the single
-    // chokepoint before init_service, so every mobile start path (the Start button and
-    // the media-permission auto-start) is covered: require a permanent password first and
-    // route the user to set one. The fork deliberately has NO auto-generated password —
-    // the user must choose one — so we prompt rather than fabricate a credential; the
-    // service starts once a non-empty password is set (notEmptyCallback re-invokes this).
-    // (`permanent-password-set` reports the same typed PRS availability consumed by the
-    // Rust park/bail paths, so this gate never diverges from the fail-closed backstop.)
-    // Desktop is intentionally untouched (it uses the
-    // installed --service, and its launch path runs before the widget tree exists).
-    if ((isAndroid || isIOS) &&
-        (await bind.mainGetCommon(key: 'permanent-password-set')) != 'true') {
-      showToast(translate(
-          'Please set a permanent password before starting the service.'));
-      setPasswordDialog(notEmptyCallback: () => startService());
-      return;
-    }
-    // Optimistically flip _isStart before the awaited native calls so the media-permission
-    // callback (changeStatue("media") -> startService when !_isStart) cannot re-enter here.
-    _isStart = true;
-    notifyListeners();
     try {
-      parent.target?.ffiModel.updateEventListener(parent.target!.sessionId, "");
-      // R-D7a/R-S11hr: the direct listener is service-owned. init_service either creates an
-      // inert bound Service before capture consent or issues one explicit app-open health start;
-      // MainService.onStartCommand owns the exact JNI startup/recovery transaction. There is no
-      // separate service-enable config write.
-      await parent.target?.invokeMethod("init_service");
-    } catch (e) {
-      // Honest status (§19/R-G7): the "service running / reachable on :21118" surface is driven
-      // by _isStart, so a start that did NOT actually complete must not leave it asserting a
-      // running server. Reset the flag (and notify) so the UI falls back to "Service is not
-      // running" rather than showing a false green check. (A user-declined MediaProjection is a
-      // separate path already handled by on_media_projection_canceled -> stopService.)
-      debugPrint("startService failed: $e");
-      _isStart = false;
-      notifyListeners();
-      return;
-    }
-    try {
-      await updateClientState();
+      await _androidServiceUiState.runCommand(() async {
+        // R-S9: the same typed credential availability consumed by the native park path gates
+        // the only mobile start command. The UI never fabricates a credential or service state.
+        if ((isAndroid || isIOS) &&
+            (await bind.mainGetCommon(key: 'permanent-password-set')) !=
+                'true') {
+          showToast(translate(
+              'Please set a permanent password before starting the service.'));
+          setPasswordDialog(notEmptyCallback: () => startService());
+          return;
+        }
+
+        final target = parent.target;
+        if (target == null) {
+          throw StateError('The Android service command owner is unavailable');
+        }
+        target.ffiModel.updateEventListener(target.sessionId, "");
+        // R-D7a/R-S11hr: MainService.onStartCommand owns the exact JNI startup/recovery
+        // transaction. Dart requests it but does not change observed running state.
+        await target.invokeMethod("init_service");
+
+        try {
+          await updateClientState();
+        } catch (error, stackTrace) {
+          // Client-list observation is independent from the native service lifecycle.
+          debugPrintStack(
+            label: 'Initial client-state refresh failed: $error',
+            stackTrace: stackTrace,
+          );
+        }
+        if (isAndroid) {
+          androidUpdatekeepScreenOn();
+        }
+      });
     } catch (error, stackTrace) {
-      // The native service is already running. Keep that status honest while making the failed
-      // UI reconciliation visible; a client-list observation failure is not a service-start failure.
       debugPrintStack(
-        label: 'Initial client-state refresh failed: $error',
+        label: 'MainService start request failed: $error',
         stackTrace: stackTrace,
       );
-    }
-    if (isAndroid) {
-      androidUpdatekeepScreenOn();
+      showToast(translate('Failed'));
     }
   }
 
   /// Stop the screen sharing service.
   Future<void> stopService() async {
-    _isStart = false;
-    closeAll();
-    // R-D7a: the real stop is the OS foreground-service lifecycle — invokeMethod("stop_service")
-    // -> MainActivity.stop_service -> Context.stopService + Activity unbind -> MainService.onDestroy,
-    // which deactivates the exact service-owned-listener generation so the accept loop drops the socket.
-    // There is no stop-service config write (the listener reads no such option, R-D4).
-    await parent.target?.invokeMethod("stop_service");
-    notifyListeners();
-    // for androidUpdatekeepScreenOn only
-    WakelockManager.disable(_wakelockKey);
+    try {
+      await _androidServiceUiState.runCommand(() async {
+        unawaited(closeAll().catchError((Object error, StackTrace stackTrace) {
+          debugPrintStack(
+            label: 'Controlled-client close failed during MainService Stop: $error',
+            stackTrace: stackTrace,
+          );
+        }));
+        final target = parent.target;
+        if (target == null) {
+          throw StateError('The Android service command owner is unavailable');
+        }
+        // R-D7a/R-S11en: Kotlin requests Context.stopService and always attempts to remove the
+        // Activity binding. MainService.onDestroy owns the exact listener/resource teardown.
+        final retired = await target.invokeMethod("stop_service");
+        if (retired != true) {
+          throw StateError('Android reported no MainService lifetime to retire');
+        }
+        WakelockManager.disable(_wakelockKey);
+      });
+    } catch (error, stackTrace) {
+      // Do not turn a failed/uncertain request into a false stopped observation.
+      debugPrintStack(
+        label: 'MainService Stop request failed: $error',
+        stackTrace: stackTrace,
+      );
+      showToast(translate('Failed'));
+    }
   }
 
 
   changeStatue(String name, bool value) {
     debugPrint("changeStatue value $value");
+    var changed = false;
     switch (name) {
       case "media":
+        changed = _mediaOk != value;
         _mediaOk = value;
-        if (value && !_isStart) {
-          startService();
-        }
         break;
       case "service":
-        // The optimistic value prevents a MediaProjection callback from re-entering startService;
-        // every explicit Android start converges it to the exact MainService transaction outcome.
-        _isStart = value;
+        changed = _androidServiceUiState.observeRunning(value);
         break;
       case "input":
         // M2 / R-S16: no enable-keyboard write — the key is policy-pinned Y (R-S16), so the write was
         // rejected; _inputOk simply mirrors the native AccessibilityService state (InputService.isOpen),
         // the honest single source of truth for whether remote input can actually be injected.
+        changed = _inputOk != value;
         _inputOk = value;
         break;
       default:
         return;
     }
-    notifyListeners();
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   // force

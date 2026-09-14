@@ -445,6 +445,22 @@ resource/failure behavior, cold artifacts, independent reproduction, and externa
 this record, the live ledger moves from 1,025,009 to 1,027,509 bytes, or 342,503 conservative tokens by the
 documented method.
 
+The two concrete R-S11en source gaps found during that cleanup are now closed without restoring the deleted
+source-verifier machinery. Dart keeps observed Android service state separate from its single bounded command
+latch: Start and Stop never write the observation, identical lifecycle snapshots do not notify, a MediaProjection
+status callback cannot recursively start the service, and reopening an Activity requests one current native
+snapshot containing service and projection state. Kotlin explicit Stop contains a throwing
+`Context.stopService`, always attempts Activity unbinding afterward, distinguishes absent, removed, and uncertain
+binding outcomes, preserves uncertain binding bookkeeping for retry, and reports failure instead of claiming
+retirement. The existing exact production status-owner regression was compiled and executed in a networkless,
+nonroot, read-only-source utility container and passed. A focused Flutter regression for command/observation
+separation is authored and already reached by the normal Dart gate, but could not be executed because the pinned
+Flutter/Android builders and host Dart/Flutter toolchains are absent; `MainActivity`, an APK, and Android framework
+lifecycle therefore were not compiled or run. No replacement string matcher or documentation oracle was added.
+Exact target compilation and the installed lifecycle/resource matrix remain open. Including this record, the live
+ledger is 1,029,366 bytes, or 343,122 conservative tokens by the documented method, below its approximately
+400,000-token budget.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the
@@ -961,21 +977,24 @@ raw-video state. The pure owner regressions and focused source gate are suppleme
 APK capture/replacement/task-swipe/Force-Stop/reconnect/presentation and bounded-resource evidence remains
 open. R-S11em owns the complete contract.
 
-**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE PARTIAL;
-PACKAGE/DEVICE EVIDENCE OPEN.** One private serialized status owner publishes only the exact active
+**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE IMPLEMENTED;
+TARGET/PACKAGE/DEVICE EVIDENCE OPEN.** One private serialized status owner publishes only the exact active
 service generation and MediaProjection readiness. Current begin is idempotent, replacement resets
 readiness, stale updates/retirement cannot affect a replacement, and Activity-visible status remains
 observation rather than capture/listener/connection authority. Passive attachment to an existing
 service binds with flags `0`; `BIND_AUTO_CREATE` is used only for explicit initialization when no status
-is published. Explicit Stop calls `Context.stopService` and then retires the Activity binding so Android
-can deliver the sole resource teardown in `MainService.onDestroy`. The duplicate callable `destroy()`/
-plain `stopSelf()` path, generationless companion booleans, and dead clipboard capture-status replica are
-absent; the internal exact-failed-start `stopSelfResult(startId)` path remains intentional. Two source gaps
-remain: Dart's observed `_isStart` field is still optimistically written by Start and Stop commands, and a
-runtime exception from `Context.stopService` can currently skip Activity unbinding. The standalone Kotlin
-owner regression is authored but is not executed by the current shared gate. R-S11en owns the complete
-contract; exact Flutter/Kotlin execution and installed start/status/Stop/binding/task-swipe/reopen/Force-Stop/
-replacement/failure/resource scenarios remain open in the global matrix.
+is published. Dart Start/Stop requests have one bounded in-flight latch and never overwrite observed status;
+current native snapshots and lifecycle publications alone change that observation, identical observations do
+not rebuild, and MediaProjection status cannot re-enter Start. Explicit Stop contains the framework request and
+always attempts Activity unbinding even if `Context.stopService` throws; absent, removed, and uncertain bindings
+remain distinct, uncertain bookkeeping is retained for retry, and failure stays visible. The sole resource
+teardown remains `MainService.onDestroy`. The duplicate callable `destroy()`/plain `stopSelf()` path,
+generationless companion booleans, and dead clipboard capture-status replica are absent; the internal exact-
+failed-start `stopSelfResult(startId)` path remains intentional. The exact production status-owner regression
+compiles and passes in confinement. The focused Flutter regression is authored and wired but unexecuted here;
+current `MainActivity`/Flutter target compilation and installed start/status/Stop/binding/task-swipe/reopen/
+Force-Stop/replacement/failure/resource scenarios remain open in the global matrix. R-S11en owns the complete
+contract.
 
 **R-S11eo/R-S11e-176 mobile outgoing-session preparation finality and failure visibility — SOURCE
 IMPLEMENTED; ANDROID/iOS PACKAGE AND DEVICE EVIDENCE OPEN.** Android and iOS mobile add use one typed

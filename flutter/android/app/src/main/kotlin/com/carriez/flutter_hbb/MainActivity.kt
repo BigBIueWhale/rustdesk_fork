@@ -29,6 +29,12 @@ import java.util.UUID
 
 
 class MainActivity : FlutterActivity() {
+    private enum class MainServiceUnbindOutcome {
+        ABSENT,
+        REMOVED,
+        FAILED,
+    }
+
     companion object {
         internal data class ClientSessionOwner(val generation: Long, val sessionId: String) {
             fun toVoiceCallOwner() = OutgoingVoiceCallOwner(generation, sessionId)
@@ -183,20 +189,26 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun unbindMainService(): Boolean {
+    private fun unbindMainService(): MainServiceUnbindOutcome {
         if (!isServiceBound) {
             mainService = null
-            return false
+            return MainServiceUnbindOutcome.ABSENT
         }
         return try {
             unbindService(serviceConnection)
-            true
-        } catch (e: IllegalArgumentException) {
-            Log.w(logTag, "MainService binding was already gone", e)
-            false
-        } finally {
             isServiceBound = false
             mainService = null
+            MainServiceUnbindOutcome.REMOVED
+        } catch (e: IllegalArgumentException) {
+            Log.w(logTag, "MainService binding was already gone", e)
+            isServiceBound = false
+            mainService = null
+            MainServiceUnbindOutcome.ABSENT
+        } catch (e: RuntimeException) {
+            // Retain the binding bookkeeping so an explicit retry is still possible. Clearing it
+            // here would turn an uncertain framework outcome into a false local absence claim.
+            Log.e(logTag, "Failed to remove the MainService binding", e)
+            MainServiceUnbindOutcome.FAILED
         }
     }
 
@@ -297,9 +309,27 @@ class MainActivity : FlutterActivity() {
                     Log.d(logTag, "Stop service")
                     // A stopped service with a BIND_AUTO_CREATE client is not destroyed until the
                     // client unbinds. onDestroy is MainService's sole resource-teardown owner.
-                    val stopped = stopService(Intent(this, MainService::class.java))
+                    var stopFailed = false
+                    val stopped = try {
+                        stopService(Intent(this, MainService::class.java))
+                    } catch (e: RuntimeException) {
+                        stopFailed = true
+                        Log.e(logTag, "Failed to request MainService Stop", e)
+                        false
+                    }
+                    // This must run even when Context.stopService throws.
                     val unbound = unbindMainService()
-                    result.success(stopped || unbound)
+                    if (stopFailed || unbound == MainServiceUnbindOutcome.FAILED) {
+                        result.error(
+                            "MAIN_SERVICE_STOP_FAILED",
+                            "MainService Stop or Activity unbind did not complete",
+                            null,
+                        )
+                    } else {
+                        result.success(
+                            stopped || unbound == MainServiceUnbindOutcome.REMOVED
+                        )
+                    }
                 }
                 "check_permission" -> {
                     if (call.arguments is String) {
@@ -334,6 +364,11 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "check_service" -> {
+                    val status = MainService.currentStatus()
+                    Companion.flutterMethodChannel?.invokeMethod(
+                        "on_state_changed",
+                        mapOf("name" to "service", "value" to (status != null).toString())
+                    )
                     Companion.flutterMethodChannel?.invokeMethod(
                         "on_state_changed",
                         mapOf("name" to "input", "value" to InputService.isOpen.toString())
@@ -342,9 +377,7 @@ class MainActivity : FlutterActivity() {
                         "on_state_changed",
                         mapOf(
                             "name" to "media",
-                            "value" to (
-                                MainService.currentStatus()?.mediaProjectionReady == true
-                            ).toString(),
+                            "value" to (status?.mediaProjectionReady == true).toString(),
                         )
                     )
                     result.success(true)

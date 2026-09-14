@@ -340,8 +340,10 @@ history, `FIX` badge, implementation narration, and wording-based proof claims a
 shell probes of requirements/status prose, the global status-heading mutation, and the impossible nested
 `VERIFIER_FIXTURE_TMP` mutation left after ordinary verification stopped creating that directory. The authenticated
 shell workspace validator, descriptor-owned scratch implementation, executable failure-injection fixtures, and direct
-implementation mutations remain. The full source-mutation checkpoint now passes the retired nested-fixture target
-and stops at a separate stale Android listener-reservation mutation; no complete catalog pass is claimed.
+implementation mutations remain. Nine separately orphaned Android listener/startup mutations are also deleted. A
+deliberate complete source-mutation checkpoint then ran for roughly eight and a half minutes under a 1,536 MiB limit
+before being killed with exit 137 without emitting a phase or verifier verdict. The cause is not proven, and neither
+progress through a particular target nor a complete catalog pass is claimed.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -11749,10 +11751,16 @@ corrected for the four current post-claim rollback edges and the two-phase
 `android_request_stop`/`android_generation_is_inactive` API; it remains
 supplementary source evidence. The workspace verifier's five duplicate Android
 focused validators, loaders, dispatches, and their uniquely owned mutation
-catalog are now deleted rather than preserving the retired stop helper and
-runtime-abort listener shape. Its normal integration catalog runs successfully,
-but that execution still observes source structure rather than Android behavior
-and is not a reason to restore any superseded lifecycle.
+catalog are deleted rather than preserving the retired stop helper and
+runtime-abort listener shape. Nine orphaned tuples missed by that deletion are
+also absent: three pre-extraction `reserved`/`active` representation mutations,
+two obsolete focused-script `--self-test` wiring mutations, and four requirements/
+Appendix wording mutations with no semantic consumer. The retained normal
+workspace check still observes source structure rather than Android behavior and
+is not a reason to restore any superseded lifecycle. The normal workspace and
+focused startup source checks pass; a deliberate complete mutation checkpoint
+produced no verifier verdict before exit 137 under its 1,536 MiB resource limit,
+so it supplies no full-catalog evidence and its termination cause remains unknown.
 
 Two bounded, network-disabled, numeric-nonroot compilation attempts used only
 the read-only repository/toolchain/cache plus three ephemeral crates whose bytes

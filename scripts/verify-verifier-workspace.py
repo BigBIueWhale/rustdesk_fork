@@ -69970,60 +69970,6 @@ def run_source_mutations(sources):
             "let generation = 1;",
             "Android single exact-object-authorized MainService generation reservation",
         ),
-        (
-            "direct_service",
-            "self.reserved = true;\n        self.active = false;",
-            "self.reserved = false;\n        self.active = true;",
-            "independent inactive listener reservation",
-        ),
-        (
-            "direct_service",
-            "if self.reserved || self.active",
-            "if false",
-            "independent inactive listener reservation",
-        ),
-        (
-            "direct_service",
-            "fn activate_generation(&mut self, expected_generation: u64) -> bool",
-            "fn activate_generation_disabled(&mut self, expected_generation: u64) -> bool",
-            "independent Android listener reservation",
-        ),
-        (
-            "verify",
-            "/usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo . --self-test",
-            "true # Android startup transaction gate disabled",
-            "independent Android startup shared focused gate",
-        ),
-        (
-            "dart_verify",
-            "python3 scripts/verify-android-service-startup-transaction.py --repo . --self-test",
-            "true # Android startup transaction gate disabled",
-            "independent Android startup Dart/Android focused gate",
-        ),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11hq</span>',
-            '<div class="req"><span class="id">R-S11hq-disabled</span>',
-            "independent Android startup R-S11hq requirement",
-        ),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11hr</span>',
-            '<div class="req"><span class="id">R-S11hr-disabled</span>',
-            "independent Android startup R-S11hr requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>377</td>",
-            "<tr><td>377-disabled</td>",
-            "independent Android startup Appendix C #377",
-        ),
-        (
-            "requirements",
-            "<tr><td>378</td>",
-            "<tr><td>378-disabled</td>",
-            "independent Android startup Appendix C #378",
-        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:

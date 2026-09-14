@@ -432,8 +432,16 @@ PY
       client::io_loop::tests::r_s11fg_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       server::connection::controlled_file_write_tests::r_s11fh_ -- --test-threads=1
+    cargo test --offline --locked -p hbb_common --lib \
+      fs::tests::r_s11fi_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11fi_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      ui_cm_interface::tests::r_s11c_4d_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      ui_cm_interface::tests::r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      server::connection::cm_file_response_authority_tests::r_s11fi_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11fj_ -- --test-threads=1
     echo "  == R-S11ec outgoing clipboard exact-round lifecycle regression =="

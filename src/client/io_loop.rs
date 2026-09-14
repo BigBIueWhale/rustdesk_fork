@@ -460,6 +460,30 @@ struct ViewerFileBlockWriteFailure {
     error: String,
 }
 
+fn append_receive_cleanup_failure(error: &mut String, job: &mut fs::TransferJob) -> bool {
+    let Err(cleanup_error) = job.retire_current_file_state() else {
+        return false;
+    };
+    error.push_str(&format!(
+        "; partial receive cleanup failed: {cleanup_error}"
+    ));
+    true
+}
+
+fn retire_viewer_receive_job_after_failure(
+    jobs: &mut Vec<fs::TransferJob>,
+    id: i32,
+    mut error: String,
+) -> String {
+    match fs::remove_job(id, jobs) {
+        Some(mut job) => {
+            append_receive_cleanup_failure(&mut error, &mut job);
+        }
+        None => error.push_str("; exact receive job disappeared before failure cleanup"),
+    }
+    error
+}
+
 async fn write_viewer_file_block(
     write_jobs: &mut Vec<fs::TransferJob>,
     block: FileTransferBlock,
@@ -471,11 +495,8 @@ async fn write_viewer_file_block(
     };
     let update_status = job.r#type == fs::JobType::Generic;
     if let Err(error) = job.write(block).await {
-        let mut error = error.to_string();
-        match fs::remove_job(id, write_jobs) {
-            Some(mut job) => job.remove_download_file(),
-            None => error.push_str("; exact receive job disappeared before failure cleanup"),
-        }
+        let error =
+            retire_viewer_receive_job_after_failure(write_jobs, id, error.to_string());
         return Err(ViewerFileBlockWriteFailure {
             id,
             file_num,
@@ -495,10 +516,10 @@ async fn confirm_viewer_file_job(
     };
     if let Err(error) = job.confirm(request).await {
         let mut error = error.to_string();
-        match fs::remove_job(request.id, jobs) {
-            Some(mut job) if cleanup_receive_artifacts => job.remove_download_file(),
-            Some(_) => {}
-            None => error.push_str("; exact file job disappeared before failure retirement"),
+        if cleanup_receive_artifacts {
+            error = retire_viewer_receive_job_after_failure(jobs, request.id, error);
+        } else if fs::remove_job(request.id, jobs).is_none() {
+            error.push_str("; exact file job disappeared before failure retirement");
         }
         return Err(error);
     }
@@ -2426,11 +2447,19 @@ impl<T: InvokeUiSession> Remote<T> {
         });
         msg_out.set_file_action(file_action);
         let sent = self.send_tracked_file_action(peer, &msg_out).await;
-        if let Some(mut job) = fs::remove_job(id, &mut self.write_jobs) {
-            job.remove_download_file();
-        }
+        let cleanup_failure = fs::remove_job(id, &mut self.write_jobs).and_then(|mut job| {
+            job.retire_current_file_state()
+                .err()
+                .map(|error| error.to_string())
+        });
         let _ = fs::remove_job(id, &mut self.read_jobs);
         self.remove_jobs.remove(&id);
+        if let Some(error) = cleanup_failure {
+            return self.record_file_flow_failure(
+                ViewerFileWriteContext::control(Some(id), -1, "cancel file transfer"),
+                format!("partial receive cleanup failed: {error}"),
+            );
+        }
         sent
     }
 
@@ -3192,12 +3221,11 @@ impl<T: InvokeUiSession> Remote<T> {
                                             ..Default::default()
                                         };
                                         if let Err(error) = job.confirm(&req).await {
-                                            let error = error.to_string();
-                                            if let Some(mut job) =
-                                                fs::remove_job(digest.id, &mut self.write_jobs)
-                                            {
-                                                job.remove_download_file();
-                                            }
+                                            let error = retire_viewer_receive_job_after_failure(
+                                                &mut self.write_jobs,
+                                                digest.id,
+                                                error.to_string(),
+                                            );
                                             return self.record_file_flow_failure(
                                                 ViewerFileWriteContext::control(
                                                     Some(digest.id),
@@ -3237,12 +3265,12 @@ impl<T: InvokeUiSession> Remote<T> {
                                                 ..Default::default()
                                             };
                                             if let Err(error) = job.confirm(&req).await {
-                                                let error = error.to_string();
-                                                if let Some(mut job) =
-                                                    fs::remove_job(digest.id, &mut self.write_jobs)
-                                                {
-                                                    job.remove_download_file();
-                                                }
+                                                let error =
+                                                    retire_viewer_receive_job_after_failure(
+                                                        &mut self.write_jobs,
+                                                        digest.id,
+                                                        error.to_string(),
+                                                    );
                                                 return self.record_file_flow_failure(
                                                     ViewerFileWriteContext::control(
                                                         Some(digest.id),
@@ -3278,12 +3306,11 @@ impl<T: InvokeUiSession> Remote<T> {
                                             ..Default::default()
                                         };
                                         if let Err(error) = job.confirm(&req).await {
-                                            let error = error.to_string();
-                                            if let Some(mut job) =
-                                                fs::remove_job(digest.id, &mut self.write_jobs)
-                                            {
-                                                job.remove_download_file();
-                                            }
+                                            let error = retire_viewer_receive_job_after_failure(
+                                                &mut self.write_jobs,
+                                                digest.id,
+                                                error.to_string(),
+                                            );
                                             return self.record_file_flow_failure(
                                                 ViewerFileWriteContext::control(
                                                     Some(digest.id),
@@ -3328,11 +3355,21 @@ impl<T: InvokeUiSession> Remote<T> {
                                     match job.finalize_write(d.file_num).await {
                                         Ok(()) => job.job_error(),
                                         Err(error) => {
-                                            job.remove_download_file();
-                                            Some(format!(
+                                            let mut error = format!(
                                                 "local receive-write finalization failed: {}",
                                                 error
-                                            ))
+                                            );
+                                            if append_receive_cleanup_failure(&mut error, &mut job) {
+                                                return self.record_file_flow_failure(
+                                                    ViewerFileWriteContext::control(
+                                                        Some(d.id),
+                                                        d.file_num,
+                                                        "finalize received file",
+                                                    ),
+                                                    error,
+                                                );
+                                            }
+                                            Some(error)
                                         }
                                     }
                                 } else {
@@ -3344,12 +3381,22 @@ impl<T: InvokeUiSession> Remote<T> {
                             self.handle_job_status(d.id, d.file_num, err);
                         }
                         Some(file_response::Union::Error(e)) => {
+                            let mut error = e.error;
                             if let Some(mut job) = fs::remove_job(e.id, &mut self.write_jobs) {
-                                job.remove_download_file();
+                                if append_receive_cleanup_failure(&mut error, &mut job) {
+                                    return self.record_file_flow_failure(
+                                        ViewerFileWriteContext::control(
+                                            Some(e.id),
+                                            e.file_num,
+                                            "retire peer-failed receive job",
+                                        ),
+                                        error,
+                                    );
+                                }
                             } else {
                                 let _ = fs::remove_job(e.id, &mut self.read_jobs);
                             }
-                            self.handle_job_status(e.id, e.file_num, Some(e.error));
+                            self.handle_job_status(e.id, e.file_num, Some(error));
                         }
                         _ => {}
                     }
@@ -4407,6 +4454,77 @@ mod tests {
         assert!(jobs.is_empty(), "the failed exact receive job must retire");
         assert!(!download.exists(), "the partial download must be removed");
         assert!(!digest.exists(), "the partial digest must be removed");
+    }
+
+    #[cfg(unix)]
+    #[hbb_common::tokio::test]
+    async fn r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible() {
+        let temp = ViewerFileTestDir::new();
+        let mut entry = FileEntry::new();
+        entry.name = "incoming.bin".to_owned();
+        let job = fs::TransferJob::new_write(
+            75,
+            fs::JobType::Generic,
+            "remote.bin".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            false,
+        )
+        .with_files(vec![entry])
+        .expect("create exact viewer receive job");
+        let download = temp.path.join("incoming.bin.download");
+        let displaced = temp.path.join("displaced.download");
+        let digest = temp.path.join("incoming.bin.digest");
+        let lock = temp.path.join("incoming.bin.download.lock");
+        let mut jobs = vec![job];
+
+        write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 75,
+                file_num: 0,
+                data: b"owned-payload".to_vec().into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("admit the exact receive generation");
+        std::fs::rename(&download, &displaced).expect("displace the admitted staging inode");
+        std::fs::write(&download, b"replacement-must-survive")
+            .expect("install a different staging generation");
+
+        let failure = write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 75,
+                file_num: 1,
+                data: b"invalid-next-file".to_vec().into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("write failure with cleanup uncertainty must terminate the exact job");
+
+        assert_eq!((failure.id, failure.file_num), (75, 1));
+        assert!(failure.error.contains("Wrong file number"));
+        assert!(failure.error.contains("partial receive cleanup failed"));
+        assert!(failure.error.contains("generation changed"));
+        assert!(jobs.is_empty(), "the uncertain receive job must retire");
+        assert_eq!(
+            std::fs::read(&download).expect("read replacement staging generation"),
+            b"replacement-must-survive"
+        );
+        assert_eq!(
+            std::fs::read(&displaced).expect("read displaced admitted generation"),
+            b"owned-payload"
+        );
+        assert!(!digest.exists(), "cleanup still removes the exact digest generation");
+        assert!(
+            lock.exists(),
+            "uncertain cleanup must retain the stable destination marker"
+        );
     }
 
     #[cfg(unix)]

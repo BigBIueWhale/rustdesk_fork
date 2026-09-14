@@ -1820,6 +1820,17 @@ fn reject_write_job(
 }
 
 #[cfg(not(any(target_os = "ios")))]
+fn append_cm_receive_cleanup_failure(error: &mut String, job: &mut fs::TransferJob) -> bool {
+    let Err(cleanup_error) = job.retire_current_file_state() else {
+        return false;
+    };
+    error.push_str(&format!(
+        "; partial receive cleanup failed: {cleanup_error}"
+    ));
+    true
+}
+
+#[cfg(not(any(target_os = "ios")))]
 async fn handle_fs(
     fs: ipc::FS,
     write_jobs: &mut Vec<CmTransferJob>,
@@ -1946,14 +1957,34 @@ async fn handle_fs(
             conn_id,
             generation,
         } => {
-            if let Some(mut job) =
+            let (file_num, result) = if let Some(mut job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                job.job.remove_download_file();
+                let file_num = job.job.file_num();
+                let result = job
+                    .job
+                    .retire_current_file_state()
+                    .map_err(|error| format!("partial receive cleanup failed: {error}"));
                 if return_job_log {
-                    job_log = Some(serialize_transfer_job(&job.job, false, true, ""));
+                    let error = result.as_ref().err().map(String::as_str).unwrap_or("");
+                    job_log = Some(serialize_transfer_job(&job.job, false, true, error));
                 }
-            }
+                (file_num, result)
+            } else {
+                (
+                    -1,
+                    Err(format!(
+                        "unknown write job id {} generation {} during cancellation",
+                        id, generation
+                    )),
+                )
+            };
+            responder.send(ipc::CmFileResponseKind::WriteCancelled {
+                id,
+                generation,
+                file_num,
+                result,
+            })?;
         }
         ipc::FS::WriteDone {
             id,
@@ -1964,13 +1995,13 @@ async fn handle_fs(
             let result = if let Some(mut job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                let result = job
+                let mut result = job
                     .job
                     .finalize_write(file_num)
                     .await
                     .map_err(|error| error.to_string());
-                if result.is_err() {
-                    job.job.remove_download_file();
+                if let Err(error) = result.as_mut() {
+                    append_cm_receive_cleanup_failure(error, &mut job.job);
                 }
                 if return_job_log {
                     let error = result.as_ref().err().map(String::as_str).unwrap_or("");
@@ -2004,11 +2035,22 @@ async fn handle_fs(
             let result = if let Some(mut job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                job.job.remove_download_file();
+                let mut terminal_error = format!("peer file transfer failed: {err}");
+                let cleanup_failed =
+                    append_cm_receive_cleanup_failure(&mut terminal_error, &mut job.job);
                 if return_job_log {
-                    job_log = Some(serialize_transfer_job(&job.job, false, false, &err));
+                    job_log = Some(serialize_transfer_job(
+                        &job.job,
+                        false,
+                        false,
+                        if cleanup_failed { &terminal_error } else { &err },
+                    ));
                 }
-                Ok(())
+                if cleanup_failed {
+                    Err(terminal_error)
+                } else {
+                    Ok(())
+                }
             } else {
                 Err(format!(
                     "unknown write job id {} generation {} file {}",
@@ -2048,11 +2090,11 @@ async fn handle_fs(
                     id, generation
                 ))
             };
-            if let Err(error) = write_result {
+            if let Err(mut error) = write_result {
                 if let Some(mut job) =
                     remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
                 {
-                    job.job.remove_download_file();
+                    append_cm_receive_cleanup_failure(&mut error, &mut job.job);
                 }
                 reject_write_job(responder, id, generation, file_num, error)?;
             }
@@ -2171,11 +2213,11 @@ async fn handle_fs(
                     id, generation
                 ))
             };
-            if let Err(error) = result {
+            if let Err(mut error) = result {
                 if let Some(mut job) =
                     remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
                 {
-                    job.job.remove_download_file();
+                    append_cm_receive_cleanup_failure(&mut error, &mut job.job);
                 }
                 reject_write_job(responder, id, generation, file_num, error)?;
             }
@@ -3152,7 +3194,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner() {
-        let (tx, _rx) = cm_egress_channel();
+        let (tx, mut rx) = cm_egress_channel();
         let mut write_jobs = Vec::new();
         let mut read_jobs = Vec::new();
         let responder = CmFileResponder {
@@ -3208,6 +3250,18 @@ mod tests {
             terminal_log.get("done").and_then(|v| v.as_bool()),
             Some(false)
         );
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteCancelled {
+                id,
+                generation,
+                file_num,
+                result,
+            } => {
+                assert_eq!((id, generation, file_num), (9, 7, 0));
+                result.expect("cancellation cleanup must complete");
+            }
+            response => panic!("unexpected cancellation response: {response:?}"),
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -3502,6 +3556,102 @@ mod tests {
         assert!(!temp.join("failed.bin").exists());
         assert!(!temp.join("failed.bin.download").exists());
         assert!(!temp.join("failed.bin.digest").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c_4d_cm_write_cancellation_cleanup_identity_failure_is_explicit() {
+        let temp = CmFileTestDir::new("cleanup_identity");
+        let download = temp.join("failed.bin.download");
+        let displaced = temp.join("displaced.download");
+        let digest = temp.join("failed.bin.digest");
+        let lock = temp.join("failed.bin.download.lock");
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 55,
+            cm_auth_token: "token-55",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 76,
+                file_num: 0,
+                files: vec![("failed.bin".to_owned(), 0)],
+                overwrite_detection: false,
+                total_size: 13,
+                conn_id: 55,
+                generation: 15,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit exact CM receive job");
+        handle_fs(
+            ipc::FS::WriteBlock {
+                id: 76,
+                file_num: 0,
+                conn_id: 55,
+                data: bytes::Bytes::from_static(b"owned-payload"),
+                compressed: false,
+                generation: 15,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("write exact CM receive generation");
+        std::fs::rename(&download, &displaced).expect("displace admitted CM staging inode");
+        std::fs::write(&download, b"replacement-must-survive")
+            .expect("install a different CM staging generation");
+
+        handle_fs(
+            ipc::FS::CancelWrite {
+                id: 76,
+                conn_id: 55,
+                generation: 15,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("cleanup uncertainty must produce an exact CM failure response");
+
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteCancelled {
+                id,
+                generation,
+                file_num,
+                result,
+            } => {
+                assert_eq!((id, generation, file_num), (76, 15, 0));
+                let error = result.expect_err("replacement generation must fail exact cleanup");
+                assert!(error.contains("partial receive cleanup failed"));
+                assert!(error.contains("generation changed"));
+            }
+            response => panic!("unexpected cleanup-identity response: {response:?}"),
+        }
+        assert!(write_jobs.is_empty());
+        assert_eq!(
+            fs::read(&download).expect("read replacement CM staging generation"),
+            b"replacement-must-survive"
+        );
+        assert_eq!(
+            fs::read(&displaced).expect("read displaced admitted CM generation"),
+            b"owned-payload"
+        );
+        assert!(!digest.exists());
+        assert!(lock.exists());
     }
 
     #[cfg(not(target_os = "ios"))]

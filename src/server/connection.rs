@@ -151,6 +151,7 @@ struct CmReadAuthority {
 #[derive(Debug)]
 enum CmWritePhase {
     Active,
+    Cancelling,
     CheckingDigest {
         request_id: u64,
         file_num: i32,
@@ -888,6 +889,17 @@ fn cm_write_finalization_authorized(phase: &CmWritePhase, is_peer_error: bool) -
                 phase,
                 CmWritePhase::CheckingDigest { .. } | CmWritePhase::AwaitingPeerConfirm { .. }
             ))
+}
+
+fn cm_write_failure_authorized(authority: &CmWriteAuthority, generation: u64) -> bool {
+    authority.generation == generation
+}
+
+fn cm_write_cancellation_authorized(
+    authority: &CmWriteAuthority,
+    generation: u64,
+) -> bool {
+    authority.generation == generation && matches!(authority.phase, CmWritePhase::Cancelling)
 }
 
 // R-X14 / R-T15 (line 254): the Linux-headless OS-auth limiter helpers
@@ -8187,14 +8199,17 @@ impl Connection {
                                 .await;
                             }
                             Some(file_action::Union::Cancel(c)) => {
-                                if let Some(authority) = self.cm_write_jobs.remove(&c.id) {
+                                if let Some(generation) =
+                                    self.begin_cm_write_cancellation(c.id)
+                                {
                                     if let Err(error) = self.send_fs(ipc::FS::CancelWrite {
                                         id: c.id,
                                         conn_id: self.inner.id(),
-                                        generation: authority.generation,
+                                        generation,
                                     })
                                     .await
                                     {
+                                        self.cm_write_jobs.remove(&c.id);
                                         log::warn!(
                                             "Failed to cancel CM write job {}: {}",
                                             c.id,
@@ -10071,6 +10086,22 @@ impl Connection {
         Some(generation)
     }
 
+    fn begin_cm_write_cancellation(&mut self, id: i32) -> Option<u64> {
+        if !self.authorized || self.file_transfer.is_none() {
+            return None;
+        }
+        let authority = self.cm_write_jobs.get_mut(&id)?;
+        if matches!(
+            authority.phase,
+            CmWritePhase::Cancelling | CmWritePhase::Finalizing { .. }
+        ) {
+            return None;
+        }
+        let generation = authority.generation;
+        authority.phase = CmWritePhase::Cancelling;
+        Some(generation)
+    }
+
     fn consume_cm_write_confirmation(&mut self, id: i32, file_num: i32) -> Option<u64> {
         let authority = self.cm_write_jobs.get_mut(&id)?;
         if !matches!(
@@ -10410,7 +10441,7 @@ impl Connection {
                 file_num,
                 error,
             } => {
-                if !self.remove_active_cm_write_authority(id, generation) {
+                if !self.remove_failed_cm_write_authority(id, generation) {
                     return;
                 }
                 self.send(fs::new_error(
@@ -10419,6 +10450,28 @@ impl Connection {
                     file_num,
                 ))
                 .await;
+            }
+            ipc::CmFileResponseKind::WriteCancelled {
+                id,
+                generation,
+                file_num,
+                result,
+            } => {
+                if !matches!(
+                    self.cm_write_jobs.get(&id),
+                    Some(authority) if cm_write_cancellation_authorized(authority, generation)
+                ) {
+                    return;
+                }
+                self.cm_write_jobs.remove(&id);
+                if let Err(error) = result {
+                    self.send(fs::new_error(
+                        id,
+                        Self::valid_cm_file_error(error),
+                        file_num,
+                    ))
+                    .await;
+                }
             }
             ipc::CmFileResponseKind::WriteFinalized {
                 id,
@@ -10602,13 +10655,11 @@ impl Connection {
         true
     }
 
-    fn remove_active_cm_write_authority(&mut self, id: i32, generation: u64) -> bool {
-        if !matches!(
-            self.cm_write_jobs.get(&id),
-            Some(authority)
-                if authority.generation == generation
-                    && matches!(authority.phase, CmWritePhase::Active)
-        ) {
+    fn remove_failed_cm_write_authority(&mut self, id: i32, generation: u64) -> bool {
+        let Some(authority) = self.cm_write_jobs.get(&id) else {
+            return false;
+        };
+        if !cm_write_failure_authorized(authority, generation) {
             return false;
         }
         self.cm_write_jobs.remove(&id);
@@ -11244,7 +11295,7 @@ mod cm_file_response_authority_tests {
     }
 
     #[test]
-    fn write_response_requires_active_matching_generation() {
+    fn r_s11fi_write_progress_requires_active_but_failure_requires_only_exact_generation() {
         let mut jobs = HashMap::new();
         jobs.insert(
             4,
@@ -11254,21 +11305,42 @@ mod cm_file_response_authority_tests {
             },
         );
         assert_eq!(active_cm_write_authority_generation(&jobs, 4), Some(20));
+        assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
+        assert!(!cm_write_failure_authorized(jobs.get(&4).unwrap(), 21));
+        assert!(!cm_write_cancellation_authorized(
+            jobs.get(&4).unwrap(),
+            20
+        ));
 
         jobs.get_mut(&4).unwrap().phase = CmWritePhase::AwaitingPeerConfirm { file_num: 1 };
         assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+        assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
 
         jobs.get_mut(&4).unwrap().phase = CmWritePhase::CheckingDigest {
             request_id: 9,
             file_num: 1,
         };
         assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+        assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
 
         jobs.get_mut(&4).unwrap().phase = CmWritePhase::Finalizing {
             file_num: 1,
             peer_error: None,
         };
         assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+        assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
+
+        jobs.get_mut(&4).unwrap().phase = CmWritePhase::Cancelling;
+        assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
+        assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
+        assert!(cm_write_cancellation_authorized(
+            jobs.get(&4).unwrap(),
+            20
+        ));
+        assert!(!cm_write_cancellation_authorized(
+            jobs.get(&4).unwrap(),
+            21
+        ));
 
         jobs.insert(
             4,
@@ -11300,6 +11372,10 @@ mod cm_file_response_authority_tests {
                 file_num: 2,
                 peer_error: None,
             },
+            true
+        ));
+        assert!(!cm_write_finalization_authorized(
+            &CmWritePhase::Cancelling,
             true
         ));
     }

@@ -1646,9 +1646,18 @@ fn ensure_recv_path_matches_open_file(path: &Path, file: &std::fs::File) -> std:
 fn remove_open_recv_file_no_follow(path: &Path, file: &std::fs::File) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::io::AsRawFd;
+        use std::os::unix::{fs::MetadataExt, io::AsRawFd};
 
-        ensure_recv_path_matches_open_file(path, file)?;
+        match ensure_recv_path_matches_open_file(path, file) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if file.metadata()?.nlink() == 0 {
+                    return Ok(());
+                }
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        }
         let parent =
             open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
         let name = cstring_file_name(path)?;
@@ -1937,7 +1946,6 @@ fn release_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
 struct ReceivePathLease {
     path: PathBuf,
     file: std::fs::File,
-    retire_on_drop: bool,
 }
 
 impl ReceivePathLease {
@@ -1952,35 +1960,16 @@ impl ReceivePathLease {
         sync_recv_parent_no_follow(final_path)?;
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         sync_recv_regular_file(&file)?;
-        Ok(Self {
-            path,
-            file,
-            retire_on_drop: false,
-        })
+        Ok(Self { path, file })
     }
 
-    fn retire(&mut self) {
-        self.retire_on_drop = true;
+    fn retire(&mut self) -> std::io::Result<()> {
+        remove_receive_artifacts_and_sync_parent(&self.path, &[(&self.path, &self.file)])
     }
 }
 
 impl Drop for ReceivePathLease {
     fn drop(&mut self) {
-        // A pathname-based advisory lock must keep one stable inode for as long as resumable state
-        // exists. Once the owner has committed or removed every admitted artifact, it is safe to
-        // retire that inode while still holding its lock: a new owner may start on a new inode, but
-        // this retiring owner has no destination state left to mutate.
-        if self.retire_on_drop {
-            if let Err(err) =
-                remove_receive_artifacts_and_sync_parent(&self.path, &[(&self.path, &self.file)])
-            {
-                log::warn!(
-                    "cannot durably retire receive destination lease {}: {}",
-                    self.path.display(),
-                    err
-                );
-            }
-        }
         if let Err(err) = release_receive_path_lock(&self.file) {
             log::warn!(
                 "cannot release receive destination lease {}: {}",
@@ -2011,7 +2000,11 @@ impl ReceiveWriteClaim {
             match open_recv_file_no_follow_std(&download_path, true, true, false, false) {
                 Ok(file) => file,
                 Err(err) => {
-                    lease.retire();
+                    if let Err(cleanup_err) = lease.retire() {
+                        return Err(anyhow!(
+                            "{err}; receive destination lease cleanup failed: {cleanup_err}"
+                        ));
+                    }
                     return Err(err.into());
                 }
             };
@@ -2019,17 +2012,17 @@ impl ReceiveWriteClaim {
             match open_recv_file_no_follow_std(&digest_path, true, true, false, true) {
                 Ok(file) => file,
                 Err(err) => {
-                    if let Err(cleanup_err) = remove_receive_artifacts_and_sync_parent(
+                    let cleanup_result = remove_receive_artifacts_and_sync_parent(
                         &final_path,
                         &[(&download_path, &download_file)],
-                    ) {
-                        log::warn!(
-                            "cannot clean admitted receive artifact {}: {}",
-                            download_path.display(),
-                            cleanup_err
-                        );
-                    } else {
-                        lease.retire();
+                    );
+                    match cleanup_result.and_then(|()| lease.retire()) {
+                        Ok(()) => {}
+                        Err(cleanup_err) => {
+                            return Err(anyhow!(
+                                "{err}; partial receive setup cleanup failed: {cleanup_err}"
+                            ));
+                        }
                     }
                     return Err(err.into());
                 }
@@ -2047,20 +2040,20 @@ impl ReceiveWriteClaim {
         let stream_file = match prepared {
             Ok(file) => file,
             Err(err) => {
-                if let Err(cleanup_err) = remove_receive_artifacts_and_sync_parent(
+                let cleanup_result = remove_receive_artifacts_and_sync_parent(
                     &final_path,
                     &[
                         (&digest_path, &digest_file),
                         (&download_path, &download_file),
                     ],
-                ) {
-                    log::warn!(
-                        "cannot durably clean failed receive setup for {}: {}",
-                        final_path.display(),
-                        cleanup_err
-                    );
-                } else {
-                    lease.retire();
+                );
+                match cleanup_result.and_then(|()| lease.retire()) {
+                    Ok(()) => {}
+                    Err(cleanup_err) => {
+                        return Err(anyhow!(
+                            "{err}; partial receive setup cleanup failed: {cleanup_err}"
+                        ));
+                    }
                 }
                 return Err(err);
             }
@@ -2080,36 +2073,57 @@ impl ReceiveWriteClaim {
     fn resume(
         final_path: PathBuf,
         expected_digest: FileDigest,
+        offset: u64,
     ) -> ResultType<(Self, std::fs::File)> {
-        use std::io::Read;
+        use std::io::{Read, Seek};
 
-        let lease = ReceivePathLease::acquire(&final_path, false)?;
-        let download_path = recv_sidecar_path(&final_path, ".download");
-        let digest_path = recv_sidecar_path(&final_path, ".digest");
-        let mut digest_file =
-            open_recv_file_no_follow_std(&digest_path, false, false, false, true)?;
-        let mut content = String::new();
-        (&mut digest_file).take(4097).read_to_string(&mut content)?;
-        if content.len() > 4096 {
-            bail!("resume digest is too large");
-        }
-        let stored_digest: FileDigest = serde_json::from_str(&content)?;
-        if stored_digest != expected_digest {
-            bail!("resume digest does not match the active transfer");
-        }
-        let download_file =
-            open_recv_file_no_follow_std(&download_path, false, false, false, false)?;
-        let stream_file = download_file.try_clone()?;
-        Ok((
-            Self {
-                final_path,
-                download_file,
-                digest_file,
-                published: false,
-                _lease: lease,
+        let mut lease = ReceivePathLease::acquire(&final_path, false)?;
+        let admitted = (|| -> ResultType<_> {
+            let download_path = recv_sidecar_path(&final_path, ".download");
+            let digest_path = recv_sidecar_path(&final_path, ".digest");
+            let mut digest_file =
+                open_recv_file_no_follow_std(&digest_path, false, false, false, true)?;
+            let mut content = String::new();
+            (&mut digest_file).take(4097).read_to_string(&mut content)?;
+            if content.len() > 4096 {
+                bail!("resume digest is too large");
+            }
+            let stored_digest: FileDigest = serde_json::from_str(&content)?;
+            if stored_digest != expected_digest {
+                bail!("resume digest does not match the active transfer");
+            }
+            let download_file =
+                open_recv_file_no_follow_std(&download_path, false, false, false, false)?;
+            let mut stream_file = download_file.try_clone()?;
+            let available = stream_file.metadata()?.len();
+            if offset > available {
+                bail!(
+                    "confirmed offset {} exceeds file length {}",
+                    offset,
+                    available
+                );
+            }
+            stream_file.seek(std::io::SeekFrom::Start(offset))?;
+            Ok((download_file, digest_file, stream_file))
+        })();
+        match admitted {
+            Ok((download_file, digest_file, stream_file)) => Ok((
+                Self {
+                    final_path,
+                    download_file,
+                    digest_file,
+                    published: false,
+                    _lease: lease,
+                },
+                stream_file,
+            )),
+            Err(error) => match lease.retire() {
+                Ok(()) => Err(error),
+                Err(cleanup_error) => Err(anyhow!(
+                    "{error}; receive resume lease cleanup failed: {cleanup_error}"
+                )),
             },
-            stream_file,
-        ))
+        }
     }
 
     fn finish(&mut self, modified_time: u64) -> std::io::Result<()> {
@@ -2121,47 +2135,31 @@ impl ReceiveWriteClaim {
             &mut self.published,
         );
         if result.is_ok() {
-            self._lease.retire();
+            self._lease.retire()?;
         }
         result
     }
 
-    fn cleanup(mut self) {
+    fn cleanup(mut self) -> std::io::Result<()> {
         if self.published {
-            let result = (|| -> std::io::Result<()> {
-                #[cfg(unix)]
-                sync_recv_parent_no_follow(&self.final_path)?;
-                sync_recv_regular_file(&self.download_file)
-            })();
-            if let Err(error) = result {
-                log::warn!(
-                    "cannot recover uncertain published receive durability for {}: {}",
-                    self.final_path.display(),
-                    error
-                );
-            } else {
-                self._lease.retire();
-            }
-            return;
+            #[cfg(unix)]
+            sync_recv_parent_no_follow(&self.final_path)?;
+            sync_recv_regular_file(&self.download_file)?;
+            self._lease.retire()?;
+            return Ok(());
         }
 
         let digest_path = recv_sidecar_path(&self.final_path, ".digest");
         let download_path = recv_sidecar_path(&self.final_path, ".download");
-        if let Err(error) = remove_receive_artifacts_and_sync_parent(
+        remove_receive_artifacts_and_sync_parent(
             &self.final_path,
             &[
                 (&digest_path, &self.digest_file),
                 (&download_path, &self.download_file),
             ],
-        ) {
-            log::warn!(
-                "cannot durably clean receive artifacts for {}: {}",
-                self.final_path.display(),
-                error
-            );
-        } else {
-            self._lease.retire();
-        }
+        )?;
+        self._lease.retire()?;
+        Ok(())
     }
 }
 
@@ -2440,16 +2438,17 @@ impl TransferJob {
         Ok(())
     }
 
-    pub fn remove_download_file(&mut self) {
+    pub fn retire_current_file_state(&mut self) -> ResultType<()> {
         // Close the receive handle before unlinking. Unix permits unlinking an open file, but
         // Windows does not generally permit deletion while this job still owns the handle.
         drop(self.data_stream.take());
         if self.role != TransferRole::Receive {
-            return;
+            return Ok(());
         }
         if let Some(claim) = self.receive_write_claim.take() {
-            claim.cleanup();
+            claim.cleanup()?;
         }
+        Ok(())
     }
 
     #[inline]
@@ -2838,14 +2837,14 @@ impl TransferJob {
         None
     }
 
-    pub fn set_file_skipped(&mut self) -> bool {
+    pub fn set_file_skipped(&mut self) -> ResultType<bool> {
         log::debug!("skip file {} in job {}", self.file_num, self.id);
-        self.remove_download_file();
+        self.retire_current_file_state()?;
         self.set_file_confirmed(false);
         self.set_file_is_waiting(false);
         self.file_num += 1;
         self.file_skipped = true;
-        true
+        Ok(true)
     }
 
     async fn set_stream_offset(&mut self, file_num: usize, offset: u64) -> ResultType<()> {
@@ -2871,31 +2870,33 @@ impl TransferJob {
                 .finished_size
                 .checked_add(offset)
                 .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
-            let (mut f, receive_write_claim) = match self.role {
+            match self.role {
                 TransferRole::Receive => {
                     if self.receive_write_claim.is_some() {
                         bail!("receive write job already owns a destination claim");
                     }
                     let digest = self.digest;
                     let (claim, stream_file) = tokio::task::spawn_blocking(move || {
-                        ReceiveWriteClaim::resume(path, digest)
+                        ReceiveWriteClaim::resume(path, digest, offset)
                     })
                     .await??;
-                    (File::from_std(stream_file), Some(claim))
+                    self.data_stream = Some(DataStream::FileStream(File::from_std(stream_file)));
+                    self.receive_write_claim = Some(claim);
                 }
-                TransferRole::Send => (File::open(&file_path).await?, None),
-            };
-            let available = f.metadata().await?.len();
-            if offset > available {
-                bail!(
-                    "confirmed offset {} exceeds file length {}",
-                    offset,
-                    available
-                );
+                TransferRole::Send => {
+                    let mut file = File::open(&file_path).await?;
+                    let available = file.metadata().await?.len();
+                    if offset > available {
+                        bail!(
+                            "confirmed offset {} exceeds file length {}",
+                            offset,
+                            available
+                        );
+                    }
+                    file.seek(std::io::SeekFrom::Start(offset)).await?;
+                    self.data_stream = Some(DataStream::FileStream(file));
+                }
             }
-            f.seek(std::io::SeekFrom::Start(offset)).await?;
-            self.data_stream = Some(DataStream::FileStream(f));
-            self.receive_write_claim = receive_write_claim;
             self.transferred = transferred;
             self.finished_size = finished_size;
             return Ok(());
@@ -2924,7 +2925,7 @@ impl TransferJob {
         match r.union {
             Some(file_transfer_send_confirm_request::Union::Skip(s)) => {
                 if s {
-                    self.set_file_skipped();
+                    self.set_file_skipped()?;
                 } else {
                     self.set_file_confirmed(true);
                 }
@@ -3241,7 +3242,7 @@ pub fn is_write_need_confirmation(
         }
         Err(err) => return Err(err.into()),
     };
-    let result = (|| {
+    let result = (|| -> ResultType<_> {
         let digest_file = format!("{}.digest", file_path);
         let download_file = format!("{}.download", file_path);
         if is_resume && Path::new(&digest_file).exists() && Path::new(&download_file).exists() {
@@ -3306,8 +3307,14 @@ pub fn is_write_need_confirmation(
             Ok(DigestCheckResult::NoSuchFile)
         }
     })();
-    lease.retire();
-    result
+    match (result, lease.retire()) {
+        (Ok(result), Ok(())) => Ok(result),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(cleanup_error)) => Err(cleanup_error.into()),
+        (Err(error), Err(cleanup_error)) => Err(anyhow!(
+            "{error}; receive destination lease cleanup failed: {cleanup_error}"
+        )),
+    }
 }
 
 pub fn serialize_transfer_jobs(jobs: &[TransferJob]) -> String {
@@ -3946,7 +3953,9 @@ mod tests {
                 "post-publication failure must remain distinguishable: {}",
                 error
             );
-            claim.cleanup();
+            claim
+                .cleanup()
+                .expect("recover exact published receive durability");
         } else {
             result.expect("ordinary receive commit must be durable");
             drop(claim);
@@ -4293,14 +4302,15 @@ mod tests {
         assert!(!tmp.join("zero.bin").exists());
         assert!(tmp.join("zero.bin.download").exists());
         assert!(!tmp.join("two.bin.download").exists());
-        job.remove_download_file();
+        job.retire_current_file_state()
+            .expect("clean exact partial receive generation");
         assert!(!tmp.join("zero.bin.download").exists());
         assert!(!tmp.join("zero.bin.digest").exists());
     }
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn receive_finalize_refuses_a_replaced_staging_inode() {
+    async fn r_s11fi_receive_finalize_refuses_a_replaced_staging_inode() {
         let tmp = TestTempDir::new("rustdesk_receive_replaced_inode");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let mut job =
@@ -4327,7 +4337,10 @@ mod tests {
         assert!(error.to_string().contains("generation changed"));
         assert!(!tmp.join("incoming.bin").exists());
 
-        job.remove_download_file();
+        let cleanup_error = job
+            .retire_current_file_state()
+            .expect_err("cleanup must refuse a replaced receive generation");
+        assert!(cleanup_error.to_string().contains("generation changed"));
         assert_eq!(
             std::fs::read(&download).expect("read replacement staging inode"),
             b"replacement-must-survive",
@@ -4342,6 +4355,43 @@ mod tests {
             tmp.join("incoming.bin.download.lock").exists(),
             "uncertain exact-artifact cleanup must preserve the stable lease marker"
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn r_s11fi_receive_cleanup_accepts_an_already_unlinked_exact_digest() {
+        let tmp = TestTempDir::new("rustdesk_receive_partial_finalize_cleanup");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job = new_write_job(94, tmp.path.clone(), "incoming.bin")
+            .expect("create receive-write job");
+        job.write(FileTransferBlock {
+            id: 94,
+            file_num: 0,
+            data: b"owned-payload".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write the admitted staging generation");
+
+        let final_path = tmp.join("incoming.bin");
+        let download = tmp.join("incoming.bin.download");
+        let digest = tmp.join("incoming.bin.digest");
+        let lock = tmp.join("incoming.bin.download.lock");
+        std::fs::create_dir(&final_path).expect("make publication destination incompatible");
+
+        job.finalize_write(1)
+            .await
+            .expect_err("file publication over a directory must fail after digest removal");
+        assert!(final_path.is_dir());
+        assert!(download.exists());
+        assert!(!digest.exists(), "finalization already removed the exact digest");
+
+        job.retire_current_file_state()
+            .expect("cleanup must accept the already-unlinked exact digest handle");
+        assert!(final_path.is_dir());
+        assert!(!download.exists());
+        assert!(!digest.exists());
+        assert!(!lock.exists(), "complete cleanup must retire the lease marker");
     }
 
     #[tokio::test]
@@ -4365,13 +4415,14 @@ mod tests {
         assert_eq!(job.finished_size(), 0);
         assert_eq!(job.transferred(), 0);
         assert!(!tmp.join("incoming.bin").exists());
-        job.remove_download_file();
+        job.retire_current_file_state()
+            .expect("clean malformed-compression receive artifacts");
         assert!(!tmp.join("incoming.bin.download").exists());
         assert!(!tmp.join("incoming.bin.digest").exists());
     }
 
     #[tokio::test]
-    async fn receive_write_refuses_false_resume_and_cleans_only_claimed_artifacts() {
+    async fn r_s11fi_receive_write_refuses_false_resume_and_retires_lease() {
         let tmp = TestTempDir::new("rustdesk_receive_resume");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let download = tmp.join("incoming.bin.download");
@@ -4395,7 +4446,12 @@ mod tests {
         assert!(!error.to_string().is_empty());
         assert!(!job.file_confirmed());
         assert!(job.data_stream.is_none());
-        job.remove_download_file();
+        assert!(
+            !tmp.join("incoming.bin.download.lock").exists(),
+            "a rejected resume must retire its idle lease marker"
+        );
+        job.retire_current_file_state()
+            .expect("a job without a receive claim has nothing to clean");
         assert!(
             download.is_dir(),
             "cleanup must not delete a sidecar this job never opened"
@@ -4489,7 +4545,8 @@ mod tests {
         assert!(error.to_string().contains("already confirmed"));
         assert_eq!(job.transferred(), 2);
         assert_eq!(job.finished_size(), 2);
-        job.remove_download_file();
+        job.retire_current_file_state()
+            .expect("clean exact confirmed receive generation");
     }
 
     #[tokio::test]

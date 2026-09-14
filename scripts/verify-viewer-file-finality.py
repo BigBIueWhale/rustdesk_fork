@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify viewer/controlled file admission, exact writes, and receive/digest failure finality."""
+"""Verify viewer/controlled file admission, exact writes, and digest failure finality."""
 
 from __future__ import annotations
 
@@ -360,49 +360,9 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(io_loop, "self.finish_file_flow();", "file flow final retirement")
 
-    receive_block = extract_rust_item(
-        io_loop, "async fn write_viewer_file_block", "incoming viewer file-block writer"
-    )
-    require_order(
-        receive_block,
-        (
-            "fs::get_job(id, write_jobs)",
-            "job.write(block).await",
-            "fs::remove_job(id, write_jobs)",
-            "job.remove_download_file()",
-            "Err(ViewerFileBlockWriteFailure",
-        ),
-        "exact receive job and partial artifacts retire before write failure returns",
-    )
-    receive_cleanup = extract_rust_item(
-        fs, "pub fn remove_download_file", "receive partial-artifact cleanup"
-    )
-    require_order(
-        receive_cleanup,
-        (
-            "drop(self.data_stream.take())",
-            "if let DataSource::FilePath(p) = &self.data_source",
-            "remove_recv_write_artifacts_no_follow(&path)",
-        ),
-        "receive handle closes before cross-platform partial-artifact removal",
-    )
     peer_dispatch = extract_rust_item(
         io_loop, "async fn handle_msg_from_peer", "viewer peer-message dispatch"
     )
-    require_order(
-        peer_dispatch,
-        (
-            "write_viewer_file_block(&mut self.write_jobs, block).await",
-            "ViewerFileWriteContext::control(",
-            '"receive file data"',
-            "return self.record_file_flow_failure(",
-            'format!("local file write failed: {}", failure.error)',
-        ),
-        "incoming viewer write failure is exact-round terminal and visible",
-    )
-    forbid(io_loop, "if let Err(_err) = job.write(block).await", "discarded viewer write error")
-    forbid(io_loop, '// to-do: add "skip" for writing job', "obsolete viewer write-error to-do")
-
     digest_inspection = extract_rust_item(
         io_loop,
         "fn inspect_viewer_download_digest",
@@ -639,8 +599,6 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fh_controlled_file_writer_failure_and_retirement_are_explicit",
         "r_s11fh_controlled_file_writer_timeout_is_terminal_and_bounded",
         "r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt",
-        "r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts",
-        "r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars",
         "r_s11fj_download_digest_metadata_failure_is_explicit",
         "r_s11fj_download_digest_requires_the_exact_active_file",
     ):
@@ -690,13 +648,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "controlled_file_response_context(&msg)", "None::<ControlledFileWriteContext>", "controlled send funnel classification"),
     ("server", "let retired_file_writes = conn.file_writes.retire();", "let retired_file_writes = Vec::new();", "controlled round receipt retirement"),
     ("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "fn controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "controlled exact frame regression"),
-    ("io_loop", "async fn write_viewer_file_block", "async fn disabled_write_viewer_file_block", "incoming file-block writer"),
-    ("io_loop", "fs::remove_job(id, write_jobs)", "None", "failed receive-job retirement"),
-    ("io_loop", "Some(mut job) => job.remove_download_file()", "Some(_job) => {}", "failed receive-artifact cleanup"),
-    ("fs", "drop(self.data_stream.take())", "let _open_receive_handle = self.data_stream.as_ref()", "receive handle retirement before artifact cleanup"),
-    ("io_loop", "write_viewer_file_block(&mut self.write_jobs, block).await", "bypassed_incoming_block_writer(&mut self.write_jobs, block).await", "incoming block dispatch"),
-    ("io_loop", "fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts()", "fn incoming_write_failure_retires_exact_job_and_partial_artifacts()", "incoming write failure regression"),
-    ("io_loop", "fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars()", "fn incoming_nofollow_open_failure_retires_job_and_sidecars()", "incoming no-follow open failure regression"),
     ("io_loop", "fn inspect_viewer_download_digest(", "fn disabled_inspect_viewer_download_digest(", "download digest inspection owner"),
     ("io_loop", "if digest.id != job.id() {", "if false {", "exact download digest job identity"),
     ("io_loop", "if digest.file_num != job.file_num() {", "if false {", "exact download digest file identity"),

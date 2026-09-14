@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-baf07403570ae0bd5db413d242a7972153ff171c43340589838bae56ea40c7e9  requirements.html
+95e480c4478a76dbc153eca0cad118efe58ddfdce22c426223ebf87c0631758a  requirements.html
 ```
 
 ## Current Verdict
@@ -85,6 +85,27 @@ No other server component produces `FileResponse`. The focused checker already d
 executable regression names, and the duplicate workspace verifier-of-verifier was removed in the preceding slice,
 so no test artifact required preservation or deletion here. No product source or native target changed or ran; the
 complete installed desktop and Android file-operation matrix remains open above.
+
+R-S11fi and Appendix C #317 now state only the timeless exact receive-generation, fallible cleanup, terminal-error,
+CM cancellation-finality, and target-native acceptance contracts. Their defect diary, `FIX` badge, implementation
+receipt, mutation narration, and unrelated operational disclaimers were deleted, reducing `requirements.html` by
+842 bytes. Source review disproved the prior ledger claim: the void `remove_download_file` API consumed the exact
+claim but logged and discarded identity or durability cleanup failure. It is replaced, without an alias, by fallible
+`retire_current_file_state`; receive setup, viewer block/confirmation/finalization/peer-error/cancel, and CM
+write/confirmation/finalization/peer-error/cancel paths preserve the cleanup result. CM cancellation now retains an
+exact `Cancelling` generation until a typed cleanup response, sends no false success to the peer, and exposes cleanup
+failure as a bounded file error. Real sidecar-generation replacement regressions cover the shared primitive, direct
+viewer, and typed CM cancellation-failure paths; the cancellation regressions also cover its typed success response.
+Lease-marker removal and its directory barrier now execute inside the same fallible retirement result rather than a
+log-only destructor; `Drop` retains only OS-lock release. Rejected resume admission performs digest/open/offset/seek
+validation inside one blocking claim transaction, preserves the resumable sidecars, and propagates idle lease-marker
+retirement failure. An absent Unix name is accepted as already cleaned only when the exact still-open handle has zero
+links, so a post-digest-removal publication failure can finish cleanup without weakening renamed/hard-linked
+replacement refusal. The stale R-S11fi
+source-wording/mutation block was deleted from the focused checker, reducing it by 2,809 bytes, and Apple/shared
+labels no longer claim that checker proves receive persistence. This exact tree has not compiled or executed because
+the authorized rootless Docker socket is absent; installed desktop/mobile operations and all global native/release
+evidence remain open.
 
 Appendix C rows #65–#67 and #69 now state only the timeless Windows driver-install finality, app-name
 grammar, custom-client provenance, and known-folder path-authority contracts. Their original failure histories,
@@ -1290,9 +1311,10 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality** — Source closed. Directory,
   digest, block, done, and error responses from direct and CM paths retain bounded exact writer receipts through
   the controlled connection, with writer failure/timeout terminal for that round.
-- **R-S11fi/R-S11e-196 incoming viewer file-block persistence failure** — Source closed. A no-follow open,
-  decompression, seek, partial-write, or asynchronous persistence error retires the exact receive job, marks the
-  partial state unusable, reports bounded failure, and poisons the round rather than accepting a later `Done`.
+- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
+  OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation retires exact current-file state
+  through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
+  survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — Source closed. Signed file identity is
   validated before lookup; local metadata/time/resume inspection failure is bound to the exact job, produces a
   visible terminal response, and retires the connection round instead of leaving the peer waiting indefinitely.
@@ -12404,8 +12426,9 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
-**SOURCE IMPLEMENTED; PINNED LINUX CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED
-DURABILITY-FAILURE REGRESSIONS PASS; NATIVE INSTALLED AND PHYSICAL POWER-LOSS EVIDENCE OPEN.**
+**SOURCE CORRECTED; PRIOR PINNED LINUX CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED
+DURABILITY EVIDENCE RETAINED; EXACT-CURRENT EXECUTION, NATIVE INSTALLED, AND PHYSICAL POWER-LOSS
+EVIDENCE OPEN.**
 A transfer job has one immutable send or receive role.
 Only receive jobs may write, own receive sidecars, clean them, or commit them; only send jobs may
 read. File-list admission rejects invalid initial indexes and aggregate-size overflow. Confirmation
@@ -12424,7 +12447,12 @@ did not occur. Error cleanup for that state retries the namespace barrier and sy
 now-final handle, but can never delete or replace the published file. Direct viewer, controlled-side,
 and CM call sites propagate confirmation/finalization failure and clean only a receive generation the
 job admitted. CM terminal results remain bound to connection ID, generation, job, and phase; peer
-error, pre-publication failure, and post-publication durability uncertainty remain distinct.
+error, pre-publication failure, and post-publication durability uncertainty remain distinct. Current-file
+retirement is one fallible operation: it closes the stream, consumes only the admitted receive claim, and propagates
+identity or durability cleanup failure instead of logging success. Viewer block failure carries that uncertainty
+into the round-owned terminal error. CM cancellation enters a distinct exact-generation `Cancelling` phase and
+awaits a typed cleanup result; success retires authority without a peer `Done`, while failure produces a bounded
+authenticated file error.
 
 Namespace durability is now part of admission and cleanup rather than only final publication. Unix
 synchronizes the exact parent after creating the lock and staged sidecars, synchronizes each retained
@@ -12447,16 +12475,23 @@ names its admitted device/inode; Windows deletes the admitted handle. Unix valid
 ownership and one-link authority, and Windows validates one-link authority, before any truncation, so
 a precreated hard link cannot redirect sidecar truncation.
 
-The exact current source passes all 37 `fs::tests` and the complete 147-test `hbb_common` Rust 1.75
-suite. The focused behaviors include a real competing process, forced termination of the process
+The retained prior Linux-container run passed all 37 `fs::tests` and the complete 147-test `hbb_common` Rust 1.75
+suite. It predates the current fallible-retirement and CM cancellation-finality correction. Its focused behaviors
+include a real competing process, forced termination of the process
 holding the lease with resume/commit by a third process, `.download` and `.digest` hard-link attacks,
 deterministic staging-inode replacement, false-resume refusal, exact cleanup, confirmation-lease
 retirement, ordinary post-rename durability, and a post-publication barrier failure that must preserve
 the visible final file. Tests ran as numeric UID/GID 1000 in a capability-free,
 no-new-privileges, network-disabled container with read-only source/caches and disposable tmpfs Cargo,
-target, home, machine identity, and filesystem fixtures; no ports were published. This is Linux
-container behavior, not an installed or native cross-platform result. The four earlier top-level CM
-regressions remain useful prior evidence but were not rerun against this exact tree.
+target, home, machine identity, and filesystem fixtures; no ports were published. This is prior Linux
+container behavior, not current-source, installed, or native cross-platform evidence. The current source adds real
+replacement-generation assertions at the shared job and direct-viewer layers plus typed CM cancellation success and
+replacement-generation failure finality. A shared regression also covers publication failure after the exact digest
+was already unlinked, requiring cleanup to remove the remaining staged file and lease without accepting a renamed or
+linked object. Exact lease-marker removal/durability failure is now part of setup, inspection, commit, and cleanup
+results instead of a successful return followed by destructor logging; rejected resume admission also retires its
+idle marker without removing resumable sidecars. None has compiled or executed in this tree because the fixed
+authorized rootless Docker socket is absent.
 
 An exact-production-path `strace` run observed the successful Linux sequence
 `fsync(download) -> unlinkat(digest) -> renameat(download, final) -> fsync(parent)`. Injecting `EIO`

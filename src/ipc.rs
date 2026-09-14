@@ -2164,6 +2164,12 @@ pub enum CmFileResponseKind {
         file_num: i32,
         error: String,
     },
+    WriteCancelled {
+        id: i32,
+        generation: u64,
+        file_num: i32,
+        result: Result<(), String>,
+    },
     WriteFinalized {
         id: i32,
         generation: u64,

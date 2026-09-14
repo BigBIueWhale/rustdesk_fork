@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-cebca3a25bf8b90b2facc5d4da409c870cfc5311e384945590536d1f9c735b57  requirements.html
+af175ad670ed633a3a4462674d0823c74b5be43857486abffff4a0a600b9b318  requirements.html
 ```
 
 ## Current Verdict
@@ -84,6 +84,17 @@ live/plist argv, trusted shell paths, executable regressions, and forbidden fall
 or native target changed or ran. Legitimate signed macOS installation/helper/launchd behavior, current Windows
 full-peer and session behavior, Unix installed-principal behavior, and all artifact/performance/resource evidence
 remain open in the release-blocking matrix.
+
+Appendix C rows #76–#78 and #80–#82 now state only the timeless Linux pkcheck image/requester/lifetime,
+macOS helper endpoint identity, Linux helper executable, macOS bounded proof ownership, Linux credential-replica,
+and Linux service-password endpoint authority contracts. Their original defect histories, <code>FIX</code> badges,
+implementation receipts, and verifier narration were deleted, reducing `requirements.html` by 946 bytes. Nine
+expectations whose only oracle was an exact row title or R-S11e-2 through R-S11e-6 status-index label were removed
+from the shared and Apple gates, reducing those scripts by 930 bytes; their product-source checks still bind fixed
+canonical helpers, exact requester and child identities, proof-before-secret ordering, audit-token code proof,
+separate bounded proof budgets, and terminal worker/child ownership. No product source or native target changed or
+ran. Installed Linux unauthorized-principal/race/restart evidence and legitimate signed macOS helper,
+Authorization Services, launchd, saturation, timeout, and cleanup evidence remain open in the release matrix.
 
 The native-codec advisory ledger no longer serves as a requirements registry. The first cleanup slice deleted
 34 later-added per-ID/Appendix mappings and 254 lines of prose-coupled assertions and mutations from the shared,
@@ -1206,12 +1217,12 @@ exists only to make the current source disposition discoverable.
 - Appendix C #61 — Linux polkit action and package authority. Source XML and each real Debian
   archive are checked by `scripts/verify-debian-package-authority.py`; exact package inventory
   excludes application-supplied `.rules`. Installed authorization behavior remains OPEN above.
-- R-S11e-1 — Linux pkcheck executable provenance
-- R-S11e-2 — macOS service client-side server authentication
-- R-S11e-3 — Linux helper canonical target provenance
-- R-S11e-4 — macOS service proof ownership
-- R-S11e-5 — Linux service-owned replica receiver proof
-- R-S11e-6 — Linux `_service_password` client-side server authentication
+- R-S11e-1 — Linux pkcheck image, requester, and lifetime authority
+- R-S11e-2 — macOS privileged-service endpoint identity
+- R-S11e-3 — Linux privileged-helper executable provenance
+- R-S11e-4 — macOS service proof ownership and bounded admission
+- R-S11e-5 — Linux service credential receiver and replica authority
+- R-S11e-6 — Linux service-password server endpoint authority
 - R-S11e-7 — user-owned permanent-password receiver authentication
 - R-S11e-8 — macOS service-owned password right normalization before authorization
 - R-S11e-9 — macOS service audit-token peer code identity

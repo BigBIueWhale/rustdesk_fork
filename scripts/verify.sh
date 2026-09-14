@@ -1048,7 +1048,6 @@ if grep -Eq 'ensure_linux_service_(password_)?server_is_trusted|linux_service_ex
 fi
 grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
 grep -Fq '<span class="id">R-S11ce</span>' requirements.html || r_s11="$r_s11 linux-root-service-client-requirement-missing"
-grep -Fq 'R-S11e-6 — Linux `_service_password` client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
 grep -Fq 'R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs' HARDENING_STATUS.md || r_s11="$r_s11 linux-root-service-client-ledger-missing"
 macos_service_server_auth_block=$(awk '/pub\(crate\) fn authorize_macos_service_server_snapshot/,/^}/' src/ipc/auth.rs)
 macos_credential_snapshot_client=$(awk '/pub async fn refresh_macos_service_owned_permanent_password_snapshot/,/^}/' src/ipc.rs)
@@ -1078,7 +1077,6 @@ echo "$macos_credential_snapshot_client" | grep -Fq 'MacosServiceOwnedCredential
 echo "$macos_credential_snapshot_client" | grep -Fq 'receiver.receive_and_admit(deadline)' || r_s11="$r_s11 macos-credential-client-typed-admission-missing"
 echo "$macos_credential_snapshot_client" | grep -Fq 'admission.install()' || r_s11="$r_s11 macos-credential-client-runtime-prs-install-missing"
 grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
-grep -Fq 'R-S11e-2 — macOS service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
 grep -Fq 'pub(crate) fn ensure_user_owned_main_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-auth-missing"
 grep -Fq 'fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-helper-missing"
 grep -Fq 'args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-not-exact"
@@ -4769,7 +4767,7 @@ if grep -Eq 'SYS_ptrace|PTRACE_TRACEME' src/platform/linux.rs; then
 fi
 grep -Fq 'SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2' res/rustdesk.service ||
   r_s11b2="$r_s11b2 linux-service-bootstrap-filter-drift"
-for ledger_id in R-S11e-4 R-S11e-5 R-S11e-6 R-S11e-9 R-S11e-11 R-S11e-21; do
+for ledger_id in R-S11e-9 R-S11e-11 R-S11e-21; do
   grep -Fq "$ledger_id" HARDENING_STATUS.md ||
     r_s11b2="$r_s11b2 ledger-$ledger_id-missing"
 done
@@ -10598,8 +10596,6 @@ fi
 if grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs; then
   r_s11c10k="$r_s11c10k stale-current-image-lifecycle-authority"
 fi
-grep -Fq 'Linux helper canonical target provenance' requirements.html || r_s11c10k="$r_s11c10k canonical-helper-requirements-missing"
-grep -Fq 'R-S11e-3 — Linux helper canonical target provenance' HARDENING_STATUS.md || r_s11c10k="$r_s11c10k canonical-helper-ledger-missing"
 if grep -RInE 'Command::new\("(sudo|ps|w|ls|xrandr|xdg-screensaver)"\)|Command::new\(CMD_(PS|SH)\.as_str\(\)\)|Command::new\("which"\)' src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10k"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10k"
   r_s11c10k="$r_s11c10k path-selected-linux-helper-command"

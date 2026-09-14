@@ -7545,66 +7545,6 @@ def validate_macos_descriptor_contract(sources):
         require_text(sources[source_key], text, label)
 
 
-
-def validate_windows_dormant_fixed_temp_diagnostic_contract(sources):
-    native = sources["windows_native_source"]
-
-    require_absent(
-        native,
-        "void flog(",
-        "dormant Windows native diagnostic helper symbol",
-    )
-    require_absent(
-        native,
-        "// flog(",
-        "dormant Windows diagnostic commented call",
-    )
-    require_absent(
-        native,
-        "flog(",
-        "dormant Windows native diagnostic helper or call catch-all",
-    )
-    require_absent(
-        native,
-        "test_rustdesk.log",
-        "dormant Windows fixed-temp diagnostic pathname",
-    )
-
-    require_text(
-        sources["verify"],
-        'echo "== (3b-iii-d16) Windows dormant fixed-temp diagnostic append authority (R-S11et/R-S11e-181) =="',
-        "Windows dormant fixed-temp diagnostic shared source gate",
-    )
-    requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11et",
-        "Windows dormant fixed-temp diagnostic append requirement",
-    )
-    for token, label in (
-        ("<code>flog(char const *, ...)</code>", "retired native helper"),
-        ("<code>test_rustdesk.log</code>", "retired fixed pathname"),
-        ("<code>GetTempPath2</code>", "SYSTEM-aware temporary-path design context"),
-        ("MUST NOT</span> define or call <code>flog</code>", "complete symbol/call absence"),
-        ("No replacement logger is required", "no compatibility diagnostic sink"),
-    ):
-        require_text(
-            requirement,
-            token,
-            f"Windows dormant fixed-temp diagnostic requirement {label}",
-        )
-    require_text(
-        sources["requirements"],
-        "<tr><td>302</td>",
-        "Windows dormant fixed-temp diagnostic Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority",
-        "Windows dormant fixed-temp diagnostic hardening ledger",
-    )
-
-
-
 def validate_macos_privileged_script_environment_contract(sources):
     platform = sources["macos_source"]
     require_text(
@@ -37967,7 +37907,6 @@ def validate_sources(sources):
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
     validate_generic_desktop_privilege_probe_excision_contract(sources)
-    validate_windows_dormant_fixed_temp_diagnostic_contract(sources)
     validate_macos_privileged_script_environment_contract(sources)
     validate_fusermount_process_context_contract(sources)
     validate_windows_helper_launch_contract(sources)

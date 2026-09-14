@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-32c19797c4e4b590cfc0f4e33a891241fb4aacedfc6194f3b18029ec3e42ba37  requirements.html
+765be48deb4c7eccd4a1668d90184da9d2dc9771292b54d890c281c7a2e45cb3  requirements.html
 ```
 
 ## Current Verdict
@@ -1133,9 +1133,10 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   `Session::enter`/`Session::leave` narrow connection-ID route is deleted. The dormant Sciter low-level hook,
   HWND relay, process-global Win-key state, FFI, and Flutter calls remain absent. The focused source invariant
   protects this one-route shape; exact multi-window native Windows behavior and resource evidence remain open.
-- **R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority** — Source closed by deletion.
-  The uncalled `flog` helper and fixed `C:\\Windows\\temp\\test_rustdesk.log` append path have no replacement,
-  compatibility alias, or alternate ambient diagnostic sink.
+- **R-S11et/R-S11e-181 Windows ambient native diagnostic-file authority** — Source closed by deletion. The
+  unsupported `flog` helper, fixed `C:\\Windows\\temp\\test_rustdesk.log` append path, and commented call have
+  no replacement, alias, or alternate ambient sink; the live `CONOUT$` console redirect is distinct. One direct
+  source guard remains. Exact candidate PE symbol/string and native file-access evidence remains open.
 - **R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership** — Source closed.
   Controlled video workers, displays, capturers, raw-frame consumption, screen geometry/scale, and half-scale
   mutation carry the exact nonzero `MainService` generation; stale workers cannot drain or mutate replacement

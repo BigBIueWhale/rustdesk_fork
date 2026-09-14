@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ab6fa67185b7231ea1a10daef43468655c9f44c6bb293ed401c1f3da30744e35  requirements.html
+2a138c21bf067bc58a34d52a9e20d39d0085d5ebdea610c74938c395ec205d98  requirements.html
 ```
 
 ## Current Verdict
@@ -195,6 +195,17 @@ replacement session. The generic display slot does not infer ownership from muta
 documentation/source/test-name mutation tuples and now-unused loaders were deleted rather than expanded.
 Git history retains the superseded narrative. Native renderer, cleanup-fault injection, installed-artifact,
 and sustained focus/window-transfer evidence remain open.
+
+R-S11ez and Appendix C #308 now state the timeless pending-frame-retirement contract rather than the
+implementation chronology, `FIX` badge, verifier-history confession, source-proof disclaimer, current open-work
+list, or mutation/ledger wording coupling, reducing `requirements.html` by 1,644 bytes. The exact Linux
+production-translation-unit and Windows production-callback-core executable criteria remain, as does their
+explicit inability to substitute for target-native engine, renderer, package, lifecycle, latency, cold-build,
+and independent-review evidence. R-S11ex now also states the Linux unregister-refusal lifetime rule directly:
+the retired object and reserved key survive refusal, replacement and public retry remain closed, plugin disposal
+makes the final attempt, and continued refusal retains callback-safe storage through process teardown. No product
+source or genuine regression was removed or executed in this documentation-only slice; current native evidence
+remains governed by the release-blocking matrix.
 
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,

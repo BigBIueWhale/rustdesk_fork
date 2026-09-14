@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a23143e3f7c59ba968adaa9b0482b1e417a9f1a90e3d7b84b61b30d4bf9057db  requirements.html
+e3c7206aaf9e5b0f9053f3d45b90130158907d2dd4c9b2f7edfc5823f5ebae73  requirements.html
 ```
 
 ## Current Verdict
@@ -220,6 +220,18 @@ boundary-specific audit obligation, now stated without a numeric proxy. The fixe
 so no authorized executable verification is claimed for the reduced Python inventory in this slice. Exact packaged
 plugin inspection, native renderer execution, focus/reconnect latency, cold artifacts, independent reproduction,
 and external review remain open.
+
+R-S11fa and Appendix C #309 now state the timeless exact-owner presentation-resume contract instead of the
+original missing-edge narrative, operational-symptom disclaimers, `FIX` badge, test counts, gate choreography,
+host non-execution receipt, and repeated current-open list, reducing `requirements.html` by 2,721 bytes. The
+bounded coalescing, selected-page admission, exact session/UI ownership, failure re-arm, readiness-without-demand,
+generation-bound retirement, persistent Android service, no-reconnect rule, and target-native pixel/latency/
+resource acceptance remain explicit. The executable Dart recovery state machine, its behavioral regression, and
+the focused `dart-verify.sh` invocation remain. Two source/test dictionary entries left unused after the earlier
+source-wording verifier and duplicate mutation catalog were deleted are now removed from the workspace verifier,
+reducing it by 315 bytes; they executed no check and provided no coverage. No product source or native target
+changed or ran. Exact mobile and desktop lifecycle, presentation, performance, artifact, reproducibility, and
+independent-review evidence remains open in the release-blocking matrix.
 
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,

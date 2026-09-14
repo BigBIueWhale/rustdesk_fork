@@ -41940,9 +41940,6 @@ def main():
             "session_stream_finality_dart": (
                 repo / "flutter/lib/models/session_stream_finality.dart"
             ).read_text(encoding="utf-8"),
-            "presentation_recovery_dart": (
-                repo / "flutter/lib/models/presentation_recovery.dart"
-            ).read_text(encoding="utf-8"),
             "rgba_publication_order_dart": (
                 repo / "flutter/lib/models/rgba_publication_order.dart"
             ).read_text(encoding="utf-8"),
@@ -41996,9 +41993,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "session_stream_finality_test": (
                 repo / "flutter/test/session_stream_finality_test.dart"
-            ).read_text(encoding="utf-8"),
-            "presentation_recovery_test": (
-                repo / "flutter/test/presentation_recovery_test.dart"
             ).read_text(encoding="utf-8"),
             "rgba_publication_order_test": (
                 repo / "flutter/test/rgba_publication_order_test.dart"

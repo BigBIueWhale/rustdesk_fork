@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-210243959251e03c9fd47756eefd82048a46e2b5ca16787827783b3a50b77f51  requirements.html
+167c874f1e03e9c958eca549839215c8e121bd38e6f1fd8c89d2cb1a4da526f0  requirements.html
 ```
 
 ## Current Verdict
@@ -1253,7 +1253,10 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   do not duplicate them. This remains portable child/source evidence, not signed macOS execution.
 - **R-S11ff/R-S11e-193 exact viewer refresh admission** — Source closed. Refresh is bounded, coalesced, exact-
   round and exact-UI owned, invalidates the local decoder generation before the network request, and poisons the
-  round on admission failure. The protocol has no presentation acknowledgement; native recovery remains open.
+  round on invalidation or send failure. The shared isolated Rust lane executes mailbox ordering/capacity/closure,
+  wake, exact-owner/range, and pre-start retirement behavior; the generated-bridge lane executes exact-owner display
+  derivation. No deleted standalone wording/mutation verifier is claimed as evidence. The protocol has no presentation
+  acknowledgement; exact target-native lifecycle, peer, pixels, latency, resource, and cleanup evidence remains open.
 - **Outgoing viewer generic command admission** — Source closed. Each viewer round owns a capacity- and byte-
   bounded command FIFO plus an out-of-band terminal state. Oversize, exhaustion, accounting failure, receiver
   loss, or writer rejection poisons the round instead of silently dropping ordered UI/file/control work.
@@ -1323,12 +1326,9 @@ current-master or release evidence. The later tracked R-S11gc full-peer Linux re
 entry and is the stronger presentation result. Historical Linux/Android compilation, deterministic behavior tests,
 portable Windows callback-core tests, and macOS cfg/parser/child checks establish only the layers they actually ran.
 
-The 4,268-line desktop-texture source-wording verifier and 3,512 lines of its verifier-of-verifier coupling are
-deleted. `scripts/dart-verify.sh` still executes the Dart presentation/texture state machines and Linux plus portable
-Windows native texture callback tests; `scripts/verify.sh` retains the Rust ownership/admission tests, and the
-isolated Windows/Linux presentation runners remain the target-native evidence paths. None is replaced by a
-compatibility wrapper or a documentary-string surrogate. This cleanup changes no product behavior and does not
-upgrade the still-open native-artifact evidence above.
+Presentation evidence consists of executable Dart/Rust state-machine tests and isolated Windows/Linux native runners.
+No standalone source-wording verifier is a gate or release artifact, and source/model results do not upgrade the
+still-open native-artifact evidence above.
 
 The release-blocking matrix above and the global OPEN table remain authoritative. Current Android APK/device
 lifecycle, native Windows focus/minimize/background and full-peer presentation, signed installed macOS, installed
@@ -12262,9 +12262,9 @@ retirement, false/true demand, predecessor finality, and single retirement. Rust
 regression `r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers
 selected-display, collision, wrong-pointer, exact-removal, and retired-owner cases.
 `scripts/dart-verify.sh` and `scripts/verify.sh` retain those executable tests;
-the independent workspace baseline retains supplementary source checks. The
-deleted standalone source-wording verifier is not evidence. This is source and
-unit-contract evidence, not native plugin or installed-artifact behavior evidence.
+the independent workspace baseline supplies only supplementary source checks.
+This is source and unit-contract evidence, not native plugin or installed-artifact
+behavior evidence.
 
 **Open evidence.** Run the exact current generated bridge and native Windows,
 Linux, and macOS plugins through focus/minimize, display-switch, window-transfer,

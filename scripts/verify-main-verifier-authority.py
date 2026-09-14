@@ -156,7 +156,6 @@ def validate_contract(sources):
             'session_start.index("let mut thread_lock = s.thread.lock().unwrap();")\n        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")',
             "grep -qE '^\\s*reserved +2, *9, *12, *14;' libs/hbb_common/protos/message.proto",
             "code_splits=$(sed -n '1,/^#\\[cfg(test)\\]/p' libs/hbb_common/src/tcp.rs",
-            "verify-desktop-texture-lifecycle|verify-verifier-workspace",
             "[ \"$(grep -cF 'if generation == 0 || context.generation != Some(generation)' \"$r_s14_ffi_rs\")\" -eq 2 ]",
             "grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml",
             "grep -qF 'path: \"third_party/desktop_multi_window\"' flutter/pubspec.lock",
@@ -703,7 +702,6 @@ def validate_contract(sources):
             '"post-worker-admission rollback selection"',
             '"complete retired LoginRequest tag gate"',
             '"production-only single-writer split inventory"',
-            '"exact non-build texture verifier exclusion"',
             '"exact Android generation callback gate"',
             '"vendored desktop-multi-window manifest authority"',
             '"vendored desktop-multi-window lock authority"',
@@ -811,12 +809,6 @@ MUTATIONS = (
         "code_splits=$(sed -n '1,/^#\\[cfg(test)\\]/p' libs/hbb_common/src/tcp.rs",
         "code_splits=$(grep -n '\\.split()' libs/hbb_common/src/tcp.rs",
         "production-only single-writer split inventory",
-    ),
-    Mutation(
-        "shell",
-        "verify-desktop-texture-lifecycle|verify-verifier-workspace",
-        "verify-verifier-workspace",
-        "exact non-build texture verifier exclusion",
     ),
     Mutation(
         "shell",

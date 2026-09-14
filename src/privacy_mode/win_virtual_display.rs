@@ -541,9 +541,11 @@ impl PrivacyMode for PrivacyModeImpl {
         guard.reg_recoveries =
             reg_display_settings::diff_recent_connectivity(reg_connectivity_1, reg_connectivity_2)?;
 
-        // OpenInputDesktop and block the others' input ?
         guard.ensure_activation_current()?;
-        super::win_input::hook()?;
+        let Some(owner) = guard.owner.as_ref() else {
+            bail!("privacy activation lost its exact pending owner");
+        };
+        super::win_privacy_hotkey::register_escape_hotkey(owner)?;
         guard.ensure_activation_current()?;
         let Some(owner) = guard.owner.as_mut() else {
             bail!("privacy activation lost its exact pending owner");
@@ -568,8 +570,8 @@ impl PrivacyMode for PrivacyModeImpl {
 
     fn turn_off_privacy(&mut self, state: Option<PrivacyModeState>) -> ResultType<()> {
         let mut failures = Vec::new();
-        if let Err(error) = super::win_input::unhook() {
-            failures.push(format!("failed to stop privacy input hook: {error}"));
+        if let Err(error) = super::win_privacy_hotkey::unregister_escape_hotkey() {
+            failures.push(format!("failed to stop privacy escape hotkey: {error}"));
         }
         let _tmp_ignore_changed_holder = crate::display_service::temp_ignore_displays_changed();
         if let Err(error) = self.restore() {

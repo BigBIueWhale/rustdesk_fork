@@ -17,7 +17,7 @@ use std::{
 #[cfg(windows)]
 pub mod win_exclude_from_capture;
 #[cfg(windows)]
-mod win_input;
+mod win_privacy_hotkey;
 #[cfg(windows)]
 pub mod win_mag;
 #[cfg(windows)]
@@ -672,8 +672,8 @@ pub(crate) fn retire_privacy_for_owner(
     Some(privacy_mode.turn_off_privacy(None))
 }
 
-/// Machine-local emergency teardown only: the physical Ctrl+P hook and the final-Remote virtual
-/// display reset cannot carry a network connection token. Network/connection paths must use
+/// Machine-local emergency teardown only: the final-Remote virtual-display reset cannot carry a
+/// network connection token. The Ctrl+P escape and every network/connection path use
 /// `turn_off_privacy_for_owner` and may never acquire this force-off authority.
 pub(crate) fn force_turn_off_privacy(
     state: Option<PrivacyModeState>,
@@ -694,10 +694,10 @@ fn set_privacy_mode_state(
     impl_key: String,
     ms_timeout: u64,
 ) -> ResultType<()> {
-    // The only state-bearing caller is the low-level keyboard hook's dedicated
-    // native thread. Reuse the owning server runtime instead of nesting one here.
+    // The only state-bearing caller is the bounded privacy escape dispatcher.
+    // Reuse the owning server runtime instead of nesting one here.
     if tokio::runtime::Handle::try_current().is_ok() {
-        bail!("privacy callback must run on its dedicated native hook thread");
+        bail!("privacy callback must run outside a Tokio runtime thread");
     }
     let conn_id = owner.conn_id();
     let cm_auth_token = owner.cm_auth_token().to_owned();

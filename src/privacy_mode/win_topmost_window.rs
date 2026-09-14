@@ -296,7 +296,10 @@ impl PrivacyMode for PrivacyModeImpl {
             bail!("No privacy window created");
         }
         guard.ensure_activation_current()?;
-        super::win_input::hook()?;
+        let Some(owner) = guard.owner.as_ref() else {
+            bail!("privacy activation lost its exact pending owner");
+        };
+        super::win_privacy_hotkey::register_escape_hotkey(owner)?;
         guard.ensure_activation_current()?;
         unsafe {
             ShowWindow(hwnd as _, SW_SHOW);
@@ -322,7 +325,7 @@ impl PrivacyMode for PrivacyModeImpl {
     }
 
     fn turn_off_privacy(&mut self, state: Option<PrivacyModeState>) -> ResultType<()> {
-        let unhook_result = super::win_input::unhook();
+        let unregister_hotkey_result = super::win_privacy_hotkey::unregister_escape_hotkey();
 
         match wait_find_privacy_hwnd(&self.handlers, 0) {
             Ok(hwnd) => unsafe {
@@ -336,7 +339,7 @@ impl PrivacyMode for PrivacyModeImpl {
             }
         }
 
-        if unhook_result.is_ok() {
+        if unregister_hotkey_result.is_ok() {
             if let Some(owner) = self.owner.take() {
                 if let Some(state) = state {
                     allow_err!(super::set_privacy_mode_state(
@@ -349,7 +352,7 @@ impl PrivacyMode for PrivacyModeImpl {
             }
         }
 
-        unhook_result
+        unregister_hotkey_result
     }
 
     #[inline]

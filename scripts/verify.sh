@@ -8354,18 +8354,18 @@ for mouse_binding in \
   grep -qF "$mouse_binding" <<<"$viewer_mouse_body" \
     || r_s11e180="$r_s11e180 mouse-meta-source-binding-missing"
 done
-for privacy_binding in \
-  'SetWindowsHookExA(' \
-  'WH_KEYBOARD_LL' \
-  'UnhookWindowsHookEx(hook_keyboard'; do
-  grep -qF "$privacy_binding" src/privacy_mode/win_input.rs \
-    || r_s11e180="$r_s11e180 separate-privacy-hook-lifecycle-missing"
-done
+if grep -R -Eq --include='*.rs' --include='*.cc' \
+  'SetWindowsHookEx|WH_KEYBOARD_LL|WH_MOUSE_LL|UnhookWindowsHookEx' src; then
+  r_s11e180="$r_s11e180 forbidden-low-level-input-hook-present"
+fi
+if [ -e src/privacy_mode/win_input.rs ]; then
+  r_s11e180="$r_s11e180 obsolete-privacy-input-hook-module-present"
+fi
 if [ -n "$r_s11e180" ]; then
   echo "  FAIL R-S11e-180 Windows viewer keyboard interception authority:$r_s11e180"
   rc=1
 else
-  echo "  ok  R-S11e-180 viewer keyboard capture has one typed full-window-UUID grab route; narrow and dormant paths are absent"
+  echo "  ok  R-S11e-180 viewer keyboard capture has one typed full-window-UUID grab route; low-level interception paths are absent"
 fi
 
 # (3b-iii-d16) R-S11et/R-S11e-181: Windows native product code has no

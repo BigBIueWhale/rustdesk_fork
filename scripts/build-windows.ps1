@@ -1175,6 +1175,8 @@ if /I "%~1"=="build" (
     Write-Host "[harness] testing exact-generation CM and privacy activation ownership -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
     cargo test --offline --locked --lib --features flutter --color never r_s11iu_ -- --test-threads=1
     if ($LASTEXITCODE -ne 0) { Die "Exact-generation CM/privacy ownership suite failed (exit $LASTEXITCODE) -- stale owners, timed-out activation, and exact teardown must pass before build.py --flutter" }
+    cargo test --offline --locked --lib --features flutter --color never windows_privacy_escape_hotkey_ -- --test-threads=1
+    if ($LASTEXITCODE -ne 0) { Die "Native privacy escape hotkey lifecycle failed (exit $LASTEXITCODE) -- Ctrl+P registration, joined teardown, and exact reuse must pass before build.py --flutter" }
 
     cargo test --offline --locked --lib --features flutter --color never windows_credential_
     if ($LASTEXITCODE -ne 0) { Die "Windows credential state-machine suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }

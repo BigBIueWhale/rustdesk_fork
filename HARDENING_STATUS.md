@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ff227b1e11b51aee764daaa2ccb98bfed6ff21e4a480eb11cb48561bde8a7722  requirements.html
+f493711d1d4440cab195a61c78313b9083cc7c13c4ec790269f5396fd15eda1c  requirements.html
 ```
 
 ## Current Verdict
@@ -12652,9 +12652,19 @@ and a same-ID successor must acquire that route before it can enter the client r
 Windows privacy mode now retains one typed connection owner containing the positive
 connection ID and nonempty CM authority token for the physical privacy resource's full
 lifetime. A same-ID request with a different token is not treated as the same owner.
-The native keyboard-hook teardown reuses the Tokio runtime handle retained by that owner;
-the former per-callback `#[tokio::main]` runtime is absent, and the synchronous bridge
-fails closed if called from a Tokio runtime thread. Teardown sends a distinct
+Privacy activation does not acquire local-input suppression: the inherited global low-level
+keyboard/mouse hook and its arbitrary physical-input filtering are deleted. Windows reserves only
+the explicit Ctrl+P machine-local escape chord with `RegisterHotKey`. One owned queue thread creates
+its message queue before publishing its ID, and its exact `JoinHandle` is retained from creation
+through `UnregisterHotKey` and joined teardown; a second registration cannot start while that owner
+exists, and cleanup uncertainty poisons reuse. `GetMessage` error and `WM_QUIT` are distinguished.
+The queue handler performs no privacy, network, display, or runtime work: it only makes a bounded
+nonblocking handoff to one retained process-lifetime control worker and resumes pumping. The queued
+request carries the exact connection ID and CM token captured by that hotkey registration, so delayed
+work cannot force off a same-ID replacement or another owner. That worker
+reuses the Tokio runtime handle retained by the exact privacy owner; the former per-callback
+`#[tokio::main]` runtime is absent, and the synchronous bridge fails closed on a Tokio runtime
+thread. Teardown sends a distinct
 `AuthorizedPrivacyModeState` one-shot request; the CM fixes Remote as the type, validates
 the live token, and routes a token-free response only to a current registry entry retaining
 that same token. A validator-approved stale
@@ -12672,23 +12682,22 @@ a shared activation flag, and each implementation checks that flag before and be
 mutation stages; a worker already inside one opaque native call cannot be interrupted by this
 source mechanism, but it must stop at the next checkpoint and roll back. Dropping the connection-
 side future also closes the final commit gate, so a worker that reaches it afterward must roll back.
-Connection-driven off, capture-validation rollback, and `Connection::drop` now require the exact
-ID and CM token; only the
-physical Ctrl+P escape and final-Remote machine reset retain explicitly named force-off
-authority. Drop/activation-error retirement is idempotent when a different exact owner is current,
+Connection-driven off, capture-validation rollback, `Connection::drop`, and the physical Ctrl+P
+escape now require the exact ID and CM token; only the final-Remote machine reset retains explicitly
+named force-off authority. Drop/activation-error retirement is idempotent when a different exact owner is current,
 so routine cleanup neither revokes nor log-amplifies an incumbent connection. An activation
 refusal no longer force-disables an incumbent connection's privacy resource. Unsupported nonempty
 implementation names fail instead of silently selecting a
 fallback. Virtual-display and window implementations attempt physical rollback before a
 cancelled transaction reports completion, and teardown continues display/window restoration
-even if keyboard-unhook signaling fails. Virtual-display teardown now checks display staging,
+even if escape-hotkey retirement fails. Virtual-display teardown now checks display staging,
 display commit, monitor removal, and registry recovery instead of discarding their results; it
 retains the relevant snapshots for retry until each class succeeds and aggregates simultaneous
 failures. The inherited fallback that force-unplugged every pre-existing virtual display when this
 activation had created none is removed. The Amyuni interface does not expose stable monitor
 identities, so the former vector of fake zero-valued "indices" is replaced by an honest count that
 is recorded immediately after this activation's plug-in succeeds; teardown requests exactly that
-many removals and none when the activation created none. A returned rollback/unhook failure retains
+many removals and none when the activation created none. A returned rollback/hotkey-retirement failure retains
 the pending exact owner instead of erasing cleanup authority; the activation-error path retries
 teardown only for its own exact ID/token.
 Switching implementations now refuses to replace the old implementation when its reported
@@ -12697,10 +12706,12 @@ its bounded poll completes synchronously inside the same calling operation and l
 failure. Non-privacy virtual-display callers still need installed proof that this blocking work is
 off their Tokio/UI execution paths.
 
-This is source and model closure for activation publication, not native Windows display
-evidence. The low-level keyboard-hook worker is still a separately spawned worker whose
-thread handle is not retained/joined, and native display/registry APIs may still have target-
-specific blocking and rollback failure semantics. In particular, Amyuni exposes count-based
+This is source and model closure for activation publication and hotkey ownership, not native Windows
+display evidence. The Windows-only regression performs two real `RegisterHotKey`/`UnregisterHotKey`
+lifecycles, refuses a concurrent registration, and requires reuse only after exact joined teardown;
+the pinned Windows lane invokes it, but that lane has not run for this source. Native hotkey,
+display, and registry APIs may still have target-specific blocking and failure semantics. In
+particular, Amyuni exposes count-based
 plug/unplug rather than resource identities, so cross-process driver churn can make ownership
 ambiguous and must be exercised/refused correctly in the installed race matrix. Exact privacy
 teardown is also still synchronous:
@@ -12747,6 +12758,8 @@ because these regressions intentionally exercise one process-global activation a
 The pinned offline Windows artifact lane now runs the same filter serially before packaging, so the
 Windows implementations must compile with the exact-owner API and the lifecycle regressions must
 execute on that target; this wiring is not a claim that the lane has run for the current source.
+That lane also runs the Windows-only native privacy escape regression serially; it is authored but
+has not executed for this source because no disposable Windows VM is currently registered.
 `flutter/test/server_model_test.dart` retains registry-generation JSON serialization and adds two
 state regressions for same-count replacement/disconnect/voice repair, exact-owner UI-state retention,
 unchanged-snapshot inertness, canonical generation order, and whole-snapshot duplicate owner refusal.

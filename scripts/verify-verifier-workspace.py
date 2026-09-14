@@ -41850,9 +41850,6 @@ def main():
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
             "windows_native_source": (repo / "src/platform/windows.cc").read_text(encoding="utf-8"),
-            "windows_privacy_input_source": (
-                repo / "src/privacy_mode/win_input.rs"
-            ).read_text(encoding="utf-8"),
             "windows_device_source": (repo / "src/platform/win_device.rs").read_text(encoding="utf-8"),
             "virtual_display_manager_source": (
                 repo / "src/virtual_display_manager.rs"

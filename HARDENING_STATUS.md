@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-38a9039f63d662656ebbe23cfd7532f03b9966e5677ce4933c7cb25433ecca89  requirements.html
+3d2c69d3d374a8a042a40710e1a103e3bb18b76d7c06035792946c66141ca579  requirements.html
 ```
 
 ## Current Verdict
@@ -63,14 +63,15 @@ authority checks remain. These are completed cleanup slices, not completion of t
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
 
-The native-codec advisory ledger no longer serves as a per-requirement ID/Appendix registry: 34 later-added
-lines that redundantly mapped unrelated R-S11 requirements to Appendix rows were deleted. The original
-whole-requirements digest and the codec source/advisory contract remain. The
-corresponding 254 lines of assertions and mutations were removed from the shared, Apple, credential, and
-session-stream verifiers because their only oracle was exact prose in the codec document. This reduces
-those six files by 18,522 bytes while preserving the requirements, Appendix rows, hardening entries,
-product-source checks, codec source-set checks, and the requirements digest. No product source or native
-target changed or ran, so all installed, device, performance, artifact, and release evidence remains open.
+The native-codec advisory ledger no longer serves as a requirements registry. The first cleanup slice deleted
+34 later-added per-ID/Appendix mappings and 254 lines of prose-coupled assertions and mutations from the shared,
+Apple, credential, and session-stream verifiers. The follow-up removes the remaining whole-`requirements.html`
+digest from the codec ledger and 141 lines of cross-purpose digest coupling from ten gates/verifiers. The codec
+gate now owns only the exact vcpkg package set, baseline, source and patch pins, offline acquisition records,
+retired-`aom` disposition, and advisory ledger; its executable self-test no longer copies `requirements.html`.
+The independent global requirements/status digest remains, and Appendix C #16 plus the native-vcpkg dependency
+row now describe the gate's actual contract. No product source or native target changed or ran, so all installed,
+device, performance, artifact, and release evidence remains open.
 
 Appendix C rows #31–#37, including #36a, now state only the timeless Windows service-child shutdown,
 Amyuni helper/removal, Linux helper/account lookup, clipboard FUSE, and self-relaunch authority contracts.

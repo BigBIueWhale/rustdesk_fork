@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -72,9 +71,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         ),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "native_watch": (repo / "docs/NATIVE-CODEC-WATCH.md").read_text(
-            encoding="utf-8"
-        ),
     }
 
 
@@ -303,14 +299,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
         "R-S11e-287 hardening ledger",
     )
-    requirements_digest = hashlib.sha256(
-        sources["requirements"].encode("utf-8")
-    ).hexdigest()
-    require(
-        sources["native_watch"],
-        f"Requirements hash: {requirements_digest}",
-        "exact requirements digest",
-    )
 
 
 MUTATIONS = (
@@ -349,7 +337,6 @@ MUTATIONS = (
     ("requirements", '<span class="id">R-S11ix</span>', '<span class="id">R-S11ix-disabled</span>', "requirement"),
     ("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "Appendix disposition"),
     ("hardening", "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation", "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation", "hardening ledger"),
-    ("native_watch", "Requirements hash: ", "Requirements digest: ", "requirements digest"),
 )
 
 

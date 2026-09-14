@@ -57,7 +57,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "connection": "src/server/connection.rs",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
-        "native_watch": "docs/NATIVE-CODEC-WATCH.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
         "linux_verifier": "scripts/verify-linux-nondumpable-cm.py",
@@ -503,11 +502,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         f"{requirements_digest}  requirements.html",
         "exact hardening requirements digest",
-    )
-    require(
-        sources["native_watch"],
-        f"Requirements hash: {requirements_digest}",
-        "exact native-watch requirements digest",
     )
 
 

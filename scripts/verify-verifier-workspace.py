@@ -3525,9 +3525,6 @@ def validate_docs(sources):
     digest = hashlib.sha256(requirements.encode("utf-8")).hexdigest()
     if f"{digest}  requirements.html" not in hardening:
         raise VerificationError("hardening-status requirements hash is stale")
-    native_watch = sources["native_watch"]
-    if f"Requirements hash: {digest}" not in native_watch:
-        raise VerificationError("native-codec requirements hash is stale")
 
 
 def validate_scan_contract(scan, verify, apple, release):
@@ -9236,7 +9233,6 @@ def validate_linux_headless_cm_parent_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    native_watch = sources["native_watch"]
     common_source = sources["common_source"]
     linux_source = sources["linux_source"]
     connection_source = sources["connection_source"]
@@ -9915,12 +9911,6 @@ def validate_linux_headless_cm_parent_contract(sources):
         hardening,
         "R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality",
         "Linux CM readiness hardening ledger",
-    )
-    requirements_digest = hashlib.sha256(requirements.encode("utf-8")).hexdigest()
-    require_text(
-        native_watch,
-        f"Requirements hash: {requirements_digest}",
-        "exact Linux CM readiness requirements digest",
     )
     shared_readiness_gate = extract_between(
         verify,
@@ -20969,7 +20959,6 @@ def validate_whiteboard_ipc_lifecycle_contract(sources):
         ("Linux event-loop and worker ownership", "focused Linux owner check"),
         ("independent whiteboard lifecycle dispatch must occur exactly once", "focused exact workspace dispatch check"),
         ("exact hardening requirements digest", "focused hardening digest check"),
-        ("exact native-watch requirements digest", "focused native-watch digest check"),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -21217,11 +21206,6 @@ def validate_whiteboard_ipc_lifecycle_contract(sources):
         f"{digest}  requirements.html",
         "independent whiteboard lifecycle requirements hash",
     )
-    require_text(
-        sources["native_watch"],
-        f"Requirements hash: {digest}",
-        "independent whiteboard lifecycle native-watch hash",
-    )
 
 
 def validate_whiteboard_client_lifecycle_contract(sources):
@@ -21241,7 +21225,6 @@ def validate_whiteboard_client_lifecycle_contract(sources):
         ("first-action client worker finalizer", "focused finalizer check"),
         ("independent whiteboard client lifecycle dispatch must occur exactly once", "focused dispatch check"),
         ("exact hardening requirements digest", "focused hardening digest check"),
-        ("exact native-watch requirements digest", "focused native-watch digest check"),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -21502,11 +21485,6 @@ def validate_whiteboard_client_lifecycle_contract(sources):
         f"{digest}  requirements.html",
         "independent whiteboard client lifecycle requirements hash",
     )
-    require_text(
-        sources["native_watch"],
-        f"Requirements hash: {digest}",
-        "independent whiteboard client lifecycle native-watch hash",
-    )
 
 
 def validate_whiteboard_presentation_lifecycle_contract(sources):
@@ -21526,7 +21504,6 @@ def validate_whiteboard_presentation_lifecycle_contract(sources):
         ("Linux demand-driven redraw and exact retirement", "focused Linux check"),
         ("independent presentation lifecycle dispatch must occur exactly once", "focused dispatch check"),
         ("exact hardening requirements digest", "focused hardening digest check"),
-        ("exact native-watch requirements digest", "focused native-watch digest check"),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -21872,11 +21849,6 @@ def validate_whiteboard_presentation_lifecycle_contract(sources):
         sources["hardening"],
         f"{digest}  requirements.html",
         "independent whiteboard presentation requirements hash",
-    )
-    require_text(
-        sources["native_watch"],
-        f"Requirements hash: {digest}",
-        "independent whiteboard presentation native-watch hash",
     )
 
 
@@ -24745,10 +24717,6 @@ def validate_session_stream_generation_contract(sources):
             '("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "Appendix disposition"),',
             "focused normative-disposition mutation",
         ),
-        (
-            '("native_watch", "Requirements hash: ", "Requirements digest: ", "requirements digest"),',
-            "focused requirements-digest mutation",
-        ),
     ):
         require_text(mutation_inventory, text, label)
 
@@ -24978,12 +24946,6 @@ def validate_session_stream_generation_contract(sources):
         sources["hardening"],
         "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
         "session-stream generation hardening ledger source",
-    )
-    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
-    require_text(
-        sources["native_watch"],
-        f"Requirements hash: {digest}",
-        "session-stream generation requirements digest source",
     )
 
 
@@ -34536,11 +34498,6 @@ def validate_file_dialog_event_ownership_contract(sources):
         f"{digest}  requirements.html",
         "independent file-dialog requirements hash",
     )
-    require_text(
-        sources["native_watch"],
-        f"Requirements hash: {digest}",
-        "independent file-dialog native-watch hash",
-    )
 
 
 def validate_file_response_ownership_contract(sources):
@@ -34907,11 +34864,6 @@ def validate_file_response_ownership_contract(sources):
         sources["hardening"],
         f"{digest}  requirements.html",
         "independent file-response requirements hash",
-    )
-    require_text(
-        sources["native_watch"],
-        f"Requirements hash: {digest}",
-        "independent file-response native-watch hash",
     )
 
 
@@ -35481,7 +35433,6 @@ def validate_file_command_session_ownership_contract(sources):
         require_text(source, text, label)
     digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
     require_text(sources["hardening"], f"{digest}  requirements.html", "independent file-command requirements hash")
-    require_text(sources["native_watch"], f"Requirements hash: {digest}", "independent file-command native-watch hash")
 
 
 def validate_password_confirmation_comparison_contract(sources):
@@ -54512,12 +54463,6 @@ def run_source_mutations(sources):
             "changelog current release authority",
         ),
         (
-            "native_watch",
-            "Requirements hash:",
-            "Requirements digest:",
-            "native-codec requirements hash is stale",
-        ),
-        (
             "client_source",
             'Ok((stream, "TCP"))',
             'Ok(((stream, true, "TCP"), (0, String::new()), false))',
@@ -68462,12 +68407,6 @@ def run_source_mutations(sources):
             "focused web-return mutation",
         ),
         (
-            "session_stream_generation_verifier",
-            '("native_watch", "Requirements hash: ", "Requirements digest: ", "requirements digest"),',
-            '("native_watch", "Requirements hash: ", "Requirements hash: ", "requirements digest disabled"),',
-            "focused requirements-digest mutation",
-        ),
-        (
             "verify",
             "python3 scripts/verify-session-stream-generation.py --repo . --self-test",
             "true # session-stream generation shared gate disabled",
@@ -70467,17 +70406,12 @@ def run_source_mutations(sources):
                 baseline_digest = hashlib.sha256(
                     sources["requirements"].encode("utf-8")
                 ).hexdigest()
-                mutated["native_watch"], native_hash_count = re.subn(
-                    r"(?m)^Requirements hash: [0-9a-f]{64}$",
-                    f"Requirements hash: {digest}",
-                    mutated["native_watch"],
-                )
                 mutated["hardening"], hardening_hash_count = re.subn(
                     rf"(?m)^{re.escape(baseline_digest)}  requirements\.html$",
                     f"{digest}  requirements.html",
                     mutated["hardening"],
                 )
-                if native_hash_count != 1 or hardening_hash_count != 1:
+                if hardening_hash_count != 1:
                     raise VerificationError(
                         "requirements mutation fixture cannot synchronize derived hashes"
                     )
@@ -71912,7 +71846,6 @@ def main():
             "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
             "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
             "changelog": (repo / "CHANGELOG.md").read_text(encoding="utf-8"),
-            "native_watch": (repo / "docs/NATIVE-CODEC-WATCH.md").read_text(encoding="utf-8"),
             "cleanup": (repo / "scripts/cleanup.sh").read_text(encoding="utf-8"),
             "scripts_readme": (repo / "scripts/README.md").read_text(encoding="utf-8"),
             "cleanup_authority_verifier": (

@@ -34,16 +34,6 @@ require_literal() {
   fi
 }
 
-require_unique_line() {
-  local expected=$1
-  local file=$2
-  local count
-  count=$(awk -v expected="$expected" '$0 == expected { count++ } END { print count + 0 }' "$file")
-  if [ "$count" -ne 1 ]; then
-    fail "$file must contain exactly one line: $expected"
-  fi
-}
-
 json_string_value() {
   local key=$1
   local file=$2
@@ -123,7 +113,7 @@ run_self_test() {
   (
     cd "${NATIVE_CODEC_WATCH_ROOT:-$(dirname "$SCRIPT_PATH")/..}"
     cp --parents \
-      requirements.html vcpkg.json HARDENING_STATUS.md \
+      vcpkg.json HARDENING_STATUS.md \
       docs/NATIVE-CODEC-WATCH.md \
       scripts/native-codec-watch.sh scripts/pins.env scripts/online-fetch.sh \
       scripts/build-windows-vm.sh scripts/build-windows.ps1 \
@@ -146,8 +136,6 @@ run_self_test() {
   }
 
   expect_rejected open-advisory "printf '\\nStatus: OPEN ADVISORY\\n' >> docs/NATIVE-CODEC-WATCH.md"
-  expect_rejected codec-ledger-requirements-hash "sed -i 's/^Requirements hash:.*/Requirements hash: 0000000000000000000000000000000000000000000000000000000000000000/' docs/NATIVE-CODEC-WATCH.md"
-  expect_rejected hardening-ledger-requirements-hash "sed -i 's/^[0-9a-f]\\{64\\}  requirements[.]html$/0000000000000000000000000000000000000000000000000000000000000000  requirements.html/' HARDENING_STATUS.md"
   expect_rejected patch-byte "printf '\\n' >> res/vcpkg/libvpx/0005-cve-2026-1861.patch"
   expect_rejected windows-tool-manifest "sed -i '1s/dda8/dda9/' res/vcpkg/libvpx/windows-tools.sha512"
   expect_rejected powershell-acquisition "sed -i 's#PowerShell/releases/download/v7.2.24#PowerShell/releases/download/latest#' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
@@ -173,7 +161,6 @@ if [ "${1:-}" = "--self-test" ]; then
 fi
 
 require_file "$LEDGER"
-require_file requirements.html
 require_file vcpkg.json
 require_file scripts/pins.env
 require_file res/vcpkg/libvpx/vcpkg.json
@@ -207,8 +194,6 @@ if [ "$actual_baseline" != "$VCPKG_BASELINE" ]; then
   fail "vcpkg.json baseline '$actual_baseline' does not match scripts/pins.env VCPKG_BASELINE '$VCPKG_BASELINE'"
 fi
 
-requirements_sha=$(sha256sum requirements.html | awk '{print $1}')
-
 tmp_expected=$(mktemp)
 tmp_actual=$(mktemp)
 trap 'rm -f "$tmp_expected" "$tmp_actual"' EXIT
@@ -232,8 +217,6 @@ if grep -qE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json; then
 fi
 
 require_literal "Native-Codec-Watch-Version: 1" "$LEDGER"
-require_unique_line "Requirements hash: $requirements_sha" "$LEDGER"
-require_unique_line "$requirements_sha  requirements.html" HARDENING_STATUS.md
 require_literal "Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++" "$LEDGER"
 require_literal "This gate is not the decoder sandbox." "$LEDGER"
 require_literal "VCPKG_BASELINE: $VCPKG_BASELINE" "$LEDGER"

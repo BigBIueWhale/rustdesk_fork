@@ -87,7 +87,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "apple": "scripts/apple-conform-check.sh",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
-        "native_watch": "docs/NATIVE-CODEC-WATCH.md",
         "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
@@ -499,11 +498,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         f"{requirements_digest}  requirements.html",
         "hardening requirements digest",
-    )
-    require(
-        sources["native_watch"],
-        f"Requirements hash: {requirements_digest}",
-        "native-watch requirements digest",
     )
 
 

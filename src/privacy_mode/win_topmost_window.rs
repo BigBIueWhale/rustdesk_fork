@@ -1,4 +1,4 @@
-use super::{PrivacyMode, PrivacyModeConnectionOwner, INVALID_PRIVACY_MODE_CONN_ID};
+use super::{PrivacyMode, PrivacyModeConnectionOwner};
 use crate::{
     platform::windows::{get_current_process_session_id, get_user_token},
     privacy_mode::PrivacyModeState,
@@ -219,22 +219,47 @@ pub struct PrivacyModeImpl {
     handlers: WindowHandlers,
 }
 
-impl PrivacyMode for PrivacyModeImpl {
-    fn is_async_privacy_mode(&self) -> bool {
-        false
+struct TurnOnGuard<'a> {
+    privacy_mode: &'a mut PrivacyModeImpl,
+    owner: Option<PrivacyModeConnectionOwner>,
+    succeeded: bool,
+}
+
+impl TurnOnGuard<'_> {
+    fn ensure_activation_current(&self) -> ResultType<()> {
+        let Some(owner) = self.owner.as_ref() else {
+            bail!("privacy activation lost its exact pending owner");
+        };
+        owner.ensure_activation_current()
     }
 
+    fn rollback(&mut self) -> ResultType<()> {
+        let result = self.privacy_mode.turn_off_privacy(None);
+        if result.is_err() && self.privacy_mode.owner.is_none() {
+            self.privacy_mode.owner = self.owner.take();
+        }
+        self.succeeded = true;
+        result
+    }
+}
+
+impl Drop for TurnOnGuard<'_> {
+    fn drop(&mut self) {
+        if !self.succeeded {
+            if let Err(error) = self.rollback() {
+                log::error!("Failed to roll back incomplete window privacy mode: {error}");
+            }
+        }
+    }
+}
+
+impl PrivacyMode for PrivacyModeImpl {
     fn init(&self) -> ResultType<()> {
         Ok(())
     }
 
-    fn clear(&mut self) {
-        let conn_id = self
-            .owner
-            .as_ref()
-            .map(PrivacyModeConnectionOwner::conn_id)
-            .unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
-        allow_err!(self.turn_off_privacy(conn_id, None));
+    fn clear(&mut self) -> ResultType<()> {
+        self.turn_off_privacy(None)
     }
 
     fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
@@ -256,27 +281,48 @@ impl PrivacyMode for PrivacyModeImpl {
             );
         }
 
-        self.start()?;
+        owner.ensure_activation_current()?;
+        let mut guard = TurnOnGuard {
+            privacy_mode: self,
+            owner: Some(owner),
+            succeeded: false,
+        };
 
-        let hwnd = wait_find_privacy_hwnd(&self.handlers, 0)?;
+        guard.privacy_mode.start()?;
+        guard.ensure_activation_current()?;
+
+        let hwnd = wait_find_privacy_hwnd(&guard.privacy_mode.handlers, 0)?;
         if hwnd.is_null() {
             bail!("No privacy window created");
         }
+        guard.ensure_activation_current()?;
         super::win_input::hook()?;
+        guard.ensure_activation_current()?;
         unsafe {
             ShowWindow(hwnd as _, SW_SHOW);
         }
-        self.owner = Some(owner);
+        let Some(owner) = guard.owner.as_mut() else {
+            bail!("privacy activation lost its exact pending owner");
+        };
+        if let Err(activation_error) = owner.commit_activation() {
+            let rollback = guard.rollback();
+            return match rollback {
+                Ok(()) => Err(activation_error),
+                Err(rollback_error) => Err(hbb_common::anyhow::anyhow!(
+                    "{activation_error}; failed to roll back cancelled window privacy activation: {rollback_error}"
+                )),
+            };
+        }
+        let Some(owner) = guard.owner.take() else {
+            bail!("privacy activation lost its exact committed owner");
+        };
+        guard.privacy_mode.owner = Some(owner);
+        guard.succeeded = true;
         Ok(true)
     }
 
-    fn turn_off_privacy(
-        &mut self,
-        conn_id: i32,
-        state: Option<PrivacyModeState>,
-    ) -> ResultType<()> {
-        self.check_off_conn_id(conn_id)?;
-        super::win_input::unhook()?;
+    fn turn_off_privacy(&mut self, state: Option<PrivacyModeState>) -> ResultType<()> {
+        let unhook_result = super::win_input::unhook();
 
         match wait_find_privacy_hwnd(&self.handlers, 0) {
             Ok(hwnd) => unsafe {
@@ -290,18 +336,20 @@ impl PrivacyMode for PrivacyModeImpl {
             }
         }
 
-        if let Some(owner) = self.owner.take() {
-            if let Some(state) = state {
-                allow_err!(super::set_privacy_mode_state(
-                    &owner,
-                    state,
-                    PRIVACY_MODE_IMPL.to_string(),
-                    1_000
-                ));
+        if unhook_result.is_ok() {
+            if let Some(owner) = self.owner.take() {
+                if let Some(state) = state {
+                    allow_err!(super::set_privacy_mode_state(
+                        &owner,
+                        state,
+                        PRIVACY_MODE_IMPL.to_string(),
+                        1_000
+                    ));
+                }
             }
         }
 
-        Ok(())
+        unhook_result
     }
 
     #[inline]
@@ -482,12 +530,8 @@ impl PrivacyModeImpl {
 
 impl Drop for PrivacyModeImpl {
     fn drop(&mut self) {
-        if let Some(conn_id) = self
-            .owner
-            .as_ref()
-            .map(PrivacyModeConnectionOwner::conn_id)
-        {
-            allow_err!(self.turn_off_privacy(conn_id, None));
+        if self.owner.is_some() {
+            allow_err!(self.turn_off_privacy(None));
         }
     }
 }

@@ -9730,7 +9730,15 @@ impl Connection {
                                 "Check privacy mode failed: {}, turn off privacy mode.",
                                 &err_msg
                             );
-                            let _ = Self::turn_off_privacy_to_msg(self.inner.id, String::new());
+                            if let Some(Err(error)) = privacy_mode::turn_off_privacy_for_owner(
+                                self.inner.id,
+                                &self.cm_auth_token,
+                                None,
+                            ) {
+                                log::error!(
+                                    "Failed to roll back privacy mode after capture validation: {error}"
+                                );
+                            }
                             crate::common::make_privacy_mode_msg_with_details(
                                 back_notification::PrivacyModeState::PrvOnFailed,
                                 err_msg,
@@ -9746,10 +9754,11 @@ impl Connection {
                 }
                 Some(Err(e)) => {
                     log::error!("Failed to turn on privacy mode. {}", e);
-                    if privacy_mode::is_in_privacy_mode() {
-                        let _ = Self::turn_off_privacy_to_msg(
-                            privacy_mode::INVALID_PRIVACY_MODE_CONN_ID,
-                            String::new(),
+                    if let Some(Err(cleanup_error)) =
+                        privacy_mode::retire_privacy_for_owner(self.inner.id, &self.cm_auth_token)
+                    {
+                        log::error!(
+                            "Failed to retire exact privacy owner after activation error: {cleanup_error}"
                         );
                     }
                     crate::common::make_privacy_mode_msg_with_details(
@@ -9777,14 +9786,18 @@ impl Connection {
                 impl_key,
             )
         } else {
-            Self::turn_off_privacy_to_msg(self.inner.id, impl_key)
+            Self::turn_off_privacy_to_msg(self.inner.id, &self.cm_auth_token, impl_key)
         };
         self.send(msg_out).await;
     }
 
-    pub fn turn_off_privacy_to_msg(_conn_id: i32, impl_key: String) -> Message {
+    fn turn_off_privacy_to_msg(
+        conn_id: i32,
+        cm_auth_token: &str,
+        impl_key: String,
+    ) -> Message {
         Self::turn_off_privacy_result_to_msg(
-            privacy_mode::turn_off_privacy(_conn_id, None),
+            privacy_mode::turn_off_privacy_for_owner(conn_id, cm_auth_token, None),
             impl_key,
         )
     }
@@ -12472,17 +12485,20 @@ impl Drop for Connection {
         // run-loop — and so LOST on cancellation (a dropped session could leave the physical
         // console BLANKED, a local-security regression; and the `Server`'s own connection map
         // diverged from the RAII-pruned globals) — runs HERE in `Drop`, which executes on BOTH
-        // normal exit AND cancellation (the run-loop future being dropped at its `.await`). Every
-        // action is synchronous and Drop-safe: the server lock is taken with `if let Ok` (never
-        // `.unwrap()` — a poisoned-lock panic in Drop would abort), and each effect is best-effort.
+        // normal exit AND cancellation (the run-loop future being dropped at its `.await`). These
+        // effects are synchronous so they survive future cancellation. Exact privacy teardown can
+        // still wait on the global privacy transaction/native restore path; moving that work off a
+        // Tokio Drop context remains explicitly open in HARDENING_STATUS.md. The server lock is
+        // taken with `if let Ok` (never `.unwrap()` — a poisoned-lock panic in Drop would abort),
+        // and each effect is best-effort.
         let id = self.inner.id();
         if let Some(tx) = self.inner.tx.as_ref() {
             video_service::cancel_take_screenshot(id, tx);
         }
-        if let Some(video_privacy_conn_id) = privacy_mode::get_privacy_mode_conn_id() {
-            if video_privacy_conn_id == id {
-                let _ = Self::turn_off_privacy_to_msg(id, String::new());
-            }
+        if let Some(Err(error)) =
+            privacy_mode::retire_privacy_for_owner(id, &self.cm_auth_token)
+        {
+            log::error!("Failed to retire exact connection privacy owner: {error}");
         }
         video_service::retire_video_frame_connection(id);
         if let Some(s) = self.server.upgrade() {
@@ -12847,7 +12863,9 @@ mod raii {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 display_service::restore_resolutions();
                 #[cfg(windows)]
-                let _ = virtual_display_manager::reset_all();
+                if let Err(error) = virtual_display_manager::reset_all() {
+                    log::error!("Failed to reset virtual displays after final Remote exit: {error}");
+                }
                 // R-X12: scrap::wayland::pipewire::try_close_session() removed — the Wayland portal
                 // capture session is compiled out (X11-pinned, is_x11()==true).
             }

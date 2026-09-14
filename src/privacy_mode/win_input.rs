@@ -223,10 +223,9 @@ pub extern "system" fn privacy_mode_hook_keyboard(
                     let key = LOBYTE((*ks).vkCode as _);
                     if cltr_down && (key == 'p' as u8 || key == 'P' as u8) {
                         // Ctrl + P is pressed, turn off privacy mode
-                        if let Some(Err(e)) = super::turn_off_privacy(
-                            super::INVALID_PRIVACY_MODE_CONN_ID,
-                            Some(super::PrivacyModeState::OffByPeer),
-                        ) {
+                        if let Some(Err(e)) = super::force_turn_off_privacy(Some(
+                            super::PrivacyModeState::OffByPeer,
+                        )) {
                             log::error!("Failed to off_privacy {}", e);
                         }
                     }

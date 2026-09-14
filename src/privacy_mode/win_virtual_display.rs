@@ -1,6 +1,5 @@
 use super::{
-    PrivacyMode, PrivacyModeConnectionOwner, PrivacyModeState, INVALID_PRIVACY_MODE_CONN_ID,
-    NO_PHYSICAL_DISPLAYS,
+    PrivacyMode, PrivacyModeConnectionOwner, PrivacyModeState, NO_PHYSICAL_DISPLAYS,
 };
 use crate::virtual_display_manager::MonitorMode;
 use crate::{platform::windows::reg_display_settings, virtual_display_manager};
@@ -43,12 +42,13 @@ pub struct PrivacyModeImpl {
     owner: Option<PrivacyModeConnectionOwner>,
     displays: Vec<Display>,
     virtual_displays: Vec<Display>,
-    virtual_displays_added: Vec<u32>,
+    created_virtual_display_count: usize,
     reg_recoveries: Vec<reg_display_settings::RegRecovery>,
 }
 
 struct TurnOnGuard<'a> {
     privacy_mode: &'a mut PrivacyModeImpl,
+    owner: Option<PrivacyModeConnectionOwner>,
     succeeded: bool,
 }
 
@@ -69,10 +69,28 @@ impl<'a> DerefMut for TurnOnGuard<'a> {
 impl<'a> Drop for TurnOnGuard<'a> {
     fn drop(&mut self) {
         if !self.succeeded {
-            self.privacy_mode
-                .turn_off_privacy(INVALID_PRIVACY_MODE_CONN_ID, None)
-                .ok();
+            if let Err(error) = self.rollback() {
+                log::error!("Failed to roll back incomplete virtual-display privacy mode: {error}");
+            }
         }
+    }
+}
+
+impl TurnOnGuard<'_> {
+    fn ensure_activation_current(&self) -> ResultType<()> {
+        let Some(owner) = self.owner.as_ref() else {
+            bail!("privacy activation lost its exact pending owner");
+        };
+        owner.ensure_activation_current()
+    }
+
+    fn rollback(&mut self) -> ResultType<()> {
+        let result = self.privacy_mode.turn_off_privacy(None);
+        if result.is_err() && self.privacy_mode.owner.is_none() {
+            self.privacy_mode.owner = self.owner.take();
+        }
+        self.succeeded = true;
+        result
     }
 }
 
@@ -83,7 +101,7 @@ impl PrivacyModeImpl {
             owner: None,
             displays: Vec::new(),
             virtual_displays: Vec::new(),
-            virtual_displays_added: Vec::new(),
+            created_virtual_display_count: 0,
             reg_recoveries: Vec::new(),
         }
     }
@@ -152,13 +170,14 @@ impl PrivacyModeImpl {
         }
     }
 
-    fn restore_plug_out_monitor(&mut self) {
-        let _ = virtual_display_manager::plug_out_monitor_indices(
-            &self.virtual_displays_added,
+    fn restore_plug_out_monitor(&mut self) -> ResultType<()> {
+        virtual_display_manager::plug_out_monitor_count(
+            self.created_virtual_display_count,
             true,
             false,
-        );
-        self.virtual_displays_added.clear();
+        )?;
+        self.created_virtual_display_count = 0;
+        Ok(())
     }
 
     #[inline]
@@ -333,25 +352,31 @@ impl PrivacyModeImpl {
         }]
     }
 
-    // This function will wait at most 6 seconds for the virtual displays to be ready.
-    // It's ok to wait, because:
-    // 1. A new thread is created to handle the async privacy mode.
-    // 2. The user is usually not in a hurry to turn on the privacy mode.
-    pub fn ensure_virtual_display(&mut self, is_async_mode: bool) -> ResultType<()> {
+    // After the bounded plug-in/resolution operation, the owned privacy-activation worker may wait
+    // up to six additional seconds for the Amyuni display to appear. This blocking readiness path
+    // never runs on a Tokio worker thread.
+    pub fn ensure_virtual_display(&mut self, wait_for_driver: bool) -> ResultType<()> {
         if self.virtual_displays.is_empty() {
-            let displays =
+            let created_count =
                 virtual_display_manager::plug_in_peer_request(vec![Self::default_display_modes()])?;
-            if is_async_mode {
+            self.created_virtual_display_count = self
+                .created_virtual_display_count
+                .checked_add(created_count)
+                .ok_or_else(|| {
+                    hbb_common::anyhow::anyhow!("virtual display creation count overflow")
+                })?;
+            if wait_for_driver {
                 thread::sleep(Duration::from_secs(1));
             }
             self.set_displays();
             // No physical displays, no need to use the privacy mode.
             if self.displays.is_empty() {
-                virtual_display_manager::plug_out_monitor_indices(&displays, false, false)?;
+                self.restore_plug_out_monitor()?;
+                self.virtual_displays.clear();
                 bail!(NO_PHYSICAL_DISPLAYS);
             }
 
-            if is_async_mode {
+            if wait_for_driver {
                 let now = std::time::Instant::now();
                 while self.virtual_displays.is_empty()
                     && now.elapsed() < Duration::from_millis(5000)
@@ -360,8 +385,6 @@ impl PrivacyModeImpl {
                     self.set_displays();
                 }
             }
-
-            self.virtual_displays_added.extend(displays);
         }
 
         Ok(())
@@ -403,29 +426,28 @@ impl PrivacyModeImpl {
         Ok(())
     }
 
-    fn restore(&mut self) {
-        Self::restore_displays(&self.displays);
-        Self::restore_displays(&self.virtual_displays);
-        allow_err!(Self::commit_change_display(0));
+    fn restore(&mut self) -> ResultType<()> {
+        if self.displays.is_empty()
+            && self.virtual_displays.is_empty()
+            && self.created_virtual_display_count == 0
+        {
+            return Ok(());
+        }
+
+        Self::restore_displays(&self.displays)?;
+        Self::restore_displays(&self.virtual_displays)?;
+        Self::commit_change_display(0)?;
+        if self.created_virtual_display_count != 0 {
+            self.restore_plug_out_monitor()?;
+        }
         self.displays.clear();
         self.virtual_displays.clear();
-        let is_virtual_display_added = self.virtual_displays_added.len() > 0;
-        if is_virtual_display_added {
-            self.restore_plug_out_monitor();
-        } else {
-            // https://github.com/rustdesk/rustdesk/pull/12114#issuecomment-2983054370
-            // No virtual displays added, we need to change the display combination to force the display settings to be reloaded.
-            // This function changes the user behavior of the virtual displays.
-            // But it makes the privacy mode more stable.
-            // No need to restore the virtual displays. It's easy to notice that the virtual displays are plugged out.
-            let _ = virtual_display_manager::plug_out_monitor(-1, true, false);
-
-            // We can't replug the virtual dislays here.
-            // TODO: plug out + plug in the virtual displays (`IDD_IMPL_AMYUNI`) in a short time makes the server side crash.
-        }
+        self.created_virtual_display_count = 0;
+        Ok(())
     }
 
-    fn restore_displays(displays: &[Display]) {
+    fn restore_displays(displays: &[Display]) -> ResultType<()> {
+        let mut failures = Vec::new();
         for display in displays {
             unsafe {
                 let mut dm = display.dm.clone();
@@ -434,34 +456,39 @@ impl PrivacyModeImpl {
                 } else {
                     CDS_NORESET | CDS_UPDATEREGISTRY
                 };
-                ChangeDisplaySettingsExW(
+                let rc = ChangeDisplaySettingsExW(
                     display.name.as_ptr(),
                     &mut dm,
                     std::ptr::null_mut(),
                     flags,
                     std::ptr::null_mut(),
                 );
+                if rc != DISP_CHANGE_SUCCESSFUL {
+                    failures.push(format!(
+                        "device {:?}: {}",
+                        String::from_utf16_lossy(&display.name),
+                        Self::change_display_settings_ex_err_msg(rc),
+                    ));
+                }
             }
         }
+        if !failures.is_empty() {
+            bail!(
+                "Failed to stage restored display settings: {}",
+                failures.join("; ")
+            );
+        }
+        Ok(())
     }
 }
 
 impl PrivacyMode for PrivacyModeImpl {
-    fn is_async_privacy_mode(&self) -> bool {
-        virtual_display_manager::is_amyuni_idd()
-    }
-
     fn init(&self) -> ResultType<()> {
         Ok(())
     }
 
-    fn clear(&mut self) {
-        let conn_id = self
-            .owner
-            .as_ref()
-            .map(PrivacyModeConnectionOwner::conn_id)
-            .unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
-        allow_err!(self.turn_off_privacy(conn_id, None));
+    fn clear(&mut self) -> ResultType<()> {
+        self.turn_off_privacy(None)
     }
 
     fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
@@ -480,13 +507,16 @@ impl PrivacyMode for PrivacyModeImpl {
             bail!(NO_PHYSICAL_DISPLAYS);
         }
 
-        let is_async_mode = self.is_async_privacy_mode();
+        owner.ensure_activation_current()?;
+        let waits_for_driver = virtual_display_manager::is_amyuni_idd();
         let mut guard = TurnOnGuard {
             privacy_mode: self,
+            owner: Some(owner),
             succeeded: false,
         };
 
-        guard.ensure_virtual_display(is_async_mode)?;
+        guard.ensure_virtual_display(waits_for_driver)?;
+        guard.ensure_activation_current()?;
         if guard.virtual_displays.is_empty() {
             log::debug!("No virtual displays");
             bail!("No virtual displays.");
@@ -494,58 +524,83 @@ impl PrivacyMode for PrivacyModeImpl {
 
         let reg_connectivity_1 = reg_display_settings::read_reg_connectivity()?;
         let primary_display_name = guard.set_primary_display()?;
+        guard.ensure_activation_current()?;
         guard.disable_physical_displays()?;
+        guard.ensure_activation_current()?;
         Self::commit_change_display(CDS_RESET)?;
+        guard.ensure_activation_current()?;
         // Explicitly set the resolution(virtual display) to 1920x1080.
         allow_err!(crate::platform::change_resolution(
             &primary_display_name,
             1920,
             1080
         ));
+        guard.ensure_activation_current()?;
         let reg_connectivity_2 = reg_display_settings::read_reg_connectivity()?;
 
         guard.reg_recoveries =
             reg_display_settings::diff_recent_connectivity(reg_connectivity_1, reg_connectivity_2)?;
 
         // OpenInputDesktop and block the others' input ?
-        guard.owner = Some(owner);
+        guard.ensure_activation_current()?;
+        super::win_input::hook()?;
+        guard.ensure_activation_current()?;
+        let Some(owner) = guard.owner.as_mut() else {
+            bail!("privacy activation lost its exact pending owner");
+        };
+        if let Err(activation_error) = owner.commit_activation() {
+            let rollback = guard.rollback();
+            return match rollback {
+                Ok(()) => Err(activation_error),
+                Err(rollback_error) => Err(hbb_common::anyhow::anyhow!(
+                    "{activation_error}; failed to roll back cancelled virtual-display privacy activation: {rollback_error}"
+                )),
+            };
+        }
+        let Some(owner) = guard.owner.take() else {
+            bail!("privacy activation lost its exact committed owner");
+        };
+        guard.privacy_mode.owner = Some(owner);
         guard.succeeded = true;
-
-        allow_err!(super::win_input::hook());
 
         Ok(true)
     }
 
-    fn turn_off_privacy(
-        &mut self,
-        conn_id: i32,
-        state: Option<PrivacyModeState>,
-    ) -> ResultType<()> {
-        self.check_off_conn_id(conn_id)?;
-        super::win_input::unhook()?;
+    fn turn_off_privacy(&mut self, state: Option<PrivacyModeState>) -> ResultType<()> {
+        let mut failures = Vec::new();
+        if let Err(error) = super::win_input::unhook() {
+            failures.push(format!("failed to stop privacy input hook: {error}"));
+        }
         let _tmp_ignore_changed_holder = crate::display_service::temp_ignore_displays_changed();
-        self.restore();
+        if let Err(error) = self.restore() {
+            failures.push(format!("failed to restore privacy displays: {error}"));
+        }
         // We need to force restore the registry connectivity.
         // This is because the registry connection may be changed by `self.restore()`, but will not be fully restored.
-        let reg_recoveries = std::mem::take(&mut self.reg_recoveries);
-        if !reg_recoveries.is_empty() {
-            allow_err!(reg_display_settings::restore_reg_connectivity(
-                &reg_recoveries
-            ));
-        }
-
-        if let Some(owner) = self.owner.take() {
-            if let Some(state) = state {
-                allow_err!(super::set_privacy_mode_state(
-                    &owner,
-                    state,
-                    PRIVACY_MODE_IMPL.to_string(),
-                    1_000
-                ));
+        if !self.reg_recoveries.is_empty() {
+            match reg_display_settings::restore_reg_connectivity(&self.reg_recoveries) {
+                Ok(()) => self.reg_recoveries.clear(),
+                Err(error) => failures.push(format!(
+                    "failed to restore privacy display registry connectivity: {error}"
+                )),
             }
         }
 
-        Ok(())
+        if failures.is_empty() {
+            if let Some(owner) = self.owner.take() {
+                if let Some(state) = state {
+                    allow_err!(super::set_privacy_mode_state(
+                        &owner,
+                        state,
+                        PRIVACY_MODE_IMPL.to_string(),
+                        1_000
+                    ));
+                }
+            }
+            Ok(())
+        } else {
+            bail!("Privacy teardown incomplete: {}", failures.join("; "))
+        }
     }
 
     #[inline]
@@ -561,12 +616,8 @@ impl PrivacyMode for PrivacyModeImpl {
 
 impl Drop for PrivacyModeImpl {
     fn drop(&mut self) {
-        if let Some(conn_id) = self
-            .owner
-            .as_ref()
-            .map(PrivacyModeConnectionOwner::conn_id)
-        {
-            allow_err!(self.turn_off_privacy(conn_id, None));
+        if self.owner.is_some() {
+            allow_err!(self.turn_off_privacy(None));
         }
     }
 }

@@ -22,43 +22,41 @@ impl PrivacyModeImpl {
 }
 
 impl PrivacyMode for PrivacyModeImpl {
-    fn is_async_privacy_mode(&self) -> bool {
-        false
-    }
-
     fn init(&self) -> ResultType<()> {
         Ok(())
     }
 
-    fn clear(&mut self) {
-        unsafe {
-            MacSetPrivacyMode(false);
-        }
-        self.owner = None;
+    fn clear(&mut self) -> ResultType<()> {
+        self.turn_off_privacy(None)
     }
 
-    fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
+    fn turn_on_privacy(&mut self, mut owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
         if self.check_on_owner(&owner)? {
             return Ok(true);
         }
+        owner.ensure_activation_current()?;
         let success = unsafe { MacSetPrivacyMode(true) };
         if !success {
             return Err(anyhow!("Failed to turn on privacy mode"));
+        }
+        if let Err(activation_error) = owner.commit_activation() {
+            if !unsafe { MacSetPrivacyMode(false) } {
+                self.owner = Some(owner);
+                return Err(anyhow!(
+                    "{activation_error}; failed to roll back cancelled macOS privacy activation"
+                ));
+            }
+            return Err(activation_error);
         }
         self.owner = Some(owner);
         Ok(true)
     }
 
-    fn turn_off_privacy(
-        &mut self,
-        conn_id: i32,
-        _state: Option<PrivacyModeState>,
-    ) -> ResultType<()> {
+    fn turn_off_privacy(&mut self, _state: Option<PrivacyModeState>) -> ResultType<()> {
         // Note: The `_state` parameter is intentionally ignored on macOS.
         // On Windows, it's used to notify the connection manager about privacy mode state changes
         // (see win_topmost_window.rs). macOS currently has a simpler single-mode implementation
         // without the need for such cross-component state synchronization.
-        self.check_off_conn_id(conn_id)?;
         let success = unsafe { MacSetPrivacyMode(false) };
         if !success {
             return Err(anyhow!("Failed to turn off privacy mode"));
@@ -80,6 +78,8 @@ impl Drop for PrivacyModeImpl {
     fn drop(&mut self) {
         // Use the same cleanup logic as other code paths to keep owner state consistent
         // and ensure all cleanup is centralized in one place.
-        self.clear();
+        if let Err(error) = self.clear() {
+            hbb_common::log::error!("Failed to clear macOS privacy mode during drop: {error}");
+        }
     }
 }

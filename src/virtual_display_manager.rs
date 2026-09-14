@@ -57,17 +57,17 @@ pub fn plug_out_monitor(index: i32, force_all: bool, force_one: bool) -> ResultT
     amyuni_idd::plug_out_monitor(index, force_all, force_one)
 }
 
-pub fn plug_in_peer_request(_modes: Vec<Vec<MonitorMode>>) -> ResultType<Vec<u32>> {
+pub fn plug_in_peer_request(_modes: Vec<Vec<MonitorMode>>) -> ResultType<usize> {
     amyuni_idd::plug_in_monitor()?;
-    Ok(vec![0])
+    Ok(1)
 }
 
-pub fn plug_out_monitor_indices(
-    indices: &[u32],
+pub fn plug_out_monitor_count(
+    count: usize,
     force_all: bool,
     force_one: bool,
 ) -> ResultType<()> {
-    for _idx in indices.iter() {
+    for _ in 0..count {
         amyuni_idd::plug_out_monitor(0, force_all, force_one)?;
     }
     Ok(())
@@ -440,10 +440,17 @@ pub mod amyuni_idd {
     }
 
     pub fn reset_all() -> ResultType<()> {
-        let _ = crate::privacy_mode::turn_off_privacy(0, None);
-        let _ = plug_out_monitor(super::IDD_PLUG_OUT_ALL_INDEX, true, false);
+        let privacy_result = crate::privacy_mode::force_turn_off_privacy(None);
+        let monitor_result = plug_out_monitor(super::IDD_PLUG_OUT_ALL_INDEX, true, false);
         *LAST_PLUG_IN_HEADLESS_TIME.lock().unwrap() = None;
-        Ok(())
+        match (privacy_result, monitor_result) {
+            (Some(Err(privacy_error)), Err(monitor_error)) => Err(anyhow!(
+                "privacy teardown failed: {privacy_error}; virtual-monitor teardown also failed: {monitor_error}"
+            )),
+            (Some(Err(error)), _) => Err(error),
+            (_, Err(error)) => Err(error),
+            _ => Ok(()),
+        }
     }
 
     #[inline]
@@ -465,8 +472,27 @@ pub mod amyuni_idd {
                 }
                 std::thread::sleep(Duration::from_millis(30));
             }
+            if get_monitor_count() == c1 {
+                if add {
+                    // DeviceIoControl accepted the creation request, so account for the owned
+                    // side effect even when the driver has not presented it yet. The privacy
+                    // transaction performs its longer readiness wait and can then roll this
+                    // count back; returning an error here would lose cleanup ownership.
+                    log::warn!(
+                        "Virtual display creation was accepted but not observed within {} ms",
+                        wait_timeout.as_millis()
+                    );
+                } else {
+                    return Err(win_device::DeviceError::Raw(format!(
+                        "virtual display removal was not observed within {} ms",
+                        wait_timeout.as_millis()
+                    )));
+                }
+            }
         }
-        // No need to consider concurrency here.
+        // This is only process-local accounting, not a stable driver resource identity. A removal
+        // is released only after its count transition is observed; an accepted creation remains
+        // owned even if presentation is delayed so later cleanup authority is not lost.
         if add {
             // If the monitor is plugged in, increase the count.
             // Though there's already a check of `VIRTUAL_DISPLAY_MAX_COUNT`, it's still better to check here for double ensure.
@@ -512,10 +538,13 @@ pub mod amyuni_idd {
             }
         }
         // Workaround for the issue that we can't set the default the resolution.
-        if let Ok(old_connectivity_old) = reg_connectivity_old {
-            std::thread::spawn(move || {
-                try_reset_resolution_on_first_plug_in(old_connectivity_old.len(), 1920, 1080);
-            });
+        match reg_connectivity_old {
+            Ok(old_connectivity) => {
+                try_reset_resolution_on_first_plug_in(old_connectivity.len(), 1920, 1080)
+            }
+            Err(error) => log::warn!(
+                "Skipping first-plug resolution reset because the baseline connectivity read failed: {error}"
+            ),
         }
 
         Ok(())
@@ -533,12 +562,21 @@ pub mod amyuni_idd {
                     for name in
                         windows::get_device_names(Some(super::AMYUNI_IDD_DEVICE_STRING)).iter()
                     {
-                        crate::platform::change_resolution(&name, width, height).ok();
+                        if let Err(error) =
+                            crate::platform::change_resolution(name, width, height)
+                        {
+                            log::warn!(
+                                "Failed to reset first-plug virtual display resolution for {name}: {error}"
+                            );
+                        }
                     }
-                    break;
+                    return;
                 }
             }
         }
+        log::warn!(
+            "Virtual display connectivity did not settle before the bounded resolution reset ended"
+        );
     }
 
     pub fn plug_in_headless() -> ResultType<()> {
@@ -567,14 +605,15 @@ pub mod amyuni_idd {
             bail!("Failed to install driver.");
         }
 
-        if get_monitor_count() == VIRTUAL_DISPLAY_MAX_COUNT {
+        if get_monitor_count() >= VIRTUAL_DISPLAY_MAX_COUNT {
             bail!("There are already {VIRTUAL_DISPLAY_MAX_COUNT} monitors plugged in.");
         }
 
-        plug_in_monitor_(true, is_async, None)
+        plug_in_monitor_(true, is_async, Some(Duration::from_millis(3_000)))
     }
 
-    // `index` the display index to plug out. -1 means plug out all.
+    // Amyuni's control code does not select a stable display identity. Any nonnegative `index`
+    // requests one removal; -1 requests removal of all process-counted displays.
     // `force_all` is used to forcibly plug out all virtual displays.
     // `force_one` is used to forcibly plug out one virtual display managed by other processes
     //             if there're no virtual displays managed by RustDesk.
@@ -634,8 +673,17 @@ pub mod amyuni_idd {
             to_plug_out_count = 1;
         }
 
-        for _i in 0..to_plug_out_count {
-            let _ = plug_monitor_(false, None);
+        let mut failures = Vec::new();
+        for _ in 0..to_plug_out_count {
+            if let Err(error) = plug_monitor_(false, Some(Duration::from_millis(3_000))) {
+                failures.push(error.to_string());
+            }
+        }
+        if !failures.is_empty() {
+            bail!(
+                "one or more virtual displays could not be unplugged: {}",
+                failures.join("; ")
+            );
         }
         Ok(())
     }

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-131ec7584469faf501c0536a51918c8748555dccb7b97522f3b683507b0d8cf1  requirements.html
+ff227b1e11b51aee764daaa2ccb98bfed6ff21e4a480eb11cb48561bde8a7722  requirements.html
 ```
 
 ## Current Verdict
@@ -12607,7 +12607,7 @@ shape is not promoted to native or lifecycle proof.
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
 **CORE REGISTRY, SNAPSHOT RECONCILIATION, AND CM FILE-LOG SOURCE IMPLEMENTED;
-OTHER SIDE-EFFECT LIFETIME WORK REMAINS; NINE EXECUTABLE RUST REGRESSIONS AND FIVE
+OTHER SIDE-EFFECT LIFETIME WORK REMAINS; TWELVE EXECUTABLE RUST REGRESSIONS AND FIVE
 RELEVANT DART TESTS RETAINED OR AUTHORED;
 ANDROID RUST FIXTURES ARE NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
 `CmClientRegistry` owns a checked process-lifetime
@@ -12659,11 +12659,55 @@ fails closed if called from a Tokio runtime thread. Teardown sends a distinct
 the live token, and routes a token-free response only to a current registry entry retaining
 that same token. A validator-approved stale
 token therefore cannot cross a same-ID CM replacement. The old bare-ID
-`PrivacyModeState` request and multi-client broadcast helper are deleted. The existing
-unjoined, timeout-returning Windows asynchronous privacy activation thread remains a
-separate open lifetime issue:
-this callback correction does not prove that a timed-out activation cannot complete after
-its connection owner has retired.
+`PrivacyModeState` request and multi-client broadcast helper are deleted. Privacy activation
+now has one blocking-worker path for every implementation instead of choosing whether to
+block the Tokio worker from the previously selected implementation. A one-permit admission gate
+allows only one activation thread through the complete registered-and-joined lifetime, while one
+process-lifetime reaper retains and joins its exact handle. The worker cannot begin native work
+until that handoff succeeds. Each physical implementation reaches a two-phase
+prepare/commit gate before it publishes the owner; the 7.5-second response deadline sends a
+cancel decision and then waits for the owned operation to roll back and drain rather than
+returning while it can commit later. A connection-future drop also publishes cancellation through
+a shared activation flag, and each implementation checks that flag before and between native
+mutation stages; a worker already inside one opaque native call cannot be interrupted by this
+source mechanism, but it must stop at the next checkpoint and roll back. Dropping the connection-
+side future also closes the final commit gate, so a worker that reaches it afterward must roll back.
+Connection-driven off, capture-validation rollback, and `Connection::drop` now require the exact
+ID and CM token; only the
+physical Ctrl+P escape and final-Remote machine reset retain explicitly named force-off
+authority. Drop/activation-error retirement is idempotent when a different exact owner is current,
+so routine cleanup neither revokes nor log-amplifies an incumbent connection. An activation
+refusal no longer force-disables an incumbent connection's privacy resource. Unsupported nonempty
+implementation names fail instead of silently selecting a
+fallback. Virtual-display and window implementations attempt physical rollback before a
+cancelled transaction reports completion, and teardown continues display/window restoration
+even if keyboard-unhook signaling fails. Virtual-display teardown now checks display staging,
+display commit, monitor removal, and registry recovery instead of discarding their results; it
+retains the relevant snapshots for retry until each class succeeds and aggregates simultaneous
+failures. The inherited fallback that force-unplugged every pre-existing virtual display when this
+activation had created none is removed. The Amyuni interface does not expose stable monitor
+identities, so the former vector of fake zero-valued "indices" is replaced by an honest count that
+is recorded immediately after this activation's plug-in succeeds; teardown requests exactly that
+many removals and none when the activation created none. A returned rollback/unhook failure retains
+the pending exact owner instead of erasing cleanup authority; the activation-error path retries
+teardown only for its own exact ID/token.
+Switching implementations now refuses to replace the old implementation when its reported
+teardown fails. The first-plug resolution workaround no longer launches an unretained child thread;
+its bounded poll completes synchronously inside the same calling operation and logs each resolution
+failure. Non-privacy virtual-display callers still need installed proof that this blocking work is
+off their Tokio/UI execution paths.
+
+This is source and model closure for activation publication, not native Windows display
+evidence. The low-level keyboard-hook worker is still a separately spawned worker whose
+thread handle is not retained/joined, and native display/registry APIs may still have target-
+specific blocking and rollback failure semantics. In particular, Amyuni exposes count-based
+plug/unplug rather than resource identities, so cross-process driver churn can make ownership
+ambiguous and must be exercised/refused correctly in the installed race matrix. Exact privacy
+teardown is also still synchronous:
+`Connection::drop` can wait on the global privacy mutex and native restore work on its caller's
+thread. Those lifetimes plus real cancellation, disconnect, session-change, driver-delay/failure,
+restore-failure, and resource/latency
+behavior remain open for an exact installed Windows artifact.
 
 The Android CM/file bridge now runs as one retained child future of the exact network
 `Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
@@ -12687,15 +12731,22 @@ already completed filesystem effect as unperformed.
 Five Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
 disconnected replacement, generation-exhaustion no-commit, and exact-owner file-log publication
 with stale/unknown refusal. Another focused unit regression proves that a privacy resource rejects
-same-ID replacement with a different connection token. The callback regression first rejects a
+same-ID replacement with a different connection token. Three additional Tokio regressions execute
+the activation worker/reaper rendezvous: successful prepare/commit, deadline cancellation that
+cannot return before the held worker drains, and connection-future cancellation that makes a late
+commit fail. The callback regression first rejects a
 stale token at the registry
 egress edge, then drives the valid one-shot callback over the real framed runner. Three
 additional focused Rust tests drive the actual Android CM future through one-shot terminal
 completion, direct future cancellation after admission, and same-ID service-generation
 supersession followed by a real `CreateDir` command. The last requires predecessor
 termination with no directory effect, followed by exact successor cleanup.
-The shared runner retains
-`cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
+The shared runner uses
+`cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never -- --test-threads=1`
+because these regressions intentionally exercise one process-global activation admission gate.
+The pinned offline Windows artifact lane now runs the same filter serially before packaging, so the
+Windows implementations must compile with the exact-owner API and the lifecycle regressions must
+execute on that target; this wiring is not a claim that the lane has run for the current source.
 `flutter/test/server_model_test.dart` retains registry-generation JSON serialization and adds two
 state regressions for same-count replacement/disconnect/voice repair, exact-owner UI-state retention,
 unchanged-snapshot inertness, canonical generation order, and whole-snapshot duplicate owner refusal.
@@ -12711,7 +12762,7 @@ registry retirement without asserting documentation text. The duplicate workspac
 validator and the unrelated CM/listener checks formerly embedded in the Android voice
 and media source validators are deleted; none of those source checks executed these paths.
 
-The new Rust and Dart cases and the three child-future tests have not been executed against the
+The activation, child-future, registry, file-owner, and Dart cases have not been executed against the
 current dependency closure: the fixed rootless Docker socket, repository Cargo vendor closure,
 repository Flutter cache, and repository Windows image are absent. Host execution was not used as
 a fallback, and static review is not their result. Required evidence remains exact Rust and Dart

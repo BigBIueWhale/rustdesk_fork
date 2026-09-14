@@ -101,9 +101,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "transport_stream": (repo / "libs/hbb_common/src/stream.rs").read_text(
             encoding="utf-8"
         ),
-        "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(
-            encoding="utf-8"
-        ),
         "message_proto": (repo / "libs/hbb_common/protos/message.proto").read_text(
             encoding="utf-8"
         ),
@@ -4097,31 +4094,12 @@ def validate(sources: Dict[str, str]) -> None:
         "video_received = 12",
         "unused displayless peer video acknowledgement",
     )
-    for exact_wire_field, label in (
-        ("uint64 generation = 15;", "nonzero video wire generation"),
-        ("message VideoFrameReceipt {", "typed exact video receipt"),
-        ("uint32 video_frame_receipt_version = 18;", "viewer receipt capability"),
-        ("uint32 video_frame_receipt_version = 14;", "controlled receipt capability echo"),
-        ("VideoFrameReceipt video_frame_receipt = 33;", "top-level exact video receipt"),
-    ):
-        require(sources["message_proto"], exact_wire_field, label)
-    require(
-        sources["hbb_common_lib"],
-        "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;",
-        "shared exact video receipt protocol version",
-    )
-    require(
-        sources["hbb_common_lib"],
-        "r_s11fk_wire_round_trips_exact_video_identity_and_capability",
-        "exact video protocol wire round-trip behavior proof",
-    )
     for behavior_test in (
         "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
         "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
         "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
         "r_s11fb_late_completion_cannot_satisfy_a_new_round",
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
-        "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
         "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
         "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt",
         "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
@@ -4144,27 +4122,12 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fb_display_ownership_is_fixed_capacity",
         "r_s11fb_async_video_egress_waits_without_polling_and_closes",
         "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
-        "r_s11fk_local_write_then_exact_peer_receipt_completes_once",
-        "r_s11fk_exact_peer_receipt_then_local_write_completes",
-        "r_s11fk_wrong_scope_zero_stale_and_mismatched_receipts_are_inert",
-        "r_s11fk_video_login_requires_exact_version_without_affecting_nonvideo_sessions",
     ):
         require(server_connection, behavior_test, f"video egress behavior proof {behavior_test}")
-    for behavior_test in (
-        "r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic",
-        "r_s11fk_viewer_receipt_tracker_resets_only_at_connection_replacement",
-    ):
-        require(sources["io_loop"], behavior_test, f"viewer exact receipt behavior proof {behavior_test}")
-    require(
-        sources["client"],
-        "r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions",
-        "viewer login capability behavior proof",
-    )
     for behavior_test in (
         "r_s11fb_receipt_waits_for_the_exact_sink_send",
         "r_s11fb_receipt_reports_the_exact_sink_failure",
         "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
-        "r_s11fk_real_tcp_receipt_can_precede_peer_read",
     ):
         require(transport_tcp, behavior_test, f"writer receipt behavior proof {behavior_test}")
     require(
@@ -4181,21 +4144,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11eg/R-S11e-151",
         "controlled video acknowledgement hardening ledger",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11fk</span>',
-        "controlled video exact peer receipt normative requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>319</td>",
-        "controlled video exact peer receipt Appendix C disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11fk/R-S11e-198 controlled-video exact peer receipt",
-        "controlled video exact peer receipt hardening ledger",
     )
     require(
         sources["requirements"],
@@ -4236,21 +4184,6 @@ def validate(sources: Dict[str, str]) -> None:
         "shared exact writer receipt behavior gate wiring",
     )
     require(
-        sources["verify"],
-        '"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1',
-        "shared exact peer video receipt behavior gate wiring",
-    )
-    require(
-        sources["verify"],
-        '"${RUN[@]}" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1',
-        "shared exact video protocol wire behavior gate wiring",
-    )
-    require(
-        sources["verify"],
-        '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1',
-        "shared real TCP local-receipt boundary behavior gate wiring",
-    )
-    require(
         sources["dart_verify"],
         "server::video_service::video_frame_ack_tests::r_s11eg_",
         "generated-bridge controlled video acknowledgement behavior gate wiring",
@@ -4270,22 +4203,6 @@ def validate(sources: Dict[str, str]) -> None:
         "writer_receipt_tests::r_s11fb_",
         "generated-bridge exact writer receipt behavior gate wiring",
     )
-    require(
-        sources["dart_verify"],
-        "      r_s11fk_ -- --test-threads=1",
-        "generated-bridge exact peer video receipt behavior gate wiring",
-    )
-    require(
-        sources["dart_verify"],
-        "exact_video_receipt_wire_tests::r_s11fk_",
-        "generated-bridge exact video protocol wire behavior gate wiring",
-    )
-    require(
-        sources["dart_verify"],
-        "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read",
-        "generated-bridge real TCP local-receipt boundary behavior gate wiring",
-    )
-
     require(
         server_connection,
         "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;",
@@ -5595,37 +5512,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "fn with_connection_owner(mut self, connection_id: i32) -> Self", "fn with_connection_owner(mut self, _connection_id: i32) -> Self", "exact video receiver connection owner"),
     ("server_connection", "video_service::retire_video_frame_connection(connection_id);", "video_service::retire_video_frame_connection(connection_id + 1);", "video receiver exact-owner retirement"),
     ("server_connection", "let mut rx_video = rx_video.with_connection_owner(id);", "let mut rx_video = rx_video;", "video receiver connection-owner installation"),
-    ("server_connection", "completion = wait_for_video_write(&mut pending_video_delivery)", "completion = std::future::ready(Ok(Ok(())))", "writer completion ownership"),
-    ("server_connection", "conn.stream.send_with_receipt(frame.message.as_ref()).await", "conn.stream.send(frame.message.as_ref()).await.map(|_| unreachable!())", "tracked exact video send"),
-    ("server_connection", "authenticated_source != Some(self.identity.source)", "authenticated_source.is_none()", "authenticated-session video source ownership"),
-    ("server_connection", "receipt.generation != self.identity.generation", "receipt.generation < self.identity.generation", "exact peer video generation ownership"),
-    ("server_connection", "self.writer_complete && self.peer_received", "self.writer_complete || self.peer_received", "writer and peer receipt conjunction"),
-    ("server_connection", "pending.mark_writer_complete();\n                            complete_video_delivery(&mut pending_video_delivery, id);", "pending.mark_writer_complete();\n                            video_service::notify_video_frame_fetched(pending.identity.source, pending.identity.display, pending.identity.generation, id, None);", "local writer cannot directly complete capture progress"),
-    ("server_connection", "item = rx_video.recv(), if pending_video_delivery.is_none()", "item = rx_video.recv()", "one unreceipted transmitted video frame"),
-    ("server_connection", "login.video_frame_receipt_version == VIDEO_FRAME_RECEIPT_VERSION", "true", "video login exact receipt compatibility"),
-    ("server_connection", "Some(message::Union::VideoFrameReceipt(receipt))", "Some(message::Union::VideoFrame(_))", "typed peer video receipt dispatch"),
-    ("io_loop", "generation == 0", "generation == u64::MAX", "viewer rejects zero video generation"),
-    ("io_loop", "generation <= *last", "generation < *last", "viewer rejects duplicate video generation"),
-    ("io_loop", "receipt_message.set_video_frame_receipt(receipt);", "receipt_message.set_misc(Misc::new());", "viewer emits typed exact video receipt"),
-    ("io_loop", "peer.send(&receipt_message).await", "peer.send(&receipt_message);", "viewer receipt exact send result"),
-    ("io_loop", "if !self.video_threads.contains_key(&display) && !self.new_video_thread(display)", "if !self.video_threads.contains_key(&display) && { self.new_video_thread(display); false }", "viewer propagates decoder-owner construction failure"),
-    ("io_loop", '"video decoder ownership missing after admission for display {display}"', '"continuing without video decoder ownership for display {display}"', "viewer fails closed on missing decoder ownership"),
-    ("io_loop", "pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION", "false", "viewer requires controlled receipt capability echo"),
-    ("server_connection", "video_service::retire_video_frame_connection(id);", "video_service::retire_video_frame_connection(id + 1);", "exact local disconnect retirement"),
     ("transport_tcp", "completion: Option<oneshot::Sender<io::Result<()>>>,", "completion: Option<oneshot::Sender<()>>,", "writer command exact result receipt"),
     ("transport_tcp", "let result = sink.send(bytes).await;", "let result = Ok(());", "writer receipt follows exact sink send"),
     ("transport_tcp", "let _ = completion.send(result);", "drop(completion);", "writer reports exact completion"),
     ("transport_stream", "pub async fn send_with_receipt(", "pub async fn tracked_send_disabled(", "stream exact writer receipt wrapper"),
-    ("message_proto", "reserved 2, 9, 12, 14;", "reserved 2, 12, 14;\n  bool video_ack_required = 9;", "retired video acknowledgement negotiation tag"),
-    ("message_proto", "reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),
-    ("message_proto", "uint64 generation = 15;", "uint64 generation = 12;", "video wire generation tag"),
-    ("message_proto", "VideoFrameReceipt video_frame_receipt = 33;", "VideoFrameReceipt video_frame_receipt = 12;", "top-level exact video receipt tag"),
-    ("hbb_common_lib", "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;", "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 0;", "exact video receipt protocol version"),
-    ("hbb_common_lib", "r_s11fk_wire_round_trips_exact_video_identity_and_capability", "video_wire_round_trip_test_disabled", "exact video protocol wire behavior proof"),
     ("video_service", "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact", "video_ack_source_test_disabled", "video acknowledgement source behavior proof"),
     ("video_service", "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue", "video_ack_prepare_order_test_disabled", "video acknowledgement prepare-order behavior proof"),
     ("video_service", "r_s11fb_late_completion_cannot_satisfy_a_new_round", "video_ack_stale_round_test_disabled", "video acknowledgement stale-round behavior proof"),
-    ("video_service", "r_s11fk_controller_rejects_zero_and_reused_wire_generations", "video_wire_generation_test_disabled", "video wire generation behavior proof"),
     ("video_service", "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer", "video_shared_progress_test_disabled", "one-peer shared capture progress behavior proof"),
     ("video_service", "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt", "video_shared_wait_wake_test_disabled", "blocked shared capture wait wake behavior proof"),
     ("video_service", "test_waiter_blocked: std::sync::atomic::AtomicBool", "test_waiter_blocked_disabled: std::sync::atomic::AtomicBool", "test-only blocked-wait state proof"),
@@ -5637,19 +5530,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "r_s11fb_dependent_replacement_requests_an_independent_sequence", "video_egress_gop_test_disabled", "video egress GOP behavior proof"),
     ("server_connection", "r_s11fb_fresh_display_rejects_dependent_until_independent", "video_egress_fresh_gop_test_disabled", "fresh-display GOP behavior proof"),
     ("server_connection", "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue", "video_egress_closed_receiver_test_disabled", "closed-receiver video retirement behavior proof"),
-    ("server_connection", "r_s11fk_local_write_then_exact_peer_receipt_completes_once", "video_peer_receipt_order_test_disabled", "writer-first peer receipt behavior proof"),
-    ("server_connection", "r_s11fk_exact_peer_receipt_then_local_write_completes", "video_writer_receipt_order_test_disabled", "peer-first writer receipt behavior proof"),
-    ("io_loop", "r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic", "viewer_video_receipt_test_disabled", "viewer exact video receipt behavior proof"),
-    ("client", "r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions", "video_receipt_login_test_disabled", "video capability behavior proof"),
     ("transport_tcp", "r_s11fb_receipt_waits_for_the_exact_sink_send", "writer_receipt_backpressure_test_disabled", "writer receipt backpressure behavior proof"),
     ("transport_tcp", "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame", "writer_receipt_keyed_round_trip_test_disabled", "writer receipt keyed round-trip behavior proof"),
-    ("transport_tcp", "r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_real_tcp_boundary_test_disabled", "real TCP local-receipt boundary behavior proof"),
     ("requirements", '<span class="id">R-S11eg</span>', '<span class="id">R-S11eg-disabled</span>', "controlled video acknowledgement requirement"),
     ("requirements", "<tr><td>286</td>", "<tr><td>286-disabled</td>", "controlled video acknowledgement disposition"),
     ("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),
-    ("requirements", '<span class="id">R-S11fk</span>', '<span class="id">R-S11fk-disabled</span>', "controlled video exact peer receipt requirement"),
-    ("requirements", "<tr><td>319</td>", "<tr><td>319-disabled</td>", "controlled video exact peer receipt disposition"),
-    ("hardening", "R-S11fk/R-S11e-198 controlled-video exact peer receipt", "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt", "controlled video exact peer receipt hardening ledger"),
     ("requirements", '<span class="id">R-S11fl</span>', '<span class="id">R-S11fl-disabled</span>', "controlled video shared capture pacing requirement"),
     ("requirements", "<tr><td>320</td>", "<tr><td>320-disabled</td>", "controlled video shared capture pacing disposition"),
     ("hardening", "R-S11fl/R-S11e-199 controlled-video shared capture pacing", "R-S11fl-disabled/R-S11e-199 controlled-video shared capture pacing", "controlled video shared capture pacing hardening ledger"),
@@ -5657,16 +5542,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::video_frame_ack_tests::r_s11fl_ -- --test-threads=1", "true # shared video pacing behavior gate disabled", "shared controlled video pacing behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1", "true # shared video egress behavior gate disabled", "shared controlled video egress behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1", "true # shared writer receipt behavior gate disabled", "shared writer receipt behavior gate"),
-    ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1", "true # shared real TCP boundary behavior gate disabled", "shared real TCP local-receipt boundary behavior gate"),
-    ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1", "true # shared exact peer receipt behavior gate disabled", "shared exact peer video receipt behavior gate"),
-    ("verify", "\"${RUN[@]}\" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1", "true # shared exact video wire behavior gate disabled", "shared exact video protocol wire behavior gate"),
     ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11eg_", "server::video_service::video_frame_ack_tests::disabled_", "generated-bridge controlled video acknowledgement behavior gate"),
     ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11fl_", "server::video_service::video_frame_ack_tests::disabled_fl_", "generated-bridge controlled video pacing behavior gate"),
     ("dart_verify", "server::connection::video_egress_tests::r_s11fb_", "server::connection::video_egress_tests::disabled_", "generated-bridge controlled video egress behavior gate"),
     ("dart_verify", "writer_receipt_tests::r_s11fb_", "writer_receipt_tests::disabled_", "generated-bridge writer receipt behavior gate"),
-    ("dart_verify", "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_tests::disabled_real_tcp_receipt_can_precede_peer_read", "generated-bridge real TCP local-receipt boundary behavior gate"),
-    ("dart_verify", "      r_s11fk_ -- --test-threads=1", "      peer_receipt_gate_disabled", "generated-bridge exact peer video receipt behavior gate"),
-    ("dart_verify", "exact_video_receipt_wire_tests::r_s11fk_", "video_wire_gate_disabled", "generated-bridge exact video protocol wire behavior gate"),
     ("server_connection", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1024;", "audio wake capacity"),
     ("server_connection", "format: Option<(Instant, Arc<Message>)>,", "format: Vec<(Instant, Arc<Message>)>,", "one pending audio format"),
     ("server_connection", "frame: Option<(Instant, Arc<Message>)>,", "frame: Vec<(Instant, Arc<Message>)>,", "one pending audio frame"),

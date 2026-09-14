@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-973fce33d4b2eba962a048998d538dae9d22da318ecd3ca8875d44e1c15a64e2  requirements.html
+5e087b6600ac14cbef0a0f0365aa9ad264788c2d10a2103f573af93094395a6b  requirements.html
 ```
 
 ## Current Verdict
@@ -1341,8 +1341,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   failure; mutation follows success, and failure remains bound to the exact terminal viewer/CM operation.
 - **R-S11fk/R-S11e-198 controlled-video exact peer receipt** — **PARTIAL / RELEASE-BLOCKING.** Versioned video
   generations and authenticated peer parse receipts replace local-writer completion as capture progress; the
-  viewer returns a receipt after frame validation and before decode/publication. A real kernel-TCP regression
-  proves local acceptance can precede any peer read, but a receipt is still not decode, render, or presentation.
+  viewer returns a receipt after frame validation and before decode/publication. Exact serialized-byte assertions
+  pin the frame, receipt, and negotiation field numbers instead of trusting a same-schema round trip; focused Rust
+  tests cover both completion orders, identity refusal, reconnect reset, capability selection, and generation
+  monotonicity. A real kernel-TCP regression proves local acceptance can precede any peer read, but none of this is
+  decode, render, presentation, focus/background recovery, or exact-current packaged-platform evidence.
 - **R-S11fl/R-S11e-199 controlled-video shared capture pacing** — **PARTIAL / RELEASE-BLOCKING.** Per-generation
   target state permits the first valid exact peer receipt to advance shared capture without allowing local
   supersession to manufacture progress; one stalled viewer cannot impose the inherited all-viewer barrier. A

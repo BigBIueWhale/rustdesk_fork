@@ -79,14 +79,20 @@ mod exact_video_receipt_wire_tests {
     };
 
     #[test]
-    fn r_s11fk_wire_round_trips_exact_video_identity_and_capability() {
+    fn r_s11fk_wire_tags_and_identity_are_exact() {
         let mut video_message = Message::new();
         video_message.set_video_frame(VideoFrame {
             display: 3,
             generation: 91,
             ..Default::default()
         });
-        let parsed = Message::parse_from_bytes(&video_message.write_to_bytes().unwrap()).unwrap();
+        let encoded = video_message.write_to_bytes().unwrap();
+        assert_eq!(
+            encoded.as_slice(),
+            &[0x32, 0x04, 0x70, 0x03, 0x78, 0x5b],
+            "Message.video_frame=6, VideoFrame.display=14, and VideoFrame.generation=15 are wire compatibility"
+        );
+        let parsed = Message::parse_from_bytes(&encoded).unwrap();
         let Some(message::Union::VideoFrame(frame)) = parsed.union else {
             panic!("video frame must retain its top-level wire type");
         };
@@ -98,7 +104,13 @@ mod exact_video_receipt_wire_tests {
             generation: 91,
             ..Default::default()
         });
-        let parsed = Message::parse_from_bytes(&receipt_message.write_to_bytes().unwrap()).unwrap();
+        let encoded = receipt_message.write_to_bytes().unwrap();
+        assert_eq!(
+            encoded.as_slice(),
+            &[0x8a, 0x02, 0x04, 0x08, 0x03, 0x10, 0x5b],
+            "Message.video_frame_receipt=33 and its display=1/generation=2 identity are wire compatibility"
+        );
+        let parsed = Message::parse_from_bytes(&encoded).unwrap();
         let Some(message::Union::VideoFrameReceipt(receipt)) = parsed.union else {
             panic!("video receipt must retain its top-level wire type");
         };
@@ -108,7 +120,13 @@ mod exact_video_receipt_wire_tests {
             video_frame_receipt_version: VIDEO_FRAME_RECEIPT_VERSION,
             ..Default::default()
         };
-        let parsed = LoginRequest::parse_from_bytes(&login.write_to_bytes().unwrap()).unwrap();
+        let encoded = login.write_to_bytes().unwrap();
+        assert_eq!(
+            encoded.as_slice(),
+            &[0x90, 0x01, 0x01],
+            "LoginRequest.video_frame_receipt_version=18 is wire compatibility"
+        );
+        let parsed = LoginRequest::parse_from_bytes(&encoded).unwrap();
         assert_eq!(
             parsed.video_frame_receipt_version,
             VIDEO_FRAME_RECEIPT_VERSION
@@ -118,7 +136,13 @@ mod exact_video_receipt_wire_tests {
             video_frame_receipt_version: VIDEO_FRAME_RECEIPT_VERSION,
             ..Default::default()
         };
-        let parsed = PeerInfo::parse_from_bytes(&peer_info.write_to_bytes().unwrap()).unwrap();
+        let encoded = peer_info.write_to_bytes().unwrap();
+        assert_eq!(
+            encoded.as_slice(),
+            &[0x70, 0x01],
+            "PeerInfo.video_frame_receipt_version=14 is wire compatibility"
+        );
+        let parsed = PeerInfo::parse_from_bytes(&encoded).unwrap();
         assert_eq!(
             parsed.video_frame_receipt_version,
             VIDEO_FRAME_RECEIPT_VERSION

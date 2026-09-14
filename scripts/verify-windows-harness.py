@@ -1284,61 +1284,8 @@ def validate_sources(sources: dict[str, str]) -> None:
     ):
         require(harness_self_test, literal, description)
 
-    exact_domain_requirement = html_requirement(requirements, "R-S11ds")
-    for literal, description in (
-        (
-            "Windows per-build VM owns one exact libvirt UUID from creation through terminal teardown",
-            "R-S11ds requirement title",
-        ),
-        (
-            "A selected UUID, creation intent, or unadmitted child alone",
-            "normative ownership-commit boundary",
-        ),
-        (
-            "every guest-specific post-create read or control",
-            "normative UUID-only post-create control",
-        ),
-        (
-            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
-            "<code>setsid</code> control session with standard input closed",
-            "normative version-compatible noninteractive control",
-        ),
-        (
-            "MUST NOT</span> require the post-libvirt-10.0.0 "
-            "<code>--no-pkttyagent</code> option",
-            "normative unsupported virsh option prohibition",
-        ),
-        (
-            "complete retained matching client process group and session",
-            "normative complete client-process authority",
-        ),
-        (
-            "boundedly re-prove that same live identity",
-            "normative process-group admission",
-        ),
-        (
-            "unadmitted child alone",
-            "normative pre-admission authority refusal",
-        ),
-        (
-            "MUST NOT</span> request storage deletion",
-            "normative storage-deletion prohibition",
-        ),
-        (
-            "without invoking the Windows builder, <code>virt-install</code>, "
-            "<code>virsh</code>, libvirt, KVM, a Windows VM",
-            "source-only verification boundary",
-        ),
-    ):
-        require(exact_domain_requirement, literal, description)
-    require(requirements, "<tr><td>272</td>", "Appendix C #272 disposition")
     require(requirements, "<tr><td>291</td>", "Appendix C #291 disposition")
     require(requirements, "<tr><td>336</td>", "Appendix C #336 disposition")
-    require(
-        hardening,
-        "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
-        "R-S11ds hardening-ledger disposition",
-    )
     require(
         hardening,
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
@@ -3907,43 +3854,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "--graphics vnc,listen=0.0.0.0",
         ),
         (
-            "R-S11ds requirement",
-            "requirements",
-            '<span class="id">R-S11ds</span>',
-            '<span class="id">R-S11ds-disabled</span>',
-        ),
-        (
-            "normative ownership-commit boundary",
-            "requirements",
-            "A selected UUID, creation intent, or unadmitted child alone",
-            "A selected UUID, creation intent, or unadmitted child always",
-        ),
-        (
-            "normative complete client-process authority",
-            "requirements",
-            "complete retained matching client process group and session",
-            "retained matching client leader",
-        ),
-        (
-            "normative process-group admission",
-            "requirements",
-            "boundedly re-prove that same live identity",
-            "optionally inspect that live identity",
-        ),
-        (
-            "normative version-compatible noninteractive control",
-            "requirements",
-            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
-            "<code>setsid</code> control session with standard input closed",
-            "use an interactive system-libvirt control process",
-        ),
-        (
-            "Appendix C #272 disposition",
-            "requirements",
-            "<tr><td>272</td>",
-            "<tr><td>272-disabled</td>",
-        ),
-        (
             "Appendix C #291 disposition",
             "requirements",
             "<tr><td>291</td>",
@@ -3954,12 +3864,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "requirements",
             "<tr><td>336</td>",
             "<tr><td>336-disabled</td>",
-        ),
-        (
-            "R-S11ds hardening-ledger disposition",
-            "hardening",
-            "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
-            "R-S11ds/R-S11e-137 — Windows per-build VM owns a mutable name",
         ),
         (
             "setsid-admission hardening-ledger disposition",

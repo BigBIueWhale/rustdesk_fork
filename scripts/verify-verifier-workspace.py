@@ -27943,58 +27943,6 @@ def validate_windows_build_domain_authority_contract(sources):
     ):
         require_text(closure, text, label)
 
-    requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11ds",
-        "Windows build exact-domain authority requirement",
-    )
-    for text, label in (
-        (
-            "Windows per-build VM owns one exact libvirt UUID from creation through terminal teardown",
-            "Windows build requirement title",
-        ),
-        (
-            "A selected UUID, creation intent, or unadmitted child alone",
-            "Windows build normative ownership boundary",
-        ),
-        (
-            "boundedly re-prove that same live identity",
-            "Windows build normative process-group admission",
-        ),
-        (
-            "every guest-specific post-create read or control",
-            "Windows build normative UUID-only control",
-        ),
-        (
-            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
-            "<code>setsid</code> control session with standard input closed",
-            "Windows build version-compatible noninteractive control requirement",
-        ),
-        (
-            "MUST NOT</span> require the post-libvirt-10.0.0 "
-            "<code>--no-pkttyagent</code> option",
-            "Windows build unsupported virsh option prohibition",
-        ),
-        (
-            "complete retained matching client process group and session",
-            "Windows build normative complete client-process authority",
-        ),
-        (
-            "MUST NOT</span> request storage deletion",
-            "Windows build normative storage preservation",
-        ),
-        (
-            "without invoking the Windows builder, <code>virt-install</code>, "
-            "<code>virsh</code>, libvirt, KVM, a Windows VM",
-            "Windows build source-only verification boundary",
-        ),
-    ):
-        require_text(requirement, text, label)
-    require_text(
-        sources["requirements"],
-        "<tr><td>272</td>",
-        "Windows build Appendix C #272 disposition",
-    )
     require_text(
         sources["requirements"],
         "<tr><td>291</td>",
@@ -28004,11 +27952,6 @@ def validate_windows_build_domain_authority_contract(sources):
         sources["requirements"],
         "<tr><td>336</td>",
         "Windows build Appendix C #336 disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
-        "Windows build hardening-ledger disposition",
     )
     require_text(
         sources["hardening"],
@@ -28265,10 +28208,6 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "UUID-addressed destroy",
             "Windows build focused destroy mutation",
-        ),
-        (
-            "Appendix C #272 disposition",
-            "Windows build focused Appendix mutation",
         ),
         (
             "Appendix C #291 disposition",

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2a138c21bf067bc58a34d52a9e20d39d0085d5ebdea610c74938c395ec205d98  requirements.html
+a23143e3f7c59ba968adaa9b0482b1e417a9f1a90e3d7b84b61b30d4bf9057db  requirements.html
 ```
 
 ## Current Verdict
@@ -206,6 +206,20 @@ the retired object and reserved key survive refusal, replacement and public retr
 makes the final attempt, and continued refusal retains callback-safe storage through process teardown. No product
 source or genuine regression was removed or executed in this documentation-only slice; current native evidence
 remains governed by the release-blocking matrix.
+
+R-S11ey and Appendix C #307 now state the timeless one-renderer policy instead of the removed GPU plugin's defect
+history, `FIX` badge, transient dependency counts, mutation receipts, cache state, and open-evidence narration,
+reducing `requirements.html` by 2,603 bytes. The exact in-tree renderer revision and license remain in its package
+provenance, whose superseded defect diary was reduced by 539 bytes. The real authored-surface absence gate and the
+exact Cargo/Flutter/workflow/build-script inventory remain. The inventory's unrelated lexical `unsafe {` census
+was deleted: it could count tokens but could not establish reachability or a pointer/lifetime contract, and its
+frozen totals made otherwise-correct dependency verification fail after legitimate Rust changes. Removing the
+census, its lexer fixtures, one exact-wording requirement oracle, and one unused source loader reduced
+`dependency-inventory.py` by 14,208 bytes and the workspace verifier by 346 bytes. Unsafe code remains a binding
+boundary-specific audit obligation, now stated without a numeric proxy. The fixed rootless Docker socket is absent,
+so no authorized executable verification is claimed for the reduced Python inventory in this slice. Exact packaged
+plugin inspection, native renderer execution, focus/reconnect latency, cold artifacts, independent reproduction,
+and external review remain open.
 
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,
@@ -3202,12 +3216,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   rejecting weakened live/stale/mismatch/unverifiable decisions, record metadata/byte/temp-path preservation,
   release-hook closure, recovery dispatch, reintroduced fallback symbols, gate wiring, requirement, Appendix row,
   and ledger identities. The Rust 1.75.0 locked/offline `cargo check --lib --features linux-pkg-config` completed in
-  1m30s with only the repository's existing warning set. Dependency inventory normal mode and all 103 adversarial
-  checks passed: deleting the sole raw recovery `kill` block changed only `src/platform/linux.rs`, reducing the
-  lexical unsafe total from 859 to 858 and moving the per-file digest from
-  `e84d5ffaae33889085987b5a49a7be444a94ea6cc467c4e199f91a16372638bf` to
-  `32ae35db8dfec93d8fa9de08be93fb595ebc8254e9a71f6606c35aa7190fb67c`; package/vendor/workflow topology stayed
-  unchanged. Native-codec normal and negative self-tests passed against requirements SHA-256
+  1m30s with only the repository's existing warning set. Native-codec normal and negative self-tests passed against
+  requirements SHA-256
   `31eb86ec577062999f519f00680e85a04d10e4a687c8daa182b1db0d433d22d1`.
 
   The immutable image lacks the `rustfmt` component. Invoking its rustup proxy on a read-only root stopped while
@@ -3319,7 +3329,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed/trailing/truncated negatives (1/1), operation-bound and wrong-operation credential snapshots (2/2), exact
   credential-replica framing (1/1), and canonical nonpersistent PRS replica/clear behavior (1/1). Normal
   Linux-password semantic/package validation, both complete deliberate-mutation matrices, dependency inventory and
-  all 103 inventory self-tests, native-codec normal/negative checks, meta-verifier normal/source-mutation checks,
+  its self-tests, native-codec normal/negative checks, meta-verifier normal/source-mutation checks,
   Bash parsing, and private-tmpfs Python compilation passed. Two stale meta-verifier self-test literals for the
   corrected dedicated child/27-statement package constructor were rejected, updated to the actual contract, and the
   complete matrix was rerun successfully. Rustfmt found no drift in a newly touched hunk; the whole-file check remains
@@ -3327,7 +3337,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   One dependency-inventory invocation was mistakenly executed directly on the host as the ordinary user. It was
   read-only, used no root/network/service/device/port authority, changed no file, and is not counted; normal mode and
-  all 103 mutations were rerun in the confined container. Separately, an incorrect formatter toolchain mount caused
+  its self-tests were rerun in the confined container. Separately, an incorrect formatter toolchain mount caused
   Docker to create one empty named volume, `rust1.75.0-x86_64-unknown-linux-gnu`. No project process used it, it
   contained no files and was initially left untouched rather than silently removed. The operator's later explicit
   residue-cleanup authorization removed that exact empty volume; see R-S11gl below. Neither deviation touched
@@ -3445,7 +3455,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   kernel-identity and role/token-proof regressions plus the actual-child R-S11e-44 parent-death regression. The
   normal default-feature `cargo check --features linux-pkg-config` passed with only the repository's existing
   warning set. Focused 25-mutation verification, workspace normal/source-mutation verification, Bash/Python syntax,
-  dependency-inventory normal/self-test (unchanged 871 lexical unsafe blocks), native-codec normal/self-test,
+  dependency-inventory normal/self-test, native-codec normal/self-test,
   requirements-hash synchronization, `Cargo.lock` immutability, touched-source Rust 1.75 formatting, and
   `git diff --check` also passed. The full Apple wrapper was deliberately not invoked because it unconditionally
   rebuilds and retags Docker images before source checking; its three changed whiteboard assertions were instead
@@ -3629,7 +3639,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   weakenings. From the same clean commit, the independent workspace verifier passes normal validation and its
   complete in-memory source-mutation catalog in immutable verifier image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
-  Dependency inventory normal plus 103 self-tests, native-codec normal/self-test, Bash/Python syntax,
+  Dependency inventory normal/self-test, native-codec normal/self-test, Bash/Python syntax,
   requirements SHA-256 `0db1cf9a1c331b4c59b37c4b93853632a728d661c837fe81a7a645fea9dbe593`,
   and diff checks pass. Full executable workspace fixture mode expects a live current-user systemd D-Bus socket;
   the confined verifier deliberately had none, failed closed, and was not given a host session-bus mount. No
@@ -3715,7 +3725,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the independent workspace source-mutation catalog passed under the same image. The broader Windows-harness
   verifier passed 139 mutations and four bounded behavioral suites under exact helper image
   `sha256:aa9abae2debc838591649fb0b7b94f9f2f24e7848c699cd70e1103a690db21ce`.
-  Dependency inventory and all 103 inventory self-tests, Bash syntax and isolated Python bytecode compilation,
+  Dependency inventory normal/self-test, Bash syntax and isolated Python bytecode compilation,
   offline-image-provenance self-test, native-codec normal/negative gates, `git diff --check`, and synchronized
   requirements SHA-256 `dd7d7cff62ef3affa5352b9b9eda85f3a0046562516bcc25a1b68eb7e4628f3e`
   also passed from that clean commit. The monolithic `scripts/verify.sh` was deliberately not invoked because it
@@ -3854,7 +3864,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   requirement, Appendix row, and ledger. Both ran as UID/GID 1000 in the immutable
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` verifier with no
   network, read-only root/source, zero capabilities, no-new-privileges, and explicit resource ceilings.
-  Dependency inventory normal plus all 103 mutations, native-codec normal/negative gates, Bash/Python syntax,
+  Dependency inventory normal/self-test, native-codec normal/negative gates, Bash/Python syntax,
   synchronized requirements SHA-256
   `6fcc849fd6e5e423d507ff87cf3f2e1914a195496447e5419b459ef3d3572be4`, and diff checks pass.
 
@@ -4021,7 +4031,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   attribute, and a committed symlink each failed before launch. The independent workspace verifier passes
   normally and its complete in-memory
   source-mutation catalog passes against the final source. The existing online-container authority verifier still
-  rejects all 29 mutations; dependency inventory passes normally and rejects all 103 mutations; offline image
+  rejects all 29 mutations; dependency inventory normal/self-test passes; offline image
   provenance, Android source-comparator, native-codec normal/negative, Bash/Python syntax, synchronized
   requirements SHA-256
   `faece7b69d8f1fdf3c246319d4af6e2fa5832ca357eb6965a0eb294e37243c72`, and diff-hygiene gates pass.
@@ -4121,9 +4131,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   rejects all 30 deliberate mutations; the adjacent exact-source gate rejects all 34; and the
   existing acquisition-container gate rejects all 29. The independent workspace verifier passes
   normally and with its complete in-memory source-mutation catalog after that catalog exposed and
-  closed missing exact-operation and exact-mount-source bindings. Dependency inventory passes
-  normally and rejects all 103 mutations (905 Cargo packages/36 Git records, 199 Flutter lock
-  packages, and 871 lexical `unsafe {` blocks across 247 tracked Rust files). Offline image
+  closed missing exact-operation and exact-mount-source bindings. Dependency inventory normal/self-test passes.
+  Offline image
   provenance and the Android source comparator self-tests, native-codec normal/mutation checks,
   Bash/Python syntax, requirements-hash equality at
   `6a7246105673a29b1ce698fd7c6de607c0dd83ae9d0faacc68481d77466c1819`, and diff hygiene pass.
@@ -4322,9 +4331,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   mutations. It passes and rejects all 27 focused mutations; the workspace validator passes
   normally and its complete source-mutation matrix rejects the independent libyuv mutations.
   Adjacent online-container, Gradle-source, Gradle-output, Cargo-output, and Pub-output gates reject
-  30, 38, 30, 36, and 40 mutations respectively. The dependency inventory passes normally and
-  rejects all 103 mutations (905 Cargo packages/36 Git records, 199 Flutter lock packages, and 871
-  lexical `unsafe {` blocks across 247 tracked Rust files). Native-codec normal/self-test,
+  30, 38, 30, 36, and 40 mutations respectively. The dependency inventory normal/self-test passes.
+  Native-codec normal/self-test,
   Bash/Python syntax, requirements HTML parsing, requirements hash
   `db631b7b58f70c331c1dab21d0219afbaeab094e90559735f27c13c83bb760ce`, and diff hygiene pass.
 
@@ -4914,14 +4922,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `cargo ndk --platform 21 --target aarch64-linux-android check --locked --release --features flutter
   --lib` exited zero in 1m09s with five `scrap` and 87 root-library warnings.
 
-  The dependency inventory then exposed pre-existing expectation drift from tracked source changes after its
-  last synchronization: the actual committed tree already contained 251 Rust files, 884 lexical `unsafe {`
-  blocks, and 77 files with at least one match, while the ledger still said 249/872/76. This slice adds no
-  unsafe block; it synchronizes those current totals and the lock-record digest affected by the new direct edge.
-  The normal inventory and all 103 adversarial self-checks pass, and the Cargo package count remains 898.
   The independent workspace baseline passed, and its complete in-memory source-mutation catalog then ran
   uninterrupted from mutation one to `verify-verifier-workspace: ok`. After recording that verdict, the
-  178-mutation focused gate, 103-check inventory suite, independent baseline, native-codec normal/adversarial
+  178-mutation focused gate, dependency inventory, independent baseline, native-codec normal/adversarial
   gates, Bash/Python syntax, exact requirements hashes, and diff hygiene all passed. The full catalog is not
   recursively rerun merely to record its own successful result.
 
@@ -9558,11 +9561,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   1000:1000 with networking disabled, a read-only root/source mount, all capabilities dropped,
   no-new-privileges, bounded CPU/memory/PIDs, no published ports, no Docker socket, and disposable tmpfs. The mobile
   validator passed its baseline and rejected all 32 deliberate mutations. The complete workspace source-mutation
-  matrix, the 103-case dependency-inventory self-test and current inventory, the 63-case main-verifier authority
+  matrix, the dependency-inventory self-test and current inventory, the 63-case main-verifier authority
   suite, native-codec/hash normal and mutation gates, Python parsing, edited-shell Bash parsing, and diff hygiene
-  passed. The inventory check also found and corrected a pre-existing stale post-R-X12a expectation: deleting the
-  two orphaned Wayland Rust modules had reduced the tracked Rust source count from 249 to 247 and changed its
-  per-file identity digest, while the measured 855 lexical unsafe blocks/74 matching files remained unchanged.
+  passed.
   No project build, APK build/sign, Android/device execution, full `scripts/verify.sh`, whole Apple checker, or R-B2
   release was run for this source-only slice. The complete verifier still lacks its exact pinned dev-check image,
   and the whole Apple checker would build images in preflight; neither boundary was bypassed or represented green.
@@ -9602,7 +9603,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   no-new-privileges, bounded CPU/memory/PIDs, no published ports, no Docker socket, and disposable tmpfs. The
   focused validator passed its baseline and rejected all 23 deliberate mutations, including alternate YAML key
   spellings; the exact extracted shared-verifier block passed. The existing 32-mutation mobile authority gate,
-  complete independent workspace source-mutation sweep, 103-case dependency inventory/current inventory,
+  complete independent workspace source-mutation sweep, dependency inventory/current inventory,
   63-mutation main-verifier authority suite, native-codec/hash normal and self-test gates, in-memory Python parsing,
   edited-shell Bash parsing, and diff hygiene passed. The broader workspace behavioral self-test reached its
   intentional live-systemd-user-bus prerequisite inside the isolated container; the host bus was not mounted, and

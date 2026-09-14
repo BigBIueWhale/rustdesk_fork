@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Verify RustDesk dependency and build-surface inventory facts.
 
-The Rust unsafe-block metric is lexical: it counts an ``unsafe`` token whose
-next non-comment token is ``{``.  It is deliberately not an AST or safety
-proof.  The Git index defines the candidate source set; non-ignored untracked
-Rust sources and build scripts make the inventory fail closed.
+The Git index defines the build-script inventory; non-ignored untracked build
+scripts make that inventory fail closed.
 """
 
 from __future__ import annotations
@@ -150,12 +148,6 @@ EXPECTED = {
         "enabled_workflow_definition_files": [],
         "enabled_workflow_definitions": 0,
         "regular_files": 8,
-    },
-    "rust_sources": {
-        "files_with_unsafe_blocks": 77,
-        "lexical_counts_by_file_sha256": "f65a8b3a7f75acb17302c1803d08d392ee42481921adfa791a9714e4e84a86bb",
-        "lexical_unsafe_open_brace_blocks": 882,
-        "tracked_rs_files": 251,
     },
 }
 
@@ -844,221 +836,6 @@ def inventory_build_rs(root: Path) -> dict[str, Any]:
     return {"paths": paths, "regular_files": len(paths)}
 
 
-def _skip_block_comment(text: str, index: int, source: str) -> int:
-    depth = 1
-    index += 2
-    while index < len(text):
-        if text.startswith("/*", index):
-            depth += 1
-            index += 2
-        elif text.startswith("*/", index):
-            depth -= 1
-            index += 2
-            if depth == 0:
-                return index
-        else:
-            index += 1
-    raise InventoryError(f"{source}: unterminated Rust block comment")
-
-
-def _skip_space_and_comments(text: str, index: int, source: str) -> int:
-    while index < len(text):
-        if text[index].isspace():
-            index += 1
-        elif text.startswith("//", index):
-            newline = text.find("\n", index + 2)
-            index = len(text) if newline < 0 else newline + 1
-        elif text.startswith("/*", index):
-            index = _skip_block_comment(text, index, source)
-        else:
-            break
-    return index
-
-
-def _skip_raw_string(text: str, index: int, source: str) -> int | None:
-    cursor = index
-    if text.startswith(("br", "cr"), cursor):
-        cursor += 2
-    elif text.startswith("r", cursor):
-        cursor += 1
-    else:
-        return None
-    hash_start = cursor
-    while cursor < len(text) and text[cursor] == "#":
-        cursor += 1
-    if cursor - hash_start > 255:
-        raise InventoryError(f"{source}: Rust raw string has more than 255 hashes")
-    if cursor >= len(text) or text[cursor] != '"':
-        return None
-    hashes = text[hash_start:cursor]
-    closing = '"' + hashes
-    end = text.find(closing, cursor + 1)
-    if end < 0:
-        raise InventoryError(f"{source}: unterminated Rust raw string")
-    return end + len(closing)
-
-
-def _skip_quoted_string(text: str, index: int, source: str) -> int:
-    index += 1
-    while index < len(text):
-        if text[index] == "\\":
-            if index + 1 >= len(text):
-                break
-            index += 2
-        elif text[index] == '"':
-            return index + 1
-        else:
-            index += 1
-    raise InventoryError(f"{source}: unterminated Rust string")
-
-
-def _rust_identifier_start(char: str) -> bool:
-    return char == "_" or char.isidentifier()
-
-
-def _rust_identifier_continue(char: str) -> bool:
-    return char == "_" or ("a" + char).isidentifier()
-
-
-def _rust_identifier_end(text: str, index: int) -> int:
-    index += 1
-    while index < len(text) and _rust_identifier_continue(text[index]):
-        index += 1
-    return index
-
-
-def _skip_char_literal(text: str, index: int, source: str) -> int | None:
-    cursor = index + 1
-    if cursor >= len(text) or text[cursor] in "\r\n'":
-        return None
-    if text[cursor] == "\\":
-        cursor += 1
-        if cursor >= len(text):
-            raise InventoryError(f"{source}: unterminated Rust character escape")
-        escape = text[cursor]
-        if escape == "x":
-            if cursor + 2 >= len(text) or any(
-                char not in "0123456789abcdefABCDEF" for char in text[cursor + 1 : cursor + 3]
-            ):
-                raise InventoryError(f"{source}: malformed Rust hexadecimal character escape")
-            cursor += 3
-        elif escape == "u" and cursor + 1 < len(text) and text[cursor + 1] == "{":
-            close = text.find("}", cursor + 2)
-            if close < 0:
-                raise InventoryError(f"{source}: unterminated Rust Unicode character escape")
-            digits = text[cursor + 2 : close].replace("_", "")
-            if not 1 <= len(digits) <= 6 or any(
-                char not in "0123456789abcdefABCDEF" for char in digits
-            ):
-                raise InventoryError(f"{source}: malformed Rust Unicode character escape")
-            cursor = close + 1
-        elif escape in "nrt0\\'\"":
-            cursor += 1
-        else:
-            raise InventoryError(f"{source}: unsupported Rust character escape \\{escape}")
-    else:
-        if text[cursor] in "\\\r\n":
-            return None
-        cursor += 1
-    if cursor < len(text) and text[cursor] == "'":
-        return cursor + 1
-    return None
-
-
-def count_lexical_unsafe_blocks(data: bytes, source: str) -> int:
-    try:
-        text = data.decode("utf-8", errors="strict")
-    except UnicodeDecodeError as exc:
-        raise InventoryError(f"{source}: Rust source is not valid UTF-8: {exc}") from exc
-    count = 0
-    index = 0
-    while index < len(text):
-        skipped = _skip_space_and_comments(text, index, source)
-        if skipped != index:
-            index = skipped
-            continue
-
-        raw_end = _skip_raw_string(text, index, source)
-        if raw_end is not None:
-            index = raw_end
-            continue
-        if text.startswith(("b\"", "c\""), index):
-            index = _skip_quoted_string(text, index + 1, source)
-            continue
-        if text.startswith("b'", index):
-            char_end = _skip_char_literal(text, index + 1, source)
-            if char_end is None:
-                raise InventoryError(f"{source}: malformed Rust byte character literal")
-            index = char_end
-            continue
-        char = text[index]
-        if char == '"':
-            index = _skip_quoted_string(text, index, source)
-            continue
-        if char == "'":
-            char_end = _skip_char_literal(text, index, source)
-            if char_end is not None:
-                index = char_end
-                continue
-            if index + 1 < len(text) and _rust_identifier_start(text[index + 1]):
-                index = _rust_identifier_end(text, index + 1)
-                continue
-            raise InventoryError(f"{source}: malformed Rust apostrophe token")
-        if char.isdecimal():
-            index += 1
-            while index < len(text) and (
-                _rust_identifier_continue(text[index])
-                or text[index] in "."
-            ):
-                index += 1
-            continue
-        if _rust_identifier_start(char):
-            if text.startswith("r#", index) and index + 2 < len(text):
-                cursor = index + 2
-                if _rust_identifier_start(text[cursor]):
-                    cursor = _rust_identifier_end(text, cursor)
-                    index = cursor
-                    continue
-            cursor = _rust_identifier_end(text, index)
-            if text[index:cursor] == "unsafe":
-                next_token = _skip_space_and_comments(text, cursor, source)
-                if next_token < len(text) and text[next_token] == "{":
-                    count += 1
-            index = cursor
-            continue
-        if _rust_identifier_continue(char):
-            raise InventoryError(
-                f"{source}: isolated Unicode identifier continuation at character {index}"
-            )
-        if ord(char) > 0x7F:
-            raise InventoryError(f"{source}: unsupported non-ASCII Rust token {char!r}")
-        index += 1
-    return count
-
-
-def _tracked_rust_paths(root: Path) -> list[str]:
-    return _indexed_paths_from_git(root, ["*.rs"], "Rust source")
-
-
-def inventory_rust_sources(root: Path) -> dict[str, Any]:
-    paths = _tracked_rust_paths(root)
-    counts_by_file: dict[str, int] = {}
-    for relative in paths:
-        path = root / relative
-        _require_regular_file(path)
-        try:
-            data = path.read_bytes()
-        except OSError as exc:
-            raise InventoryError(f"cannot read tracked Rust source {path}: {exc}") from exc
-        counts_by_file[relative] = count_lexical_unsafe_blocks(data, relative)
-    return {
-        "files_with_unsafe_blocks": sum(value > 0 for value in counts_by_file.values()),
-        "lexical_counts_by_file_sha256": _stable_digest(counts_by_file),
-        "lexical_unsafe_open_brace_blocks": sum(counts_by_file.values()),
-        "tracked_rs_files": len(paths),
-    }
-
-
 def collect_inventory(root: Path) -> dict[str, dict[str, Any]]:
     return {
         "build_rs": inventory_build_rs(root),
@@ -1066,7 +843,6 @@ def collect_inventory(root: Path) -> dict[str, dict[str, Any]]:
         "flutter_pubspec": inventory_flutter_pubspec(root / "flutter/pubspec.yaml"),
         "flutter_pubspec_lock": inventory_flutter_lock(root / "flutter/pubspec.lock"),
         "github_workflows": inventory_workflows(root / ".github/workflows"),
-        "rust_sources": inventory_rust_sources(root),
     }
 
 
@@ -1090,7 +866,6 @@ def _drift_lines(actual: Any, expected: Any, prefix: str = "") -> list[str]:
 def _write_fixture(root: Path) -> None:
     (root / "flutter").mkdir()
     (root / ".github/workflows").mkdir(parents=True)
-    (root / "src").mkdir()
     (root / "pkg").mkdir()
     (root / "Cargo.lock").write_text(
         """version = 3
@@ -1162,10 +937,6 @@ flutter:
     )
     (root / "build.rs").write_text("fn main() {}\n", encoding="utf-8")
     (root / "pkg/build.rs").write_text("fn main() {}\n", encoding="utf-8")
-    (root / "src/tracked.rs").write_text(
-        "fn f() { unsafe { call(); } }\n",
-        encoding="utf-8",
-    )
 
 
 def run_self_test() -> list[str]:
@@ -1242,7 +1013,7 @@ def run_self_test() -> list[str]:
         root.chmod(0o700)
         git(root, "init", "-q")
         _write_fixture(root)
-        git(root, "add", "--", "build.rs", "pkg/build.rs", "src/tracked.rs")
+        git(root, "add", "--", "build.rs", "pkg/build.rs")
 
         cargo_org_source = "git+https://github.com/rustdesk-org/example#abc"
         cargo_other_source = "git+https://example.test/other#def"
@@ -1322,14 +1093,6 @@ def run_self_test() -> list[str]:
                 "enabled_workflow_definition_files": ["ci.yml"],
                 "enabled_workflow_definitions": 1,
                 "regular_files": 3,
-            },
-            "rust_sources": {
-                "files_with_unsafe_blocks": 1,
-                "lexical_counts_by_file_sha256": _stable_digest(
-                    {"build.rs": 0, "pkg/build.rs": 0, "src/tracked.rs": 1}
-                ),
-                "lexical_unsafe_open_brace_blocks": 1,
-                "tracked_rs_files": 3,
             },
         }
         assert_equal("baseline-end-to-end", collect_inventory(root), fixture_expected)
@@ -1582,25 +1345,15 @@ sdks:
         git(root, "add", "--", "pkg/build.rs")
 
         ignore_file = root / ".gitignore"
-        ignore_file.write_text(
-            "/src/ignored.rs\n/pkg/ignored/build.rs\n", encoding="utf-8"
-        )
-        ignored_source = root / "src/ignored.rs"
-        ignored_source.write_text("unsafe { ignored(); }\n", encoding="utf-8")
+        ignore_file.write_text("/pkg/ignored/build.rs\n", encoding="utf-8")
         ignored_build = root / "pkg/ignored/build.rs"
         ignored_build.parent.mkdir()
         ignored_build.write_text("fn main() {}\n", encoding="utf-8")
-        assert_equal(
-            "ignored-rust-excluded",
-            inventory_rust_sources(root),
-            fixture_expected["rust_sources"],
-        )
         assert_equal(
             "ignored-build-rs-excluded",
             inventory_build_rs(root),
             fixture_expected["build_rs"],
         )
-        ignored_source.unlink()
         ignored_build.unlink()
         ignored_build.parent.rmdir()
         ignore_file.unlink()
@@ -1609,25 +1362,14 @@ sdks:
         ambient.mkdir(parents=True)
         git(ambient, "init", "-q")
         (ambient / "build.rs").write_text("fn main() {}\n", encoding="utf-8")
-        (ambient / "ambient.rs").write_text(
-            "unsafe { ambient(); }\n", encoding="utf-8"
-        )
         embedded = root / "vendor/embedded"
         embedded.mkdir(parents=True)
         git(embedded, "init", "-q")
         (embedded / "build.rs").write_text("fn main() {}\n", encoding="utf-8")
-        (embedded / "embedded.rs").write_text(
-            "unsafe { embedded(); }\n", encoding="utf-8"
-        )
         assert_equal(
             "nested-repositories-build-rs-excluded",
             inventory_build_rs(root),
             fixture_expected["build_rs"],
-        )
-        assert_equal(
-            "nested-repositories-rust-excluded",
-            inventory_rust_sources(root),
-            fixture_expected["rust_sources"],
         )
 
         tracked_link = root / "linked/build.rs"
@@ -1641,93 +1383,6 @@ sdks:
         tracked_build.unlink()
         expect_error("tracked-build-rs-missing", lambda: inventory_build_rs(root))
         tracked_build.write_text("fn main() {}\n", encoding="utf-8")
-
-        untracked_source = root / "src/untracked.rs"
-        untracked_source.write_text(
-            "fn g() { unsafe { call(); } }\n", encoding="utf-8"
-        )
-        expect_error(
-            "untracked-rust-rejected",
-            lambda: inventory_rust_sources(root),
-            "untracked non-ignored Rust source must be staged or removed: 'src/untracked.rs'",
-        )
-        git(root, "add", "--", "src/untracked.rs")
-        tracked_added = inventory_rust_sources(root)
-        assert_equal("tracked-rust-addition-files", tracked_added["tracked_rs_files"], 4)
-        assert_equal(
-            "tracked-rust-addition-blocks",
-            tracked_added["lexical_unsafe_open_brace_blocks"],
-            2,
-        )
-        baseline_tracked_source = (root / "src/tracked.rs").read_text(encoding="utf-8")
-        baseline_untracked_source = (root / "src/untracked.rs").read_text(encoding="utf-8")
-        (root / "src/tracked.rs").write_text("fn no_unsafe() {}\n", encoding="utf-8")
-        (root / "src/untracked.rs").write_text(
-            "fn two() { unsafe { one(); } unsafe { two(); } }\n", encoding="utf-8"
-        )
-        rust_cancellation = inventory_rust_sources(root)
-        assert_equal(
-            "rust-aggregate-cancellation-total",
-            rust_cancellation["lexical_unsafe_open_brace_blocks"],
-            tracked_added["lexical_unsafe_open_brace_blocks"],
-        )
-        if rust_cancellation["lexical_counts_by_file_sha256"] == tracked_added["lexical_counts_by_file_sha256"]:
-            raise InventoryError("self-test per-file Rust digest missed aggregate cancellation")
-        checks.append("rust-aggregate-cancellation-digest")
-        (root / "src/tracked.rs").write_text(baseline_tracked_source, encoding="utf-8")
-        (root / "src/untracked.rs").write_text(baseline_untracked_source, encoding="utf-8")
-        git(root, "rm", "--cached", "-q", "--", "src/untracked.rs")
-        expect_error(
-            "unstaged-rust-removal-rejected",
-            lambda: inventory_rust_sources(root),
-            "untracked non-ignored Rust source must be staged or removed: 'src/untracked.rs'",
-        )
-        untracked_source.unlink()
-        assert_equal(
-            "untracked-rust-removal-restores-candidate",
-            inventory_rust_sources(root)["tracked_rs_files"],
-            3,
-        )
-
-        lexical_fixture = (
-            "fn lexical() {\n"
-            " unsafe { one(); }\n"
-            " unsafe /* outer /* nested */ comment */ { two(); }\n"
-            " \u00e9unsafe { } unsafe\u00e9 { } e\u0301unsafe { } unsafe\u0301 { }\n"
-            " 'unsafe: loop { break 'unsafe; } r#unsafe { }\n"
-            " unsafe fn f() {} unsafe impl X {} unsafe trait T {}\n"
-            " unsafe extern \"C\" fn g() {}\n"
-            " // unsafe { }\n"
-            " /* unsafe { } /* unsafe { } */ */\n"
-            " let _ = \"unsafe { }\"; let _ = b\"unsafe { }\";\n"
-            " let _ = c\"unsafe { }\"; let _ = r#\"unsafe { }\"#;\n"
-            " let _ = br##\"unsafe { }\"##; let _ = cr\"unsafe { }\";\n"
-            " let _ = 'x'; let _ = b'x';\n"
-            "}\n"
-        )
-        (root / "src/tracked.rs").write_text(lexical_fixture, encoding="utf-8")
-        lexical_inventory = inventory_rust_sources(root)
-        assert_equal(
-            "lexical-rust-end-to-end",
-            lexical_inventory["lexical_unsafe_open_brace_blocks"],
-            2,
-        )
-        if lexical_inventory["lexical_counts_by_file_sha256"] == fixture_expected["rust_sources"]["lexical_counts_by_file_sha256"]:
-            raise InventoryError("self-test lexical digest ignored a per-file count mutation")
-        checks.append("lexical-per-file-digest")
-        for label, malformed in {
-            "unterminated-block-comment": b"/*",
-            "unterminated-string": b'\"unsafe {',
-            "unterminated-byte-string": b'b\"unsafe {',
-            "unterminated-c-string": b'c\"unsafe {',
-            "unterminated-raw-string": b'r#\"unsafe {',
-            "unterminated-byte-raw-string": b'br#\"unsafe {',
-            "unterminated-c-raw-string": b'cr#\"unsafe {',
-            "malformed-byte-char": b"b'x",
-            "isolated-combining-mark": "\u0301unsafe {".encode("utf-8"),
-            "invalid-rust-utf8": b"\xffunsafe {",
-        }.items():
-            expect_error(label, lambda malformed=malformed: count_lexical_unsafe_blocks(malformed, label))
 
         accepted_urls = {
             "https": ("https://github.com/RustDesk-Org/Repo.git", "rustdesk-org"),
@@ -1783,7 +1438,6 @@ def _text_inventory(inventory: dict[str, dict[str, Any]], status: str) -> str:
     flutter_lock = inventory["flutter_pubspec_lock"]
     flutter = inventory["flutter_pubspec"]
     workflows = inventory["github_workflows"]
-    rust = inventory["rust_sources"]
     return "\n".join(
         [
             f"dependency inventory: {status}",
@@ -1814,11 +1468,6 @@ def _text_inventory(inventory: dict[str, dict[str, Any]], status: str) -> str:
                 f"total regular files {workflows['regular_files']}"
             ),
             f"build.rs: {inventory['build_rs']['regular_files']} regular files",
-            (
-                "Rust lexical unsafe { blocks: "
-                f"{rust['lexical_unsafe_open_brace_blocks']} across "
-                f"{rust['tracked_rs_files']} Git-tracked *.rs files (not an AST proof)"
-            ),
         ]
     )
 

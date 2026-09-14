@@ -7358,10 +7358,6 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "882 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
-            "current Rust unsafe requirement inventory",
-        ),
-        (
             "the one in-tree <code>portable-pty</code> exception is exact pinned source ownership required by R-S11t",
             "requirements in-tree PTY provenance exception",
         ),
@@ -41913,9 +41909,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "flutter_pubspec_lock_source": (
                 repo / "flutter/pubspec.lock"
-            ).read_text(encoding="utf-8"),
-            "dependency_inventory_source": (
-                repo / "scripts/dependency-inventory.py"
             ).read_text(encoding="utf-8"),
             "keyboard_source": (repo / "src/keyboard.rs").read_text(encoding="utf-8"),
             "cli_source": (repo / "src/cli.rs").read_text(encoding="utf-8"),

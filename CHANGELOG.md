@@ -103,8 +103,8 @@ release notes.
   Native codec staging remains offline and platform-specific; in-process decoder risk remains an explicit
   accepted residual.
 - Removed the libaom/AV1 runtime and build scaffold instead of retaining another unreviewed in-process
-  decoder. Rust, Dart, native, workflow, build-script, and lexical unsafe-site inventories are
-  machine-derived and verifier-gated.
+  decoder. Cargo, Dart, native-dependency, workflow, and build-script inventories are machine-derived and
+  verifier-gated.
 - Hardened dependency and build inputs, including bundled native libraries, runner libraries, Android
   signing and final-manifest checks, Debian payload ownership and ELF search paths, and Apple
   service/helper provenance.

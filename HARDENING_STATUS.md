@@ -1165,8 +1165,13 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source closed.
   Native texture pointer creation, publication, replacement, view transfer, and retirement are tied to the exact
   asynchronous UI owner. Failed Rust-pointer unpublication retains native storage; failed native release remains
-  one visible terminal predecessor and cannot admit a replacement. Callback cleanup cannot use or retire a
-  replacement owner.
+  one visible terminal predecessor and cannot admit a replacement. Linux now also retains its exact retired
+  `GObject` and reserved renderer key when the fallible Flutter registrar rejects unregistration, rather than
+  finalizing potentially callback-reachable storage. Only successful unregister—including the final retry during
+  outer plugin teardown—releases it; continued refusal retains the storage until process teardown. The production-
+  translation-unit regression covers refusal, terminal no-retry, retained storage, successful close, and teardown
+  finality, but current execution is not claimed while the fixed rootless Docker socket is absent. Callback cleanup
+  cannot use or retire a replacement owner.
 - **R-S11ey/R-S11e-186 software-RGBA-only desktop presentation** — Source/build topology closed. The unsupported
   GPU/VRAM texture plugin and its registration/packaging path are absent; supported desktop presentation uses the
   repository-owned software-RGBA plugin. Native renderer and packaged-plugin execution remain open.

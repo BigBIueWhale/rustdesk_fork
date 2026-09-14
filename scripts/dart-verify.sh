@@ -292,7 +292,7 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/rgba_publication_order_test.dart
     echo "  == R-S11gc obscured password fields retain enabled focused semantics =="
     flutter test --no-pub test/password_field_semantics_test.dart
-    echo "  == R-S11ez Linux native texture callback retirement finality =="
+    echo "  == R-S11ex/R-S11ez Linux native texture unregister and callback retirement finality =="
     engine="${flutter_roots[0]}/bin/cache/artifacts/engine/linux-x64"
     plugin=/src/flutter/third_party/texture_rgba_renderer/linux
     [ -f "$engine/libflutter_linux_gtk.so" ]

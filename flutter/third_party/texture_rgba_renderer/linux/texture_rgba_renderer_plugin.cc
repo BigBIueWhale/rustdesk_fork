@@ -152,8 +152,12 @@ static gboolean texture_rgba_notify_pending(TextureRgba* self) {
   return marked;
 }
 
-static void texture_rgba_retire(TextureRgba* self) {
+static gboolean texture_rgba_retire(TextureRgba* self) {
   g_mutex_lock(&self->mutex);
+  if (self->retired) {
+    g_mutex_unlock(&self->mutex);
+    return FALSE;
+  }
   self->retired = TRUE;
   uint8_t* pending_buffer = self->buffer;
   self->buffer = nullptr;
@@ -162,6 +166,17 @@ static void texture_rgba_retire(TextureRgba* self) {
   self->buffer_ready = FALSE;
   g_mutex_unlock(&self->mutex);
   delete[] pending_buffer;
+  return TRUE;
+}
+
+static gboolean texture_rgba_is_live(TextureRgba* self) {
+  if (self == nullptr) {
+    return FALSE;
+  }
+  g_mutex_lock(&self->mutex);
+  const gboolean live = !self->retired && self->texture_id > 0;
+  g_mutex_unlock(&self->mutex);
+  return live;
 }
 
 static gboolean texture_rgba_copy_pixels(FlPixelBufferTexture* texture,
@@ -267,12 +282,42 @@ static gboolean lookup_int(FlValue* args, const char* name, int64_t* value) {
   return TRUE;
 }
 
-static void release_texture(TextureRgbaRendererPlugin* self,
-                            TextureRgba* texture) {
+static gboolean release_texture(TextureRgbaRendererPlugin* self,
+                                TextureRgba* texture) {
   texture_rgba_retire(texture);
-  fl_texture_registrar_unregister_texture(self->texture_registrar,
-                                          FL_TEXTURE(texture));
+  if (!fl_texture_registrar_unregister_texture(self->texture_registrar,
+                                               FL_TEXTURE(texture))) {
+    return FALSE;
+  }
   g_object_unref(texture);
+  return TRUE;
+}
+
+static gboolean close_texture(TextureRgbaRendererPlugin* self, int64_t key) {
+  if (self->renderers == nullptr) {
+    return FALSE;
+  }
+  auto found = self->renderers->find(key);
+  if (found == self->renderers->end() || found->second == nullptr) {
+    return FALSE;
+  }
+
+  TextureRgba* texture = found->second;
+  if (!texture_rgba_retire(texture)) {
+    return FALSE;
+  }
+  // Keep the key reserved while the exact texture is detached from live
+  // lookup. A failed unregister restores the retired owner, which rejects
+  // frames and prevents a successor from reusing this key.
+  found->second = nullptr;
+  if (!fl_texture_registrar_unregister_texture(self->texture_registrar,
+                                               FL_TEXTURE(texture))) {
+    found->second = texture;
+    return FALSE;
+  }
+  self->renderers->erase(found);
+  g_object_unref(texture);
+  return TRUE;
 }
 
 static void texture_rgba_renderer_plugin_handle_method_call(
@@ -285,53 +330,54 @@ static void texture_rgba_renderer_plugin_handle_method_call(
   if (std::strcmp(method, "createTexture") == 0) {
     if (!lookup_int(args, "key", &key)) {
       response = bad_arguments_response();
-    } else if (self->renderers == nullptr ||
-               self->renderers->find(key) != self->renderers->end()) {
+    } else if (self->renderers == nullptr) {
       response = FL_METHOD_RESPONSE(
           fl_method_success_response_new(fl_value_new_int(-1)));
     } else {
-      TextureRgba* texture = texture_rgba_new(self->texture_registrar);
-      if (!fl_texture_registrar_register_texture(self->texture_registrar,
-                                                 FL_TEXTURE(texture))) {
-        texture_rgba_retire(texture);
-        g_object_unref(texture);
-        response = FL_METHOD_RESPONSE(
-            fl_method_success_response_new(fl_value_new_int(-1)));
-      } else {
-        texture->texture_id = fl_texture_get_id(FL_TEXTURE(texture));
-        try {
-          self->renderers->emplace(key, texture);
+      TextureRgba** reserved = nullptr;
+      try {
+        auto insertion = self->renderers->emplace(key, nullptr);
+        if (!insertion.second) {
+          response = FL_METHOD_RESPONSE(
+              fl_method_success_response_new(fl_value_new_int(-1)));
+        } else {
+          reserved = &insertion.first->second;
+        }
+      } catch (...) {
+        // Map allocation happens before native registration, so failure has no
+        // registered texture whose lifetime could become ambiguous.
+        response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+            "allocation-failed", "failed to reserve texture ownership",
+            nullptr));
+      }
+      if (reserved != nullptr) {
+        TextureRgba* texture = texture_rgba_new(self->texture_registrar);
+        if (texture == nullptr) {
+          self->renderers->erase(key);
+          response = FL_METHOD_RESPONSE(
+              fl_method_success_response_new(fl_value_new_int(-1)));
+        } else if (!fl_texture_registrar_register_texture(
+                       self->texture_registrar, FL_TEXTURE(texture))) {
+          texture_rgba_retire(texture);
+          g_object_unref(texture);
+          self->renderers->erase(key);
+          response = FL_METHOD_RESPONSE(
+              fl_method_success_response_new(fl_value_new_int(-1)));
+        } else {
+          texture->texture_id = fl_texture_get_id(FL_TEXTURE(texture));
+          *reserved = texture;
           response = FL_METHOD_RESPONSE(fl_method_success_response_new(
               fl_value_new_int(texture->texture_id)));
-        } catch (...) {
-          release_texture(self, texture);
-          response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-              "allocation-failed", "failed to retain registered texture",
-              nullptr));
         }
       }
     }
   } else if (std::strcmp(method, "closeTexture") == 0) {
     if (!lookup_int(args, "key", &key)) {
       response = bad_arguments_response();
-    } else if (self->renderers == nullptr) {
-      response = FL_METHOD_RESPONSE(
-          fl_method_success_response_new(fl_value_new_bool(FALSE)));
     } else {
-      auto found = self->renderers->find(key);
-      if (found == self->renderers->end()) {
-        response = FL_METHOD_RESPONSE(
-            fl_method_success_response_new(fl_value_new_bool(FALSE)));
-      } else {
-        TextureRgba* texture = found->second;
-        self->renderers->erase(found);
-        texture_rgba_retire(texture);
-        const gboolean unregistered = fl_texture_registrar_unregister_texture(
-            self->texture_registrar, FL_TEXTURE(texture));
-        g_object_unref(texture);
-        response = FL_METHOD_RESPONSE(
-            fl_method_success_response_new(fl_value_new_bool(unregistered)));
-      }
+      response = FL_METHOD_RESPONSE(
+          fl_method_success_response_new(fl_value_new_bool(
+              close_texture(self, key))));
     }
   } else if (std::strcmp(method, "onRgba") == 0) {
     int64_t width;
@@ -361,6 +407,7 @@ static void texture_rgba_renderer_plugin_handle_method_call(
       auto found = self->renderers->find(key);
       const gboolean accepted =
           found != self->renderers->end() &&
+          found->second != nullptr &&
           texture_rgba_mark_frame(found->second, fl_value_get_uint8_list(data),
                                   static_cast<int>(fl_value_get_length(data)),
                                   static_cast<int>(width),
@@ -377,9 +424,10 @@ static void texture_rgba_renderer_plugin_handle_method_call(
           fl_method_success_response_new(fl_value_new_int(0)));
     } else {
       auto found = self->renderers->find(key);
-      const int64_t address = found == self->renderers->end()
-                                  ? 0
-                                  : reinterpret_cast<int64_t>(found->second);
+      const bool live = found != self->renderers->end() &&
+                        texture_rgba_is_live(found->second);
+      const int64_t address =
+          live ? reinterpret_cast<int64_t>(found->second) : 0;
       response = FL_METHOD_RESPONSE(
           fl_method_success_response_new(fl_value_new_int(address)));
     }
@@ -394,7 +442,11 @@ static void texture_rgba_renderer_plugin_dispose(GObject* object) {
   TextureRgbaRendererPlugin* self = TEXTURE_RGBA_RENDERER_PLUGIN(object);
   if (self->renderers != nullptr) {
     for (const auto& entry : *self->renderers) {
-      release_texture(self, entry.second);
+      if (entry.second != nullptr && !release_texture(self, entry.second)) {
+        // The registrar still has uncertain ownership. Process/engine teardown
+        // is safer than finalizing storage that may remain callback-reachable.
+        g_warning("Retaining texture after unregister failure");
+      }
     }
     delete self->renderers;
     self->renderers = nullptr;

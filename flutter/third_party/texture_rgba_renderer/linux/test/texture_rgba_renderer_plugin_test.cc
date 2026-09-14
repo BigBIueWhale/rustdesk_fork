@@ -10,6 +10,8 @@ struct TestTextureRegistrar {
   GObject parent_instance;
   guint mark_count;
   gboolean mark_result;
+  guint unregister_count;
+  gboolean unregister_result;
 };
 
 struct TestTextureRegistrarClass {
@@ -39,8 +41,11 @@ static gboolean test_mark_texture_frame_available(FlTextureRegistrar* registrar,
   return self->mark_result;
 }
 
-static gboolean test_unregister_texture(FlTextureRegistrar*, FlTexture*) {
-  return TRUE;
+static gboolean test_unregister_texture(FlTextureRegistrar* registrar,
+                                        FlTexture*) {
+  auto* self = reinterpret_cast<TestTextureRegistrar*>(registrar);
+  ++self->unregister_count;
+  return self->unregister_result;
 }
 
 static void test_shutdown(FlTextureRegistrar*) {}
@@ -59,6 +64,12 @@ static void test_texture_registrar_class_init(TestTextureRegistrarClass*) {}
 static void test_texture_registrar_init(TestTextureRegistrar* self) {
   self->mark_count = 0;
   self->mark_result = TRUE;
+  self->unregister_count = 0;
+  self->unregister_result = TRUE;
+}
+
+void mark_finalized(gpointer data, GObject*) {
+  *reinterpret_cast<bool*>(data) = true;
 }
 
 bool check(bool condition, const char* message) {
@@ -190,6 +201,62 @@ int main() {
                   "a retired texture accepted re-notification");
 
   g_object_unref(texture);
+
+  auto* plugin = TEXTURE_RGBA_RENDERER_PLUGIN(
+      g_object_new(texture_rgba_renderer_plugin_get_type(), nullptr));
+  plugin->texture_registrar = FL_TEXTURE_REGISTRAR(registrar);
+
+  bool failed_texture_finalized = false;
+  TextureRgba* failed_texture = texture_rgba_new(plugin->texture_registrar);
+  failed_texture->texture_id = 23;
+  g_object_weak_ref(G_OBJECT(failed_texture), mark_finalized,
+                    &failed_texture_finalized);
+  plugin->renderers->emplace(101, failed_texture);
+  registrar->unregister_result = FALSE;
+  passed &= check(!close_texture(plugin, 101),
+                  "failed unregister was reported as successful close");
+  passed &= check(registrar->unregister_count == 1,
+                  "failed unregister did not reach the registrar exactly once");
+  passed &= check(!failed_texture_finalized,
+                  "failed unregister finalized callback-reachable storage");
+  passed &= check(plugin->renderers->find(101) != plugin->renderers->end() &&
+                      plugin->renderers->find(101)->second == failed_texture,
+                  "failed unregister did not retain its exact texture owner");
+  passed &= check(!plugin->renderers->emplace(101, nullptr).second,
+                  "failed unregister allowed a replacement owner");
+  passed &= check(!texture_rgba_is_live(failed_texture),
+                  "failed-close owner remained pointer-discoverable");
+  passed &= check(
+      !texture_rgba_mark_frame(failed_texture, frame_a, sizeof(frame_a), 2, 2,
+                               16),
+      "failed-close owner accepted a later frame");
+
+  registrar->unregister_result = TRUE;
+  passed &= check(!close_texture(plugin, 101),
+                  "terminal failed close was retried through the public owner");
+  passed &= check(registrar->unregister_count == 1,
+                  "terminal failed close issued a second unregister");
+
+  bool closed_texture_finalized = false;
+  TextureRgba* closed_texture = texture_rgba_new(plugin->texture_registrar);
+  closed_texture->texture_id = 29;
+  g_object_weak_ref(G_OBJECT(closed_texture), mark_finalized,
+                    &closed_texture_finalized);
+  plugin->renderers->emplace(102, closed_texture);
+  passed &= check(close_texture(plugin, 102),
+                  "successful unregister did not close its exact texture");
+  passed &= check(registrar->unregister_count == 2,
+                  "successful close did not issue one exact unregister");
+  passed &= check(closed_texture_finalized,
+                  "successful unregister retained native texture storage");
+  passed &= check(plugin->renderers->find(102) == plugin->renderers->end(),
+                  "successful close retained its renderer-map entry");
+
+  g_object_unref(plugin);
+  passed &= check(registrar->unregister_count == 3,
+                  "plugin teardown did not retry the retained exact owner");
+  passed &= check(failed_texture_finalized,
+                  "successful outer teardown did not finalize retained storage");
   g_object_unref(registrar);
   if (!passed) {
     return 1;

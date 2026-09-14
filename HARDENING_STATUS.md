@@ -331,7 +331,7 @@ documentation-only validator and five prose mutations are deleted; and the focus
 longer requires or mutates the Appendix/status records. Its direct PowerShell, result-schema, VM topology, Windows
 source, R-S11gj semantic, and behavioral self-tests remain. Named evidence and every current gap remain in this
 ledger, where progress belongs. This is documentation/verifier architecture cleanup, not new Windows execution.
-Confined normal Windows-harness/workspace validation, six independently runnable behavioral self-tests, and five
+Confined normal Windows-harness/workspace validation, five independently runnable behavioral self-tests, and five
 focused credential/VM-boundary weakenings pass. The VM-orchestrator and MSI-canonicalizer self-tests remain
 unexecuted here because the exact helper image and pinned `olefile` wheel are absent; no substitute was acquired.
 The global source-mutation checkpoint advances beyond the deleted Windows-evidence fixture but remains non-green

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-1d7ba9f2d2aa90b2406a29bf9ca1bef877be04d8ecb9383ae161e6daa6cfe48f  requirements.html
+4a1034b3a1ada2e1d90b1932b9c26e5bd313e84a537f7309ea03ed6edf32b3e8  requirements.html
 ```
 
 ## Current Verdict
@@ -339,11 +339,16 @@ Appendix C #115 now states only the timeless host-verifier and descriptor-owned 
 history, `FIX` badge, implementation narration, and wording-based proof claims are deleted, as are the two ordinary
 shell probes of requirements/status prose, the global status-heading mutation, and the impossible nested
 `VERIFIER_FIXTURE_TMP` mutation left after ordinary verification stopped creating that directory. The authenticated
-shell workspace validator, descriptor-owned scratch implementation, executable failure-injection fixtures, and direct
-implementation mutations remain. Nine separately orphaned Android listener/startup mutations are also deleted. A
-deliberate complete source-mutation checkpoint then ran for roughly eight and a half minutes under a 1,536 MiB limit
-before being killed with exit 137 without emitting a phase or verifier verdict. The cause is not proven, and neither
-progress through a particular target nor a complete catalog pass is claimed.
+shell workspace validator, descriptor-owned scratch implementation, and executable failure-injection fixtures remain.
+The 26,062-line global source-mutation function, its two catalog-only helpers, 26 self-referential catalog-presence
+checks, separate CLI mode, and self-test dispatch are deleted instead of retaining a verifier-of-verifier matrix that
+observed no product or operating-system behavior. Later-added normative clauses now require the retained focused semantic
+gates and independent normal workspace validator without requiring the duplicate global catalog. The last catalog run
+was killed with exit 137 after roughly eight and a half minutes under a 1,536 MiB limit without emitting a phase or
+verdict; its cause and progress were not proven. The retained normal workspace check now completes in seconds.
+This reduces the workspace verifier from 3,076,257 bytes/72,709 lines to 1,899,126 bytes/45,497 lines and
+`requirements.html` from 2,224,640 to 2,223,739 bytes. Including this record, the ledger moves from 1,051,107 to
+1,051,700 bytes, or 350,567 conservative tokens by the documented method.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -1137,7 +1142,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
-| Full verification infrastructure | R-S11bg still requires a current confined full-gate rerun and a fresh independent rebuild of its recoverable verifier image. Long mutation catalogs are integration checkpoints, not the ordinary development loop. |
+| Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. The deleted global verifier-of-verifier catalog was neither product nor native evidence and is no longer a release criterion. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -1391,7 +1396,7 @@ semantic baseline in the ordinary loop. Explicit executable self-test mode inste
 initially empty mode-0700 scratch root by descriptor, allocates unpredictable descriptor-relative fixture children,
 and rejects path, mount, inventory, external-link, cleanup, or final-emptiness ambiguity. Its failure-injection
 fixture proves that cleanup uncertainty remains secondary to the original body failure while both ambiguous directory
-objects remain unchanged. Direct source mutations bind those implementation and behavioral-fixture paths; no test
+objects remain unchanged. Normal semantic checks and the executable fixtures bind those implementation paths; no test
 depends on the status heading or a retired shell-owned `VERIFIER_FIXTURE_TMP`. Complete managed-command coverage still
 requires an isolated same-principal systemd user scope and is not inferred from confined source or scratch checks.
 
@@ -11758,9 +11763,9 @@ two obsolete focused-script `--self-test` wiring mutations, and four requirement
 Appendix wording mutations with no semantic consumer. The retained normal
 workspace check still observes source structure rather than Android behavior and
 is not a reason to restore any superseded lifecycle. The normal workspace and
-focused startup source checks pass; a deliberate complete mutation checkpoint
-produced no verifier verdict before exit 137 under its 1,536 MiB resource limit,
-so it supplies no full-catalog evidence and its termination cause remains unknown.
+focused startup source checks pass. The former global mutation catalog was
+deleted after its last bounded run produced no verdict before exit 137; it never
+supplied Android lifecycle, product, or native evidence.
 
 Two bounded, network-disabled, numeric-nonroot compilation attempts used only
 the read-only repository/toolchain/cache plus three ephemeral crates whose bytes

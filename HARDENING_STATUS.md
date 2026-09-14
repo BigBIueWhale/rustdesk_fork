@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e991aceff3bfe8ab6e40a7f26eda8af6c3b2cc3142552467513cda9bcd795427  requirements.html
+210243959251e03c9fd47756eefd82048a46e2b5ca16787827783b3a50b77f51  requirements.html
 ```
 
 ## Current Verdict
@@ -1248,7 +1248,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   assertions. Signed native macOS execution remains open under the release-blocking matrix.
 - **R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources** — Source closed. The fixed `launchctl print`
   child has null input, byte-bounded nonblocking output, an absolute deadline, exact process ownership, and joined
-  termination on every outcome. This remains portable child/source evidence, not signed macOS execution.
+  termination on every outcome. The shared isolated Rust gate executes exact-output, overflow, and deadline behavior;
+  one focused checker retains the production-call and no-fallback invariants, while the Apple and workspace checkers
+  do not duplicate them. This remains portable child/source evidence, not signed macOS execution.
 - **R-S11ff/R-S11e-193 exact viewer refresh admission** — Source closed. Refresh is bounded, coalesced, exact-
   round and exact-UI owned, invalidates the local decoder generation before the network request, and poisons the
   round on admission failure. The protocol has no presentation acknowledgement; native recovery remains open.

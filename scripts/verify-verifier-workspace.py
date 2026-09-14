@@ -18359,75 +18359,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
         ),
         "macOS raw-stream kernel peer snapshot",
     )
-    bounded_launchctl_child = extract_between(
-        ipc,
-        "fn run_macos_bounded_child_stdout(",
-        '\n}\n\n#[cfg(target_os = "macos")]\n'
-        "fn macos_launch_agent_owns_service_owned_server_pid",
-        "bounded macOS launchctl child owner",
-    )
-    require_order(
-        bounded_launchctl_child,
-        (
-            "if stdout_limit == 0",
-            "std::time::Instant::now() >= deadline",
-            ".stdin(std::process::Stdio::null())",
-            ".stdout(std::process::Stdio::piped())",
-            ".stderr(std::process::Stdio::null())",
-            ".spawn()",
-            "child.stdout.take()",
-            "set_macos_bounded_child_stdout_nonblocking(&stdout)",
-            "let mut captured = Vec::with_capacity(stdout_limit.min(16 * 1024));",
-            "let mut buffer = [0u8; 8 * 1024];",
-            "stdout.read(&mut buffer)",
-            "count > stdout_limit.saturating_sub(captured.len())",
-            "captured.extend_from_slice(&buffer[..count]);",
-            "child.try_wait()",
-            "if stdout_closed",
-            "if let Some(status) = status.take()",
-            "if now >= deadline",
-            "std::thread::sleep(",
-        ),
-        "bounded macOS launchctl child capture",
-    )
-    for text, label in (
-        (
-            "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;",
-            "macOS launchctl stdout ceiling",
-        ),
-        (
-            "const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration =",
-            "macOS launchctl cleanup reserve",
-        ),
-        (
-            "std::time::Duration::from_millis(50);",
-            "macOS launchctl cleanup reserve value",
-        ),
-        (
-            "flags | hbb_common::libc::O_NONBLOCK",
-            "macOS launchctl nonblocking stdout",
-        ),
-        (
-            "fn terminate_and_reap_macos_bounded_child(",
-            "macOS launchctl child cleanup owner",
-        ),
-        ("child.kill().err()", "macOS launchctl child kill"),
-        ("child.wait()", "macOS launchctl child reap"),
-    ):
-        require_text(ipc, text, label)
-    require_exact_count(
-        bounded_launchctl_child,
-        "macos_bounded_child_failure(",
-        6,
-        "bounded macOS launchctl cleanup failure edges",
-    )
-    for test_name in (
-        "macos_bounded_child_stdout_accepts_exact_output",
-        "macos_bounded_child_stdout_terminates_on_overflow",
-        "macos_bounded_child_stdout_terminates_on_deadline",
-    ):
-        require_text(ipc, test_name, f"macOS launchctl regression: {test_name}")
-
     readiness_client = extract_between(
         ipc,
         "async fn macos_service_owned_password_authorization_right_ready(",
@@ -18702,14 +18633,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "consuming capability-owned operation-bound PRS response",
             "macOS typed credential response action contract",
         ),
-        (
-            "byte- and deadline-bounded launchctl capture",
-            "macOS bounded launchctl child contract",
-        ),
-        (
-            "bounded child cleanup failure edges",
-            "macOS launchctl cleanup-edge contract",
-        ),
     ):
         require_text(focused, text, label)
     require_text(
@@ -18876,7 +18799,7 @@ def validate_service_ipc_protocol_authority_contract(sources):
     apple_receiver = extract_between(
         sources["apple"],
         '        need("b2", "macos-runtime-prs-receiver-authority-not-typed-through-final-install"',
-        '        need("b2", "snapshot-launchctl-child-not-resource-bounded"',
+        '        need("b2", "service-password-ordinary-fallback-present"',
         "Apple macOS runtime PRS receiver analyzer",
     )
     for text, label in (
@@ -19023,8 +18946,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
     ):
         for text in (
             "verify-macos-service-credential-ipc.py",
-            "R-S11fe",
-            "R-S11e-192",
             '<span class="id">R-S11ia</span>',
             "<tr><td>386</td>",
             "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
@@ -19045,21 +18966,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
         ):
             require_text(gate, text, f"{label}: {text}")
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11fe</span>',
-        "bounded macOS launchd proof-child requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>313</td>",
-        "bounded macOS launchd proof-child Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
-        "bounded macOS launchd proof-child hardening ledger",
-    )
     for source_name, text, label in (
         (
             "requirements",
@@ -19269,12 +19175,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
         ),
     ):
         require_text(sources["workspace_verifier"], text, label)
-    require_text(
-        sources["verify"],
-        '"${RUN[@]}" cargo test --lib --features linux-pkg-config '
-        "ipc::test::macos_bounded_child_stdout --color never",
-        "shared bounded macOS launchctl behavior gate",
-    )
 
 
 def validate_pulse_audio_ipc_protocol_contract(sources):

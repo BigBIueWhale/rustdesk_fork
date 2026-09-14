@@ -1222,8 +1222,6 @@ def analyze(sources):
         snapshot_path = item(ipc, "fn macos_root_wheel_path_is_trusted")
         snapshot_plist = item(ipc, "fn macos_service_owned_server_launch_agent_plist_value_is_expected")
         snapshot_launchd = item(ipc, "fn macos_launch_agent_owns_service_owned_server_pid")
-        snapshot_bounded_child = item(ipc, "fn run_macos_bounded_child_stdout")
-        snapshot_child_cleanup = item(ipc, "fn terminate_and_reap_macos_bounded_child")
         snapshot_handler = item(ipc, "async fn handle_macos_service_credential_snapshot_transaction")
         mac_credential_response_requester = item(ipc, "struct MacosServiceOwnedCredentialRequester")
         mac_credential_response_admission = item(ipc, "struct MacosServiceOwnedCredentialReplicaAdmission")
@@ -2297,23 +2295,6 @@ def analyze(sources):
             and ipc_production.count("receiver.receive_and_admit(deadline)") == 2
             and ipc_production.count("MacosServiceOwnedRuntimePrsAdmission {") == 3
             and auth.count("pub(crate) fn macos_service_server_authorizations_match(") == 1)
-        need("b2", "snapshot-launchctl-child-not-resource-bounded", all(token in ipc for token in [
-            "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;",
-            "const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration =",
-            "std::time::Duration::from_millis(50);",
-            "flags | hbb_common::libc::O_NONBLOCK",
-            "macos_bounded_child_stdout_accepts_exact_output",
-            "macos_bounded_child_stdout_terminates_on_overflow",
-            "macos_bounded_child_stdout_terminates_on_deadline",
-        ]) and ordered(snapshot_bounded_child, [
-            ".stdin(std::process::Stdio::null())", ".stdout(std::process::Stdio::piped())",
-            ".stderr(std::process::Stdio::null())", ".spawn()", "child.stdout.take()",
-            "set_macos_bounded_child_stdout_nonblocking(&stdout)",
-            "count > stdout_limit.saturating_sub(captured.len())", "child.try_wait()",
-            "if now >= deadline", "MACOS_LAUNCHCTL_POLL_INTERVAL.min(deadline.saturating_duration_since(now))",
-        ]) and all(token in snapshot_child_cleanup for token in [
-            "child.try_wait()", "child.kill().err()", "child.wait()",
-        ]) and "command.output()" not in snapshot_launchd)
         need("b2", "service-password-ordinary-fallback-present", not any(token in service_setter + service_client_wrapper for token in [
             "set_user_owned_permanent_password", "Config::set_permanent_password", "main_ipc_request(",
             "connect_service(", "send_json_timeout(", "RequestMacosServiceOwnedUnattendedPasswordChange",

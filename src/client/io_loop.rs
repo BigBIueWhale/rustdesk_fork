@@ -556,7 +556,7 @@ fn inspect_viewer_download_digest(
     };
     let write_path = get_string(&fs::TransferJob::join(base, &file.name));
     let result =
-        fs::is_write_need_confirmation(peer_supports_resume && job.is_resume, &write_path, digest)
+        fs::inspect_write_destination(peer_supports_resume && job.is_resume, &write_path, digest)
             .map_err(|error| error.to_string())?;
     job.set_digest(digest.file_size, digest.last_modified);
     Ok((result, write_path))
@@ -3209,37 +3209,6 @@ impl<T: InvokeUiSession> Remote<T> {
                                     );
                                 };
                                 match result {
-                                    DigestCheckResult::IsSame => {
-                                        let req = FileTransferSendConfirmRequest {
-                                            id: digest.id,
-                                            file_num: digest.file_num,
-                                            union: Some(
-                                                file_transfer_send_confirm_request::Union::Skip(
-                                                    true,
-                                                ),
-                                            ),
-                                            ..Default::default()
-                                        };
-                                        if let Err(error) = job.confirm(&req).await {
-                                            let error = retire_viewer_receive_job_after_failure(
-                                                &mut self.write_jobs,
-                                                digest.id,
-                                                error.to_string(),
-                                            );
-                                            return self.record_file_flow_failure(
-                                                ViewerFileWriteContext::control(
-                                                    Some(digest.id),
-                                                    digest.file_num,
-                                                    "confirm peer upload",
-                                                ),
-                                                error,
-                                            );
-                                        }
-                                        let msg = new_send_confirm(req);
-                                        if !self.send_tracked_file_action(peer, &msg).await {
-                                            return false;
-                                        }
-                                    }
                                     DigestCheckResult::NeedConfirm(digest) => {
                                         let mut overwrite_strategy =
                                             job.default_overwrite_strategy();

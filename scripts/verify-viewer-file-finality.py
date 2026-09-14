@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify viewer/controlled file admission, exact writes, and digest failure finality."""
+"""Verify viewer/controlled file admission and exact write ownership."""
 
 from __future__ import annotations
 
@@ -360,47 +360,6 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(io_loop, "self.finish_file_flow();", "file flow final retirement")
 
-    peer_dispatch = extract_rust_item(
-        io_loop, "async fn handle_msg_from_peer", "viewer peer-message dispatch"
-    )
-    digest_inspection = extract_rust_item(
-        io_loop,
-        "fn inspect_viewer_download_digest",
-        "viewer download digest inspection",
-    )
-    require_order(
-        digest_inspection,
-        (
-            "if digest.id != job.id()",
-            "if digest.file_num != job.file_num()",
-            "usize::try_from(digest.file_num)",
-            ".files()",
-            ".get(file_num)",
-            "fs::DataSource::FilePath(base)",
-            "fs::is_write_need_confirmation(",
-            ".map_err(|error| error.to_string())?",
-            "job.set_digest(digest.file_size, digest.last_modified)",
-            "Ok((result, write_path))",
-        ),
-        "exact digest authority and local inspection precede job mutation",
-    )
-    require_order(
-        peer_dispatch,
-        (
-            "inspect_viewer_download_digest(",
-            '"inspect download digest"',
-            "return self.record_file_flow_failure(",
-            'format!("local download digest check failed: {error}")',
-        ),
-        "active download digest inspection failure is exact-round terminal and visible",
-    )
-    forbid(
-        peer_dispatch,
-        "match fs::is_write_need_confirmation(",
-        "inline digest inspection without explicit error ownership",
-    )
-    forbid(io_loop, 'println!("error receiving digest:', "discarded digest inspection error")
-
     init_jobs = extract_rust_item(fs, "async fn init_jobs", "common file job init")
     require(
         init_jobs,
@@ -648,12 +607,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "controlled_file_response_context(&msg)", "None::<ControlledFileWriteContext>", "controlled send funnel classification"),
     ("server", "let retired_file_writes = conn.file_writes.retire();", "let retired_file_writes = Vec::new();", "controlled round receipt retirement"),
     ("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "fn controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "controlled exact frame regression"),
-    ("io_loop", "fn inspect_viewer_download_digest(", "fn disabled_inspect_viewer_download_digest(", "download digest inspection owner"),
-    ("io_loop", "if digest.id != job.id() {", "if false {", "exact download digest job identity"),
-    ("io_loop", "if digest.file_num != job.file_num() {", "if false {", "exact download digest file identity"),
-    ("io_loop", 'format!("local download digest check failed: {error}")', 'format!("ignored download digest failure: {error}")', "download digest failure visibility"),
-    ("io_loop", "fn r_s11fj_download_digest_metadata_failure_is_explicit()", "fn download_digest_metadata_failure_is_explicit()", "download digest metadata regression"),
-    ("io_loop", "fn r_s11fj_download_digest_requires_the_exact_active_file()", "fn download_digest_requires_the_exact_active_file()", "download digest exact-file regression"),
 )
 
 

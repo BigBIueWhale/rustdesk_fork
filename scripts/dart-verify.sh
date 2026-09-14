@@ -434,6 +434,8 @@ PY
       server::connection::controlled_file_write_tests::r_s11fh_ -- --test-threads=1
     cargo test --offline --locked -p hbb_common --lib \
       fs::tests::r_s11fi_ -- --test-threads=1
+    cargo test --offline --locked -p hbb_common --lib \
+      fs::tests::r_s11fj_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11fi_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \

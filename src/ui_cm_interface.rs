@@ -13,7 +13,7 @@ use hbb_common::fs::serialize_transfer_job;
 use hbb_common::{
     allow_err, bail,
     config::{keys::OPTION_FILE_TRANSFER_MAX_FILES, Config},
-    fs::{self, get_string, is_write_need_confirmation, DigestCheckResult},
+    fs::{self, get_string, inspect_write_destination, DigestCheckResult},
     log,
     message_proto::*,
     tokio::{
@@ -2131,11 +2131,7 @@ async fn handle_fs(
                     match (job.job.files().get(file_num as usize), &job.job.data_source) {
                         (Some(file), fs::DataSource::FilePath(base)) => {
                             let path = get_string(&fs::TransferJob::join(base, &file.name));
-                            match is_write_need_confirmation(is_resume, &path, &digest) {
-                                Ok(DigestCheckResult::IsSame) => {
-                                    job.job.set_digest(file_size, last_modified);
-                                    ipc::CmWriteDigestResult::SendConfirm { skip: true }
-                                }
+                            match inspect_write_destination(is_resume, &path, &digest) {
                                 Ok(DigestCheckResult::NoSuchFile) => {
                                     job.job.set_digest(file_size, last_modified);
                                     ipc::CmWriteDigestResult::SendConfirm { skip: false }

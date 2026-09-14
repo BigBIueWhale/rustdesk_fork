@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-95e480c4478a76dbc153eca0cad118efe58ddfdce22c426223ebf87c0631758a  requirements.html
+973fce33d4b2eba962a048998d538dae9d22da318ecd3ca8875d44e1c15a64e2  requirements.html
 ```
 
 ## Current Verdict
@@ -106,6 +106,26 @@ source-wording/mutation block was deleted from the focused checker, reducing it 
 labels no longer claim that checker proves receive persistence. This exact tree has not compiled or executed because
 the authorized rootless Docker socket is absent; installed desktop/mobile operations and all global native/release
 evidence remain open.
+
+R-S11fj and Appendix C #318 now specify only exact viewer digest-job/destination authority, leased no-follow
+inspection, the true-absence boundary, failure finality, object preservation, and target-native acceptance. Their
+inherited defect history, source-closure claim, mutation inventory, execution receipt, and repeated release checklist
+were deleted, reducing `requirements.html` by 2,022 bytes. Source review found that the later receive-lease work had
+left the original nested `exists`/`if let Ok` fallbacks inside the shared destination inspector: invalid resume JSON,
+unsafe or inaccessible objects, and some metadata failures could still become `NoSuchFile`. The misleading predicate
+API is replaced by `inspect_write_destination`; Unix and Windows inspect the final object through handle-relative,
+regular-file, no-follow access, resume records are bounded and receive-authority checked, only `NotFound` denotes
+absence, the documented Windows missing-file statuses normalize to that one result, and every other failure reaches
+the exact operation's terminal viewer/CM owner. The impossible
+`IsSame` result and both unreachable consumer branches are deleted. Real filesystem regressions distinguish invalid
+or hard-linked preserved resume state and a preserved symlink destination from absence, retain valid nonmatching
+resume metadata as an ordinary no-offset outcome, and complement the existing pre-epoch and wrong-file tests. The
+R-S11fj source-wording/mutation block was deleted from the focused checker, reducing
+it by 2,383 bytes; shared/Apple labels no longer claim that checker proves digest finality, while the fast generated-
+bridge and shared lanes now invoke the real common-filesystem regressions. This exact tree has not compiled or
+executed because the authorized
+rootless Docker socket is absent; installed desktop/mobile digest/error/resume transactions remain open in the release
+matrix.
 
 Appendix C rows #65–#67 and #69 now state only the timeless Windows driver-install finality, app-name
 grammar, custom-client provenance, and known-folder path-authority contracts. Their original failure histories,
@@ -1315,9 +1335,10 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation retires exact current-file state
   through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
   survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
-- **R-S11fj/R-S11e-197 viewer download digest inspection failure** — Source closed. Signed file identity is
-  validated before lookup; local metadata/time/resume inspection failure is bound to the exact job, produces a
-  visible terminal response, and retires the connection round instead of leaving the peer waiting indefinitely.
+- **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
+  OPEN.** Signed file identity is validated before lookup. Leased handle-based destination/resume inspection now
+  distinguishes only true absence from explicit parse, authority, object-type, metadata, timestamp, and cleanup
+  failure; mutation follows success, and failure remains bound to the exact terminal viewer/CM operation.
 - **R-S11fk/R-S11e-198 controlled-video exact peer receipt** — **PARTIAL / RELEASE-BLOCKING.** Versioned video
   generations and authenticated peer parse receipts replace local-writer completion as capture progress; the
   viewer returns a receipt after frame validation and before decode/publication. A real kernel-TCP regression

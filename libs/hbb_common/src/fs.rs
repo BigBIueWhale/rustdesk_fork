@@ -1105,6 +1105,7 @@ mod nt_nofollow {
 
     const SHARE_ALL: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     // STATUS codes mapped to io::ErrorKind::NotFound so a missing artifact is a no-op (ENOENT twin).
+    const STATUS_NO_SUCH_FILE: NTSTATUS = 0xC000_000Fu32 as NTSTATUS;
     const STATUS_OBJECT_NAME_NOT_FOUND: NTSTATUS = 0xC000_0034u32 as NTSTATUS;
     const STATUS_OBJECT_PATH_NOT_FOUND: NTSTATUS = 0xC000_003Au32 as NTSTATUS;
 
@@ -1113,7 +1114,10 @@ mod nt_nofollow {
     }
 
     fn nt_err(status: NTSTATUS) -> io::Error {
-        if status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND {
+        if status == STATUS_NO_SUCH_FILE
+            || status == STATUS_OBJECT_NAME_NOT_FOUND
+            || status == STATUS_OBJECT_PATH_NOT_FOUND
+        {
             io::Error::from(io::ErrorKind::NotFound)
         } else {
             io::Error::new(
@@ -1381,6 +1385,23 @@ mod nt_nofollow {
         Ok(std::fs::File::from(owned))
     }
 
+    /// Open an existing destination only for handle-based metadata inspection. Unlike a receive
+    /// sidecar, the pre-existing destination need not have been created by this process.
+    pub(super) fn open_recv_inspection(path: &Path) -> io::Result<std::fs::File> {
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        let owned = unsafe {
+            nt_open_at(
+                parent.as_raw_handle() as HANDLE,
+                &name,
+                FILE_READ_ATTRIBUTES,
+                FILE_OPEN,
+                FILE_NON_DIRECTORY_FILE,
+            )?
+        };
+        Ok(std::fs::File::from(owned))
+    }
+
     pub(super) fn delete_open_recv_file(file: &std::fs::File) -> io::Result<()> {
         unsafe { nt_set_dispose_delete(file.as_raw_handle() as HANDLE) }
     }
@@ -1492,6 +1513,7 @@ mod nt_nofollow {
             )?
         };
         let file = std::fs::File::from(owned);
+        validate_recv_file_authority(&file)?;
         let mut reader = file.take(max_bytes.saturating_add(1));
         let mut content = String::new();
         reader.read_to_string(&mut content)?;
@@ -1812,6 +1834,7 @@ fn read_recv_sidecar_to_string_no_follow(path: &Path, max_bytes: u64) -> std::io
     {
         use std::io::Read;
         let file = open_existing_regular_no_follow(path)?;
+        validate_recv_file_authority(&file)?;
         let mut reader = file.take(max_bytes.saturating_add(1));
         let mut content = String::new();
         reader.read_to_string(&mut content)?;
@@ -1831,6 +1854,33 @@ fn read_recv_sidecar_to_string_no_follow(path: &Path, max_bytes: u64) -> std::io
         let _ = max_bytes;
         std::fs::read_to_string(path)
     }
+}
+
+/// On supported native targets, open an existing destination as a regular file without following
+/// its name or any parent link. Receive-artifact ownership checks intentionally remain on
+/// `.digest`/`.download`, not on a pre-existing user destination that this read-only decision does
+/// not own.
+fn open_recv_inspection_file_no_follow(path: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        open_existing_regular_no_follow(path)
+    }
+
+    #[cfg(windows)]
+    {
+        nt_nofollow::open_recv_inspection(path)
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        std::fs::File::open(path)
+    }
+}
+
+fn open_recv_sidecar_for_inspection(path: &Path) -> std::io::Result<std::fs::File> {
+    let file = open_recv_inspection_file_no_follow(path)?;
+    validate_recv_file_authority(&file)?;
+    Ok(file)
 }
 
 fn acquire_receive_path_lock(file: &std::fs::File) -> std::io::Result<()> {
@@ -3220,21 +3270,20 @@ pub fn transform_windows_path(entries: &mut Vec<FileEntry>) {
 }
 
 pub enum DigestCheckResult {
-    IsSame,
     NeedConfirm(FileTransferDigest),
     NoSuchFile,
 }
 
 #[inline]
-pub fn is_write_need_confirmation(
+pub fn inspect_write_destination(
     is_resume: bool,
     file_path: &str,
     digest: &FileTransferDigest,
 ) -> ResultType<DigestCheckResult> {
     let path = Path::new(file_path);
-    // Inspection and mutation use the same destination lease. This makes the observed digest and
-    // partial length one coherent snapshot; the later resume/open reacquires the lease and validates
-    // the digest again before publishing stream ownership.
+    // Inspection and receive mutation serialize on the same destination lease name. This makes the
+    // observed digest and partial length one coherent snapshot; the later resume/open reacquires the
+    // lease and validates the digest again before publishing stream ownership.
     let mut lease = match ReceivePathLease::acquire(path, false) {
         Ok(lease) => lease,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -3243,69 +3292,58 @@ pub fn is_write_need_confirmation(
         Err(err) => return Err(err.into()),
     };
     let result = (|| -> ResultType<_> {
-        let digest_file = format!("{}.digest", file_path);
-        let download_file = format!("{}.download", file_path);
-        if is_resume && Path::new(&digest_file).exists() && Path::new(&download_file).exists() {
-            // If the digest file exists, it means the file was transferred before.
-            // We can use the digest file to check whether the file is the same.
-            if let Ok(content) =
-                read_recv_sidecar_to_string_no_follow(Path::new(&digest_file), 4096)
-            {
-                if let Ok(local_digest) = serde_json::from_str::<FileDigest>(&content) {
-                    let is_identical = local_digest.modified == digest.last_modified
-                        && local_digest.size == digest.file_size;
-                    if is_identical {
-                        if let Ok(download_file) = open_recv_file_no_follow_std(
-                            Path::new(&download_file),
-                            false,
-                            false,
-                            false,
-                            false,
-                        ) {
-                            // Get the file size of the local file
-                            // Only send confirmation if the file is not empty.
-                            let transferred_size = download_file.metadata()?.len();
-                            if transferred_size > 0 {
-                                return Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
-                                    id: digest.id,
-                                    file_num: digest.file_num,
-                                    last_modified: digest.last_modified,
-                                    file_size: digest.file_size,
-                                    is_identical,
-                                    transferred_size,
-                                    ..Default::default()
-                                }));
-                            }
-                        }
+        if is_resume {
+            let digest_path = recv_sidecar_path(path, ".digest");
+            let stored_digest = match read_recv_sidecar_to_string_no_follow(&digest_path, 4096) {
+                Ok(content) => Some(serde_json::from_str::<FileDigest>(&content)?),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error.into()),
+            };
+            let download_path = recv_sidecar_path(path, ".download");
+            let download_file = match open_recv_sidecar_for_inspection(&download_path) {
+                Ok(file) => Some(file),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error.into()),
+            };
+            if let (Some(stored), Some(download_file)) = (stored_digest, download_file) {
+                if stored.modified == digest.last_modified && stored.size == digest.file_size {
+                    let transferred_size = download_file.metadata()?.len();
+                    if transferred_size > 0 {
+                        return Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
+                            id: digest.id,
+                            file_num: digest.file_num,
+                            last_modified: digest.last_modified,
+                            file_size: digest.file_size,
+                            is_identical: true,
+                            transferred_size,
+                            ..Default::default()
+                        }));
                     }
                 }
             }
         }
 
-        if path.exists() && path.is_file() {
-            let metadata = std::fs::metadata(path)?;
-            let modified_time = metadata.modified()?;
-            let remote_mt = Duration::from_secs(digest.last_modified);
-            let local_mt = modified_time.duration_since(UNIX_EPOCH)?;
-            // [Note]
-            // We decide to give the decision whether to override the existing file to users,
-            // which obey the behavior of the file manager in our system.
-            let mut is_identical = false;
-            if remote_mt == local_mt && digest.file_size == metadata.len() {
-                is_identical = true;
+        let destination = match open_recv_inspection_file_no_follow(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(DigestCheckResult::NoSuchFile)
             }
-            Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
-                id: digest.id,
-                file_num: digest.file_num,
-                last_modified: local_mt.as_secs(),
-                file_size: metadata.len(),
-                is_identical,
-                ..Default::default()
-            }))
-        } else {
-            // If the file does not exist, or the digest file and download file do not exist, we return NoSuchFile.
-            Ok(DigestCheckResult::NoSuchFile)
-        }
+            Err(error) => return Err(error.into()),
+        };
+        let metadata = destination.metadata()?;
+        let modified_time = metadata.modified()?;
+        let remote_mt = Duration::from_secs(digest.last_modified);
+        let local_mt = modified_time.duration_since(UNIX_EPOCH)?;
+        // The receiving user decides whether an existing destination may be replaced.
+        let is_identical = remote_mt == local_mt && digest.file_size == metadata.len();
+        Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
+            id: digest.id,
+            file_num: digest.file_num,
+            last_modified: local_mt.as_secs(),
+            file_size: metadata.len(),
+            is_identical,
+            ..Default::default()
+        }))
     })();
     match (result, lease.retire()) {
         (Ok(result), Ok(())) => Ok(result),
@@ -4203,7 +4241,7 @@ mod tests {
     }
 
     #[test]
-    fn receive_confirmation_probe_retires_its_snapshot_lease() {
+    fn r_s11fj_confirmation_probe_retires_its_snapshot_lease() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_lease");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         std::fs::write(tmp.join("incoming.bin.download"), b"partial")
@@ -4218,7 +4256,7 @@ mod tests {
         let final_path = final_path
             .to_str()
             .expect("temporary receive path must be UTF-8");
-        let result = is_write_need_confirmation(
+        let result = inspect_write_destination(
             true,
             final_path,
             &FileTransferDigest {
@@ -4247,13 +4285,199 @@ mod tests {
             .to_str()
             .expect("temporary absent receive path must be UTF-8");
         assert!(matches!(
-            is_write_need_confirmation(false, absent_final, &FileTransferDigest::default())
+            inspect_write_destination(false, absent_final, &FileTransferDigest::default())
                 .expect("an absent confirmation path is not an error"),
             DigestCheckResult::NoSuchFile
         ));
         assert!(
             !absent_parent.exists(),
             "a read-only confirmation probe must not create destination directories"
+        );
+    }
+
+    #[test]
+    fn r_s11fj_invalid_resume_digest_is_explicit_and_preserved() {
+        let tmp = TestTempDir::new("rustdesk_receive_confirmation_invalid_digest");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+            .expect("stage resumable download");
+        std::fs::write(tmp.join("incoming.bin.digest"), b"not-json")
+            .expect("stage invalid resume digest");
+        let final_path = tmp.join("incoming.bin");
+        let final_path = final_path
+            .to_str()
+            .expect("temporary receive path must be UTF-8");
+
+        let error = match inspect_write_destination(
+            true,
+            final_path,
+            &FileTransferDigest {
+                id: 97,
+                file_num: 0,
+                last_modified: 19,
+                file_size: 7,
+                ..Default::default()
+            },
+        ) {
+            Ok(_) => panic!("an invalid resume digest must not become an absent destination"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().is_empty());
+
+        assert_eq!(
+            std::fs::read(tmp.join("incoming.bin.download")).expect("read staged download"),
+            b"partial"
+        );
+        assert_eq!(
+            std::fs::read(tmp.join("incoming.bin.digest")).expect("read staged digest"),
+            b"not-json"
+        );
+        assert!(
+            !tmp.join("incoming.bin.download.lock").exists(),
+            "failed read-only inspection must retire only its lease"
+        );
+    }
+
+    #[test]
+    fn r_s11fj_nonmatching_resume_digest_is_not_an_inspection_failure() {
+        let tmp = TestTempDir::new("rustdesk_receive_confirmation_stale_digest");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+            .expect("stage resumable download");
+        let stored = FileDigest {
+            size: 7,
+            modified: 18,
+        };
+        std::fs::write(tmp.join("incoming.bin.digest"), json!(stored).to_string())
+            .expect("stage nonmatching resume digest");
+        let final_path = tmp.join("incoming.bin");
+        let final_path = final_path
+            .to_str()
+            .expect("temporary receive path must be UTF-8");
+
+        assert!(matches!(
+            inspect_write_destination(
+                true,
+                final_path,
+                &FileTransferDigest {
+                    id: 98,
+                    file_num: 0,
+                    last_modified: 19,
+                    file_size: 7,
+                    ..Default::default()
+                },
+            )
+            .expect("valid stale resume metadata means no resumable offset"),
+            DigestCheckResult::NoSuchFile
+        ));
+
+        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(
+            !tmp.join("incoming.bin.download.lock").exists(),
+            "read-only inspection must retire only its lease"
+        );
+    }
+
+    #[test]
+    fn r_s11fj_hard_linked_resume_sidecars_are_explicit_and_preserved() {
+        for (linked_suffix, id) in [(".digest", 99), (".download", 100)] {
+            let prefix = format!("rustdesk_receive_confirmation_linked_{id}");
+            let tmp = TestTempDir::new(&prefix);
+            std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+            let source = tmp.join("sidecar-source");
+            let digest = br#"{"size":7,"modified":19}"#;
+            if linked_suffix == ".digest" {
+                std::fs::write(&source, digest).expect("stage digest source");
+                std::fs::hard_link(&source, tmp.join("incoming.bin.digest"))
+                    .expect("stage hard-linked resume digest");
+                std::fs::write(tmp.join("incoming.bin.download"), b"partial")
+                    .expect("stage resumable download");
+            } else {
+                std::fs::write(tmp.join("incoming.bin.digest"), digest)
+                    .expect("stage resume digest");
+                std::fs::write(&source, b"partial").expect("stage download source");
+                std::fs::hard_link(&source, tmp.join("incoming.bin.download"))
+                    .expect("stage hard-linked resumable download");
+            }
+            let expected_source = std::fs::read(&source).expect("read staged source");
+            let final_path = tmp.join("incoming.bin");
+            let final_path = final_path
+                .to_str()
+                .expect("temporary receive path must be UTF-8");
+
+            let error = match inspect_write_destination(
+                true,
+                final_path,
+                &FileTransferDigest {
+                    id,
+                    file_num: 0,
+                    last_modified: 19,
+                    file_size: 7,
+                    ..Default::default()
+                },
+            ) {
+                Ok(_) => panic!("a linked resume sidecar must not authorize a resume decision"),
+                Err(error) => error,
+            };
+            assert!(!error.to_string().is_empty());
+
+            assert_eq!(
+                std::fs::read(&source).expect("read preserved source"),
+                expected_source
+            );
+            assert!(tmp.join("incoming.bin.digest").exists());
+            assert!(tmp.join("incoming.bin.download").exists());
+            assert!(
+                !tmp.join("incoming.bin.download.lock").exists(),
+                "failed read-only inspection must retire only its lease"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_s11fj_destination_symlink_is_an_inspection_error() {
+        let tmp = TestTempDir::new("rustdesk_receive_confirmation_symlink");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let target = tmp.join("target.bin");
+        std::fs::write(&target, b"do-not-follow").expect("stage symlink target");
+        let final_path = tmp.join("incoming.bin");
+        std::os::unix::fs::symlink(&target, &final_path).expect("stage destination symlink");
+        let final_path_str = final_path
+            .to_str()
+            .expect("temporary receive path must be UTF-8");
+
+        let error = match inspect_write_destination(
+            false,
+            final_path_str,
+            &FileTransferDigest {
+                id: 101,
+                file_num: 0,
+                last_modified: 19,
+                file_size: 13,
+                ..Default::default()
+            },
+        ) {
+            Ok(_) => panic!("destination inspection must not follow a symlink"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().is_empty());
+
+        assert!(
+            std::fs::symlink_metadata(&final_path)
+                .expect("inspect destination link")
+                .file_type()
+                .is_symlink(),
+            "read-only inspection must preserve the destination link"
+        );
+        assert_eq!(
+            std::fs::read(&target).expect("read symlink target"),
+            b"do-not-follow"
+        );
+        assert!(
+            !tmp.join("incoming.bin.download.lock").exists(),
+            "failed read-only inspection must retire only its lease"
         );
     }
 

@@ -4816,11 +4816,11 @@ else
   rc=1
 fi
 
-echo "== (2g-c4) R-S11fg/R-S11fh/R-S11fj shared file-command and digest-inspection source invariants =="
+echo "== (2g-c4) R-S11fg/R-S11fh shared file-command source invariants =="
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
-  note "ok  R-S11fg/R-S11fh/R-S11fj shared file-frame writer and digest-inspection source invariants remain"
+  note "ok  R-S11fg/R-S11fh shared file-frame writer source invariants remain"
 else
-  echo "  FAIL R-S11fg/R-S11fh/R-S11fj shared file commands regained silent admission, discarded completion, ambiguous send progress, unbounded ownership, or ignored digest-inspection failure"
+  echo "  FAIL R-S11fg/R-S11fh shared file commands regained silent admission, discarded completion, ambiguous send progress, or unbounded ownership"
   rc=1
 fi
 

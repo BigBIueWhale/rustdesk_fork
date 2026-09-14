@@ -11269,6 +11269,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fg_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::controlled_file_write_tests::r_s11fh_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fi_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fj_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter ui_cm_interface::tests::r_s11c_4d_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter ui_cm_interface::tests::r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner --color never
@@ -11287,9 +11288,9 @@ else
   rc=1
 fi
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
-  echo "  ok  R-S11fg/R-S11fh/R-S11fj file frames retain exact writer completion and digest-inspection failures are terminal"
+  echo "  ok  R-S11fg/R-S11fh file frames retain exact writer completion"
 else
-  echo "  FAIL R-S11fg/R-S11fh/R-S11fj: file commands regained silent admission, discarded completion, ambiguous send progress, unbounded ownership, or ignored digest-inspection failure"
+  echo "  FAIL R-S11fg/R-S11fh: file commands regained silent admission, discarded completion, ambiguous send progress, or unbounded ownership"
   rc=1
 fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||

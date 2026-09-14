@@ -10501,11 +10501,13 @@ Surface: synchronous UI, clipboard, voice, and file-result producers -> bounded 
 connection owner.
 
 The inherited problem was two consecutive unbounded desktop `Data` queues and the same unbounded
-connection-facing shape on Android. The traffic includes chat, click-time, privacy, voice, Windows
-file clipboard, and typed CM file responses; raw read blocks carry bytes outside their JSON envelope.
+connection-facing shape on Android. The live traffic includes chat, privacy, voice, Windows file
+clipboard, and typed CM file responses; raw read blocks carry bytes outside their JSON envelope.
 A blocked CM writer or connection loop could retain arbitrary count and bytes until reconnect/drop
-destroyed the queue. This is a cleanup-mediated recovery mechanism, not proof about an unidentified
-deployed artifact or causation for a reported display delay.
+destroyed the queue. The unused click-time request/response, server-side CM timestamps, FFI exports,
+and CM global replica are deleted rather than consuming a result variant. This is a cleanup-mediated
+recovery mechanism, not proof about an unidentified deployed artifact or causation for a reported
+display delay.
 
 The current `CmEgressSender`/`CmEgressReceiver` owner has one wake token, at most 256 entries, a
 128 MiB structured ceiling, a separately enforced 256 KiB raw-block ceiling, and a checked aggregate
@@ -12558,10 +12560,12 @@ independent reproduction; and external review.
 
 **PRE-LOGIN SOURCE DEFECT CORRECTED; SEVEN TARGETED EXECUTABLE REGRESSIONS AUTHORED
 AND WIRED BUT NOT YET RUN; EXACT NATIVE INSTALLED CM/ROUTE EVIDENCE OPEN.** Review
-disproved the former source-closure claim: before Login, `ClickTime`,
-`PrivacyModeState`, `FileTransferLog`, and `ClipboardFileEnabled` could mutate process or
-UI state, and Windows `ClipboardFile` could stop the global clipboard context before its
-late `conn_id` check. The first correction also incorrectly treated the legitimate
+disproved the former source-closure claim: before Login, `PrivacyModeState`,
+`FileTransferLog`, and `ClipboardFileEnabled` could mutate UI state, and Windows
+`ClipboardFile` could stop the global clipboard context before its late `conn_id` check.
+The inherited unused `ClickTime` request/response and its process-global replica are now
+deleted end to end instead of being retained behind an ownership guard. The first correction
+also incorrectly treated the legitimate
 Windows privacy teardown callback as an ordinary pre-Login client effect and therefore
 made that callback unreachable. The runner now distinguishes one activated client stream
 from independently authorized one-shot actions. Before activation it accepts only Login,
@@ -12615,12 +12619,12 @@ supersede an active predecessor, whose egress owner closes before replacement. D
 source generation zero cannot supersede an active collision. Registry mutation, chat,
 voice, Android notification/input/capture mirrors, and generation-bearing
 add/remove/chat/voice UI events carry or check the exact owner. This is not yet a blanket
-claim for every CM side effect: the process-global desktop click-time value and
-generation-less file-log publication are not owner-bearing, so their queued UI and
-replacement semantics remain open. The previously recorded Windows clipboard-cleanup
-gap is not reachable: the exact controlled-route lease remains occupied through registry
-retirement and native emptying, and a same-ID successor must acquire that route before it
-can enter the client registry.
+claim for every CM side effect: generation-less file-log publication is not owner-bearing,
+so its queued UI and replacement semantics remain open. The unused process-global desktop
+click-time request/response and FFI surface are deleted end to end. The previously recorded
+Windows clipboard-cleanup gap is not reachable: the exact controlled-route lease remains
+occupied through registry retirement and native emptying, and a same-ID successor must
+acquire that route before it can enter the client registry.
 
 Windows privacy mode now retains one typed connection owner containing the positive
 connection ID and nonempty CM authority token for the physical privacy resource's full

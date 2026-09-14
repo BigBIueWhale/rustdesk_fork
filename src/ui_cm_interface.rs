@@ -34,7 +34,7 @@ use std::{
     io::{self, Write},
     ops::{Deref, DerefMut},
     sync::{
-        atomic::{AtomicBool, AtomicI64, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex as StdMutex, OnceLock, RwLock,
     },
 };
@@ -153,7 +153,6 @@ impl Write for CmEgressSizeCounter {
 fn is_cm_egress_data(data: &Data) -> bool {
     match data {
         Data::Close
-        | Data::ClickTime(_)
         | Data::CmErr(_)
         | Data::ChatMessage { .. }
         | Data::CmFileResponse(_)
@@ -762,7 +761,6 @@ lazy_static::lazy_static! {
     static ref CLIENTS: RwLock<CmClientRegistry> = Default::default();
 }
 
-static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
 
@@ -950,19 +948,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
     fn voice_call_closed(&self, owner: CmClientOwner, _reason: &str) {
         self.update_voice_call(owner, false, false);
     }
-}
-
-#[inline]
-#[cfg(not(any(target_os = "ios")))]
-pub fn check_click_time(id: i32) {
-    if let Some(tx) = cm_egress_sender(id) {
-        allow_err!(tx.send(Data::ClickTime(0)));
-    };
-}
-
-#[inline]
-pub fn get_click_time() -> i64 {
-    CLICK_TIME.load(Ordering::SeqCst)
 }
 
 #[inline]
@@ -1262,9 +1247,6 @@ where
                                 Data::PrivacyModeState(_) => {
                                     log::warn!("Rejected response-only CM privacy-state message");
                                     break;
-                                }
-                                Data::ClickTime(ms) => {
-                                    CLICK_TIME.store(ms, Ordering::SeqCst);
                                 }
                                 Data::ChatMessage { text } => {
                                     let Some(owner) = self.client_owner else {

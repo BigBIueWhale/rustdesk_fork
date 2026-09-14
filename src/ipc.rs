@@ -2612,7 +2612,6 @@ pub enum Data {
     ChatMessage {
         text: String,
     },
-    ClickTime(i64),
     Close,
     CmFileResponse(CmFileResponse),
     FS(FS),

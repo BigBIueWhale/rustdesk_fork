@@ -64,7 +64,7 @@ use std::{
     num::NonZeroI64,
     path::PathBuf,
     sync::{
-        atomic::{AtomicI64, Ordering},
+        atomic::Ordering,
         Condvar, Mutex as StdMutex,
     },
 };
@@ -915,8 +915,6 @@ fn cm_write_cancellation_authorized(
 lazy_static::lazy_static! {
     static ref WALLPAPER_REMOVER: Arc<Mutex<Option<WallPaperRemover>>> = Default::default();
 }
-pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
-
 const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;
 const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;
 const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;
@@ -7473,9 +7471,6 @@ impl Connection {
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     if self.is_authed_remote_conn() && self.peer_keyboard_enabled() {
-                        if is_left_up(&me) {
-                            CLICK_TIME.store(get_time(), Ordering::SeqCst);
-                        }
                         #[cfg(target_os = "macos")]
                         self.retina.on_mouse_event(&mut me, self.display_idx);
                         if let Err(err) = self.input_mouse(
@@ -7705,10 +7700,6 @@ impl Connection {
                             self.update_auto_disconnect_timer();
                             return true;
                         }
-                        if is_enter(&me) {
-                            CLICK_TIME.store(get_time(), Ordering::SeqCst);
-                        }
-
                         let key = match me.mode.enum_value() {
                             Ok(KeyboardMode::Map) => {
                                 Some(crate::keyboard::keycode_to_rdev_key(me.chr()))
@@ -11596,17 +11587,29 @@ mod cm_startup_lifecycle_tests {
     #[tokio::test(flavor = "current_thread")]
     async fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue() {
         let (sender, mut receiver) = mpsc::channel(CM_COMMAND_QUEUE_CAPACITY);
-        sender.try_send(ipc::Data::ClickTime(1)).unwrap();
-        sender.try_send(ipc::Data::ClickTime(2)).unwrap();
+        let message = |text: &str| ipc::Data::ChatMessage {
+            text: text.to_owned(),
+        };
+        sender.try_send(message("one")).unwrap();
+        sender.try_send(message("two")).unwrap();
         assert!(matches!(
-            sender.try_send(ipc::Data::ClickTime(3)),
+            sender.try_send(message("three")),
             Err(mpsc::error::TrySendError::Full(_))
         ));
 
-        assert!(matches!(receiver.recv().await, Some(ipc::Data::ClickTime(1))));
-        sender.try_send(ipc::Data::ClickTime(3)).unwrap();
-        assert!(matches!(receiver.recv().await, Some(ipc::Data::ClickTime(2))));
-        assert!(matches!(receiver.recv().await, Some(ipc::Data::ClickTime(3))));
+        assert!(matches!(
+            receiver.recv().await,
+            Some(ipc::Data::ChatMessage { text }) if text == "one"
+        ));
+        sender.try_send(message("three")).unwrap();
+        assert!(matches!(
+            receiver.recv().await,
+            Some(ipc::Data::ChatMessage { text }) if text == "two"
+        ));
+        assert!(matches!(
+            receiver.recv().await,
+            Some(ipc::Data::ChatMessage { text }) if text == "three"
+        ));
     }
 }
 
@@ -12022,15 +12025,6 @@ async fn start_ipc(
                     }
                     Ok(Some(data)) => {
                         match data {
-                            ipc::Data::ClickTime(_)=> {
-                                let ct = CLICK_TIME.load(Ordering::SeqCst);
-                                let data = ipc::Data::ClickTime(ct);
-                                timeout(
-                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,
-                                    stream.send(&data),
-                                )
-                                .await??;
-                            }
                             ipc::Data::CmFileResponse(mut envelope)
                                 if matches!(
                                     envelope.response.as_ref(),

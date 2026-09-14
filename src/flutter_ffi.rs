@@ -1884,18 +1884,6 @@ pub fn cm_remove_disconnected_connection(conn_id: i32) {
     crate::ui_cm_interface::remove(conn_id);
 }
 
-pub fn cm_check_click_time(conn_id: i32) {
-    #[cfg(not(any(target_os = "ios")))]
-    crate::ui_cm_interface::check_click_time(conn_id)
-}
-
-pub fn cm_get_click_time() -> f64 {
-    #[cfg(not(any(target_os = "ios")))]
-    return crate::ui_cm_interface::get_click_time() as _;
-    #[cfg(any(target_os = "ios"))]
-    return 0 as _;
-}
-
 pub fn cm_should_hide() -> Result<bool> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {

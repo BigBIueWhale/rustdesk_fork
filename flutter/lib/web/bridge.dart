@@ -1225,14 +1225,6 @@ class RustdeskImpl {
     throw UnimplementedError("cmRemoveDisconnectedConnection");
   }
 
-  Future<void> cmCheckClickTime({required int connId, dynamic hint}) {
-    throw UnimplementedError("cmCheckClickTime");
-  }
-
-  Future<double> cmGetClickTime({dynamic hint}) {
-    throw UnimplementedError("cmGetClickTime");
-  }
-
   Future<bool> cmShouldHide({dynamic hint}) {
     throw UnimplementedError("cmShouldHide");
   }

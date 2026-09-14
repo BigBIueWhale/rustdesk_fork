@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-3d2c69d3d374a8a042a40710e1a103e3bb18b76d7c06035792946c66141ca579  requirements.html
+8339b41c6ace8fbd33e8c1717a8e375447df99647afcd38588e49d2b98a47d21  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,17 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+Appendix C rows #65–#67 and #69 now state only the timeless Windows driver-install finality, app-name
+grammar, custom-client provenance, and known-folder path-authority contracts. Their original failure histories,
+<code>FIX</code> badges, implementation receipts, and verifier narration were deleted, reducing
+`requirements.html` by 3,229 bytes. Row #68 was deleted completely: the diagnostic macro and Windows helper it
+described had no callers, export, protocol role, or remaining source, so the row and its 13-line exact-name gate
+protected no live behavior. Ten requirements/status wording oracles were removed from `scripts/verify.sh`, reducing
+it by 2,019 bytes; the Rust/MSI app-name test and source checks for reboot finality, public-staging absence, known-
+folder resolution, component rejection, and ProgramData failure remain. No product source, driver, package, or
+native Windows target changed or ran; all Windows artifact, full-peer, lifecycle, focus/reconnect, performance,
+resource, and cold-equality evidence remains open.
 
 The native-codec advisory ledger no longer serves as a requirements registry. The first cleanup slice deleted
 34 later-added per-ID/Appendix mappings and 254 lines of prose-coupled assertions and mutations from the shared,
@@ -1175,8 +1186,7 @@ exists only to make the current source disposition discoverable.
 - R-S11d-39 — Windows obsolete updater authority excision
 - R-S11d-25 — Windows Amyuni SetupAPI install reboot-required completion
 - R-S11d-26 — Windows app-name identity contract
-- R-S11d-27 — Windows custom-client public staging deletion
-- R-S11d-28 — Windows dormant diagnostic message-box deletion
+- R-S11d-27 — Windows custom-client configuration provenance
 - R-S11d-29 — Windows service-adjacent path known-folder authority
 - R-S11d-31 — Windows privacy broker served-session authority
 - R-S11d-33 — Windows MSI deferred install-root provenance

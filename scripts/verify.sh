@@ -2370,8 +2370,6 @@ grep -Fq 'APP_NAME_IDENTIFIER_RE = re.compile(r"^[A-Za-z](?:[A-Za-z0-9-]{0,62}[A
 grep -Fq 'def app_name_is_valid(app_name):' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:validator-function-missing"
 grep -Fq 'if not app_name_is_valid(app_name):' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:app-name-not-validated-before-use"
 grep -Fq '"invalid --app-name: expected 1-64 ASCII letters, digits, or hyphens; "' res/msi/preprocess.py || r_s11d26="$r_s11d26 msi:error-contract-missing"
-grep -Fq 'Windows app-name identity contract' requirements.html || r_s11d26="$r_s11d26 requirements-disposition-missing"
-grep -Fq 'R-S11d-26 — Windows app-name identity contract' HARDENING_STATUS.md || r_s11d26="$r_s11d26 hardening-ledger-missing"
 if [ -n "$r_s11d26" ]; then echo "  FAIL R-S11d-26 Windows app-name identity contract:$r_s11d26"; rc=1; else
   echo "  ok  R-S11d-26 signed custom-client and MSI app names are constrained ASCII system identifiers before reaching service/protocol/path sinks"; fi
 
@@ -2383,8 +2381,6 @@ fi
 if grep -nF 'current_exe_dir.join("custom.txt")' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d27_copy"; then
   r_s11d27="$r_s11d27 executable-dir-custom-txt-copy-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d27_copy")"
 fi
-grep -Fq 'Windows custom-client public staging deletion' requirements.html || r_s11d27="$r_s11d27 requirements-disposition-missing"
-grep -Fq 'R-S11d-27 — Windows custom-client public staging deletion' HARDENING_STATUS.md || r_s11d27="$r_s11d27 hardening-ledger-missing"
 if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public staging deletion:$r_s11d27"; rc=1; else
   echo "  ok  R-S11d-27 Windows custom-client updates have no public staging directory or executable-dir custom.txt copy loader"; fi
 
@@ -2440,14 +2436,8 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11d_retained_idd" -rInE 'rustde
   r_s11d_retained="$r_s11d_retained idd:loader-build-or-ui-leftover"
 fi
 
-for disposition in \
-  'Windows Amyuni SetupAPI install reboot-required completion' \
-  'Windows inactive RustDesk IDD loader excision'; do
-  grep -Fq "$disposition" requirements.html || r_s11d_retained="$r_s11d_retained requirements-missing:$disposition"
-done
-for ledger in R-S11d-25 R-S11d-38; do
-  grep -Fq "$ledger —" HARDENING_STATUS.md || r_s11d_retained="$r_s11d_retained ledger-missing:$ledger"
-done
+grep -Fq 'Windows inactive RustDesk IDD loader excision' requirements.html || r_s11d_retained="$r_s11d_retained requirements-missing:Windows inactive RustDesk IDD loader excision"
+grep -Fq 'R-S11d-38 — Windows inactive RustDesk IDD loader excision' HARDENING_STATUS.md || r_s11d_retained="$r_s11d_retained ledger-missing:R-S11d-38"
 if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance invariants:$r_s11d_retained"; rc=1; else
   echo "  ok  retained Windows RDP, terminal shell, portable broker, Amyuni runtime, and IDD-excision invariants are source-gated"; fi
 
@@ -2712,19 +2702,6 @@ fi
 if [ -n "$r_s11d3" ]; then echo "  FAIL R-S11d-3 Windows runtime process command provenance:$r_s11d3"; rc=1; else
   echo "  ok  R-S11d-3/R-S11w Windows UAC detection admits only a handle-pinned System32 consent image in the current process session; global broker termination and unused LogonUI heuristics are absent"; fi
 
-echo "== (3b-iii-a6b) Windows dormant diagnostic message-box side effects are absent (R-S11d-28) =="
-r_s11d28=
-if grep -RInE 'macro_rules![[:space:]]*my_println|my_println!' src >"$VERIFY_TMP/rd_verify_r_s11d28_macro"; then
-  r_s11d28="$r_s11d28 diagnostic-macro-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d28_macro")"
-fi
-if grep -nE 'pub fn message_box|NO_DIALOG|PRINT_OUT|WRITE_TO_FILE|RustDesk Output|Above text has been copied to clipboard' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d28_msgbox"; then
-  r_s11d28="$r_s11d28 windows-message-box-diagnostic-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d28_msgbox")"
-fi
-grep -Fq 'Windows dormant diagnostic message-box deletion' requirements.html || r_s11d28="$r_s11d28 requirements-disposition-missing"
-grep -Fq 'R-S11d-28 — Windows dormant diagnostic message-box deletion' HARDENING_STATUS.md || r_s11d28="$r_s11d28 hardening-ledger-missing"
-if [ -n "$r_s11d28" ]; then echo "  FAIL R-S11d-28 Windows dormant diagnostic message-box deletion:$r_s11d28"; rc=1; else
-  echo "  ok  R-S11d-28 dormant Windows diagnostic message-box/file/clipboard side effects are absent"; fi
-
 echo "== (3b-iii-a6c) Windows service-adjacent profile and recording paths use known folders (R-S11d-29) =="
 r_s11d29=
 if grep -RInF 'SystemDrive' src/platform/windows.rs src/ui_interface.rs >"$VERIFY_TMP/rd_verify_r_s11d29_systemdrive"; then
@@ -2737,8 +2714,6 @@ grep -Fq 'username.bytes().any(|byte| byte < 0x20)' src/platform/windows.rs || r
 grep -Fq 'let home = user_profiles_dir().ok()?.join(username);' src/platform/windows.rs || r_s11d29="$r_s11d29 active-user-home-not-userprofiles-backed"
 grep -Fq 'return match crate::platform::windows::program_data_dir()' src/ui_interface.rs || r_s11d29="$r_s11d29 root-recording-not-programdata-known-folder-backed"
 grep -Fq 'Failed to resolve ProgramData recording directory' src/ui_interface.rs || r_s11d29="$r_s11d29 root-recording-failure-not-logged"
-grep -Fq 'Windows service-adjacent path known-folder authority' requirements.html || r_s11d29="$r_s11d29 requirements-disposition-missing"
-grep -Fq 'R-S11d-29 — Windows service-adjacent path known-folder authority' HARDENING_STATUS.md || r_s11d29="$r_s11d29 hardening-ledger-missing"
 if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path known-folder authority:$r_s11d29"; rc=1; else
   echo "  ok  R-S11d-29 Windows service-adjacent profile and recording paths use known folders, not SystemDrive"; fi
 

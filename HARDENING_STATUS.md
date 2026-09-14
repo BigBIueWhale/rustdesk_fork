@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0f0da220cd08fdf45ff999af456577424060196ead66b4d16ce61c7c49ed1af0  requirements.html
+e3bba8fe27d524192ff28faa476c79ecb7ec9965f5bbee078dd2c02fbb614134  requirements.html
 ```
 
 ## Current Verdict
@@ -374,6 +374,16 @@ preservation, terminal teardown, and storage-preservation source topology. The s
 explicit pre-commit state and exact confined-domain proof recorded in the current R-S11dr disposition. This source
 correction is not native evidence: real private session-libvirt/Windows VM collision, admission, failure,
 signal/timeout/success teardown, listener-finality, and terminal-absence execution remains open.
+
+Appendix C #336 now states only the timeless noninteractive session-libvirt control risk and required
+disposition. Its historical host-version failure, `FIX` badge, run receipt, verifier claims, and unrelated
+release-gap narration were deleted, reducing `requirements.html` by 616 bytes. The 55-line R-S11e-214 history is
+replaced by a 12-line current source/native-open disposition. The Windows focused verifier no longer requires or
+mutates the Appendix row or ledger title, reducing it by 792 bytes/20 lines; the workspace verifier's duplicate
+documentation and focused-verifier wording checks were likewise deleted, reducing it by 680 bytes/19 lines. The
+remaining checks inspect the shared `setsid --wait`/finite-timeout/closed-input control source directly. No
+libvirt domain, VM, product, service, or native target ran, so exact current private-session control and every
+broader item in the release-blocking matrix remain open.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -8071,61 +8081,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   image lacks `qemu-img`, `virsh`, and `virt-install`, and the exact development
   image is absent; no substitute was used. No exact current native libvirt/VM
   transaction or cold R-B2/R-B10 Windows artifact closes this item.
-- **R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive session-libvirt control —
-  SOURCE IMPLEMENTED; ACTUAL HOST LIBVIRT 10.0.0 READ-ONLY ENUMERATION GREEN;
-  VM/NATIVE-WINDOWS/ARTIFACT EVIDENCE OPEN.** Platform: the unprivileged Linux
-  Windows-golden and per-build VM hosts. Endpoint/action: every bounded
-  `virsh` name/UUID query and UUID-addressed control performed by
-  `scripts/provision-windows-vm.sh` and `scripts/build-windows-vm.sh`.
-  Boundary: a script launched from an operator terminal ↔ noninteractive
-  control of only the invoking user's `qemu:///session` domains.
-
-  Read-only current-state proof found that both maintained wrappers passed
-  `--no-pkttyagent`, while the scripts pin their executable search to
-  `/usr/bin:/bin` and the provisioned host supplies libvirt/virsh 10.0.0.
-  That binary rejects the option before connecting. Upstream added the option
-  only after libvirt 10.0.0; the upstream issue documenting its introduction
-  also records the portable pre-option technique: run `virsh` in a fresh
-  session with standard input closed. The prior requirements and all three
-  semantic verifiers incorrectly protected the incompatible spelling. This
-  was deterministic Windows build/native-evidence availability and verifier-
-  specification debt, not a VM launch, domain mutation, privilege change,
-  listener, or RustDesk runtime failure.
-
-  Both wrappers now execute exactly `setsid --wait`, then the existing
-  `timeout --foreground --kill-after=2` boundary, then
-  `virsh --connect qemu:///session "$@" </dev/null`. The outer fresh session
-  removes the controlling terminal; closed standard input prevents an
-  interactive credential read; the timeout remains the exact owner that
-  terminates and reaps `virsh`; the C locale, fixed unprivileged session URI,
-  exact-UUID controls, and all existing failure classifications are unchanged.
-  There is no version probe, fallback branch, alternate URI, system-libvirt
-  path, polkit prompt, privilege grant, or compatibility alias. The unsupported
-  option is forbidden rather than conditionally retained.
-
-  Actual read-only invocations of the corrected command shape successfully
-  enumerated all session-domain names and UUIDs and returned exact URI
-  `qemu:///session` under host libvirt 10.0.0. Both enumerations were empty.
-  No `pkttyagent` remained, no domain was created or controlled, and no KVM,
-  Windows guest, product code, listener, service, host RustDesk configuration,
-  firewall, or network state was started or changed. Confined verification used
-  immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric UID:GID 1000:1000 with no pull/network, a read-only root and
-  repository, all capabilities dropped, no-new-privileges, bounded resources,
-  non-executable private scratch, and no socket, device, port, or host
-  namespace. The golden focused verifier rejected all 45 deliberate
-  weakenings. The per-build verifier rejected all 225 weakenings and passed
-  five bounded synthetic behavioral suites after the exact 524,544 descriptor
-  ceiling and SHA-256-pinned local `olefile` wheel were supplied read-only;
-  nothing was installed. The independent baseline and complete unsliced
-  source-mutation catalog both exited zero. Preliminary attempts that exposed
-  the default descriptor ceiling and the image's absent `olefile` are retained,
-  not counted as passes. Appendix C #336 carries the correction. Native
-  Windows focus/minimize and compositor execution, the complete Windows
-  artifact build, clean cold R-B2/R-B10, independent reproduction, and
-  external review remain open. The broader connection correctness/performance
-  and Ralph-loop goals remain active.
+- **R-S11dr/R-S11ds/R-S11e-214 — noninteractive session-libvirt control —
+  SOURCE IMPLEMENTED; CURRENT VM/NATIVE-WINDOWS/ARTIFACT EVIDENCE OPEN.**
+  Both Windows VM transactions delegate every `virsh` query and control to the
+  shared `windows_libvirt_run_bounded_control`: an absolute `setsid --wait`, a
+  finite `timeout`, exact `qemu:///session`, and closed standard input under the
+  caller's private libvirt environment. The source contains no version-specific
+  `--no-pkttyagent`, interactive/privileged fallback, alternate URI, or direct
+  launcher bypass. Focused and independent checks guard that source topology;
+  they do not execute libvirt. Exact current private-daemon/domain control,
+  timeout/error/finality, terminal-interaction refusal, VM teardown, Windows
+  guest behavior, cold R-B2/R-B10 artifacts, independent reproduction, and
+  external review remain open.
 - **R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission —
   SOURCE IMPLEMENTED AND CONFINED BEHAVIOR/MUTATION VERIFIED 2026-07-29;
   EXECUTABLE LIBVIRT/VM AND COLD RELEASE EVIDENCE OPEN.**

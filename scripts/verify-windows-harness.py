@@ -1285,17 +1285,10 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(harness_self_test, literal, description)
 
     require(requirements, "<tr><td>291</td>", "Appendix C #291 disposition")
-    require(requirements, "<tr><td>336</td>", "Appendix C #336 disposition")
     require(
         hardening,
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
         "setsid-admission hardening-ledger disposition",
-    )
-    require(
-        hardening,
-        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
-        "session-libvirt control",
-        "version-compatible session-libvirt hardening-ledger disposition",
     )
     require(
         verify,
@@ -3860,23 +3853,10 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "<tr><td>291-disabled</td>",
         ),
         (
-            "Appendix C #336 disposition",
-            "requirements",
-            "<tr><td>336</td>",
-            "<tr><td>336-disabled</td>",
-        ),
-        (
             "setsid-admission hardening-ledger disposition",
             "hardening",
             "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
             "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
-        ),
-        (
-            "version-compatible session-libvirt hardening-ledger disposition",
-            "hardening",
-            "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
-            "session-libvirt control",
-            "R-S11dr/R-S11ds/R-S11e-214 — interactive session-libvirt control",
         ),
         (
             "R-S11ds focused gate wiring",

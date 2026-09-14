@@ -27583,20 +27583,9 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build Appendix C #291 disposition",
     )
     require_text(
-        sources["requirements"],
-        "<tr><td>336</td>",
-        "Windows build Appendix C #336 disposition",
-    )
-    require_text(
         sources["hardening"],
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
         "Windows build setsid-admission hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
-        "session-libvirt control",
-        "Windows build version-compatible session-libvirt hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -27862,14 +27851,6 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "closed virsh input",
             "Windows build focused closed-input mutation",
-        ),
-        (
-            "Appendix C #336 disposition",
-            "Windows build focused compatibility-Appendix mutation",
-        ),
-        (
-            "version-compatible session-libvirt hardening-ledger disposition",
-            "Windows build focused compatibility-ledger mutation",
         ),
         (
             "exact run-root retirement before authority clearing",

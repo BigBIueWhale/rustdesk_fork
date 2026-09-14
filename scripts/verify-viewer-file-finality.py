@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -67,12 +66,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "dart_model": "flutter/lib/models/model.dart",
         "desktop": "flutter/lib/desktop/pages/file_manager_page.dart",
         "mobile": "flutter/lib/mobile/pages/file_manager_page.dart",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
-        "verify": "scripts/verify.sh",
-        "apple": "scripts/apple-conform-check.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
-        "dart_verify": "scripts/dart-verify.sh",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -653,124 +646,6 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(fs + io_loop + server, f"fn {test}()", f"{test} regression")
 
-    for key, needle, label in (
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11fg</span>',
-            "R-S11fg normative requirement",
-        ),
-        ("requirements", "<tr><td>315</td>", "Appendix C #315"),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11fh</span>',
-            "R-S11fh normative requirement",
-        ),
-        ("requirements", "<tr><td>316</td>", "Appendix C #316"),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11fi</span>',
-            "R-S11fi normative requirement",
-        ),
-        ("requirements", "<tr><td>317</td>", "Appendix C #317"),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11fj</span>',
-            "R-S11fj normative requirement",
-        ),
-        ("requirements", "<tr><td>318</td>", "Appendix C #318"),
-        (
-            "hardening",
-            "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
-            "R-S11e-194 hardening ledger",
-        ),
-        (
-            "hardening",
-            "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality",
-            "R-S11e-195 hardening ledger",
-        ),
-        (
-            "hardening",
-            "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure",
-            "R-S11e-196 hardening ledger",
-        ),
-        (
-            "hardening",
-            "**R-S11fj/R-S11e-197 viewer download digest inspection failure",
-            "R-S11e-197 hardening ledger",
-        ),
-        (
-            "verify",
-            "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
-            "shared focused verifier gate",
-        ),
-        (
-            "verify",
-            "server::connection::controlled_file_write_tests::r_s11fh_",
-            "shared controlled file behavior gate",
-        ),
-        (
-            "verify",
-            "client::io_loop::tests::r_s11fi_",
-            "shared incoming file-write failure gate",
-        ),
-        (
-            "verify",
-            "client::io_loop::tests::r_s11fj_",
-            "shared download digest failure gate",
-        ),
-        (
-            "apple",
-            "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
-            "Apple/shared focused verifier gate",
-        ),
-        (
-            "dart_verify",
-            "client::io_loop::tests::r_s11fg_",
-            "generated-bridge tracker behavior gate",
-        ),
-        (
-            "dart_verify",
-            "fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt",
-            "generated-bridge exact-frame behavior gate",
-        ),
-        (
-            "dart_verify",
-            "server::connection::controlled_file_write_tests::r_s11fh_",
-            "generated-bridge controlled file behavior gate",
-        ),
-        (
-            "dart_verify",
-            "client::io_loop::tests::r_s11fi_",
-            "generated-bridge incoming file-write failure gate",
-        ),
-        (
-            "dart_verify",
-            "client::io_loop::tests::r_s11fj_",
-            "generated-bridge download digest failure gate",
-        ),
-        (
-            "workspace",
-            '"viewer_file_finality_verifier": (',
-            "independent verifier source binding",
-        ),
-        (
-            "workspace",
-            "validate_viewer_file_finality_contract(sources)",
-            "independent verifier dispatch",
-        ),
-    ):
-        require(sources[key], needle, label)
-
-    requirements_digest = hashlib.sha256(
-        sources["requirements"].encode("utf-8")
-    ).hexdigest()
-    require(
-        sources["hardening"],
-        f"{requirements_digest}  requirements.html",
-        "exact requirements digest binding",
-    )
-
-
 Mutation = Tuple[str, str, str, str]
 
 MUTATIONS: Tuple[Mutation, ...] = (
@@ -828,28 +703,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", 'format!("local download digest check failed: {error}")', 'format!("ignored download digest failure: {error}")', "download digest failure visibility"),
     ("io_loop", "fn r_s11fj_download_digest_metadata_failure_is_explicit()", "fn download_digest_metadata_failure_is_explicit()", "download digest metadata regression"),
     ("io_loop", "fn r_s11fj_download_digest_requires_the_exact_active_file()", "fn download_digest_requires_the_exact_active_file()", "download digest exact-file regression"),
-    ("requirements", '<div class="req"><span class="id">R-S11fg</span>', '<div class="req"><span class="id">R-S11fg-disabled</span>', "normative requirement"),
-    ("requirements", "<tr><td>315</td>", "<tr><td>315-disabled</td>", "Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11fh</span>', '<div class="req"><span class="id">R-S11fh-disabled</span>', "controlled normative requirement"),
-    ("requirements", "<tr><td>316</td>", "<tr><td>316-disabled</td>", "controlled Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11fi</span>', '<div class="req"><span class="id">R-S11fi-disabled</span>', "incoming write normative requirement"),
-    ("requirements", "<tr><td>317</td>", "<tr><td>317-disabled</td>", "incoming write Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11fj</span>', '<div class="req"><span class="id">R-S11fj-disabled</span>', "download digest normative requirement"),
-    ("requirements", "<tr><td>318</td>", "<tr><td>318-disabled</td>", "download digest Appendix disposition"),
-    ("hardening", "**R-S11fg/R-S11e-194 outgoing viewer file-command admission", "**R-S11fg-disabled/R-S11e-194 outgoing viewer file-command admission", "hardening ledger"),
-    ("hardening", "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality", "**R-S11fh-disabled/R-S11e-195 controlled-side file-response exact local writer finality", "controlled hardening ledger"),
-    ("hardening", "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure", "**R-S11fi-disabled/R-S11e-196 incoming viewer file-block persistence failure", "incoming write hardening ledger"),
-    ("hardening", "**R-S11fj/R-S11e-197 viewer download digest inspection failure", "**R-S11fj-disabled/R-S11e-197 viewer download digest inspection failure", "download digest hardening ledger"),
-    ("verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "shared controlled behavior gate"),
-    ("dart_verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "generated-bridge controlled behavior gate"),
-    ("verify", "client::io_loop::tests::r_s11fi_", "client::io_loop::tests::disabled_", "shared incoming write behavior gate"),
-    ("dart_verify", "client::io_loop::tests::r_s11fi_", "client::io_loop::tests::disabled_", "generated-bridge incoming write behavior gate"),
-    ("verify", "client::io_loop::tests::r_s11fj_", "client::io_loop::tests::disabled_", "shared download digest behavior gate"),
-    ("dart_verify", "client::io_loop::tests::r_s11fj_", "client::io_loop::tests::disabled_", "generated-bridge download digest behavior gate"),
-    ("verify", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "shared mutation gate"),
-    ("apple", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "Apple mutation gate"),
-    ("dart_verify", "client::io_loop::tests::r_s11fg_", "client::io_loop::tests::disabled_", "generated-bridge tracker gate"),
-    ("workspace", '"viewer_file_finality_verifier": (', '"viewer_file_finality_verifier_disabled": (', "independent source binding"),
 )
 
 

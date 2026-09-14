@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-167c874f1e03e9c958eca549839215c8e121bd38e6f1fd8c89d2cb1a4da526f0  requirements.html
+d50394e2d4b18ab727cfdeccbf17411a197fed58dd7a445ce4fd7b2a244f738d  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,18 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+R-S11fg and Appendix C #315 now state only the timeless outgoing-viewer file-command admission, exact local-writer
+ownership, peer-semantic completion boundary, and native acceptance contract. Their inherited defect diary, source-
+closure claims, exact tool inventory, mutation narration, and current release checklist were deleted, reducing
+`requirements.html` by 3,311 bytes. The focused file-finality checker no longer loads or hashes the requirements,
+ledger, shared scripts, Apple script, Dart script, or workspace verifier and no longer mutates their wording or
+wiring, reducing it by 7,572 bytes while retaining its product-source invariants and the names of the executable
+Rust regressions. The workspace verifier's entire duplicate file-finality verifier-of-verifier function, dispatch,
+and source binding were deleted, reducing it by 17,149 bytes. The real keyed-frame/tracker/file-persistence/digest
+behavior tests and their shared/generated-bridge invocations remain. No product source or native target changed or
+ran; complete installed desktop and Android file operations, peer finality, saturation, interruption, abrupt loss,
+reconnect, performance, and cleanup remain open in the release-blocking matrix.
 
 Appendix C rows #65–#67 and #69 now state only the timeless Windows driver-install finality, app-name
 grammar, custom-client provenance, and known-folder path-authority contracts. Their original failure histories,

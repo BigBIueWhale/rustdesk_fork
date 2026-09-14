@@ -290,7 +290,7 @@ class MainService : Service() {
         }
     }
 
-    private var serviceLooper: Looper? = null
+    private var serviceThread: HandlerThread? = null
     private var serviceHandler: Handler? = null
     @Volatile
     private var nativeServerGeneration = 0L
@@ -425,9 +425,11 @@ class MainService : Service() {
             Log.e(logTag, "Cannot start MainService without its exact native callback context")
             return false
         }
+        var callbackWorkerReady = serviceThread?.isAlive == true && serviceHandler != null
         val currentGeneration = nativeServerGeneration
         if (currentGeneration > 0L) {
             if (serviceGenerationOwner.isCommitted(currentGeneration) &&
+                callbackWorkerReady &&
                 FFI.isServerGenerationActive(this, currentGeneration)
             ) {
                 return true
@@ -436,7 +438,14 @@ class MainService : Service() {
                 logTag,
                 "Retiring an incomplete or inactive MainService generation before explicit retry",
             )
-            if (!retireControlledConnectionResourcesForRetry(currentGeneration)) {
+            val resourcesRetired = retireControlledConnectionResourcesForRetry(
+                currentGeneration,
+                keepProjection = callbackWorkerReady,
+            )
+            if (!callbackWorkerReady) {
+                stopServiceCallbackThread()
+            }
+            if (!resourcesRetired) {
                 return false
             }
             if (!retireControlledServiceGeneration(
@@ -444,6 +453,17 @@ class MainService : Service() {
                     "incomplete generation before retry",
                 )
             ) {
+                return false
+            }
+        }
+        if (!callbackWorkerReady) {
+            if (mediaProjection != null || mediaProjectionCallback != null) {
+                releaseCaptureResources()
+            }
+            stopServiceCallbackThread()
+            callbackWorkerReady = startServiceCallbackThread()
+            if (!callbackWorkerReady) {
+                Log.e(logTag, "Cannot start MainService without its exact callback worker")
                 return false
             }
         }
@@ -631,7 +651,10 @@ class MainService : Service() {
     }
 
     @Synchronized
-    private fun retireControlledConnectionResourcesForRetry(generation: Long): Boolean {
+    private fun retireControlledConnectionResourcesForRetry(
+        generation: Long,
+        keepProjection: Boolean = true,
+    ): Boolean {
         if (generation <= 0L || nativeServerGeneration != generation) {
             Log.e(logTag, "Rejected controlled resource retirement for stale generation $generation")
             return false
@@ -640,11 +663,18 @@ class MainService : Service() {
         controlledCaptureOwners.clear()
         InputService.ctx?.retireServiceGeneration(generation)
         captureRequested = false
-        if (!stopCapturePipeline(keepReusableDisplay = reuseVirtualDisplay)) {
+        val pipelineRetired = stopCapturePipeline(
+            keepReusableDisplay = keepProjection && reuseVirtualDisplay,
+        )
+        if (!pipelineRetired) {
             Log.e(logTag, "Failed to retire the old generation capture pipeline")
-            return false
         }
-        return true
+        if (!keepProjection) {
+            // A projection callback registered on a dead worker cannot be transferred safely.
+            // Release the complete display/projection owner; fresh consent remains explicit.
+            releaseMediaProjection()
+        }
+        return pipelineRetired
     }
 
     @Synchronized
@@ -669,13 +699,61 @@ class MainService : Service() {
         if (!nativeCallbackContextReady) {
             Log.e(logTag, "Failed to install the exact MainService native callback context")
         }
-        HandlerThread("Service", Process.THREAD_PRIORITY_BACKGROUND).apply {
-            start()
-            serviceLooper = looper
-            serviceHandler = Handler(looper)
+        if (!startServiceCallbackThread()) {
+            Log.e(logTag, "Failed to start the exact MainService callback worker")
         }
         updateScreenInfo(resources.configuration.orientation)
         initNotification()
+    }
+
+    private fun startServiceCallbackThread(): Boolean {
+        if (serviceThread != null || serviceHandler != null) {
+            return serviceThread?.isAlive == true && serviceHandler != null
+        }
+        val thread = HandlerThread("Service", Process.THREAD_PRIORITY_BACKGROUND)
+        serviceThread = thread
+        return try {
+            thread.start()
+            val looper = thread.looper
+            if (looper == null) {
+                stopServiceCallbackThread()
+                false
+            } else {
+                serviceHandler = Handler(looper)
+                true
+            }
+        } catch (error: RuntimeException) {
+            Log.e(logTag, "Failed to construct the MainService callback worker", error)
+            stopServiceCallbackThread()
+            false
+        }
+    }
+
+    private fun stopServiceCallbackThread() {
+        val thread = serviceThread
+        serviceHandler = null
+        serviceThread = null
+        if (thread == null) {
+            return
+        }
+
+        // Capture and projection ownership has already been retired. Discard callbacks that were
+        // queued for that old state, then wait for the exact callback already in flight to finish.
+        if (!thread.quit() && thread.isAlive) {
+            Log.e(logTag, "Failed to request MainService callback worker termination")
+        }
+        var interrupted = false
+        while (thread.isAlive) {
+            try {
+                thread.join()
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt()
+            Log.w(logTag, "Interrupted while joining the MainService callback worker")
+        }
     }
 
     override fun onDestroy() {
@@ -683,14 +761,12 @@ class MainService : Service() {
         val generation = nativeServerGeneration
         publishControlledServiceStatus(false)
         releaseControlledConnectionResources()
+        stopServiceCallbackThread()
         val generationRetired = generation <= 0L ||
             retireControlledServiceGeneration(generation, "MainService destruction")
         if (!generationRetired) {
             Log.e(logTag, "MainService destruction retained incomplete generation authority")
         }
-        serviceLooper?.quitSafely()
-        serviceHandler = null
-        serviceLooper = null
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()

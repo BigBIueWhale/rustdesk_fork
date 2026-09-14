@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-5a1b2d72e8c57831c9fbc23a6e746912a8865b389ad9bc607361f217ea9491e6  requirements.html
+2dba6ad579468b885ed1b77b5ba8294865bfb40e6f58046bb10867c5c73e0c64  requirements.html
 ```
 
 ## Current Verdict
@@ -454,8 +454,9 @@ verifiers no longer require or mutate their deleted workspace copies. One stale 
 now targets the current post-drain
 exact-owner revalidation rather than a deleted comment boundary. In a nonroot, network-disabled,
 read-only-source container, the retained focused suites rejected 563 voice/session, 39 lifecycle-drain, 59
-raw-frame, and 41 service-status mutations; the current startup source invariant and normal workspace catalog
-also pass. This is fast source/integration evidence only: no Rust test, Android compilation, APK, emulator,
+raw-frame, and 41 service-status mutations; the normal workspace catalog also passed. The remaining 304-line
+startup checker was later deleted because it only matched Kotlin/Rust source strings and never executed a Service
+transaction. This is fast source/integration evidence only: no Rust test, Android compilation, APK, emulator,
 device, listener, or product runtime ran, and every installed/native obligation in the OPEN matrix remains.
 
 Appendix C #345 and its one-row table are deleted in full. They duplicated R-S11gj's complete timeless
@@ -11540,10 +11541,7 @@ numeric-nonroot networkless container. The new production `JoinSet` drain test
 proves parent-to-child cancellation, child isolation, complete join, and empty
 postcondition in code and is wired into `scripts/verify.sh`, but it has **not run**.
 Pinned rustfmt 1.75 parsed every touched Rust file; `bash -n`, `git diff --check`,
-and the focused Android startup source invariant pass. The source gate was
-corrected for the four current post-claim rollback edges and the two-phase
-`android_request_stop`/`android_generation_is_inactive` API; it remains
-supplementary source evidence. The workspace verifier's five duplicate Android
+and the focused Android startup source invariant passed for that historical source. The workspace verifier's five duplicate Android
 focused validators, loaders, dispatches, and their uniquely owned mutation
 catalog are deleted rather than preserving the retired stop helper and
 runtime-abort listener shape. Nine orphaned tuples missed by that deletion are
@@ -11551,8 +11549,9 @@ also absent: three pre-extraction `reserved`/`active` representation mutations,
 two obsolete focused-script `--self-test` wiring mutations, and four requirements/
 Appendix wording mutations with no semantic consumer. The retained normal
 workspace check still observes source structure rather than Android behavior and
-is not a reason to restore any superseded lifecycle. The normal workspace and
-focused startup source checks pass. The former global mutation catalog was
+is not a reason to restore any superseded lifecycle. The remaining 304-line focused startup checker and its two
+shared-script invocations are now deleted: it only matched source strings and did not execute an Android Service,
+JNI bridge, callback worker, listener, or cleanup path. The former global mutation catalog was
 deleted after its last bounded run produced no verdict before exit 137; it never
 supplied Android lifecycle, product, or native evidence.
 
@@ -11599,7 +11598,7 @@ outcome, while `direct-listener-bound` remains the UI's socket truth.
 
 **Evidence.** Source commit
 `2fb7d4aaebf8899a347a2c7e7a27f68e9caaf98f` contains the Activity health edge
-and transfer ordering. Focused startup/status/listener/raw/voice validators and
+and transfer ordering. Focused status/listener/raw/voice validators and
 the independent source gate bind the current product topology. This is source
 evidence only; no current Kotlin/Gradle/JNI build, APK, emulator, or physical
 device executed this transaction.
@@ -12211,6 +12210,40 @@ transactions, cross-version behavior, explicit latency/queue/CPU/memory bounds,
 sustained lifecycle/resource soak, signed artifacts, clean cold R-B2/R-B10
 equality, independent reproduction, causation, external review, and proof that
 the complete connection flow is correct and performant remain STOP-SHIP.
+
+### R-S11ja/R-S11e-290 — exact Android MainService callback-thread finality
+
+**State:** source corrected; Android compile, installed lifecycle behavior, and release evidence open.
+
+**Old path and boundary.** The inherited `MainService` started one `HandlerThread` for `ImageReader` and
+`MediaProjection` callbacks but retained only its `Looper`. Destruction called `quitSafely()` and immediately
+discarded the handler/looper references. Android defines safe quit to process every already-due queued message,
+and quit does not join the underlying thread. `onDestroy()` could therefore return and permit a replacement
+Service generation while an exact predecessor callback was queued or still executing. This is a direct
+resource-finality defect; it is not evidence that the deployed Android symptom followed this path.
+
+**Current implementation.** The Service owns the exact `HandlerThread` and handler. Native generation
+initialization fails before reservation if either is absent or the thread is dead. After controlled capture,
+projection, raw-video, and audio state retires, teardown clears both publication references, requests immediate
+queue termination with `quit()`, and joins that exact thread until it is dead. An interrupt is recorded rather
+than escaping the join and is restored only after terminality. Native generation retirement and callback-owner
+release occur afterward, so no replacement can overlap a predecessor callback worker through normal lifecycle
+completion. A healthy Service-owned worker and projection remain across ordinary listener-generation repair. If
+the worker is dead or incoherent, the health transaction instead releases projection state, joins the dead worker,
+retires the native generation, and creates one replacement worker before reserving a replacement generation. No
+timeout, retry worker, second queue, or process-kill recovery path was added.
+
+**Evidence and open work.** No source-string checker was added for this framework behavior; the pre-existing
+startup checker and both invocations were deleted because source matching cannot prove callback or thread finality.
+This host has no Android SDK, emulator binary, AVD, or repository device-lifecycle harness. `adb` was not
+invoked because it can start a host daemon/listener, and no Docker, VM, device, or host product was used as a
+fallback. Adjacent Android ownership/source checks, the normal workspace check, Bash/HTML parsing, requirements
+identity, the status budget, native-codec integrity, and diff hygiene pass, but none executes this Android path.
+Exact current Kotlin/Gradle/JNI compilation and an installed APK must hold a callback in flight, queue a
+second callback, destroy the Service, inject join interruption, prove queue and thread finality, and then prove a
+clean replacement through ordinary Stop, task swipe, framework recreation, projection revocation, Force Stop, and
+reopen/reconnect. Latency, ANR, CPU/memory/thread/handle cleanup, current artifacts, cold equality, independent
+reproduction, causation, and external review remain STOP-SHIP.
 
 ### R-S11iy/R-S11e-288 — exact desktop CM bridge EOF and failure finality
 

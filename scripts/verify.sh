@@ -13453,16 +13453,10 @@ echo "== Android exact-generation raw-video and video-worker authority (R-S11em/
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config \
   android_frame_raw_generation_tests::tests:: -- --test-threads=1
 echo "  ok  R-S11em/R-S11eu/R-S11e-174/R-S11e-182 raw-video and screen-owner state-machine behavior (cross-language source topology is checked by the Android lifecycle gate; installed behavior remains open)"
-echo "== Android app-open exact-generation MainService startup transaction (R-S11hq/R-S11hr/R-S11e-254/R-S11e-255) =="
+echo "== Android app-open exact-generation MainService startup and callback-worker finality (R-S11hq/R-S11hr/R-S11ja/R-S11e-254/R-S11e-255/R-S11e-290) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   direct_service::direct_connection_task_tests:: -- --test-threads=1
 echo "  ok  R-S11hq parent cancellation owns and joins every accepted child task (Tokio unit behavior; Android native evidence remains separate)"
-if /usr/bin/python3 -I -S scripts/verify-android-service-startup-transaction.py --repo .; then
-  echo "  ok  R-S11hq/R-S11hr/R-S11e-254/R-S11e-255 Android MainService startup source invariant (native lifecycle evidence remains separate)"
-else
-  echo "  FAIL R-S11hq/R-S11hr/R-S11e-254/R-S11e-255: Android MainService startup, recovery, or resource transfer regressed"
-  rc=1
-fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
 # None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground

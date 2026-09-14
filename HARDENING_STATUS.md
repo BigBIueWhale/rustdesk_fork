@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0104981cf18c1ff3b7dbb8bdbe2298034aee7c4db1d8b1a4bfdc7eff50506081  requirements.html
+06a122c0860bfef0fb4d775ab442c76ca7935fe93d4103b21a346465164c2cde  requirements.html
 ```
 
 ## Current Verdict
@@ -460,6 +460,23 @@ lifecycle therefore were not compiled or run. No replacement string matcher or d
 Exact target compilation and the installed lifecycle/resource matrix remain open. Including this record, the live
 ledger is 1,029,366 bytes, or 343,122 conservative tokens by the documented method, below its approximately
 400,000-token budget.
+
+R-S11eo now states the timeless mobile outgoing-session scheduling, request-owner, exact-cancellation,
+rollback, failure-visibility, and target-runtime acceptance contract instead of preserving its historical
+defect narrative, implementation receipts, mutation inventory, and current release status. Appendix C #297 is
+deleted outright because it duplicated R-S11eo and introduced no independent risk, authority boundary,
+operation, or acceptance criterion. This reduces `requirements.html` from 2,177,807 to 2,174,963 bytes. The
+focused Android ownership verifier no longer parses or string-matches the pure Dart start queue, its test names,
+or R-S11eo's stream-finality helper, and it no longer introspects the generated-Dart gate, shared gate, normative
+document, Appendix row, or this ledger as proof of that behavior: 227 lines and 10,550 bytes are deleted. Three
+documentation oracles (six lines) are deleted from the shared gate, reducing it by 473 bytes, and two unused
+queue source/test loaders are deleted from the workspace verifier, reducing it by 335 bytes. The real queue/finality
+Dart behavior tests, exact Rust rollback-and-join regression, generated-bridge asynchronous-dispatch check, and the
+shared gate's direct product-integration checks remain unchanged. No product source or native target changed or ran
+in this cleanup. Current Android/iOS packages still require slow-drain, close/replacement, stream-failure, lifecycle,
+reconnect, presentation, bounded-resource, and cleanup execution; cold artifacts, independent reproduction, and
+external review also remain open. Including this record, the live ledger is 1,031,055 bytes, or 343,685
+conservative tokens by the documented method.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -1005,7 +1022,7 @@ awaits its admitted preparation before native close, and a stale completion clos
 UUID. Initial worker failure rolls back the exact handler/session and joins its worker; unexpected
 stream error/end is exact-session-bound, retires that session, dismisses loading state, and produces a
 bounded nonsecret error rather than a successful-looking UUID or indefinite `Connecting...` state.
-R-S11eo and Appendix C #297 own the complete contract.
+R-S11eo owns the complete contract.
 
 **Retained evidence and boundary.** Focused generation/ABA, listener epoch, raw-frame, status/Stop,
 bounded-start, exact-cancellation, rollback/join, and stream-finality tests exist, and historical

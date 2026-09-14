@@ -115,9 +115,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "dart_model": (repo / "flutter/lib/models/model.dart").read_text(
             encoding="utf-8"
         ),
-        "dart_mobile_start_queue": (
-            repo / "flutter/lib/models/mobile_session_start_queue.dart"
-        ).read_text(encoding="utf-8"),
         "dart_stream_finality": (
             repo / "flutter/lib/models/session_stream_finality.dart"
         ).read_text(encoding="utf-8"),
@@ -150,9 +147,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         ),
         "mobile_file_lifecycle_test": (
             repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
-        ).read_text(encoding="utf-8"),
-        "mobile_start_queue_test": (
-            repo / "flutter/test/mobile_session_start_queue_test.dart"
         ).read_text(encoding="utf-8"),
         "stream_finality_test": (
             repo / "flutter/test/session_stream_finality_test.dart"
@@ -1428,139 +1422,7 @@ def validate(sources: Dict[str, str]) -> None:
         "late final SessionID sessionId;",
         "cached long-lived model connection identity",
     )
-    mobile_queue = extract_item(
-        sources["dart_mobile_start_queue"],
-        "class MobileSessionStartQueue<T>",
-        "bounded mobile-session start coordinator",
-    )
-    require_order(
-        mobile_queue,
-        (
-            "_MobileSessionStartEntry<T>? _running;",
-            "_MobileSessionStartEntry<T>? _pending;",
-        ),
-        "one running plus one pending mobile-session capacity",
-    )
-    queue_submit = extract_item(
-        mobile_queue,
-        "  Future<MobileSessionStartDisposition> submit(",
-        "mobile-session start submission",
-    )
-    require_order(
-        queue_submit,
-        (
-            "if (running == null)",
-            "_running = entry;",
-            "unawaited(_drain());",
-            "_pending?.complete(MobileSessionStartDisposition.superseded);",
-            "_pending = entry;",
-            "return entry.done.future;",
-        ),
-        "bounded latest-pending-wins admission",
-    )
-    queue_exact_finality = extract_item(
-        mobile_queue,
-        "  Future<MobileSessionStartDisposition>? cancelPendingOrGetRunning(",
-        "exact pending cancellation or running finality lookup",
-    )
-    require_order(
-        queue_exact_finality,
-        (
-            "if (pending != null && matches(pending.request))",
-            "_pending = null;",
-            "pending.complete(MobileSessionStartDisposition.cancelled);",
-            "return pending.done.future;",
-            "if (running != null && matches(running.request))",
-            "return running.done.future;",
-            "return null;",
-        ),
-        "exact pending cancellation before running-finality lookup",
-    )
-    queue_drain = extract_item(
-        mobile_queue, "  Future<void> _drain()", "mobile-session start drain"
-    )
-    require_order(
-        queue_drain,
-        (
-            "while (true)",
-            "final entry = _running;",
-            "if (entry == null)",
-            "return;",
-            "await _run(entry.request);",
-            "entry.complete(MobileSessionStartDisposition.completed);",
-            "entry.completeError(error, stackTrace);",
-            "_running = _pending;",
-            "_pending = null;",
-        ),
-        "failure-safe bounded successor drain",
-    )
-    for forbidden_collection in (
-        "final List<",
-        "final Queue<",
-        "final Map<",
-        "final Set<",
-        "dart:collection",
-    ):
-        forbid(
-            mobile_queue,
-            forbidden_collection,
-            "unbounded mobile-session request collection",
-        )
-    queue_test = sources["mobile_start_queue_test"]
-    for needle, label in (
-        (
-            "retains one running request and only the latest pending request",
-            "latest-pending replacement behavior test",
-        ),
-        (
-            "cancels the exact pending request without interrupting finality",
-            "exact pending cancellation behavior test",
-        ),
-        (
-            "closing the running request waits while a newer request is pending",
-            "running exact-finality behavior test",
-        ),
-        (
-            "a failed running request does not wedge the bounded successor",
-            "failed-running successor behavior test",
-        ),
-        (
-            "expect(firstFinalityCompleted, isFalse);",
-            "running close remains incomplete before native finality",
-        ),
-    ):
-        require(queue_test, needle, label)
-
-    stream_finality = extract_item(
-        sources["dart_stream_finality"],
-        "class SessionStreamFinality",
-        "session-stream termination discriminator",
-    )
-    require_order(
-        stream_finality,
-        (
-            "bool _expectedCloseReceived = false;",
-            "bool _unexpectedTerminationReported = false;",
-            "void acceptExpectedClose()",
-            "_expectedCloseReceived = true;",
-            "bool acceptUnexpectedTermination()",
-            "if (_expectedCloseReceived || _unexpectedTerminationReported)",
-            "_unexpectedTerminationReported = true;",
-            "return true;",
-        ),
-        "expected-close versus unexpected-termination finality",
-    )
     stream_finality_test = sources["stream_finality_test"]
-    require(
-        stream_finality_test,
-        "an exact normal-close event suppresses later stream termination",
-        "expected-close stream-finality behavior test",
-    )
-    require(
-        stream_finality_test,
-        "unexpected stream termination is admitted exactly once",
-        "one-shot unexpected-termination behavior test",
-    )
     stream_generation = extract_item(
         sources["dart_stream_finality"],
         "class SessionStreamGeneration<Owner>",
@@ -1834,61 +1696,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
         "exact Dart stream-generation hardening ledger",
     )
-    mobile_add_gate_start = sources["dart_verify"].find(
-        'mobile_add_line="$(grep -nF "  Future<void> sessionAddMobile("'
-    )
-    mobile_add_gate_end = sources["dart_verify"].find(
-        'display_selection_line="$(grep -nF "  Future<void> sessionSwitchDisplay("',
-        mobile_add_gate_start,
-    )
-    if mobile_add_gate_start < 0 or mobile_add_gate_end <= mobile_add_gate_start:
-        raise VerificationError("missing bounded generated mobile-add bridge gate")
-    mobile_add_bridge_gate = sources["dart_verify"][
-        mobile_add_gate_start:mobile_add_gate_end
-    ]
-    require(
-        mobile_add_bridge_gate,
-        'Future<void> sessionAddMobile(',
-        "generated asynchronous mobile-add bridge gate",
-    )
-    require(
-        mobile_add_bridge_gate,
-        'printf "%s\\n" "$mobile_add_impl" | grep -qF '
-        '"_platform.executeNormal(FlutterRustBridgeTask("',
-        "generated normal worker-pool mobile-add gate",
-    )
-    require(
-        sources["dart_verify"],
-        "_platform.executeSync(",
-        "generated synchronous mobile-add refusal gate",
-    )
-    require_count(
-        sources["dart_verify"],
-        "test/mobile_session_start_queue_test.dart",
-        2,
-        "mobile-session queue behavior gate",
-    )
-    require_count(
-        sources["dart_verify"],
-        "test/session_stream_finality_test.dart",
-        2,
-        "session-stream finality behavior gate",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11eo</span>',
-        "mobile outgoing-session preparation requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>297</td>",
-        "mobile outgoing-session preparation disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11eo/R-S11e-176",
-        "mobile outgoing-session preparation hardening ledger",
-    )
     require(
         sources["requirements"],
         '<span class="id">R-S11eq</span>',
@@ -1908,21 +1715,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["verify"],
         "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test",
         "shared Android lifecycle-drain focused gate",
-    )
-    require(
-        sources["verify"],
-        "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh",
-        "shared mobile-session queue behavior gate",
-    )
-    require(
-        sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 1',
-        "shared failed-start rollback-count gate",
-    )
-    require(
-        sources["verify"],
-        'and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") == 2',
-        "shared dual close-preparation finality gate",
     )
     mobile_reset = extract_item(
         dart_model, "  void mobileReset(", "mobile reusable-model reset"
@@ -6087,16 +5879,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter_ffi", "flutter::wait_for_android_client_owner_drain(&client_owner_id)?;", "// Android predecessor drain barrier omitted", "Android lifecycle predecessor drain barrier"),
     ("flutter_ffi", "Synchronous session preparation is unavailable on mobile", "Synchronous session preparation is available on mobile", "synchronous mobile-add refusal"),
     ("flutter_ffi", "Existing-session attachment is unavailable on mobile", "Existing-session attachment is available on mobile", "synchronous mobile-attachment refusal"),
-    ("dart_mobile_start_queue", "_pending?.complete(MobileSessionStartDisposition.superseded);", "// superseded pending request retained", "latest-pending replacement"),
-    ("dart_mobile_start_queue", "if (pending != null && matches(pending.request))", "if (pending != null)", "exact pending cancellation"),
-    ("dart_mobile_start_queue", "return running.done.future;", "return null;", "running exact-finality lookup"),
-    ("dart_mobile_start_queue", "if (entry == null) {\n        return;", "if (entry == null) {\n        continue;", "failure-safe bounded successor drain"),
-    ("dart_mobile_start_queue", "_running = _pending;", "_running = null;", "bounded successor continuation"),
-    ("dart_mobile_start_queue", "_MobileSessionStartEntry<T>? _pending;", "_MobileSessionStartEntry<T>? _pending;\n  final List<T> backlog = [];", "unbounded mobile-start backlog refusal"),
-    ("mobile_start_queue_test", "closing the running request waits while a newer request is pending", "closing the running request returns while a newer request is pending", "running-preparation finality behavior proof"),
-    ("mobile_start_queue_test", "a failed running request does not wedge the bounded successor", "a failed running request may wedge the bounded successor", "failed-preparation successor behavior proof"),
-    ("dart_stream_finality", "if (_expectedCloseReceived || _unexpectedTerminationReported)", "if (_unexpectedTerminationReported)", "expected-close stream termination suppression"),
-    ("stream_finality_test", "an exact normal-close event suppresses later stream termination", "an exact normal-close event permits later stream termination", "expected-close stream behavior proof"),
     ("dart_stream_finality", "class SessionStreamGeneration<Owner>", "class SessionStreamGenerationDisabled<Owner>", "exact stream-generation owner"),
     ("dart_stream_finality", "int _generation = 0;", "int _generation = -1;", "stream generation origin"),
     ("dart_stream_finality", "final binding = SessionStreamBinding<Owner>._(owner, ++_generation);", "final binding = SessionStreamBinding<Owner>._(owner, _generation);", "strict stream generation advance"),
@@ -6124,12 +5906,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("mobile_remote", "gFFI.inputModel.listenToMouse(true);", "gFFI.inputModel.listenToMouse(true);\n    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);", "remote pre-add quality-option refusal"),
     ("mobile_camera", "gFFI.inputModel.listenToMouse(true);", "gFFI.inputModel.listenToMouse(true);\n    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);", "camera pre-add quality-option refusal"),
     ("web_bridge", "Future<void> sessionAddMobile(", "void sessionAddMobile(", "web mobile-add interface parity"),
-    ("dart_verify", "test/mobile_session_start_queue_test.dart", "test/mobile_session_start_queue_test_disabled.dart", "mobile-start queue behavior gate"),
-    ("dart_verify", "test/session_stream_finality_test.dart", "test/session_stream_finality_test_disabled.dart", "stream-finality behavior gate"),
-    ("dart_verify", 'printf "%s\\n" "$mobile_add_impl" | grep -qF "_platform.executeNormal(FlutterRustBridgeTask("', 'printf "%s\\n" "$mobile_add_impl" | grep -qF "_platform.executeSync(FlutterRustBridgeSyncTask("', "generated asynchronous mobile-add gate"),
-    ("requirements", '<span class="id">R-S11eo</span>', '<span class="id">R-S11eo-disabled</span>', "mobile preparation requirement"),
-    ("requirements", "<tr><td>297</td>", "<tr><td>297-disabled</td>", "mobile preparation disposition"),
-    ("hardening", "R-S11eo/R-S11e-176", "R-S11eo-disabled/R-S11e-176", "mobile preparation hardening ledger"),
     ("requirements", '<span class="id">R-S11ix</span>', '<span class="id">R-S11ix-disabled</span>', "exact Dart stream-generation requirement"),
     ("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "exact Dart stream-generation disposition"),
     ("hardening", "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation", "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation", "exact Dart stream-generation hardening ledger"),
@@ -6137,9 +5913,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>299</td>", "<tr><td>299-disabled</td>", "Android lifecycle-drain disposition"),
     ("hardening", "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement", "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement", "Android lifecycle-drain hardening ledger"),
     ("verify", "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test", "true # Android lifecycle-drain focused gate disabled", "shared Android lifecycle-drain focused gate"),
-    ("verify", "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh", "true # mobile preparation shared queue gate disabled", "shared mobile preparation queue gate"),
-    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") == 1", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") >= 0", "shared session-start rollback-count gate"),
-    ("verify", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") == 2", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") >= 0", "shared dual close-preparation finality gate"),
 )
 
 

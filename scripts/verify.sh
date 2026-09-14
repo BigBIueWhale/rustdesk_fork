@@ -13139,12 +13139,6 @@ grep -qF 'test/session_stream_finality_test.dart' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad session-stream-finality-test-missing"
 grep -qF '_platform.executeNormal(FlutterRustBridgeTask(' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-mobile-add-normal-call-gate-missing"
-grep -qF '<span class="id">R-S11eo</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-requirement-missing"
-grep -qF '<tr><td>297</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-disposition-missing"
-grep -qF 'R-S11eo/R-S11e-176' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-ledger-missing"
 grep -qF '<span class="id">R-S11ix</span>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad session-stream-generation-requirement-missing"
 grep -qF '<tr><td>409</td>' requirements.html \

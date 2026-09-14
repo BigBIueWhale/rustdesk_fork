@@ -42861,9 +42861,6 @@ def main():
                 )
             ),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
-            "mobile_session_start_queue_dart": (
-                repo / "flutter/lib/models/mobile_session_start_queue.dart"
-            ).read_text(encoding="utf-8"),
             "display_selection_queue_dart": (
                 repo / "flutter/lib/models/display_selection_queue.dart"
             ).read_text(encoding="utf-8"),
@@ -42920,9 +42917,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "file_dialog_event_loop_test": (
                 repo / "flutter/test/file_dialog_event_loop_test.dart"
-            ).read_text(encoding="utf-8"),
-            "mobile_session_start_queue_test": (
-                repo / "flutter/test/mobile_session_start_queue_test.dart"
             ).read_text(encoding="utf-8"),
             "display_selection_queue_test": (
                 repo / "flutter/test/display_selection_queue_test.dart"

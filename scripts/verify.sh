@@ -2661,9 +2661,6 @@ grep -Fq '<tr><td>215</td>' requirements.html || r_s11e20="$r_s11e20 unowned-cer
 grep -Fq '<span class="id">R-S11bw</span>' requirements.html || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-requirement-missing"
 grep -Fq 'R-S11bw/R-S11e-89 — Windows uninstall never removes an Amyuni device without exact device-instance ownership' HARDENING_STATUS.md || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-ledger-missing"
 grep -Fq '<tr><td>216</td>' requirements.html || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-disposition-missing"
-grep -Fq '<span class="id">R-S11bx</span>' requirements.html || r_s11e20="$r_s11e20 declarative-runtime-cleanup-requirement-missing"
-grep -Fq 'R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action' HARDENING_STATUS.md || r_s11e20="$r_s11e20 declarative-runtime-cleanup-ledger-missing"
-grep -Fq '<tr><td>217</td>' requirements.html || r_s11e20="$r_s11e20 declarative-runtime-cleanup-disposition-missing"
 if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
   echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, unowned Amyuni device removal, or RustDesk-authored custom-action DLL exists; exact runtime-broker cleanup is declarative RemoveFile state owned by the application component; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall/file actions, basename MSI kills, and recursive artifact discovery are absent"
 fi

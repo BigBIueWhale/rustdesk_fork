@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-af175ad670ed633a3a4462674d0823c74b5be43857486abffff4a0a600b9b318  requirements.html
+9b986ae58d600a2c785b8a731c43dec8003a70480c7ee083be31333529a13868  requirements.html
 ```
 
 ## Current Verdict
@@ -1211,7 +1211,6 @@ exists only to make the current source disposition discoverable.
 - R-S11d-27 — Windows custom-client configuration provenance
 - R-S11d-29 — Windows service-adjacent path known-folder authority
 - R-S11d-31 — Windows privacy broker served-session authority
-- R-S11d-33 — Windows MSI deferred install-root provenance
 - R-S11d-16 — Windows Installer service and administrator-owned SAS-policy authority
 - R-S11b-2 — installed-service unattended password ownership.
 - Appendix C #61 — Linux polkit action and package authority. Source XML and each real Debian
@@ -2876,90 +2875,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   executed on this Linux source-verification host. Native MSI-table inspection, real installed explicit-uninstall
   behavior, the clean cold exact-commit Windows release, and the current exact APK remain pending R-B2/R-B10
   obligations; this source slice does not claim them.
-- **R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action — SOURCE
-  IMPLEMENTED AND CONFINED SOURCE/STRUCTURE/MUTATION VERIFIED 2026-07-23; NATIVE MSI TABLE,
-  INSTALLED LIFECYCLE, AND EXACT ARTIFACT EVIDENCE REMAIN R-B2/R-B10.** Platform: the per-machine Windows
-  Installer package and offline Windows build closure. Endpoint/action: removal of the fixed runtime-generated
-  `RuntimeBroker_rustdesk.exe` sibling during application-component removal. Boundary: administrator-approved MSI
-  transaction ↔ privileged code and target selection inside the Windows Installer execution service.
+- **R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative — SOURCE IMPLEMENTED;
+  NATIVE MSI TABLE, INSTALLED LIFECYCLE, AND CURRENT ARTIFACT EVIDENCE OPEN UNDER R-B2/R-B10.** The package-owned
+  `App.exe` component contains exactly one non-wildcard
+  `<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />`. The standard
+  Windows Installer `RemoveFiles` action therefore owns deletion of that exact sibling when the component is removed.
+  `res/msi/CustomActions` and `Package/Fragments/CustomActions.wxs` are absent; source and build metadata contain no
+  RustDesk-authored cleanup property, schedule, `CustomActionData`, native cleanup binary/export/project, preprocessing
+  hook, project reference, or DUtil/WcaUtil dependency. The exact WiX 4.0.5 SDK, Firewall, Heat, Netfx, UI, and Util
+  inputs are individually size/digest pinned in `scripts/pins.env` and acquired as one verified transaction.
 
-  The last custom action accepted `[App.InstallFolder]` as deferred `CustomActionData`, loaded an embedded native
-  DLL outside the installing user's impersonation context, normalized and classified a Program Files path, cleared
-  attributes, opened the fixed broker path without following a reparse point, and marked that object for deletion.
-  R-S11d-4/R-S11d-33 had correctly made this inherited code fail closed and constrained its target. The remaining
-  question was whether the abstraction itself was necessary. It was not: the action had one fixed filename in the
-  same directory as the package-owned `App.exe` component and performed no operation outside standard file removal.
-
-  Microsoft documents that the `RemoveFile` table removes author-specified files not installed by `InstallFiles`,
-  with each row gated by a linked component's action state, and that `InstallMode=2` applies when that component is
-  removed. WiX v4 maps this contract directly to `RemoveFile Name=... On="uninstall"` under `Component`, defaulting
-  the target directory to that parent component. The package schedules `RemoveExistingProducts` early, after
-  `InstallInitialize`, so old-product removal during a major upgrade reaches the same component-removal contract.
-  Primary contracts: <https://learn.microsoft.com/en-us/windows/win32/msi/removefile-table>,
-  <https://learn.microsoft.com/en-us/windows/win32/msi/removefiles-action>, and
-  <https://docs.firegiant.com/wix/schema/wxs/removefile/>.
-
-  The final design has one exact non-wildcard
-  `<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />` inside `App.exe`.
-  There is no RustDesk-authored caller path, property setter, custom schedule, `CustomActionData`, embedded cleanup
-  binary, entrypoint/export, C++ project, preprocessing rewrite, project/solution reference, or custom cleanup code.
-  The complete `res/msi/CustomActions` directory and `Package/Fragments/CustomActions.wxs` are deleted. The Windows
-  build no longer stages the old `packages.config` native dependencies, and the offline capture no longer restores
-  DUtil/WcaUtil. Its exact six-package WiX 4.0.5 closure is pinned to
-  `62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58`; this digest was independently reproduced
-  from the prior pinned eight-package archive by deleting only the `wixtoolset.dutil` and `wixtoolset.wcautil`
-  top-level directories and applying the same sorted, fixed-mtime, numeric-owner, `gzip -n` recipe inside a
-  networkless, non-root, read-only container. The derived archive contains exactly SDK, Firewall, Heat, Netfx, UI,
-  and Util package roots and is 52 MiB compressed.
-
-  This is deliberately an application-authoring claim, not a claim that the final MSI `CustomAction` table is empty.
-  WiX documents that extensions typically combine compiler support with extension-owned implementation actions, and
-  this package retains pinned typed Firewall, Netfx, UI, and Util extensions. R-B2/R-B10 must enumerate and attribute
-  the native package's resulting action/binary tables, prove that any retained action comes only from the expected
-  pinned typed-extension resource, and reject any RustDesk-authored general path, command, script, or cleanup binary.
-
-  Confined verification used the already-present immutable development image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with UID/GID 1000, no
-  network, a read-only root and source, all capabilities dropped, `no-new-privileges`, bounded PID/memory use, and
-  private tmpfs-only writable state. Bash syntax, Python byte-compilation, and independent parsing of all eleven WiX
-  source/project XML documents passed. The normal independent semantic validator and its complete repository
-  source-mutation matrix returned `verify-verifier-workspace: ok`; the matrix includes exact-row/location, deleted
-  directory/fragment, project/solution/preprocess/build/offline dependency, closure digest, preexisting-cache
-  verification order, authored-versus-extension action boundary, shared gate, requirements, Appendix, ledger, and
-  hash-scope mutations. One pre-green mutation run exposed a fixture-ordering weakness: deleting the cache digest
-  check reached the earlier exact-count rejection instead of the intended ordering rejection. The mutation now keeps
-  both checks but moves one after an unreachable return, independently proving the verify-before-skip invariant.
-
-  In the already-present pinned .NET SDK image
-  `sha256:d80fdd84f7e18eea12f8e45c52914f1353395009c95c41197178ea19944e6d48`, the old pinned archive was
-  extracted to private tmpfs, only DUtil/WcaUtil were removed, and the exact committed sorted/fixed-mtime/
-  numeric-owner/default-level-`gzip -n` recipe reproduced
-  `62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58`. An offline `dotnet restore` of
-  the current copied `Package.wixproj` succeeded with only those six retained package roots. A synthetic `wix build`
-  attempt on Linux is not counted as schema or MSI evidence: WiX explicitly reported that it supports only Windows
-  and that subsequent behavior was undefined, then rejected directory semantics before producing an MSI. Native-codec
-  watch and its negative self-test passed. Direct inventories proved the exact `RemoveFile` row occurs once inside
-  `App.exe`, every retired source/build/package token is absent from production surfaces, both deleted paths are
-  absent, both synchronized requirements hashes equal
-  `7bf9c13e9dd2f1835e1a57c3f4f679c7482068b3258e2b789965c8edba4c7aa2`, and `git diff --check` is clean.
-
-  Process note: before the confined rerun, Bash syntax and Python byte-compilation were inadvertently invoked once as
-  the ordinary host user. They used no root, network, service, listener, firewall, device, namespace, or Docker-socket
-  authority, wrote no tracked file, and are not counted as verification evidence; both were rerun successfully in the
-  confined container. No image was pulled or built, no port was published, and no host RustDesk process, service,
-  configuration, listener, firewall, network, or device state was inspected or changed. The custom-action DLL was not
-  compiled, and neither a native MSI nor a release artifact was built or executed.
-
-  This removes unnecessary RustDesk-authored privileged native execution and supply-chain/build surface; it does not
-  allege that the tightly validated prior fixed-file action was a demonstrated LPE, attacker-selected deletion,
-  exploitation, compromise, or host event. The runtime creation/refresh path remains fixed-service-image, fixed Program Files,
-  non-reparse System32-source, byte-verified, and atomic-replacement bound. R-S11f, R-S11bx, Appendix C #217, the
-  shared R-S11e-20/R-S11e-90 gate, and the independent semantic/mutation verifier bind the exact declarative row,
-  total RustDesk-authored cleanup-action/build/dependency absence, six-package closure pin, requirements disposition,
-  ledger, and synchronized requirements hash. Native MSI table inspection, real
-  install/repair/major-upgrade/uninstall behavior, the clean cold exact-commit Windows release, and the current exact
-  APK remain open R-B2/R-B10 obligations; source
-  conformance must not be reported as those native/artifact proofs.
+  R-S11f, R-S11bx, and Appendix C #39 define the current authoring boundary. Focused shared and independent checks bind
+  the exact row and component ownership, retired surface absence, and locked WiX inputs. These source checks do not
+  establish the contents of a native MSI or installed behavior. R-B2/R-B10 still require native action/binary-table
+  enumeration and attribution, install/repair/major-upgrade/uninstall execution, a clean exact-commit Windows build,
+  and artifact identity. Typed pinned WiX extensions may contribute expected extension-owned actions; no final empty
+  `CustomAction` table is claimed.
 - **R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved — SOURCE
   IMPLEMENTED AND CONFINED SOURCE/PACKAGE/MUTATION VERIFIED 2026-07-23; CLEAN EXACT-COMMIT PACKAGE AND INSTALLED
   LIFECYCLE EVIDENCE REMAIN R-B2.** Platform: Debian package construction and systemd package lifecycle.

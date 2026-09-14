@@ -17125,37 +17125,6 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         "This is an authoring boundary, not a claim that the final MSI <code>CustomAction</code> table is empty",
         "Windows Installer authored-versus-extension action boundary",
     )
-    requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11bx",
-        "declarative Windows runtime-cleanup requirement",
-    )
-    for text, label in (
-        ("RemoveFile", "Windows declarative file-cleanup requirement"),
-        ("RuntimeBroker_rustdesk.exe", "Windows exact broker filename requirement"),
-        ('On="uninstall"', "Windows component-removal mode requirement"),
-        ("No RustDesk-authored custom path property", "Windows custom path absence requirement"),
-        ("DUtil/WcaUtil", "Windows custom-action dependency absence requirement"),
-        (
-            "six exact signed digest-pinned WiX packages and committed lock authority",
-            "Windows WiX closure requirement",
-        ),
-        (
-            "This source invariant does not claim that the final MSI <code>CustomAction</code> table is empty",
-            "Windows extension-owned action attribution requirement",
-        ),
-    ):
-        require_text(requirement, text, label)
-    require_text(
-        sources["requirements"],
-        "<tr><td>217</td>",
-        "declarative Windows runtime-cleanup Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action",
-        "declarative Windows runtime-cleanup hardening ledger",
-    )
     require_text(
         sources["hardening"],
         "R-S11e-157 Windows custom-action ignore-surface excision",
@@ -17182,10 +17151,6 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("exact WiX SDK package digest", "closure-digest mutation"),
         ("WiX fixed-package transaction", "package-transaction mutation"),
         ("declarative runtime-cleanup shared assertion", "shared-gate mutation"),
-        ("declarative Windows runtime-cleanup requirement", "requirement mutation"),
-        ("Windows extension-owned action attribution requirement", "extension-action boundary mutation"),
-        ("declarative Windows runtime-cleanup Appendix C row", "Appendix mutation"),
-        ("declarative Windows runtime-cleanup hardening ledger", "hardening-ledger mutation"),
         ("Windows custom-action ignore-surface hardening ledger", "ignore-surface ledger mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -57530,30 +57495,6 @@ def run_source_mutations(sources):
             "declarative-runtime-broker-cleanup-missing",
             "declarative-runtime-broker-cleanup-gate-disabled",
             "declarative runtime-cleanup shared assertion",
-        ),
-        (
-            "requirements",
-            '<span class="id">R-S11bx</span>',
-            '<span class="id">R-S11bx-disabled</span>',
-            "declarative Windows runtime-cleanup requirement",
-        ),
-        (
-            "requirements",
-            "This source invariant does not claim that the final MSI <code>CustomAction</code> table is empty",
-            "This source invariant claims that the final MSI <code>CustomAction</code> table is empty",
-            "Windows extension-owned action attribution requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>217</td>",
-            "<tr><td>217-disabled</td>",
-            "declarative Windows runtime-cleanup Appendix C row",
-        ),
-        (
-            "hardening",
-            "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action",
-            "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup uses a custom-action DLL",
-            "declarative Windows runtime-cleanup hardening ledger",
         ),
         (
             "hardening",

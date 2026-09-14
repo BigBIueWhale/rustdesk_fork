@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-090b7cc7b1667a5159a523fb9ac4d16d44078b1ad85924af67a57e86e51de760  requirements.html
+8ac55587389014bd4976a8131891c38e427f6079875e82d117439c2fb03989db  requirements.html
 ```
 
 ## Current Verdict
@@ -412,6 +412,18 @@ retirement, and success ordering. No product source or native target changed or 
 record, the live ledger moved from 1,026,189 to 1,023,683 bytes, or 341,228 conservative tokens
 by the documented method. Exact golden provisioning, isolated libvirt/VM behavior, current Windows artifacts,
 installed/device evidence, cold equality, independent reproduction, and external review remain open.
+
+R-S11em is now a timeless Android raw-video generation contract rather than a July defect/fix diary. Appendix C
+#295 is deleted outright because it duplicated R-S11em and added no independent risk, operation, acceptance
+criterion, or release obligation. The focused raw-frame verifier no longer loads or mutates requirements/status
+prose, and the shared Android lifecycle check no longer treats five hardening-ledger headings as product evidence;
+the product/JNI/Kotlin checks, executable generation-owner regressions, shared-gate wiring, and current installed-
+package requirements remain. This reduces `requirements.html` by 2,436 bytes, the focused verifier by 2,165 bytes/
+61 lines, the shared gate by 590 bytes/5 lines, and the workspace meta-gate by 70 bytes/1 line. No product source or
+native target changed or ran. Including this architecture record, the live ledger is 1,025,009 bytes, or
+341,670 conservative tokens by the
+documented method. Current installed APK capture/replacement/task-swipe/Force-Stop/reconnect/presentation,
+bounded-resource, cold-artifact, independent-reproduction, and external-review evidence remains open.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -925,7 +937,9 @@ a separate typed operation rather than the deleted ambient video/audio selector.
 own cross-thread-visible `captureActive`: start commits it only after non-null display creation and
 checked raw admission; stop disables exact raw state before retiring local display/reader/surface/
 playback objects. Stale local teardown may free its own Android objects but cannot clear replacement
-raw-video state. R-S11em and Appendix C #295 own the complete contract.
+raw-video state. The pure owner regressions and focused source gate are supplementary; current installed
+APK capture/replacement/task-swipe/Force-Stop/reconnect/presentation and bounded-resource evidence remains
+open. R-S11em owns the complete contract.
 
 **R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE
 IMPLEMENTED; DEVICE EVIDENCE OPEN.** One private serialized status owner publishes only the exact active

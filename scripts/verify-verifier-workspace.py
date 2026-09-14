@@ -30453,7 +30453,6 @@ def validate_android_media_projection_finality_contract(sources):
             "stale generation cleared replacement controlled owners",
             "controlled-audio generation-ABA behavior",
         ),
-        ("R-S11ek/R-S11e-169", "controlled-audio generation ledger"),
     ):
         require_text(
             shared_gate,

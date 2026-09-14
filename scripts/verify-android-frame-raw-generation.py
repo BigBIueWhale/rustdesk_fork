@@ -63,8 +63,6 @@ def validate(sources: Dict[str, str]) -> None:
     scrap_lib = sources["scrap_lib"]
     voice_verifier = sources["voice_verifier"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     common_android = sources["common_android"]
     codec = sources["codec"]
     vpxcodec = sources["vpxcodec"]
@@ -872,27 +870,6 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(verify, token, label)
-    for token, label in (
-        ('<span class="id">R-S11em</span>', "R-S11em requirement"),
-        ('<span class="id">R-S11eu</span>', "R-S11eu requirement"),
-        ("<tr><td>295</td>", "Appendix C #295"),
-        ("<tr><td>303</td>", "Appendix C #303"),
-        (
-            "R-S11en separately owns the Activity-visible service/MediaProjection status",
-            "explicit adjacent status boundary",
-        ),
-    ):
-        require(requirements, token, label)
-    require(
-        hardening,
-        "R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership",
-        "hardening disposition",
-    )
-    require(
-        hardening,
-        "R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership",
-        "video-worker hardening disposition",
-    )
 MUTATIONS = (
     Mutation(
         "owner",
@@ -1248,42 +1225,6 @@ MUTATIONS = (
         "android_frame_raw_generation_tests_disabled::tests:: -- --test-threads=1",
         "shared pure behavior gate",
     ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11em</span>',
-        '<span class="id">R-S11em-disabled</span>',
-        "R-S11em requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>295</td>",
-        "<tr><td>295-disabled</td>",
-        "Appendix C #295",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11eu</span>',
-        '<span class="id">R-S11eu-disabled</span>',
-        "R-S11eu requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>303</td>",
-        "<tr><td>303-disabled</td>",
-        "Appendix C #303",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership",
-        "R-S11em/R-S11e-174 ambient Android raw-video ownership",
-        "hardening disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership",
-        "R-S11eu/R-S11e-182 ambient Android video-worker and screen-state ownership",
-        "video-worker hardening disposition",
-    ),
 )
 
 
@@ -1344,8 +1285,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
             repo / "scripts/verify-android-voice-call-ownership.py"
         ).read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
     }
 
 

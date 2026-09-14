@@ -2972,9 +2972,9 @@ async fn remove_dir(
     handle_result(
         spawn_blocking(move || {
             if recursive {
-                fs::remove_all_empty_dir(&path)
+                fs::remove_empty_directory_tree(&path)
             } else {
-                std::fs::remove_dir(&path).map_err(|err| err.into())
+                fs::remove_directory(&path)
             }
         })
         .await,

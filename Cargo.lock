@@ -3286,6 +3286,7 @@ dependencies = [
  "dirs-next",
  "dlopen",
  "env_logger 0.11.6",
+ "errno",
  "filetime",
  "flexi_logger",
  "futures",

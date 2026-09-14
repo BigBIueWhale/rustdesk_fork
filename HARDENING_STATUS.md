@@ -1490,7 +1490,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current-source Rust 1.75 Linux-container regressions now execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
+| CM/file finality (R-S11c-4c/4d) | Current-source Rust 1.75 Linux-container regressions now execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The newer retained-authority file/directory deletion implementation and its Unix symlink/swap/bound plus Windows junction/exact-handle regressions have not yet executed in an isolated target runtime. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. Create-directory and rename filesystem mutation remain path-based open work. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
@@ -10961,7 +10961,7 @@ matrix. Historical implementation details remain in Git at
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**Status: SOURCE CORRECTED; EXECUTABLE DART/RUST REGRESSIONS AUTHORED BUT NOT RUN;
+**Status: SOURCE IMPLEMENTED; EXECUTABLE DART/RUST REGRESSIONS AUTHORED BUT NOT RUN;
 DART/FLUTTER/NATIVE AND TARGET-PLATFORM EVIDENCE OPEN.**
 
 Current source captures exact sessions and immutable command inputs before asynchronous
@@ -10969,12 +10969,25 @@ boundaries. Delete-file events settle only their bounded exact session/action/fi
 they cannot independently mutate a display job. The caller applies progress or error only
 after response-and-dispatch finality. Remote empty-directory removal uses a fresh operation
 ID and exact `(session, operation, 0)` result owner instead of reusing the display ID/file-0
-identity; local removal uses its direct fallible result. The shared filesystem sink now
-propagates nested link/directory and final-root removal failures instead of reporting
-unconditional success, and refuses a stable root symlink. Only then may the separate display
-job complete; deletion history removes only the exact deleted subtree rather than unrelated
-substring matches. Directory links enter the leaf-unlink command path and cannot trigger recursive
-target enumeration. Create-directory and rename now reserve exact
+identity; local removal uses its direct fallible result. The former recursive sink re-resolved
+every child and final root by pathname after one advisory metadata check. Current file,
+nonrecursive-directory, and recursive empty-directory deletion instead acquire every parent
+component no-follow and retain the admitted parent/directory authority. Unix enumeration and
+recursion use directory descriptors plus `fdopendir`/`fstatat(AT_SYMLINK_NOFOLLOW)`/
+`openat(O_NOFOLLOW)`/`unlinkat`; Windows enumeration and recursion use parent-relative no-follow
+NT handles and `FileDispositionInformationEx` POSIX disposition on the exact admitted handle.
+Directory enumeration classifies NTFS junctions and every other reparse point as links rather
+than ordinary directories, so Flutter cannot recursively enumerate their targets. Nested links
+and reparse points are deleted as leaves, a stable link/reparse root is refused,
+observable replacement or uncertain absence is an error, and recursion is capped at 64 levels,
+10,000 directories, and 10,000 total entries. POSIX has no portable unlink-by-open-inode
+primitive: the final `unlinkat` remains a name operation after immediate retained-parent identity
+revalidation, so a principal already able to mutate that exact parent can still exchange the
+name in that syscall window; it cannot redirect traversal through a substitute or another parent.
+Only successful sink finality may complete the separate display job; deletion history removes
+only the exact deleted subtree rather than unrelated substring matches. Directory links enter
+the leaf-unlink command path and cannot trigger recursive target enumeration. Create-directory
+and rename now reserve exact
 file-0 result owners before dispatch and return only after local or remote operation finality;
 the local native producer emits that same canonical identity. Invalid or unowned cancel IDs fail before
 dispatch. Desktop/mobile create dialogs and the rename dialog capture their admitted directory,
@@ -10988,13 +11001,27 @@ job controller, response-before-dispatch finality, invalid cancel refusal, immut
 dialog state, create-error finality, directory-link leaf removal, component-exact history cleanup,
 and remote empty-directory display-ID/result-ID separation,
 in addition to its existing send, correlation, timeout, retirement, and persisted-job cases.
-Focused Rust regressions are authored for complete empty-tree removal, nonempty-tree error propagation,
-and stable directory-symlink-root refusal without target traversal.
+Focused Rust regressions are authored for complete and nonrecursive empty-directory removal,
+nonempty-tree error propagation, depth exhaustion, stable symlink/junction-root refusal, nested
+symlink/junction leaf removal without target traversal, swapped-root identity/refusal, and
+file-removal refusal through a symlink/junction parent. Windows coverage also requires an NTFS
+junction to enumerate as `DirLink` and its leaf command to delete the exact junction without
+touching the target. The Windows swapped-root case retains the
+admitted handle, renames its object, plants a replacement junction, and requires disposition to
+remove only the acquired object; the Unix counterpart requires the changed root edge to fail
+without touching or traversing the replacement.
 The Dart suite remains wired into `scripts/dart-verify.sh`. The 859-line source-wording recognizer, its 572-line workspace
 duplicate, and shared/Apple invocations were deleted because they ran no Dart, bridge,
-filesystem command, target, or application behavior. No Dart/Flutter/native executable ran
-for this correction because no user-owned Docker/Podman/libvirt authority or host-independent
-Dart toolchain was available; no rootful or host product/toolchain execution fallback was used. Exact isolated
+filesystem command, target, or application behavior. No Dart, Flutter, Rust compiler, RustDesk
+product, or test executable ran for this correction. Host `rustfmt --check` parsed the changed
+Rust source and found no formatting difference in the new regions; its only remaining findings
+are three pre-existing test-format differences outside this slice. No user-owned Podman, Docker,
+or libvirt socket was present; an unprivileged
+Bubblewrap container and direct user/network namespace fallback both failed before command
+execution because this host denied their namespace setup. No ambient host Cargo, rootful daemon,
+root, host RustDesk, or host product/compiler/test execution fallback was used. Create-directory and
+rename filesystem mutation remain path-based and are not claimed corrected by this deletion slice.
+Exact isolated
 execution on Android, iOS, Windows, Linux, macOS, and applicable web targets—including task
 swipe/reopen/Force Stop, desktop replacement, reordered results, cross-version transfer,
 performance/resource soak, and cleanup—remains OPEN under the global STOP-SHIP matrix.

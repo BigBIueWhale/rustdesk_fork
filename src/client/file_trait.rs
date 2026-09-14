@@ -104,7 +104,7 @@ pub trait FileManager: Interface {
         if is_remote {
             self.try_send(Data::RemoveDir((id, path)))
         } else {
-            fs::remove_all_empty_dir(&fs::get_path(&path))
+            fs::remove_empty_directory_tree(&fs::get_path(&path))
         }
     }
 

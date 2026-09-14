@@ -31,6 +31,49 @@ pub const MAX_FILE_ENUM_SERIALIZED_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN: usize = 32;
 pub const MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN: usize = 32;
 const FILE_ENUMERATION_BUDGET_EXCEEDED: &str = "file enumeration budget exceeded";
+const EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED: &str = "empty-directory removal budget exceeded";
+
+#[derive(Default)]
+struct EmptyDirectoryRemovalState {
+    entries: usize,
+    directories: usize,
+}
+
+impl EmptyDirectoryRemovalState {
+    fn enter_directory(&mut self, depth: usize) -> std::io::Result<()> {
+        if depth > MAX_FILE_ENUM_DEPTH {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "{EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED}: depth {depth} exceeds limit {MAX_FILE_ENUM_DEPTH}"
+                ),
+            ));
+        }
+        if self.directories >= MAX_FILE_ENUM_DIRS {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "{EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED}: directory count exceeds limit {MAX_FILE_ENUM_DIRS}"
+                ),
+            ));
+        }
+        self.directories += 1;
+        Ok(())
+    }
+
+    fn record_entry(&mut self) -> std::io::Result<()> {
+        if self.entries >= DEFAULT_FILE_TRANSFER_MAX_FILES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "{EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED}: entry count exceeds limit {DEFAULT_FILE_TRANSFER_MAX_FILES}"
+                ),
+            ));
+        }
+        self.entries += 1;
+        Ok(())
+    }
+}
 
 fn checked_file_total_size(files: &[FileEntry]) -> ResultType<u64> {
     files.iter().try_fold(0u64, |total, file| {
@@ -214,13 +257,14 @@ fn read_dir_with_usage(
             continue;
         }
         let (entry_type, size) = {
+            let is_link = is_symlink_or_reparse_point(&meta);
             if p.is_dir() {
-                if meta.file_type().is_symlink() {
+                if is_link {
                     (FileType::DirLink.into(), 0)
                 } else {
                     (FileType::Dir.into(), 0)
                 }
-            } else if meta.file_type().is_symlink() {
+            } else if is_link {
                 (FileType::FileLink.into(), 0)
             } else {
                 (FileType::File.into(), meta.len())
@@ -864,7 +908,7 @@ fn cstring_file_name(path: &Path) -> std::io::Result<std::ffi::CString> {
     let name = path
         .file_name()
         .ok_or_else(|| io_invalid_input(format!("path has no file name: {}", path.display())))?;
-    cstring_from_os_str(name, "file-transfer")
+    cstring_from_os_str(name, "filesystem")
 }
 
 #[cfg(unix)]
@@ -884,7 +928,7 @@ fn open_parent_dir_no_follow(
         match component {
             std::path::Component::RootDir | std::path::Component::CurDir => {}
             std::path::Component::Normal(name) => {
-                let name_c = cstring_from_os_str(name, "file-transfer parent")?;
+                let name_c = cstring_from_os_str(name, "filesystem parent")?;
                 let mut created = false;
                 if create_missing {
                     let rc = unsafe {
@@ -928,13 +972,13 @@ fn open_parent_dir_no_follow(
             }
             std::path::Component::ParentDir => {
                 return Err(io_invalid_input(format!(
-                    "parent traversal is not allowed in receive path: {}",
+                    "parent traversal is not allowed in filesystem path: {}",
                     parent.display()
                 )));
             }
             std::path::Component::Prefix(_) => {
                 return Err(io_invalid_input(format!(
-                    "unsupported path prefix in receive path: {}",
+                    "unsupported path prefix in filesystem path: {}",
                     parent.display()
                 )));
             }
@@ -942,6 +986,311 @@ fn open_parent_dir_no_follow(
     }
 
     Ok(dir)
+}
+
+#[cfg(unix)]
+struct UnixDirectoryStream(*mut crate::libc::DIR);
+
+#[cfg(unix)]
+impl UnixDirectoryStream {
+    fn close(mut self) -> std::io::Result<()> {
+        let stream = std::mem::replace(&mut self.0, std::ptr::null_mut());
+        if unsafe { crate::libc::closedir(stream) } == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for UnixDirectoryStream {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                crate::libc::closedir(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn unix_directory_entry_names(
+    directory: &std::fs::File,
+    state: &mut EmptyDirectoryRemovalState,
+) -> std::io::Result<Vec<std::ffi::CString>> {
+    use std::os::unix::io::IntoRawFd;
+
+    let duplicated_fd = directory.try_clone()?.into_raw_fd();
+    let raw_stream = unsafe { crate::libc::fdopendir(duplicated_fd) };
+    if raw_stream.is_null() {
+        let open_error = std::io::Error::last_os_error();
+        unsafe {
+            crate::libc::close(duplicated_fd);
+        }
+        return Err(open_error);
+    }
+    let stream = UnixDirectoryStream(raw_stream);
+    let mut names = Vec::new();
+    loop {
+        errno::set_errno(errno::Errno(0));
+        let entry = unsafe { crate::libc::readdir(stream.0) };
+        if entry.is_null() {
+            let read_errno = errno::errno().0;
+            if read_errno == 0 {
+                break;
+            }
+            return Err(std::io::Error::from_raw_os_error(read_errno));
+        }
+        let name = unsafe {
+            std::ffi::CStr::from_ptr((*entry).d_name.as_ptr().cast::<crate::libc::c_char>())
+        };
+        if name.to_bytes() == b"." || name.to_bytes() == b".." {
+            continue;
+        }
+        state.record_entry()?;
+        names.push(name.to_owned());
+    }
+    stream.close()?;
+    Ok(names)
+}
+
+#[cfg(unix)]
+fn unix_fstat(file: &std::fs::File) -> std::io::Result<crate::libc::stat> {
+    use std::os::unix::io::AsRawFd;
+
+    let mut stat: crate::libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { crate::libc::fstat(file.as_raw_fd(), &mut stat) } == 0 {
+        Ok(stat)
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(unix)]
+fn unix_fstatat_no_follow(
+    parent_fd: crate::libc::c_int,
+    name: &std::ffi::CStr,
+) -> std::io::Result<crate::libc::stat> {
+    let mut stat: crate::libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe {
+        crate::libc::fstatat(
+            parent_fd,
+            name.as_ptr(),
+            &mut stat,
+            crate::libc::AT_SYMLINK_NOFOLLOW,
+        )
+    } == 0
+    {
+        Ok(stat)
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(unix)]
+fn unix_file_type(stat: &crate::libc::stat) -> crate::libc::mode_t {
+    stat.st_mode & crate::libc::S_IFMT as crate::libc::mode_t
+}
+
+#[cfg(unix)]
+fn unix_same_object(left: &crate::libc::stat, right: &crate::libc::stat) -> bool {
+    left.st_dev == right.st_dev
+        && left.st_ino == right.st_ino
+        && unix_file_type(left) == unix_file_type(right)
+}
+
+#[cfg(unix)]
+fn unix_require_same_object(
+    expected: &crate::libc::stat,
+    actual: &crate::libc::stat,
+    context: &str,
+) -> std::io::Result<()> {
+    if unix_same_object(expected, actual) {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("{context} changed while its retained filesystem authority was active"),
+        ))
+    }
+}
+
+#[cfg(unix)]
+fn unix_open_directory_at_no_follow(
+    parent_fd: crate::libc::c_int,
+    name: &std::ffi::CStr,
+    expected: Option<&crate::libc::stat>,
+) -> std::io::Result<std::fs::File> {
+    use std::os::unix::io::FromRawFd;
+
+    let fd = unsafe {
+        crate::libc::openat(
+            parent_fd,
+            name.as_ptr(),
+            crate::libc::O_RDONLY
+                | crate::libc::O_DIRECTORY
+                | crate::libc::O_CLOEXEC
+                | crate::libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let directory = unsafe { std::fs::File::from_raw_fd(fd) };
+    let opened = unix_fstat(&directory)?;
+    if unix_file_type(&opened) != crate::libc::S_IFDIR as crate::libc::mode_t {
+        return Err(io_invalid_input(
+            "opened empty-directory target is not a directory",
+        ));
+    }
+    if let Some(expected) = expected {
+        unix_require_same_object(expected, &opened, "empty-directory child")?;
+    }
+    Ok(directory)
+}
+
+#[cfg(unix)]
+fn unix_require_edge_absent_after_removal(
+    parent_fd: crate::libc::c_int,
+    name: &std::ffi::CStr,
+    context: &str,
+) -> std::io::Result<()> {
+    match unix_fstatat_no_follow(parent_fd, name) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+        Ok(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("{context} was replaced while removal was completing"),
+        )),
+    }
+}
+
+#[cfg(unix)]
+fn unix_remove_symlink_at(
+    parent_fd: crate::libc::c_int,
+    name: &std::ffi::CStr,
+    expected: &crate::libc::stat,
+) -> std::io::Result<()> {
+    let current = unix_fstatat_no_follow(parent_fd, name)?;
+    unix_require_same_object(expected, &current, "empty-directory symlink leaf")?;
+    if unix_file_type(&current) != crate::libc::S_IFLNK as crate::libc::mode_t {
+        return Err(io_invalid_input(
+            "empty-directory symlink leaf changed object type before removal",
+        ));
+    }
+    if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), 0) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    unix_require_edge_absent_after_removal(parent_fd, name, "empty-directory symlink leaf")
+}
+
+#[cfg(unix)]
+fn unix_remove_directory_handle(
+    parent_fd: crate::libc::c_int,
+    name: &std::ffi::CStr,
+    directory: &std::fs::File,
+    recursive: bool,
+    state: &mut EmptyDirectoryRemovalState,
+    depth: usize,
+) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    state.enter_directory(depth)?;
+    if recursive {
+        for child_name in unix_directory_entry_names(directory, state)? {
+            let child = unix_fstatat_no_follow(directory.as_raw_fd(), &child_name)?;
+            match unix_file_type(&child) {
+                kind if kind == crate::libc::S_IFDIR as crate::libc::mode_t => {
+                    let child_directory = unix_open_directory_at_no_follow(
+                        directory.as_raw_fd(),
+                        &child_name,
+                        Some(&child),
+                    )?;
+                    let child_depth = depth.checked_add(1).ok_or_else(|| {
+                        io_invalid_input("empty-directory removal depth counter overflow")
+                    })?;
+                    unix_remove_directory_handle(
+                        directory.as_raw_fd(),
+                        &child_name,
+                        &child_directory,
+                        true,
+                        state,
+                        child_depth,
+                    )?;
+                }
+                kind if kind == crate::libc::S_IFLNK as crate::libc::mode_t => {
+                    unix_remove_symlink_at(directory.as_raw_fd(), &child_name, &child)?;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let opened = unix_fstat(directory)?;
+    let current = unix_fstatat_no_follow(parent_fd, name)?;
+    unix_require_same_object(&opened, &current, "empty-directory target")?;
+    if unix_file_type(&current) != crate::libc::S_IFDIR as crate::libc::mode_t {
+        return Err(io_invalid_input(
+            "empty-directory target changed object type before removal",
+        ));
+    }
+    // POSIX exposes no portable unlink-by-open-file-description operation. Keep the final
+    // name operation relative to the retained parent, re-prove the admitted identity immediately
+    // before it, and verify absence immediately afterward. A concurrent writer that can already
+    // mutate this exact parent can still exchange the name between the proof and unlinkat, but it
+    // cannot redirect this operation through a replacement symlink or another parent pathname.
+    if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), crate::libc::AT_REMOVEDIR) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    unix_require_edge_absent_after_removal(parent_fd, name, "empty-directory target")
+}
+
+#[cfg(unix)]
+fn unix_acquire_directory_no_follow(
+    path: &Path,
+) -> std::io::Result<(std::fs::File, std::ffi::CString, std::fs::File)> {
+    use std::os::unix::io::AsRawFd;
+
+    let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+    let name = cstring_file_name(path)?;
+    let directory = unix_open_directory_at_no_follow(parent.as_raw_fd(), &name, None)?;
+    Ok((parent, name, directory))
+}
+
+#[cfg(unix)]
+fn unix_remove_directory(path: &Path, recursive: bool) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    let (parent, name, directory) = unix_acquire_directory_no_follow(path)?;
+    unix_remove_directory_handle(
+        parent.as_raw_fd(),
+        &name,
+        &directory,
+        recursive,
+        &mut EmptyDirectoryRemovalState::default(),
+        0,
+    )
+}
+
+#[cfg(unix)]
+fn unix_remove_file_no_follow(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+    let name = cstring_file_name(path)?;
+    let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &name)?;
+    if unix_file_type(&admitted) == crate::libc::S_IFDIR as crate::libc::mode_t {
+        return Err(io_invalid_input("file-removal target is a directory"));
+    }
+    let current = unix_fstatat_no_follow(parent.as_raw_fd(), &name)?;
+    unix_require_same_object(&admitted, &current, "file-removal target")?;
+    // As above, unlinkat remains name-relative on POSIX; the retained parent prevents path
+    // redirection and the identity/absence checks detect every observable replacement boundary.
+    if unsafe { crate::libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    unix_require_edge_absent_after_removal(parent.as_raw_fd(), &name, "file-removal target")
 }
 
 fn sync_recv_regular_file(file: &std::fs::File) -> std::io::Result<()> {
@@ -1087,20 +1436,23 @@ mod nt_nofollow {
     use std::ptr::{copy_nonoverlapping, null_mut};
 
     use ntapi::ntioapi::{
-        FileAttributeTagInformation, FileDispositionInformation, FileRenameInformation,
-        NtCreateFile, NtQueryInformationFile, NtSetInformationFile, FILE_ATTRIBUTE_TAG_INFORMATION,
-        FILE_DIRECTORY_FILE, FILE_DISPOSITION_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-        FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT,
-        FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT, IO_STATUS_BLOCK,
+        FileAttributeTagInformation, FileDirectoryInformation, FileDispositionInformation,
+        FileDispositionInformationEx, FileRenameInformation, NtCreateFile, NtQueryDirectoryFile,
+        NtQueryInformationFile, NtSetInformationFile, FILE_ATTRIBUTE_TAG_INFORMATION,
+        FILE_DIRECTORY_FILE, FILE_DIRECTORY_INFORMATION, FILE_DISPOSITION_INFORMATION,
+        FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF,
+        FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
+        IO_STATUS_BLOCK,
     };
     use winapi::shared::ntdef::{
         HANDLE, NTSTATUS, NT_SUCCESS, OBJECT_ATTRIBUTES, OBJ_CASE_INSENSITIVE, UNICODE_STRING,
     };
     use winapi::um::winbase::{FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT};
     use winapi::um::winnt::{
-        DELETE, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT, FILE_GENERIC_READ,
-        FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, SYNCHRONIZE,
+        DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
+        FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES,
+        SYNCHRONIZE,
     };
 
     const SHARE_ALL: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -1108,6 +1460,23 @@ mod nt_nofollow {
     const STATUS_NO_SUCH_FILE: NTSTATUS = 0xC000_000Fu32 as NTSTATUS;
     const STATUS_OBJECT_NAME_NOT_FOUND: NTSTATUS = 0xC000_0034u32 as NTSTATUS;
     const STATUS_OBJECT_PATH_NOT_FOUND: NTSTATUS = 0xC000_003Au32 as NTSTATUS;
+    const STATUS_NO_MORE_FILES: NTSTATUS = 0x8000_0006u32 as NTSTATUS;
+    const DIRECTORY_QUERY_BUFFER_BYTES: usize = 64 * 1024;
+
+    #[derive(Clone, Copy, Eq, PartialEq)]
+    enum ReparseRequirement {
+        Absent,
+        Present,
+        Either,
+    }
+
+    #[repr(C)]
+    struct FileDispositionInformationExBuffer {
+        flags: u32,
+    }
+
+    const FILE_DISPOSITION_DELETE: u32 = 0x0000_0001;
+    const FILE_DISPOSITION_POSIX_SEMANTICS: u32 = 0x0000_0002;
 
     fn invalid(msg: &'static str) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidInput, msg)
@@ -1127,45 +1496,66 @@ mod nt_nofollow {
         }
     }
 
-    /// A `Normal` path component -> UTF-16, rejecting NUL / separators / drive-colon (defense in
-    /// depth; `Path::components()` never yields these in a `Normal`, but the receive path is peer-
-    /// influenced so we validate anyway).
-    fn component_wide(os: &OsStr) -> io::Result<Vec<u16>> {
-        let w: Vec<u16> = os.encode_wide().collect();
-        if w.is_empty() {
+    unsafe fn nt_attributes(handle: HANDLE) -> io::Result<u32> {
+        let mut tag: FILE_ATTRIBUTE_TAG_INFORMATION = zeroed();
+        let mut iosb: IO_STATUS_BLOCK = zeroed();
+        let status = NtQueryInformationFile(
+            handle,
+            &mut iosb,
+            (&mut tag as *mut FILE_ATTRIBUTE_TAG_INFORMATION).cast(),
+            size_of::<FILE_ATTRIBUTE_TAG_INFORMATION>() as u32,
+            FileAttributeTagInformation,
+        );
+        if NT_SUCCESS(status) {
+            Ok(tag.FileAttributes)
+        } else {
+            Err(nt_err(status))
+        }
+    }
+
+    fn validate_component_wide(wide: &[u16]) -> io::Result<()> {
+        if wide.is_empty() {
             return Err(invalid("empty path component"));
         }
-        if w.iter()
+        if wide
+            .iter()
             .any(|&c| c == 0 || c == b'\\' as u16 || c == b'/' as u16 || c == b':' as u16)
         {
             return Err(invalid("illegal character in path component"));
         }
+        Ok(())
+    }
+
+    /// A `Normal` path component -> UTF-16, rejecting NUL / separators / drive-colon.
+    fn component_wide(os: &OsStr) -> io::Result<Vec<u16>> {
+        let w: Vec<u16> = os.encode_wide().collect();
+        validate_component_wide(&w)?;
         Ok(w)
     }
 
     fn file_name_wide(path: &Path) -> io::Result<Vec<u16>> {
         component_wide(
             path.file_name()
-                .ok_or_else(|| invalid("receive path has no file name"))?,
+                .ok_or_else(|| invalid("filesystem path has no file name"))?,
         )
     }
 
     fn parent_dir(path: &Path) -> io::Result<&Path> {
         path.parent()
-            .ok_or_else(|| invalid("receive path has no parent directory"))
+            .ok_or_else(|| invalid("filesystem path has no parent directory"))
     }
 
     /// The core reparse-safe, handle-relative open — the `openat(O_NOFOLLOW)` analogue. `parent` is
     /// a directory HANDLE; `name` a bare component (UTF-16, not NUL-terminated). ALWAYS no-follow
-    /// (`FILE_OPEN_REPARSE_POINT`) + synchronous, and ALWAYS fail-closed if the opened object is a
-    /// reparse point (junction or symlink) — verified on the exact handle just opened, so there is
-    /// no re-open and no window.
+    /// (`FILE_OPEN_REPARSE_POINT`) + synchronous. The caller must explicitly require a regular
+    /// object, a reparse leaf, or either kind; that requirement is verified on the exact handle.
     unsafe fn nt_open_at(
         parent: HANDLE,
         name: &[u16],
         desired_access: u32,
         disposition: u32,
         create_options: u32,
+        reparse_requirement: ReparseRequirement,
     ) -> io::Result<OwnedHandle> {
         let nbytes = name
             .len()
@@ -1207,27 +1597,32 @@ mod nt_nofollow {
         // Own the handle immediately so every error path closes it (no leak, no double-close).
         let owned = OwnedHandle::from_raw_handle(handle as _);
 
-        let mut tag: FILE_ATTRIBUTE_TAG_INFORMATION = zeroed();
-        let mut iosb2: IO_STATUS_BLOCK = zeroed();
-        let st = NtQueryInformationFile(
-            handle,
-            &mut iosb2,
-            (&mut tag as *mut FILE_ATTRIBUTE_TAG_INFORMATION).cast(),
-            size_of::<FILE_ATTRIBUTE_TAG_INFORMATION>() as u32,
-            FileAttributeTagInformation,
-        );
-        if !NT_SUCCESS(st) {
-            // Fail closed: if we cannot prove it is NOT a reparse point, refuse.
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "R-S8: could not verify reparse status of receive-path component; refusing",
-            ));
-        }
-        if tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "R-S8: reparse-point (NTFS junction or symlink) receive-path component is not allowed",
-            ));
+        let attributes = match nt_attributes(handle) {
+            Ok(attributes) => attributes,
+            Err(error) => {
+                return Err(io::Error::new(
+                    error.kind(),
+                    format!(
+                        "could not verify reparse status of filesystem object; refusing: {error}"
+                    ),
+                ));
+            }
+        };
+        let is_reparse = attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+        match reparse_requirement {
+            ReparseRequirement::Absent if is_reparse => {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "reparse-point filesystem component is not allowed",
+                ));
+            }
+            ReparseRequirement::Present if !is_reparse => {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "filesystem object changed from a reparse leaf before acquisition",
+                ));
+            }
+            _ => {}
         }
         Ok(owned)
     }
@@ -1243,6 +1638,7 @@ mod nt_nofollow {
                 FILE_LIST_DIRECTORY | FILE_TRAVERSE,
                 if create { FILE_OPEN_IF } else { FILE_OPEN },
                 FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT,
+                ReparseRequirement::Absent,
             )
         }
     }
@@ -1259,21 +1655,20 @@ mod nt_nofollow {
         Ok(OwnedHandle::from(f))
     }
 
-    /// Split an ABSOLUTE local path into (drive-letter, [Normal components]); reject `..`, non-disk
-    /// prefixes (UNC / device namespace), and relative paths — fail-closed, since the receive base
-    /// is always a local absolute drive path.
+    /// Split an absolute local path into (drive-letter, [Normal components]); reject `..`, non-disk
+    /// prefixes (UNC / device namespace), and relative paths.
     fn decompose(path: &Path) -> io::Result<(u8, Vec<Vec<u16>>)> {
         let mut it = path.components();
         let drive = match it.next() {
             Some(Component::Prefix(p)) => match p.kind() {
                 Prefix::Disk(d) | Prefix::VerbatimDisk(d) => d,
-                _ => return Err(invalid("unsupported path prefix in receive path")),
+                _ => return Err(invalid("unsupported path prefix in filesystem path")),
             },
-            _ => return Err(invalid("receive path is not an absolute drive path")),
+            _ => return Err(invalid("filesystem path is not an absolute drive path")),
         };
         match it.next() {
             Some(Component::RootDir) => {}
-            _ => return Err(invalid("receive path is not rooted")),
+            _ => return Err(invalid("filesystem path is not rooted")),
         }
         let mut comps = Vec::new();
         for c in it {
@@ -1281,11 +1676,13 @@ mod nt_nofollow {
                 Component::Normal(os) => comps.push(component_wide(os)?),
                 Component::CurDir => {}
                 Component::ParentDir => {
-                    return Err(invalid("parent traversal is not allowed in receive path"))
+                    return Err(invalid(
+                        "parent traversal is not allowed in filesystem path",
+                    ))
                 }
                 Component::RootDir => {}
                 Component::Prefix(_) => {
-                    return Err(invalid("unexpected path prefix in receive path"))
+                    return Err(invalid("unexpected path prefix in filesystem path"))
                 }
             }
         }
@@ -1319,6 +1716,246 @@ mod nt_nofollow {
         } else {
             Err(nt_err(st))
         }
+    }
+
+    unsafe fn nt_set_posix_dispose_delete(handle: HANDLE) -> io::Result<()> {
+        // FileDispositionInformationEx with POSIX semantics removes this exact open object's
+        // namespace link when this handle closes, even if another process retains a shared handle.
+        // This is the user-request deletion contract; there is deliberately no weaker legacy
+        // fallback that could report completion while the link remains visible.
+        let mut info = FileDispositionInformationExBuffer {
+            flags: FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS,
+        };
+        let mut iosb: IO_STATUS_BLOCK = zeroed();
+        let st = NtSetInformationFile(
+            handle,
+            &mut iosb,
+            (&mut info as *mut FileDispositionInformationExBuffer).cast(),
+            size_of::<FileDispositionInformationExBuffer>() as u32,
+            FileDispositionInformationEx,
+        );
+        if NT_SUCCESS(st) {
+            Ok(())
+        } else {
+            Err(nt_err(st))
+        }
+    }
+
+    struct DirectoryEntry {
+        name: Vec<u16>,
+        attributes: u32,
+    }
+
+    fn query_directory_entries(
+        directory: HANDLE,
+        state: &mut super::EmptyDirectoryRemovalState,
+    ) -> io::Result<Vec<DirectoryEntry>> {
+        let mut entries = Vec::new();
+        let mut restart_scan = true;
+        loop {
+            // Vec<u64> supplies the alignment required by FILE_DIRECTORY_INFORMATION.
+            let mut buffer = vec![0u64; DIRECTORY_QUERY_BUFFER_BYTES / size_of::<u64>()];
+            let mut iosb: IO_STATUS_BLOCK = unsafe { zeroed() };
+            let status = unsafe {
+                NtQueryDirectoryFile(
+                    directory,
+                    null_mut(),
+                    None,
+                    null_mut(),
+                    &mut iosb,
+                    buffer.as_mut_ptr().cast(),
+                    DIRECTORY_QUERY_BUFFER_BYTES as u32,
+                    FileDirectoryInformation,
+                    1,
+                    null_mut(),
+                    u8::from(restart_scan),
+                )
+            };
+            restart_scan = false;
+            if status == STATUS_NO_MORE_FILES {
+                break;
+            }
+            if !NT_SUCCESS(status) {
+                return Err(nt_err(status));
+            }
+            let written = iosb.Information as usize;
+            if written == 0 || written > DIRECTORY_QUERY_BUFFER_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "directory query returned an invalid byte count",
+                ));
+            }
+
+            let info = buffer.as_ptr() as *const FILE_DIRECTORY_INFORMATION;
+            let name_offset = unsafe {
+                (std::ptr::addr_of!((*info).FileName) as usize).saturating_sub(info as usize)
+            };
+            let name_bytes = unsafe { (*info).FileNameLength as usize };
+            let name_end = name_offset.checked_add(name_bytes).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "directory entry length overflow",
+                )
+            })?;
+            if unsafe { (*info).NextEntryOffset } != 0
+                || name_bytes == 0
+                || name_bytes % size_of::<u16>() != 0
+                || name_end > written
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "directory query returned a malformed entry",
+                ));
+            }
+            let name = unsafe {
+                std::slice::from_raw_parts(
+                    (info as *const u8).add(name_offset).cast::<u16>(),
+                    name_bytes / size_of::<u16>(),
+                )
+                .to_vec()
+            };
+            validate_component_wide(&name)?;
+            if name == [b'.' as u16] || name == [b'.' as u16, b'.' as u16] {
+                continue;
+            }
+            state.record_entry()?;
+            entries.push(DirectoryEntry {
+                name,
+                attributes: unsafe { (*info).FileAttributes },
+            });
+        }
+        Ok(entries)
+    }
+
+    fn open_deletable_directory_at(parent: HANDLE, name: &[u16]) -> io::Result<OwnedHandle> {
+        unsafe {
+            nt_open_at(
+                parent,
+                name,
+                DELETE | FILE_LIST_DIRECTORY | FILE_TRAVERSE,
+                FILE_OPEN,
+                FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT,
+                ReparseRequirement::Absent,
+            )
+        }
+    }
+
+    fn open_deletable_reparse_at(
+        parent: HANDLE,
+        name: &[u16],
+        is_directory: bool,
+    ) -> io::Result<OwnedHandle> {
+        unsafe {
+            nt_open_at(
+                parent,
+                name,
+                DELETE,
+                FILE_OPEN,
+                if is_directory {
+                    FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT
+                } else {
+                    FILE_NON_DIRECTORY_FILE
+                },
+                ReparseRequirement::Present,
+            )
+        }
+    }
+
+    fn remove_open_empty_directory(
+        directory: OwnedHandle,
+        recursive: bool,
+        state: &mut super::EmptyDirectoryRemovalState,
+        depth: usize,
+    ) -> io::Result<()> {
+        state.enter_directory(depth)?;
+        if recursive {
+            let entries = query_directory_entries(directory.as_raw_handle() as HANDLE, state)?;
+            for entry in entries {
+                let is_directory = entry.attributes & FILE_ATTRIBUTE_DIRECTORY != 0;
+                if entry.attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                    let leaf = open_deletable_reparse_at(
+                        directory.as_raw_handle() as HANDLE,
+                        &entry.name,
+                        is_directory,
+                    )?;
+                    unsafe {
+                        nt_set_posix_dispose_delete(leaf.as_raw_handle() as HANDLE)?;
+                    }
+                    drop(leaf);
+                } else if is_directory {
+                    let child = open_deletable_directory_at(
+                        directory.as_raw_handle() as HANDLE,
+                        &entry.name,
+                    )?;
+                    let child_depth = depth
+                        .checked_add(1)
+                        .ok_or_else(|| invalid("empty-directory removal depth counter overflow"))?;
+                    remove_open_empty_directory(child, true, state, child_depth)?;
+                }
+            }
+        }
+        unsafe {
+            nt_set_posix_dispose_delete(directory.as_raw_handle() as HANDLE)?;
+        }
+        drop(directory);
+        Ok(())
+    }
+
+    pub(super) fn remove_directory(path: &Path, recursive: bool) -> io::Result<()> {
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        let directory = open_deletable_directory_at(parent.as_raw_handle() as HANDLE, &name)?;
+        remove_open_empty_directory(
+            directory,
+            recursive,
+            &mut super::EmptyDirectoryRemovalState::default(),
+            0,
+        )
+    }
+
+    pub(super) fn remove_file(path: &Path) -> io::Result<()> {
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        let file = unsafe {
+            nt_open_at(
+                parent.as_raw_handle() as HANDLE,
+                &name,
+                DELETE,
+                FILE_OPEN,
+                FILE_OPEN_FOR_BACKUP_INTENT,
+                ReparseRequirement::Either,
+            )?
+        };
+        let attributes = unsafe { nt_attributes(file.as_raw_handle() as HANDLE)? };
+        if attributes & FILE_ATTRIBUTE_DIRECTORY != 0
+            && attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0
+        {
+            return Err(invalid("file-removal target is a regular directory"));
+        }
+        unsafe {
+            nt_set_posix_dispose_delete(file.as_raw_handle() as HANDLE)?;
+        }
+        drop(file);
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(super) fn acquire_empty_directory_for_test(path: &Path) -> io::Result<OwnedHandle> {
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        open_deletable_directory_at(parent.as_raw_handle() as HANDLE, &name)
+    }
+
+    #[cfg(test)]
+    pub(super) fn remove_acquired_empty_directory_for_test(
+        directory: OwnedHandle,
+    ) -> io::Result<()> {
+        remove_open_empty_directory(
+            directory,
+            true,
+            &mut super::EmptyDirectoryRemovalState::default(),
+            0,
+        )
     }
 
     /// Handle-relative rename via `NtSetInformationFile(FileRenameInformation)` — the `renameat`
@@ -1380,6 +2017,7 @@ mod nt_nofollow {
                 access,
                 if create_file { FILE_OPEN_IF } else { FILE_OPEN },
                 FILE_NON_DIRECTORY_FILE,
+                ReparseRequirement::Absent,
             )?
         };
         Ok(std::fs::File::from(owned))
@@ -1397,6 +2035,7 @@ mod nt_nofollow {
                 FILE_READ_ATTRIBUTES,
                 FILE_OPEN,
                 FILE_NON_DIRECTORY_FILE,
+                ReparseRequirement::Absent,
             )?
         };
         Ok(std::fs::File::from(owned))
@@ -1433,6 +2072,7 @@ mod nt_nofollow {
                 FILE_READ_ATTRIBUTES,
                 FILE_OPEN,
                 FILE_NON_DIRECTORY_FILE,
+                ReparseRequirement::Absent,
             )?
         };
         if identity(named.as_raw_handle() as HANDLE)? != identity(file.as_raw_handle() as HANDLE)? {
@@ -1510,6 +2150,7 @@ mod nt_nofollow {
                 FILE_GENERIC_READ,
                 FILE_OPEN,
                 FILE_NON_DIRECTORY_FILE,
+                ReparseRequirement::Absent,
             )?
         };
         let file = std::fs::File::from(owned);
@@ -3211,31 +3852,39 @@ pub async fn handle_read_jobs(
     Ok((job_log, receipt))
 }
 
-pub fn remove_all_empty_dir(path: &Path) -> ResultType<()> {
-    let metadata = std::fs::symlink_metadata(path)?;
-    if !metadata.file_type().is_dir() {
-        bail!("remove-empty-directory target is not a directory");
-    }
-    let fd = read_dir(path, true)?;
-    for entry in fd.entries.iter() {
-        match entry.entry_type.enum_value() {
-            Ok(FileType::Dir) => {
-                remove_all_empty_dir(&path.join(&entry.name))?;
-            }
-            Ok(FileType::DirLink) | Ok(FileType::FileLink) => {
-                std::fs::remove_file(path.join(&entry.name))?;
-            }
-            _ => {}
-        }
-    }
-    std::fs::remove_dir(path)?;
+/// Remove a tree containing only directories and link leaves without following any link or
+/// re-resolving an admitted parent pathname. Regular files make the final directory removal fail.
+pub fn remove_empty_directory_tree(path: &Path) -> ResultType<()> {
+    #[cfg(unix)]
+    unix_remove_directory(path, true)?;
+    #[cfg(windows)]
+    nt_nofollow::remove_directory(path, true)?;
+    #[cfg(not(any(unix, windows)))]
+    bail!("secure empty-directory removal is unsupported on this platform");
+    Ok(())
+}
+
+/// Remove one empty directory using the same retained, no-follow authority as recursive removal.
+pub fn remove_directory(path: &Path) -> ResultType<()> {
+    #[cfg(unix)]
+    unix_remove_directory(path, false)?;
+    #[cfg(windows)]
+    nt_nofollow::remove_directory(path, false)?;
+    #[cfg(not(any(unix, windows)))]
+    bail!("secure directory removal is unsupported on this platform");
     Ok(())
 }
 
 #[inline]
 pub fn remove_file(file: &str) -> ResultType<()> {
     validate_fs_path_argument(file, "file path")?;
-    std::fs::remove_file(get_path(file))?;
+    let path = get_path(file);
+    #[cfg(unix)]
+    unix_remove_file_no_follow(&path)?;
+    #[cfg(windows)]
+    nt_nofollow::remove_file(&path)?;
+    #[cfg(not(any(unix, windows)))]
+    bail!("secure file removal is unsupported on this platform");
     Ok(())
 }
 
@@ -3489,25 +4138,25 @@ mod tests {
     }
 
     #[test]
-    fn r_s11hm_remove_all_empty_dir_removes_the_complete_empty_tree() {
+    fn r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree() {
         let tmp = TestTempDir::new("rustdesk_remove_empty_tree");
         let root = tmp.join("root");
         std::fs::create_dir_all(root.join("one/two")).expect("create empty directory tree");
 
-        remove_all_empty_dir(&root).expect("remove the complete empty directory tree");
+        remove_empty_directory_tree(&root).expect("remove the complete empty directory tree");
 
         assert!(!root.exists(), "successful removal must remove the root");
     }
 
     #[test]
-    fn r_s11hm_remove_all_empty_dir_reports_a_nonempty_tree() {
+    fn r_s11hm_remove_empty_directory_tree_reports_a_nonempty_tree() {
         let tmp = TestTempDir::new("rustdesk_refuse_nonempty_tree");
         let root = tmp.join("root");
         std::fs::create_dir_all(&root).expect("create directory root");
         let retained = root.join("retained.txt");
         std::fs::write(&retained, b"retained").expect("create retained file");
 
-        let error = remove_all_empty_dir(&root)
+        let error = remove_empty_directory_tree(&root)
             .expect_err("a nonempty directory must not report successful removal");
 
         assert!(root.exists(), "failed removal must leave the root visible");
@@ -3521,9 +4170,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn r_s11hm_nonrecursive_directory_removal_uses_empty_only_finality() {
+        let tmp = TestTempDir::new("rustdesk_remove_one_empty_directory");
+        let root = tmp.join("root");
+        let child = root.join("child");
+        std::fs::create_dir_all(&child).expect("create nested directory");
+
+        remove_directory(&root).expect_err("nonrecursive removal must refuse a nonempty root");
+        assert!(child.is_dir(), "refusal must retain the child directory");
+
+        remove_directory(&child).expect("remove exact empty child");
+        remove_directory(&root).expect("remove exact now-empty root");
+        assert!(
+            !root.exists(),
+            "both exact empty directories must be absent"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
-    fn r_s11hm_remove_all_empty_dir_refuses_a_directory_symlink_root() {
+    fn r_s11hm_remove_empty_directory_tree_refuses_a_directory_symlink_root() {
         use std::os::unix::fs::symlink;
 
         let tmp = TestTempDir::new("rustdesk_refuse_empty_tree_symlink");
@@ -3533,7 +4200,7 @@ mod tests {
             .expect("create empty target directory tree");
         symlink(&target, &link).expect("create directory symlink");
 
-        remove_all_empty_dir(&link).expect_err("a directory symlink root must be refused");
+        remove_empty_directory_tree(&link).expect_err("a directory symlink root must be refused");
 
         assert!(
             target.join("one/two").is_dir(),
@@ -3545,6 +4212,131 @@ mod tests {
                 .file_type()
                 .is_symlink(),
             "refusal must leave the symlink itself for the leaf-removal path"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_s11hm_remove_empty_directory_tree_unlinks_nested_symlink_without_traversal() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_remove_nested_empty_tree_symlink");
+        let root = tmp.join("root");
+        let outside = tmp.join("outside");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::create_dir_all(root.join("nested")).expect("create admitted empty tree");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("create outside sentinel");
+        symlink(&outside, root.join("nested/link")).expect("create nested directory symlink");
+
+        remove_empty_directory_tree(&root).expect("remove tree and nested link leaf");
+
+        assert!(!root.exists(), "the admitted empty tree must be removed");
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read outside sentinel"),
+            b"DO-NOT-TOUCH",
+            "recursive removal must never traverse a nested symlink"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_s11hm_retained_directory_refuses_a_replacement_root_edge() {
+        use std::os::unix::fs::symlink;
+        use std::os::unix::io::AsRawFd;
+
+        let tmp = TestTempDir::new("rustdesk_remove_swapped_empty_tree");
+        let root = tmp.join("root");
+        let displaced = tmp.join("displaced");
+        let outside = tmp.join("outside");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::create_dir_all(root.join("nested/deeper")).expect("create admitted empty tree");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("create outside sentinel");
+
+        let (parent, name, directory) =
+            unix_acquire_directory_no_follow(&root).expect("acquire exact root authority");
+        std::fs::rename(&root, &displaced).expect("displace admitted root");
+        symlink(&outside, &root).expect("install replacement root symlink");
+
+        let error = unix_remove_directory_handle(
+            parent.as_raw_fd(),
+            &name,
+            &directory,
+            true,
+            &mut EmptyDirectoryRemovalState::default(),
+            0,
+        )
+        .expect_err("the changed root edge must fail exact final removal");
+
+        assert!(
+            error.to_string().contains("changed"),
+            "the refusal must identify the changed retained authority: {error}"
+        );
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read outside sentinel"),
+            b"DO-NOT-TOUCH",
+            "a replacement root symlink must never redirect traversal"
+        );
+        assert!(
+            displaced.is_dir(),
+            "the acquired root object must remain present"
+        );
+        assert!(
+            std::fs::symlink_metadata(&root)
+                .expect("inspect replacement root")
+                .file_type()
+                .is_symlink(),
+            "the replacement root edge must not be unlinked"
+        );
+    }
+
+    #[test]
+    fn r_s11hm_remove_empty_directory_tree_enforces_depth_bound() {
+        let tmp = TestTempDir::new("rustdesk_remove_empty_tree_depth");
+        let root = tmp.join("root");
+        let mut current = root.clone();
+        std::fs::create_dir_all(&current).expect("create depth-bound root");
+        for _ in 0..=MAX_FILE_ENUM_DEPTH {
+            current.push("d");
+            std::fs::create_dir(&current).expect("create bounded-depth child");
+        }
+
+        let error = remove_empty_directory_tree(&root)
+            .expect_err("a tree beyond the recursive depth bound must be refused");
+
+        assert!(
+            error
+                .to_string()
+                .contains(EMPTY_DIRECTORY_REMOVAL_BUDGET_EXCEEDED),
+            "the refusal must identify the removal budget: {error}"
+        );
+        assert!(
+            root.is_dir(),
+            "a budget refusal must not report root removal"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_s11hm_remove_file_refuses_a_symlinked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_remove_file_symlink_parent");
+        let base = tmp.join("base");
+        let outside = tmp.join("outside");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::create_dir_all(&base).expect("create base directory");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("create outside sentinel");
+        symlink(&outside, base.join("link")).expect("create parent symlink");
+
+        remove_file(&get_string(&base.join("link/sentinel.txt")))
+            .expect_err("file removal through a symlink parent must be refused");
+
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read outside sentinel"),
+            b"DO-NOT-TOUCH"
         );
     }
 
@@ -3753,6 +4545,139 @@ mod tests {
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn r_s11hm_remove_empty_directory_tree_refuses_a_junction_root() {
+        let tmp = TestTempDir::new("rustdesk_refuse_empty_tree_junction");
+        let target = tmp.join("target");
+        let link = tmp.join("link");
+        std::fs::create_dir_all(target.join("one/two")).expect("create empty junction target tree");
+        assert!(
+            make_junction(&link, &target),
+            "mklink /J must create the root junction"
+        );
+
+        remove_empty_directory_tree(&link).expect_err("a junction root must be refused");
+
+        assert!(
+            target.join("one/two").is_dir(),
+            "refusal must not traverse or remove the junction target"
+        );
+        assert!(link.exists(), "refusal must retain the root junction");
+
+        let listing = read_dir(&tmp.path, true).expect("enumerate the junction parent");
+        let listed_link = listing
+            .entries
+            .iter()
+            .find(|entry| entry.name == "link")
+            .expect("the junction must be listed");
+        assert_eq!(
+            listed_link
+                .entry_type
+                .enum_value()
+                .expect("valid file type"),
+            FileType::DirLink,
+            "an NTFS junction must reach Flutter as a leaf instead of an ordinary directory"
+        );
+
+        remove_file(&get_string(&link)).expect("delete the exact junction leaf handle");
+        assert!(
+            std::fs::symlink_metadata(&link).is_err(),
+            "leaf deletion must remove the junction namespace entry"
+        );
+        assert!(
+            target.join("one/two").is_dir(),
+            "junction leaf deletion must leave its target untouched"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn r_s11hm_remove_empty_directory_tree_unlinks_nested_junction_without_traversal() {
+        let tmp = TestTempDir::new("rustdesk_remove_nested_empty_tree_junction");
+        let root = tmp.join("root");
+        let outside = tmp.join("outside");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::create_dir_all(root.join("nested")).expect("create admitted empty tree");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("create outside sentinel");
+        assert!(
+            make_junction(&root.join("nested/link"), &outside),
+            "mklink /J must create the nested junction"
+        );
+
+        remove_empty_directory_tree(&root).expect("remove tree and nested junction leaf");
+
+        assert!(!root.exists(), "the admitted empty tree must be removed");
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read outside sentinel"),
+            b"DO-NOT-TOUCH",
+            "recursive removal must never traverse a nested junction"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn r_s11hm_open_directory_handle_removes_only_the_acquired_root() {
+        let tmp = TestTempDir::new("rustdesk_remove_swapped_empty_tree_windows");
+        let root = tmp.join("root");
+        let displaced = tmp.join("displaced");
+        let outside = tmp.join("outside");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::create_dir_all(root.join("nested/deeper")).expect("create admitted empty tree");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("create outside sentinel");
+
+        let directory = nt_nofollow::acquire_empty_directory_for_test(&root)
+            .expect("acquire exact root handle");
+        std::fs::rename(&root, &displaced).expect("displace admitted root");
+        assert!(
+            make_junction(&root, &outside),
+            "mklink /J must create the replacement root junction"
+        );
+
+        nt_nofollow::remove_acquired_empty_directory_for_test(directory)
+            .expect("remove only the exact acquired root object");
+
+        assert!(
+            !displaced.exists(),
+            "handle disposition must remove the acquired object at its renamed edge"
+        );
+        assert!(
+            root.exists(),
+            "the replacement root junction must remain present"
+        );
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read outside sentinel"),
+            b"DO-NOT-TOUCH",
+            "the replacement junction must never redirect handle-owned deletion"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn r_s11hm_remove_file_refuses_a_junction_parent() {
+        let tmp = TestTempDir::new("rustdesk_remove_file_junction_parent");
+        let base = tmp.join("base");
+        let outside = tmp.join("outside");
+        let sentinel = outside.join("sentinel.txt");
+        std::fs::create_dir_all(&base).expect("create base directory");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&sentinel, b"DO-NOT-TOUCH").expect("create outside sentinel");
+        assert!(
+            make_junction(&base.join("link"), &outside),
+            "mklink /J must create the parent junction"
+        );
+
+        remove_file(&get_string(&base.join("link/sentinel.txt")))
+            .expect_err("file removal through a junction parent must be refused");
+
+        assert_eq!(
+            std::fs::read(&sentinel).expect("read outside sentinel"),
+            b"DO-NOT-TOUCH"
+        );
     }
 
     // (mandate #1) A junction planted as an INTERMEDIATE component must be REFUSED, and must not

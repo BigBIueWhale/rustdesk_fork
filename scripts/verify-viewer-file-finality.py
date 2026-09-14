@@ -112,7 +112,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         file_trait,
-        "fs::remove_all_empty_dir(&fs::get_path(&path))",
+        "fs::remove_empty_directory_tree(&fs::get_path(&path))",
         "local remove error propagation",
     )
     forbid(

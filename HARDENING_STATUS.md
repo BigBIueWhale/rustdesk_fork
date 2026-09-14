@@ -12399,10 +12399,10 @@ cold R-B2/R-B10, independent reproduction, and external review.
 
 ### R-S11ir/R-S11e-281 — bounded Windows RDP-sharing client transaction ownership
 
-**State.** The bounded client-owner source design is implemented, but dedicated executable
-client-lifecycle and UI-latch regressions are missing. Fresh generated-bridge, native Windows,
-installed, resource-soak, artifact, independent-reproduction, and external-review evidence remains
-open.
+**State.** The bounded client-owner source design is implemented. Four Windows-target Rust owner
+regressions and three pure-Dart UI-latch regressions are authored and wired into their target lanes,
+but have not executed at the current commit. Fresh generated-bridge, native Windows, installed,
+resource-soak, artifact, independent-reproduction, and external-review evidence remains open.
 
 **Boundary and current implementation.** One lazy process-lifetime
 `WindowsShareRdpClientOwner` owns one named OS thread, one fallibly built current-thread Tokio
@@ -12413,18 +12413,27 @@ per-request spawn. Each service exchange retains separate one-second connect/sen
 the bridge waits at most eight seconds for the exact result without cancelling or detaching admitted
 work. Errors remain `Result<()>` through the shared and Flutter FFI surfaces. Dart uses one
 synchronous mounted-lifetime latch, disables duplicate row/checkbox actions, surfaces errors, and
-refreshes service-owned state only after latch release.
+refreshes service-owned state only after latch release. The private worker-construction seam cannot
+select a service operation or escape this module; production still supplies only the fixed typed
+RDP-sharing transaction and the fixed eight-second result deadline.
 
-**Evidence.** The deleted combined Python parser only matched and mutated source wording; it did not
-execute the bridge worker, Windows UI, SCM transaction, timeout, panic, race, or resource behavior.
-No dedicated executable regression currently drives startup failure, queue full/closed, serial
-execution, timeout uncertainty, lost caller, terminal join, worker panic, or the Dart latch despite
-R-S11ir requiring those cases. This is an explicit STOP-SHIP test gap, not source-proven behavior.
+**Evidence.** The `ipc::test::windows_share_rdp_client_tests::r_s11ir_` family drives reported
+startup failure and panic, capacity-one waiting admission, serial exact success/error results,
+normal/closed/disconnected/panicked worker joins, caller-deadline uncertainty, the dropped completion,
+and subsequent work on the same serial owner. `share_rdp_change_lifecycle_test.dart` drives
+synchronous duplicate refusal, error-before-latch-release ordering, and absence of late UI callbacks
+after unmount. `build-windows.ps1` requires exactly four named Rust regressions and executes them;
+`dart-verify.sh` formats, analyzes, and executes the Dart owner. The global shell gate retains only
+exact former-helper absence, cross-layer result propagation, and real-lane wiring, while
+Apple-specific checks no longer require Windows-only documentation prose. None of these new tests
+has compiled or run at this commit because the authorized isolated Windows and Flutter environments
+are unavailable.
 
-**Open evidence.** Freshly generate the bridge and run exact-current Rust/Dart/Flutter on native
-Windows. Exercise allow, refusal, queue-full, timeout uncertainty, startup failure, worker panic,
-concurrent taps, and real SCM completion; measure threads, handles, CPU, memory, and latency under
-soak; bind signed artifacts; complete cold R-B2/R-B10, independent reproduction, and external review.
+**Open evidence.** Execute the focused Dart lane and exact-current Rust/Flutter build on native
+Windows, then exercise allow, refusal, queue-full, timeout uncertainty, startup failure, worker panic,
+concurrent taps, process exit, and real SCM completion in an installed artifact. Measure threads,
+handles, CPU, memory, and latency under soak; bind signed artifacts; complete cold R-B2/R-B10,
+independent reproduction, and external review.
 
 ### R-S11is/R-S11e-282 — exact-command CM file-response admission finality
 

@@ -316,35 +316,46 @@ struct WindowsShareRdpClientOwner {
 #[cfg(target_os = "windows")]
 impl WindowsShareRdpClientOwner {
     fn start() -> std::result::Result<Self, String> {
+        Self::start_with_worker(|receiver, started| {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(err) => {
+                    if started
+                        .send(Err(format!(
+                            "failed to create Windows RDP-sharing client runtime: {err}"
+                        )))
+                        .is_err()
+                    {
+                        log::warn!(
+                            "Windows RDP-sharing client owner stopped waiting for runtime startup failure"
+                        );
+                    }
+                    return;
+                }
+            };
+            if started.send(Ok(())).is_err() {
+                return;
+            }
+            runtime.block_on(run_windows_share_rdp_client(receiver));
+        })
+    }
+
+    fn start_with_worker<F>(worker: F) -> std::result::Result<Self, String>
+    where
+        F: FnOnce(
+                mpsc::Receiver<WindowsShareRdpClientRequest>,
+                std::sync::mpsc::SyncSender<std::result::Result<(), String>>,
+            ) + Send
+            + 'static,
+    {
         let (requests, receiver) = mpsc::channel(WINDOWS_SHARE_RDP_CLIENT_QUEUE_CAPACITY);
         let (started, startup) = std::sync::mpsc::sync_channel(1);
         let thread = std::thread::Builder::new()
             .name("rustdesk-share-rdp-client".to_owned())
-            .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(err) => {
-                        if started
-                            .send(Err(format!(
-                                "failed to create Windows RDP-sharing client runtime: {err}"
-                            )))
-                            .is_err()
-                        {
-                            log::warn!(
-                                "Windows RDP-sharing client owner stopped waiting for runtime startup failure"
-                            );
-                        }
-                        return;
-                    }
-                };
-                if started.send(Ok(())).is_err() {
-                    return;
-                }
-                runtime.block_on(run_windows_share_rdp_client(receiver));
-            })
+            .spawn(move || worker(receiver, started))
             .map_err(|err| format!("failed to start Windows RDP-sharing client thread: {err}"))?;
 
         match startup.recv() {
@@ -416,6 +427,14 @@ impl WindowsShareRdpClientOwner {
     }
 
     fn request(&self, enabled: bool) -> ResultType<()> {
+        self.request_with_timeout(enabled, WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT)
+    }
+
+    fn request_with_timeout(
+        &self,
+        enabled: bool,
+        result_timeout: std::time::Duration,
+    ) -> ResultType<()> {
         self.require_running()?;
         let (completed, completion) = std::sync::mpsc::sync_channel(1);
         match self.requests.try_send(WindowsShareRdpClientRequest {
@@ -434,7 +453,7 @@ impl WindowsShareRdpClientOwner {
             }
         }
 
-        match completion.recv_timeout(WINDOWS_SHARE_RDP_CLIENT_RESULT_TIMEOUT) {
+        match completion.recv_timeout(result_timeout) {
             Ok(Ok(())) => Ok(()),
             Ok(Err(err)) => bail!("Windows RDP-sharing change failed: {err}"),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => bail!(
@@ -9160,6 +9179,282 @@ mod test {
     fn windows_service_owned_password_admission_fixture() -> WindowsServiceOwnedPasswordAdmission {
         WindowsServiceOwnedPasswordAdmission {
             _requester: WindowsServiceOwnedPasswordRequester::Fixture,
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    mod windows_share_rdp_client_tests {
+        use super::*;
+        use hbb_common::tokio::sync::mpsc;
+        use std::sync::Arc;
+
+        fn owner_from<F>(worker: F) -> WindowsShareRdpClientOwner
+        where
+            F: FnOnce(
+                    mpsc::Receiver<WindowsShareRdpClientRequest>,
+                    std::sync::mpsc::SyncSender<std::result::Result<(), String>>,
+                ) + Send
+                + 'static,
+        {
+            WindowsShareRdpClientOwner::start_with_worker(worker)
+                .unwrap_or_else(|err| panic!("test owner failed to start: {err}"))
+        }
+
+        fn error_text(result: ResultType<()>) -> String {
+            match result {
+                Ok(()) => panic!("operation unexpectedly succeeded"),
+                Err(err) => err.to_string(),
+            }
+        }
+
+        fn wait_until_worker_finishes(owner: &WindowsShareRdpClientOwner) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                let finished = owner
+                    .thread
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|thread| thread.is_finished())
+                    .unwrap_or(true);
+                if finished {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "Windows RDP-sharing test worker did not finish"
+                );
+                std::thread::yield_now();
+            }
+        }
+
+        #[test]
+        fn r_s11ir_startup_failure_and_panic_are_joined_before_return() {
+            let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let worker_finished = Arc::clone(&finished);
+            let failed = WindowsShareRdpClientOwner::start_with_worker(
+                move |_receiver, started| {
+                    started
+                        .send(Err("expected startup failure".to_owned()))
+                        .unwrap();
+                    worker_finished.store(true, std::sync::atomic::Ordering::SeqCst);
+                },
+            );
+            let failure = match failed {
+                Ok(_) => panic!("startup failure unexpectedly published an owner"),
+                Err(err) => err,
+            };
+            assert_eq!(failure, "expected startup failure");
+            assert!(finished.load(std::sync::atomic::Ordering::SeqCst));
+
+            let panicked = WindowsShareRdpClientOwner::start_with_worker(
+                move |_receiver, _started| panic!("expected startup panic"),
+            );
+            let failure = match panicked {
+                Ok(_) => panic!("startup panic unexpectedly published an owner"),
+                Err(err) => err,
+            };
+            assert_eq!(
+                failure,
+                "Windows RDP-sharing client panicked before startup completed"
+            );
+        }
+
+        #[test]
+        fn r_s11ir_queue_is_bounded_serial_and_results_are_exact() {
+            let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let worker_order = Arc::clone(&order);
+            let (first_entered, first_entry) = std::sync::mpsc::sync_channel(1);
+            let (release_first, first_release) = std::sync::mpsc::sync_channel(1);
+            let (worker_finished, worker_finality) = std::sync::mpsc::sync_channel(1);
+            let owner = Arc::new(owner_from(move |mut receiver, started| {
+                started.send(Ok(())).unwrap();
+                for index in 0..3 {
+                    let request = receiver.blocking_recv().unwrap();
+                    worker_order.lock().unwrap().push(request.enabled);
+                    if index == 0 {
+                        first_entered.send(()).unwrap();
+                        first_release.recv().unwrap();
+                        request.completed.send(Ok(())).unwrap();
+                    } else if index == 1 {
+                        request
+                            .completed
+                            .send(Err("second transaction failed".to_owned()))
+                            .unwrap();
+                    } else {
+                        request
+                            .completed
+                            .send(Err("third transaction failed".to_owned()))
+                            .unwrap();
+                    }
+                }
+                worker_finished.send(()).unwrap();
+            }));
+
+            let first_owner = Arc::clone(&owner);
+            let first = std::thread::spawn(move || {
+                first_owner
+                    .request_with_timeout(true, std::time::Duration::from_secs(1))
+                    .map_err(|err| err.to_string())
+            });
+            first_entry
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap();
+
+            let (queued_result, queued_completion) = std::sync::mpsc::sync_channel(1);
+            match owner.requests.try_send(WindowsShareRdpClientRequest {
+                enabled: false,
+                completed: queued_result,
+            }) {
+                Ok(()) => {}
+                Err(_) => panic!("second transaction did not occupy the one waiting slot"),
+            }
+            assert_eq!(
+                error_text(owner.request_with_timeout(
+                    true,
+                    std::time::Duration::from_millis(50),
+                )),
+                "A Windows RDP-sharing change is already in progress"
+            );
+
+            release_first.send(()).unwrap();
+            assert_eq!(first.join().unwrap(), Ok(()));
+            assert_eq!(
+                queued_completion
+                    .recv_timeout(std::time::Duration::from_secs(1))
+                    .unwrap(),
+                Err("second transaction failed".to_owned())
+            );
+            assert_eq!(
+                error_text(owner.request_with_timeout(
+                    true,
+                    std::time::Duration::from_secs(1),
+                )),
+                "Windows RDP-sharing change failed: third transaction failed"
+            );
+            worker_finality
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap();
+            assert_eq!(*order.lock().unwrap(), vec![true, false, true]);
+
+            wait_until_worker_finishes(&owner);
+            assert_eq!(
+                error_text(owner.require_running()),
+                "Windows RDP-sharing client worker stopped unexpectedly"
+            );
+            assert_eq!(
+                error_text(owner.require_running()),
+                "Windows RDP-sharing client worker was already reaped"
+            );
+        }
+
+        #[test]
+        fn r_s11ir_closed_admission_and_disconnected_completion_join_the_worker() {
+            let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let worker_finished = Arc::clone(&finished);
+            let (receiver_dropped, receiver_finality) = std::sync::mpsc::sync_channel(1);
+            let (release_worker, worker_release) = std::sync::mpsc::sync_channel(1);
+            let owner = Arc::new(owner_from(move |receiver, started| {
+                started.send(Ok(())).unwrap();
+                drop(receiver);
+                receiver_dropped.send(()).unwrap();
+                worker_release.recv().unwrap();
+                worker_finished.store(true, std::sync::atomic::Ordering::SeqCst);
+            }));
+            receiver_finality
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap();
+
+            let release_owner = Arc::clone(&owner);
+            let releaser = std::thread::spawn(move || {
+                let deadline =
+                    std::time::Instant::now() + std::time::Duration::from_secs(2);
+                loop {
+                    if release_owner.thread.lock().unwrap().is_none() {
+                        release_worker.send(()).unwrap();
+                        return;
+                    }
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "closed admission did not consume the unavailable worker"
+                    );
+                    std::thread::yield_now();
+                }
+            });
+            assert_eq!(
+                error_text(owner.request_with_timeout(
+                    true,
+                    std::time::Duration::from_secs(1),
+                )),
+                "Windows RDP-sharing client worker stopped before request admission"
+            );
+            releaser.join().unwrap();
+            assert!(finished.load(std::sync::atomic::Ordering::SeqCst));
+            assert!(owner.thread.lock().unwrap().is_none());
+
+            let owner = owner_from(move |mut receiver, started| {
+                started.send(Ok(())).unwrap();
+                let _request = receiver.blocking_recv().unwrap();
+                panic!("expected transaction panic");
+            });
+            assert_eq!(
+                error_text(owner.request_with_timeout(
+                    false,
+                    std::time::Duration::from_secs(1),
+                )),
+                "Windows RDP-sharing client worker panicked without reporting a result"
+            );
+            assert!(owner.thread.lock().unwrap().is_none());
+        }
+
+        #[test]
+        fn r_s11ir_timeout_preserves_admitted_work_and_the_serial_owner() {
+            let first_completion_was_lost =
+                Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let worker_lost_completion = Arc::clone(&first_completion_was_lost);
+            let (first_entered, first_entry) = std::sync::mpsc::sync_channel(1);
+            let (release_first, first_release) = std::sync::mpsc::sync_channel(1);
+            let (worker_finished, worker_finality) = std::sync::mpsc::sync_channel(1);
+            let owner = owner_from(move |mut receiver, started| {
+                started.send(Ok(())).unwrap();
+                let first = receiver.blocking_recv().unwrap();
+                first_entered.send(()).unwrap();
+                first_release.recv().unwrap();
+                worker_lost_completion.store(
+                    first.completed.send(Ok(())).is_err(),
+                    std::sync::atomic::Ordering::SeqCst,
+                );
+
+                let second = receiver.blocking_recv().unwrap();
+                assert!(!second.enabled);
+                second.completed.send(Ok(())).unwrap();
+                worker_finished.send(()).unwrap();
+            });
+
+            assert_eq!(
+                error_text(owner.request_with_timeout(
+                    true,
+                    std::time::Duration::from_millis(20),
+                )),
+                "Windows RDP-sharing change did not reach a known result before the client deadline"
+            );
+            first_entry
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap();
+            release_first.send(()).unwrap();
+            owner
+                .request_with_timeout(false, std::time::Duration::from_secs(1))
+                .unwrap();
+            worker_finality
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap();
+            assert!(first_completion_was_lost.load(std::sync::atomic::Ordering::SeqCst));
+
+            wait_until_worker_finishes(&owner);
+            assert_eq!(
+                error_text(owner.require_running()),
+                "Windows RDP-sharing client worker stopped unexpectedly"
+            );
         }
     }
 

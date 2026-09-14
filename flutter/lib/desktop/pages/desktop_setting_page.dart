@@ -15,6 +15,7 @@ import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
 import 'package:flutter_hbb/mobile/widgets/dialog.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
+import 'package:flutter_hbb/models/share_rdp_change_lifecycle.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -661,7 +662,7 @@ class _Safety extends StatefulWidget {
 }
 
 class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
-  bool _shareRdpChangePending = false;
+  final _shareRdpChange = ShareRdpChangeLifecycle();
 
   @override
   bool get wantKeepAlive => true;
@@ -780,17 +781,14 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
 
   shareRdp(BuildContext context) {
     onChanged(bool b) async {
-      if (_shareRdpChangePending) return;
-      setState(() => _shareRdpChangePending = true);
-      try {
-        await bind.mainSetShareRdp(enable: b);
-      } catch (e) {
-        showToast("${translate('Failed')}: $e");
-      } finally {
-        if (mounted) {
-          setState(() => _shareRdpChangePending = false);
-        }
-      }
+      await _shareRdpChange.request(
+        enabled: b,
+        apply: (enabled) => bind.mainSetShareRdp(enable: enabled),
+        isMounted: () => mounted,
+        notifyChanged: () => setState(() {}),
+        onError: (error, stackTrace) =>
+            showToast("${translate('Failed')}: $error"),
+      );
     }
 
     if (!(isWindows && bind.mainIsInstalled())) {
@@ -800,7 +798,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     return FutureBuilder<bool>(
       future: bind.mainCanRequestShareRdpChange(),
       builder: (_, data) {
-        final enabled = data.data == true && !_shareRdpChangePending;
+        final enabled = data.data == true && !_shareRdpChange.pending;
         return GestureDetector(
           child: Row(
             children: [

@@ -1177,6 +1177,12 @@ if /I "%~1"=="build" (
     cargo test --offline --locked --lib --features flutter --color never windows_sas_
     if ($LASTEXITCODE -ne 0) { Die "Windows SAS Rust library suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
 
+    Write-Host "[harness] testing bounded Windows RDP-sharing client ownership -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
+    $shareRdpClientTests = @(Select-String -Path (Join-Path $SRC 'src\ipc.rs') -Pattern '^\s*fn r_s11ir_')
+    if ($shareRdpClientTests.Count -ne 4) { Die "Expected exactly four R-S11ir Windows client-owner regressions, found $($shareRdpClientTests.Count)" }
+    cargo test --offline --locked --lib --features flutter --color never r_s11ir_ -- --test-threads=1
+    if ($LASTEXITCODE -ne 0) { Die "Windows RDP-sharing client ownership suite failed (exit $LASTEXITCODE) -- serial admission, result, timeout, and worker finality must pass before build.py --flutter" }
+
     Write-Host "[harness] testing password finality and desktop input lifecycle -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
     cargo test --offline --locked --lib --features flutter --color never password_mutation
     if ($LASTEXITCODE -ne 0) { Die "Password mutation finality suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }

@@ -539,7 +539,6 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(sources["requirements"], "<tr><td>227</td>", "Appendix C #227 disposition")
     require(sources["requirements"], "<tr><td>268</td>", "Appendix C #268 disposition")
-    require(sources["requirements"], "<tr><td>292</td>", "Appendix C #292 disposition")
     require(
         sources["hardening"],
         "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
@@ -549,11 +548,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "current Windows-helper hardening-ledger disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
-        "completion-order verifier hardening-ledger disposition",
     )
     require(
         sources["workspace"],
@@ -1006,8 +1000,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "Appendix C #227 disposition"),
     Mutation("requirements", "<tr><td>268</td>", "<tr><td>268-disabled</td>",
              "Appendix C #268 disposition"),
-    Mutation("requirements", "<tr><td>292</td>", "<tr><td>292-disabled</td>",
-             "Appendix C #292 disposition"),
     Mutation("hardening", "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
              "R-S11ch/R-S11e-100 — Windows ambient helper authority",
              "hardening ledger"),
@@ -1016,12 +1008,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "R-S11do/R-S11e-133 — Windows-helper ambient authority",
         "current Windows-helper hardening ledger",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
-        "R-S11ch/R-S11e-171 — Windows helper ambient completion-order verifier",
-        "completion-order verifier hardening ledger",
     ),
     Mutation(
         "workspace",

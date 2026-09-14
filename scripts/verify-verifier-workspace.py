@@ -26488,14 +26488,6 @@ def validate_windows_helper_authority_contract(sources):
          "Windows helper focused recursive-bind binding"),
         ("finite Windows-helper file-size ceiling",
          "Windows helper focused resource binding"),
-        (
-            'completion_start = \'    log "waiting for win-guest-setup to COMPLETE\'',
-            "Windows helper focused exact completion-phase start",
-        ),
-        (
-            'completion_end = "\\n}\\n\\ncleanup_provision() {"',
-            "Windows helper focused exact completion-phase end",
-        ),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -26694,21 +26686,6 @@ def validate_windows_helper_authority_contract(sources):
         ),
         "Windows provision existing-golden hash-before-inspection",
     )
-    provision_completion = extract_between(
-        provision,
-        '    log "waiting for win-guest-setup to COMPLETE',
-        "\n}\n\ncleanup_provision() {",
-        "Windows provision exact completion phase",
-    )
-    require_order(
-        provision_completion,
-        (
-            "if golden_has_done_marker; then",
-            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
-            "golden Win11 template built:",
-        ),
-        "Windows provision marker/final-hash/acceptance order",
-    )
     require_order(
         sources["windows_golden_verify"],
         (
@@ -26749,11 +26726,6 @@ def validate_windows_helper_authority_contract(sources):
         "current Windows helper authority Appendix C row",
     )
     require_text(
-        sources["requirements"],
-        "<tr><td>292</td>",
-        "Windows helper completion-order verifier Appendix C row",
-    )
-    require_text(
         sources["hardening"],
         "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
         "Windows helper authority hardening ledger",
@@ -26762,11 +26734,6 @@ def validate_windows_helper_authority_contract(sources):
         sources["hardening"],
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "current Windows helper authority hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
-        "Windows helper completion-order verifier hardening ledger",
     )
 
 

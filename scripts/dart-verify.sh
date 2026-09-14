@@ -262,6 +262,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/peer_model_test.dart
     echo "  == R-G4a flutter test: retired role-swap state is ignored =="
     flutter test --no-pub test/server_model_test.dart
+    echo "  == R-S11iu flutter test: CM file-log state is exact-generation-owned =="
+    flutter test --no-pub test/cm_file_owner_test.dart
     echo "  == R-S11he flutter test: server status refresh is serialized and drainable =="
     flutter test --no-pub test/server_status_refresh_loop_test.dart
     echo "  == R-S11ir flutter test: Windows RDP-sharing UI requests have one visible latch =="

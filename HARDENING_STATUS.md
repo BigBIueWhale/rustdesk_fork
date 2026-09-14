@@ -12606,8 +12606,8 @@ shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**CORE REGISTRY SOURCE IMPLEMENTED; KNOWN SIDE-EFFECT LIFETIME WORK REMAINS;
-EIGHT EXECUTABLE RUST REGRESSIONS AND ONE DART SERIALIZATION TEST RETAINED;
+**CORE REGISTRY AND CM FILE-LOG SOURCE IMPLEMENTED; OTHER SIDE-EFFECT LIFETIME WORK REMAINS;
+NINE EXECUTABLE RUST REGRESSIONS AND THREE RELEVANT DART TESTS RETAINED OR AUTHORED;
 ANDROID RUST FIXTURES ARE NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
 `CmClientRegistry` owns a checked process-lifetime
 generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
@@ -12619,12 +12619,24 @@ supersede an active predecessor, whose egress owner closes before replacement. D
 source generation zero cannot supersede an active collision. Registry mutation, chat,
 voice, Android notification/input/capture mirrors, and generation-bearing
 add/remove/chat/voice UI events carry or check the exact owner. This is not yet a blanket
-claim for every CM side effect: generation-less file-log publication is not owner-bearing,
-so its queued UI and replacement semantics remain open. The unused process-global desktop
-click-time request/response and FFI surface are deleted end to end. The previously recorded
-Windows clipboard-cleanup gap is not reachable: the exact controlled-route lease remains
-occupied through registry retirement and native emptying, and a same-ID successor must
-acquire that route before it can enter the client registry.
+claim for every CM side effect. CM file-log publication now carries the retained exact owner
+through every desktop filesystem, forwarded-log, and read-tick site. Publication checks that
+owner immediately before the Flutter handoff; stale ownership or an unknown action terminates
+the stream path. The fixed event schema is `id`, `registry_generation`, `action`, and `log`, so
+an action string cannot select or overwrite an authority field. Dart dispatch uses its receiving
+`FFI`, requires the exact live `ServerModel` generation, rejects every embedded `connId` mismatch,
+and stores jobs plus speed-sampling state under the exact owner. Full-state refresh, add,
+replacement, remove, and close reconcile those tables; retirement deletes the predecessor table,
+and deferred tab selection rechecks both its request generation and client owner before
+publication. A full-state snapshot validates the complete positive-generation, unique-ID owner set
+before mutation; an asynchronous snapshot carries the local observation revision from before its
+native call and cannot overwrite an intervening client event. `closeAll` removes only the exact
+generations it captured, preserving a concurrently admitted successor. Disconnected owners retain
+their table only while that exact generation remains in the client registry. The unused
+process-global desktop click-time request/response and FFI surface are deleted end to end. The
+previously recorded Windows clipboard-cleanup gap is not reachable:
+the exact controlled-route lease remains occupied through registry retirement and native emptying,
+and a same-ID successor must acquire that route before it can enter the client registry.
 
 Windows privacy mode now retains one typed connection owner containing the positive
 connection ID and nonempty CM authority token for the physical privacy resource's full
@@ -12661,10 +12673,11 @@ is terminal before filesystem dispatch or any other command effect. Work admitte
 the owner was current may finish; supersession does not invent rollback or report an
 already completed filesystem effect as unperformed.
 
-Four Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
-disconnected replacement, and generation-exhaustion no-commit. A fifth focused unit
-regression proves that a privacy resource rejects same-ID replacement with a different
-connection token. The callback regression first rejects a stale token at the registry
+Five Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
+disconnected replacement, generation-exhaustion no-commit, and exact-owner file-log publication
+with stale/unknown refusal. Another focused unit regression proves that a privacy resource rejects
+same-ID replacement with a different connection token. The callback regression first rejects a
+stale token at the registry
 egress edge, then drives the valid one-shot callback over the real framed runner. Three
 additional focused Rust tests drive the actual Android CM future through one-shot terminal
 completion, direct future cancellation after admission, and same-ID service-generation
@@ -12672,9 +12685,12 @@ supersession followed by a real `CreateDir` command. The last requires predecess
 termination with no directory effect, followed by exact successor cleanup.
 The shared runner retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
-`flutter/test/server_model_test.dart`, invoked by `scripts/dart-verify.sh`, executes
-registry-generation JSON serialization only; it does not exercise full Dart replacement
-or stale-event UI behavior. `scripts/android-controlled-connection-type-test.kt`
+`flutter/test/server_model_test.dart` retains registry-generation JSON serialization.
+`flutter/test/cm_file_owner_test.dart`, now invoked by `scripts/dart-verify.sh`, adds two executable
+Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
+payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.
+These state tests do not exercise the complete rendered Flutter window or native event stream.
+`scripts/android-controlled-connection-type-test.kt`
 contains useful model assertions, but no retained gate compiles or executes it; grepping
 its strings is not an Android regression. The shared source gate checks the retained
 Android child future, exact generation transfer, terminal/connection finality, and RAII
@@ -12682,9 +12698,11 @@ registry retirement without asserting documentation text. The duplicate workspac
 validator and the unrelated CM/listener checks formerly embedded in the Android voice
 and media source validators are deleted; none of those source checks executed these paths.
 
-The three child-future tests have not yet been executed against the current dependency
-closure because the pinned project builder is absent locally; Rust parsing alone is not
-their result. Required evidence remains exact Rust and Dart execution, an Android target
+The new Rust and Dart cases and the three child-future tests have not been executed against the
+current dependency closure: the fixed rootless Docker socket, repository Cargo vendor closure,
+repository Flutter cache, and repository Windows image are absent. Host execution was not used as
+a fallback, and static review is not their result. Required evidence remains exact Rust and Dart
+execution, the complete native-to-rendered Flutter event path, an Android target
 compile, plus current Android package execution for same-ID supersession, stale/duplicate
 callbacks, input, queued/delayed
 actions, voice/recorder demand, capture, notification, task swipe, reopen, Force Stop,

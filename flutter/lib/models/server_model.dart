@@ -48,6 +48,7 @@ class ServerModel with ChangeNotifier {
   final tabController = DesktopTabController(tabType: DesktopTabType.cm);
 
   final List<Client> _clients = [];
+  int _clientStateRevision = 0;
 
   Timer? cmHiddenTimer;
 
@@ -121,10 +122,11 @@ class ServerModel with ChangeNotifier {
 
   Future<void> _refreshStatus() async {
     if (desktopType == DesktopType.cm) {
+      final clientStateRevision = _clientStateRevision;
       final res = await bind.cmCheckClientsLength(length: _clients.length);
       if (res != null) {
         debugPrint("clients not match!");
-        await updateClientState(res);
+        await updateClientState(res, clientStateRevision);
       } else if (_clients.isEmpty) {
         // R-S11gic: the server owns this CM generation across sessions. Keep its UI hidden while
         // idle; closing the window here exits the process and defeats exact reuse.
@@ -459,9 +461,15 @@ class ServerModel with ChangeNotifier {
   }
 
   // force
-  Future<void> updateClientState([String? json]) async {
+  Future<void> updateClientState(
+      [String? json, int? expectedClientStateRevision]) async {
     if (isTest) return;
+    final requestRevision =
+        expectedClientStateRevision ?? _clientStateRevision;
     final res = json ?? await bind.cmGetClientsState();
+    if (_clientStateRevision != requestRevision) {
+      return;
+    }
     List<dynamic> clientsJson;
     try {
       clientsJson = jsonDecode(res);
@@ -470,19 +478,35 @@ class ServerModel with ChangeNotifier {
       return;
     }
 
-    final oldClientLenght = _clients.length;
-    _clients.clear();
-    tabController.state.value.tabs.clear();
-
-    for (var clientJson in clientsJson) {
-      try {
+    final nextClients = <Client>[];
+    final nextIds = <int>{};
+    try {
+      for (final clientJson in clientsJson) {
         final client = Client.fromJson(clientJson);
-        _clients.add(client);
+        if (client.id <= 0 ||
+            client.registryGeneration <= 0 ||
+            !nextIds.add(client.id)) {
+          throw FormatException('invalid CM client owner');
+        }
+        nextClients.add(client);
+      }
+    } catch (e) {
+      debugPrint("Rejected malformed clients state: $e");
+      return;
+    }
+
+    _clients
+      ..clear()
+      ..addAll(nextClients);
+    tabController.state.value.tabs.clear();
+    for (final client in _clients) {
+      try {
         _addTab(client);
       } catch (e) {
-        debugPrint("Failed to decode clientJson '$clientJson', error $e");
+        debugPrint("Failed to add CM client tab: $e");
       }
     }
+    _commitClientStateMutation();
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
         await hideCmWindow();
@@ -490,15 +514,17 @@ class ServerModel with ChangeNotifier {
         await showCmWindow();
       }
     }
-    if (_clients.length != oldClientLenght) {
-      notifyListeners();
-      if (isAndroid) androidUpdatekeepScreenOn();
-    }
+    notifyListeners();
+    if (isAndroid) androidUpdatekeepScreenOn();
   }
 
   void addConnection(Map<String, dynamic> evt) {
     try {
       final client = Client.fromJson(jsonDecode(evt["client"]));
+      if (client.id <= 0 || client.registryGeneration <= 0) {
+        debugPrint('Rejected invalid CM client owner');
+        return;
+      }
       // R-A2/R-G7: approve-mode is pinned "password", so every incoming client arrives already
       // authorized (post-PAKE). There is no unauthorized / click-to-accept state to render.
       final index = _clients.indexWhere((c) => c.id == client.id);
@@ -514,6 +540,7 @@ class ServerModel with ChangeNotifier {
         if (client.registryGeneration == current.registryGeneration &&
             current.authorized) {
           current.privacyMode = client.privacyMode;
+          _commitClientStateMutation();
           notifyListeners();
           return;
         }
@@ -534,6 +561,7 @@ class ServerModel with ChangeNotifier {
         _clients.removeAt(index_disconnected);
         tabController.remove(index_disconnected);
       }
+      _commitClientStateMutation();
       if (desktopType == DesktopType.cm && !hideCm) {
         showCmWindow();
       }
@@ -658,6 +686,7 @@ class ServerModel with ChangeNotifier {
       } else {
         _clients[index].disconnected = true;
       }
+      _commitClientStateMutation();
       parent.target?.dialogManager.dismissByTag(getLoginDialogTag(id));
       parent.target?.invokeMethod("cancel_notification", id);
       if (desktopType == DesktopType.cm && _clients.isEmpty) {
@@ -671,11 +700,25 @@ class ServerModel with ChangeNotifier {
   }
 
   Future<void> closeAll() async {
-    await Future.wait(
-        _clients.map((client) => bind.cmCloseConnection(connId: client.id)));
-    _clients.clear();
-    tabController.state.value.tabs.clear();
+    final closingOwners = <int, int>{
+      for (final client in _clients) client.id: client.registryGeneration,
+    };
+    await Future.wait(closingOwners.keys
+        .map((connectionId) => bind.cmCloseConnection(connId: connectionId)));
+    for (var index = _clients.length - 1; index >= 0; index -= 1) {
+      final client = _clients[index];
+      if (closingOwners[client.id] == client.registryGeneration) {
+        _clients.removeAt(index);
+        tabController.remove(index);
+      }
+    }
+    _commitClientStateMutation();
     if (isAndroid) androidUpdatekeepScreenOn();
+  }
+
+  void _commitClientStateMutation() {
+    _clientStateRevision += 1;
+    parent.target?.cmFileModel.reconcileClients(_clients);
   }
 
   void jumpTo(int id) {

@@ -3161,8 +3161,24 @@ pub mod connection_manager {
             self.push_event("update_voice_call_state", &[("client", &client_json)]);
         }
 
-        fn file_transfer_log(&self, action: &str, log: &str) {
-            self.push_event("cm_file_transfer_log", &[(action, log)]);
+        fn file_transfer_log(
+            &self,
+            id: i32,
+            registry_generation: i64,
+            action: &str,
+            log: &str,
+        ) {
+            let id = id.to_string();
+            let registry_generation = registry_generation.to_string();
+            self.push_event(
+                "cm_file_transfer_log",
+                &[
+                    ("id", id.as_str()),
+                    ("registry_generation", registry_generation.as_str()),
+                    ("action", action),
+                    ("log", log),
+                ],
+            );
         }
     }
 

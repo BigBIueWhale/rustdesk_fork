@@ -117,7 +117,7 @@ class ConnectionManagerState extends State<ConnectionManager> {
             });
           }
           windowManager.setTitle(getWindowNameWithId(client.peerId));
-          gFFI.cmFileModel.updateCurrentClientId(client.id);
+          gFFI.cmFileModel.updateCurrentClient(client);
         }
       }
     };

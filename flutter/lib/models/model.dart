@@ -662,7 +662,7 @@ class FfiModel with ChangeNotifier {
       parent.target?.serverModel.updateVoiceCallState(evt);
     } else if (name == "cm_file_transfer_log") {
       if (isDesktop) {
-        gFFI.cmFileModel.onFileTransferLog(evt);
+        parent.target?.cmFileModel.onFileTransferLog(evt);
       }
     } else if (name == 'sync_peer_option') {
       _handleSyncPeerOption(evt, peerId);

@@ -798,7 +798,13 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
 
     fn update_voice_call_state(&self, client: &Client);
 
-    fn file_transfer_log(&self, action: &str, log: &str);
+    fn file_transfer_log(
+        &self,
+        id: i32,
+        registry_generation: i64,
+        action: &str,
+        log: &str,
+    );
 }
 
 impl<T: InvokeUiCM> Deref for ConnectionManager<T> {
@@ -911,7 +917,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
     }
 
-    #[cfg(any(target_os = "android", test))]
     fn is_current_client_owner(&self, owner: CmClientOwner) -> bool {
         CLIENTS.read().unwrap().is_current(owner)
     }
@@ -921,6 +926,29 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             self.ui_handler
                 .new_message(owner.id, owner.generation, text);
         }
+    }
+
+    fn file_transfer_log(
+        &self,
+        owner: CmClientOwner,
+        action: &str,
+        log: &str,
+    ) -> bool {
+        if !matches!(action, "transfer" | "remove" | "create_dir" | "rename") {
+            log::warn!("rejected unknown CM file-log action");
+            return false;
+        }
+        if !CLIENTS.read().unwrap().is_current(owner) {
+            log::debug!(
+                "ignored stale CM file log for {}:{}",
+                owner.id,
+                owner.generation
+            );
+            return false;
+        }
+        self.ui_handler
+            .file_transfer_log(owner.id, owner.generation, action, log);
+        true
     }
 
     fn update_voice_call(&self, owner: CmClientOwner, incoming: bool, active: bool) {
@@ -1263,6 +1291,18 @@ where
                                         );
                                         break;
                                     }
+                                    let Some(owner) = self.client_owner else {
+                                        log::warn!(
+                                            "Rejected CM filesystem work before client-registry admission"
+                                        );
+                                        break;
+                                    };
+                                    if !self.cm.is_current_client_owner(owner) {
+                                        log::warn!(
+                                            "Rejected CM filesystem work from a stale client owner"
+                                        );
+                                        break;
+                                    }
                                     let result = if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed, generation } = fs {
                                         let bytes = match self.stream.next_raw().await {
                                             Ok(bytes) => bytes,
@@ -1306,7 +1346,9 @@ where
                                         }
                                     };
                                     if let Some(job_log) = job_log {
-                                        self.cm.ui_handler.file_transfer_log("transfer", &job_log);
+                                        if !self.cm.file_transfer_log(owner, "transfer", &job_log) {
+                                            break;
+                                        }
                                     }
                                     // Activate fast timer immediately when read jobs exist.
                                     // This ensures new jobs start processing without waiting for the slow 30s timer.
@@ -1315,7 +1357,9 @@ where
                                         file_timer = crate::rustdesk_interval(time::interval(MILLI5));
                                     }
                                     let log = serialize_cm_transfer_jobs(&write_jobs);
-                                    self.cm.ui_handler.file_transfer_log("transfer", &log);
+                                    if !self.cm.file_transfer_log(owner, "transfer", &log) {
+                                        break;
+                                    }
                                 }
                                 Data::FS(_) => {
                                     log::warn!(
@@ -1325,7 +1369,15 @@ where
                                     break;
                                 }
                                 Data::FileTransferLog((action, log)) => {
-                                    self.cm.ui_handler.file_transfer_log(&action, &log);
+                                    let Some(owner) = self.client_owner else {
+                                        log::warn!(
+                                            "Rejected CM file log before client-registry admission"
+                                        );
+                                        break;
+                                    };
+                                    if !self.cm.file_transfer_log(owner, &action, &log) {
+                                        break;
+                                    }
                                 }
                                 #[cfg(target_os = "windows")]
                                 Data::ClipboardFile(_clip) => {
@@ -1575,6 +1627,18 @@ where
                 },
                 _ = file_timer.tick() => {
                     if !self.read_jobs.is_empty() {
+                        let Some(owner) = self.client_owner else {
+                            log::warn!(
+                                "Rejected CM read-job tick before client-registry admission"
+                            );
+                            break;
+                        };
+                        if !self.cm.is_current_client_owner(owner) {
+                            log::warn!(
+                                "Rejected CM read-job tick from a stale client owner"
+                            );
+                            break;
+                        }
                         let conn_id = self.conn_id;
                         if let Err(error) = handle_read_jobs_tick(
                             &mut self.read_jobs,
@@ -1590,7 +1654,9 @@ where
                             break;
                         }
                         let log = serialize_cm_transfer_jobs(&self.read_jobs);
-                        self.cm.ui_handler.file_transfer_log("transfer", &log);
+                        if !self.cm.file_transfer_log(owner, "transfer", &log) {
+                            break;
+                        }
                     } else {
                         file_timer = crate::rustdesk_interval(time::interval_at(Instant::now() + SEC30, SEC30));
                     }
@@ -2974,6 +3040,7 @@ mod tests {
     struct CmTaskOwnerTestUi {
         added: Arc<AtomicBool>,
         removed: Arc<StdMutex<Vec<(i32, i64, bool)>>>,
+        file_logs: Arc<StdMutex<Vec<(i32, i64, String, String)>>>,
     }
 
     impl InvokeUiCM for CmTaskOwnerTestUi {
@@ -2993,7 +3060,20 @@ mod tests {
 
         fn update_voice_call_state(&self, _client: &Client) {}
 
-        fn file_transfer_log(&self, _action: &str, _log: &str) {}
+        fn file_transfer_log(
+            &self,
+            id: i32,
+            registry_generation: i64,
+            action: &str,
+            log: &str,
+        ) {
+            lock_cm_egress_test(&self.file_logs).push((
+                id,
+                registry_generation,
+                action.to_owned(),
+                log.to_owned(),
+            ));
+        }
     }
 
     fn lock_cm_egress_test<T>(mutex: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -3083,7 +3163,7 @@ mod tests {
     struct CmRouteTestUi {
         added: Arc<StdMutex<Vec<(i32, i64)>>>,
         removed: Arc<StdMutex<Vec<(i32, i64, bool, bool)>>>,
-        file_logs: Arc<StdMutex<Vec<(String, String)>>>,
+        file_logs: Arc<StdMutex<Vec<(i32, i64, String, String)>>>,
     }
 
     #[cfg(target_os = "windows")]
@@ -3110,8 +3190,19 @@ mod tests {
 
         fn update_voice_call_state(&self, _client: &Client) {}
 
-        fn file_transfer_log(&self, action: &str, log: &str) {
-            lock_cm_egress_test(&self.file_logs).push((action.to_owned(), log.to_owned()));
+        fn file_transfer_log(
+            &self,
+            id: i32,
+            registry_generation: i64,
+            action: &str,
+            log: &str,
+        ) {
+            lock_cm_egress_test(&self.file_logs).push((
+                id,
+                registry_generation,
+                action.to_owned(),
+                log.to_owned(),
+            ));
         }
     }
 
@@ -4791,6 +4882,56 @@ mod tests {
         ));
         assert!(registry.clients.is_empty());
         assert_eq!(client.registry_generation, 0);
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn r_s11iu_file_log_publication_requires_exact_current_owner() {
+        let id = 2_000_200_001;
+        let ui = CmTaskOwnerTestUi::default();
+        let manager = ConnectionManager::new(ui.clone(), 0);
+        let predecessor_owner = {
+            let mut registry = CLIENTS.write().unwrap();
+            assert!(registry.clients.remove(&id).is_none());
+            let mut predecessor = registry_test_client(id, "file-log-predecessor");
+            registry.admit(&mut predecessor, 71).unwrap().0
+        };
+        assert!(manager.file_transfer_log(
+            predecessor_owner,
+            "transfer",
+            "predecessor"
+        ));
+
+        let successor_owner = {
+            let mut registry = CLIENTS.write().unwrap();
+            let mut successor = registry_test_client(id, "file-log-successor");
+            registry.admit(&mut successor, 72).unwrap().0
+        };
+        assert!(!manager.file_transfer_log(predecessor_owner, "transfer", "stale"));
+        assert!(!manager.file_transfer_log(successor_owner, "unknown", "invalid"));
+        assert!(manager.file_transfer_log(successor_owner, "rename", "successor"));
+
+        assert_eq!(
+            lock_cm_egress_test(&ui.file_logs).as_slice(),
+            &[
+                (
+                    id,
+                    predecessor_owner.generation,
+                    "transfer".to_owned(),
+                    "predecessor".to_owned(),
+                ),
+                (
+                    id,
+                    successor_owner.generation,
+                    "rename".to_owned(),
+                    "successor".to_owned(),
+                ),
+            ]
+        );
+        assert!(CLIENTS
+            .write()
+            .unwrap()
+            .retire(successor_owner, true));
     }
 
     #[test]

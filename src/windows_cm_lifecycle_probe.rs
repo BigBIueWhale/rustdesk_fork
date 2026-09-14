@@ -43,7 +43,14 @@ impl crate::ui_cm_interface::InvokeUiCM for NoopConnectionManager {
 
     fn update_voice_call_state(&self, _client: &crate::ui_cm_interface::Client) {}
 
-    fn file_transfer_log(&self, _action: &str, _log: &str) {}
+    fn file_transfer_log(
+        &self,
+        _id: i32,
+        _registry_generation: i64,
+        _action: &str,
+        _log: &str,
+    ) {
+    }
 }
 
 struct OwnedProcessHandle(HANDLE);

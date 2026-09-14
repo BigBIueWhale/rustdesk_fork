@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,71 +5,119 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:get/get.dart';
+import 'cm_file_owner.dart';
 import 'file_model.dart';
+
+class _CmFileJobTable {
+  final jobs = <CmFileLog>[];
+  final stopwatch = Stopwatch();
+  int lastElapsed = 0;
+}
 
 class CmFileModel {
   final WeakReference<FFI> parent;
   final currentJobTable = RxList<CmFileLog>();
-  final _jobTables = HashMap<int, RxList<CmFileLog>>.fromEntries([]);
-  Stopwatch stopwatch = Stopwatch();
-  int _lastElapsed = 0;
+  final _ownerTables = CmFileOwnerTables<_CmFileJobTable>(_CmFileJobTable.new);
 
   CmFileModel(this.parent);
 
-  void updateCurrentClientId(int id) {
-    if (_jobTables[id] == null) {
-      _jobTables[id] = RxList<CmFileLog>();
+  void reconcileClients(Iterable<Client> clients) {
+    final selectedRetired = _ownerTables.reconcile(clients.map(
+        (client) => CmFileOwner(client.id, client.registryGeneration)));
+    if (selectedRetired) {
+      currentJobTable.clear();
     }
+  }
+
+  void updateCurrentClient(Client client) {
+    final owner = CmFileOwner(client.id, client.registryGeneration);
+    final selectionGeneration = _ownerTables.reserveSelection(owner);
+    if (selectionGeneration == null) return;
     Future.delayed(Duration.zero, () {
-      currentJobTable.value = _jobTables[id]!;
+      final ffi = parent.target;
+      if (ffi == null ||
+          !ffi.serverModel.ownsClientGeneration(
+              owner.connectionId, owner.registryGeneration)) {
+        _ownerTables.cancelSelection(owner, selectionGeneration);
+        return;
+      }
+      final table = _ownerTables.commitSelection(owner, selectionGeneration);
+      if (table != null) {
+        currentJobTable.assignAll(table.jobs);
+      }
     });
   }
 
-  onFileTransferLog(Map<String, dynamic> evt) {
-    if (evt['transfer'] != null) {
-      _onFileTransfer(evt['transfer']);
-    } else if (evt['remove'] != null) {
-      _onFileRemove(evt['remove']);
-    } else if (evt['create_dir'] != null) {
-      _onDirCreate(evt['create_dir']);
-    } else if (evt['rename'] != null) {
-      _onRename(evt['rename']);
+  void onFileTransferLog(Map<String, dynamic> evt) {
+    final envelope = CmFileLogEnvelope.tryParse(evt);
+    if (envelope == null) {
+      debugPrint('Rejected malformed CM file-log envelope');
+      return;
+    }
+    final ffi = parent.target;
+    if (ffi == null ||
+        !ffi.serverModel.ownsClientGeneration(envelope.owner.connectionId,
+            envelope.owner.registryGeneration)) {
+      debugPrint('Rejected stale CM file-log owner');
+      return;
+    }
+    switch (envelope.action) {
+      case 'transfer':
+        _onFileTransfer(ffi, envelope.owner, envelope.log);
+        break;
+      case 'remove':
+        _onFileRemove(ffi, envelope.owner, envelope.log);
+        break;
+      case 'create_dir':
+        _onDirCreate(ffi, envelope.owner, envelope.log);
+        break;
+      case 'rename':
+        _onRename(ffi, envelope.owner, envelope.log);
+        break;
     }
   }
 
-  _onFileTransfer(dynamic log) {
+  void _onFileTransfer(FFI ffi, CmFileOwner owner, String log) {
     try {
-      dynamic d = jsonDecode(log);
-      if (!stopwatch.isRunning) stopwatch.start();
-      bool calcSpeed = stopwatch.elapsedMilliseconds - _lastElapsed >= 1000;
+      final decoded = jsonDecode(log);
+      final rawJobs = decoded is List<dynamic> ? decoded : <dynamic>[decoded];
+      final jobs = rawJobs
+          .map((job) => TransferJobSerdeData.fromJson(job))
+          .toList(growable: false);
+      if (jobs.any((job) => job.connId != owner.connectionId)) {
+        debugPrint('Rejected CM file-log payload for a different connection');
+        return;
+      }
+      final table = _ownerTables.tableFor(owner);
+      if (table == null) {
+        debugPrint('Rejected CM file log without an exact owner table');
+        return;
+      }
+      if (jobs.isNotEmpty && !table.stopwatch.isRunning) {
+        table.stopwatch.start();
+      }
+      final calcSpeed = table.stopwatch.elapsedMilliseconds -
+              table.lastElapsed >=
+          1000;
       if (calcSpeed) {
-        _lastElapsed = stopwatch.elapsedMilliseconds;
+        table.lastElapsed = table.stopwatch.elapsedMilliseconds;
       }
-      if (d is List<dynamic>) {
-        for (var l in d) {
-          _dealOneJob(l, calcSpeed);
-        }
-      } else {
-        _dealOneJob(d, calcSpeed);
+      for (final job in jobs) {
+        _dealOneJob(ffi, owner, table, job, calcSpeed);
       }
-      currentJobTable.refresh();
+      _publishSelected(owner, table);
     } catch (e) {
       debugPrint("onFileTransferLog:$e");
     }
   }
 
-  _dealOneJob(dynamic l, bool calcSpeed) {
-    final data = TransferJobSerdeData.fromJson(l);
-    var jobTable = _jobTables[data.connId];
-    if (jobTable == null) {
-      debugPrint("jobTable should not be null");
-      return;
-    }
-    CmFileLog? job = jobTable.firstWhereOrNull((e) => e.id == data.id);
+  void _dealOneJob(FFI ffi, CmFileOwner owner, _CmFileJobTable table,
+      TransferJobSerdeData data, bool calcSpeed) {
+    CmFileLog? job = table.jobs.firstWhereOrNull((e) => e.id == data.id);
     if (job == null) {
       job = CmFileLog();
-      jobTable.add(job);
-      _addUnread(data.connId);
+      table.jobs.add(job);
+      _addUnread(ffi, owner);
     }
     job.id = data.id;
     job.action =
@@ -102,20 +149,19 @@ class CmFileModel {
       job.speed = (data.transferred - job.lastTransferredSize) * 1.0;
       job.lastTransferredSize = data.transferred;
     }
-    jobTable.refresh();
   }
 
-  _onFileRemove(dynamic log) {
+  void _onFileRemove(FFI ffi, CmFileOwner owner, String log) {
     try {
-      dynamic d = jsonDecode(log);
-      FileActionLog data = FileActionLog.fromJson(d);
-      Client? client =
-          gFFI.serverModel.clients.firstWhereOrNull((e) => e.id == data.connId);
-      var jobTable = _jobTables[data.connId];
-      if (jobTable == null) {
-        debugPrint("jobTable should not be null");
+      final data = FileActionLog.fromJson(jsonDecode(log));
+      final table = _ownerTables.tableForPayload(owner, data.connId);
+      if (table == null) {
+        debugPrint('Rejected CM remove log without an exact owner table');
         return;
       }
+      final client = ffi.serverModel.clients.firstWhereOrNull((client) =>
+          client.id == owner.connectionId &&
+          client.registryGeneration == owner.registryGeneration);
       int removeUnreadCount = 0;
       if (data.dir) {
         bool isChild(String parent, String child) {
@@ -126,23 +172,23 @@ class CmFileModel {
           return false;
         }
 
-        removeUnreadCount = jobTable
+        removeUnreadCount = table.jobs
             .where((e) =>
                 e.action == CmFileAction.remove &&
                 isChild(data.path, e.fileName))
             .length;
-        jobTable.removeWhere((e) =>
+        table.jobs.removeWhere((e) =>
             e.action == CmFileAction.remove && isChild(data.path, e.fileName));
       }
-      jobTable.add(CmFileLog()
+      table.jobs.add(CmFileLog()
         ..id = data.id
         ..fileName = data.path
         ..action = CmFileAction.remove
         ..state = JobState.done);
       final currentSelectedTab =
-          gFFI.serverModel.tabController.state.value.selectedTabInfo;
-      if (!(gFFI.chatModel.isShowCMSidePage &&
-          currentSelectedTab.key == data.connId.toString())) {
+          ffi.serverModel.tabController.state.value.selectedTabInfo;
+      if (!(ffi.chatModel.isShowCMSidePage &&
+          currentSelectedTab.key == owner.connectionId.toString())) {
         // Wrong number if unreadCount changes during deletion, which rarely happens
         RxInt? rx = client?.unreadChatMessageCount;
         if (rx != null) {
@@ -152,63 +198,69 @@ class CmFileModel {
           rx.value += 1;
         }
       }
-      jobTable.refresh();
+      _publishSelected(owner, table);
     } catch (e) {
       debugPrint('$e');
     }
   }
 
-  _onDirCreate(dynamic log) {
+  void _onDirCreate(FFI ffi, CmFileOwner owner, String log) {
     try {
-      dynamic d = jsonDecode(log);
-      FileActionLog data = FileActionLog.fromJson(d);
-      var jobTable = _jobTables[data.connId];
-      if (jobTable == null) {
-        debugPrint("jobTable should not be null");
+      final data = FileActionLog.fromJson(jsonDecode(log));
+      final table = _ownerTables.tableForPayload(owner, data.connId);
+      if (table == null) {
+        debugPrint(
+            'Rejected CM create-directory log without an exact owner table');
         return;
       }
-      jobTable.add(CmFileLog()
+      table.jobs.add(CmFileLog()
         ..id = data.id
         ..fileName = data.path
         ..action = CmFileAction.createDir
         ..state = JobState.done);
-      _addUnread(data.connId);
-      jobTable.refresh();
+      _addUnread(ffi, owner);
+      _publishSelected(owner, table);
     } catch (e) {
       debugPrint('$e');
     }
   }
 
-  _onRename(dynamic log) {
+  void _onRename(FFI ffi, CmFileOwner owner, String log) {
     try {
-      dynamic d = jsonDecode(log);
-      FileRenamenLog data = FileRenamenLog.fromJson(d);
-      var jobTable = _jobTables[data.connId];
-      if (jobTable == null) {
-        debugPrint("jobTable should not be null");
+      final data = FileRenamenLog.fromJson(jsonDecode(log));
+      final table = _ownerTables.tableForPayload(owner, data.connId);
+      if (table == null) {
+        debugPrint('Rejected CM rename log without an exact owner table');
         return;
       }
       final fileName = '${data.path} -> ${data.newName}';
-      jobTable.add(CmFileLog()
+      table.jobs.add(CmFileLog()
         ..id = 0
         ..fileName = fileName
         ..action = CmFileAction.rename
         ..state = JobState.done);
-      _addUnread(data.connId);
-      jobTable.refresh();
+      _addUnread(ffi, owner);
+      _publishSelected(owner, table);
     } catch (e) {
       debugPrint('$e');
     }
   }
 
-  _addUnread(int connId) {
-    Client? client =
-        gFFI.serverModel.clients.firstWhereOrNull((e) => e.id == connId);
+  void _addUnread(FFI ffi, CmFileOwner owner) {
+    final client = ffi.serverModel.clients.firstWhereOrNull((client) =>
+        client.id == owner.connectionId &&
+        client.registryGeneration == owner.registryGeneration);
     final currentSelectedTab =
-        gFFI.serverModel.tabController.state.value.selectedTabInfo;
-    if (!(gFFI.chatModel.isShowCMSidePage &&
-        currentSelectedTab.key == connId.toString())) {
+        ffi.serverModel.tabController.state.value.selectedTabInfo;
+    if (!(ffi.chatModel.isShowCMSidePage &&
+        currentSelectedTab.key == owner.connectionId.toString())) {
       client?.unreadChatMessageCount.value += 1;
+    }
+  }
+
+  void _publishSelected(CmFileOwner owner, _CmFileJobTable table) {
+    if (_ownerTables.isSelected(owner)) {
+      currentJobTable.assignAll(table.jobs);
     }
   }
 }

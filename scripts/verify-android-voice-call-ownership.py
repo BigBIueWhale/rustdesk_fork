@@ -4184,21 +4184,6 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
-        '<span class="id">R-S11fb</span>',
-        "controlled video egress normative requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>310</td>",
-        "controlled video egress Appendix C disposition",
-    )
-    require(
-        sources["hardening"],
-        "**R-S11fb/R-S11e-189 controlled video exact-writer egress",
-        "controlled video egress hardening ledger",
-    )
-    require(
-        sources["requirements"],
         '<span class="id">R-S11fk</span>',
         "controlled video exact peer receipt normative requirement",
     )
@@ -5662,9 +5647,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11eg</span>', '<span class="id">R-S11eg-disabled</span>', "controlled video acknowledgement requirement"),
     ("requirements", "<tr><td>286</td>", "<tr><td>286-disabled</td>", "controlled video acknowledgement disposition"),
     ("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),
-    ("requirements", '<span class="id">R-S11fb</span>', '<span class="id">R-S11fb-disabled</span>', "controlled video egress requirement"),
-    ("requirements", "<tr><td>310</td>", "<tr><td>310-disabled</td>", "controlled video egress disposition"),
-    ("hardening", "**R-S11fb/R-S11e-189 controlled video exact-writer egress", "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress", "controlled video egress hardening ledger"),
     ("requirements", '<span class="id">R-S11fk</span>', '<span class="id">R-S11fk-disabled</span>', "controlled video exact peer receipt requirement"),
     ("requirements", "<tr><td>319</td>", "<tr><td>319-disabled</td>", "controlled video exact peer receipt disposition"),
     ("hardening", "R-S11fk/R-S11e-198 controlled-video exact peer receipt", "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt", "controlled video exact peer receipt hardening ledger"),

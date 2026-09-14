@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e3c7206aaf9e5b0f9053f3d45b90130158907d2dd4c9b2f7edfc5823f5ebae73  requirements.html
+fb2caed66f39c3fda53af21d8560ecd0861bcfc23a15a0392cba1c4092901746  requirements.html
 ```
 
 ## Current Verdict
@@ -233,6 +233,18 @@ reducing it by 315 bytes; they executed no check and provided no coverage. No pr
 changed or ran. Exact mobile and desktop lifecycle, presentation, performance, artifact, reproducibility, and
 independent-review evidence remains open in the release-blocking matrix.
 
+R-S11fb and Appendix C #310 now state the timeless bounded local-video-egress contract instead of the prior
+512-entry backlog narrative, `PARTIAL` badge, implementation/test inventory, host non-execution receipt, repeated
+open-evidence list, and the obsolete implication that local `SinkExt::send` completion paces capture. The local
+mailbox, GOP, exact identity, one-transmitted-frame, sole-writer finality, close-race, and isolated runtime
+acceptance rules remain explicit; R-S11fk remains the sole owner of authenticated peer progress and forbids local-
+write completion from advancing capture. This reduced `requirements.html` by 2,337 bytes. Eighteen lines of
+duplicate R-S11fb requirement/row/ledger oracles and their wording mutations were deleted from the broad Android
+voice/capture source verifier, reducing it by 801 bytes. The focused source invariants and executable mailbox,
+writer-result, exact-peer-receipt, protocol, and real-kernel-TCP regressions remain wired in `verify.sh` and
+`dart-verify.sh`. No product source or native target changed or ran; current artifact, peer, presentation,
+performance, reconnect, and resource evidence remains open.
+
 R-S11fs and Appendix C #319–#327 now state only the timeless peer-video-progress, per-viewer capture,
 texture-activation, decoder-control/liveness, texture-notification, terminal-selection, software-publication,
 and pointer-recovery contracts. Their `FIX`/`PARTIAL` badges, implementation narratives, verifier receipts,
@@ -341,9 +353,7 @@ validator/mutation layer plus obsolete cross-scope and verifier-of-verifier chec
 verifier lost 154 lines of obsolete CM/listener-lifecycle assertions and mutations, and those shared/Apple
 CM gates no longer require documentation or ledger wording. The shared source gate retains the load-bearing
 queue, terminal, desktop bridge, Android child-future, no-detached-runtime, exact task-owner, early-failure,
-and normal-close-finality checks. In a
-nonroot, network-disabled, read-only-source container, that focused block passes and the Android verifier
-passes normally and rejects all 563 retained mutations. No Rust test, Android target, installed application,
+and normal-close-finality checks. No Rust test, Android target, installed application,
 or device ran in that CM cleanup; R-S11bg and all current native/runtime obligations remained open.
 
 Android focused-verifier ownership is now one-way rather than circular. The workspace verifier lost 10,299
@@ -966,7 +976,7 @@ client presented timely pixels on a target OS.
 | R-S11ed/R-S11e-148, Appendix C #283 | Delayed OS-password input is an exact-round owned async task using only the admitting round's sender; every replacement/exit aborts and awaits it before round completion. |
 | R-S11ee/R-S11e-149, Appendix C #284 | Viewer screenshot bytes and monotonic request IDs are exact session/request owned; the process-global cache and stale-response selection are absent. |
 | R-S11ef/R-S11e-150, Appendix C #285 | Controlled screenshot requests are exact connection/channel owned and bounded; one retained bounded encoder replaces detached per-response threads. |
-| R-S11eg/R-S11e-151, Appendix C #286 | Controlled video completion is exact source/display/generation/connection state without a shared unbounded acknowledgement queue or per-wait runtime; R-S11fb supplies the superseding sole-writer completion boundary. |
+| R-S11eg/R-S11e-151, Appendix C #286 | Controlled video completion is exact source/display/generation/connection state without a shared unbounded acknowledgement queue or per-wait runtime. R-S11fb owns bounded local egress and writer finality; R-S11fk owns authenticated peer progress. |
 | R-S11eh/R-S11e-152, Appendix C #287 | Each exact real-time audio subscriber has a constant-size format/latest-frame/wake mailbox consumed by the connection writer; unbounded intermediate audio queues are absent. |
 | R-S11ei/R-S11e-153, Appendix C #288 | Android controlled input carries exact service-generation/Remote-connection ownership through JNI, uses bounded retained drains, and retires exact work without killing the persistent service. This is the controlled-Android path, not the reported outgoing-viewer path. |
 
@@ -1222,9 +1232,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   exact-session/generation retired, so delayed mobile-route cleanup cannot clear or invoke its replacement. The
   persistent Android controlled service is intentionally not killed as recovery. Current Android/Windows native
   focus/background/presentation evidence remains open under the release-blocking matrix.
-- **R-S11fb/R-S11e-189 controlled video exact-writer egress** — Source closed for local writer ownership. Each
-  controlled connection has constant-space GOP-aware video state and at most one tracked sole-writer send rather
-  than a second 512-command application backlog. Local socket acceptance is not peer or presentation receipt.
+- **R-S11fb/R-S11e-189 controlled-video bounded local egress** — Source closed for local egress ownership. Each
+  controlled connection has constant-space GOP-aware video state and at most one transmitted frame awaiting the
+  exact sole-writer/peer-receipt conjunction. Local writer completion is neither capture progress nor presentation.
 - **R-S11fc/R-S11e-190 exact desktop first-image admission** — Source closed. The fallible native RGBA bridge and
   exact UI event must both accept the first frame before the session records its one-time image notification.
   The obsolete void frame-admission export is absent on Windows, Linux, and macOS; the package contract permits

@@ -192,7 +192,7 @@ else
   echo "  ok  R-V3 exact-commit external-audit handoff names current mandatory roots/symbols, rejects stale line citations and self-signoff, and remains explicitly outstanding"
 fi
 
-echo "== (0c) main verifier immutable-container and fixed local Docker authority (R-S11bg/R-S11dh) =="
+echo "== (0c) main verifier immutable inner-container contract (R-S11bg) =="
 r_s11bg=
 if ! /usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py --self-test; then
   r_s11bg="$r_s11bg ipc-artifact-helper-self-test-failed"
@@ -207,10 +207,10 @@ if ! /usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . -
   r_s11bg="$r_s11bg authority-mutation-gate-failed"
 fi
 if [ -n "$r_s11bg" ]; then
-  echo "  FAIL R-S11bg/R-S11dh main verifier authority:$r_s11bg"
+  echo "  FAIL R-S11bg main verifier inner-container contract:$r_s11bg"
   rc=1
 else
-  echo "  ok  R-S11bg/R-S11dh exact fixed local Docker authority + immutable local image + private source/vendor/output state + all-nonroot execution including two-principal foreign-owner IPC fixtures"
+  echo "  ok  R-S11bg immutable image + private source/vendor/output state + all-nonroot inner-container definitions including two-principal foreign-owner IPC fixtures; R-S11dh outer disposable-VM execution authority remains STOP-SHIP"
 fi
 
 echo "== (0d) Debian builder source/container, Docker, and result-publication authority (R-S11cf/R-S11dk/R-S11dv) =="

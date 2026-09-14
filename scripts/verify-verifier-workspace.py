@@ -33288,7 +33288,6 @@ def validate_dart_verifier_authority_contract(sources):
 
 def validate_main_verifier_authority_contract(sources):
     shell = sources["verify"]
-    lib = sources["lib"]
     wrapper = sources["verifier_command_wrapper"]
     helper = sources["ipc_test_artifact_helper"]
     fixture_helper = sources["foreign_ipc_fixture_helper"]
@@ -33313,10 +33312,6 @@ def validate_main_verifier_authority_contract(sources):
         ('readonly VERIFY_GID="$(/usr/bin/id -g)"', "main verifier absolute GID source"),
         ('[ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution"', "main verifier UID-root refusal"),
         ('[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group"', "main verifier GID-root refusal"),
-        ('initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"', "main verifier fixed Docker authority initialization"),
-        ('if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]', "main verifier fixed Docker authority cleanup"),
-        ("&& ! remove_local_docker_authority; then", "main verifier exact Docker authority removal"),
-        ("verify: preserving changed private Docker authority", "main verifier changed-authority preservation"),
         ('IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier fixed initial image inspection"),
         ('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"', "main verifier normalized source snapshot"),
         ('for generated_bridge_mountpoint in src/bridge_generated.rs src/bridge_generated.io.rs; do', "main verifier generated bridge mountpoint inventory"),
@@ -33377,11 +33372,10 @@ def validate_main_verifier_authority_contract(sources):
             "source scripts/lib.sh",
             "load_pins",
             "VERIFY_TMP=$(umask 077",
-            'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"',
             "verify_scan_self_test",
             "local_docker image inspect",
         ),
-        "main verifier fixed Docker authority initialization",
+        "main verifier identity and private-workspace initialization",
     )
     cleanup = extract_between(
         shell,
@@ -33391,53 +33385,9 @@ def validate_main_verifier_authority_contract(sources):
     )
     require_order(
         cleanup,
-        ("cleanup_nonroot_ipc_fixture", "remove_local_docker_authority", "verify-private-tree-closure.py"),
-        "main verifier fixture-before-Docker-before-workspace cleanup",
+        ("cleanup_nonroot_ipc_fixture", "verify-private-tree-closure.py"),
+        "main verifier fixture-before-workspace cleanup",
     )
-    require_text(
-        cleanup,
-        'elif [ -z "$VERIFY_TMP_ID" ]',
-        "main verifier changed Docker authority blocks recursive cleanup",
-    )
-    for text, label in (
-        ("initialize_local_docker_authority() {", "shared fixed Docker authority initializer"),
-        (
-            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-            "shared fixed Docker ambient-input refusal",
-        ),
-        (
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-            "shared fixed Docker canonical no-clobber configuration",
-        ),
-        ("local_docker() {", "shared fixed Docker launcher"),
-        ("/usr/bin/env -i", "shared fixed Docker empty environment"),
-        ("DOCKER_HOST=unix:///var/run/docker.sock", "shared fixed Docker local endpoint"),
-        ('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"', "shared fixed Docker private configuration"),
-        ("remove_local_docker_authority() {", "shared fixed Docker exact cleanup"),
-    ):
-        require_text(lib, text, label)
-    local_docker = extract_between(
-        lib,
-        "local_docker() {",
-        "\n}\n\nlocal_docker_image_provenance() {",
-        "shared fixed Docker launcher",
-    )
-    require_exact_count(
-        local_docker,
-        "assert_local_docker_authority",
-        2,
-        "shared fixed Docker pre/post authority proof",
-    )
-    for text, label in (
-        ("/usr/bin/env -i", "shared fixed Docker launcher empty environment"),
-        ("/usr/bin/docker", "shared fixed Docker launcher absolute client"),
-        ("--host unix:///var/run/docker.sock", "shared fixed Docker launcher endpoint"),
-        (
-            '--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
-            "shared fixed Docker launcher configuration",
-        ),
-    ):
-        require_text(local_docker, text, label)
 
     for text, label in (
         ('exec cargo --config /tmp/cargo-config.toml --offline --locked "$@"', "main verifier locked/offline Cargo wrapper"),
@@ -33583,20 +33533,12 @@ def validate_main_verifier_authority_contract(sources):
     for text, label in (
         ('Mutation("shell", "--network=none", "--network=bridge"', "main verifier network mutation"),
         (
-            'Mutation(\n        "shell",\n        \'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"\'',
-            "main verifier focused Docker initialization mutation",
-        ),
-        (
             'Mutation("shell", \'FINAL_IMAGE_ID="$(local_docker image inspect\', \'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect\'',
             "main verifier focused Docker final inspection mutation",
         ),
         (
             'Mutation("shell", "local_docker run --rm", "/usr/bin/docker run --rm"',
             "main verifier focused Docker launcher mutation",
-        ),
-        (
-            'Mutation(\n        "lib",\n        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS"',
-            "main verifier ambient Docker input mutation",
         ),
         ('Mutation("shell", \'--user "$run_uid:$run_gid"\'', "main verifier nonroot fixture-user mutation"),
         ('Mutation("shell", \'--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"\'', "main verifier fixture-mount mutation"),
@@ -33629,11 +33571,6 @@ def validate_main_verifier_authority_contract(sources):
         ('Mutation("online_fetch", \'--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"\'', "main verifier archive-size mutation"),
         ('Mutation("pins", \'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc\'', "main verifier archive-pin mutation"),
         ('Mutation("requirements", \'<span class="id">R-S11bg</span>\'', "main verifier requirement mutation"),
-        ('Mutation("requirements", \'<span class="id">R-S11dh</span>\'', "main verifier Docker requirement mutation"),
-        (
-            'Mutation(\n        "hardening",\n        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority"',
-            "main verifier Docker ledger mutation",
-        ),
     ):
         require_text(authority_mutations, text, label)
     require_text(
@@ -33664,29 +33601,6 @@ def validate_main_verifier_authority_contract(sources):
         sources["hardening"],
         "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority",
         "main verifier authority hardening ledger",
-    )
-    docker_requirement = extract_html_requirement(
-        sources["requirements"], "R-S11dh", "main verifier Docker authority requirement"
-    )
-    for text in (
-        "Both image inspections and all three launch definitions",
-        "fixed local Unix socket",
-        "canonical <code>{}</code> <code>config.json</code>",
-        "Appendix C #261",
-        "R-S11e-126",
-    ):
-        require_text(
-            docker_requirement, text, "main verifier Docker authority requirement"
-        )
-    require_text(
-        sources["requirements"],
-        "<tr><td>261</td>",
-        "main verifier Docker authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority",
-        "main verifier Docker authority hardening ledger",
     )
 
 

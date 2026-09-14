@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation-bind verify.sh's immutable, confined build/test container authority."""
+"""Mutation-bind verify.sh's immutable inner-container and fixture contract."""
 
 import argparse
 from pathlib import Path
@@ -64,7 +64,6 @@ def forbid_docker_authority(block, label):
 
 def validate_contract(sources):
     shell = sources["shell"]
-    lib = sources["lib"]
     wrapper = sources["wrapper"]
     helper = sources["helper"]
     fixture_helper = sources["fixture_helper"]
@@ -103,10 +102,6 @@ def validate_contract(sources):
             'readonly VERIFY_GID="$(/usr/bin/id -g)"',
             '[ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution"',
             '[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group"',
-            'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"',
-            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
-            "&& ! remove_local_docker_authority; then",
-            "verify: preserving changed private Docker authority",
             '[[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
             'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"',
             '[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ]',
@@ -145,10 +140,9 @@ def validate_contract(sources):
         < shell.index("source scripts/lib.sh")
         < shell.index("load_pins")
         < shell.index("VERIFY_TMP=$(umask 077")
-        < shell.index('initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"')
         < shell.index("verify_scan_self_test")
         < shell.index("local_docker image inspect"),
-        "fixed Docker authority is not established before verdict preparation and Docker use",
+        "verifier identity and private workspace are not established before verdict preparation",
     )
     cleanup = extract(
         shell,
@@ -157,14 +151,11 @@ def validate_contract(sources):
         "main verifier cleanup",
     )
     require(
-        cleanup.index("remove_local_docker_authority")
+        "cleanup_nonroot_ipc_fixture" in cleanup
+        and "verify-private-tree-closure.py" in cleanup
+        and cleanup.index("cleanup_nonroot_ipc_fixture")
         < cleanup.index("verify-private-tree-closure.py"),
-        "fixed Docker authority is not removed before recursive workspace cleanup",
-    )
-    require(
-        "preserving changed private Docker authority" in cleanup
-        and "elif [ -z \"$VERIFY_TMP_ID\" ]" in cleanup,
-        "changed Docker authority does not stop recursive workspace cleanup",
+        "retained IPC fixtures are not cleaned before private workspace cleanup",
     )
     require(
         shell.index('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"')
@@ -189,50 +180,6 @@ def validate_contract(sources):
         "verifier postconditions are not ordered",
     )
 
-    require_all(
-        lib,
-        (
-            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
-            "initialize_local_docker_authority() {",
-            '[ "$(/usr/bin/id -u)" -ne 0 ] || die "$2 refuses host or container-root Docker authority"',
-            '[ "$(/usr/bin/id -g)" -ne 0 ] || die "$2 refuses a root primary group for Docker authority"',
-            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
-            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
-            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
-            "DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS",
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-            "assert_local_docker_authority() {",
-            "local_docker() {",
-            "/usr/bin/env -i",
-            "DOCKER_HOST=unix:///var/run/docker.sock",
-            'DOCKER_CONFIG="$LOCAL_DOCKER_AUTHORITY_CONFIG"',
-            "/usr/bin/docker",
-            "--host unix:///var/run/docker.sock",
-            '--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
-            "remove_local_docker_authority() {",
-            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json"',
-            '/usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
-        ),
-        "shared fixed local Docker authority",
-    )
-    local_docker = extract(
-        lib,
-        "local_docker() {",
-        "\n}\n\nlocal_docker_image_provenance() {",
-        "shared fixed Docker launcher",
-    )
-    require(
-        local_docker.count("assert_local_docker_authority") == 2,
-        "shared Docker launcher does not prove authority before and after each operation",
-    )
-    require(
-        "/usr/bin/env -i" in local_docker
-        and "/usr/bin/docker" in local_docker
-        and "--host unix:///var/run/docker.sock" in local_docker
-        and '--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"' in local_docker,
-        "shared Docker launcher is not bound to its empty environment, client, endpoint, and configuration",
-    )
     for forbidden in (
         'docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts',
         "docker build -t rd-devcheck .",
@@ -617,31 +564,6 @@ def validate_contract(sources):
     )
     require("recoverable archive distribution" in hardening, "hardening ledger hides image archive closure")
     require("fresh independent rebuild" in hardening, "hardening ledger hides remaining rebuild debt")
-    docker_requirement_start = '<div class="req"><span class="id">R-S11dh</span>'
-    require(docker_requirement_start in requirements, "requirements are missing R-S11dh")
-    docker_requirement = extract(
-        requirements,
-        docker_requirement_start,
-        "</div></div>",
-        "main verifier Docker authority requirement",
-    )
-    require_all(
-        docker_requirement,
-        (
-            "Both image inspections and all three launch definitions",
-            "fixed local Unix socket",
-            "canonical <code>{}</code> <code>config.json</code>",
-            "Appendix C #261",
-            "R-S11e-126",
-        ),
-        "main verifier Docker authority requirement",
-    )
-    require("<tr><td>261</td>" in requirements, "requirements are missing Appendix C #261")
-    require(
-        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority"
-        in hardening,
-        "hardening ledger is missing the main verifier Docker authority closure",
-    )
 
 
 MUTATIONS = (
@@ -649,18 +571,6 @@ MUTATIONS = (
     Mutation("shell", 'readonly VERIFY_GID="$(/usr/bin/id -g)"', 'readonly VERIFY_GID="$(id -g)"', "absolute host GID source"),
     Mutation("shell", '[ "$VERIFY_UID" -ne 0 ]', '[ "$VERIFY_UID" -ge 0 ]', "host UID-root refusal"),
     Mutation("shell", '[ "$VERIFY_GID" -ne 0 ]', '[ "$VERIFY_GID" -ge 0 ]', "host GID-root refusal"),
-    Mutation(
-        "shell",
-        'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"',
-        "true # fixed Docker authority initialization disabled",
-        "fixed Docker authority initialization",
-    ),
-    Mutation(
-        "shell",
-        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
-        'if false; then',
-        "fixed Docker authority cleanup",
-    ),
     Mutation("shell", 'IMAGE_ID="$(local_docker image inspect', 'IMAGE_ID="rd-devcheck-$( local_docker image inspect', "immutable image lookup"),
     Mutation("shell", 'IMAGE_ID="$(local_docker image inspect', 'IMAGE_ID="$(/usr/bin/docker image inspect', "fixed initial image inspection"),
     Mutation("shell", '[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ]', '[ -n "$IMAGE_ID" ]', "image identity equality"),
@@ -716,30 +626,6 @@ MUTATIONS = (
     Mutation("shell", 'run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup', 'run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" cleanup', "actor-owned IPC fixture cleanup"),
     Mutation("shell", '--foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"', '--foreign-uid "$VERIFY_UID" --foreign-gid "$VERIFY_GID"', "distinct cleanup principal"),
     Mutation("shell", "RUN=(local_docker run", "docker build -t rd-devcheck .\nRUN=(local_docker run", "image build absence"),
-    Mutation(
-        "lib",
-        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-        "DOCKER_HOST DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-        "ambient local Docker authority state",
-    ),
-    Mutation(
-        "lib",
-        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-        "(umask 077 && printf '{}\\n' >\"$config/config.json\")",
-        "private Docker config no-clobber creation",
-    ),
-    Mutation(
-        "lib",
-        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
-        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env",
-        "empty Docker client environment",
-    ),
-    Mutation(
-        "lib",
-        "--host unix:///var/run/docker.sock",
-        "--host tcp://127.0.0.1:2375",
-        "fixed local Docker endpoint",
-    ),
     Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked", "exec cargo", "locked offline Cargo wrapper"),
     Mutation("wrapper", '[ "$#" -eq 3 ] && [ "$2" = -p ] && [ "$3" = rustdesk ]', "true", "exact Cargo clean"),
     Mutation("wrapper", 'install -m 0400 -- /tmp/cargo-config.toml "$CARGO_HOME/config.toml"', "true # private clean config removed", "Cargo clean source map"),
@@ -798,14 +684,6 @@ MUTATIONS = (
     Mutation("requirements", '<span class="id">R-S11bg</span>', '<span class="id">R-S11bg-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>184</td>", "<tr><td>184-disabled</td>", "Appendix disposition"),
     Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority", "R-S11bg/R-S11e-73 — verifier authority deferred", "hardening ledger"),
-    Mutation("requirements", '<span class="id">R-S11dh</span>', '<span class="id">R-S11dh-disabled</span>', "Docker authority normative requirement"),
-    Mutation("requirements", "<tr><td>261</td>", "<tr><td>261-disabled</td>", "Docker authority Appendix disposition"),
-    Mutation(
-        "hardening",
-        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority",
-        "R-S11dh/R-S11e-XXX — main verifier Docker authority deferred",
-        "Docker authority hardening ledger",
-    ),
 )
 
 
@@ -820,7 +698,6 @@ def mutate_once(sources, mutation):
 def load_sources(repo):
     return {
         "shell": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
         "wrapper": (repo / "scripts/verify-container-command.sh").read_text(encoding="utf-8"),
         "helper": (repo / "scripts/prepare-ipc-test-artifact.py").read_text(encoding="utf-8"),
         "fixture_helper": (repo / "scripts/prepare-foreign-ipc-fixture.py").read_text(encoding="utf-8"),

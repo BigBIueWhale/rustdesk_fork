@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2e208ca5ccd4ee938349d20e8e8bfeef805cd68d8b1436f02d0bd2993be2b77c  requirements.html
+ed6ec7e3d54d5f45498b466a856d8df1d786908851d2dccffd1cca8695f6d83a  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,19 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+R-S11dh now states the timeless outer execution boundary: Docker and any guest administrator authority live only
+inside one authenticated, networkless disposable Linux VM launched by the nonroot host user; direct host-root or
+rootless-host Docker is not an alternate mode. The July fixed-socket defect/fix diary was replaced, duplicate
+Appendix C #261 was deleted outright, and its 88-line historical status receipt was deleted. The main-verifier
+checker and the workspace checker no longer treat a pinned `/var/run/docker.sock`, private client configuration,
+or documentation wording as proof of safe execution; 218 lines of those checks and their mutations were removed,
+while R-S11bg's immutable-image, exact-input, numeric-nonroot container, capability, mount, resource, two-principal
+fixture, and cleanup checks remain. This reduced `requirements.html` by 4,107 bytes before digest reconciliation,
+the focused checker by 5,897 bytes/125 lines, and the workspace checker by 4,151 bytes/89 lines. Current source still
+routes shared launchers to the host rootful daemon, so the new OPEN matrix row is STOP-SHIP and no Docker-backed
+gate may be run on this host until the disposable-VM harness replaces that route. No Docker operation, product
+binary, VM, service, listener, or native target ran in this documentation/checker correction.
 
 The dependency-advisory documentation now has the same single-owner shape. The dated Appendix D disposition
 ledger, its duplicate technical-debt row, and all dangling links to it were deleted; exact snapshot identities,
@@ -1490,7 +1503,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The token-aware macOS password/requester validator and Apple native-source checker retain focused coverage; the shared workspace verifier does not duplicate their formatter-sensitive catalogs. The main-verifier checker is limited to its R-S11bg/R-S11dh execution-authority boundary: it neither mirrors unrelated product-source gates nor self-oracles its mutation inventory. The portable smoke, Apple source checker, main verifier, builder inputs, scanners, and exact-source comparisons have explicit nonroot/no-pull/no-host-network authority. Recoverable archive distribution exists for the verifier image; a fresh independent rebuild and the broader release transaction remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The token-aware macOS password/requester validator and Apple native-source checker retain focused coverage; the shared workspace verifier does not duplicate their formatter-sensitive catalogs. The main-verifier checker now covers only R-S11bg's inner-container/image/input/fixture contract and no longer treats a pinned host rootful-Docker endpoint as safe execution authority. The current shared wrapper still targets the host's root-equivalent `/var/run/docker.sock`; it must not be used on this host. R-S11dh's disposable-VM execution harness and a fresh independent verifier-image rebuild remain open. |
 
 The main verifier has recoverable archive distribution, but still requires a fresh independent rebuild.
 Neither this item nor the overall release is claimed complete.
@@ -1532,6 +1545,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP.** Current Docker launchers select the host rootful daemon. A fixed client, socket inode, empty configuration, nonroot CLI process, and strong inner-container flags do not remove that daemon's host-root authority. Replace the direct-host path with the one authenticated disposable-Linux-VM topology required by R-S11dh: nonroot host QEMU orchestration, pinned read-only base plus pass-private overlay, no VM NIC, no host-writable share, guest-only Docker, private Unix control channels, exact input/output identity, listener invariance, joined teardown, and no direct-host or rootless-host fallback. No VM harness or runtime proof exists yet. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -7134,94 +7148,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cold input acquisition or an exact clean-commit R-B2/R-B10 artifact
   transaction. Other Docker/build consumers, installed/native/device behavior,
   and R-V3 external review remain separately open.
-- **R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority —
-  SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
-  ROOT-FIXTURE/FULL MAIN-VERIFIER EXECUTION AND BROADER RELEASE EVIDENCE REMAIN
-  OPEN.**
-  Platform: the unprivileged Linux source-verification host. Endpoint/action:
-  `scripts/verify.sh` immutable-devcheck-image inspection, mount-free image
-  preflight, ordinary source/behavior/compile transaction, two root-only IPC
-  filesystem fixture launches, and final image-identity inspection. Boundary:
-  the invoking user and private verifier workspace ↔ Docker-client selection,
-  daemon selection, client configuration, and the truth of the primary release
-  verification verdict.
-
-  R-S11bg already made the devcheck image immutable, the normalized source and
-  vendor inputs private/read-only, ordinary Cargo execution numeric non-root,
-  and the two root-required IPC fixtures artifact-only with exactly
-  `CHOWN`/`FOWNER`. All launch definitions were no-pull, networkless,
-  read-only-root, no-new-privileges, resource-bounded, and free of Docker-socket,
-  device, host-namespace, and published-port authority. Exact source review
-  nevertheless found two direct absolute-client image inspections and three
-  direct absolute-client launch definitions. They inherited Docker host,
-  context, configuration, TLS, platform, trust, and header inputs. The fixed
-  pathname, exact image, and container flags therefore did not prove which
-  daemon interpreted the verdict or what client configuration augmented it.
-  Docker's current CLI documentation states that `DOCKER_CONTEXT` overrides
-  `DOCKER_HOST`, that client behavior may come from the selected configuration,
-  and that contexts can select remote daemons. This was real release-verdict and
-  daemon/configuration-selection authority debt. It is not evidence that another
-  daemon or malicious configuration was used, a root fixture escaped or
-  received the checkout, source/image/vendor/output bytes changed, Docker
-  escaped, host root was acquired, a listener or port was exposed, host
-  RustDesk/service/configuration/firewall/network state changed, exploitation
-  occurred, or the host was compromised.
-
-  The verifier now captures numeric UID/GID through absolute `/usr/bin/id`,
-  refuses UID or primary GID zero before private verdict preparation, and
-  initializes the shared fixed local Docker authority beneath its exact private
-  mode-0700 workspace. The non-Docker workspace self-test exits remain
-  independent. Verdict execution admits only the exact root-owned non-symlink
-  mode-0755 single-link `/usr/bin/docker` and root-owned non-symlink single-link
-  `/var/run/docker.sock`; rejects inherited Docker routing/configuration inputs;
-  and creates one current-user mode-0600 single-link canonical `{}`
-  `config.json` with no-clobber semantics. The private parent/configuration,
-  client, socket, and configuration bytes are captured and rechecked around
-  every operation.
-
-  Both image inspections and all three launch definitions now use the common
-  empty-environment wrapper with fixed `PATH`, private `HOME`, fixed local
-  `DOCKER_HOST`, private `DOCKER_CONFIG`, absolute client, and explicit
-  `--host`/`--config`. Cleanup first reproves and removes only the exact
-  configuration file and directory. Changed authority is preserved and fails
-  before the descriptor-safe private-workspace remover can recurse. The
-  R-S11bg immutable image/input/container restrictions and root-fixture
-  capability/mount semantics are unchanged. R-S11dh and Appendix C #261 make
-  this correction normative; the focused and independent gates bind the caller,
-  shared authority, requirement, Appendix row, and this ledger entry.
-
-  Bash syntax, Python in-memory compilation, HTML parsing, requirements-hash
-  equality, the focused normal contract and all 88 deliberate mutations, the
-  independent workspace normal contract and complete in-memory source-mutation
-  catalog, and the native-codec normal/self-test gates pass in immutable verifier
-  image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
-  Each project gate ran as numeric UID:GID 1000:1000 with no network, a read-only
-  container root and repository, all capabilities dropped, no-new-privileges,
-  no Docker socket, host namespace, device, or published port, and explicit PID,
-  memory/no-swap, CPU, file-descriptor, and scratch ceilings.
-
-  Gate construction found and corrected two focused test-of-the-test weaknesses:
-  launch inventory now counts only actual launcher-definition lines instead of a
-  quoted internal AWK pattern, and the empty-environment mutation must survive
-  validation of the extracted `local_docker` function rather than being masked by
-  the outer provenance wrapper. The complete independent catalog then found two
-  diagnostic/targeting weaknesses: the initial-image mutation expected a
-  different diagnostic label than the independent contract emitted, and one
-  broad three-site launcher mutation crossed two independently owned validators.
-  The catalog now uses the actual label and three exact launch-site mutations;
-  it additionally proves the final image inspection and the focused verifier's
-  final-inspection and launcher mutations. The final complete catalog passed.
-  None of these corrections weakened production authority or accepted a bypass.
-
-  This source slice did not execute `scripts/verify.sh`, either root fixture, or
-  the independent gate's broader systemd/user-bus behavioral self-test. It ran
-  no release build, root, networked, or published container, host process scan,
-  or host RustDesk process/service/configuration/firewall/network inspection or
-  mutation. Root-fixture execution, broader verifier behavioral fixtures, a
-  fresh independent image rebuild, cold exact-commit R-B2/R-B10 artifacts,
-  installed/native/device behavior, and R-V3 external review remain separately
-  open.
 - **R-S11di/R-S11e-127 — Android signing-identity Docker client, daemon, and configuration authority —
   SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
   ONE-TIME GENERATOR/IDENTITY, APK/DEVICE, COLD RELEASE, AND EXTERNAL-REVIEW

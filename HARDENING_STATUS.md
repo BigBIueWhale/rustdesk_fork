@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e1c979ff5ff146dcfb03f89185a9d0b18544ce4c3ac60bef645a15f4abd8bd71  requirements.html
+d4473b5e48aa8772ec10a4cc56ae27147559f14cc695e775776cdaa911979bd9  requirements.html
 ```
 
 ## Current Verdict
@@ -320,6 +320,22 @@ read-only-source container, the retained focused suites rejected 563 voice/sessi
 raw-frame, and 41 service-status mutations; the current startup source invariant and normal workspace catalog
 also pass. This is fast source/integration evidence only: no Rust test, Android compilation, APK, emulator,
 device, listener, or product runtime ran, and every installed/native obligation in the OPEN matrix remains.
+
+Appendix C #345 and its one-row table are deleted in full. They duplicated R-S11gj's complete timeless
+installed Windows SCM/LocalSystem credential transaction while embedding a `GREEN` badge, named commit/tree/run,
+artifact and receipt hashes, verifier acceptance, cleanup narration, and current evidence limits in the normative
+specification. R-S11gj remains unchanged and owns every installation, principal, image, protocol, durable-state,
+restart, secret-handling, receipt, VM-isolation, and evidence-boundary requirement. The shared gate no longer
+tests the live ledger's title, commit IDs, evidence prose, or deleted Appendix status; the workspace verifier's
+documentation-only validator and five prose mutations are deleted; and the focused Windows harness verifier no
+longer requires or mutates the Appendix/status records. Its direct PowerShell, result-schema, VM topology, Windows
+source, R-S11gj semantic, and behavioral self-tests remain. Named evidence and every current gap remain in this
+ledger, where progress belongs. This is documentation/verifier architecture cleanup, not new Windows execution.
+Confined normal Windows-harness/workspace validation, six independently runnable behavioral self-tests, and five
+focused credential/VM-boundary weakenings pass. The VM-orchestrator and MSI-canonicalizer self-tests remain
+unexecuted here because the exact helper image and pinned `olefile` wheel are absent; no substitute was acquired.
+The global source-mutation checkpoint advances beyond the deleted Windows-evidence fixture but remains non-green
+at a separate stale `VERIFIER_FIXTURE_TMP` target.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

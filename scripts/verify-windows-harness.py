@@ -2640,17 +2640,6 @@ def validate_sources(sources: dict[str, str]) -> None:
         ("strict secret-free receipt", "secret-free installed-SCM receipt requirement"),
     ):
         require(installed_requirement, literal, description)
-    require(requirements, "<tr><td>345</td>", "installed-SCM Appendix C row")
-    require(
-        hardening,
-        "R-S11gj/R-S11e-222 — exact installed Windows SCM credential authority",
-        "installed-SCM hardening ledger",
-    )
-    require(
-        requirements,
-        '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
-        "installed-SCM Appendix native status",
-    )
     require(
         host,
         'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"',
@@ -4648,12 +4637,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "The Windows client may open the service-password transport before proving its own executable",
         ),
         (
-            "installed-SCM Appendix native status",
-            "requirements",
-            '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
-            '<span class="pill p-open">EXACT-CURRENT NATIVE RUN PENDING</span>',
-        ),
-        (
             "installed-SCM service-generation retirement",
             "installed_probe",
             "Wait-ExactProcessGenerationGone $servicePreRestart.Process 'SCM supervisor generation'",
@@ -4724,12 +4707,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "requirements",
             "zero virtual network interfaces",
             "one virtual network interface",
-        ),
-        (
-            "installed-SCM hardening ledger",
-            "hardening",
-            "R-S11gj/R-S11e-222 — exact installed Windows SCM credential authority",
-            "R-S11gj/R-S11e-999 — exact installed Windows SCM credential authority",
         ),
         ("watch patch reorder", "watch", "patch-block-reorder", "patch-order-ignored"),
         (

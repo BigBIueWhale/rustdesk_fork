@@ -4764,32 +4764,10 @@ if grep -Eq 'SYS_ptrace|PTRACE_TRACEME' src/platform/linux.rs; then
 fi
 grep -Fq 'SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2' res/rustdesk.service ||
   r_s11b2="$r_s11b2 linux-service-bootstrap-filter-drift"
-for ledger_id in R-S11e-9 R-S11e-11 R-S11e-21; do
+for ledger_id in R-S11e-9 R-S11e-21; do
   grep -Fq "$ledger_id" HARDENING_STATUS.md ||
     r_s11b2="$r_s11b2 ledger-$ledger_id-missing"
 done
-if grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md \
-    || grep -Fq 'WORKTREE VALIDATED VIA R-S11b-2d' HARDENING_STATUS.md; then
-  r_s11b2="$r_s11b2 stale-windows-current-native-evidence-claim"
-fi
-grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-exact-current-native-boundary-missing"
-grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 r-s11e-11-status-prefix-missing"
-grep -Fq '`f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-exact-current-native-commit-missing"
-grep -Fq 'single-pass named-commit result, not cold A==B release evidence' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-exact-current-native-scope-missing"
-grep -Fq '`0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 installed-scm-native-green-status-missing"
-grep -Fq "R-S11gj's installed SCM credential transaction is green" HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 installed-scm-native-result-missing"
-grep -Fq '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>' requirements.html ||
-  r_s11b2="$r_s11b2 installed-scm-appendix-native-green-missing"
-grep -Fq '<code>0a12ed407e63129cac4065f4418911ab71adf3ca</code>' requirements.html ||
-  r_s11b2="$r_s11b2 installed-scm-appendix-native-commit-missing"
-grep -Fq 'It remains a named single-build result, not current-master R-B2.' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 installed-scm-release-scope-missing"
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs || r_s11b2="$r_s11b2 service-owned-role-marker-missing"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-service-owned-role-marker-missing"
 if grep -Eq 'BeginUserOwnedPermanentPassword|BeginServiceOwnedUnattendedPasswordChange|RequestServiceOwnedUnattendedPasswordChange|RequestMacosServiceOwnedUnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult' src/ipc.rs src/platform/windows.rs; then

@@ -39555,83 +39555,6 @@ def validate_universal_software_codec_build_gate(sources):
     )
 
 
-def validate_windows_native_credential_evidence_scope_contract(sources):
-    for source, token, label in (
-        ("verify", "grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md", "stale current-worktree native-evidence rejection"),
-        (
-            "verify",
-            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
-            "exact-current native-Windows verifier boundary",
-        ),
-        (
-            "hardening",
-            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
-            "exact-current native-Windows evidence boundary",
-        ),
-        (
-            "verify",
-            "grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof' HARDENING_STATUS.md",
-            "R-S11e-11 source-disposition binding",
-        ),
-        (
-            "verify",
-            "grep -Fq '`f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed' HARDENING_STATUS.md",
-            "native-Windows exact-commit verifier binding",
-        ),
-        (
-            "verify",
-            "grep -Fq 'single-pass named-commit result, not cold A==B release evidence' HARDENING_STATUS.md",
-            "native-Windows evidence-scope binding",
-        ),
-        (
-            "verify",
-            "grep -Fq '`0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md",
-            "installed-SCM exact-commit verifier binding",
-        ),
-        (
-            "verify",
-            'grep -Fq "R-S11gj\'s installed SCM credential transaction is green" HARDENING_STATUS.md',
-            "installed-SCM result verifier binding",
-        ),
-        (
-            "hardening",
-            "`f0ff7532721da0ccccf3ba186274db5ade8cdb8e` compiled the native authority-critical suites and completed",
-            "native-Windows exact-commit evidence boundary",
-        ),
-        (
-            "hardening",
-            "single-pass named-commit result, not cold A==B release evidence",
-            "native-Windows evidence-scope boundary",
-        ),
-        (
-            "hardening",
-            "`0a12ed407e63129cac4065f4418911ab71adf3ca`",
-            "installed-SCM exact-commit evidence boundary",
-        ),
-        (
-            "hardening",
-            "R-S11gj's installed SCM credential transaction is green",
-            "installed-SCM result evidence boundary",
-        ),
-        (
-            "hardening",
-            "It remains a named single-build result, not current-master R-B2.",
-            "installed-SCM release-scope boundary",
-        ),
-        (
-            "requirements",
-            '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
-            "installed-SCM Appendix native status",
-        ),
-    ):
-        require_text(sources[source], token, label)
-    if any(stale in sources["hardening"].lower() for stale in (
-        "current-worktree native evidence",
-        "worktree validated via r-s11b-2d",
-    )):
-        raise VerificationError("hardening ledger overclaims current native-Windows evidence")
-
-
 def validate_windows_terminal_synchronous_io_cancellation_contract(sources):
     helper = sources["terminal_helper"]
     verify = sources["verify"]
@@ -40116,7 +40039,6 @@ def validate_sources(sources):
     validate_macos_helper_build_binding_contract(sources)
     validate_macos_variadic_open_mode_contract(sources)
     validate_windows_ipc_dacl_coverage_contract(sources)
-    validate_windows_native_credential_evidence_scope_contract(sources)
     validate_windows_terminal_synchronous_io_cancellation_contract(sources)
     validate_cm_file_login_order_contract(sources)
     validate_windows_privacy_broker_contract(sources)
@@ -44510,36 +44432,6 @@ def run_source_mutations(sources):
             "                        #[cfg(target_os = \"linux\")]\n                        p.rx_desktop_ready,",
             "                        p.rx_desktop_ready,",
             "Linux-only readiness task handoff",
-        ),
-        (
-            "hardening",
-            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
-            "EXACT-CURRENT NATIVE WINDOWS RELEASE, INSTALLED-SCM, AND EXTERNAL-REVIEW EVIDENCE COMPLETE",
-            "exact-current native-Windows evidence boundary",
-        ),
-        (
-            "verify",
-            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
-            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS RELEASE, INSTALLED-SCM, AND EXTERNAL-REVIEW EVIDENCE COMPLETE' HARDENING_STATUS.md",
-            "exact-current native-Windows verifier boundary",
-        ),
-        (
-            "requirements",
-            '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
-            '<span class="pill p-open">EXACT-CURRENT NATIVE RUN PENDING</span>',
-            "installed-SCM Appendix native status",
-        ),
-        (
-            "hardening",
-            "native evidence for current `master`: later commits changed all five authority-critical production files",
-            "native evidence for current `master`",
-            "later-source-change invalidation statement",
-        ),
-        (
-            "verify",
-            "grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md",
-            "grep -Fiq 'definitely absent stale evidence claim' HARDENING_STATUS.md",
-            "stale current-worktree native-evidence rejection",
         ),
         (
             "verify",

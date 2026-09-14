@@ -10924,8 +10924,8 @@ Historical implementation and run details remain in Git at
 
 ### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership
 
-**Status: SOURCE IMPLEMENTED AND FOCUSED-GATED; EXECUTABLE DART/FLUTTER/NATIVE
-AND TARGET-PLATFORM EVIDENCE OPEN.**
+**Status: SOURCE CORRECTED; CURRENT EXECUTABLE DART/FLUTTER/NATIVE AND
+TARGET-PLATFORM EVIDENCE OPEN.**
 
 Current source reserves one exact session/operation/key/side response owner before
 each normal-directory, empty-directory, or recursive-directory native dispatch.
@@ -10937,19 +10937,27 @@ authority. Because path-only wire responses have no request nonce, timeout retai
 a bounded tombstone and refuses same-key retry until an owned late response is
 discarded or the session retires. Exact close/replacement clears ownership before
 settling waiters, and the native producer preserves the actual local/remote side.
+Recursive admission now rejects zero, negative, and out-of-signed-32-bit action IDs
+before reserving capacity, starting a timer, or dispatching. Recursive error events
+consume an owner only when their ID is a canonical positive signed-32-bit string and
+their error is a string; the former event-handler coercion of arbitrary values through
+`toString()` is absent.
 
-Focused Dart regressions are authored for reserve-before-dispatch, blocked-dispatch
-capacity, correlation refusal, retirement/replacement, dispatch failure, the shared
-bound, tombstones, late response consumption, and timer cancellation.
-scripts/verify-file-response-ownership.py and the independent workspace contract
-protect those source invariants. They do not prove the still-open exact Dart/native
-execution, installed cross-platform bridge behavior, fast/late response behavior,
-timeouts, reconnect, cross-version operation, latency/resource soak, or exact
-cleanup required by the global STOP-SHIP matrix. Historical implementation and run
-details—including the deleted stale requirements-hash recital—remain in Git at
-7595f363961c3a15b718e99848c63e440ac73718. The sole authoritative current
-requirements identity is the top-level digest in this ledger and its exact
-docs/NATIVE-CODEC-WATCH.md mirror.
+The executable `flutter/test/mobile_file_session_lifecycle_test.dart` suite now covers
+all three response maps before blocked dispatch settlement, shared retained capacity,
+strict recursive action/error identity, correlation refusal, retirement/replacement,
+dispatch failure, tombstones, late-response consumption, and timer cancellation. It
+remains wired into `scripts/dart-verify.sh`. The former 834-line Python recognizer,
+its duplicated workspace implementation, and shared/Apple invocations were deleted:
+their 36 mutations altered source, test names, gate wiring, and documentation strings
+without running Dart, Flutter, a native bridge, or a target. No Dart, Flutter, native,
+product, package, or target executable ran in this slice because no user-owned
+container/VM runtime or host-independent Dart toolchain was available; no rootful
+fallback was used. Exact Dart/native execution, installed cross-
+platform bridge behavior, fast/late responses, timeouts, reconnect, cross-version
+operation, latency/resource soak, and cleanup remain open under the global STOP-SHIP
+matrix. Historical implementation details remain in Git at
+7595f363961c3a15b718e99848c63e440ac73718.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 

@@ -4743,14 +4743,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2-001) R-S11hl reserve-before-dispatch file-response ownership =="
-if python3 scripts/verify-file-response-ownership.py --repo . --self-test; then
-  note "ok  R-S11hl Apple/shared file-directory responses reserve bounded exact-session owners before dispatch"
-else
-  echo "  FAIL R-S11hl Apple/shared file-directory requests regained send-before-register loss, unbounded retention, stale response authority, or incomplete timer cleanup"
-  rc=1
-fi
-
 echo "== (2g-c2-002) R-S11hm exact-session file-command and job-result ownership =="
 if python3 scripts/verify-file-command-session-ownership.py --repo . --self-test; then
   note "ok  R-S11hm Apple/shared file commands and job results remain bounded exact-session owners through retirement"

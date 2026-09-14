@@ -382,33 +382,11 @@ class FileModel {
         expectedSessionId, evt['value'], evt['is_local']);
   }
 
-  // This method fixes a deadlock that occurred when the previous code directly
-  // called jobController.jobError(evt) in the job_error event handler.
-  //
-  // The problem with directly calling jobController.jobError():
-  //   1. fetchDirectoryRecursiveToRemove(jobID) reserves the recursive response
-  //      owner before dispatch and waits for completion
-  //   2. If the remote has no permission (or some other errors), it returns a FileTransferError
-  //   3. The error triggers job_error event, which called jobController.jobError()
-  //   4. jobController.jobError() calls getJob(jobID) to find the job in jobTable
-  //   5. But addDeleteDirJob() is called AFTER fetchDirectoryRecursiveToRemove(),
-  //      so the job doesn't exist yet in jobTable
-  //   6. Result: jobController.jobError() does nothing useful, and
-  //      readRecursiveTasks[jobID] never completes, causing a 2s timeout
-  //
-  // Solution: Before calling jobController.jobError(), we first check if there's
-  // a pending readRecursiveTasks with this ID and complete it with the error.
+  // Recursive inspection is reserved before its delete job enters jobTable, so
+  // route the exact raw event to that owner before the ordinary job-status sink.
   void handleJobError(Map<String, dynamic> evt, SessionID expectedSessionId) {
     if (!_isCurrentSession(expectedSessionId)) return;
-    final id = int.tryParse(evt['id']?.toString() ?? '');
-    if (id != null) {
-      final err = evt['err']?.toString() ?? 'Unknown error';
-      fileFetcher.tryCompleteRecursiveTaskWithError(
-          expectedSessionId, id, err);
-    }
-    // Always call jobController.jobError(evt) to ensure all error events are processed,
-    // even if the event does not have a valid job ID. This allows for generic error handling
-    // or logging of unexpected errors.
+    fileFetcher.tryCompleteRecursiveTaskWithError(expectedSessionId, evt);
     jobController.jobError(evt, expectedSessionId);
   }
 
@@ -2173,10 +2151,13 @@ class FileFetcher {
     return false;
   }
 
-  // Complete a pending recursive read task with an error.
-  // See FileModel.handleJobError() for why this is necessary.
+  // Validate the raw event at the response owner rather than trusting the
+  // event handler to derive an action identity.
   bool tryCompleteRecursiveTaskWithError(
-      SessionID expectedSessionId, int id, String error) {
+      SessionID expectedSessionId, Map<String, dynamic> event) {
+    final id = JobController._eventInt(event['id'], positive: true);
+    final error = event['err'];
+    if (id == null || error is! String) return false;
     final pending = _readRecursiveTasks[id];
     if (pending == null ||
         pending.expectedSessionId != expectedSessionId) {
@@ -2236,6 +2217,10 @@ class FileFetcher {
       int actID, String path, bool isLocal, bool showHidden,
       {SessionID? expectedSessionId}) async {
     // TODO test Recursive is show hidden default?
+    if (actID <= 0 || actID > _kMaxNativeFileJobInt) {
+      throw ArgumentError.value(
+          actID, 'actID', 'must be a positive 32-bit integer');
+    }
     final selectedSessionId = expectedSessionId ?? sessionId;
     final pending = _reserve(_readRecursiveTasks, actID, selectedSessionId,
         isLocal, 'Recursive directory request');

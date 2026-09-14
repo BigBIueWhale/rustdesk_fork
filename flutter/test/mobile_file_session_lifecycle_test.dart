@@ -68,6 +68,158 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   });
 
+  test('empty and recursive response owners exist before dispatch settles',
+      () async {
+    final session = const Uuid().v4obj();
+    final emptyDispatchEntered = Completer<void>();
+    final recursiveDispatchEntered = Completer<void>();
+    final releaseEmptyDispatch = Completer<void>();
+    final releaseRecursiveDispatch = Completer<void>();
+    final fetcher = FileFetcher(
+      () => session,
+      maxPending: 2,
+      requests: requests(
+        readEmptyDirectories: (actualSession, path, hidden) async {
+          expect(actualSession, session);
+          expect(path, '/empty-tree');
+          emptyDispatchEntered.complete();
+          await releaseEmptyDispatch.future;
+        },
+        readDirectoryTree:
+            (actualSession, actionId, path, isRemote, hidden) async {
+          expect(actualSession, session);
+          expect(actionId, 7);
+          expect(path, '/recursive-tree');
+          expect(isRemote, isFalse);
+          recursiveDispatchEntered.complete();
+          await releaseRecursiveDispatch.future;
+        },
+      ),
+    );
+
+    final empty = fetcher.readEmptyDirs('/empty-tree', false, false,
+        expectedSessionId: session);
+    await emptyDispatchEntered.future;
+    expect(
+        fetcher.tryCompleteEmptyDirsTask(
+            session,
+            jsonEncode({'path': '/empty-tree', 'empty_dirs': <Object>[]}),
+            'false'),
+        isTrue);
+    expect(await empty, isEmpty);
+
+    final recursive = fetcher.fetchDirectoryRecursiveToRemove(
+        7, '/recursive-tree', true, false,
+        expectedSessionId: session);
+    await recursiveDispatchEntered.future;
+    expect(
+        fetcher.tryCompleteTask(
+            session, directoryResponse('/recursive-tree', id: 7), 'true'),
+        isTrue);
+    expect((await recursive).path, '/recursive-tree');
+
+    await expectLater(
+        fetcher.fetchDirectory('/capacity-still-owned', false, false,
+            expectedSessionId: session),
+        throwsA(isA<StateError>().having((error) => error.message, 'message',
+            'File request capacity exhausted')));
+    releaseEmptyDispatch.complete();
+    releaseRecursiveDispatch.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    final afterSettlement = fetcher.fetchDirectory(
+        '/after-dispatch-settlement', false, false,
+        expectedSessionId: session);
+    expect(
+        fetcher.tryCompleteTask(session,
+            directoryResponse('/after-dispatch-settlement'), 'false'),
+        isTrue);
+    expect((await afterSettlement).path, '/after-dispatch-settlement');
+  });
+
+  test('recursive requests require a positive signed-32-bit action ID',
+      () async {
+    final session = const Uuid().v4obj();
+    var dispatches = 0;
+    final fetcher = FileFetcher(
+      () => session,
+      maxPending: 1,
+      requests: requests(readDirectoryTree:
+          (actualSession, actionId, path, isRemote, hidden) async {
+        dispatches++;
+      }),
+    );
+
+    for (final invalidId in <int>[-1, 0, 0x80000000]) {
+      await expectLater(
+          fetcher.fetchDirectoryRecursiveToRemove(
+              invalidId, '/invalid', false, false,
+              expectedSessionId: session),
+          throwsA(isA<ArgumentError>()));
+    }
+    expect(dispatches, 0);
+
+    final valid = fetcher.fetchDirectoryRecursiveToRemove(
+        1, '/valid', false, false,
+        expectedSessionId: session);
+    expect(dispatches, 1);
+    expect(
+        fetcher.tryCompleteTask(
+            session, directoryResponse('/valid', id: 1), 'false'),
+        isTrue);
+    expect((await valid).path, '/valid');
+  });
+
+  test('recursive errors require an exact canonical event owner', () async {
+    final session = const Uuid().v4obj();
+    final otherSession = const Uuid().v4obj();
+    final fetcher = FileFetcher(() => session, requests: requests());
+    final result = fetcher.fetchDirectoryRecursiveToRemove(
+        7, '/recursive-error', false, false,
+        expectedSessionId: session);
+
+    for (final invalidId in <Object?>[
+      7,
+      null,
+      '',
+      '+7',
+      '07',
+      ' 7',
+      '-1',
+      '0',
+      '2147483648'
+    ]) {
+      expect(
+          fetcher.tryCompleteRecursiveTaskWithError(
+              session, {'id': invalidId, 'err': 'recursive failure'}),
+          isFalse);
+    }
+    expect(
+        fetcher.tryCompleteRecursiveTaskWithError(
+            session, {'id': '7', 'err': 7}),
+        isFalse);
+    expect(
+        fetcher.tryCompleteRecursiveTaskWithError(
+            otherSession, {'id': '7', 'err': 'recursive failure'}),
+        isFalse);
+    expect(
+        fetcher.tryCompleteRecursiveTaskWithError(
+            session, {'id': '8', 'err': 'recursive failure'}),
+        isFalse);
+    expect(
+        fetcher.tryCompleteRecursiveTaskWithError(
+            session, {'id': '7', 'err': 'recursive failure'}),
+        isTrue);
+    expect(
+        fetcher.tryCompleteRecursiveTaskWithError(
+            session, {'id': '7', 'err': 'duplicate failure'}),
+        isFalse);
+    await expectLater(
+        result,
+        throwsA(isA<StateError>().having((error) => error.message, 'message',
+            'recursive failure')));
+  });
+
   test('response must match session, locality, operation, and key', () async {
     final session = const Uuid().v4obj();
     final otherSession = const Uuid().v4obj();
@@ -103,7 +255,7 @@ void main() {
         isFalse);
     expect(
         fetcher.tryCompleteRecursiveTaskWithError(
-            session, 0, 'anonymous error'),
+            session, {'id': '0', 'err': 'anonymous error'}),
         isFalse);
     expect(
         fetcher.tryCompleteTask(

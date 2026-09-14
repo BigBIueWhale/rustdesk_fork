@@ -1371,13 +1371,6 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a02) Android exact voice/input/lifecycle ownership (R-S11br/R-S11ei/R-S11ek/R-S11eq/R-S11e-84/R-S11e-153/R-S11e-169/R-S11e-178) =="
-if python3 scripts/verify-android-voice-call-ownership.py --repo .; then
-  echo "  ok  R-S11e-84/R-S11e-153/R-S11e-169 Android voice/playback and controlled-input source invariants (runtime evidence remains separate)"
-else
-  echo "  FAIL R-S11e-84/R-S11e-153/R-S11e-169 Android voice/input regained per-event switching, dual recorders, erased service/connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
-  rc=1
-fi
 if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
   echo "  ok  R-S11e-287 outgoing Flutter event streams reserve exact consumer generations before native replacement"
 else
@@ -15392,8 +15385,8 @@ fi
 # early, but the flutter mobile scripts + the CI matrix + build.py's own flags still
 # selected it until 575859a's follow-on — this locks the universal drop in tree-wide.
 #
-# Two exact verifier programs carry forbidden-token strings solely as source and
-# mutation fixtures. They are not build drivers. Exclude those exact paths rather
+# One exact verifier program carries forbidden-token strings solely as source and
+# mutation fixtures. It is not a build driver. Exclude that exact path rather
 # than a verify-* class, so every new script remains scanned by default. The
 # repository's ignored .harness-state/ root contains retained exact-source evidence
 # trees, not release inputs; scanning those copies makes the live verdict depend on
@@ -15403,7 +15396,7 @@ software_codec_build_hits() (
   grep -rInE 'hwcodec|vram|mediacodec' \
       --exclude-dir='.git' --exclude-dir='target' --exclude-dir='.harness-state' \
       --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
-    | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\.py:[0-9]+:' \
+    | grep -vE '^\./scripts/verify-verifier-workspace\.py:[0-9]+:' \
     | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
     | grep -vE ':[0-9]+:[[:space:]]*#' \
     | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
@@ -15415,8 +15408,6 @@ software_codec_default_feature_is_forbidden() {
 software_codec_build_gate_self_test() {
   local fixture="$VERIFY_TMP/software-codec-build-gate" hits
   install -d -m 0700 "$fixture/scripts" "$fixture/.harness-state/evidence" || return 1
-  printf '%s\n' 'screenshot.request.restore_vram = true' \
-    >"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1
   printf '%s\n' 'mediacodec = ["ndk"]' \
     >"$fixture/scripts/verify-verifier-workspace.py" || return 1
   printf '%s\n' 'features.append("hwcodec")' \

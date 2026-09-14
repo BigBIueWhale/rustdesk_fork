@@ -82,7 +82,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "native_handler": "src/flutter.rs",
         "native_io": "src/client/io_loop.rs",
         "dart_verify": "scripts/dart-verify.sh",
-        "android_verify": "scripts/verify-android-voice-call-ownership.py",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
         "requirements": "requirements.html",
@@ -444,16 +443,6 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(sources["dart_verify"], needle, label)
 
-    require(
-        sources["android_verify"],
-        "void onEventsRetired()",
-        "prior mobile exact-generation verifier update",
-    )
-    require(
-        sources["android_verify"],
-        "void _scheduleDrain(int generation)",
-        "prior mobile event-driven generation verifier update",
-    )
     for key, needle, label in (
         (
             "requirements",

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2dba6ad579468b885ed1b77b5ba8294865bfb40e6f58046bb10867c5c73e0c64  requirements.html
+e22e32dc30544d4ba57059815949eaf3f18e76ff2ede5cb40c9d31d08f9c9f9a  requirements.html
 ```
 
 ## Current Verdict
@@ -72,16 +72,12 @@ This reduced `requirements.html` from 2,135,760 to 2,127,416 bytes. The Rust and
 no longer load, mutate, or accept requirements/status prose as scanner evidence, reducing them by 2,827 and 3,293
 bytes; their product/source semantic suites still reject 100 and 90 deliberate mutations respectively. The
 workspace verifier's two duplicate advisory implementations, dispatch, and eight now-unused source bindings were
-deleted, reducing it by 36,314 bytes and 850 lines. Its remaining role is not to reimplement those focused gates.
-The normal workspace consistency pass is not green: after validating the new requirements identity and reaching
-unrelated X11 coverage, it stops at a pre-existing duplicate which expects a blank line before the focused X11
-validator's `@dataclass` boundary although that focused file has no such blank line; the focused X11 validator and
-its deliberate mutations pass directly. This is stale verifier-of-
-verifier cleanup debt, not an advisory-scanner failure, and was not expanded into this slice. No scanner image,
-product source, package, native target, or service ran or changed. Current advisory
-verdict provenance remains the R-R3 entry below, and every installed, artifact, presentation, performance,
-resource, independent-reproduction, and external-review obligation in the OPEN matrix remains unchanged. Including
-this record, the live ledger is 1,072,392 bytes, or 357,464 conservative tokens by the documented size method.
+deleted, reducing it by 36,314 bytes and 850 lines. Its remaining role is not to reimplement focused gates. The
+later duplicate X11 validator was also deleted, and the current normal workspace consistency pass is green. That
+pass establishes only source-contract consistency; no scanner image, product source, package, native target, or
+service ran as part of this documentation cleanup. Current advisory verdict provenance remains the R-R3 entry below,
+and every installed, artifact, presentation, performance, resource, independent-reproduction, and external-review
+obligation in the OPEN matrix remains unchanged.
 
 R-S11a now states only the timeless cross-UID peer/process-authority, fresh-principal, and no-parent-adoption
 contract. Its original “Verified” snapshot, open-fix narration, source pointers, and CI prescription were deleted;
@@ -446,19 +442,16 @@ queue, terminal, desktop bridge, Android child-future, no-detached-runtime, exac
 and normal-close-finality checks. No Rust test, Android target, installed application,
 or device ran in that CM cleanup; R-S11bg and all current native/runtime obligations remained open.
 
-Android focused-verifier ownership is now one-way rather than circular. The workspace verifier lost 10,299
-lines and 419,555 bytes: five duplicate Android voice/session, lifecycle-drain, raw-frame, service-status,
-and startup-transaction validators; their source loaders and dispatch; and 578 mutations whose diagnostics
-were duplicate-owned or existed only to mutate that plumbing. The retained focused raw-frame and status
-verifiers no longer require or mutate their deleted workspace copies. One stale lifecycle-drain mutation
-now targets the current post-drain
-exact-owner revalidation rather than a deleted comment boundary. In a nonroot, network-disabled,
-read-only-source container, the retained focused suites rejected 563 voice/session, 39 lifecycle-drain, 59
-raw-frame, and 41 service-status mutations; the normal workspace catalog also passed. The remaining 304-line
-startup checker was later deleted because it only matched Kotlin/Rust source strings and never executed a Service
-transaction. This is fast source/integration evidence only: no Rust test, Android compilation, APK, emulator,
-device, listener, or product runtime ran, and every installed/native obligation in the OPEN matrix remains.
-
+The former Android voice/session source verifier is deleted. It had grown to 5,638 lines and 268,755
+bytes, loaded 48 product, fixture, gate, and documentation sources, validated unrelated file, clipboard,
+screenshot, video, transport, and session-stream wording, and carried a 470-entry mutation catalog that
+the normal shared gate did not execute. The file-dialog verifier no longer reads that verifier's source,
+and the software-codec scan no longer grants the deleted file a build-token exception. The shared gate
+retains narrower product-source guards and executable Rust behavior-test invocations, while dedicated
+session-stream and lifecycle checks remain separate. R-S11br, R-S11ek, and Appendix C #211/#290 now
+state timeless ownership and packaged-native acceptance contracts rather than defect history, source-gate
+inventory, or progress claims. This deletion is not Android runtime evidence: exact-current APK install,
+task-swipe/reopen/Force Stop, real peer presentation, failure injection, and resource cleanup remain OPEN.
 Appendix C #345 and its one-row table are deleted in full. They duplicated R-S11gj's complete timeless
 installed Windows SCM/LocalSystem credential transaction while embedding a `GREEN` badge, named commit/tree/run,
 artifact and receipt hashes, verifier acceptance, cleanup narration, and current evidence limits in the normative
@@ -1126,7 +1119,7 @@ timings, hashes, and confinement narration remain in Git history.
 | R-S11e-161 current Linux service-child executable-object gate authority | The gate inspects the dedicated executable-object helper: the running image and byte-identical installed fallback are opened close-on-exec, and the installed path is also no-follow, before credential-changing launch. |
 | R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority | Screenshot checks reject only the retired process-global cache/setter path, while media checks select the exact owning constructor, controlled-audio owner, connection fields, and read-before-install order. |
 | R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority | The shared edge gate follows the bounded connection/channel-owned screenshot registry and the typed, authorized Remote-only Android desktop-capture owner set; the deleted `isViewCamera` Boolean is not authority. |
-| R-S11e-164 exact software-codec build-path verifier scope | The build-path scan excludes only the two exact verifier-fixture programs that contain inert negative-test literals; new and ordinary build-capable scripts remain scanned by default. |
+| R-S11e-164 exact software-codec build-path verifier scope | The build-path scan excludes only the workspace verifier that contains inert negative-test literals; new and ordinary build-capable scripts remain scanned by default. |
 | R-S11e-165 current mobile build-authority launcher mutation | The Android outer builder has one fixed `local_docker` launcher with `--network=none`; the hostile fixture changes that exact launcher to host networking and must be rejected. |
 | R-S11e-166 current shared Apple companion-gate authority | The shared gate binds the fixed selected Apple target matrix, rejects target overrides, and checks the exact reproducibility-epoch transfer plus two private read-only source mounts. |
 | R-S11e-167 current shared Android serialization-gate authority | An exact adjacency predicate requires `@Synchronized` immediately before `rustSetByName`; the broken quiet-grep pipeline and broad annotation-presence surrogate are absent. |
@@ -2711,118 +2704,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   systemd user-bus socket, and the isolated container deliberately mounts no host runtime directory or bus. The
   current repo-pinned full-verifier image is not locally present, and the binding loop excludes the long release
   build, so no repository-wide `scripts/verify.sh` or release transaction result is claimed.
-- **R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners — SOURCE,
-  FOCUSED KOTLIN, SOURCE GATE, AND MUTATION VERIFIED 2026-07-22; EXACT TARGET-LOCAL APK VALIDATED
-  2026-07-23; NATIVE DEVICE AND FULL RELEASE EVIDENCE REMAIN R-B10/R-B2.** Platform: Android API 30+
-  native playback/microphone
-  capture inside the one application process retained by `MainService`. Endpoint/action: controlled-side
-  `add_connection`/`update_voice_call_state`/`remove_connection` JNI callbacks, outgoing Flutter
-  `on_voice_call_started`/`on_voice_call_closed`, Activity creation/resume/destruction, service task removal and
-  destruction, and MediaProjection playback start/stop. Boundary: exact live controlled connection or current
-  Flutter Activity-session owner ↔ the process-wide `AudioRecord`, its blocking reader worker, and the exact
-  MediaProjection playback grant.
+- **R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners — SOURCE
+  IMPLEMENTED; EXACT-CURRENT PACKAGED NATIVE/DEVICE EVIDENCE OPEN.** One serialized
+  `VoiceCallAudioCoordinator` owns the process-wide `AudioRecordHandle`. Controlled owners are
+  registered and activated independently by exact service, connection, and registry generation; outgoing
+  ownership uses the exact positive Activity generation and canonical isolate UUID. Stale updates,
+  teardown, Activity callbacks, and service generations cannot alter their replacements, and neither owner
+  domain clears the other.
 
-  The inherited topology gave `MainService` and `MainActivity` separate `AudioRecordHandle` objects. Outgoing
-  events selected one from current service-binding timing; controlled connection state switched the service
-  recorder immediately from each connection's Boolean event. A false event from one connection could therefore
-  switch out a second live call, ordinary connection removal sent no native retirement event, and Activity/task
-  replacement could retain or address stale native state. `AudioRecordHandle.createAudioRecorder()` accepted a
-  built but uninitialized recorder, `startAudioRecorder()` returned no success state, buffer setup could retain a
-  partial recorder, and a null result from the blocking read loop did not terminate the loop. This is a
-  source-proven Android native resource/lifecycle defect and a plausible contributor to state that survives an
-  Activity swipe until Force Stop kills the service process. It is not an on-device reproduction or causal proof
-  of the reported one-host screen-control symptom, and it is not evidence of host modification, Docker/root use,
-  listener exposure, firewall change, privilege escalation, exploitation, or compromise.
+  Recorder reconciliation selects active voice capture before exact-projection playback capture and otherwise
+  stops. Construction and start prove permission, initialized/recording state, and bounded buffer arithmetic;
+  failures release partial resources. Stop invalidates work, unblocks and joins the exact reader, restores
+  interruption, and clears the recorder, reader, mode, projection, and raw-audio state. The outgoing Rust path
+  constructs its subscription, lease, and bounded receiver before publishing native/UI started state.
 
-  The inherited Rust Activity-resume state also admitted an older Activity carrying a different Flutter-isolate
-  UUID by minting it a fresh generation and closing the current replacement isolate's sessions. The native recorder
-  coordinator correctly refused that cross-isolate transfer only after Rust had already mutated ownership, which
-  could leave Rust session authority and the persistent recorder assigned to different Activities. Resume is now a
-  read-only exact-current-UUID check in Rust; a stale isolate cannot replace or drain the current owner, and both
-  Kotlin failure branches attempt only exact recorder-owner retirement before the stale Activity finishes.
-
-  `VoiceCallAudioCoordinator` is now the sole process-wide serialized owner of one `AudioRecordHandle`. Its pure
-  `VoiceCallOwnerState` records voice-capable controlled IDs separately from the exact active subset; updates are
-  admitted only for registered IDs, removal retires registration plus activity, and one connection cannot clear
-  another. The outgoing owner is the positive native Activity generation plus canonical isolate UUID already used
-  by the Rust session-owner gate. New Activity creation invalidates the previous native owner before Flutter can
-  run; registration follows Rust owner admission with rollback; resume requires the exact current UUID and a
-  generation equal to the current owner for an idempotent ordinary resume, or a newer generation for lost-response
-  recovery, while preserving active state; older generations, stale Activity destruction, and stale service task callbacks
-  cannot alter the replacement. Activity/task teardown retires the exact native owner before matching Rust
-  sessions, while service destruction clears only controlled owners. `src/flutter.rs` now notifies the service of
-  exact connection removal before publishing UI removal. Service binding has no audio-ownership semantics and the
-  obsolete local/service recorder callbacks and state booleans are deleted.
-
-  The shared outgoing response path stops the prior exact audio owner, constructs the replacement
-  subscription/lease/bounded receiver, and publishes `on_voice_call_started` only after that complete owner exists.
-  Lease-acquisition failure instead publishes closed state and sends the peer an explicit close request, so Android
-  native capture cannot be activated for a call whose Rust audio path was not admitted. R-S11eh later removes the
-  interim dedicated Rust voice worker and binds this direct-select topology; Android's native recorder worker is
-  independent and unchanged.
-
-  Reconciliation has one closed priority: any active voice owner selects `VOICE_COMMUNICATION`, otherwise the live
-  exact MediaProjection selects playback capture, otherwise capture stops. Playback reuse also requires object
-  identity with the recorder's recorded projection, so grant replacement cannot retain the old capture. Recorder
-  creation proves `RECORD_AUDIO` plus `AudioRecord.STATE_INITIALIZED`; buffer size must be positive, is widened
-  before multiplication, and must fit `Int`; direct-buffer allocation failure releases the partial recorder.
-  Start commits only after `RECORDSTATE_RECORDING`, publishes an unstarted named worker only after all resources
-  exist, and rolls back if start or thread launch fails. A null blocking read is terminal. Spontaneous completion
-  stops and releases its exact recorder; explicit stop first publishes retirement, stops to unblock the read,
-  joins the exact worker while restoring interruption, then clears the exact recorder/reader/mode/projection/raw
-  flag. There is no second recorder, binding fallback, hot loop, detached cleanup, or ambient global close.
-
-  The design follows Android's official lifecycle and media contracts: a started service can outlive Activity
-  binding and receives `onTaskRemoved`, while `onDestroy` is its resource-release sink
-  (<https://developer.android.com/reference/android/app/Service>); started-plus-bound service lifetime is not
-  defined by the binding alone (<https://developer.android.com/develop/background-work/services/bound-services>);
-  competing audio captures are not a reliable ownership mechanism and `VOICE_COMMUNICATION` is privacy-sensitive
-  (<https://developer.android.com/media/platform/sharing-audio-input>); `AudioRecord` construction must be checked
-  for `STATE_INITIALIZED` and stopped/released after use
-  (<https://developer.android.com/reference/android/media/AudioRecord>); and MediaProjection-backed capture must
-  own its callback/revocation lifecycle (<https://developer.android.com/media/platform/av-capture>). The design
-  implication is one application-owned state machine whose exact call owners are independent of Activity/service
-  binding and whose playback mode remains subordinate to the exact live projection.
-
-  Follow-up verifier correction (2026-07-23): the older shared R-D7a lifecycle block still named the deleted
-  takeover regression and required resume to take the owner write lock, mint replacement authority, drain the
-  displaced UUID, and drop that lock. Those assertions predated this row's cross-isolate refusal fix and made the
-  broad gate reject the correct source while the focused gate required the opposite policy. The shared block now
-  requires the current stale-Activity refusal regression and a read-only resume with no write or session-drain
-  authority. The focused verifier also rejects the superseded summary/gate forms, and the independent verifier
-  mutation-binds those checks. Runtime source and normative R-S11br policy did not change in this correction.
-
-  Verification: `scripts/android-voice-call-owner-state-test.kt` compiles the Android-free owner model and executes
-  invalid/unregistered admission, two-controlled-owner aggregation, stale outgoing update/teardown refusal,
-  same-or-newer resume with active-state retention plus older/cross-isolate refusal, controlled/outgoing overlap,
-  isolate invalidation, and service clearing. `scripts/verify-android-voice-call-ownership.py` binds the complete
-  Kotlin/Rust topology, lifecycle
-  ordering, one-recorder count, mode priority, projection identity, buffer/start/worker cleanup, platform-channel
-  completion, audio-owner-before-native start publication, requirement, disposition, ledger, and shared-gate wiring, and
-  rejects 61 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
-  focused verifier rather than
-  trusting its output, and mutation-binds the new gate/requirement/disposition/ledger plus the updated
-  MediaProjection audio-retirement contract.
-
-  Exact current-source verification passed in confined non-root, network-disabled, read-only-source containers:
-  the Android-free Kotlin owner transition regression compiled and executed; the focused verifier passed normally
-  and rejected all 56 registered mutations; and the independent workspace verifier passed normally plus its complete
-  in-memory source-mutation matrix. The Android release Kotlin compilation completed with `BUILD SUCCESSFUL` in 30
-  seconds (`228` actionable tasks: `227` executed, `1` up-to-date); existing unrelated deprecation and static-analysis
-  warnings remain and no APK was assembled. Locked/offline Rust 1.75 library tests passed all three Android
-  Activity-owner regressions (`3 passed`, `0 failed`, `347 filtered`) and both then-current event-driven voice-worker
-  regressions (`2 passed`, `0 failed`, `348 filtered`); R-S11eh supersedes that worker with six bounded-mailbox and
-  direct-select regressions. Pinned Rustfmt passed the two changed Rust files and
-  `Cargo.lock` remained byte-identical. Python byte-compilation, edited Bash syntax, requirements-hash equality
-  (`19765e32030adbbb3c25b2f98ec28a09ba6f6bd8da2b95287911023b8797e120`), and native-codec normal/self-test gates
-  passed. These checks used no published port, Docker socket, host PID/network namespace, host service/config mount,
-  host networking, added capability, or root process.
-
-  This source slice did not itself exercise Android or assemble an APK. The later exact target-local A/B
-  transaction at `29915f0075f4d1464361f218e61dd7d7e7072b85`, recorded under R-S14/R-T4 and
-  R-S11bm/R-S11e-79, validates that this source is packaged in the byte-identical signed APK. No Android device,
-  installed voice-call transaction, original swipe/relaunch sequence, OEM task behavior, or full R-B2/R-B10
-  release transaction is claimed; those remain open.
+  The deleted 5,638-line aggregate Android source verifier did not execute this lifecycle and no longer counts
+  as evidence. The shared gate retains a narrow source backstop and relevant Rust behavior-test invocations;
+  Android-free Kotlin owner fixtures remain available for isolated execution. Historical target-local APK
+  assembly binds only its named older source. Exact-current package installation must still exercise concurrent
+  controlled calls, controlled/outgoing overlap, Activity replacement, task swipe/reopen with the persistent
+  service retained, Force Stop, projection replacement/revocation, injected permission/buffer/start/read
+  failures, peer reconnect/presentation, and exact thread/audio/projection cleanup.
 - **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit — SOURCE IMPLEMENTED AND CONFINED
   FOCUSED/WORKSPACE VERIFIED 2026-07-22; EXACT INSTALLED ARTIFACTS PENDING.** Platform: Linux and macOS pathname
   Unix-domain listeners.

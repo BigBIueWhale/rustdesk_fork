@@ -46,6 +46,7 @@ CREATE_TIMEOUT_SECONDS=300
 VM_TIMEOUT_SECONDS=7800
 PROVISION_DOMAIN_UUID=""
 PROVISION_DOMAIN_CREATION_STARTED=0
+PROVISION_DOMAIN_OWNERSHIP_COMMITTED=0
 PROVISION_VIRT_PID=""
 PROVISION_VIRT_START=""
 PROVISION_VM_DEADLINE=""
@@ -78,7 +79,7 @@ verify_libvpx_windows_tools() {
 }
 
 preflight() {
-    require_cmd virt-install virsh qemu-img xorriso setsid timeout awk sha256sum sha512sum
+    require_cmd virt-install virsh qemu-img xorriso setsid timeout awk python3 sha256sum sha512sum
     assert_no_build_host_network_residual
     [[ "$DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]] \
         || die "HARNESS_PREFIX contains an invalid domain-name character"
@@ -340,6 +341,107 @@ prove_owned_domain() {
     [ "$actual_name" = "$DOMAIN" ]
 }
 
+verify_owned_golden_domain_xml() {
+    local xml="$WINDOWS_LIBVIRT_CONTROL_ROOT/golden-domain.xml"
+    [ ! -e "$xml" ] && [ ! -L "$xml" ] || return 1
+    (umask 077; set -o noclobber; virsh_bounded dumpxml "$PROVISION_DOMAIN_UUID" >"$xml") \
+        || return 1
+    /usr/bin/python3 -I -S - "$xml" "$DOMAIN" "$PROVISION_DOMAIN_UUID" \
+        "$GOLDEN" "$AUTOUNATTEND_ISO" "$TOOLCHAINS_ISO" "$ONLINE_DIR/win11.iso" <<'PY'
+import os
+import stat
+import sys
+import xml.etree.ElementTree as ET
+
+xml, expected_name, expected_uuid, *expected_disks = sys.argv[1:]
+flags = os.O_RDONLY | os.O_CLOEXEC
+if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+descriptor = os.open(xml, flags)
+try:
+    before = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_uid != os.geteuid()
+        or before.st_nlink != 1
+        or stat.S_IMODE(before.st_mode) != 0o600
+        or not 0 < before.st_size <= 1024 * 1024
+    ):
+        raise SystemExit("golden domain XML is not one bounded owner-only regular file")
+    with os.fdopen(descriptor, "rb", closefd=False) as handle:
+        root = ET.parse(handle).getroot()
+    after = os.fstat(descriptor)
+    if any(
+        getattr(before, field) != getattr(after, field)
+        for field in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    ):
+        raise SystemExit("golden domain XML changed while it was parsed")
+finally:
+    os.close(descriptor)
+
+if root.findtext("name") != expected_name or root.findtext("uuid") != expected_uuid:
+    raise SystemExit("golden domain name/UUID identity mismatch")
+disks = root.findall("./devices/disk")
+if len(disks) != len(expected_disks):
+    raise SystemExit("golden domain does not have the exact disk cardinality")
+actual_disks = []
+for disk in disks:
+    source = disk.find("source")
+    if source is None or "file" not in source.attrib:
+        raise SystemExit("golden domain has a non-file disk")
+    actual_disks.append((os.path.realpath(source.attrib["file"]), disk.get("device")))
+expected_disk_devices = [
+    (os.path.realpath(path), "disk" if index == 0 else "cdrom")
+    for index, path in enumerate(expected_disks)
+]
+if sorted(actual_disks) != sorted(expected_disk_devices):
+    raise SystemExit(f"golden domain disk set mismatch: {actual_disks!r}")
+interfaces = root.findall("./devices/interface")
+if len(interfaces) != 1 or interfaces[0].get("type") != "user":
+    raise SystemExit("golden domain does not have exactly one user-mode network interface")
+models = interfaces[0].findall("./model")
+if len(models) != 1 or models[0].get("type") != "e1000e":
+    raise SystemExit("golden domain user-mode interface is not exactly e1000e")
+if interfaces[0].findall("./portForward"):
+    raise SystemExit("golden domain user-mode interface has host port forwarding")
+graphics = root.findall("./devices/graphics")
+if len(graphics) != 1:
+    raise SystemExit("golden domain does not have exactly one graphics device")
+graphic = graphics[0]
+if graphic.get("type") != "vnc" or graphic.get("listen") != "127.0.0.1":
+    raise SystemExit("golden domain VNC graphics is not bound to 127.0.0.1")
+listeners = graphic.findall("./listen")
+if (
+    len(listeners) != 1
+    or listeners[0].get("type") != "address"
+    or listeners[0].get("address") != "127.0.0.1"
+):
+    raise SystemExit("golden domain VNC listen child is not exactly loopback-addressed")
+if root.findall("./devices/hostdev") or root.findall("./devices/filesystem"):
+    raise SystemExit("golden domain unexpectedly has a host device or filesystem passthrough")
+qemu_namespace = "{http://libvirt.org/schemas/domain/qemu/1.0}"
+if any(element.tag.startswith(qemu_namespace) for element in root.iter()):
+    raise SystemExit("golden domain unexpectedly has raw QEMU command-line configuration")
+PY
+}
+
+clear_provision_domain_authority() {
+    PROVISION_DOMAIN_UUID=""
+    PROVISION_DOMAIN_CREATION_STARTED=0
+    PROVISION_DOMAIN_OWNERSHIP_COMMITTED=0
+    PROVISION_VM_DEADLINE=""
+}
+
 wait_for_owned_domain_creation() {
     local deadline listed_status
     deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))
@@ -363,9 +465,21 @@ wait_for_owned_domain_creation() {
 stop_and_undefine_owned_domain() {
     [ -n "$PROVISION_DOMAIN_UUID" ] || return 0
     if [ "$PROVISION_DOMAIN_CREATION_STARTED" = 0 ]; then
-        PROVISION_DOMAIN_UUID=""
-        PROVISION_VM_DEADLINE=""
+        clear_provision_domain_authority
         return 0
+    fi
+    if [ "$PROVISION_DOMAIN_OWNERSHIP_COMMITTED" = 0 ]; then
+        if domain_uuid_is_listed; then
+            warn "uncommitted provision UUID exists after an ambiguous launch; preserving it"
+            return 1
+        else
+            local listed_status=$?
+            if [ "$listed_status" = 1 ]; then
+                clear_provision_domain_authority
+                return 0
+            fi
+            return 1
+        fi
     fi
     if ! prove_owned_domain; then
         if domain_uuid_is_listed; then
@@ -374,9 +488,7 @@ stop_and_undefine_owned_domain() {
         else
             local listed_status=$?
             if [ "$listed_status" = 1 ]; then
-                PROVISION_DOMAIN_UUID=""
-                PROVISION_DOMAIN_CREATION_STARTED=0
-                PROVISION_VM_DEADLINE=""
+                clear_provision_domain_authority
                 return 0
             fi
             return 1
@@ -398,9 +510,7 @@ stop_and_undefine_owned_domain() {
                 else
                     listed_status=$?
                     if [ "$listed_status" = 1 ]; then
-                        PROVISION_DOMAIN_UUID=""
-                        PROVISION_DOMAIN_CREATION_STARTED=0
-                        PROVISION_VM_DEADLINE=""
+                        clear_provision_domain_authority
                         return 0
                     fi
                     return 1
@@ -417,9 +527,7 @@ stop_and_undefine_owned_domain() {
     else
         listed_status=$?
         [ "$listed_status" = 1 ] || return 1
-        PROVISION_DOMAIN_UUID=""
-        PROVISION_DOMAIN_CREATION_STARTED=0
-        PROVISION_VM_DEADLINE=""
+        clear_provision_domain_authority
         return 0
     fi
 }
@@ -574,8 +682,11 @@ build_golden() {
     wait_for_owned_virt_process_group \
         || die "could not prove virt-install process-group admission"
     wait_for_owned_domain_creation
+    verify_owned_golden_domain_xml \
+        || die "virt-install did not create the exact confined UUID-bound golden domain"
     windows_libvirt_require_targets_owned "$STATE_DIR" "$ONLINE_DIR" \
         || die "virt-install changed golden-provision storage-pool ownership"
+    PROVISION_DOMAIN_OWNERSHIP_COMMITTED=1
     # Clear the UEFI "Press any key to boot from CD or DVD" prompt: headless, it otherwise falls
     # through to "BdsDxe: No bootable option or device was found" and the install never starts.
     # send-key ENTER (linux keycode 28) through its ~5s window. (This backgrounded script's own

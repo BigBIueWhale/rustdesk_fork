@@ -302,8 +302,8 @@ fi
 
 echo "== (0f2) Windows golden exact libvirt-domain ownership (R-S11dr/R-S11e-136) =="
 r_s11dr=
-if ! python3 scripts/verify-windows-golden-domain-authority.py --repo . --self-test; then
-  r_s11dr="$r_s11dr source-or-mutation-self-test-failed"
+if ! python3 scripts/verify-windows-golden-domain-authority.py --repo .; then
+  r_s11dr="$r_s11dr source-check-failed"
 fi
 if [ -n "$r_s11dr" ]; then
   echo "  FAIL R-S11dr Windows golden domain authority:$r_s11dr"

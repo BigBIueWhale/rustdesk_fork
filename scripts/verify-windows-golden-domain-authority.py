@@ -39,17 +39,6 @@ def require_order(source, tokens, message):
     require(positions == sorted(positions), message)
 
 
-def extract_requirement(source, requirement_id):
-    marker = '<span class="id">{}</span>'.format(requirement_id)
-    start = source.find(marker)
-    require(start >= 0, "{} requirement".format(requirement_id))
-    start = source.rfind('<div class="req"', 0, start)
-    require(start >= 0, "{} requirement boundary".format(requirement_id))
-    end = source.find('<div class="req"', start + 1)
-    require(end >= 0, "{} requirement terminal boundary".format(requirement_id))
-    return source[start:end]
-
-
 def validate(sources):
     provision = sources["provision"]
     storage = sources["storage"]
@@ -62,10 +51,14 @@ def validate(sources):
         ("VM_TIMEOUT_SECONDS=7800", "finite complete-provision deadline"),
         ('PROVISION_DOMAIN_UUID=""', "retained domain UUID state"),
         ("PROVISION_DOMAIN_CREATION_STARTED=0", "creation-intent state"),
+        (
+            "PROVISION_DOMAIN_OWNERSHIP_COMMITTED=0",
+            "pre-commit domain authority state",
+        ),
         ('PROVISION_VIRT_PID=""', "retained virt-install PID state"),
         ('PROVISION_VIRT_START=""', "retained virt-install start identity"),
         (
-            "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk",
+            "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk python3",
             "exact lifecycle command preflight",
         ),
         (
@@ -160,6 +153,10 @@ def validate(sources):
             "UUID-addressed secondary name proof",
         ),
         (
+            "verify_owned_golden_domain_xml() {",
+            "exact confined domain-XML proof",
+        ),
+        (
             '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
             "        /usr/bin/virt-install \\\n"
             "        --connect qemu:///session",
@@ -195,9 +192,22 @@ def validate(sources):
             'state="$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")"',
             "UUID-addressed state polling",
         ),
+        ('--network user,model=e1000e', "fixed user-mode guest network"),
+        (
+            '--graphics vnc,listen=127.0.0.1',
+            "loopback-only diagnostic VNC",
+        ),
         (
             'warn "provision UUID exists under an unexpected name; preserving it"',
             "ambiguous-name preservation",
+        ),
+        (
+            'warn "uncommitted provision UUID exists after an ambiguous launch; preserving it"',
+            "pre-commit UUID preservation",
+        ),
+        (
+            "PROVISION_DOMAIN_OWNERSHIP_COMMITTED=1",
+            "proved domain-ownership commit",
         ),
         (
             "completed golden domain could not be undefined safely",
@@ -206,6 +216,11 @@ def validate(sources):
         (
             "could not prove exact terminal cleanup of the provision-owned domain",
             "cleanup uncertainty failure",
+        ),
+        (
+            "windows_libvirt_transaction_close \\\n"
+            '        || die "golden-provision libvirt authority did not retire after domain finality"',
+            "successful transaction finality",
         ),
         ("trap '' HUP INT TERM", "terminal cleanup signal exclusion"),
         ("trap cleanup_provision EXIT", "terminal cleanup trap"),
@@ -230,6 +245,74 @@ def validate(sources):
     ):
         require_text(storage, text, label)
 
+    domain_xml = provision[
+        provision.index("verify_owned_golden_domain_xml() {"):
+        provision.index("clear_provision_domain_authority() {")
+    ]
+    for text, label in (
+        (
+            'set -o noclobber; virsh_bounded dumpxml "$PROVISION_DOMAIN_UUID"',
+            "UUID-addressed no-clobber domain XML capture",
+        ),
+        (
+            '/usr/bin/python3 -I -S - "$xml" "$DOMAIN" "$PROVISION_DOMAIN_UUID"',
+            "isolated absolute domain XML parser",
+        ),
+        (
+            'stat.S_IMODE(before.st_mode) != 0o600',
+            "owner-only domain XML mode",
+        ),
+        (
+            'not 0 < before.st_size <= 1024 * 1024',
+            "bounded domain XML size",
+        ),
+        (
+            'root.findtext("name") != expected_name or root.findtext("uuid") != expected_uuid',
+            "domain XML name and UUID proof",
+        ),
+        (
+            'len(disks) != len(expected_disks)',
+            "exact domain XML disk cardinality",
+        ),
+        (
+            'source is None or "file" not in source.attrib',
+            "non-file domain disk refusal",
+        ),
+        (
+            'sorted(actual_disks) != sorted(expected_disk_devices)',
+            "exact domain XML disk set and device roles",
+        ),
+        (
+            'len(interfaces) != 1 or interfaces[0].get("type") != "user"',
+            "single user-mode network interface",
+        ),
+        (
+            'len(models) != 1 or models[0].get("type") != "e1000e"',
+            "exact user-mode network model",
+        ),
+        (
+            'interfaces[0].findall("./portForward")',
+            "host-forwarding refusal",
+        ),
+        (
+            'graphic.get("type") != "vnc" or graphic.get("listen") != "127.0.0.1"',
+            "loopback VNC parent proof",
+        ),
+        (
+            'listeners[0].get("address") != "127.0.0.1"',
+            "loopback VNC child proof",
+        ),
+        (
+            'root.findall("./devices/hostdev") or root.findall("./devices/filesystem")',
+            "host-device and filesystem-passthrough refusal",
+        ),
+        (
+            'element.tag.startswith(qemu_namespace) for element in root.iter()',
+            "raw QEMU command-line refusal",
+        ),
+    ):
+        require_text(domain_xml, text, label)
+
     require_count(
         provision,
         "require_domain_identity_absent",
@@ -241,6 +324,12 @@ def validate(sources):
         "PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))",
         2,
         "independent first-shutdown and post-shutdown deadlines",
+    )
+    require_count(
+        provision,
+        "PROVISION_DOMAIN_OWNERSHIP_COMMITTED=0",
+        2,
+        "initial and terminally cleared pre-commit authority state",
     )
     require_count(
         provision,
@@ -268,11 +357,17 @@ def validate(sources):
         ('domstate "$DOMAIN"', "name-addressed state-query absence"),
         ("virsh -c qemu:///session", "unbounded legacy virsh absence"),
         ("--no-pkttyagent", "post-libvirt-10 virsh option absence"),
-        ("|| true", "suppressed lifecycle error absence"),
+        ("--remove-all-storage", "domain storage-removal absence"),
+        ("--storage", "selected domain storage-removal absence"),
+        ("--wipe-storage", "domain storage-wipe absence"),
         (
-            "independently name-owned pre-creation collision handling remains",
-            "stale open-audit wording absence",
+            "--delete-storage-volume-snapshots",
+            "domain storage-snapshot-removal absence",
         ),
+        ("hostfwd=", "guest-to-host forwarding absence"),
+        ("listen=0.0.0.0", "non-loopback IPv4 VNC absence"),
+        ("listen=::", "non-loopback IPv6 VNC absence"),
+        ("|| true", "suppressed lifecycle error absence"),
     ):
         require(forbidden not in provision, label)
 
@@ -291,8 +386,27 @@ def validate(sources):
             'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
             "wait_for_owned_virt_process_group",
             "wait_for_owned_domain_creation",
+            "verify_owned_golden_domain_xml",
+            "windows_libvirt_require_targets_owned",
+            "PROVISION_DOMAIN_OWNERSHIP_COMMITTED=1",
         ),
-        "UUID absence, creation intent, launch, and ownership order",
+        "UUID absence, creation intent, launch, proof, and ownership-commit order",
+    )
+    cleanup = provision[
+        provision.index("stop_and_undefine_owned_domain() {"):
+        provision.index("seal_golden_read_only() {")
+    ]
+    require_order(
+        cleanup,
+        (
+            'if [ "$PROVISION_DOMAIN_OWNERSHIP_COMMITTED" = 0 ]; then',
+            "if domain_uuid_is_listed; then",
+            "uncommitted provision UUID exists after an ambiguous launch; preserving it",
+            "return 1",
+            "clear_provision_domain_authority",
+            "if ! prove_owned_domain; then",
+        ),
+        "pre-commit UUID preservation before committed-domain control",
     )
     require_order(
         provision,
@@ -325,416 +439,11 @@ def validate(sources):
         "marker, hash, terminal teardown, and success order",
     )
 
-    requirement = extract_requirement(sources["requirements"], "R-S11dr")
-    for text, label in (
-        (
-            "Windows golden provisioning owns one exact libvirt UUID and retires it terminally",
-            "R-S11dr title",
-        ),
-        (
-            "Any pre-existing name is an explicit operator-reconciliation failure",
-            "pre-existing-name normative refusal",
-        ),
-        (
-            "Creation intent <span class=\"kw\">MUST</span> be recorded only immediately before launch",
-            "creation-intent normative boundary",
-        ),
-        (
-            "one finite admission step",
-            "process-group admission normative boundary",
-        ),
-        (
-            "pre-admission exit, identity change, or deadline",
-            "process-group admission failure boundary",
-        ),
-        (
-            "every guest-specific <code>virsh</code> operation",
-            "UUID-only normative control boundary",
-        ),
-        (
-            "use the fixed session URI, C locale, one fresh <code>setsid</code> "
-            "control session with standard input closed",
-            "version-compatible noninteractive control requirement",
-        ),
-        (
-            "MUST NOT</span> require the post-libvirt-10.0.0 "
-            "<code>--no-pkttyagent</code> option",
-            "unsupported virsh option prohibition",
-        ),
-        (
-            "Domain cleanup <span class=\"kw\">MUST NOT</span> request storage deletion",
-            "golden-storage preservation requirement",
-        ),
-        (
-            "without invoking the provisioner, <code>virsh</code>, libvirt, KVM, a Windows VM",
-            "source-only verification boundary",
-        ),
-    ):
-        require_text(requirement, text, label)
-    require_text(
-        sources["requirements"],
-        "<tr><td>271</td>",
-        "Appendix C #271 disposition",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>291</td>",
-        "Appendix C #291 disposition",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>336</td>",
-        "Appendix C #336 disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
-        "hardening-ledger disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
-        "setsid-admission hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
-        "session-libvirt control",
-        "version-compatible session-libvirt hardening ledger",
-    )
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-windows-golden-domain-authority.py --repo . --self-test",
-        "shared source-gate wiring",
-    )
-    require_text(
-        sources["workspace"],
-        "def validate_windows_golden_domain_authority_contract(sources):",
-        "independent workspace contract",
-    )
-
-
-def mutate(source, old, new, label):
-    observed = source.count(old)
-    require(
-        observed == 1,
-        "self-test fixture for {} occurs {} times".format(label, observed),
-    )
-    return source.replace(old, new, 1)
-
-
-def run_self_test(sources):
-    mutations = (
-        (
-            "provision",
-            "export LC_ALL=C",
-            "export LC_ALL=en_US.UTF-8",
-            "fixed control-output locale",
-        ),
-        (
-            "provision",
-            "CONTROL_TIMEOUT_SECONDS=30",
-            "CONTROL_TIMEOUT_SECONDS=0",
-            "finite libvirt control deadline",
-        ),
-        (
-            "provision",
-            "PROCESS_ADMISSION_SECONDS=10",
-            "PROCESS_ADMISSION_SECONDS=0",
-            "finite process-group admission deadline",
-        ),
-        (
-            "provision",
-            "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk",
-            "require_cmd virt-install virsh qemu-img xorriso setsid timeout",
-            "exact lifecycle command preflight",
-        ),
-        (
-            "provision",
-            'stat="$(<"/proc/$pid/stat")" || return 1\n'
-            '    stat="${stat##*) }"',
-            'stat="$(<"/proc/$pid/stat")" || return 1\n'
-            '    stat="${stat#*) }"',
-            "two robust proc-stat command boundaries",
-        ),
-        (
-            "provision",
-            'stat="$(<"$path")" || continue\n'
-            '        stat="${stat##*) }"',
-            'stat="$(<"$path")" || continue\n'
-            '        stat="${stat#*) }"',
-            "two robust proc-stat command boundaries",
-        ),
-        (
-            "provision",
-            'kill -TERM -- "-$PROVISION_VIRT_PID"',
-            'kill -TERM -- "$PROVISION_VIRT_PID"',
-            "exact owned process-group graceful stop",
-        ),
-        (
-            "provision",
-            "while owned_virt_process_group_is_live; do",
-            "while owned_virt_process_is_live; do",
-            "complete provision-client group drain",
-        ),
-        (
-            "storage",
-            "/usr/bin/setsid --wait \\\n"
-            '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            '/usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            "bounded closed-input libvirt control",
-        ),
-        (
-            "storage",
-            '        "$@" </dev/null',
-            '        "$@"',
-            "bounded closed-input libvirt control",
-        ),
-        (
-            "provision",
-            "export LC_ALL=C",
-            "export LC_ALL=C\n# --no-pkttyagent is not a compatible control boundary",
-            "post-libvirt-10 virsh option absence",
-        ),
-        (
-            "provision",
-            "list --all --name",
-            'domuuid "$DOMAIN"',
-            "fail-closed complete name enumeration",
-        ),
-        (
-            "provision",
-            "list --all --uuid",
-            "list --uuid",
-            "fail-closed complete UUID enumeration",
-        ),
-        (
-            "provision",
-            "golden domain name already exists; refusing to mutate it",
-            "golden domain name already exists; destroying it",
-            "pre-existing name refusal",
-        ),
-        (
-            "provision",
-            'PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
-            'PROVISION_DOMAIN_UUID="00000000-0000-4000-8000-000000000000"',
-            "UUID absence, creation intent, launch, and ownership order",
-        ),
-        (
-            "provision",
-            'assert_uuid "$PROVISION_DOMAIN_UUID"',
-            "true # UUID grammar removed",
-            "UUID absence, creation intent, launch, and ownership order",
-        ),
-        (
-            "provision",
-            "    require_domain_identity_absent\n"
-            '    windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR"',
-            "    # first absence proof removed\n"
-            '    windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR"',
-            "two absence proofs plus function definition",
-        ),
-        (
-            "provision",
-            "PROVISION_DOMAIN_CREATION_STARTED=1",
-            "PROVISION_DOMAIN_CREATION_STARTED=0",
-            "UUID absence, creation intent, launch, and ownership order",
-        ),
-        (
-            "provision",
-            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
-            '/usr/bin/setsid "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
-            "retained private-namespace process-group launch",
-        ),
-        (
-            "provision",
-            '--uuid "$PROVISION_DOMAIN_UUID"',
-            "# explicit UUID removed",
-            "explicit libvirt UUID creation",
-        ),
-        (
-            "provision",
-            'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
-            'PROVISION_VIRT_START=""',
-            "post-launch process identity binding",
-        ),
-        (
-            "provision",
-            "wait_for_owned_virt_process_group() {",
-            "wait_for_unowned_virt_process_group() {",
-            "exact process-group admission",
-        ),
-        (
-            "provision",
-            '[ "$start" = "$PROVISION_VIRT_START" ] || return 1',
-            '[ -n "$start" ] || return 1',
-            "admission start-identity refusal",
-        ),
-        (
-            "provision",
-            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
-            "true # terminal admission accepted",
-            "admission live-state refusal",
-        ),
-        (
-            "provision",
-            "wait_for_owned_virt_process_group \\\n"
-            '        || die "could not prove virt-install process-group admission"',
-            "true # process-group admission omitted",
-            "post-launch process-group admission",
-        ),
-        (
-            "provision",
-            'virsh_bounded send-key "$PROVISION_DOMAIN_UUID"',
-            'virsh_bounded send-key "$DOMAIN"',
-            "UUID-addressed boot-key injection",
-        ),
-        (
-            "provision",
-            'virsh_bounded destroy "$PROVISION_DOMAIN_UUID"',
-            'virsh_bounded destroy "$DOMAIN"',
-            "UUID-addressed destroy",
-        ),
-        (
-            "provision",
-            'virsh_bounded undefine "$PROVISION_DOMAIN_UUID" --nvram',
-            'virsh_bounded undefine "$DOMAIN" --nvram',
-            "UUID-addressed NVRAM undefine",
-        ),
-        (
-            "provision",
-            "stop_and_undefine_owned_domain \\\n"
-            '                            || die "completed golden domain could not be undefined safely"',
-            "true # successful terminal teardown removed",
-            "successful terminal teardown requirement",
-        ),
-        (
-            "provision",
-            '[ "$vi_status" = 0 ] || die "virt-install failed with exit $vi_status"\n'
-            "    # Preserve the old 130-minute allowance after the first guest shutdown,\n"
-            "    # independently of the newly bounded install-to-first-shutdown phase.\n"
-            "    PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))",
-            '[ "$vi_status" = 0 ] || die "virt-install failed with exit $vi_status"',
-            "independent first-shutdown and post-shutdown deadlines",
-        ),
-        (
-            "provision",
-            "elif ! stop_and_undefine_owned_domain; then",
-            "if ! stop_and_undefine_owned_domain; then",
-            "process-before-domain-before-helper terminal cleanup",
-        ),
-        (
-            "provision",
-            "trap 'signal_exit 143' TERM",
-            "trap - TERM",
-            "TERM cleanup routing",
-        ),
-        (
-            "provision",
-            "trap '' HUP INT TERM",
-            "trap - HUP INT TERM",
-            "terminal cleanup signal exclusion",
-        ),
-        (
-            "requirements",
-            '<span class="id">R-S11dr</span>',
-            '<span class="id">R-S11dr-disabled</span>',
-            "R-S11dr requirement",
-        ),
-        (
-            "requirements",
-            "Any pre-existing name is an explicit operator-reconciliation failure",
-            "Any pre-existing name may be destroyed automatically",
-            "pre-existing-name normative refusal",
-        ),
-        (
-            "requirements",
-            "one finite admission step",
-            "an optional admission step",
-            "process-group admission normative boundary",
-        ),
-        (
-            "requirements",
-            "use the fixed session URI, C locale, one fresh <code>setsid</code> "
-            "control session with standard input closed",
-            "use the fixed session URI and an interactive control process",
-            "version-compatible noninteractive control requirement",
-        ),
-        (
-            "requirements",
-            "<tr><td>271</td>",
-            "<tr><td>271-disabled</td>",
-            "Appendix C #271 disposition",
-        ),
-        (
-            "requirements",
-            "<tr><td>291</td>",
-            "<tr><td>291-disabled</td>",
-            "Appendix C #291 disposition",
-        ),
-        (
-            "requirements",
-            "<tr><td>336</td>",
-            "<tr><td>336-disabled</td>",
-            "Appendix C #336 disposition",
-        ),
-        (
-            "hardening",
-            "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
-            "R-S11dr/R-S11e-136 — Windows golden provisioner owns a mutable name",
-            "hardening-ledger disposition",
-        ),
-        (
-            "hardening",
-            "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
-            "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
-            "setsid-admission hardening ledger",
-        ),
-        (
-            "hardening",
-            "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
-            "session-libvirt control",
-            "R-S11dr/R-S11ds/R-S11e-214 — interactive session-libvirt control",
-            "version-compatible session-libvirt hardening ledger",
-        ),
-        (
-            "verify",
-            "python3 scripts/verify-windows-golden-domain-authority.py --repo . --self-test",
-            "true # golden domain authority gate removed",
-            "shared source-gate wiring",
-        ),
-        (
-            "workspace",
-            "def validate_windows_golden_domain_authority_contract(sources):",
-            "def validate_windows_golden_name_authority_contract(sources):",
-            "independent workspace contract",
-        ),
-    )
-    for key, old, new, expected in mutations:
-        candidate = dict(sources)
-        candidate[key] = mutate(candidate[key], old, new, expected)
-        try:
-            validate(candidate)
-        except VerificationError as exc:
-            require(
-                expected in str(exc),
-                "self-test wrong failure for {}: {}".format(expected, exc),
-            )
-        else:
-            raise VerificationError(
-                "self-test mutation unexpectedly accepted: {}".format(expected)
-            )
-    return len(mutations)
-
 
 def load_sources(repo):
     paths = {
         "provision": "scripts/provision-windows-vm.sh",
         "storage": "scripts/windows-libvirt-storage-pools.sh",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
-        "verify": "scripts/verify.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -745,18 +454,10 @@ def load_sources(repo):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
-    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     sources = load_sources(args.repo.resolve())
     validate(sources)
-    count = run_self_test(sources) if args.self_test else 0
-    if args.self_test:
-        print(
-            "verify-windows-golden-domain-authority: ok "
-            "({} mutations)".format(count)
-        )
-    else:
-        print("verify-windows-golden-domain-authority: ok")
+    print("verify-windows-golden-domain-authority: ok")
 
 
 if __name__ == "__main__":

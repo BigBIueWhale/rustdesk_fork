@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-becd8c0039d54a6173e9a7325262851c3268491c48b4da45bb6b886ca3cf0327  requirements.html
+0f0da220cd08fdf45ff999af456577424060196ead66b4d16ce61c7c49ed1af0  requirements.html
 ```
 
 ## Current Verdict
@@ -359,6 +359,21 @@ verifier also no longer loads or mutates requirements, this ledger, shared/Apple
 verifier: 427 lines and 35 non-product mutations are deleted, while all 84 product-source authority mutations and
 the focused normal validator remain. The live hardening ledger remains below its documented approximate
 400,000-token budget.
+
+R-S11dr and Appendix C #271 now state only the timeless Windows golden-domain authority and required native
+scenarios. The original name-collision failure diary, implementation history, source-gate inventory, mutation
+receipts, `FIX` badge, and repeated current-evidence disclaimers were removed, reducing `requirements.html` from
+2,184,801 to 2,183,954 bytes. The 100-line R-S11dr status diary is replaced by concise current source disposition
+and explicit native gaps. The focused golden-domain checker no longer reads or mutates requirements, this ledger,
+the shared gate, or another verifier; its entire in-memory source/documentation mutation catalog was deleted,
+reducing it from 27,517 bytes/770 lines to 16,702 bytes/471 lines. The workspace verifier's 370-line duplicate
+golden-domain validator, focused-verifier introspection, dispatch, and dedicated loader were deleted, reducing it
+from 1,893,553 to 1,880,078 bytes. The retained focused checker still directly guards the provisioner's exact
+UUID, launcher identity/admission, exact disk/network/graphics XML, bounded UUID-only control, ambiguity
+preservation, terminal teardown, and storage-preservation source topology. The same slice added the missing
+explicit pre-commit state and exact confined-domain proof recorded in the current R-S11dr disposition. This source
+correction is not native evidence: real private session-libvirt/Windows VM collision, admission, failure,
+signal/timeout/success teardown, listener-finality, and terminal-absence execution remains open.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -8003,106 +8018,41 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Exact cold R-B2/R-B10 artifacts, remaining native/installed/device evidence,
   fresh independent reproduction where separately named, and R-V3 external
   review remain open. The broader Ralph-loop goal remains active.
-- **R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID and terminal lifecycle —
-  SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26;
-  EXECUTABLE LIBVIRT/VM EVIDENCE PENDING.**
-  Platform: the unprivileged Linux Windows-golden acquisition host using
-  `qemu:///session`. Endpoint/action: `scripts/provision-windows-vm.sh`
-  pre-creation collision handling, background `virt-install`, boot-key/state
-  control, error/signal cleanup, and successful domain retirement. Boundary:
-  a predictable mutable libvirt name and uncertain client/control state ↔
-  destructive authority over session domains and the provisioner's terminal
-  result.
+- **R-S11dr/R-S11e-136 — Windows golden exact libvirt-domain lifecycle — SOURCE
+  IMPLEMENTED; CURRENT NATIVE SESSION-LIBVIRT/WINDOWS-VM EVIDENCE OPEN.**
+  `scripts/provision-windows-vm.sh` validates its fixed name and kernel-random
+  version-4 UUID, proves both absent by complete enumeration before media creation
+  and again before launch, and never mutates a pre-existing name. It retains and
+  admits the exact `setsid --wait virt-install --uuid` PID/start/process-group/session
+  identity before observing domain creation. Guest reads and control select only
+  that UUID; errors and unexpected identity preserve ambiguity, while successful
+  marker/hash acceptance and every conclusive cleanup path retire the exact UUID
+  without deleting the golden disk. Control uses the private session URI, a fresh
+  no-stdin bounded control session, C locale, and no version-specific
+  `--no-pkttyagent`; VNC is explicitly loopback-only.
 
-  Proven old path and history: immediately before every launch the provisioner
-  ran `virsh destroy "$DOMAIN"` and `virsh undefine --nvram "$DOMAIN"` against
-  `${HARNESS_PREFIX}-win-golden`, suppressed both results, and then launched
-  `virt-install` without `--uuid`. Boot-key injection and `domstate` addressed
-  the same name; every boot-key error and the background client's final result
-  were ignored. A failed state query entered the old non-running branch and
-  could be mistaken for an unlocked/off guest. Successful marker/hash
-  acceptance left the persistent domain definition for later generic cleanup,
-  whose name-prefix authority was deleted by R-S11dq. `git blame` and
-  `git log -S` trace the destructive collision workaround to `599fd4d0`
-  (`Undefine any stale golden domain before virt-install`); the launch/name
-  control path descends from the original June 2026 provisioner.
+  Review in this slice found that the golden path lacked the per-build launcher's
+  explicit pre-commit/committed domain state. It now preserves any UUID that appears
+  after creation intent but before exact launcher admission and UUID/name creation
+  proof, exact disk set, transaction-owned storage, single user-mode interface
+  without host forwarding, loopback-only VNC, and no host device; only that
+  complete proof commits destructive domain authority. This closes the
+  signal/error window in which an unadmitted launch could previously reach the
+  name-and-UUID cleanup branch.
 
-  Official libvirt documentation defines a domain name as host-unique metadata
-  and the RFC 4122 UUID as the global domain identifier; `virsh` accepts a UUID
-  as its domain argument, `destroy` immediately terminates that exact domain
-  without deleting storage, and inactive `undefine --nvram` removes its
-  configuration/NVRAM. Sources:
-  https://www.libvirt.org/formatdomain.html and
-  https://www.libvirt.org/manpages/virsh.html.
-
-  Authority model and source closure: the provisioner validates its fixed name
-  grammar and one kernel-random version-4 UUID. Successful complete name/UUID
-  enumeration must prove both absent before the golden disk is created and
-  again immediately before launch. A pre-existing name is now a fail-loud
-  operator-reconciliation condition; no code destroys, undefines, renames, or
-  adopts it. Creation intent is recorded only immediately before
-  `setsid --wait virt-install --uuid "$PROVISION_DOMAIN_UUID"`. The exact
-  process PID, `/proc` start time, process group, and session are retained; its
-  creation and both the first-shutdown and post-shutdown provisioning phases
-  use monotonic deadlines. A `/proc` scan requires every live member of that
-  exact process group/session to drain before the leader is reaped; the
-  leader's exit result is checked.
-
-  Every guest-specific post-create operation addresses the retained UUID:
-  secondary name proof, repeated UEFI boot keys, state polling, `destroy`, and
-  `undefine --nvram`. All control runs under the C locale through one
-  fixed-session, detached/no-stdin, finite-timeout wrapper. Enumeration/control
-  errors are distinct from absence and cannot become off/success. The marker
-  path accepts only an authoritatively `shut off` UUID, verifies the final
-  golden hash, then undefines the UUID and proves it absent before logging
-  success. Error/signal cleanup first terminates and reaps only the still-
-  matching retained process group, then retires only the proved UUID. If the
-  process identity or UUID/name relationship is uncertain, the domain is
-  preserved and cleanup fails. Once terminal cleanup starts, further managed
-  signals are ignored rather than being allowed to interrupt it. Undefine
-  requests no storage deletion; the pinned golden qcow2 remains the intended
-  output.
-
-  R-S11dr and Appendix C #271 make this boundary normative.
-  `scripts/verify-windows-golden-domain-authority.py` is the focused source-only
-  semantic/mutation checker, and the independent workspace validator carries a
-  separate contract and mutation set. Neither gate invokes the provisioner,
-  libvirt/`virsh`, KVM, a Windows VM, a Docker/helper workload, cleanup, or any
-  host RustDesk/service/firewall/network operation.
-
-  Confined evidence: the focused checker passes and rejects all 32 deliberate
-  mutations. The independent workspace baseline passes, and its complete
-  2,419-entry in-memory semantic source-mutation catalog passes from mutation
-  one. Adjacent cleanup, Windows-helper, release-parent, and Debian
-  systemd-lifecycle gates reject 16, 78, 27, and 44 mutations respectively.
-  Bash syntax, the native-codec normal/negative checks, and exact requirements
-  hash synchronization pass in the same immutable, networkless, read-only,
-  numeric-nonroot verifier image.
-
-  The workspace verifier's broader executable `--self-test` is not evidence
-  for this slice. Its managed-lifecycle fixtures require an exact current-UID
-  user-systemd bus. The isolated verifier container intentionally has no such
-  host socket; after its scratch fixtures refused the missing runtime path and
-  then the missing bus, no host bus was mounted and no host user unit was
-  created. Those attempts ran only against disposable container tmpfs and are
-  not counted above.
-
-  Preliminary checker/command failures were retained rather than hidden: a
-  stale Windows-helper indentation fixture, an invalid `--scratch` invocation,
-  stale derived hashes, and incomplete process-group parser mutation
-  cardinality were corrected before restarting their applicable checks. One
-  outer command had a shell-quoting error before any inner test. A first
-  targeted run hit its finite 256-KiB file-size ceiling and was rerun under a
-  finite 64-MiB ceiling. Two attempted executable-workspace invocations then
-  refused an unallocated scratch root and the deliberately absent user-systemd
-  socket. These were checker, invocation, or confinement findings; none
-  executed the provisioner or performed libvirt, VM, host-service, firewall,
-  network, root, or cleanup work.
-
-  No golden reprovision, cold Windows/R-B2/R-B10 artifact build,
-  installed/native/device behavior, independent reproduction, or R-V3 external
-  review is claimed by this source slice. Those evidence obligations and the
-  broader Ralph-loop goal remain open.
+  The retained focused checker is a fast source-topology guard only. Its in-memory
+  mutation catalog and the workspace verifier's duplicate golden-domain validator
+  were deleted because neither executed libvirt or observed a VM lifecycle. In the
+  confined utility image, the exact embedded XML parser accepted one confined-domain
+  fixture and rejected six wrong-disk/network/forwarding/VNC/passthrough/raw-QEMU
+  variants; Bash/AST, focused, and normal workspace checks also pass. This is parser
+  behavior and source integration, not libvirt or Windows execution.
+  Current native evidence still requires the real malformed/collision/control,
+  admission, ambiguity, client-result, marker/hash, signal/timeout/success teardown,
+  listener-finality, storage-preservation, and terminal-absence scenarios in a
+  disposable private session-libvirt/Windows VM environment. No exact current
+  golden reprovision or cold R-B2/R-B10 Windows artifact closes this item. Detailed
+  implementation history remains in Git at `f6771b03`.
 - **R-S11ds/R-S11e-137 — exact per-build libvirt UUID ownership — SOURCE
   IMPLEMENTED; CURRENT NATIVE SESSION-LIBVIRT/VM EVIDENCE OPEN.**
   `scripts/build-windows-vm.sh` proves the generated name and kernel-random

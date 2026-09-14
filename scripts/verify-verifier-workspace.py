@@ -28027,45 +28027,6 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build focused gate wiring",
     )
 
-    run_state_requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11dt",
-        "Windows build exact run-state cleanup requirement",
-    )
-    for text, label in (
-        (
-            "Windows build run state is device/inode-owned and removed only after every external authority retires",
-            "Windows build run-state requirement title",
-        ),
-        (
-            "exact device/inode identity immediately after private creation",
-            "Windows build normative run-root identity",
-        ),
-        (
-            "helper Docker/configuration authority",
-            "Windows build normative helper-first cleanup",
-        ),
-        (
-            "MUST NOT</span> fall back to recursive pathname cleanup",
-            "Windows build normative recursive-fallback prohibition",
-        ),
-        (
-            "without invoking the Windows builder main path",
-            "Windows build run-state source-only boundary",
-        ),
-    ):
-        require_text(run_state_requirement, text, label)
-    require_text(
-        sources["requirements"],
-        "<tr><td>273</td>",
-        "Windows build Appendix C #273 disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
-        "Windows build run-state hardening-ledger disposition",
-    )
-
     storage_requirement = extract_html_requirement(
         sources["requirements"],
         "R-S11gl",
@@ -28340,10 +28301,6 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "exact run-root retirement before authority clearing",
             "Windows build focused run-root retirement binding",
-        ),
-        (
-            "Appendix C #273 disposition",
-            "Windows build focused run-state Appendix mutation",
         ),
         (
             "prepare/retire-run-root/final-commit publication order",

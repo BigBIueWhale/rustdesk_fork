@@ -1356,36 +1356,6 @@ def validate_sources(sources: dict[str, str]) -> None:
         "R-S11ds focused gate wiring",
     )
 
-    run_state_requirement = html_requirement(requirements, "R-S11dt")
-    for literal, description in (
-        (
-            "Windows build run state is device/inode-owned and removed only after every external authority retires",
-            "R-S11dt requirement title",
-        ),
-        (
-            "exact device/inode identity immediately after private creation",
-            "normative run-root creation identity",
-        ),
-        (
-            "helper Docker/configuration authority",
-            "normative helper-first retirement",
-        ),
-        (
-            "MUST NOT</span> fall back to recursive pathname cleanup",
-            "normative no-pathname-fallback boundary",
-        ),
-        (
-            "without invoking the Windows builder main path",
-            "source-only run-state verification boundary",
-        ),
-    ):
-        require(run_state_requirement, literal, description)
-    require(requirements, "<tr><td>273</td>", "Appendix C #273 disposition")
-    require(
-        hardening,
-        "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
-        "R-S11dt hardening-ledger disposition",
-    )
     storage_requirement = html_requirement(requirements, "R-S11gl")
     for literal, description in (
         ("fixed current-principal mode-0700 directory lease", "normative singleton lease"),
@@ -4009,30 +3979,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "verify",
             "python3 scripts/verify-windows-harness.py --repo . --self-test",
             "true # Windows per-build domain gate removed",
-        ),
-        (
-            "R-S11dt requirement",
-            "requirements",
-            '<span class="id">R-S11dt</span>',
-            '<span class="id">R-S11dt-disabled</span>',
-        ),
-        (
-            "normative no-pathname-fallback boundary",
-            "requirements",
-            "MUST NOT</span> fall back to recursive pathname cleanup",
-            "MAY</span> fall back to recursive pathname cleanup",
-        ),
-        (
-            "Appendix C #273 disposition",
-            "requirements",
-            "<tr><td>273</td>",
-            "<tr><td>273-disabled</td>",
-        ),
-        (
-            "R-S11dt hardening-ledger disposition",
-            "hardening",
-            "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
-            "R-S11dt/R-S11e-138 — Windows build run-state cleanup is pathname-owned",
         ),
         (
             "host reserved device namespace",

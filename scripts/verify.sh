@@ -2846,8 +2846,6 @@ if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
   cat "$VERIFY_TMP/rd_verify_macos_service_credential_ipc"
   r_s11b2="$r_s11b2 macos-raw-credential-semantic-verifier-failed"
 fi
-grep -Fq '<span class="id">R-S11ep</span>' requirements.html || r_s11b2="$r_s11b2 macos-raw-credential-requirement-missing"
-grep -Fq 'R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-raw-credential-ledger-missing"
 grep -Fq '<span class="id">R-S11fd</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-requirement-missing"
 grep -Fq '<tr><td>312</td>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-appendix-missing"
 grep -Fq 'R-S11fd/R-S11e-191 exact macOS launchd service-record authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-launchctl-record-ledger-missing"

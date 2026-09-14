@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-06a122c0860bfef0fb4d775ab442c76ca7935fe93d4103b21a346465164c2cde  requirements.html
+2594b4b6e721314c3f27cee56f8083d980cd3f0c8c70a84e4908cddae0a4b209  requirements.html
 ```
 
 ## Current Verdict
@@ -477,6 +477,23 @@ in this cleanup. Current Android/iOS packages still require slow-drain, close/re
 reconnect, presentation, bounded-resource, and cleanup execution; cold artifacts, independent reproduction, and
 external review also remain open. Including this record, the live ledger is 1,031,055 bytes, or 343,685
 conservative tokens by the documented method.
+
+R-S11ep now states the timeless macOS credential-authority contract instead of preserving the superseded
+generic-service defect narrative, implementation receipts, verifier inventory, and current release status.
+Durable password storage remains owned only by the root LaunchDaemon; the proved exact service-owned LaunchAgent
+may obtain only an operation-bound canonical runtime PRS over the separately bounded raw credential endpoint.
+The requirement now makes installed signed-artifact execution authoritative: it calls for positive and negative
+uid, code-identity, executable/argv, audit-token, plist, launchd-record, frame-shape, deadline, saturation,
+restart, abrupt-exit, no-disclosure, drain, and wiping scenarios. Appendix C #298 is deleted because it merely
+restated the same incident and disposition and introduced no separate risk or acceptance criterion. Two
+documentation-string checks are deleted from the shared gate, and the workspace verifier no longer requires the
+R-S11ep labels, duplicate Appendix row, or this ledger entry as evidence. The focused verifier is retained
+unchanged: it reads only production Rust sources and rejects its deliberate authority, ordering, framing,
+capacity, finality, and wiping mutations. `requirements.html` falls from 2,174,963 to 2,174,154 bytes,
+`scripts/verify.sh` from 1,297,561 to 1,297,286 bytes, and the workspace verifier from 1,876,666 to 1,876,135
+bytes. No product source or native target changed or ran. Exact installed macOS execution, cold artifacts,
+independent reproduction, and external review remain open. Including this record, the live ledger is 1,032,746
+bytes, or 344,249 conservative tokens by the documented method.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

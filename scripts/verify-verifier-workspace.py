@@ -19501,8 +19501,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
     ):
         for text in (
             "verify-macos-service-credential-ipc.py",
-            "R-S11ep",
-            "R-S11e-177",
             "R-S11fd",
             "R-S11e-191",
             "R-S11fe",
@@ -19527,21 +19525,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
         ):
             require_text(gate, text, f"{label}: {text}")
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11ep</span>',
-        "macOS raw credential authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>298</td>",
-        "macOS raw credential authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
-        "macOS raw credential authority hardening ledger",
-    )
     require_text(
         sources["requirements"],
         '<span class="id">R-S11fd</span>',

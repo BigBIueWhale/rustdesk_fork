@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-f493711d1d4440cab195a61c78313b9083cc7c13c4ec790269f5396fd15eda1c  requirements.html
+0adb4af39cca027b0df9312c1a275c43db3606d7eb815569b02cbf6e2f0d7e33  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,12 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+R-S11a now states only the timeless cross-UID peer/process-authority, fresh-principal, and no-parent-adoption
+contract. Its original “Verified” snapshot, open-fix narration, source pointers, and CI prescription were deleted;
+the real peer-policy and foreign-parent/ACL filesystem tests remain, reducing the specification by 356 bytes.
+Current installed session-switch,
+wrong-principal, race, and cleanup behavior remains open in the Linux and macOS rows above.
 
 R-S11fg and Appendix C #315 now state only the timeless outgoing-viewer file-command admission, exact local-writer
 ownership, peer-semantic completion boundary, and native acceptance contract. Their inherited defect diary, source-

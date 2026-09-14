@@ -2396,11 +2396,10 @@ pub(crate) fn active_uid() -> Option<u32> {
     active_uid_strict()
 }
 
-// R-S11a(a): a FRESH active-user lookup for AUTHORIZATION — bypassing the service-loop cache — so
-// a just-switched-out user cannot pass the `_service` UID gate during the cache-lag window. This
-// matches the fresh lookup the `_uinput_*` authorizer already does. The cached `active_uid()` is
-// kept ONLY for stable config-sync ROUTING (ipc.rs `select_server_uid_for_user_main_ipc`, fs.rs) —
-// which is not authorization. On macOS `/dev/console` ownership is already a live fs lookup.
+// R-S11a(a): a fresh active-user lookup for authorization prevents a just-switched-out user from
+// passing the `_service` UID gate during the service-loop cache-lag window. The separate cache is
+// only a negative prefilter and a stable config-routing input; neither use can authorize a peer.
+// On macOS `/dev/console` ownership is already a live filesystem lookup.
 #[cfg(target_os = "macos")]
 #[inline]
 fn active_uid_fresh() -> Option<u32> {

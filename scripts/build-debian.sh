@@ -629,8 +629,6 @@ CFG
         || die "private Debian build-output SHA-256 is malformed"
     /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-debian-package-authority.py" \
         --repo "$BUILD_SOURCE_ROOT" --deb "$deb"
-    /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-polkit-policy.py" \
-        --repo "$BUILD_SOURCE_ROOT" --deb "$deb"
     verify_deb_control_scripts "$deb"
     verify_build_source_postcondition "verified Debian $profile build"
     verify_active_online_snapshot

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-1dc8cf18089c6f4df50d1cf14d4df0276d4545e818b4c20e79e7d002922b23ed  requirements.html
+286d9fafcbd8f9f741742bdb06dfe98011b6aeb21a4a5d976ccdc8757a47d4fc  requirements.html
 ```
 
 ## Current Verdict
@@ -1166,7 +1166,9 @@ exists only to make the current source disposition discoverable.
 - R-S11d-33 — Windows MSI deferred install-root provenance
 - R-S11d-16 — Windows Installer service and administrator-owned SAS-policy authority
 - R-S11b-2 — installed-service unattended password ownership.
-- R-S11e — Linux polkit policy/package assurance
+- Appendix C #61 — Linux polkit action and package authority. Source XML and each real Debian
+  archive are checked by `scripts/verify-debian-package-authority.py`; exact package inventory
+  excludes application-supplied `.rules`. Installed authorization behavior remains OPEN above.
 - R-S11e-1 — Linux pkcheck executable provenance
 - R-S11e-2 — macOS service client-side server authentication
 - R-S11e-3 — Linux helper canonical target provenance

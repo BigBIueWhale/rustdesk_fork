@@ -15,9 +15,18 @@ import sys
 import tarfile
 import tempfile
 import types
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
+POLKIT_ACTION_ID = "com.carriez.RustDesk.set-unattended-password"
+POLKIT_POLICY_SOURCE = Path("res/com.carriez.RustDesk.policy")
+POLKIT_POLICY_MEMBER = "./usr/share/polkit-1/actions/com.carriez.RustDesk.policy"
+POLKIT_POLICY_DEFAULTS = {
+    "allow_any": "auth_admin",
+    "allow_inactive": "auth_admin",
+    "allow_active": "auth_admin",
+}
 CONFFILE_PATHS = (
     "./etc/init.d/rustdesk",
     "./etc/rustdesk/startwm.sh",
@@ -83,7 +92,7 @@ DATA_REQUIRED_FILES = {
     "./usr/share/applications/rustdesk.desktop",
     "./usr/share/icons/hicolor/256x256/apps/rustdesk.png",
     "./usr/share/icons/hicolor/scalable/apps/rustdesk.svg",
-    "./usr/share/polkit-1/actions/com.carriez.RustDesk.policy",
+    POLKIT_POLICY_MEMBER,
     "./usr/share/rustdesk/data/flutter_assets/AssetManifest.bin",
     "./usr/share/rustdesk/data/flutter_assets/FontManifest.json",
     "./usr/share/rustdesk/data/flutter_assets/NOTICES.Z",
@@ -155,6 +164,51 @@ class ValidationError(Exception):
 def fail(message):
     print(f"FAIL Debian package authority: {message}", file=sys.stderr)
     sys.exit(1)
+
+
+def xml_tag_name(tag):
+    return tag.rsplit("}", 1)[-1]
+
+
+def validate_polkit_policy(contents, label):
+    try:
+        root = ET.fromstring(contents)
+    except ET.ParseError as err:
+        raise ValidationError(f"{label}: XML parse failed: {err}") from err
+    if xml_tag_name(root.tag) != "policyconfig":
+        raise ValidationError(f"{label}: root element is not policyconfig")
+
+    actions = [child for child in root if xml_tag_name(child.tag) == "action"]
+    if len(actions) != 1:
+        raise ValidationError(f"{label}: expected exactly one action, found {len(actions)}")
+    action = actions[0]
+    if action.get("id") != POLKIT_ACTION_ID:
+        raise ValidationError(f"{label}: unexpected action id {action.get('id')!r}")
+
+    defaults = [child for child in action if xml_tag_name(child.tag) == "defaults"]
+    if len(defaults) != 1:
+        raise ValidationError(
+            f"{label}: expected exactly one defaults block, found {len(defaults)}"
+        )
+    entries = [
+        (xml_tag_name(child.tag), (child.text or "").strip())
+        for child in defaults[0]
+    ]
+    values = dict(entries)
+    if len(entries) != len(POLKIT_POLICY_DEFAULTS) or values != POLKIT_POLICY_DEFAULTS:
+        raise ValidationError(
+            f"{label}: defaults are {entries!r}, expected {POLKIT_POLICY_DEFAULTS!r}"
+        )
+
+
+def load_polkit_policy(repo):
+    path = repo / POLKIT_POLICY_SOURCE
+    try:
+        contents = path.read_bytes()
+    except OSError as err:
+        raise ValidationError(f"cannot read {POLKIT_POLICY_SOURCE}: {err}") from err
+    validate_polkit_policy(contents, str(POLKIT_POLICY_SOURCE))
+    return contents
 
 
 def normalize_tar_name(name):
@@ -764,7 +818,7 @@ def validate_md5sums(data_tar, data_members, control_tar, control_members, label
         raise ValidationError(f"{label}: failed to verify md5sums: {err}") from err
 
 
-def validate_deb(deb, expected_systemd_unit=None):
+def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None):
     data_tar = tar_stream_from_deb(deb, "--fsys-tarfile")
     data_members = tar_members_from_stream(data_tar, f"{deb}:--fsys-tarfile")
     control_tar = tar_stream_from_deb(deb, "--ctrl-tarfile")
@@ -788,6 +842,20 @@ def validate_deb(deb, expected_systemd_unit=None):
             raise ValidationError(
                 f"{deb}:data:./usr/lib/systemd/system/rustdesk.service: bytes differ from res/rustdesk.service"
             )
+    actual_polkit_policy = archive_member_bytes(
+        data_tar,
+        data_members[POLKIT_POLICY_MEMBER],
+        f"{deb}:data:{POLKIT_POLICY_MEMBER}",
+    )
+    validate_polkit_policy(
+        actual_polkit_policy,
+        f"{deb}:data:{POLKIT_POLICY_MEMBER}",
+    )
+    if (expected_polkit_policy is not None
+            and actual_polkit_policy != expected_polkit_policy):
+        raise ValidationError(
+            f"{deb}:data:{POLKIT_POLICY_MEMBER}: bytes differ from {POLKIT_POLICY_SOURCE}"
+        )
     validate_elf_runpaths(deb, data_tar, data_members)
     validate_md5sums(data_tar, data_members, control_tar, control_members, str(deb))
 
@@ -1569,7 +1637,7 @@ def write_file(path, contents, mode):
     path.chmod(mode)
 
 
-def make_synthetic_tree(root):
+def make_synthetic_tree(root, polkit_policy):
     write_file(
         root / "DEBIAN/control",
         "Package: rustdesk-authority-test\nVersion: 1.0\nArchitecture: all\nMaintainer: test <test@example.invalid>\nDescription: authority test\n",
@@ -1591,8 +1659,11 @@ def make_synthetic_tree(root):
             contents = "#!/bin/sh\nexit 0\n"
         elif name == "./usr/lib/systemd/system/rustdesk.service":
             contents = "[Service]\nExecStart=/usr/bin/rustdesk --service\n"
-        elif name == "./usr/share/polkit-1/actions/com.carriez.RustDesk.policy":
-            contents = "<policyconfig/>\n"
+        elif name == POLKIT_POLICY_MEMBER:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(polkit_policy)
+            path.chmod(DATA_REQUIRED[name][1])
+            continue
         else:
             contents = f"synthetic fixture for {name}\n"
         write_file(path, contents, DATA_REQUIRED[name][1])
@@ -1913,9 +1984,14 @@ def elf_dynamic_test_layout(contents):
     }
 
 
-def expect_validation_failure(deb, expected, expected_systemd_unit=None):
+def expect_validation_failure(
+    deb,
+    expected,
+    expected_systemd_unit=None,
+    expected_polkit_policy=None,
+):
     try:
-        validate_deb(deb, expected_systemd_unit)
+        validate_deb(deb, expected_systemd_unit, expected_polkit_policy)
     except ValidationError as err:
         if expected in str(err):
             return
@@ -2369,10 +2445,10 @@ def load_build_module(repo):
     return module
 
 
-def run_production_finalizer_self_test(repo, tmp):
+def run_production_finalizer_self_test(repo, tmp, polkit_policy):
     build_module = load_build_module(repo)
     staging = tmp / "private-production-tree"
-    make_synthetic_tree(staging)
+    make_synthetic_tree(staging, polkit_policy)
     populate_valid_synthetic_elves(staging)
 
     source_scripts = tmp / "private-source-scripts"
@@ -2421,7 +2497,7 @@ def run_production_finalizer_self_test(repo, tmp):
 
     produced = tmp / "production-finalizer.deb"
     build_deb(staging, produced, root_owner_group=True, regenerate_md5=False)
-    validate_deb(produced)
+    validate_deb(produced, expected_polkit_policy=polkit_policy)
 
     unexpected = tmp / "unexpected-control"
     shutil.copytree(staging, unexpected, symlinks=True)
@@ -2575,7 +2651,7 @@ def expect_member_stream_failure(names, expected, directories=()):
     )
 
 
-def run_self_test(repo):
+def run_self_test(repo, polkit_policy):
     if shutil.which("dpkg-deb") is None:
         raise ValidationError("dpkg-deb is required for self-test")
     with tempfile.TemporaryDirectory(prefix="rustdesk-deb-authority.") as tmp:
@@ -2602,17 +2678,57 @@ def run_self_test(repo):
             "unexpected RUNPATH",
         )
         run_source_gate_mutations(repo, tmp)
-        run_production_finalizer_self_test(repo, tmp)
+        run_production_finalizer_self_test(repo, tmp, polkit_policy)
 
         good_tree = tmp / "good-tree"
-        make_synthetic_tree(good_tree)
+        make_synthetic_tree(good_tree, polkit_policy)
         populate_valid_synthetic_elves(good_tree)
         good_deb = tmp / "good.deb"
         build_deb(good_tree, good_deb, root_owner_group=True)
         expected_systemd_unit = (
             good_tree / "usr/lib/systemd/system/rustdesk.service"
         ).read_bytes()
-        validate_deb(good_deb, expected_systemd_unit)
+        validate_deb(good_deb, expected_systemd_unit, polkit_policy)
+
+        permissive_polkit_policy = polkit_policy.replace(
+            b"<allow_active>auth_admin</allow_active>",
+            b"<allow_active>yes</allow_active>",
+            1,
+        )
+        if permissive_polkit_policy == polkit_policy:
+            raise ValidationError("source polkit fixture has no exact allow_active policy")
+        permissive_polkit_deb = tmp / "permissive-polkit.deb"
+        write_modified_deb(
+            good_deb,
+            permissive_polkit_deb,
+            data_transform=replace_tar_member(
+                POLKIT_POLICY_MEMBER,
+                contents=permissive_polkit_policy,
+            ),
+        )
+        expect_validation_failure(permissive_polkit_deb, "defaults are")
+
+        different_polkit_policy = polkit_policy.replace(
+            b"Change the RustDesk unattended password",
+            b"Rotate the RustDesk unattended password",
+            1,
+        )
+        if different_polkit_policy == polkit_policy:
+            raise ValidationError("source polkit fixture has no exact description")
+        different_polkit_deb = tmp / "different-polkit.deb"
+        write_modified_deb(
+            good_deb,
+            different_polkit_deb,
+            data_transform=replace_tar_member(
+                POLKIT_POLICY_MEMBER,
+                contents=different_polkit_policy,
+            ),
+        )
+        expect_validation_failure(
+            different_polkit_deb,
+            f"bytes differ from {POLKIT_POLICY_SOURCE}",
+            expected_polkit_policy=polkit_policy,
+        )
 
         readable_service_deb = tmp / "readable-service.deb"
         write_modified_deb(
@@ -3400,17 +3516,23 @@ def main():
     args = parser.parse_args()
 
     try:
-        validate_build_py(Path(args.repo).resolve())
+        repo = Path(args.repo).resolve()
+        validate_build_py(repo)
+        polkit_policy = load_polkit_policy(repo)
         if args.self_test:
-            run_self_test(Path(args.repo).resolve())
-        expected_systemd_unit = (Path(args.repo).resolve() / "res/rustdesk.service").read_bytes()
+            run_self_test(repo, polkit_policy)
+        expected_systemd_unit = (repo / "res/rustdesk.service").read_bytes()
         for deb in args.deb:
-            validate_deb(Path(deb).resolve(), expected_systemd_unit)
+            validate_deb(
+                Path(deb).resolve(),
+                expected_systemd_unit,
+                polkit_policy,
+            )
     except ValidationError as err:
         fail(str(err))
 
     print(
-        "ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, and source-gated"
+        "ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, polkit-policy-bound, and source-gated"
     )
 
 

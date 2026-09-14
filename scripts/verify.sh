@@ -2974,10 +2974,6 @@ grep -Fq 'clear the validated caller buffer before any fallible policy or Author
 grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-default-cleanup-norm-missing"
 grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-commit-norm-missing"
 grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-conjunction-norm-missing"
-if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
-  cat "$VERIFY_TMP/rd_verify_polkit_policy"
-  r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
-fi
 if ! python3 - <<'PY'
 from pathlib import Path
 

@@ -772,6 +772,23 @@ pub fn validate_file_name_no_traversal(name: &str) -> ResultType<()> {
     Ok(())
 }
 
+fn validate_single_file_name(name: &str) -> ResultType<()> {
+    if name.is_empty() {
+        bail!("new file name cannot be empty");
+    }
+    validate_file_name_no_traversal(name)?;
+    if name.contains('/') || (cfg!(windows) && name.contains('\\')) {
+        bail!("new file name must be one path component");
+    }
+    let mut components = Path::new(name).components();
+    if !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+    {
+        bail!("new file name must be one normal path component");
+    }
+    Ok(())
+}
+
 fn validate_transfer_file_names(files: &[FileEntry]) -> ResultType<()> {
     // Single-file transfer may use an empty relative name, because
     // the destination file path is carried by transfer metadata.
@@ -917,6 +934,29 @@ fn open_parent_dir_no_follow(
     create_missing: bool,
 ) -> std::io::Result<std::fs::File> {
     use std::os::unix::io::{AsRawFd, FromRawFd};
+
+    // Validate the complete walk before a create-missing caller can publish an early component.
+    // The second pass below performs the actual descriptor-relative walk.
+    for component in parent.components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::CurDir => {}
+            std::path::Component::Normal(name) => {
+                cstring_from_os_str(name, "filesystem parent")?;
+            }
+            std::path::Component::ParentDir => {
+                return Err(io_invalid_input(format!(
+                    "parent traversal is not allowed in filesystem path: {}",
+                    parent.display()
+                )));
+            }
+            std::path::Component::Prefix(_) => {
+                return Err(io_invalid_input(format!(
+                    "unsupported path prefix in filesystem path: {}",
+                    parent.display()
+                )));
+            }
+        }
+    }
 
     let mut dir = if parent.is_absolute() {
         std::fs::File::open(Path::new("/"))?
@@ -1293,6 +1333,109 @@ fn unix_remove_file_no_follow(path: &Path) -> std::io::Result<()> {
     unix_require_edge_absent_after_removal(parent.as_raw_fd(), &name, "file-removal target")
 }
 
+#[cfg(unix)]
+fn unix_create_directory(path: &Path) -> std::io::Result<()> {
+    // Passing the complete destination makes the shared walk create and then no-follow-open every
+    // component, including the final directory. The returned handle proves the complete walk.
+    let directory = open_parent_dir_no_follow(path, true)?;
+    drop(directory);
+    Ok(())
+}
+
+#[cfg(unix)]
+fn unix_optional_fstatat_no_follow(
+    parent_fd: crate::libc::c_int,
+    name: &std::ffi::CStr,
+) -> std::io::Result<Option<crate::libc::stat>> {
+    match unix_fstatat_no_follow(parent_fd, name) {
+        Ok(stat) => Ok(Some(stat)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(unix)]
+fn unix_rename_admitted_entry(
+    parent: &std::fs::File,
+    source_name: &std::ffi::CStr,
+    target_name: &std::ffi::CStr,
+    admitted: &crate::libc::stat,
+) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    if source_name == target_name {
+        return Ok(());
+    }
+    let destination_was_same_object =
+        unix_optional_fstatat_no_follow(parent.as_raw_fd(), target_name)?
+            .map_or(false, |target| unix_same_object(admitted, &target));
+
+    let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
+    unix_require_same_object(admitted, &current, "rename source")?;
+    // POSIX renameat is parent-descriptor-relative and never follows the destination leaf. As with
+    // unlinkat, no portable interface binds the source name atomically to a previously opened
+    // inode, so a writer already able to mutate this exact parent retains a final name-exchange
+    // window. The checks before and after make every observable mismatch caller-visible.
+    if unsafe {
+        crate::libc::renameat(
+            parent.as_raw_fd(),
+            source_name.as_ptr(),
+            parent.as_raw_fd(),
+            target_name.as_ptr(),
+        )
+    } != 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let renamed = unix_fstatat_no_follow(parent.as_raw_fd(), target_name).map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!("rename completed, but target finality could not be proved: {error}"),
+        )
+    })?;
+    unix_require_same_object(admitted, &renamed, "renamed target").map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!("rename completed, but target identity is uncertain: {error}"),
+        )
+    })?;
+    if !destination_was_same_object {
+        match unix_optional_fstatat_no_follow(parent.as_raw_fd(), source_name) {
+            Ok(None) => {}
+            Ok(Some(_)) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "rename completed, but the source name was replaced before finality",
+                ));
+            }
+            Err(error) => {
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("rename completed, but source-name absence is uncertain: {error}"),
+                ));
+            }
+        }
+    }
+    sync_recv_directory(parent).map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!("rename is visible, but parent-directory durability is uncertain: {error}"),
+        )
+    })
+}
+
+#[cfg(unix)]
+fn unix_rename_entry(path: &Path, new_name: &str) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    let parent = open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false)?;
+    let source_name = cstring_file_name(path)?;
+    let target_name = cstring_from_os_str(std::ffi::OsStr::new(new_name), "rename target")?;
+    let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &source_name)?;
+    unix_rename_admitted_entry(&parent, &source_name, &target_name, &admitted)
+}
+
 fn sync_recv_regular_file(file: &std::fs::File) -> std::io::Result<()> {
     file.sync_all()?;
 
@@ -1447,6 +1590,7 @@ mod nt_nofollow {
     use winapi::shared::ntdef::{
         HANDLE, NTSTATUS, NT_SUCCESS, OBJECT_ATTRIBUTES, OBJ_CASE_INSENSITIVE, UNICODE_STRING,
     };
+    use winapi::um::fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
     use winapi::um::winbase::{FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT};
     use winapi::um::winnt::{
         DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
@@ -1511,6 +1655,18 @@ mod nt_nofollow {
         } else {
             Err(nt_err(status))
         }
+    }
+
+    fn nt_file_identity(handle: HANDLE) -> io::Result<(u32, u32, u32)> {
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
+        if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok((
+            info.dwVolumeSerialNumber,
+            info.nFileIndexHigh,
+            info.nFileIndexLow,
+        ))
     }
 
     fn validate_component_wide(wide: &[u16]) -> io::Result<()> {
@@ -1939,6 +2095,90 @@ mod nt_nofollow {
         Ok(())
     }
 
+    pub(super) fn create_directory(path: &Path) -> io::Result<()> {
+        // Walking the complete destination makes FILE_OPEN_IF create and then no-follow-open every
+        // component, including the final directory. The retained result proves the complete walk.
+        let directory = walk_to_parent(path, true)?;
+        drop(directory);
+        Ok(())
+    }
+
+    fn open_rename_source_at(parent: HANDLE, name: &[u16]) -> io::Result<OwnedHandle> {
+        unsafe {
+            nt_open_at(
+                parent,
+                name,
+                DELETE,
+                FILE_OPEN,
+                FILE_OPEN_FOR_BACKUP_INTENT,
+                ReparseRequirement::Either,
+            )
+        }
+    }
+
+    fn rename_open_entry(
+        parent: &OwnedHandle,
+        source: &OwnedHandle,
+        new_name: &[u16],
+    ) -> io::Result<()> {
+        unsafe {
+            nt_rename_at(
+                source.as_raw_handle() as HANDLE,
+                parent.as_raw_handle() as HANDLE,
+                new_name,
+                true,
+            )?;
+        }
+        let named = unsafe {
+            nt_open_at(
+                parent.as_raw_handle() as HANDLE,
+                new_name,
+                FILE_READ_ATTRIBUTES,
+                FILE_OPEN,
+                FILE_OPEN_FOR_BACKUP_INTENT,
+                ReparseRequirement::Either,
+            )
+        }
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("rename completed, but target finality could not be proved: {error}"),
+            )
+        })?;
+        let named_identity =
+            nt_file_identity(named.as_raw_handle() as HANDLE).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("rename completed, but target identity is uncertain: {error}"),
+                )
+            })?;
+        let source_identity =
+            nt_file_identity(source.as_raw_handle() as HANDLE).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("rename completed, but source identity is uncertain: {error}"),
+                )
+            })?;
+        if named_identity != source_identity {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "rename completed, but the target no longer names the admitted source handle",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn rename(path: &Path, new_name: &str) -> io::Result<()> {
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let source_name = file_name_wide(path)?;
+        let new_name = component_wide(OsStr::new(new_name))?;
+        let source = open_rename_source_at(parent.as_raw_handle() as HANDLE, &source_name)?;
+        if source_name == new_name {
+            return Ok(());
+        }
+        rename_open_entry(&parent, &source, &new_name)
+    }
+
     #[cfg(test)]
     pub(super) fn acquire_empty_directory_for_test(path: &Path) -> io::Result<OwnedHandle> {
         let parent = walk_to_parent(parent_dir(path)?, false)?;
@@ -1958,6 +2198,25 @@ mod nt_nofollow {
         )
     }
 
+    #[cfg(test)]
+    pub(super) fn acquire_rename_source_for_test(
+        path: &Path,
+    ) -> io::Result<(OwnedHandle, OwnedHandle)> {
+        let parent = walk_to_parent(parent_dir(path)?, false)?;
+        let name = file_name_wide(path)?;
+        let source = open_rename_source_at(parent.as_raw_handle() as HANDLE, &name)?;
+        Ok((parent, source))
+    }
+
+    #[cfg(test)]
+    pub(super) fn rename_acquired_source_for_test(
+        parent: &OwnedHandle,
+        source: &OwnedHandle,
+        new_name: &str,
+    ) -> io::Result<()> {
+        rename_open_entry(parent, source, &component_wide(OsStr::new(new_name))?)
+    }
+
     /// Handle-relative rename via `NtSetInformationFile(FileRenameInformation)` — the `renameat`
     /// analogue. `target` is the source file handle (needs DELETE); `new_parent` the directory the
     /// new name is relative to; `new_name` a bare component. Replaces the destination *name* (never
@@ -1968,8 +2227,14 @@ mod nt_nofollow {
         new_name: &[u16],
         replace: bool,
     ) -> io::Result<()> {
-        let name_bytes = new_name.len() * 2;
-        let total = size_of::<FILE_RENAME_INFORMATION>() + name_bytes;
+        let name_bytes = new_name
+            .len()
+            .checked_mul(size_of::<u16>())
+            .filter(|length| *length <= u32::MAX as usize)
+            .ok_or_else(|| invalid("rename target is too long"))?;
+        let total = size_of::<FILE_RENAME_INFORMATION>()
+            .checked_add(name_bytes)
+            .ok_or_else(|| invalid("rename buffer length overflow"))?;
         // Vec<u64> guarantees the 8-byte alignment the embedded HANDLE requires.
         let mut buf = vec![0u64; (total + 7) / 8];
         let p = buf.as_mut_ptr() as *mut FILE_RENAME_INFORMATION;
@@ -1983,7 +2248,11 @@ mod nt_nofollow {
         );
         // Length = offset_of(FileName) + name bytes (the true header size; avoids trailing padding).
         let name_off = ((*p).FileName.as_ptr() as usize) - (p as usize);
-        let length = (name_off + name_bytes) as u32;
+        let length = name_off
+            .checked_add(name_bytes)
+            .filter(|length| *length <= u32::MAX as usize)
+            .ok_or_else(|| invalid("rename information length overflow"))?
+            as u32;
         let mut iosb: IO_STATUS_BLOCK = zeroed();
         let st = NtSetInformationFile(target, &mut iosb, p.cast(), length, FileRenameInformation);
         if NT_SUCCESS(st) {
@@ -2049,20 +2318,6 @@ mod nt_nofollow {
         path: &Path,
         file: &std::fs::File,
     ) -> io::Result<()> {
-        use winapi::um::fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
-
-        fn identity(handle: HANDLE) -> io::Result<(u32, u32, u32)> {
-            let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
-            if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok((
-                info.dwVolumeSerialNumber,
-                info.nFileIndexHigh,
-                info.nFileIndexLow,
-            ))
-        }
-
         let parent = walk_to_parent(parent_dir(path)?, false)?;
         let name = file_name_wide(path)?;
         let named = unsafe {
@@ -2075,7 +2330,9 @@ mod nt_nofollow {
                 ReparseRequirement::Absent,
             )?
         };
-        if identity(named.as_raw_handle() as HANDLE)? != identity(file.as_raw_handle() as HANDLE)? {
+        if nt_file_identity(named.as_raw_handle() as HANDLE)?
+            != nt_file_identity(file.as_raw_handle() as HANDLE)?
+        {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "receive artifact generation changed while its lease was held",
@@ -3891,28 +4148,28 @@ pub fn remove_file(file: &str) -> ResultType<()> {
 #[inline]
 pub fn create_dir(dir: &str) -> ResultType<()> {
     validate_fs_path_argument(dir, "directory path")?;
-    std::fs::create_dir_all(get_path(dir))?;
+    let path = get_path(dir);
+    #[cfg(unix)]
+    unix_create_directory(&path)?;
+    #[cfg(windows)]
+    nt_nofollow::create_directory(&path)?;
+    #[cfg(not(any(unix, windows)))]
+    bail!("secure directory creation is unsupported on this platform");
     Ok(())
 }
 
 #[inline]
 pub fn rename_file(path: &str, new_name: &str) -> ResultType<()> {
     validate_fs_path_argument(path, "path")?;
-    if new_name.is_empty() {
-        bail!("new file name cannot be empty");
-    }
-    validate_file_name_no_traversal(new_name)?;
-    let path = std::path::Path::new(&path);
-    if path.exists() {
-        let dir = path
-            .parent()
-            .ok_or(anyhow!("Parent directoy of {path:?} not exists"))?;
-        let new_path = dir.join(&new_name);
-        std::fs::rename(&path, &new_path)?;
-        Ok(())
-    } else {
-        bail!("{path:?} not exists");
-    }
+    validate_single_file_name(new_name)?;
+    let path = get_path(path);
+    #[cfg(unix)]
+    unix_rename_entry(&path, new_name)?;
+    #[cfg(windows)]
+    nt_nofollow::rename(&path, new_name)?;
+    #[cfg(not(any(unix, windows)))]
+    bail!("secure rename is unsupported on this platform");
+    Ok(())
 }
 
 #[inline]
@@ -6019,6 +6276,75 @@ mod tests {
     }
 
     #[test]
+    fn create_dir_creates_a_legitimate_nested_tree_idempotently() {
+        let tmp_root = TestTempDir::new("rustdesk_create_dir_nested");
+        let nested = tmp_root.join("one/two/three");
+        let nested_string = get_string(&nested);
+
+        create_dir(&nested_string).expect("create the complete legitimate directory tree");
+        create_dir(&nested_string).expect("reopening an existing legitimate tree is idempotent");
+
+        assert!(nested.is_dir(), "the exact nested directory must exist");
+    }
+
+    #[test]
+    fn create_dir_rejects_parent_traversal_before_any_component_is_created() {
+        let tmp_root = TestTempDir::new("rustdesk_create_dir_parent_traversal");
+        let invalid = tmp_root.join("early/../target");
+
+        create_dir(&get_string(&invalid))
+            .expect_err("a create path containing parent traversal must be refused");
+
+        assert!(
+            !tmp_root.path.exists(),
+            "complete path validation must precede every directory creation"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_dir_refuses_a_symlink_parent_without_mutating_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp_root = TestTempDir::new("rustdesk_create_dir_symlink_parent");
+        let base = tmp_root.join("base");
+        let outside = tmp_root.join("outside");
+        std::fs::create_dir_all(&base).expect("create base directory");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        symlink(&outside, base.join("link")).expect("create directory symlink");
+
+        create_dir(&get_string(&base.join("link/forbidden")))
+            .expect_err("directory creation through a symlink parent must be refused");
+
+        assert!(
+            !outside.join("forbidden").exists(),
+            "a symlink parent must not redirect directory creation"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn create_dir_refuses_a_junction_parent_without_mutating_its_target() {
+        let tmp_root = TestTempDir::new("rustdesk_create_dir_junction_parent");
+        let base = tmp_root.join("base");
+        let outside = tmp_root.join("outside");
+        std::fs::create_dir_all(&base).expect("create base directory");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        assert!(
+            make_junction(&base.join("link"), &outside),
+            "mklink /J must create the parent junction"
+        );
+
+        create_dir(&get_string(&base.join("link/forbidden")))
+            .expect_err("directory creation through a junction parent must be refused");
+
+        assert!(
+            !outside.join("forbidden").exists(),
+            "a junction parent must not redirect directory creation"
+        );
+    }
+
+    #[test]
     fn rename_file_rejects_invalid_new_name() {
         let tmp_root = TestTempDir::new("rustdesk_rename_invalid");
         let src = tmp_root.join("source.txt");
@@ -6038,6 +6364,21 @@ mod tests {
         let err_null = rename_file(&src_str, "bad\0name.txt")
             .expect_err("null byte in new file name must be rejected");
         assert_err_contains(err_null, "null bytes");
+
+        let err_current =
+            rename_file(&src_str, ".").expect_err("current-directory name must be rejected");
+        assert_err_contains(err_current, "one normal path component");
+
+        let err_nested = rename_file(&src_str, "nested/name.txt")
+            .expect_err("a nested rename target must be rejected");
+        assert_err_contains(err_nested, "one path component");
+
+        #[cfg(windows)]
+        {
+            let err_nested = rename_file(&src_str, "nested\\name.txt")
+                .expect_err("a Windows nested rename target must be rejected");
+            assert_err_contains(err_nested, "one path component");
+        }
 
         #[cfg(windows)]
         {
@@ -6063,9 +6404,198 @@ mod tests {
 
         let src_str = src.to_string_lossy().to_string();
         rename_file(&src_str, "renamed.txt").expect("rename should succeed");
+        rename_file(&get_string(&dst), "renamed.txt")
+            .expect("an exact same-name rename is an admitted no-op");
 
         assert!(!src.exists());
         assert!(dst.exists());
+        assert_eq!(std::fs::read(&dst).expect("read renamed file"), b"content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_file_replaces_a_symlink_leaf_without_touching_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp_root = TestTempDir::new("rustdesk_rename_symlink_leaf");
+        let source = tmp_root.join("source.txt");
+        let target = tmp_root.join("target.txt");
+        let outside = tmp_root.join("outside.txt");
+        std::fs::create_dir_all(&tmp_root.path).expect("create rename directory");
+        std::fs::write(&source, b"renamed-content").expect("create rename source");
+        std::fs::write(&outside, b"DO-NOT-TOUCH").expect("create outside target");
+        symlink(&outside, &target).expect("create destination symlink");
+
+        rename_file(&get_string(&source), "target.txt")
+            .expect("rename must replace the destination link leaf");
+
+        assert_eq!(
+            std::fs::read(&target).expect("read renamed target"),
+            b"renamed-content"
+        );
+        assert_eq!(
+            std::fs::read(&outside).expect("read outside target"),
+            b"DO-NOT-TOUCH"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_file_refuses_a_symlink_parent_without_mutating_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp_root = TestTempDir::new("rustdesk_rename_symlink_parent");
+        let base = tmp_root.join("base");
+        let outside = tmp_root.join("outside");
+        let source = outside.join("source.txt");
+        std::fs::create_dir_all(&base).expect("create base directory");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&source, b"DO-NOT-TOUCH").expect("create outside source");
+        symlink(&outside, base.join("link")).expect("create parent symlink");
+
+        rename_file(&get_string(&base.join("link/source.txt")), "renamed.txt")
+            .expect_err("rename through a symlink parent must be refused");
+
+        assert_eq!(
+            std::fs::read(&source).expect("read outside source"),
+            b"DO-NOT-TOUCH"
+        );
+        assert!(!outside.join("renamed.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_admitted_entry_refuses_a_replaced_source_name() {
+        use std::os::unix::io::AsRawFd;
+
+        let tmp_root = TestTempDir::new("rustdesk_rename_replaced_source");
+        let source = tmp_root.join("source.txt");
+        let displaced = tmp_root.join("displaced.txt");
+        let target = tmp_root.join("renamed.txt");
+        std::fs::create_dir_all(&tmp_root.path).expect("create rename directory");
+        std::fs::write(&source, b"admitted").expect("create admitted source");
+        let parent = open_parent_dir_no_follow(&tmp_root.path, false)
+            .expect("acquire retained rename parent");
+        let source_name = cstring_file_name(&source).expect("encode source name");
+        let target_name = cstring_file_name(&target).expect("encode target name");
+        let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &source_name)
+            .expect("admit source identity");
+        std::fs::rename(&source, &displaced).expect("displace admitted source");
+        std::fs::write(&source, b"replacement").expect("install replacement source");
+
+        unix_rename_admitted_entry(&parent, &source_name, &target_name, &admitted)
+            .expect_err("a replacement source generation must be refused");
+
+        assert_eq!(
+            std::fs::read(&source).expect("read replacement source"),
+            b"replacement"
+        );
+        assert_eq!(
+            std::fs::read(&displaced).expect("read displaced admitted source"),
+            b"admitted"
+        );
+        assert!(!target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_admitted_entry_stays_with_its_retained_parent_after_path_swap() {
+        use std::os::unix::fs::symlink;
+        use std::os::unix::io::AsRawFd;
+
+        let tmp_root = TestTempDir::new("rustdesk_rename_retained_parent");
+        let work = tmp_root.join("work");
+        let displaced = tmp_root.join("displaced");
+        let outside = tmp_root.join("outside");
+        let source = work.join("source.txt");
+        std::fs::create_dir_all(&work).expect("create admitted parent");
+        std::fs::create_dir_all(&outside).expect("create outside parent");
+        std::fs::write(&source, b"admitted").expect("create admitted source");
+        std::fs::write(outside.join("source.txt"), b"OUTSIDE-SOURCE")
+            .expect("create outside source");
+        std::fs::write(outside.join("renamed.txt"), b"OUTSIDE-TARGET")
+            .expect("create outside target");
+        let parent = open_parent_dir_no_follow(&work, false).expect("acquire exact parent");
+        let source_name = cstring_from_os_str(std::ffi::OsStr::new("source.txt"), "test source")
+            .expect("encode source name");
+        let target_name = cstring_from_os_str(std::ffi::OsStr::new("renamed.txt"), "test target")
+            .expect("encode target name");
+        let admitted = unix_fstatat_no_follow(parent.as_raw_fd(), &source_name)
+            .expect("admit source identity");
+        std::fs::rename(&work, &displaced).expect("displace admitted parent path");
+        symlink(&outside, &work).expect("install replacement parent symlink");
+
+        unix_rename_admitted_entry(&parent, &source_name, &target_name, &admitted)
+            .expect("rename must stay inside the retained parent object");
+
+        assert_eq!(
+            std::fs::read(displaced.join("renamed.txt")).expect("read retained-parent result"),
+            b"admitted"
+        );
+        assert_eq!(
+            std::fs::read(outside.join("source.txt")).expect("read outside source"),
+            b"OUTSIDE-SOURCE"
+        );
+        assert_eq!(
+            std::fs::read(outside.join("renamed.txt")).expect("read outside target"),
+            b"OUTSIDE-TARGET"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rename_file_refuses_a_junction_parent_without_mutating_its_target() {
+        let tmp_root = TestTempDir::new("rustdesk_rename_junction_parent");
+        let base = tmp_root.join("base");
+        let outside = tmp_root.join("outside");
+        let source = outside.join("source.txt");
+        std::fs::create_dir_all(&base).expect("create base directory");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::write(&source, b"DO-NOT-TOUCH").expect("create outside source");
+        assert!(
+            make_junction(&base.join("link"), &outside),
+            "mklink /J must create the parent junction"
+        );
+
+        rename_file(&get_string(&base.join("link/source.txt")), "renamed.txt")
+            .expect_err("rename through a junction parent must be refused");
+
+        assert_eq!(
+            std::fs::read(&source).expect("read outside source"),
+            b"DO-NOT-TOUCH"
+        );
+        assert!(!outside.join("renamed.txt").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rename_open_handle_moves_only_the_admitted_source_after_name_swap() {
+        let tmp_root = TestTempDir::new("rustdesk_rename_exact_windows_handle");
+        let source = tmp_root.join("source.txt");
+        let displaced = tmp_root.join("displaced.txt");
+        let renamed = tmp_root.join("renamed.txt");
+        std::fs::create_dir_all(&tmp_root.path).expect("create rename directory");
+        std::fs::write(&source, b"admitted").expect("create admitted source");
+        let (parent, source_handle) = nt_nofollow::acquire_rename_source_for_test(&source)
+            .expect("acquire exact source handle");
+        std::fs::rename(&source, &displaced).expect("displace admitted source");
+        std::fs::write(&source, b"replacement").expect("install replacement source");
+
+        nt_nofollow::rename_acquired_source_for_test(&parent, &source_handle, "renamed.txt")
+            .expect("rename only the exact admitted source handle");
+
+        assert_eq!(
+            std::fs::read(&source).expect("read replacement source"),
+            b"replacement"
+        );
+        assert!(
+            !displaced.exists(),
+            "the admitted object must move by handle"
+        );
+        assert_eq!(
+            std::fs::read(&renamed).expect("read renamed admitted source"),
+            b"admitted"
+        );
     }
 
     #[cfg(windows)]

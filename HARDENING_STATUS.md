@@ -1490,7 +1490,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current-source Rust 1.75 Linux-container regressions now execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The newer retained-authority file/directory deletion implementation and its Unix symlink/swap/bound plus Windows junction/exact-handle regressions have not yet executed in an isolated target runtime. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. Create-directory and rename filesystem mutation remain path-based open work. |
+| CM/file finality (R-S11c-4c/4d) | Current-source Rust 1.75 Linux-container regressions now execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The newer retained-authority create/rename/file/directory mutation implementation and its Unix symlink/swap/bound plus Windows junction/exact-handle regressions have not yet executed in an isolated target runtime. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
@@ -10986,9 +10986,20 @@ revalidation, so a principal already able to mutate that exact parent can still 
 name in that syscall window; it cannot redirect traversal through a substitute or another parent.
 Only successful sink finality may complete the separate display job; deletion history removes
 only the exact deleted subtree rather than unrelated substring matches. Directory links enter
-the leaf-unlink command path and cannot trigger recursive target enumeration. Create-directory
-and rename now reserve exact
-file-0 result owners before dispatch and return only after local or remote operation finality;
+the leaf-unlink command path and cannot trigger recursive target enumeration. Native
+create-directory no longer uses `create_dir_all` on a re-resolved path: it validates the complete
+path before mutation, then creates and no-follow-opens every component through the retained Unix
+descriptor or Windows NT-handle walk. Native rename rejects anything other than one nonempty
+normal basename and stays relative to the retained no-follow source parent. Windows opens the
+exact source with DELETE authority, renames that handle with parent-relative
+`FileRenameInformation`, and re-proves that the destination names the same volume/file identity.
+Unix immediately revalidates the admitted no-follow source identity, calls retained-parent
+`renameat`, re-proves the destination identity and required old-name absence, and synchronizes the
+parent; every post-rename failure reports that the visible/durable outcome is uncertain. As with
+unlink, POSIX has no atomic rename-by-previously-open-inode primitive, so a principal already able
+to mutate that exact parent retains the final identity-check/rename syscall window but cannot
+redirect the operation through another parent or destination link target. Create-directory and
+rename reserve exact file-0 result owners before dispatch and return only after local or remote operation finality;
 the local native producer emits that same canonical identity. Invalid or unowned cancel IDs fail before
 dispatch. Desktop/mobile create dialogs and the rename dialog capture their admitted directory,
 entry/name set, path style, direction, and session before their dialog awaits. Replacement still
@@ -11009,7 +11020,11 @@ junction to enumerate as `DirLink` and its leaf command to delete the exact junc
 touching the target. The Windows swapped-root case retains the
 admitted handle, renames its object, plants a replacement junction, and requires disposition to
 remove only the acquired object; the Unix counterpart requires the changed root edge to fail
-without touching or traversing the replacement.
+without touching or traversing the replacement. Additional native regressions cover legitimate
+and idempotent nested creation, complete validation before creation, symlink/junction-parent
+refusal, exact/same-name rename, destination-symlink replacement without target mutation, Unix
+source-generation mismatch and retained-parent path swap, and Windows exact-source-handle rename
+after its original name is replaced.
 The Dart suite remains wired into `scripts/dart-verify.sh`. The 859-line source-wording recognizer, its 572-line workspace
 duplicate, and shared/Apple invocations were deleted because they ran no Dart, bridge,
 filesystem command, target, or application behavior. No Dart, Flutter, Rust compiler, RustDesk
@@ -11019,9 +11034,7 @@ are three pre-existing test-format differences outside this slice. No user-owned
 or libvirt socket was present; an unprivileged
 Bubblewrap container and direct user/network namespace fallback both failed before command
 execution because this host denied their namespace setup. No ambient host Cargo, rootful daemon,
-root, host RustDesk, or host product/compiler/test execution fallback was used. Create-directory and
-rename filesystem mutation remain path-based and are not claimed corrected by this deletion slice.
-Exact isolated
+root, host RustDesk, or host product/compiler/test execution fallback was used. Exact isolated
 execution on Android, iOS, Windows, Linux, macOS, and applicable web targets—including task
 swipe/reopen/Force Stop, desktop replacement, reordered results, cross-version transfer,
 performance/resource soak, and cleanup—remains OPEN under the global STOP-SHIP matrix.

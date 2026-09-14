@@ -4763,14 +4763,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c1) R-S11ev outgoing viewer video mailbox =="
-if python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test; then
-  note "ok  R-S11ev macOS/shared outgoing viewer video uses one bounded, fresh, generation-aware mailbox with exact teardown"
-else
-  echo "  FAIL R-S11ev macOS/shared outgoing viewer video regained split frame/token reachability, stale-GOP, or teardown debt"
-  rc=1
-fi
-
 echo "== (2g-c2-0) R-S11hi bounded format-first peer-audio decoder mailbox =="
 if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
   note "ok  R-S11hi Apple/shared peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"

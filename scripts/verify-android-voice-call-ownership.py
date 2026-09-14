@@ -3982,6 +3982,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "self.video_frame_receipts_negotiated = false;",
             "self.video_frame_receipt_tracker.reset();",
+            "Ok(ref bytes) => {\n                                        let received_at = std::time::Instant::now();",
             "Some(message::Union::VideoFrame(vf))",
             "if !self.video_frame_receipts_negotiated",
             "native_video_frame_runtime_supported(&vf)",
@@ -3997,9 +3998,9 @@ def validate(sources: Dict[str, str]) -> None:
             "let Some(thread) = self.video_threads.get_mut(&display) else",
             '"video decoder ownership missing after admission for display {display}"',
             "return false;",
-            "thread.media_thread.admit_frame(vf, is_keyframe)",
+            ".admit_received_frame(vf, is_keyframe, received_at)",
         ),
-        "viewer receipt after keyed parse/identity validation and before decode publication",
+        "viewer receive timestamp, receipt, and decoder admission order",
     )
     require_order(
         sources["io_loop"],

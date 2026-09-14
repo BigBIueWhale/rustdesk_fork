@@ -1372,6 +1372,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                         break;
                                     }
                                     Ok(ref bytes) => {
+                                        let received_at = std::time::Instant::now();
                                         last_recv_time = Instant::now();
                                         if !received {
                                             received = true;
@@ -1382,13 +1383,15 @@ impl<T: InvokeUiSession> Remote<T> {
                                         let keep_running = self
                                             .handle_msg_from_peer(
                                                 bytes,
+                                                received_at,
                                                 &mut peer,
                                                 clipboard_session.as_ref(),
                                             )
                                             .await;
                                         #[cfg(target_os = "ios")]
-                                        let keep_running =
-                                            self.handle_msg_from_peer(bytes, &mut peer).await;
+                                        let keep_running = self
+                                            .handle_msg_from_peer(bytes, received_at, &mut peer)
+                                            .await;
                                         if !keep_running {
                                             break
                                         }
@@ -2734,6 +2737,7 @@ impl<T: InvokeUiSession> Remote<T> {
     async fn handle_msg_from_peer(
         &mut self,
         data: &[u8],
+        received_at: std::time::Instant,
         peer: &mut Stream,
         #[cfg(not(target_os = "ios"))] clipboard_session: Option<&ClientClipboardSession>,
     ) -> bool {
@@ -2817,7 +2821,10 @@ impl<T: InvokeUiSession> Remote<T> {
                         return false;
                     };
                     let is_keyframe = starts_video_sequence(&vf);
-                    match thread.media_thread.admit_frame(vf, is_keyframe) {
+                    match thread
+                        .media_thread
+                        .admit_received_frame(vf, is_keyframe, received_at)
+                    {
                         VideoFrameAdmission::Queued => {}
                         VideoFrameAdmission::AwaitingKeyframe => {
                             log::debug!(

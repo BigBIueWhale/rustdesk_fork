@@ -2709,7 +2709,7 @@ pub(crate) enum VideoControlAdmission {
 
 struct QueuedVideoFrame {
     generation: u64,
-    queued_at: std::time::Instant,
+    received_at: std::time::Instant,
     is_keyframe: bool,
     frame: VideoFrame,
 }
@@ -2801,8 +2801,8 @@ enum VideoMailboxItem {
     RefreshRequired,
 }
 
-fn video_frame_is_fresh(queued_at: std::time::Instant, now: std::time::Instant) -> bool {
-    now.checked_duration_since(queued_at).unwrap_or_default() <= MAX_VIDEO_FRAME_QUEUE_AGE
+fn video_frame_is_fresh(received_at: std::time::Instant, now: std::time::Instant) -> bool {
+    now.checked_duration_since(received_at).unwrap_or_default() <= MAX_VIDEO_FRAME_QUEUE_AGE
 }
 
 pub(crate) fn video_mailbox() -> (VideoMailboxSender, VideoMailboxReceiver) {
@@ -2819,11 +2819,11 @@ pub(crate) fn video_mailbox() -> (VideoMailboxSender, VideoMailboxReceiver) {
 }
 
 impl VideoMailboxSender {
-    fn admit_frame_at(
+    fn admit_received_frame(
         &self,
         frame: VideoFrame,
         is_keyframe: bool,
-        queued_at: std::time::Instant,
+        received_at: std::time::Instant,
     ) -> VideoFrameAdmission {
         let mut state = self.shared.state.lock().unwrap();
         if state.closed {
@@ -2842,7 +2842,7 @@ impl VideoMailboxSender {
             let generation = state.generation;
             state.work.push_back(VideoWork::Frame(QueuedVideoFrame {
                 generation,
-                queued_at,
+                received_at,
                 is_keyframe: true,
                 frame,
             }));
@@ -2873,7 +2873,7 @@ impl VideoMailboxSender {
         let generation = state.generation;
         state.work.push_back(VideoWork::Frame(QueuedVideoFrame {
             generation,
-            queued_at,
+            received_at,
             is_keyframe: false,
             frame,
         }));
@@ -2881,10 +2881,6 @@ impl VideoMailboxSender {
         drop(state);
         self.shared.ready.notify_one();
         VideoFrameAdmission::Queued
-    }
-
-    pub(crate) fn admit_frame(&self, frame: VideoFrame, is_keyframe: bool) -> VideoFrameAdmission {
-        self.admit_frame_at(frame, is_keyframe, std::time::Instant::now())
     }
 
     pub(crate) fn begin_refresh(&self) -> bool {
@@ -2985,7 +2981,7 @@ impl VideoMailboxReceiver {
                     if state.awaiting_keyframe || frame.generation != state.generation {
                         continue;
                     }
-                    if !video_frame_is_fresh(frame.queued_at, std::time::Instant::now()) {
+                    if !video_frame_is_fresh(frame.received_at, std::time::Instant::now()) {
                         let open = state.invalidate_frames();
                         drop(state);
                         if !open {
@@ -3217,9 +3213,16 @@ impl OwnedVideoThread {
         }
     }
 
-    pub(crate) fn admit_frame(&self, frame: VideoFrame, is_keyframe: bool) -> VideoFrameAdmission {
+    pub(crate) fn admit_received_frame(
+        &self,
+        frame: VideoFrame,
+        is_keyframe: bool,
+        received_at: std::time::Instant,
+    ) -> VideoFrameAdmission {
         match self.mailbox.as_ref() {
-            Some(mailbox) => mailbox.admit_frame(frame, is_keyframe),
+            Some(mailbox) => {
+                mailbox.admit_received_frame(frame, is_keyframe, received_at)
+            }
             None => VideoFrameAdmission::Closed,
         }
     }
@@ -3314,7 +3317,7 @@ where
                             continue;
                         }
                         let generation = queued.generation;
-                        let queued_at = queued.queued_at;
+                        let received_at = queued.received_at;
                         let vf = queued.frame;
                         let display = vf.display as usize;
                         let start = std::time::Instant::now();
@@ -3345,7 +3348,7 @@ where
                             let format_changed = handler.decoder.format() != format;
                             match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
                                 Ok(rendered) => {
-                                    if !video_frame_is_fresh(queued_at, std::time::Instant::now()) {
+                                    if !video_frame_is_fresh(received_at, std::time::Instant::now()) {
                                         if video_receiver.invalidate_generation(generation) {
                                             if let Err(err) = session.refresh_video(display as _) {
                                                 log::error!(
@@ -5555,6 +5558,14 @@ mod tests {
         frame
     }
 
+    fn admit_video_frame(
+        sender: &VideoMailboxSender,
+        frame: VideoFrame,
+        is_keyframe: bool,
+    ) -> VideoFrameAdmission {
+        sender.admit_received_frame(frame, is_keyframe, std::time::Instant::now())
+    }
+
     fn queued_video_frame(item: VideoMailboxItem) -> QueuedVideoFrame {
         match item {
             VideoMailboxItem::Frame(frame) => frame,
@@ -5570,11 +5581,11 @@ mod tests {
         let (sender, _receiver) = video_mailbox();
 
         assert_eq!(
-            sender.admit_frame(video_frame(1), false),
+            admit_video_frame(&sender, video_frame(1), false),
             VideoFrameAdmission::RefreshRequired
         );
         assert_eq!(
-            sender.admit_frame(video_frame(2), false),
+            admit_video_frame(&sender, video_frame(2), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
         assert_eq!(sender.pending_frames(), Some(0));
@@ -5584,28 +5595,28 @@ mod tests {
     fn r_s11ev_video_mailbox_overflow_discards_the_gop_and_recovers_in_order() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(10), true),
+            admit_video_frame(&sender, video_frame(10), true),
             VideoFrameAdmission::Queued
         );
         for display in 11..(10 + VIDEO_FRAME_QUEUE_CAPACITY as i32) {
             assert_eq!(
-                sender.admit_frame(video_frame(display), false),
+                admit_video_frame(&sender, video_frame(display), false),
                 VideoFrameAdmission::Queued
             );
         }
         assert_eq!(sender.pending_frames(), Some(VIDEO_FRAME_QUEUE_CAPACITY));
 
         assert_eq!(
-            sender.admit_frame(video_frame(99), false),
+            admit_video_frame(&sender, video_frame(99), false),
             VideoFrameAdmission::RefreshRequired
         );
         assert_eq!(sender.pending_frames(), Some(0));
         assert_eq!(
-            sender.admit_frame(video_frame(100), false),
+            admit_video_frame(&sender, video_frame(100), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
         assert_eq!(
-            sender.admit_frame(video_frame(200), true),
+            admit_video_frame(&sender, video_frame(200), true),
             VideoFrameAdmission::Queued
         );
         assert_eq!(sender.pending_frames(), Some(1));
@@ -5624,11 +5635,11 @@ mod tests {
     fn r_s11ev_keyframe_supersession_preserves_control_order() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Queued
         );
         assert_eq!(
-            sender.admit_frame(video_frame(2), false),
+            admit_video_frame(&sender, video_frame(2), false),
             VideoFrameAdmission::Queued
         );
         assert_eq!(
@@ -5636,11 +5647,11 @@ mod tests {
             VideoControlAdmission::RefreshRequired
         );
         assert_eq!(
-            sender.admit_frame(video_frame(3), false),
+            admit_video_frame(&sender, video_frame(3), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
         assert_eq!(
-            sender.admit_frame(video_frame(4), true),
+            admit_video_frame(&sender, video_frame(4), true),
             VideoFrameAdmission::Queued
         );
 
@@ -5662,7 +5673,7 @@ mod tests {
     fn r_s11ev_superseded_generation_is_rejected_before_publication() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Queued
         );
         let old = queued_video_frame(
@@ -5673,7 +5684,7 @@ mod tests {
         assert!(receiver.generation_is_current(old.generation));
 
         assert_eq!(
-            sender.admit_frame(video_frame(2), true),
+            admit_video_frame(&sender, video_frame(2), true),
             VideoFrameAdmission::Queued
         );
         assert!(
@@ -5693,12 +5704,12 @@ mod tests {
     fn r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(0), true),
+            admit_video_frame(&sender, video_frame(0), true),
             VideoFrameAdmission::Queued
         );
         for display in 1..VIDEO_FRAME_QUEUE_CAPACITY as i32 {
             assert_eq!(
-                sender.admit_frame(video_frame(display), false),
+                admit_video_frame(&sender, video_frame(display), false),
                 VideoFrameAdmission::Queued
             );
         }
@@ -5711,7 +5722,8 @@ mod tests {
             );
             assert_eq!(queued.frame.display, expected);
             assert_eq!(
-                sender.admit_frame(
+                admit_video_frame(
+                    &sender,
                     video_frame(expected + VIDEO_FRAME_QUEUE_CAPACITY as i32),
                     false,
                 ),
@@ -5732,13 +5744,15 @@ mod tests {
     }
 
     #[test]
-    fn r_s11ev_stale_frame_retires_the_gop_instead_of_displaying_backlog() {
+    fn r_s11ev_receive_timestamp_survives_owned_admission() {
         let (sender, receiver) = video_mailbox();
-        let stale_at = std::time::Instant::now()
+        let worker = std::thread::spawn(|| {});
+        let mut owned = OwnedVideoThread::new("receive-time-test", sender, worker);
+        let received_at = std::time::Instant::now()
             .checked_sub(MAX_VIDEO_FRAME_QUEUE_AGE + Duration::from_millis(1))
             .expect("test instant");
         assert_eq!(
-            sender.admit_frame_at(video_frame(1), true, stale_at),
+            owned.admit_received_frame(video_frame(1), true, received_at),
             VideoFrameAdmission::Queued
         );
 
@@ -5746,23 +5760,29 @@ mod tests {
             receiver.recv(),
             Some(VideoMailboxItem::RefreshRequired)
         ));
-        assert_eq!(sender.pending_frames(), Some(0));
+        assert_eq!(owned.pending_frames(), Some(0));
         assert_eq!(
-            sender.admit_frame(video_frame(2), false),
+            owned.admit_received_frame(
+                video_frame(2),
+                false,
+                std::time::Instant::now(),
+            ),
             VideoFrameAdmission::AwaitingKeyframe
         );
+        let (_, worker) = owned.close().expect("owned worker");
+        worker.join().expect("worker completion");
     }
 
     #[test]
     fn r_s11ev_video_freshness_budget_includes_decode_time() {
-        let queued_at = std::time::Instant::now();
+        let received_at = std::time::Instant::now();
         assert!(video_frame_is_fresh(
-            queued_at,
-            queued_at + MAX_VIDEO_FRAME_QUEUE_AGE
+            received_at,
+            received_at + MAX_VIDEO_FRAME_QUEUE_AGE
         ));
         assert!(!video_frame_is_fresh(
-            queued_at,
-            queued_at + MAX_VIDEO_FRAME_QUEUE_AGE + Duration::from_nanos(1)
+            received_at,
+            received_at + MAX_VIDEO_FRAME_QUEUE_AGE + Duration::from_nanos(1)
         ));
     }
 
@@ -5770,7 +5790,7 @@ mod tests {
     fn r_s11ev_explicit_refresh_clears_frames_but_preserves_controls() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Queued
         );
         assert_eq!(
@@ -5778,7 +5798,7 @@ mod tests {
             VideoControlAdmission::Accepted
         );
         assert_eq!(
-            sender.admit_frame(video_frame(2), false),
+            admit_video_frame(&sender, video_frame(2), false),
             VideoFrameAdmission::Queued
         );
 
@@ -5789,7 +5809,7 @@ mod tests {
             Some(VideoMailboxItem::Control(VideoControl::RecordScreen(true)))
         ));
         assert_eq!(
-            sender.admit_frame(video_frame(3), false),
+            admit_video_frame(&sender, video_frame(3), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
     }
@@ -5798,7 +5818,7 @@ mod tests {
     fn r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Queued
         );
         for index in 0..64 {
@@ -5814,11 +5834,11 @@ mod tests {
         }
         assert_eq!(sender.pending_frames(), Some(0));
         assert_eq!(
-            sender.admit_frame(video_frame(2), false),
+            admit_video_frame(&sender, video_frame(2), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
         assert_eq!(
-            sender.admit_frame(video_frame(3), true),
+            admit_video_frame(&sender, video_frame(3), true),
             VideoFrameAdmission::Queued
         );
 
@@ -5839,7 +5859,7 @@ mod tests {
     fn r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position() {
         let (sender, receiver) = video_mailbox();
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Queued
         );
         assert_eq!(
@@ -5847,7 +5867,7 @@ mod tests {
             VideoControlAdmission::Accepted
         );
         assert_eq!(
-            sender.admit_frame(video_frame(2), false),
+            admit_video_frame(&sender, video_frame(2), false),
             VideoFrameAdmission::Queued
         );
         for index in 0..64 {
@@ -5899,7 +5919,7 @@ mod tests {
             assert_eq!(state.frame_count, 0);
         }
         assert_eq!(
-            sender.admit_frame(video_frame(7), true),
+            admit_video_frame(&sender, video_frame(7), true),
             VideoFrameAdmission::Queued
         );
 
@@ -5933,7 +5953,7 @@ mod tests {
         sender.close();
         assert!(worker.join().expect("worker completion").is_none());
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Closed
         );
         assert_eq!(
@@ -5962,7 +5982,7 @@ mod tests {
         drop(receiver);
 
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Closed
         );
         assert_eq!(
@@ -5976,7 +5996,7 @@ mod tests {
         let (sender, receiver) = video_mailbox();
         assert_eq!(sender.pending_frames(), Some(0));
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Queued
         );
         assert_eq!(sender.pending_frames(), Some(1));
@@ -5986,7 +6006,7 @@ mod tests {
         assert_eq!(sender.pending_frames(), None);
         assert!(!sender.begin_refresh());
         assert_eq!(
-            sender.admit_frame(video_frame(2), true),
+            admit_video_frame(&sender, video_frame(2), true),
             VideoFrameAdmission::Closed
         );
 
@@ -5995,7 +6015,11 @@ mod tests {
         assert_eq!(owned.pending_frames(), None);
         assert!(!owned.begin_refresh());
         assert_eq!(
-            owned.admit_frame(video_frame(3), true),
+            owned.admit_received_frame(
+                video_frame(3),
+                true,
+                std::time::Instant::now(),
+            ),
             VideoFrameAdmission::Closed
         );
         let (_, worker) = owned.close().unwrap();
@@ -6023,7 +6047,11 @@ mod tests {
         assert_eq!(panic_owned.pending_frames(), None);
         assert!(!panic_owned.begin_refresh());
         assert_eq!(
-            panic_owned.admit_frame(video_frame(4), true),
+            panic_owned.admit_received_frame(
+                video_frame(4),
+                true,
+                std::time::Instant::now(),
+            ),
             VideoFrameAdmission::Closed
         );
         let (_, panicked_worker) = panic_owned.close().unwrap();
@@ -6039,7 +6067,7 @@ mod tests {
             state.awaiting_keyframe = false;
         }
         assert_eq!(
-            sender.admit_frame(video_frame(1), true),
+            admit_video_frame(&sender, video_frame(1), true),
             VideoFrameAdmission::Closed
         );
         assert!(receiver.recv().is_none());

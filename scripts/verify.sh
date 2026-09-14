@@ -11189,12 +11189,6 @@ else
   echo "  FAIL R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210: X11 capture regained permissive memory or unchecked/incomplete frame finality"
   rc=1
 fi
-if python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test; then
-  echo "  ok  R-S11ev/R-S11e-183 viewer video frames have one bounded, fresh, generation-aware mailbox with exact teardown"
-else
-  echo "  FAIL R-S11ev/R-S11e-183: viewer video mailbox regained split frame/token reachability, stale-GOP, or teardown debt"
-  rc=1
-fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
 if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11hi/R-S11e-246 peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"

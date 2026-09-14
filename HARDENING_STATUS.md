@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-70ad0af9e3f419ed0ce91217be4efd6675991677fc5a7714ee8e7c801ed49324  requirements.html
+ab6fa67185b7231ea1a10daef43468655c9f44c6bb293ed401c1f3da30744e35  requirements.html
 ```
 
 ## Current Verdict
@@ -923,7 +923,7 @@ client presented timely pixels on a target OS.
 
 | Requirement | Current source disposition |
 | --- | --- |
-| R-S11ev/R-S11e-183, Appendix C #304 | The source-proven split 120-frame store/eight-token decoder protocol could retain tokenless old frames indefinitely while input stayed responsive; reconnect destroyed the backlog. It is replaced by one directly consumable capacity-eight, generation/GOP-aware mailbox with a one-second receipt-through-decode freshness bound and exact endpoint/worker finality. R-S11fn and R-S11fo subsequently close decoder-control and endpoint-loss continuation. This is a strong causal candidate, not artifact-specific causal proof. |
+| R-S11ev/R-S11e-183 | The split 120-frame store/eight-token decoder protocol is replaced by one directly consumable capacity-eight, generation/GOP-aware mailbox. A later audit found that its one-second freshness clock began only at mailbox admission, after receipt acknowledgement and other awaitable work; the network loop now captures the receive instant as soon as the keyed stream yields bytes and carries it unchanged through admission and completed decode. R-S11fn and R-S11fo close decoder-control and endpoint-loss continuation. These source corrections remain causal candidates, not artifact-specific causal proof. |
 | R-S11eb/R-S11e-146, Appendix C #281 | Mobile Activity/isolate ownership is distinct from a fresh exact outgoing-connection UUID. Replacement drains prior mobile connections; route, event, frame, cursor, file, timer, input, and delayed cleanup work is exact-session guarded. The persistent Android controlled service is intentionally unchanged. |
 | R-S11ec/R-S11e-147, Appendix C #282 | Outgoing clipboard lifetime is owned by exact network-round leases and one retained worker handle, independent of UI-registry presence; replacement waits for predecessor drain. |
 | R-S11ed/R-S11e-148, Appendix C #283 | Delayed OS-password input is an exact-round owned async task using only the admitting round's sender; every replacement/exit aborts and awaits it before round completion. |
@@ -1144,10 +1144,15 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   acquisition, JNI copy, and image close finish before teardown can close the reader. The former mutable-generation
   callback and its silent exception sink are absent. Exact APK/device stop/replacement races and presentation remain
   in the mobile and product-behavior OPEN rows.
-- **R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox** — Source closed. One
-  capacity-eight generation/GOP-aware mailbox replaces the split token/frame queues, every retained frame is
-  directly reachable, receipt-through-decode freshness is bounded, and endpoint loss is terminal rather than a
-  healthy empty queue.
+- **R-S11ev/R-S11e-183 directly reachable, bounded, receive-time-fresh outgoing-viewer video mailbox** — Source
+  closed. One capacity-eight generation/GOP-aware mailbox makes every retained frame directly reachable. The
+  network owner captures the monotonic receive instant before parsing, acknowledgement writes, UI work, worker
+  construction, or later awaits; the mailbox API requires that instant and cannot relabel pre-admission delay as
+  fresh. Pre- and post-decode checks enforce the one-second budget, and endpoint loss is terminal rather than a
+  healthy empty queue. The executable Rust regressions remain; the source-wording/mutation verifier and its
+  duplicate workspace validator are deleted because they missed this semantic mismatch and observed no runtime.
+  Current compilation/execution is not claimed for this correction: the fixed rootless Docker socket was absent,
+  and no host or rootful fallback was used. Target-native focus/background/presentation evidence remains open.
 - **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source implementation
   and five directly wired executable Rust regressions remain. Each `(session, display)` owns one immutable
   published frame plus at most one latest pending frame and exact event generation; stale consumers or
@@ -10844,8 +10849,7 @@ and shell but no Rust/Cargo, Flutter/Dart, native audio stack, or platform targe
 toolchain. Exact Rust unit execution, native playback, and compilation are therefore not
 claimed; no substitute image, network pull, dependency acquisition, listener, host
 process, or long release build is used. The focused peer-audio mailbox verifier passed
-all 22 deliberate mutations. The adjacent viewer-video mailbox verifier passed all 49
-mutations, and the adjacent Android voice-call ownership verifier rejected all 535
+all 22 deliberate mutations. The adjacent Android voice-call ownership verifier rejected all 535
 mutations. The independent workspace validator passed in normal mode, and its complete
 unfiltered 4,832-entry semantic source-mutation catalog passed; every fixture had to be
 rejected at every reachable source occurrence. Earlier exhaustive construction runs

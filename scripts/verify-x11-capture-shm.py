@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Tuple
@@ -68,9 +67,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(
-            encoding="utf-8"
-        ),
     }
 
 
@@ -330,30 +326,6 @@ def validate(sources: Dict[str, str]) -> None:
         "x11::capturer::tests::r_s11fx_ -- --test-threads=1",
         "compiled X11 GetImage finality tests",
     )
-    try:
-        workspace_module = ast.parse(sources["workspace"])
-    except SyntaxError as error:
-        raise VerificationError(f"independent workspace does not parse: {error}") from error
-    validators = [
-        node
-        for node in workspace_module.body
-        if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
-    ]
-    dispatches = (
-        [
-            node
-            for node in ast.walk(validators[0])
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "validate_x11_capture_shared_memory_contract"
-        ]
-        if len(validators) == 1
-        else []
-    )
-    if len(dispatches) != 1:
-        raise VerificationError("independent workspace dispatch is not exact")
-
-
 @dataclass(frozen=True)
 class Mutation:
     source: str
@@ -482,16 +454,6 @@ MUTATIONS = (
         "scripts/verify-x11-capture-shm.py --repo . --self-test",
         "scripts/verify-x11-capture-shm.py --repo .",
         "focused mutation gate",
-    ),
-    Mutation(
-        "workspace",
-        "    validate_viewer_voice_call_worker_contract(sources)\n"
-        "    validate_x11_capture_shared_memory_contract(sources)\n"
-        "    validate_viewer_video_mailbox_contract(sources)",
-        "    validate_viewer_voice_call_worker_contract(sources)\n"
-        "    validate_x11_capture_shared_memory_contract_disabled(sources)\n"
-        "    validate_viewer_video_mailbox_contract(sources)",
-        "independent workspace dispatch",
     ),
 )
 

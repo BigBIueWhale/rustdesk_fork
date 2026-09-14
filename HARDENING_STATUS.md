@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-f52d9a8dd9fbf40d0ebb058e716daf060048fe38a1e6bc69f7152ab4e665dbd1  requirements.html
+2e208ca5ccd4ee938349d20e8e8bfeef805cd68d8b1436f02d0bd2993be2b77c  requirements.html
 ```
 
 ## Current Verdict
@@ -667,8 +667,9 @@ status, and duplicate Appendix C #197 finding were deleted, reducing `requiremen
 2,126,089 bytes. The focused checker now reads only the four production Rust/Kotlin/Swift sources and performs
 one source-invariant pass; its requirements/ledger/gate-wiring oracles, Rust-test wording checks, diagnostic wording
 checks, and 12-item mutation catalog were deleted, reducing it from 10,691 to 5,254 bytes. The shared confined
-verifier now runs the exact Rust policy regression instead of proving only that its source strings exist. Both the
-source invariant and regression use its networkless, nonroot, read-only-root `RUN` container; this changes
+verifier now runs the exact Rust policy regression instead of proving only that its source strings exist. The
+source invariant is a fixed-interpreter read-only host inspection; the behavior regression uses the networkless,
+nonroot, read-only-root `RUN` container. This changes
 `scripts/verify.sh` from 1,288,980 to 1,289,218 bytes. The duplicate Apple invocation was deleted, reducing that
 checker from 395,561 to 395,175 bytes. The workspace verifier's entire duplicate 121-line verifier-of-verifier
 function, dispatch, and source load were deleted, reducing it from 1,712,314 to 1,707,194 bytes. The focused
@@ -677,6 +678,22 @@ Exact Android KeyStore/iOS Keychain failure injection, successful recovery and d
 device behavior, cold artifacts, independent reproduction, and external review remain open. Including this record,
 the live ledger is 1,066,539 bytes, or 355,513 conservative tokens by the documented method, below its
 400,000-token budget.
+
+R-S11bi now states only the timeless explicit-domain, exact-target, checked-transition, and native
+installed-lifecycle contract. Its historical defect narrative, third-party man-page interpretation,
+implementation receipt, verifier inventory, and current evidence prose were removed; duplicate Appendix C
+#198 was deleted because it introduced no independent requirement or risk. `requirements.html` falls from
+2,126,089 to 2,123,230 bytes. The focused checker now reads only the three production Rust/AppleScript sources
+and performs one source-invariant pass; its requirement/ledger/gate-wiring and Rust-test-name oracles plus the
+entire 16-item mutation catalog were deleted, reducing it from 12,615 to 7,963 bytes. The shared gate invokes
+that check through fixed `/usr/bin/python3 -I -S` as read-only source inspection; it does not execute RustDesk,
+launchd, AppleScript, or a native test. The duplicate Apple invocation and
+the workspace verifier's verifier-of-verifier function, dispatch, and source load were deleted, reducing the
+Apple checker from 395,175 to 394,783 bytes and the workspace verifier from 1,707,194 to 1,705,119 bytes;
+`scripts/verify.sh` falls from 1,289,218 to 1,289,209 bytes. No product source or native target changed or ran.
+Exact signed installed macOS lifecycle, failure, user-transition, state-agreement, cleanup, cold-artifact,
+independent-reproduction, and external-review evidence remains open. Including this record, the live ledger is
+1,065,931 bytes, or 355,311 conservative tokens by the documented method, below its 400,000-token budget.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -2335,39 +2352,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   recovery remains separate. The focused source invariant and Rust policy regression cover this topology,
   but exact Android KeyStore/iOS Keychain failure and recovery, durable reload, current packages, and device
   behavior remain open in the mobile and release matrices.
-- **R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains — SOURCE CLOSED/GATED
-  2026-07-21; NATIVE APPLE AND EXACT SIGNED-ARTIFACT LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: macOS
-  service installation, restart, and uninstallation. Endpoint/action: the root LaunchDaemon lifecycle inside
-  `install.scpt`/`uninstall.scpt` and the current-user LaunchAgent lifecycle in `src/platform/macos.rs`. Boundary:
-  a successful local/admin wrapper result ↔ the exact launchd domain and service definition reaching the requested
-  loaded or absent state. The first R-S11c-16 correction (commit `8ef29da804ecea6878e77ab88fdb7bca64638df3`)
-  used `launchctl list <label>`, legacy `load -w`/`unload -w`, and legacy `remove`. Apple's current launchctl
-  contract classifies those commands as legacy, says load/unload return nonzero only for improper usage and
-  otherwise return zero, and says remove returns without waiting for the job to stop. The code additionally mapped
-  every nonzero label query to absence without proving that its intended domain was reachable. Its postconditions
-  could therefore be false after a domain/query or lifecycle failure. This is a source-proven local lifecycle
-  finality and availability defect, not evidence of exploitation, a stopped host service, host mutation, a public
-  listener, Docker root, privilege escalation, or compromise.
-
-  The correction keeps the existing service topology and changes only lifecycle authority. Privileged scripts
-  derive the exact `system/<service-label>` target. The Rust path derives `gui/<numeric-effective-uid>` from
-  `geteuid()` and appends the exact server label. `launchctl_service_loaded` first requires a successful
-  `launchctl print <domain>`; only then may a failed `print <service-target>` mean absence. A present service is
-  removed only by checked `bootout <service-target>`, followed by the same domain-aware negative proof. Install and
-  restart clear the persistent disabled override left by older `unload -w` runs with checked `enable`, use checked
-  `bootstrap <domain> <plist>`, and require the exact service target to print successfully. The privileged uninstall
-  proves its system target absent before deleting the root plist/helper, and Rust proves the current GUI target
-  absent before wrapper success. Legacy `list`, `load`, `unload`, and `remove` are absent from these lifecycle paths;
-  fixed `/bin/launchctl` provenance, administrator-script environment closure, non-stdio descriptor closure,
-  helper/plist identity checks, and outer return propagation remain unchanged.
-
-  The focused Rust regression pins GUI-domain and service-target derivation. The standalone
-  `scripts/verify-macos-launchd-lifecycle.py` parses the relevant Rust functions and both privileged scripts,
-  enforces operation ordering and legacy-command absence, binds requirement/disposition/ledger and shared/Apple
-  wiring, and rejects 16 deliberate mutations. R-S11bi and Appendix C #198 make the corrected contract normative.
-  Linux-side rustfmt/source checks and mutation tests do not compile or execute macOS launchd. No native Mac,
-  signed application, installed LaunchDaemon/LaunchAgent, or artifact was exercised; native Apple and exact R-B2
-  lifecycle evidence remain open.
+- **R-S11bi/R-S11e-75 — macOS launchd lifecycle is domain-qualified and postcondition-checked — SOURCE
+  IMPLEMENTED; NATIVE APPLE AND EXACT SIGNED-ARTIFACT EVIDENCE OPEN.** The privileged scripts address the
+  exact `system/<label>` LaunchDaemon, and the Rust path derives the current graphical user's exact
+  `gui/<effective-uid>/<label>` LaunchAgent. Both require the containing domain before classifying target absence;
+  removal uses checked `bootout` plus an absence recheck, while install/restart uses checked `enable` and
+  `bootstrap` plus a present-state recheck. Uninstall proves target absence before deleting privileged artifacts.
+  The focused production-source invariant guards those command and ordering properties. It does not execute
+  launchd. Exact signed installed artifacts still require the full present/absent/disabled/wrong-domain,
+  partial-install, failure, retry, upgrade, logout/user-switch, restart, uninstall, abrupt-exit, state-agreement,
+  and resource-cleanup matrix on supported macOS versions.
 - **R-S11bj/R-S11e-76 — Android APK builder container and source authority — SOURCE CLOSED/GATED
   2026-07-21; EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.**
   Platform: Android artifact

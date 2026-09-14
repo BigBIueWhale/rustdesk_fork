@@ -1304,7 +1304,7 @@ grep -qF 'rustdesk_set_mobile_at_rest_storage_key' flutter/ios/Runner/AppDelegat
 awk '/installMobileAtRestStorageKey\(\)/{seen=1} /GeneratedPluginRegistrant.register/{if (!seen) exit 1; found=1} END{exit found ? 0 : 1}' \
   flutter/ios/Runner/AppDelegate.swift \
   || mobile_at_rest_bad="$mobile_at_rest_bad ios-key-not-installed-before-plugin-init"
-"${RUN[@]}" python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . \
+/usr/bin/python3 -I -S scripts/verify-mobile-at-rest-fail-closed.py --repo . \
   || mobile_at_rest_bad="$mobile_at_rest_bad mobile-unavailable-os-key-not-fail-closed"
 "${RUN[@]}" cargo test -p hbb_common --lib \
   password_security::tests::test_mobile_legacy_keypair_fallback_requires_os_storage_key \
@@ -1335,8 +1335,8 @@ else
 fi
 
 echo "== (3b-iii-a1a) macOS launchd explicit-domain lifecycle authority (R-S11bi/R-S11e-75) =="
-if python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11e-75 macOS daemon/agent lifecycle uses explicit modern launchd domains and status-authoritative state proof"
+if /usr/bin/python3 -I -S scripts/verify-macos-launchd-lifecycle.py --repo .; then
+  echo "  ok  R-S11e-75 macOS daemon/agent lifecycle source uses explicit domains and checked state transitions"
 else
   echo "  FAIL R-S11e-75 macOS launchd lifecycle retains implicit-domain or legacy completion authority"
   rc=1

@@ -4687,14 +4687,6 @@ else
   rc=1
 fi
 
-echo "== (2g) R-S11bi macOS launchd explicit-domain lifecycle authority =="
-if python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test; then
-  note "ok  R-S11bi macOS daemon/agent lifecycle uses explicit modern launchd domains and authoritative state proof"
-else
-  echo "  FAIL R-S11bi macOS launchd lifecycle retains implicit-domain or legacy completion authority"
-  rc=1
-fi
-
 echo "== (2g-a) R-S11bn exact installed-service ownership classifier =="
 if python3 scripts/verify-installed-service-classifier.py --repo . --self-test; then
   note "ok  R-S11bn Linux/macOS installed-service ownership uses exact supported executable identities"

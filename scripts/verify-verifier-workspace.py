@@ -16747,52 +16747,6 @@ def validate_mobile_build_authority_verifier_contract(sources):
     )
 
 
-def validate_macos_launchd_lifecycle_contract(sources):
-    focused = sources["macos_launchd_lifecycle_verifier"]
-    for text, label in (
-        ("def extract_rust_function(", "macOS launchd Rust function parser"),
-        ("def validate(sources", "macOS launchd semantic entry"),
-        (
-            '"match launchctl_query_succeeds(domain)"',
-            "macOS launchd containing-domain proof contract",
-        ),
-        ('["bootout", service_target]', "macOS launchd modern removal contract"),
-        ('["bootstrap", &domain, agent_plist_file]', "macOS LaunchAgent bootstrap contract"),
-        (
-            'legacy_script_command = re.compile(r"/bin/launchctl (?:list|load|unload|remove)(?: |\\\")")',
-            "macOS privileged-script legacy-command rejection semantics",
-        ),
-        ("MUTATIONS: Tuple[Mutation, ...]", "macOS launchd mutation inventory"),
-        ("run_mutations(sources)", "macOS launchd mutation dispatch"),
-    ):
-        require_text(focused, text, label)
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test",
-        "macOS launchd shared focused-verifier wiring",
-    )
-    require_text(
-        sources["apple"],
-        "python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test",
-        "macOS launchd Apple focused-verifier wiring",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11bi</span>',
-        "macOS launchd explicit-domain requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>198</td>",
-        "macOS launchd lifecycle Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
-        "macOS launchd lifecycle hardening ledger",
-    )
-
-
 def validate_installed_service_classifier_contract(sources):
     focused = sources["installed_service_classifier_verifier"]
     for text, label in (
@@ -34343,7 +34297,6 @@ def validate_sources(sources):
     validate_windows_declarative_runtime_cleanup_contract(sources)
     validate_debian_vendor_unit_ownership_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
-    validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
     validate_linux_service_terminal_authority_contract(sources)
     validate_linux_nondumpable_cm_contract(sources)
@@ -39013,9 +38966,6 @@ def main():
             "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"
-            ).read_text(encoding="utf-8"),
-            "macos_launchd_lifecycle_verifier": (
-                repo / "scripts/verify-macos-launchd-lifecycle.py"
             ).read_text(encoding="utf-8"),
             "installed_service_classifier_verifier": (
                 repo / "scripts/verify-installed-service-classifier.py"

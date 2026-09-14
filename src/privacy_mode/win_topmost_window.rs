@@ -254,10 +254,6 @@ impl Drop for TurnOnGuard<'_> {
 }
 
 impl PrivacyMode for PrivacyModeImpl {
-    fn init(&self) -> ResultType<()> {
-        Ok(())
-    }
-
     fn clear(&mut self) -> ResultType<()> {
         self.turn_off_privacy(None)
     }

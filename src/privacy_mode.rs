@@ -98,6 +98,7 @@ struct PrivacyActivationJoinRequest {
     worker: std::thread::JoinHandle<PrivacyActivationResult>,
     completed: oneshot::Sender<PrivacyActivationResult>,
     admission_permit: tokio::sync::OwnedSemaphorePermit,
+    pending_owner: PendingPrivacyActivation,
 }
 
 struct PrivacyActivationReaper {
@@ -106,6 +107,54 @@ struct PrivacyActivationReaper {
 }
 
 const PRIVACY_ACTIVATION_CONCURRENCY: usize = 1;
+#[cfg(any(windows, target_os = "macos", test))]
+const PRIVACY_RETIREMENT_QUEUE_CAPACITY: usize = 32;
+
+#[cfg(any(windows, target_os = "macos", test))]
+struct PrivacyRetirementRequest {
+    conn_id: i32,
+    cm_auth_token: String,
+}
+
+#[derive(Clone)]
+struct PrivacyOwnerIdentity {
+    conn_id: i32,
+    cm_auth_token: String,
+}
+
+impl PrivacyOwnerIdentity {
+    fn from_owner(owner: &PrivacyModeConnectionOwner) -> Self {
+        Self {
+            conn_id: owner.conn_id,
+            cm_auth_token: owner.cm_auth_token.clone(),
+        }
+    }
+
+    fn matches_parts(&self, conn_id: i32, cm_auth_token: &str) -> bool {
+        self.conn_id == conn_id
+            && !cm_auth_token.is_empty()
+            && hbb_common::sodiumoxide::utils::memcmp(
+                self.cm_auth_token.as_bytes(),
+                cm_auth_token.as_bytes(),
+            )
+    }
+}
+
+#[derive(Default)]
+struct PrivacyOwnerLifecycle {
+    active: Option<PrivacyOwnerIdentity>,
+    activating: Option<PrivacyOwnerIdentity>,
+}
+
+struct PendingPrivacyActivation {
+    owner: PrivacyOwnerIdentity,
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+struct PrivacyRetirementDispatcher {
+    sender: std_mpsc::SyncSender<PrivacyRetirementRequest>,
+    _worker: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
 
 lazy_static::lazy_static! {
     static ref PRIVACY_ACTIVATION_ADMISSION: Arc<tokio::sync::Semaphore> =
@@ -123,6 +172,28 @@ lazy_static::lazy_static! {
             })
             .map_err(|error| format!("failed to create privacy activation reaper: {error}"))
     };
+
+    static ref PRIVACY_OWNER_LIFECYCLE: Mutex<PrivacyOwnerLifecycle> =
+        Mutex::new(PrivacyOwnerLifecycle::default());
+
+    // Disconnect-time retirement must survive cancellation of the connection future without
+    // making Drop wait for the global privacy transaction or native display restoration. The
+    // queue is deliberately bounded above the process's authenticated-session ceiling, and the
+    // sole process-lifetime worker owns every accepted request through its exact result.
+    #[cfg(any(windows, target_os = "macos"))]
+    static ref PRIVACY_RETIREMENT_DISPATCHER:
+        Result<PrivacyRetirementDispatcher, String> = {
+        let (sender, receiver) =
+            std_mpsc::sync_channel::<PrivacyRetirementRequest>(PRIVACY_RETIREMENT_QUEUE_CAPACITY);
+        std::thread::Builder::new()
+            .name("rustdesk-privacy-retirement".to_owned())
+            .spawn(move || run_privacy_retirement_dispatcher(receiver))
+            .map(|worker| PrivacyRetirementDispatcher {
+                sender,
+                _worker: Mutex::new(Some(worker)),
+            })
+            .map_err(|error| format!("failed to create privacy retirement worker: {error}"))
+    };
 }
 
 fn run_privacy_activation_reaper(
@@ -133,6 +204,7 @@ fn run_privacy_activation_reaper(
             worker,
             completed,
             admission_permit,
+            pending_owner,
         } = request;
         let result = match worker.join() {
             Ok(result) => result,
@@ -140,6 +212,7 @@ fn run_privacy_activation_reaper(
                 "owned privacy activation worker panicked before reaper join"
             ))),
         };
+        drop(pending_owner);
         drop(admission_permit);
         if completed.send(result).is_err() {
             log::debug!("Privacy activation drained after its connection owner retired");
@@ -147,11 +220,117 @@ fn run_privacy_activation_reaper(
     }
 }
 
+impl PendingPrivacyActivation {
+    fn new(owner: &PrivacyModeConnectionOwner) -> Self {
+        let owner = PrivacyOwnerIdentity::from_owner(owner);
+        PRIVACY_OWNER_LIFECYCLE.lock().unwrap().activating = Some(owner.clone());
+        Self { owner }
+    }
+}
+
+impl Drop for PendingPrivacyActivation {
+    fn drop(&mut self) {
+        let mut lifecycle = PRIVACY_OWNER_LIFECYCLE.lock().unwrap();
+        if lifecycle
+            .activating
+            .as_ref()
+            .map(|owner| owner.matches_parts(self.owner.conn_id, &self.owner.cm_auth_token))
+            .unwrap_or(false)
+        {
+            lifecycle.activating = None;
+        }
+    }
+}
+
+fn publish_privacy_owner(owner: Option<&PrivacyModeConnectionOwner>) {
+    PRIVACY_OWNER_LIFECYCLE.lock().unwrap().active = owner.map(PrivacyOwnerIdentity::from_owner);
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn has_privacy_retirement_owner(conn_id: i32, cm_auth_token: &str) -> bool {
+    let lifecycle = PRIVACY_OWNER_LIFECYCLE.lock().unwrap();
+    lifecycle
+        .active
+        .as_ref()
+        .map(|owner| owner.matches_parts(conn_id, cm_auth_token))
+        .unwrap_or(false)
+        || lifecycle
+            .activating
+            .as_ref()
+            .map(|owner| owner.matches_parts(conn_id, cm_auth_token))
+            .unwrap_or(false)
+}
+
 fn privacy_activation_reaper_sender() -> ResultType<std_mpsc::Sender<PrivacyActivationJoinRequest>> {
     match &*PRIVACY_ACTIVATION_REAPER {
         Ok(reaper) => Ok(reaper.sender.clone()),
         Err(error) => bail!(error.to_owned()),
     }
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn run_privacy_retirement_dispatcher(receiver: std_mpsc::Receiver<PrivacyRetirementRequest>) {
+    run_privacy_retirement_requests(receiver, |request| {
+        retire_privacy_for_owner(request.conn_id, &request.cm_auth_token)
+    });
+}
+
+#[cfg(any(windows, target_os = "macos", test))]
+fn run_privacy_retirement_requests<F>(
+    receiver: std_mpsc::Receiver<PrivacyRetirementRequest>,
+    mut retire: F,
+) where
+    F: FnMut(&PrivacyRetirementRequest) -> Option<ResultType<()>>,
+{
+    while let Ok(request) = receiver.recv() {
+        if let Some(Err(error)) = retire(&request) {
+            log::error!(
+                "Failed to retire exact connection privacy owner {}: {error}",
+                request.conn_id
+            );
+        }
+    }
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) fn request_privacy_retirement_for_owner(
+    conn_id: i32,
+    cm_auth_token: &str,
+) -> ResultType<()> {
+    if conn_id <= 0 || cm_auth_token.is_empty() {
+        bail!("privacy retirement requires an exact positive connection owner");
+    }
+    if !has_privacy_retirement_owner(conn_id, cm_auth_token) {
+        return Ok(());
+    }
+    let dispatcher = match &*PRIVACY_RETIREMENT_DISPATCHER {
+        Ok(dispatcher) => dispatcher,
+        Err(error) => bail!(error.to_owned()),
+    };
+    let request = PrivacyRetirementRequest {
+        conn_id,
+        cm_auth_token: cm_auth_token.to_owned(),
+    };
+    match dispatcher.sender.try_send(request) {
+        Ok(()) => Ok(()),
+        Err(std_mpsc::TrySendError::Full(_)) => {
+            bail!("privacy retirement queue reached its bounded capacity")
+        }
+        Err(std_mpsc::TrySendError::Disconnected(_)) => {
+            bail!("privacy retirement worker stopped unexpectedly")
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub(crate) fn request_privacy_retirement_for_owner(
+    conn_id: i32,
+    cm_auth_token: &str,
+) -> ResultType<()> {
+    if conn_id <= 0 || cm_auth_token.is_empty() {
+        bail!("privacy retirement requires an exact positive connection owner");
+    }
+    Ok(())
 }
 
 pub struct PrivacyModeConnectionOwner {
@@ -269,7 +448,6 @@ impl PrivacyModeConnectionOwner {
 }
 
 pub trait PrivacyMode: Sync + Send {
-    fn init(&self) -> ResultType<()>;
     fn clear(&mut self) -> ResultType<()>;
     fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool>;
     fn turn_off_privacy(&mut self, state: Option<PrivacyModeState>) -> ResultType<()>;
@@ -366,30 +544,6 @@ lazy_static::lazy_static! {
     };
 }
 
-#[inline]
-pub fn init() -> Option<ResultType<()>> {
-    Some(PRIVACY_MODE.lock().unwrap().as_ref()?.init())
-}
-
-#[inline]
-pub fn clear() -> Option<ResultType<()>> {
-    Some(PRIVACY_MODE.lock().unwrap().as_mut()?.clear())
-}
-
-#[inline]
-pub fn switch(impl_key: &str) {
-    let mut privacy_mode_lock = PRIVACY_MODE.lock().unwrap();
-    if let Some(privacy_mode) = privacy_mode_lock.as_ref() {
-        if privacy_mode.get_impl_key() == impl_key {
-            return;
-        }
-    }
-
-    if let Some(creator) = PRIVACY_MODE_CREATOR.lock().unwrap().get(impl_key) {
-        *privacy_mode_lock = Some(creator(impl_key));
-    }
-}
-
 fn get_supported_impl(impl_key: &str) -> ResultType<String> {
     let supported_impls = get_supported_privacy_mode_impl();
     if !impl_key.is_empty() {
@@ -480,6 +634,7 @@ where
         prepared,
         activation_decision,
     );
+    let pending_owner = PendingPrivacyActivation::new(&owner);
 
     // Display enumeration, driver readiness, and native display mutation are blocking operations.
     // One admission permit prevents an unbounded queue of threads behind the global privacy state.
@@ -510,14 +665,17 @@ where
         worker,
         completed,
         admission_permit,
+        pending_owner,
     }) {
         let PrivacyActivationJoinRequest {
             worker,
             completed,
             admission_permit,
+            pending_owner,
         } = error.0;
         drop(start_worker);
         let join_result = worker.join();
+        drop(pending_owner);
         drop(admission_permit);
         drop(completed);
         let join_detail = if join_result.is_err() {
@@ -577,6 +735,20 @@ where
 }
 
 fn turn_on_privacy_sync(
+    impl_key: &str,
+    owner: PrivacyModeConnectionOwner,
+) -> Option<ResultType<bool>> {
+    let result = turn_on_privacy_sync_inner(impl_key, owner);
+    let privacy_mode = PRIVACY_MODE.lock().unwrap();
+    publish_privacy_owner(
+        privacy_mode
+            .as_ref()
+            .and_then(|privacy_mode| privacy_mode.connection_owner()),
+    );
+    result
+}
+
+fn turn_on_privacy_sync_inner(
     impl_key: &str,
     owner: PrivacyModeConnectionOwner,
 ) -> Option<ResultType<bool>> {
@@ -644,12 +816,15 @@ pub(crate) fn turn_off_privacy_for_owner(
     let mut privacy_mode = PRIVACY_MODE.lock().unwrap();
     let privacy_mode = privacy_mode.as_mut()?;
     let Some(owner) = privacy_mode.connection_owner() else {
+        publish_privacy_owner(None);
         return Some(Ok(()));
     };
     if !owner.matches_parts(conn_id, cm_auth_token) {
         return Some(Err(anyhow!(TURN_OFF_OTHER_OWNER)));
     }
-    Some(privacy_mode.turn_off_privacy(state))
+    let result = privacy_mode.turn_off_privacy(state);
+    publish_privacy_owner(privacy_mode.connection_owner());
+    Some(result)
 }
 
 pub(crate) fn retire_privacy_for_owner(
@@ -664,12 +839,15 @@ pub(crate) fn retire_privacy_for_owner(
     let mut privacy_mode = PRIVACY_MODE.lock().unwrap();
     let privacy_mode = privacy_mode.as_mut()?;
     let Some(owner) = privacy_mode.connection_owner() else {
+        publish_privacy_owner(None);
         return Some(Ok(()));
     };
     if !owner.matches_parts(conn_id, cm_auth_token) {
         return Some(Ok(()));
     }
-    Some(privacy_mode.turn_off_privacy(None))
+    let result = privacy_mode.turn_off_privacy(None);
+    publish_privacy_owner(privacy_mode.connection_owner());
+    Some(result)
 }
 
 /// Machine-local emergency teardown only: the final-Remote virtual-display reset cannot carry a
@@ -678,13 +856,11 @@ pub(crate) fn retire_privacy_for_owner(
 pub(crate) fn force_turn_off_privacy(
     state: Option<PrivacyModeState>,
 ) -> Option<ResultType<()>> {
-    Some(
-        PRIVACY_MODE
-            .lock()
-            .unwrap()
-            .as_mut()?
-            .turn_off_privacy(state),
-    )
+    let mut privacy_mode = PRIVACY_MODE.lock().unwrap();
+    let privacy_mode = privacy_mode.as_mut()?;
+    let result = privacy_mode.turn_off_privacy(state);
+    publish_privacy_owner(privacy_mode.connection_owner());
+    Some(result)
 }
 
 #[cfg(windows)]
@@ -826,7 +1002,10 @@ pub fn is_in_privacy_mode() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{run_privacy_activation, PrivacyModeConnectionOwner};
+    use super::{
+        run_privacy_activation, run_privacy_retirement_requests, PrivacyModeConnectionOwner,
+        PrivacyRetirementRequest,
+    };
     use hbb_common::tokio;
     use std::{
         sync::{
@@ -929,5 +1108,49 @@ mod tests {
                 .expect("owned blocking task must drain after controller drop")
                 .expect("owned blocking task must report completion")
         );
+    }
+
+    #[test]
+    fn r_s11iu_r_s19a_privacy_retirement_dispatcher_owns_work_off_caller_thread() {
+        let (sender, receiver) = std_mpsc::sync_channel(2);
+        let (entered, entered_rx) = std_mpsc::channel();
+        let (release, release_rx) = std_mpsc::sync_channel(1);
+        let retired = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let worker_retired = Arc::clone(&retired);
+        let worker = std::thread::spawn(move || {
+            let mut first = true;
+            run_privacy_retirement_requests(receiver, move |request| {
+                if first {
+                    first = false;
+                    entered.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                }
+                worker_retired.lock().unwrap().push(request.conn_id);
+                Some(Ok(()))
+            });
+        });
+
+        sender
+            .try_send(PrivacyRetirementRequest {
+                conn_id: 81,
+                cm_auth_token: "first-owner-token".to_owned(),
+            })
+            .unwrap();
+        entered_rx.recv().unwrap();
+
+        // The worker is deliberately stalled inside physical teardown. Submission of a later
+        // exact owner remains a bounded nonblocking handoff and does not wait for that teardown.
+        sender
+            .try_send(PrivacyRetirementRequest {
+                conn_id: 82,
+                cm_auth_token: "second-owner-token".to_owned(),
+            })
+            .unwrap();
+        assert!(retired.lock().unwrap().is_empty());
+
+        release.try_send(()).unwrap();
+        drop(sender);
+        worker.join().unwrap();
+        assert_eq!(*retired.lock().unwrap(), vec![81, 82]);
     }
 }

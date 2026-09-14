@@ -12486,19 +12486,20 @@ impl Drop for Connection {
         // console BLANKED, a local-security regression; and the `Server`'s own connection map
         // diverged from the RAII-pruned globals) — runs HERE in `Drop`, which executes on BOTH
         // normal exit AND cancellation (the run-loop future being dropped at its `.await`). These
-        // effects are synchronous so they survive future cancellation. Exact privacy teardown can
-        // still wait on the global privacy transaction/native restore path; moving that work off a
-        // Tokio Drop context remains explicitly open in HARDENING_STATUS.md. The server lock is
-        // taken with `if let Ok` (never `.unwrap()` — a poisoned-lock panic in Drop would abort),
-        // and each effect is best-effort.
+        // effects survive future cancellation. Exact-owner privacy retirement is transferred to
+        // its retained bounded worker and never waits here for the global privacy transaction or
+        // native restore. The final-Remote virtual-display reset remains a separate synchronous
+        // field-Drop path and is tracked explicitly in HARDENING_STATUS.md. The server lock is taken
+        // with `if let Ok` (never `.unwrap()` — a poisoned-lock panic in Drop would abort), and each
+        // effect is best-effort.
         let id = self.inner.id();
         if let Some(tx) = self.inner.tx.as_ref() {
             video_service::cancel_take_screenshot(id, tx);
         }
-        if let Some(Err(error)) =
-            privacy_mode::retire_privacy_for_owner(id, &self.cm_auth_token)
+        if let Err(error) =
+            privacy_mode::request_privacy_retirement_for_owner(id, &self.cm_auth_token)
         {
-            log::error!("Failed to retire exact connection privacy owner: {error}");
+            log::error!("Failed to submit exact connection privacy retirement: {error}");
         }
         video_service::retire_video_frame_connection(id);
         if let Some(s) = self.server.upgrade() {

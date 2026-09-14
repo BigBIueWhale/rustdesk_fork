@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0adb4af39cca027b0df9312c1a275c43db3606d7eb815569b02cbf6e2f0d7e33  requirements.html
+fddd37cca3adaf89f191bbd1c8a7e5c3b38822a79886b85e1aca40986f1ecd1f  requirements.html
 ```
 
 ## Current Verdict
@@ -12719,12 +12719,28 @@ the pinned Windows lane invokes it, but that lane has not run for this source. N
 display, and registry APIs may still have target-specific blocking and failure semantics. In
 particular, Amyuni exposes count-based
 plug/unplug rather than resource identities, so cross-process driver churn can make ownership
-ambiguous and must be exercised/refused correctly in the installed race matrix. Exact privacy
-teardown is also still synchronous:
-`Connection::drop` can wait on the global privacy mutex and native restore work on its caller's
-thread. Those lifetimes plus real cancellation, disconnect, session-change, driver-delay/failure,
-restore-failure, and resource/latency
-behavior remain open for an exact installed Windows artifact.
+ambiguous and must be exercised/refused correctly in the installed race matrix. Disconnect-time
+exact-owner privacy retirement now makes one nonblocking submission to a bounded 32-request queue.
+A short independent lifecycle snapshot admits a queue entry only for the exact active owner or the
+single admitted activation, preventing unauthenticated or unrelated connection churn from consuming
+retirement capacity. The activation reaper retains that pending identity until its exact native
+worker joins; final activation and every central teardown path refresh the active identity before
+pending authority is released. One retained process-lifetime worker drains accepted ID/token
+requests in order and performs the existing idempotent exact-owner teardown, so this step no longer
+waits in `Connection::drop` for the global privacy mutex or native restore; submission or worker
+failure is logged and never falls back to inline teardown. Unsupported platforms allocate no worker
+or queue. The unused public `privacy_mode::init`, `clear`, and `switch` facades are deleted; the last
+could replace an implementation through destructor cleanup while discarding its failure, outside the
+one fallible activation-switch transaction. The trait's internal `clear` operation remains for that
+transaction. This is deliberately narrower than complete Drop finality. The
+`AuthedConnID::drop` final-Remote path still calls `virtual_display_manager::reset_all()`
+synchronously; that path can force privacy teardown and wait for global monitor removal on its
+caller thread. Explicit peer-off and capture-validation/activation-error rollback also remain
+synchronous and result-bearing. Moving or redesigning those paths without widening the race in
+which a delayed final-Remote reset could revoke a new connection requires one shared generation
+boundary and native Windows evidence. Those lifetimes plus real cancellation, disconnect,
+session-change, driver-delay/failure, restore-failure, queue refusal, and resource/latency behavior
+remain open for an exact installed Windows artifact.
 
 The Android CM/file bridge now runs as one retained child future of the exact network
 `Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
@@ -12751,7 +12767,11 @@ with stale/unknown refusal. Another focused unit regression proves that a privac
 same-ID replacement with a different connection token. Three additional Tokio regressions execute
 the activation worker/reaper rendezvous: successful prepare/commit, deadline cancellation that
 cannot return before the held worker drains, and connection-future cancellation that makes a late
-commit fail. The callback regression first rejects a
+commit fail. A fourth executable regression stalls the retirement worker inside its first teardown
+callback, proves a later exact-owner request is admitted without waiting on that callback, then
+requires both accepted requests to execute in FIFO order before the worker joins. It exercises the
+real bounded dispatcher loop but not Windows display APIs or a complete `Connection` destructor. The
+callback regression first rejects a
 stale token at the registry
 egress edge, then drives the valid one-shot callback over the real framed runner. Three
 additional focused Rust tests drive the actual Android CM future through one-shot terminal

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9b986ae58d600a2c785b8a731c43dec8003a70480c7ee083be31333529a13868  requirements.html
+e1c979ff5ff146dcfb03f89185a9d0b18544ce4c3ac60bef645a15f4abd8bd71  requirements.html
 ```
 
 ## Current Verdict
@@ -12396,12 +12396,10 @@ wait exists.
 
 **Evidence.** Deterministic regressions in `src/server/connection.rs` cover wake,
 owner closure, receiver preservation across the bounded state recheck, positive
-readiness, sender loss, and timeout. `scripts/verify.sh` binds the production
-topology and login ordering; `scripts/apple-conform-check.sh` binds the non-Linux
-exclusion; the independent workspace verifier binds both gates, R-S11iz, and
-Appendix C #411. Historical commands, hashes, mutation counts, container IDs,
-timestamps, failed attempts, and complete logs remain available through Git
-history rather than this live current-state ledger.
+readiness, sender loss, and timeout. `scripts/verify.sh` checks the production
+topology and login ordering; `scripts/apple-conform-check.sh` checks non-Linux
+exclusion; the workspace verifier independently checks the product topology and
+ordering. Historical commands and raw receipts remain in Git history.
 
 **Open evidence.** Exact Rust/native execution, installed Linux headless login and
 CM-failure behavior, live desktop-transition races, complete file/control/display

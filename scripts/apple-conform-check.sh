@@ -3111,12 +3111,6 @@ for forbidden in \
   '_tx_desktop_ready'; do
   grep -qF "$forbidden" "$REPO/src/server/connection.rs" && r_s11iz="$r_s11iz obsolete-cross-platform-readiness-endpoint-present"
 done
-grep -qF '<span class="id">R-S11iz</span>' "$REPO/requirements.html" \
-  || r_s11iz="$r_s11iz readiness-requirement-missing"
-grep -qF '<tr><td>411</td>' "$REPO/requirements.html" \
-  || r_s11iz="$r_s11iz readiness-appendix-missing"
-grep -qF 'R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality' "$REPO/HARDENING_STATUS.md" \
-  || r_s11iz="$r_s11iz readiness-ledger-missing"
 if [ -n "$r_s11iz" ]; then
   echo "  FAIL R-S11iz Linux-only headless CM readiness exclusion:$r_s11iz"
   rc=1

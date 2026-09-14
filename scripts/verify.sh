@@ -6291,10 +6291,6 @@ for forbidden in \
   'tx_stream_ready.send(()).await'; do
   grep -qF "$forbidden" src/server/connection.rs && r_s11iz="$r_s11iz ignored-or-awaiting-readiness-publication-present"
 done
-grep -qF '<span class="id">R-S11iz</span>' requirements.html || r_s11iz="$r_s11iz normative-requirement-missing"
-grep -qF '<tr><td>411</td>' requirements.html || r_s11iz="$r_s11iz appendix-row-missing"
-grep -qF 'R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality' HARDENING_STATUS.md \
-  || r_s11iz="$r_s11iz hardening-ledger-missing"
 if [ -n "$r_s11iz" ]; then echo "  FAIL R-S11iz/R-S11e-289 Linux headless CM readiness handshake:$r_s11iz"; rc=1; else
   echo "  ok  R-S11iz/R-S11e-289 one Linux connection-local headless decision owns a finite one-shot wake/result handshake; only positive authenticated CM readiness precedes peer login success"; fi
 

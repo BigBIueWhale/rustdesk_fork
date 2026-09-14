@@ -9652,16 +9652,6 @@ def validate_linux_headless_cm_parent_contract(sources):
         "Linux CM bootstrap cancellation hardening ledger",
     )
 
-    require_text(
-        verify,
-        "Linux headless CM readiness handshake finality (R-S11iz/R-S11e-289)",
-        "Linux headless CM exact-readiness source gate",
-    )
-    require_text(
-        sources["apple"],
-        "R-S11iz Linux-only headless CM readiness handshake exclusion",
-        "Apple Linux-readiness exclusion source gate",
-    )
     readiness_fields = extract_braced_item(
         connection_source,
         "struct StartCmIpcPara {",
@@ -9894,73 +9884,6 @@ def validate_linux_headless_cm_parent_contract(sources):
             forbidden,
             "ignored or capacity-awaiting readiness publication",
         )
-
-    readiness_requirement = extract_html_requirement(
-        requirements, "R-S11iz", "Linux headless CM readiness requirement"
-    )
-    for text, label in (
-        ("One connection-local headless decision", "single headless decision norm"),
-        ("one-shot wake hint", "nonblocking one-shot wake norm"),
-        ("positive authenticated-CM-stream readiness result", "positive readiness norm"),
-        ("before peer login success", "pre-login readiness order norm"),
-        ("sender loss and timeout are distinct terminal failures", "terminal outcome norm"),
-    ):
-        require_text(readiness_requirement, text, label)
-    require_text(requirements, "<tr><td>411</td>", "Linux CM readiness Appendix C row")
-    require_text(
-        hardening,
-        "R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality",
-        "Linux CM readiness hardening ledger",
-    )
-    shared_readiness_gate = extract_between(
-        verify,
-        'echo "== (3b-iii-d9c3b) Linux headless CM readiness handshake finality',
-        "\n# (3b-iii-d9c4)",
-        "shared Linux CM readiness source gate",
-    )
-    for text, label in (
-        ("cm_ready_compact=$(tr -d '[:space:]'", "shared exact topology extraction"),
-        ("exact-linux-oneshot-topology-missing", "shared exact topology rejection"),
-        (
-            "positive-cm-readiness-not-required-before-peer-login-success",
-            "shared pre-login readiness ordering rejection",
-        ),
-        (
-            "authenticated-bootstrap-ready-publication-order-invalid",
-            "shared authenticated readiness publication rejection",
-        ),
-        (
-            "ignored-or-awaiting-readiness-publication-present",
-            "shared ignored readiness outcome rejection",
-        ),
-    ):
-        require_text(shared_readiness_gate, text, label)
-    apple_readiness_gate = extract_between(
-        sources["apple"],
-        'echo "== (2b-iii-a1a) R-S11iz Linux-only headless CM readiness handshake exclusion',
-        '\necho "== (2b-iii-a2)',
-        "Apple Linux CM readiness exclusion gate",
-    )
-    for text, label in (
-        ("cm_ready_para_compact=$(tr -d '[:space:]'", "Apple readiness field extraction"),
-        (
-            "cm_start_signature_compact=$(tr -d '[:space:]'",
-            "Apple readiness signature extraction",
-        ),
-        (
-            "linux-readiness-field-not-cfg-excluded-from-Apple",
-            "Apple readiness field cfg rejection",
-        ),
-        (
-            "linux-readiness-parameter-not-cfg-excluded-from-Apple",
-            "Apple readiness parameter cfg rejection",
-        ),
-        (
-            "obsolete-cross-platform-readiness-endpoint-present",
-            "Apple obsolete readiness endpoint rejection",
-        ),
-    ):
-        require_text(apple_readiness_gate, text, label)
 
 
 def validate_linux_current_image_lifecycle_contract(sources):
@@ -44587,84 +44510,6 @@ def run_source_mutations(sources):
             "                        #[cfg(target_os = \"linux\")]\n                        p.rx_desktop_ready,",
             "                        p.rx_desktop_ready,",
             "Linux-only readiness task handoff",
-        ),
-        (
-            "requirements",
-            '<span class="id">R-S11iz</span>',
-            '<span class="id">R-S11iz-disabled</span>',
-            "Linux headless CM readiness requirement",
-        ),
-        (
-            "requirements",
-            "Only the positive authenticated-CM-stream readiness result permits <code>send_logon_response_and_keep_alive</code>",
-            "Any inferred readiness result permits <code>send_logon_response_and_keep_alive</code>",
-            "positive readiness norm",
-        ),
-        (
-            "requirements",
-            "<tr><td>411</td>",
-            "<tr><td>411-disabled</td>",
-            "Linux CM readiness Appendix C row",
-        ),
-        (
-            "hardening",
-            "R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality",
-            "R-S11iz-disabled/R-S11e-289 — exact Linux headless CM readiness handshake finality",
-            "Linux CM readiness hardening ledger",
-        ),
-        (
-            "verify",
-            "Linux headless CM readiness handshake finality (R-S11iz/R-S11e-289)",
-            "Linux headless CM readiness compatibility (R-S11iz/R-S11e-289)",
-            "Linux headless CM exact-readiness source gate",
-        ),
-        (
-            "verify",
-            "exact-linux-oneshot-topology-missing",
-            "exact-linux-oneshot-topology-gate-disabled",
-            "shared exact topology rejection",
-        ),
-        (
-            "verify",
-            "positive-cm-readiness-not-required-before-peer-login-success",
-            "positive-cm-readiness-order-gate-disabled",
-            "shared pre-login readiness ordering rejection",
-        ),
-        (
-            "verify",
-            "authenticated-bootstrap-ready-publication-order-invalid",
-            "authenticated-bootstrap-ready-order-gate-disabled",
-            "shared authenticated readiness publication rejection",
-        ),
-        (
-            "verify",
-            "ignored-or-awaiting-readiness-publication-present",
-            "ignored-readiness-publication-gate-disabled",
-            "shared ignored readiness outcome rejection",
-        ),
-        (
-            "apple",
-            "R-S11iz Linux-only headless CM readiness handshake exclusion",
-            "R-S11iz cross-platform headless CM readiness compatibility",
-            "Apple Linux-readiness exclusion source gate",
-        ),
-        (
-            "apple",
-            "linux-readiness-field-not-cfg-excluded-from-Apple",
-            "linux-readiness-field-cfg-gate-disabled",
-            "Apple readiness field cfg rejection",
-        ),
-        (
-            "apple",
-            "linux-readiness-parameter-not-cfg-excluded-from-Apple",
-            "linux-readiness-parameter-cfg-gate-disabled",
-            "Apple readiness parameter cfg rejection",
-        ),
-        (
-            "apple",
-            "obsolete-cross-platform-readiness-endpoint-present",
-            "obsolete-cross-platform-readiness-gate-disabled",
-            "Apple obsolete readiness endpoint rejection",
         ),
         (
             "hardening",

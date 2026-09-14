@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -64,8 +63,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
             encoding="utf-8"
         ),
         "ffi": (repo / "libs/scrap/src/x11/ffi.rs").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
     }
 
@@ -282,38 +279,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     require(
-        sources["requirements"],
-        '<span class="id">R-S11fw</span>',
-        "R-S11fw normative requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>331</td>",
-        "Appendix C #331 disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
-        "R-S11e-209 hardening record",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11fx</span>',
-        "R-S11fx normative requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>332</td>",
-        "Appendix C #332 disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality",
-        "R-S11e-210 hardening record",
-    )
-    require(
         sources["verify"],
-        "scripts/verify-x11-capture-shm.py --repo . --self-test",
+        "scripts/verify-x11-capture-shm.py --repo .",
         "focused X11 capture shared-memory gate",
     )
     require(
@@ -326,152 +293,6 @@ def validate(sources: Dict[str, str]) -> None:
         "x11::capturer::tests::r_s11fx_ -- --test-threads=1",
         "compiled X11 GetImage finality tests",
     )
-@dataclass(frozen=True)
-class Mutation:
-    source: str
-    old: str
-    new: str
-    label: str
-
-
-MUTATIONS = (
-    Mutation(
-        "capturer",
-        "const SHM_OWNER_READ_WRITE: libc::c_int = " + "0o600;",
-        "const SHM_OWNER_READ_WRITE: libc::c_int = 0o666;",
-        "owner-only mode",
-    ),
-    Mutation(
-        "capturer",
-        "libc::shmat(id, ptr::null(), libc::SHM_RDONLY)",
-        "libc::shmat(id, ptr::null(), 0)",
-        "local read-only attachment",
-    ),
-    Mutation(
-        "capturer",
-        "xcb_shm_attach_checked(",
-        "xcb_shm_attach(",
-        "checked X-server attach",
-    ),
-    Mutation(
-        "capturer",
-        'check_xcb_request(server, attach, "MIT-SHM attach")?;',
-        "let _ = attach;",
-        "attach completion",
-    ),
-    Mutation(
-        "capturer",
-        "memory.mark_for_removal()",
-        "Ok::<(), io::Error>(())",
-        "deletion-pending transition",
-    ),
-    Mutation(
-        "ffi",
-        "pub fn xcb_request_check(",
-        "pub fn xcb_request_check_disabled(",
-        "request-check binding",
-    ),
-    Mutation(
-        "capturer",
-        'check_xcb_request(server, detach, "MIT-SHM drop detach")',
-        'Ok::<(), io::Error>(())',
-        "checked drop-time detach",
-    ),
-    Mutation(
-        "capturer",
-        "assert_eq!(status.shm_perm.mode & 0o777, 0o600);",
-        "assert_eq!(status.shm_perm.mode & 0o777, SHM_OWNER_READ_WRITE as libc::c_ushort);",
-        "independent mode assertion",
-    ),
-    Mutation(
-        "capturer",
-        "let request = xcb_shm_get_image(",
-        "let request = xcb_shm_get_image_unchecked(",
-        "checked GetImage request",
-    ),
-    Mutation(
-        "capturer",
-        "xcb_shm_get_image_reply(server, request, &mut error)",
-        "xcb_shm_get_image_reply(server, request, ptr::null_mut())",
-        "GetImage protocol error receipt",
-    ),
-    Mutation(
-        "capturer",
-        "libc::free(response.cast());\n            libc::free(error.cast());",
-        "libc::free(response.cast());\n            let _ = error;",
-        "GetImage protocol error cleanup",
-    ),
-    Mutation(
-        "capturer",
-        "if reply_size != expected_size",
-        "if false",
-        "GetImage exact reply size",
-    ),
-    Mutation(
-        "capturer",
-        "self.get_image()?;",
-        "let _ = self.get_image();",
-        "GetImage result propagation",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11fw</span>',
-        '<span class="id">R-S11fw-disabled</span>',
-        "normative requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>331</td>",
-        "<tr><td>331-disabled</td>",
-        "Appendix disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
-        "R-S11fw/R-S11e-209 — permissive Linux X11 capture memory",
-        "hardening record",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11fx</span>',
-        '<span class="id">R-S11fx-disabled</span>',
-        "GetImage normative requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>332</td>",
-        "<tr><td>332-disabled</td>",
-        "GetImage Appendix disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality",
-        "R-S11fx/R-S11e-210 — unchecked X11 frame publication",
-        "GetImage hardening record",
-    ),
-    Mutation(
-        "verify",
-        "scripts/verify-x11-capture-shm.py --repo . --self-test",
-        "scripts/verify-x11-capture-shm.py --repo .",
-        "focused mutation gate",
-    ),
-)
-
-
-def run_self_test(sources: Dict[str, str]) -> None:
-    for mutation in MUTATIONS:
-        source = sources[mutation.source]
-        if mutation.old not in source:
-            raise VerificationError(
-                f"self-test fixture for {mutation.label} is absent: {mutation.old!r}"
-            )
-        mutated = dict(sources)
-        mutated[mutation.source] = source.replace(mutation.old, mutation.new, 1)
-        try:
-            validate(mutated)
-        except VerificationError:
-            continue
-        raise VerificationError(f"self-test accepted mutation: {mutation.label}")
 
 
 def main() -> int:
@@ -479,19 +300,15 @@ def main() -> int:
         description="Verify X11 capture shared-memory authority and frame finality"
     )
     parser.add_argument("--repo", default=".", help="repository root")
-    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
     try:
         sources = load_sources(Path(args.repo).resolve())
         validate(sources)
-        if args.self_test:
-            run_self_test(sources)
     except (OSError, UnicodeError, VerificationError) as error:
         print(f"verify-x11-capture-shm: FAIL: {error}")
         return 1
-    suffix = " and deliberate mutations" if args.self_test else ""
-    print(f"verify-x11-capture-shm: ok{suffix}")
+    print("verify-x11-capture-shm: ok")
     return 0
 
 

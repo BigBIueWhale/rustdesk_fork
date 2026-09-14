@@ -11184,10 +11184,10 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_decoder_is_policy_disabled --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config --color never x11::capturer::tests::r_s11fw_ -- --test-threads=1
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config --color never x11::capturer::tests::r_s11fx_ -- --test-threads=1
-if /usr/bin/python3 -I -S scripts/verify-x11-capture-shm.py --repo . --self-test; then
-  echo "  ok  R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210 X11 capture shared memory and GetImage frame finality"
+if /usr/bin/python3 -I -S scripts/verify-x11-capture-shm.py --repo .; then
+  echo "  ok  R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210 X11 capture source contract"
 else
-  echo "  FAIL R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210: X11 capture regained permissive memory or unchecked/incomplete frame finality"
+  echo "  FAIL R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210: X11 capture source contract regressed"
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never

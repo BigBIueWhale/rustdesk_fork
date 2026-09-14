@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-89f73cc94d3c2d6afe5fd77de6553c51662ccfb3ec6e3e7b108dcb08c5341a87  requirements.html
+5a1b2d72e8c57831c9fbc23a6e746912a8865b389ad9bc607361f217ea9491e6  requirements.html
 ```
 
 ## Current Verdict
@@ -4805,102 +4805,41 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   latency/resource soak, independent reproduction, and external review remain STOP-SHIP.
 
 - **R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority — SOURCE IMPLEMENTED;
-  CLEAN RUST 1.75 KERNEL-BEHAVIOR TESTS AND FOCUSED DELIBERATE-MUTATION GATE GREEN; REAL X SERVER,
-  CAPTURE/RENDER, INSTALLED-SERVICE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platform: Linux X11.
-  Endpoint/action: `libs/scrap/src/x11/capturer.rs::{SharedMemory,Capturer::new}` and the XCB SHM
-  bindings in `libs/scrap/src/x11/ffi.rs`. Boundary: local-account/kernel System V IPC authority ↔
-  the capture process and authenticated local X server receiving raw screen pixels.
+  RETAINED CONFINED KERNEL TEST EVIDENCE; REAL X SERVER AND RELEASE EVIDENCE OPEN.** The current
+  `SharedMemory` owner rejects empty/overflowing sizes, creates an exact 0600 `IPC_PRIVATE` segment,
+  establishes cleanup before its read-only local mapping, checks XCB attach acceptance, and marks the
+  segment deletion-pending only after acceptance. Construction and drop retain exact detach/removal
+  ownership and make failures visible. The checked bindings and the two serialized SysV behavior tests
+  remain in the shared gate.
 
-  The inherited capturer called `shmget(IPC_PRIVATE, size, IPC_CREAT | 0o777)` and retained that
-  live segment until `Capturer::drop`; its source comment explicitly said that everyone could do
-  anything. It submitted `xcb_shm_attach` without checking the asynchronous protocol result. If
-  `shmat` failed, no constructed owner existed to remove the segment. This is direct source evidence
-  that every local account received kernel read/write permission over a live capture buffer and that
-  construction cleanup/protocol acceptance were incomplete. It is not evidence that another account
-  actually attached, that this host was exploited or modified, or that this path explains a reported
-  Android/Windows connection or focus-delay symptom.
-
-  One `SharedMemory` RAII owner now creates only an exact owner-read/write 0600 `IPC_PRIVATE`
-  segment after nonzero checked size arithmetic, exists before `shmat`, and attaches the capture
-  process read-only. `Capturer::new` sends `xcb_shm_attach_checked`, consumes its exact result through
-  `xcb_request_check`, and rejects X connection failure. Only after confirmed X-server attachment
-  does it call `IPC_RMID`, so the kernel segment is deletion-pending for the remainder of its useful
-  life. A failed deletion-pending transition performs a checked X-server detach and fails construction;
-  the RAII owner retries exact local detach/removal. Drop-time detach/removal failures are logged, and
-  there is no 0666/0777, unchecked-attach, or permissive compatibility fallback.
-
-  A fresh empty-target Rust 1.75 offline build compiled `scrap` and ran the two serialized focused
-  tests successfully: exact effective-user ownership, literal 0600 mode, one local attachment,
-  Linux `SHM_DEST` after `IPC_RMID`, and segment absence after final detach all passed (2 passed,
-  0 failed, 13 filtered). The tests use a literal 0600 expectation rather than mirroring the
-  production constant. `scripts/verify-x11-capture-shm.py --self-test` independently binds the
-  owner-only/local-read-only mode, checked attach/result order, immediate deletion-pending transition,
-  RAII cleanup, FFI surface, compiled tests, requirement, Appendix row, ledger, shared gate, and
-  independent workspace dispatch, and must reject its deliberate weakenings.
-
-  Verification runs only in an immutable, networkless, numeric-nonroot container with read-only
-  source/root, an executable private target tmpfs, all capabilities dropped, no-new-privileges, and
-  no port, host network/namespace, device, display, Docker socket, or privileged flag. No host
-  RustDesk executable/process/service/configuration, listener, firewall, UFW/nftables/iptables, or
-  network state was inspected or changed. The pinned verifier image has no Xvfb/Xorg fixture and the
-  host display is outside the permitted test boundary, so no actual X-server attach, screen capture,
-  capture-to-codec-to-render path, privileged installed-service/cross-user display, focus/background
-  lifecycle, latency budget, current artifact, cold release reproduction, independent reproduction,
-  or external-review result is claimed. Those remain explicit release evidence gaps.
+  Commit `b068ffcf` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
+  container run proving effective-user ownership, exact 0600 mode, one local attachment, `SHM_DEST`,
+  and final disappearance. The focused source checker remains a supplement; its documentation coupling,
+  mutation catalog, and stale workspace reimplementation are deleted. A current isolated real-X run must
+  still exercise acceptance/rejection/cleanup, actual capture-to-render, unauthorized-principal attempts,
+  installed cross-user service behavior, current artifacts, cold reproduction, and independent review.
 
 - **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
-  CLEAN RUST 1.75 PURE BRANCH TESTS AND FOCUSED DELIBERATE-MUTATION GATE GREEN; REAL X SERVER,
-  CAPTURE/RENDER, FOCUS/LATENCY, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platform: Linux X11.
-  Endpoint/action: `libs/scrap/src/x11/capturer.rs::{Capturer::get_image,Capturer::frame}` and
-  `libs/scrap/src/x11/ffi.rs` MIT-SHM GetImage bindings. Boundary: authenticated local X-server
-  request/reply completion and shared capture-buffer writes ↔ the frame admitted to compare, encode,
-  transport, and presentation.
+  RETAINED PURE-BRANCH TEST EVIDENCE; REAL X SERVER, FRESHNESS, AND RELEASE EVIDENCE OPEN.**
+  `get_image` uses the checked request and non-null protocol-error output, snapshots diagnostics before
+  freeing both allocations, and rejects protocol errors, connection failure, missing replies, and any
+  reply byte count other than the exact capture buffer. `frame()` propagates failure before reading or
+  comparing shared bytes. The two pure result tests remain in the shared gate.
 
-  The inherited capturer selected `xcb_shm_get_image_unchecked`, passed `NULL` for the reply
-  function's protocol-error output, freed the reply pointer without checking whether it existed, and
-  then always constructed and compared a slice over the shared buffer. XCB's official API contract
-  says the unsuffixed reply-producing request is checked, the `_unchecked` form routes errors to the
-  event queue, and the reply error output must be non-null for checked error receipt. The Xorg
-  MIT-SHM implementation reports the number of bytes written in the reply `size` and can reject the
-  request for invalid drawable/geometry/format/segment capacity. Therefore an X-server rejection,
-  connection failure, or missing reply could be flattened into admission of old or otherwise
-  unconfirmed shared bytes. This is direct source evidence of capture finality/freshness debt. It is
-  not a real-X-server reproduction and does not establish the cause of the reported Android/Windows
-  focus/background display delay, especially because those operational clients and the Debian server
-  predate the current hardening loop.
+  Commit `e314d2b2` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
+  container run covering exact success, size mismatch, preserved protocol diagnostics, connection
+  failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
+  checker mutation strings as product evidence. A current isolated real-X run must still exercise the
+  request/reply ABI, rejection and no-reply behavior, actual capture-to-codec-to-render, focus/background
+  freshness and latency, reconnect, cross-version behavior, current artifacts, cold reproduction, and
+  independent review.
 
-  `Capturer::get_image` now returns `io::Result<()>`, submits checked `xcb_shm_get_image`, supplies a
-  real error-result pointer to `xcb_shm_get_image_reply`, snapshots reply/error fields before release,
-  and frees both XCB allocations on every outcome. One pure result classifier rejects protocol error
-  with the X error/major/minor/resource fields preserved for diagnosis, then connection failure,
-  missing reply, and a reply byte count that differs from the exact allocated capture-buffer size.
-  `frame()` propagates that result before constructing or comparing the shared slice, so only a
-  confirmed exact reply can enter unchanged-frame detection or later capture consumers. No retry,
-  timer, reconnect, queue, background service, protocol compatibility fallback, or unrelated X11
-  enumeration behavior changed.
-
-  A fresh empty-target Rust 1.75 offline build compiled `scrap` and ran the two focused tests
-  successfully (2 passed, 0 failed, 15 filtered): exact success, size mismatch, protocol error with
-  preserved fields, connection failure, and missing reply. `scripts/verify-x11-capture-shm.py
-  --self-test` additionally binds the checked FFI surface, non-null error receipt, reply/error cleanup,
-  classifier order, exact size, frame propagation, compiled tests, requirement, Appendix row, ledger,
-  shared gate, and independent workspace dispatch and rejects deliberate weakenings.
-
-  Verification uses only the immutable, networkless, numeric-nonroot Rust 1.75 container described in
-  R-S11fw, with read-only source/input mounts, private executable tmpfs output, dropped capabilities,
-  no-new-privileges, and no ports, host network/namespace, device, display, Docker socket, or privileged
-  flag. The first two compile invocations stopped before compilation because the first login shell hid
-  Cargo and the second Rustup wrapper attempted a write under the read-only image; the corrected direct
-  pinned-toolchain invocation produced the green result above. Two pre-verdict independent source-mutation
-  runs later stopped because one new fixture expected the wrong rejection label and another targeted both
-  a live assertion and its inert self-test literal; both unsafe mutations were rejected by the live
-  validator, the fixture bookkeeping was corrected, and neither incomplete run is counted as green. No
-  host RustDesk process/service/config,
-  listener, firewall, display, or network state was inspected or changed. The image has no isolated
-  Xorg/Xvfb fixture, so actual request/reply ABI execution, screen capture, capture-to-codec-to-render,
-  focus/background behavior, reconnect behavior, latency budgets/timestamps, cross-version sessions,
-  current artifacts, cold release reproduction, independent reproduction, and external review remain
-  explicit release blockers.
+  Current verification cleanup removed 468 checker lines: prose assertions and mutations from the focused checker,
+  its self-mutation catalog, and the complete duplicate workspace implementation/load/dispatch path. The
+  focused source check, workspace normal check, Python AST parse, Bash parse, HTML parse, requirements
+  identity check, and diff hygiene are green. The workspace check now passes instead of failing on its stale
+  blank-line parser assumption. No current Rust or X-server behavior was executed in this source-only cleanup;
+  the retained confined runs above are historical, and every real-X/native obligation remains open.
 
 - **R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority — SOURCE
   CORRECTED; CURRENT NUMERIC-NONROOT FILESYSTEM CRASH/ROLLBACK TESTS AND 72-MUTATION FOCUSED

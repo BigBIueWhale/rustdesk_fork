@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a45460f640d14e36649f6ce727ecec65d3cf047879f603c8f94e042b3ca97eb3  requirements.html
+c16e03655148a975ea8473d2c8b44f5d08c7b8cda00da4a23c848c52d943368d  requirements.html
 ```
 
 ## Current Verdict
@@ -346,11 +346,12 @@ observed no product or operating-system behavior. Later-added normative clauses 
 gates and independent normal workspace validator without requiring the duplicate global catalog. The last catalog run
 was killed with exit 137 after roughly eight and a half minutes under a 1,536 MiB limit without emitting a phase or
 verdict; its cause and progress were not proven. The retained normal workspace check now completes in seconds.
-R-S11dx through R-S11eb and Appendix C #277–#281 now state only the durable privileged service protocol, PulseAudio,
-whiteboard, desktop-URL, and mobile-session contracts; their defect diaries, source-review claims, verifier
-inventories, `FIX` badges, ledger bookkeeping, and current evidence disclaimers are removed. The workspace verifier
-is 1,899,126 bytes/45,497 lines and `requirements.html` is 2,196,810 bytes. The normal macOS credential verifier also
-no longer loads or mutates requirements, this ledger, shared/Apple gate wording, or the independent verifier: 427
+R-S11dv through R-S11eb and Appendix C #275–#281 now state only the durable Debian/Android publication, privileged
+service protocol, PulseAudio, whiteboard, desktop-URL, and mobile-session contracts; their defect diaries,
+source-review claims, verifier inventories, `FIX` badges, ledger bookkeeping, and current evidence disclaimers are
+removed. The workspace verifier is 1,899,126 bytes/45,497 lines and `requirements.html` is 2,190,486 bytes. The
+normal macOS credential verifier also no longer loads or mutates requirements, this ledger, shared/Apple gate
+wording, or the independent verifier: 427
 lines and 35 non-product mutations are deleted, while all 84 product-source authority mutations and the focused
 normal validator remain. The live hardening ledger remains below its documented approximate 400,000-token budget.
 

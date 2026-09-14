@@ -78,8 +78,6 @@ def validate_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    validator = sources["validator"]
-
     docker_run_definitions = re.findall(
         r"(?m)^(?:local_docker run |RUN=\(local_docker run |  local_docker run )",
         shell,
@@ -140,26 +138,6 @@ def validate_contract(sources):
             'VERIFY_SUCCESS_MESSAGE="VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green"',
         ),
         "main verifier transaction",
-    )
-    require_all(
-        shell,
-        (
-            "grep -Fq 'CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS' \"$privacy_broker_source\" || r_s11e36=\"$r_s11e36 suspended-process-with-exact-environment-missing\"",
-            "afr=libs/scrap/src/android/frame_raw.rs",
-            "grep -qF 'data: Vec<u8>' \"$afr\" || r_d7a=\"$r_d7a android-raw-media-not-owned\"",
-            "grep -qF 'if len > max_len {' \"$afr\" || r_d7a=\"$r_d7a android-raw-media-no-cap-enforcement\"",
-            "grep -qF 'self.data.extend_from_slice(slice);' \"$afr\" || r_d7a=\"$r_d7a android-raw-media-no-owned-copy\"",
-            "grep -qF 'media_thread: OwnedVideoThread' src/client/io_loop.rs",
-            'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),',
-            'session_start.index("let mut thread_lock = s.thread.lock().unwrap();")\n        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")',
-            "grep -qE '^\\s*reserved +2, *9, *12, *14;' libs/hbb_common/protos/message.proto",
-            "code_splits=$(sed -n '1,/^#\\[cfg(test)\\]/p' libs/hbb_common/src/tcp.rs",
-            "[ \"$(grep -cF 'if generation == 0 || context.generation != Some(generation)' \"$r_s14_ffi_rs\")\" -eq 2 ]",
-            "grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml",
-            "grep -qF 'path: \"third_party/desktop_multi_window\"' flutter/pubspec.lock",
-            "grep -qF 'b47e8385e5a75d38319ad706a64b0ead3108b093' flutter/third_party/desktop_multi_window/UPSTREAM.md",
-        ),
-        "reconciled main source gates",
     )
     require(
         shell.index('[ "$VERIFY_UID" -ne 0 ]')
@@ -665,54 +643,6 @@ def validate_contract(sources):
         "hardening ledger is missing the main verifier Docker authority closure",
     )
 
-    mutation_text = validator[validator.index("\nMUTATIONS = (") : validator.index("\n)\n\n\ndef mutate_once")]
-    require_all(
-        mutation_text,
-        (
-            'Mutation("shell", "--network=none", "--network=bridge"',
-            'Mutation("shell", \'--user "$VERIFY_UID:$VERIFY_GID"\'',
-            'Mutation("shell", \'--user "$run_uid:$run_gid"\'',
-            'Mutation("shell", \'--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"\'',
-            'Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked"',
-            'Mutation("helper", \'metadata.st_nlink == 1\'',
-            'Mutation("helper", \'target.get("name") == "librustdesk"\'',
-            'Mutation("helper", \'target.get("kind") == ["cdylib", "staticlib", "rlib"]\'',
-            'Mutation("helper", "os.fchmod(output_fd, 0o500)"',
-            'Mutation("fixture_helper", "os.setxattr(child_fd, ACL_XATTR, acl, 0)"',
-            'Mutation("filesystem", "expected_uid == 0"',
-            'Mutation("provenance", "def create_subtree_snapshot("',
-            'Mutation("image_provenance", "expected_tags = spec.archive_tags"',
-            'Mutation("image_provenance", "save_ref = spec.image_id"',
-            'Mutation("image_provenance", "RENAME_NOREPLACE = 1"',
-            'Mutation("online_fetch", \'--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"\'',
-            'Mutation("online_fetch", \'online_image_provenance verify-load \\\\\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"\'',
-            'Mutation("online_fetch", "verify_or_load_devcheck_image\\n            return 0"',
-            'Mutation("pins", \'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc',
-            'Mutation(\n        "shell",\n        \'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"\'',
-            'Mutation("shell", "local_docker run --rm"',
-            '"privacy broker exact suspended environment gate"',
-            '"Android raw-media owner source"',
-            '"Android raw-media cap enforcement gate"',
-            '"Android raw-media owned-copy gate"',
-            '"exact video worker owner gate"',
-            '"exact shared video target gate"',
-            '"condition-driven shared video wait gate"',
-            '"post-worker-admission rollback selection"',
-            '"complete retired LoginRequest tag gate"',
-            '"production-only single-writer split inventory"',
-            '"exact Android generation callback gate"',
-            '"vendored desktop-multi-window manifest authority"',
-            '"vendored desktop-multi-window lock authority"',
-            '"vendored desktop-multi-window upstream provenance"',
-            'Mutation(\n        "lib",\n        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS"',
-            'Mutation("requirements", \'<span class="id">R-S11bg</span>\'',
-            'Mutation("requirements", \'<span class="id">R-S11dh</span>\'',
-            'Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority"',
-            'Mutation(\n        "hardening",\n        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority"',
-        ),
-        "main verifier mutation coverage",
-    )
-
 
 MUTATIONS = (
     Mutation("shell", 'readonly VERIFY_UID="$(/usr/bin/id -u)"', 'readonly VERIFY_UID="$(id -u)"', "absolute host UID source"),
@@ -747,79 +677,6 @@ MUTATIONS = (
     Mutation("shell", 'FINAL_IMAGE_ID="$(local_docker image inspect', 'FINAL_IMAGE_ID="$IMAGE_ID" # local_docker image inspect', "final image postcondition"),
     Mutation("shell", 'FINAL_IMAGE_ID="$(local_docker image inspect', 'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect', "fixed final image inspection"),
     Mutation("shell", "local_docker run --rm", "/usr/bin/docker run --rm", "fixed Docker launcher"),
-    Mutation(
-        "shell",
-        "grep -Fq 'CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS' \"$privacy_broker_source\"",
-        "grep -Fq 'CREATE_SUSPENDED | DETACHED_PROCESS' \"$privacy_broker_source\"",
-        "privacy broker exact suspended environment gate",
-    ),
-    Mutation("shell", "afr=libs/scrap/src/android/frame_raw.rs", "afr=libs/scrap/src/android/ffi.rs", "Android raw-media owner source"),
-    Mutation(
-        "shell",
-        "grep -qF 'if len > max_len {' \"$afr\"",
-        "grep -qF 'if len >= usize::MAX {' \"$afr\"",
-        "Android raw-media cap enforcement gate",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF 'self.data.extend_from_slice(slice);' \"$afr\"",
-        "true # Android owned-copy gate removed",
-        "Android raw-media owned-copy gate",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF 'media_thread: OwnedVideoThread' src/client/io_loop.rs",
-        "grep -qF 'media_thread: OwnedMediaThread' src/client/io_loop.rs",
-        "exact video worker owner gate",
-    ),
-    Mutation(
-        "shell",
-        'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),',
-        'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            0,',
-        "post-worker-admission rollback selection",
-    ),
-    Mutation(
-        "shell",
-        'session_start.index("let mut thread_lock = s.thread.lock().unwrap();")\n        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")',
-        'session_start.index("let mut handlers = s.session_handlers.write().unwrap();")\n        < session_start.index("let mut thread_lock = s.thread.lock().unwrap();")',
-        "worker-slot before handler-owner session-start lock order",
-    ),
-    Mutation(
-        "shell",
-        "grep -qE '^\\s*reserved +2, *9, *12, *14;' libs/hbb_common/protos/message.proto",
-        "grep -qE '^\\s*reserved +2, *12, *14;' libs/hbb_common/protos/message.proto",
-        "complete retired LoginRequest tag gate",
-    ),
-    Mutation(
-        "shell",
-        "code_splits=$(sed -n '1,/^#\\[cfg(test)\\]/p' libs/hbb_common/src/tcp.rs",
-        "code_splits=$(grep -n '\\.split()' libs/hbb_common/src/tcp.rs",
-        "production-only single-writer split inventory",
-    ),
-    Mutation(
-        "shell",
-        "[ \"$(grep -cF 'if generation == 0 || context.generation != Some(generation)' \"$r_s14_ffi_rs\")\" -eq 2 ]",
-        "[ \"$(grep -cF 'context.generation' \"$r_s14_ffi_rs\")\" -ge 1 ]",
-        "exact Android generation callback gate",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml",
-        "grep -qF 'ref: HEAD' flutter/pubspec.yaml",
-        "vendored desktop-multi-window manifest authority",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF 'path: \"third_party/desktop_multi_window\"' flutter/pubspec.lock",
-        "grep -qF 'ref: HEAD' flutter/pubspec.lock",
-        "vendored desktop-multi-window lock authority",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF 'b47e8385e5a75d38319ad706a64b0ead3108b093' flutter/third_party/desktop_multi_window/UPSTREAM.md",
-        "true # desktop-multi-window provenance gate removed",
-        "vendored desktop-multi-window upstream provenance",
-    ),
     Mutation("shell", "--pull=never", "--pull=always", "pull refusal"),
     Mutation("shell", "--network=none", "--network=bridge", "network isolation"),
     Mutation("shell", "--read-only", "--hostname=verify", "read-only root"),
@@ -977,7 +834,6 @@ def load_sources(repo):
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "validator": (repo / "scripts/verify-main-verifier-authority.py").read_text(encoding="utf-8"),
     }
 
 

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-765be48deb4c7eccd4a1668d90184da9d2dc9771292b54d890c281c7a2e45cb3  requirements.html
+70ad0af9e3f419ed0ce91217be4efd6675991677fc5a7714ee8e7c801ed49324  requirements.html
 ```
 
 ## Current Verdict
@@ -1137,10 +1137,13 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   unsupported `flog` helper, fixed `C:\\Windows\\temp\\test_rustdesk.log` append path, and commented call have
   no replacement, alias, or alternate ambient sink; the live `CONOUT$` console redirect is distinct. One direct
   source guard remains. Exact candidate PE symbol/string and native file-access evidence remains open.
-- **R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership** — Source closed.
-  Controlled video workers, displays, capturers, raw-frame consumption, screen geometry/scale, and half-scale
-  mutation carry the exact nonzero `MainService` generation; stale workers cannot drain or mutate replacement
-  state. Compilation is not current APK/device evidence.
+- **R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership** — Source implemented;
+  installed evidence open. Controlled workers, displays, capturers, raw-frame consumption, screen geometry/scale,
+  and half-scale mutation carry the exact nonzero `MainService` generation. Each `ImageReader` callback also
+  captures that generation and, under the service monitor, admits only its exact still-current reader; image
+  acquisition, JNI copy, and image close finish before teardown can close the reader. The former mutable-generation
+  callback and its silent exception sink are absent. Exact APK/device stop/replacement races and presentation remain
+  in the mobile and product-behavior OPEN rows.
 - **R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox** — Source closed. One
   capacity-eight generation/GOP-aware mailbox replaces the split token/frame queues, every retained frame is
   directly reachable, receipt-through-decode freshness is bounded, and endpoint loss is terminal rather than a

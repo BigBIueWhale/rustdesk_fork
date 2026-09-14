@@ -13540,12 +13540,7 @@ echo "  ok  R-S11el/R-S11e-172 Android exact-generation listener lifecycle behav
 echo "== Android exact-generation raw-video and video-worker authority (R-S11em/R-S11eu/R-S11e-174/R-S11e-182) =="
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config \
   android_frame_raw_generation_tests::tests:: -- --test-threads=1
-if /usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo .; then
-  echo "  ok  R-S11em/R-S11eu/R-S11e-174/R-S11e-182 Android exact-generation raw-video producer, consumer, screen-state, and video-worker authority"
-else
-  echo "  FAIL R-S11em/R-S11eu/R-S11e-174/R-S11e-182: Android exact-generation raw-video or video-worker authority regressed"
-  rc=1
-fi
+echo "  ok  R-S11em/R-S11eu/R-S11e-174/R-S11e-182 raw-video and screen-owner state-machine behavior (cross-language source topology is checked by the Android lifecycle gate; installed behavior remains open)"
 echo "== Android app-open exact-generation MainService startup transaction (R-S11hq/R-S11hr/R-S11e-254/R-S11e-255) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   direct_service::direct_connection_task_tests:: -- --test-threads=1
@@ -16171,6 +16166,7 @@ grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null && r_s14_mis
 on_destroy_block=$(sed -n '/override fun onDestroy()/,/super.onDestroy()/p' "$r_s14_kt")
 reconcile_capture_block=$(sed -n '/private fun reconcileControlledCaptureDemand()/,/private fun stopCapturePipeline/p' "$r_s14_kt")
 start_capture_block=$(sed -n '/fun startCapture()/,/private fun reconcileControlledCaptureDemand()/p' "$r_s14_kt")
+capture_callback_block=$(sed -n '/private fun createSurface()/,/fun startCapture()/p' "$r_s14_kt")
 pipeline_block=$(sed -n '/private fun stopCapturePipeline/,/private fun releaseCaptureResources/p' "$r_s14_kt")
 teardown_block=$(sed -n '/private fun releaseCaptureResources/,/private fun releaseMediaProjection/p' "$r_s14_kt")
 projection_release_block=$(sed -n '/private fun releaseMediaProjection/,/private fun installMediaProjection/p' "$r_s14_kt")
@@ -16294,7 +16290,15 @@ grep -qF '!current.generation.can_finalize(generation)' "$r_s14_ffi_rs" || r_s14
 grep -qF 'external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing video-frame-not-generation-bound"
 grep -qF 'external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing raw-video-enable-not-generation-bound"
 grep -qF 'external fun setAudioFrameRawEnable(value: Boolean)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing typed-raw-audio-enable-missing"
-grep -qF 'FFI.onVideoFrameUpdate(nativeServerGeneration, buffer)' "$r_s14_kt" || r_s14_missing="$r_s14_missing video-frame-call-not-generation-bound"
+grep -qF 'val captureGeneration = nativeServerGeneration' <<<"$capture_callback_block" || r_s14_missing="$r_s14_missing capture-callback-generation-not-snapshotted"
+grep -qF 'synchronized(this@MainService)' <<<"$capture_callback_block" || r_s14_missing="$r_s14_missing capture-callback-not-linearized-with-teardown"
+grep -qF 'nativeServerGeneration != captureGeneration' <<<"$capture_callback_block" || r_s14_missing="$r_s14_missing capture-callback-generation-not-revalidated"
+grep -qF 'this@MainService.imageReader !== callbackReader' <<<"$capture_callback_block" || r_s14_missing="$r_s14_missing capture-callback-reader-owner-not-revalidated"
+grep -qF 'val image = callbackReader.acquireLatestImage() ?: return@synchronized' <<<"$capture_callback_block" || r_s14_missing="$r_s14_missing capture-image-not-acquired-under-owner-transaction"
+grep -qF 'FFI.onVideoFrameUpdate(captureGeneration, buffer)' <<<"$capture_callback_block" || r_s14_missing="$r_s14_missing video-frame-call-uses-mutable-generation"
+if grep -qF 'FFI.onVideoFrameUpdate(nativeServerGeneration, buffer)' "$r_s14_kt"; then
+  r_s14_missing="$r_s14_missing ambient-video-frame-generation-retained"
+fi
 grep -qF '@Volatile' "$r_s14_kt" && grep -qF 'private var captureActive = false' "$r_s14_kt" || r_s14_missing="$r_s14_missing instance-local-capture-authority-missing"
 grep -qF 'pub(crate) struct FrameRawGenerationOwner' "$r_s14_frame_raw_generation" || r_s14_missing="$r_s14_missing raw-video-generation-state-missing"
 grep -qF 'generation != 0 && self.active_generation == Some(generation)' "$r_s14_frame_raw_generation" || r_s14_missing="$r_s14_missing raw-video-exact-generation-admission-missing"

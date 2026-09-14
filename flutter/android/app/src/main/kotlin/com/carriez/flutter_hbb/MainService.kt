@@ -903,6 +903,11 @@ class MainService : Service() {
     private fun createSurface(): Surface? {
         // R-D7a: useVP9 excised — the raw ImageReader is the single capture encoder.
         Log.d(logTag, "ImageReader.newInstance:INFO:$SCREEN_INFO")
+        val captureGeneration = nativeServerGeneration
+        if (captureGeneration <= 0L) {
+            Log.w(logTag, "Refusing to create an ImageReader without a MainService generation")
+            return null
+        }
         imageReader =
             ImageReader.newInstance(
                 SCREEN_INFO.width,
@@ -910,17 +915,26 @@ class MainService : Service() {
                 PixelFormat.RGBA_8888,
                 4
             ).apply {
-                setOnImageAvailableListener({ imageReader: ImageReader ->
+                setOnImageAvailableListener({ callbackReader: ImageReader ->
                     try {
-                        // If not call acquireLatestImage, listener will not be called again
-                        imageReader.acquireLatestImage().use { image ->
-                            if (image == null || !captureActive) return@setOnImageAvailableListener
-                            val planes = image.planes
-                            val buffer = planes[0].buffer
-                            buffer.rewind()
-                            FFI.onVideoFrameUpdate(nativeServerGeneration, buffer)
+                        synchronized(this@MainService) {
+                            if (!captureActive ||
+                                nativeServerGeneration != captureGeneration ||
+                                this@MainService.imageReader !== callbackReader
+                            ) {
+                                return@synchronized
+                            }
+                            // If not call acquireLatestImage, listener will not be called again.
+                            val image = callbackReader.acquireLatestImage() ?: return@synchronized
+                            image.use {
+                                val planes = image.planes
+                                val buffer = planes[0].buffer
+                                buffer.rewind()
+                                FFI.onVideoFrameUpdate(captureGeneration, buffer)
+                            }
                         }
-                    } catch (ignored: java.lang.Exception) {
+                    } catch (e: java.lang.Exception) {
+                        Log.w(logTag, "Failed to consume the current ImageReader frame", e)
                     }
                 }, serviceHandler)
             }

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-d50394e2d4b18ab727cfdeccbf17411a197fed58dd7a445ce4fd7b2a244f738d  requirements.html
+baf07403570ae0bd5db413d242a7972153ff171c43340589838bae56ea40c7e9  requirements.html
 ```
 
 ## Current Verdict
@@ -74,6 +74,17 @@ and source binding were deleted, reducing it by 17,149 bytes. The real keyed-fra
 behavior tests and their shared/generated-bridge invocations remain. No product source or native target changed or
 ran; complete installed desktop and Android file operations, peer finality, saturation, interruption, abrupt loss,
 reconnect, performance, and cleanup remain open in the release-blocking matrix.
+
+R-S11fh and Appendix C #316 now state only the timeless controlled-side file-response writer-ownership, bounded
+pacing/finality, peer-semantic boundary, and target-native acceptance contract. Their inherited defect diary,
+implementation narrative, `FIX` badge, verifier inventory, and current evidence checklist were deleted, reducing
+`requirements.html` by 2,220 bytes. Read-only source and Git-history review found one product path: direct and CM
+responses pass through protobuf-derived tracked admission, while the common one-step producer returns an exact
+receipt whose pending state suppresses its next transfer tick; the connection event loop owns failure and teardown.
+No other server component produces `FileResponse`. The focused checker already depends only on product source and
+executable regression names, and the duplicate workspace verifier-of-verifier was removed in the preceding slice,
+so no test artifact required preservation or deletion here. No product source or native target changed or ran; the
+complete installed desktop and Android file-operation matrix remains open above.
 
 Appendix C rows #65–#67 and #69 now state only the timeless Windows driver-install finality, app-name
 grammar, custom-client provenance, and known-folder path-authority contracts. Their original failure histories,

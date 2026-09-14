@@ -223,6 +223,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                     setState(() {});
                   } else if (v == "folder") {
                     final expectedSessionId = sessionId;
+                    final directoryPath = currentDir.path;
+                    final targetIsWindows = currentOptions.isWindows;
                     final name = TextEditingController();
                     String? errorText;
                     final dialog =
@@ -261,9 +263,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               }
                               if (name.value.text.isNotEmpty) {
                                 if (!PathUtil.validName(
-                                    name.value.text,
-                                    currentFileController
-                                        .options.value.isWindows)) {
+                                    name.value.text, targetIsWindows)) {
                                   setState(() {
                                     errorText =
                                         translate("Invalid folder name");
@@ -274,9 +274,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                                 try {
                                   created = await currentFileController.createDir(
                                     PathUtil.join(
-                                        currentDir.path,
+                                        directoryPath,
                                         name.value.text,
-                                        currentOptions.isWindows),
+                                        targetIsWindows),
                                     expectedSessionId: expectedSessionId,
                                   );
                                 } catch (e) {

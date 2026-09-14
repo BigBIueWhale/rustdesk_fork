@@ -626,6 +626,7 @@ class _FileOperationEntry {
 
   bool get isFile => entryType > 3;
   bool get isDirectory => entryType < 3;
+  bool get isDirectoryLink => entryType == 2;
 
   Entry toEntry() => Entry()
     ..entryType = entryType
@@ -1045,16 +1046,17 @@ class FileController {
     final confirmationState = _RemoveConfirmationState();
     for (final item in selectedEntries) {
       if (!_isCurrentSession(selectedSessionId)) return;
-      final jobID = jobController.allocateJobId(selectedSessionId);
-      if (jobID == null) return;
+      final removeAsLeaf = item.isFile || item.isDirectoryLink;
       var title = "";
       var content = "";
       late final List<_FileOperationEntry> entries;
-      if (item.isFile) {
+      if (removeAsLeaf) {
         title = translate("Are you sure you want to delete this file?");
         content = item.name;
         entries = [item];
       } else if (item.isDirectory) {
+        final jobID = jobController.allocateJobId(selectedSessionId);
+        if (jobID == null) return;
         title = translate("Not an empty directory");
         manager?.showLoading(translate("Waiting"));
         final FileDirectory fd;
@@ -1093,8 +1095,8 @@ class FileController {
               confirmationState);
           if (!_isCurrentSession(selectedSessionId)) return;
           if (confirm == true) {
-            await _sendRemoveEmptyDir(
-                selectedSessionId, item.path, deleteJobId);
+            if (!await _sendRemoveEmptyDir(selectedSessionId, item.path,
+                deleteJobId, isWindows)) return;
           } else {
             jobController.updateJobStatus(selectedSessionId, deleteJobId,
                 error: "cancel", state: JobState.done);
@@ -1108,7 +1110,7 @@ class FileController {
         entries = [];
       }
       int deleteJobId;
-      if (item.isDirectory) {
+      if (!removeAsLeaf && item.isDirectory) {
         final id = jobController.addDeleteDirJob(
             item.toEntry(), !isLocal, entries.length, selectedSessionId);
         if (id == null) return;
@@ -1122,7 +1124,7 @@ class FileController {
 
       for (var i = 0; i < entries.length; i++) {
         if (!_isCurrentSession(selectedSessionId)) return;
-        final dirShow = item.isDirectory
+        final dirShow = !removeAsLeaf && item.isDirectory
             ? "${translate("Are you sure you want to delete the file of this directory?")}\n"
             : "";
         final count = entries.length > 1 ? "${i + 1}/${entries.length}" : "";
@@ -1130,7 +1132,7 @@ class FileController {
         final confirm = await _showRemoveDialog(
           count.isEmpty ? title : "$title ($count)",
           content,
-          item.isDirectory,
+          !removeAsLeaf && item.isDirectory,
           selectedSessionId,
           manager,
           confirmationState,
@@ -1141,10 +1143,11 @@ class FileController {
             final res = await _removeFileAndWait(selectedSessionId,
                 entries[i].path, i, deleteJobId);
             if (!_isCurrentSession(selectedSessionId)) return;
-            if (item.isDirectory &&
+            if (!removeAsLeaf &&
+                item.isDirectory &&
                 res['file_num'] == (entries.length - 1).toString()) {
-              await _sendRemoveEmptyDir(
-                  selectedSessionId, item.path, deleteJobId);
+              if (!await _sendRemoveEmptyDir(selectedSessionId, item.path,
+                  deleteJobId, isWindows)) return;
             }
           } else {
             jobController.updateJobStatus(selectedSessionId, deleteJobId,
@@ -1156,10 +1159,11 @@ class FileController {
                 final res = await _removeFileAndWait(selectedSessionId,
                     entries[j].path, j, deleteJobId);
                 if (!_isCurrentSession(selectedSessionId)) return;
-                if (item.isDirectory &&
+                if (!removeAsLeaf &&
+                    item.isDirectory &&
                     res['file_num'] == (entries.length - 1).toString()) {
-                  await _sendRemoveEmptyDir(
-                      selectedSessionId, item.path, deleteJobId);
+                  if (!await _sendRemoveEmptyDir(selectedSessionId, item.path,
+                      deleteJobId, isWindows)) return;
                 }
               }
             } else {
@@ -1262,7 +1266,7 @@ class FileController {
 
   Future<Map<String, dynamic>> _removeFileAndWait(SessionID expectedSessionId,
       String path, int fileNum, int actionId) {
-    return jobController.dispatchAndWaitForResult(
+    return jobController.dispatchDeleteFileAndWait(
         expectedSessionId: expectedSessionId,
         actionId: actionId,
         fileNum: fileNum,
@@ -1271,12 +1275,36 @@ class FileController {
   }
 
   Future<bool> _sendRemoveEmptyDir(SessionID expectedSessionId, String path,
-      int actionId) async {
+      int displayJobId, bool isWindows) async {
     if (!_isCurrentSession(expectedSessionId)) return false;
-    history.removeWhere((element) => element.contains(path));
-    await _requests.removeEmptyDirectories(
-        expectedSessionId, actionId, path, !isLocal);
-    return _isCurrentSession(expectedSessionId);
+    final isRemote = !isLocal;
+    final operationId = isRemote
+        ? jobController.allocateJobId(expectedSessionId)
+        : displayJobId;
+    if (operationId == null) return false;
+    try {
+      if (isRemote) {
+        await jobController.dispatchAndWaitForResult(
+            expectedSessionId: expectedSessionId,
+            actionId: operationId,
+            fileNum: 0,
+            dispatch: () => _requests.removeEmptyDirectories(
+                expectedSessionId, operationId, path, true));
+      } else {
+        await _requests.removeEmptyDirectories(
+            expectedSessionId, operationId, path, false);
+      }
+    } catch (error) {
+      jobController.updateJobStatus(expectedSessionId, displayJobId,
+          error: error.toString(), state: JobState.error);
+      rethrow;
+    }
+    if (!_isCurrentSession(expectedSessionId)) return false;
+    history.removeWhere(
+        (element) => PathUtil.isSameOrDescendant(element, path, isWindows));
+    jobController.updateJobStatus(expectedSessionId, displayJobId,
+        state: JobState.done);
+    return true;
   }
 
   Future<bool> createDirWithRemote(String path, bool isRemote,
@@ -1285,8 +1313,12 @@ class FileController {
     if (!_isCurrentSession(selectedSessionId)) return false;
     final actionId = jobController.allocateJobId(selectedSessionId);
     if (actionId == null) return false;
-    await _requests.createDirectory(
-        selectedSessionId, actionId, path, isRemote);
+    await jobController.dispatchAndWaitForResult(
+        expectedSessionId: selectedSessionId,
+        actionId: actionId,
+        fileNum: 0,
+        dispatch: () => _requests.createDirectory(
+            selectedSessionId, actionId, path, isRemote));
     return _isCurrentSession(selectedSessionId);
   }
 
@@ -1304,6 +1336,10 @@ class FileController {
     final ownedItem = _FileOperationEntry.fromEntry(item);
     final manager = dialogManager;
     if (manager == null) return;
+    final existingNames = Set<String>.unmodifiable(
+        directory.value.entries.map((entry) => entry.name));
+    final targetIsWindows = options.value.isWindows;
+    final renameRemotely = !this.isLocal;
     final textEditingController = TextEditingController(text: ownedItem.name);
     String? errorText;
     try {
@@ -1322,13 +1358,12 @@ class FileController {
             close();
             return;
           }
-          if (directory.value.entries.any((e) => e.name == newName)) {
+          if (existingNames.contains(newName)) {
             setState(() {
               errorText = translate("Already exists");
             });
             return;
           }
-          final targetIsWindows = options.value.isWindows;
           if (!PathUtil.validName(newName, targetIsWindows)) {
             setState(() {
               if (ownedItem.isDirectory) {
@@ -1342,8 +1377,12 @@ class FileController {
           final actionId = jobController.allocateJobId(selectedSessionId);
           if (actionId == null) return;
           try {
-            await _requests.renameFile(selectedSessionId, actionId,
-                ownedItem.path, newName, !isLocal);
+            await jobController.dispatchAndWaitForResult(
+                expectedSessionId: selectedSessionId,
+                actionId: actionId,
+                fileNum: 0,
+                dispatch: () => _requests.renameFile(selectedSessionId,
+                    actionId, ownedItem.path, newName, renameRemotely));
           } catch (error) {
             if (!_isCurrentSession(selectedSessionId)) return;
             setState(() {
@@ -1510,36 +1549,26 @@ class JobController {
     final eventFileNum = _eventInt(evt['file_num']);
     if (id == null || eventFileNum == null) return false;
     jobResultListener.tryComplete(expectedSessionId, evt);
-    int? fileNum = eventFileNum;
+    final fileNum = eventFileNum;
     double? speed = 0;
     final jobIndex = getJob(id);
     if (jobIndex == -1) return false;
     final job = jobTable[jobIndex];
+    // Delete commands have an exact result owner. Their caller applies visible
+    // state only after both that response and native dispatch have settled.
+    // An ambient event keyed only by the display-job ID has no such authority.
+    if (job.type == JobType.deleteFile || job.type == JobType.deleteDir) {
+      return false;
+    }
     job.recvJobRes = true;
-    if (job.type == JobType.deleteFile) {
-      job.state = JobState.done;
-    } else if (job.type == JobType.deleteDir) {
-      if (fileNum != null) {
-        if (fileNum < job.fileNum) return true; // file_num can be 0 at last
-        job.fileNum = fileNum;
-        if (fileNum >= job.fileCount - 1) {
-          job.state = JobState.done;
-        }
-      }
-    } else {
-      try {
-        speed = double.tryParse(evt['speed']);
-      } catch (_) {}
-      if (fileNum != null) job.fileNum = fileNum;
-      if (speed != null) job.speed = speed;
-      job.state = JobState.done;
-    }
+    try {
+      speed = double.tryParse(evt['speed']);
+    } catch (_) {}
+    job.fileNum = fileNum;
+    if (speed != null) job.speed = speed;
+    job.state = JobState.done;
     jobTable.refresh();
-    if (job.type == JobType.deleteDir) {
-      return job.state == JobState.done;
-    } else {
-      return true;
-    }
+    return true;
   }
 
   void jobError(Map<String, dynamic> evt, SessionID expectedSessionId) {
@@ -1552,19 +1581,21 @@ class JobController {
     final jobIndex = getJob(id);
     if (jobIndex != -1) {
       final job = jobTable[jobIndex];
+      // As with successful deletion, only the exact command waiter may apply
+      // a delete error after dispatch finality. Unmatched events are inert.
+      if (job.type == JobType.deleteFile || job.type == JobType.deleteDir) {
+        return;
+      }
       job.state = JobState.error;
       job.err = err;
       job.recvJobRes = true;
       if (job.type == JobType.transfer) {
-        int? fileNum = int.tryParse(evt['file_num']);
+        final fileNum = _eventInt(evt['file_num']);
         if (fileNum != null) job.fileNum = fileNum;
         if (err == "skipped") {
           job.state = JobState.done;
           job.finishedSize = job.totalSize;
         }
-      } else if (job.type == JobType.deleteDir) {
-        final fileNum = _eventInt(evt['file_num']);
-        if (fileNum != null) job.fileNum = fileNum;
       }
       jobTable.refresh();
     }
@@ -1605,7 +1636,10 @@ class JobController {
 
   Future<bool> cancelJob(int id, {SessionID? expectedSessionId}) async {
     final selectedSessionId = expectedSessionId ?? sessionId;
-    if (!isCurrentSession(selectedSessionId)) return false;
+    if (!isCurrentSession(selectedSessionId) ||
+        id <= 0 ||
+        id > _kMaxNativeFileJobInt ||
+        getJob(id) == -1) return false;
     await _requests.cancelJob(selectedSessionId, id);
     return isCurrentSession(selectedSessionId);
   }
@@ -1623,6 +1657,35 @@ class JobController {
         actionId: actionId,
         fileNum: fileNum,
         dispatch: dispatch);
+  }
+
+  Future<Map<String, dynamic>> dispatchDeleteFileAndWait(
+      {required SessionID expectedSessionId,
+      required int actionId,
+      required int fileNum,
+      required Future<void> Function() dispatch}) async {
+    if (!isCurrentSession(expectedSessionId)) {
+      throw StateError('Superseded file-transfer session');
+    }
+    final jobIndex = getJob(actionId);
+    if (jobIndex == -1) {
+      throw StateError('Delete command has no matching display job');
+    }
+    final job = jobTable[jobIndex];
+    final ownsFile = job.type == JobType.deleteFile && fileNum == 0;
+    final ownsDirectoryEntry = job.type == JobType.deleteDir &&
+        fileNum >= 0 &&
+        fileNum < job.fileCount;
+    if (!ownsFile && !ownsDirectoryEntry) {
+      throw StateError('Delete command does not belong to the display job');
+    }
+    final result = await dispatchAndWaitForResult(
+        expectedSessionId: expectedSessionId,
+        actionId: actionId,
+        fileNum: fileNum,
+        dispatch: dispatch);
+    updateJobStatus(expectedSessionId, actionId, file_num: fileNum);
+    return result;
   }
 
   Future<void> loadLastJob(
@@ -2535,6 +2598,23 @@ class PathUtil {
   static String dirname(String path, bool isWindows) {
     final pathUtil = isWindows ? windowsContext : posixContext;
     return pathUtil.dirname(path);
+  }
+
+  static bool isSameOrDescendant(
+      String candidate, String ancestor, bool isWindows) {
+    final pathUtil = isWindows ? windowsContext : posixContext;
+    var normalizedCandidate = pathUtil.normalize(candidate);
+    var normalizedAncestor = pathUtil.normalize(ancestor);
+    if (isWindows) {
+      normalizedCandidate = normalizedCandidate.toLowerCase();
+      normalizedAncestor = normalizedAncestor.toLowerCase();
+    }
+    if (normalizedCandidate == normalizedAncestor) return true;
+    final separator = isWindows ? r'\' : '/';
+    final prefix = normalizedAncestor.endsWith(separator)
+        ? normalizedAncestor
+        : '$normalizedAncestor$separator';
+    return normalizedCandidate.startsWith(prefix);
   }
 
   static bool validName(String name, bool isWindows) {

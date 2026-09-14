@@ -149,6 +149,11 @@ class EventToUI_CursorUnavailable implements EventToUI {
 }
 
 class RustdeskImpl {
+  Future<void> _setByNameImmediately(List<dynamic> arguments) {
+    js.context.callMethod('setByName', arguments);
+    return Future<void>.value();
+  }
+
   Future<void> stopGlobalEventStream({required String appType, dynamic hint}) {
     throw UnimplementedError("stopGlobalEventStream");
   }
@@ -606,10 +611,10 @@ class RustdeskImpl {
       required String path,
       required bool includeHidden,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'read_remote_dir',
-          jsonEncode({'path': path, 'include_hidden': includeHidden})
-        ]));
+    return _setByNameImmediately([
+      'read_remote_dir',
+      jsonEncode({'path': path, 'include_hidden': includeHidden})
+    ]);
   }
 
   Future<void> sessionSendFiles(
@@ -622,18 +627,18 @@ class RustdeskImpl {
       required bool isRemote,
       required bool isDir,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'send_files',
-          jsonEncode({
-            'id': actId,
-            'path': path,
-            'to': to,
-            'file_num': fileNum,
-            'include_hidden': includeHidden,
-            'is_remote': isRemote,
-            'is_dir': isDir,
-          })
-        ]));
+    return _setByNameImmediately([
+      'send_files',
+      jsonEncode({
+        'id': actId,
+        'path': path,
+        'to': to,
+        'file_num': fileNum,
+        'include_hidden': includeHidden,
+        'is_remote': isRemote,
+        'is_dir': isDir,
+      })
+    ]);
   }
 
   Future<void> sessionSetConfirmOverrideFile(
@@ -644,16 +649,16 @@ class RustdeskImpl {
       required bool remember,
       required bool isUpload,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'confirm_override_file',
-          jsonEncode({
-            'id': actId,
-            'file_num': fileNum,
-            'need_override': needOverride,
-            'remember': remember,
-            'is_upload': isUpload
-          })
-        ]));
+    return _setByNameImmediately([
+      'confirm_override_file',
+      jsonEncode({
+        'id': actId,
+        'file_num': fileNum,
+        'need_override': needOverride,
+        'remember': remember,
+        'is_upload': isUpload
+      })
+    ]);
   }
 
   Future<void> sessionRemoveFile(
@@ -663,15 +668,15 @@ class RustdeskImpl {
       required int fileNum,
       required bool isRemote,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'remove_file',
-          jsonEncode({
-            'id': actId,
-            'path': path,
-            'file_num': fileNum,
-            'is_remote': isRemote
-          })
-        ]));
+    return _setByNameImmediately([
+      'remove_file',
+      jsonEncode({
+        'id': actId,
+        'path': path,
+        'file_num': fileNum,
+        'is_remote': isRemote
+      })
+    ]);
   }
 
   Future<void> sessionReadDirToRemoveRecursive(
@@ -681,15 +686,15 @@ class RustdeskImpl {
       required bool isRemote,
       required bool showHidden,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'read_dir_to_remove_recursive',
-          jsonEncode({
-            'id': actId,
-            'path': path,
-            'is_remote': isRemote,
-            'show_hidden': showHidden
-          })
-        ]));
+    return _setByNameImmediately([
+      'read_dir_to_remove_recursive',
+      jsonEncode({
+        'id': actId,
+        'path': path,
+        'is_remote': isRemote,
+        'show_hidden': showHidden
+      })
+    ]);
   }
 
   Future<void> sessionRemoveAllEmptyDirs(
@@ -698,16 +703,15 @@ class RustdeskImpl {
       required String path,
       required bool isRemote,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'remove_all_empty_dirs',
-          jsonEncode({'id': actId, 'path': path, 'is_remote': isRemote})
-        ]));
+    return _setByNameImmediately([
+      'remove_all_empty_dirs',
+      jsonEncode({'id': actId, 'path': path, 'is_remote': isRemote})
+    ]);
   }
 
   Future<void> sessionCancelJob(
       {required UuidValue sessionId, required int actId, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['cancel_job', actId]));
+    return _setByNameImmediately(['cancel_job', actId]);
   }
 
   Future<void> sessionCreateDir(
@@ -716,10 +720,10 @@ class RustdeskImpl {
       required String path,
       required bool isRemote,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'create_dir',
-          jsonEncode({'id': actId, 'path': path, 'is_remote': isRemote})
-        ]));
+    return _setByNameImmediately([
+      'create_dir',
+      jsonEncode({'id': actId, 'path': path, 'is_remote': isRemote})
+    ]);
   }
 
   Future<String> sessionReadLocalDirSync(
@@ -1478,15 +1482,15 @@ class RustdeskImpl {
       required String newName,
       required bool isRemote,
       dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', [
-          'rename_file',
-          jsonEncode({
-            'id': actId,
-            'path': path,
-            'new_name': newName,
-            'is_remote': isRemote
-          })
-        ]));
+    return _setByNameImmediately([
+      'rename_file',
+      jsonEncode({
+        'id': actId,
+        'path': path,
+        'new_name': newName,
+        'is_remote': isRemote
+      })
+    ]);
   }
 
   String? sessionGetConnToken({required UuidValue sessionId, dynamic hint}) {

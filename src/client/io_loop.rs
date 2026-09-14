@@ -2273,10 +2273,10 @@ impl<T: InvokeUiSession> Remote<T> {
                 } else {
                     match fs::create_dir(&path) {
                         Err(err) => {
-                            self.handle_job_status(id, -1, Some(err.to_string()));
+                            self.handle_job_status(id, 0, Some(err.to_string()));
                         }
                         Ok(()) => {
-                            self.handle_job_status(id, -1, None);
+                            self.handle_job_status(id, 0, None);
                         }
                     }
                 }
@@ -2299,7 +2299,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     let err = fs::rename_file(&path, &new_name)
                         .err()
                         .map(|e| e.to_string());
-                    self.handle_job_status(id, -1, err);
+                    self.handle_job_status(id, 0, err);
                 }
             }
             Data::RecordScreen(start) => {

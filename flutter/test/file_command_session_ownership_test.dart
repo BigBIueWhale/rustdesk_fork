@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
@@ -31,21 +34,61 @@ JobControllerRequests _jobRequests({
 
 FileControllerRequests _controllerRequests({
   SendFilesRequest? sendFiles,
+  RemoveFileRequest? removeFile,
+  RemoveEmptyDirectoriesRequest? removeEmptyDirectories,
+  CreateDirectoryRequest? createDirectory,
+  RenameFileRequest? renameFile,
 }) =>
     FileControllerRequests(
       sendFiles: sendFiles ??
           (sessionId, actionId, path, to, fileNum, includeHidden, isRemote,
                   isDirectory) =>
               Future<void>.value(),
-      removeFile: (sessionId, actionId, path, isRemote, fileNum) =>
-          Future<void>.value(),
-      removeEmptyDirectories: (sessionId, actionId, path, isRemote) =>
-          Future<void>.value(),
-      createDirectory: (sessionId, actionId, path, isRemote) =>
-          Future<void>.value(),
-      renameFile: (sessionId, actionId, path, newName, isRemote) =>
-          Future<void>.value(),
+      removeFile: removeFile ??
+          (sessionId, actionId, path, isRemote, fileNum) =>
+              Future<void>.value(),
+      removeEmptyDirectories: removeEmptyDirectories ??
+          (sessionId, actionId, path, isRemote) => Future<void>.value(),
+      createDirectory: createDirectory ??
+          (sessionId, actionId, path, isRemote) => Future<void>.value(),
+      renameFile: renameFile ??
+          (sessionId, actionId, path, newName, isRemote) =>
+              Future<void>.value(),
     );
+
+class _DialogHarness extends OverlayDialogManager {
+  _DialogHarness(this.context);
+
+  final BuildContext context;
+  final opened = Completer<void>();
+  late CustomAlertDialog dialog;
+
+  @override
+  String showLoading(String text,
+          {bool clickMaskDismiss = false,
+          bool showCancel = true,
+          VoidCallback? onCancel,
+          String? tag}) =>
+      'loading';
+
+  @override
+  void dismissAll() {}
+
+  @override
+  Future<T?> show<T>(DialogBuilder builder,
+      {bool clickMaskDismiss = false,
+      bool backDismiss = false,
+      String? tag,
+      bool useAnimation = true,
+      bool forceGlobal = false}) {
+    final result = Completer<T?>();
+    dialog = builder((callback) => callback(), ([dynamic value]) {
+      if (!result.isCompleted) result.complete(value as T?);
+    }, context);
+    opened.complete();
+    return result.future;
+  }
+}
 
 Entry _file(String name, String path) => Entry()
   ..entryType = 4
@@ -175,6 +218,362 @@ void main() {
     });
   });
 
+  testWidgets('rename snapshots directory policy before the dialog await',
+      (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(builder: (value) {
+      context = value;
+      return const SizedBox.shrink();
+    })));
+    final session = const Uuid().v4obj();
+    final manager = _DialogHarness(context);
+    var nextJobId = 0;
+    final calls = <Map<String, Object>>[];
+    final jobController = JobController(() => session, () => manager,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(),
+        nextJobId: () => ++nextJobId);
+    final fileFetcher =
+        FileFetcher(() => session, requests: _fetcherRequests());
+    final controller = FileController(
+      isLocal: true,
+      getSessionID: () => session,
+      getDialogManager: () => manager,
+      isCurrentSession: (actual) => actual == session,
+      getPeerPlatform: () => 'Linux',
+      getPeerVersion: () => '1.4.0',
+      jobController: jobController,
+      fileFetcher: fileFetcher,
+      getOtherSideDirectoryData: () =>
+          DirectoryData(FileDirectory(), DirectoryOptions()),
+      requests: _controllerRequests(
+          renameFile: (actualSession, actionId, path, newName, isRemote) async {
+        calls.add({
+          'session': actualSession,
+          'path': path,
+          'newName': newName,
+          'isRemote': isRemote,
+        });
+        await jobController.jobDone({
+          'id': actionId.toString(),
+          'file_num': '0',
+          'speed': '0',
+        }, actualSession);
+      }),
+    );
+    final original = _file('old', '/source/old');
+    controller.directory.value
+      ..path = '/source'
+      ..entries = [original];
+    controller.options.value.isWindows = false;
+
+    final rename = controller.renameAction(original, true);
+    await manager.opened.future;
+    controller.directory.value.entries.add(_file('new:name', '/source/new'));
+    controller.options.value.isWindows = true;
+    final content = manager.dialog.content as Column;
+    final field = content.children.single as DialogTextField;
+    field.controller.text = 'new:name';
+    await manager.dialog.onSubmit!.call();
+    await rename;
+
+    expect(calls, [
+      {
+        'session': session,
+        'path': '/source/old',
+        'newName': 'new:name',
+        'isRemote': false,
+      }
+    ]);
+  });
+
+  test('create waits for its exact result and exposes an exact error', () async {
+    final session = const Uuid().v4obj();
+    final dispatchEntered = Completer<void>();
+    final releaseDispatch = Completer<void>();
+    var nextJobId = 70;
+    late JobController jobController;
+    final fileFetcher =
+        FileFetcher(() => session, requests: _fetcherRequests());
+    late FileController controller;
+    jobController = JobController(() => session, () => null,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(),
+        nextJobId: () => ++nextJobId,
+        resultTimeout: const Duration(seconds: 2));
+    controller = FileController(
+      isLocal: false,
+      getSessionID: () => session,
+      getDialogManager: () => null,
+      isCurrentSession: (actual) => actual == session,
+      getPeerPlatform: () => 'Linux',
+      getPeerVersion: () => '1.4.0',
+      jobController: jobController,
+      fileFetcher: fileFetcher,
+      getOtherSideDirectoryData: () =>
+          DirectoryData(FileDirectory(), DirectoryOptions()),
+      requests: _controllerRequests(
+          createDirectory: (actualSession, actionId, path, isRemote) async {
+        expect(actionId, 71);
+        dispatchEntered.complete();
+        await releaseDispatch.future;
+      }),
+    );
+
+    final create = controller.createDirWithRemote('/remote/new', true);
+    await dispatchEntered.future;
+    var completed = false;
+    unawaited(create.then<void>((_) {
+      completed = true;
+    }, onError: (Object _, StackTrace __) {
+      completed = true;
+    }));
+    jobController.jobError(
+        {'id': '72', 'file_num': '0', 'err': 'unowned'}, session);
+    await Future<void>.delayed(Duration.zero);
+    expect(completed, isFalse);
+    jobController.jobError(
+        {'id': '71', 'file_num': '0', 'err': 'mkdir denied'}, session);
+    await Future<void>.delayed(Duration.zero);
+    expect(completed, isFalse);
+
+    releaseDispatch.complete();
+    await expectLater(
+        create,
+        throwsA(isA<StateError>()
+            .having((error) => error.message, 'message', 'mkdir denied')));
+  });
+
+  testWidgets(
+      'remote empty-directory deletion uses a fresh exact result owner',
+      (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(builder: (value) {
+      context = value;
+      return const SizedBox.shrink();
+    })));
+    final session = const Uuid().v4obj();
+    final manager = _DialogHarness(context);
+    var nextJobId = 0;
+    final removeEntered = Completer<void>();
+    final releaseRemove = Completer<void>();
+    final removeCalls = <Map<String, Object>>[];
+    final jobController = JobController(() => session, () => manager,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(),
+        nextJobId: () => ++nextJobId,
+        resultTimeout: const Duration(seconds: 2));
+    late FileFetcher fileFetcher;
+    fileFetcher = FileFetcher(() => session,
+        requestTimeout: const Duration(seconds: 2),
+        requests: FileFetcherRequests(
+          readDirectory: (actualSession, path, showHidden) async {
+            expect(
+                fileFetcher.tryCompleteTask(
+                    actualSession,
+                    jsonEncode({'id': 0, 'path': path, 'entries': []}),
+                    'false'),
+                isTrue);
+          },
+          readEmptyDirectories: (actualSession, path, showHidden) async {},
+          readDirectoryTree:
+              (actualSession, actionId, path, isRemote, showHidden) async {
+            expect(
+                fileFetcher.tryCompleteTask(
+                    actualSession,
+                    jsonEncode(
+                        {'id': actionId, 'path': path, 'entries': []}),
+                    'false'),
+                isTrue);
+          },
+        ));
+    final controller = FileController(
+      isLocal: false,
+      getSessionID: () => session,
+      getDialogManager: () => manager,
+      isCurrentSession: (actual) => actual == session,
+      getPeerPlatform: () => 'Linux',
+      getPeerVersion: () => '1.4.0',
+      jobController: jobController,
+      fileFetcher: fileFetcher,
+      getOtherSideDirectoryData: () =>
+          DirectoryData(FileDirectory(), DirectoryOptions()),
+      requests: _controllerRequests(removeEmptyDirectories:
+          (actualSession, actionId, path, isRemote) async {
+        removeCalls.add({
+          'session': actualSession,
+          'actionId': actionId,
+          'path': path,
+          'isRemote': isRemote,
+        });
+        removeEntered.complete();
+        await releaseRemove.future;
+      }),
+    );
+    controller.directory.value.path = '/remote';
+    controller.history.addAll([
+      '/remote/empty',
+      '/remote/empty/child',
+      '/remote/empty-sibling',
+      '/else/remote/empty',
+    ]);
+    final directory = Entry()
+      ..entryType = 0
+      ..name = 'empty'
+      ..path = '/remote/empty';
+    final selected = SelectedItems(isLocal: false)..add(directory);
+
+    final removal = controller.removeAction(selected);
+    await manager.opened.future;
+    await manager.dialog.onSubmit!.call();
+    await removeEntered.future;
+    expect(jobController.jobTable, hasLength(1));
+    final displayJob = jobController.jobTable.single;
+    expect(displayJob.id, 2);
+    expect(removeCalls.single['actionId'], 3);
+    expect(removeCalls.single['actionId'], isNot(displayJob.id));
+
+    expect(
+        await jobController.jobDone(
+            {'id': '2', 'file_num': '0', 'speed': '0'}, session),
+        isFalse);
+    expect(displayJob.state, JobState.none);
+    expect(
+        await jobController.jobDone(
+            {'id': '3', 'file_num': '0', 'speed': '0'}, session),
+        isFalse);
+    await Future<void>.delayed(Duration.zero);
+    expect(displayJob.state, JobState.none);
+
+    releaseRemove.complete();
+    await removal;
+    expect(displayJob.state, JobState.done);
+    expect(controller.history,
+        ['/remote/empty-sibling', '/else/remote/empty']);
+    expect(removeCalls, [
+      {
+        'session': session,
+        'actionId': 3,
+        'path': '/remote/empty',
+        'isRemote': true,
+      }
+    ]);
+  });
+
+  testWidgets('directory-link deletion is one leaf command', (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(builder: (value) {
+      context = value;
+      return const SizedBox.shrink();
+    })));
+    final session = const Uuid().v4obj();
+    final manager = _DialogHarness(context);
+    var nextJobId = 0;
+    var recursiveReads = 0;
+    var directoryRemovals = 0;
+    final fileRemovals = <Map<String, Object>>[];
+    late FileFetcher fileFetcher;
+    late JobController jobController;
+    fileFetcher = FileFetcher(() => session,
+        requestTimeout: const Duration(seconds: 2),
+        requests: FileFetcherRequests(
+          readDirectory: (actualSession, path, showHidden) async {
+            expect(
+                fileFetcher.tryCompleteTask(
+                    actualSession,
+                    jsonEncode({'id': 0, 'path': path, 'entries': []}),
+                    'false'),
+                isTrue);
+          },
+          readEmptyDirectories: (actualSession, path, showHidden) async {},
+          readDirectoryTree:
+              (actualSession, actionId, path, isRemote, showHidden) async {
+            recursiveReads++;
+          },
+        ));
+    jobController = JobController(() => session, () => manager,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(),
+        nextJobId: () => ++nextJobId,
+        resultTimeout: const Duration(seconds: 2));
+    final controller = FileController(
+      isLocal: false,
+      getSessionID: () => session,
+      getDialogManager: () => manager,
+      isCurrentSession: (actual) => actual == session,
+      getPeerPlatform: () => 'Linux',
+      getPeerVersion: () => '1.4.0',
+      jobController: jobController,
+      fileFetcher: fileFetcher,
+      getOtherSideDirectoryData: () =>
+          DirectoryData(FileDirectory(), DirectoryOptions()),
+      requests: _controllerRequests(
+        removeFile: (actualSession, actionId, path, isRemote, fileNum) async {
+          fileRemovals.add({
+            'session': actualSession,
+            'actionId': actionId,
+            'path': path,
+            'isRemote': isRemote,
+            'fileNum': fileNum,
+          });
+          await jobController.jobDone({
+            'id': actionId.toString(),
+            'file_num': fileNum.toString(),
+            'speed': '0',
+          }, actualSession);
+        },
+        removeEmptyDirectories:
+            (actualSession, actionId, path, isRemote) async {
+          directoryRemovals++;
+        },
+      ),
+    );
+    controller.directory.value.path = '/remote';
+    final directoryLink = Entry()
+      ..entryType = 2
+      ..name = 'link'
+      ..path = '/remote/link';
+    final selected = SelectedItems(isLocal: false)..add(directoryLink);
+
+    final removal = controller.removeAction(selected);
+    await manager.opened.future;
+    await manager.dialog.onSubmit!.call();
+    await removal;
+
+    expect(recursiveReads, 0);
+    expect(directoryRemovals, 0);
+    expect(fileRemovals, [
+      {
+        'session': session,
+        'actionId': 1,
+        'path': '/remote/link',
+        'isRemote': true,
+        'fileNum': 0,
+      }
+    ]);
+  });
+
+  test('deleted-subtree matching is component exact for both path styles', () {
+    expect(PathUtil.isSameOrDescendant('/root/leaf', '/root/leaf', false),
+        isTrue);
+    expect(
+        PathUtil.isSameOrDescendant('/root/leaf/child', '/root/leaf', false),
+        isTrue);
+    expect(PathUtil.isSameOrDescendant('/root/leafish', '/root/leaf', false),
+        isFalse);
+    expect(
+        PathUtil.isSameOrDescendant(
+            r'C:\ROOT\Leaf\child', r'c:\root\leaf', true),
+        isTrue);
+    expect(
+        PathUtil.isSameOrDescendant(
+            r'C:\root\leafish', r'C:\root\leaf', true),
+        isFalse);
+  });
+
   test('job result requires exact session action and file before completion',
       () async {
     final session = const Uuid().v4obj();
@@ -261,6 +660,73 @@ void main() {
             {'id': '13', 'file_num': '2', 'err': 'permission denied'}),
         isTrue);
     await failed;
+  });
+
+  test('delete state changes only after exact result and dispatch finality',
+      () async {
+    final session = const Uuid().v4obj();
+    final dispatch = Completer<void>();
+    var nextJobId = 40;
+    final controller = JobController(() => session, () => null,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(),
+        nextJobId: () => ++nextJobId,
+        resultTimeout: const Duration(milliseconds: 200));
+    final actionId = controller.addDeleteFileJob(
+        _file('owned', '/source/owned'), true, session);
+    expect(actionId, 41);
+    final ownedActionId = actionId!;
+    await expectLater(
+        controller.dispatchDeleteFileAndWait(
+            expectedSessionId: session,
+            actionId: ownedActionId,
+            fileNum: 1,
+            dispatch: () => Future<void>.value()),
+        throwsA(isA<StateError>()));
+    final result = controller.dispatchDeleteFileAndWait(
+        expectedSessionId: session,
+        actionId: ownedActionId,
+        fileNum: 0,
+        dispatch: () => dispatch.future);
+    final job = controller.jobTable.single;
+
+    expect(
+        await controller.jobDone(
+            {'id': '41', 'file_num': '1', 'speed': '0'}, session),
+        isFalse);
+    controller.jobError(
+        {'id': '41', 'file_num': '1', 'err': 'unowned'}, session);
+    expect(job.state, JobState.none);
+    expect(job.err, isEmpty);
+
+    expect(
+        await controller.jobDone(
+            {'id': '41', 'file_num': '0', 'speed': '0'}, session),
+        isFalse);
+    await Future<void>.delayed(Duration.zero);
+    expect(job.state, JobState.none);
+
+    dispatch.complete();
+    expect((await result)['file_num'], '0');
+    expect(job.state, JobState.done);
+    expect(job.fileNum, 0);
+  });
+
+  test('invalid or unowned cancel IDs never reach the native request surface',
+      () async {
+    final session = const Uuid().v4obj();
+    final calls = <int>[];
+    final controller = JobController(() => session, () => null,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(cancelJob: (actual, actionId) async {
+          calls.add(actionId);
+        }));
+
+    expect(await controller.cancelJob(0), isFalse);
+    expect(await controller.cancelJob(-1), isFalse);
+    expect(await controller.cancelJob(0x80000000), isFalse);
+    expect(await controller.cancelJob(17), isFalse);
+    expect(calls, isEmpty);
   });
 
   test('dispatch failure wins over an early matching success response',

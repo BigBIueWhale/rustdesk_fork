@@ -11190,12 +11190,6 @@ else
   echo "  FAIL R-S11hi/R-S11e-246: peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
   rc=1
 fi
-if python3 scripts/verify-file-command-session-ownership.py --repo . --self-test; then
-  echo "  ok  R-S11hm/R-S11e-250 file commands and job results remain bounded exact-session owners through retirement"
-else
-  echo "  FAIL R-S11hm/R-S11e-250: file commands or job-result continuations regained dynamic-session retargeting, anonymous completion, or incomplete retirement"
-  rc=1
-fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iw_ --color never

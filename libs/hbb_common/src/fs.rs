@@ -3212,19 +3212,23 @@ pub async fn handle_read_jobs(
 }
 
 pub fn remove_all_empty_dir(path: &Path) -> ResultType<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_dir() {
+        bail!("remove-empty-directory target is not a directory");
+    }
     let fd = read_dir(path, true)?;
     for entry in fd.entries.iter() {
         match entry.entry_type.enum_value() {
             Ok(FileType::Dir) => {
-                remove_all_empty_dir(&path.join(&entry.name)).ok();
+                remove_all_empty_dir(&path.join(&entry.name))?;
             }
             Ok(FileType::DirLink) | Ok(FileType::FileLink) => {
-                std::fs::remove_file(path.join(&entry.name)).ok();
+                std::fs::remove_file(path.join(&entry.name))?;
             }
             _ => {}
         }
     }
-    std::fs::remove_dir(path).ok();
+    std::fs::remove_dir(path)?;
     Ok(())
 }
 
@@ -3482,6 +3486,66 @@ mod tests {
             .unwrap_or_default()
             .as_nanos();
         std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), timestamp))
+    }
+
+    #[test]
+    fn r_s11hm_remove_all_empty_dir_removes_the_complete_empty_tree() {
+        let tmp = TestTempDir::new("rustdesk_remove_empty_tree");
+        let root = tmp.join("root");
+        std::fs::create_dir_all(root.join("one/two")).expect("create empty directory tree");
+
+        remove_all_empty_dir(&root).expect("remove the complete empty directory tree");
+
+        assert!(!root.exists(), "successful removal must remove the root");
+    }
+
+    #[test]
+    fn r_s11hm_remove_all_empty_dir_reports_a_nonempty_tree() {
+        let tmp = TestTempDir::new("rustdesk_refuse_nonempty_tree");
+        let root = tmp.join("root");
+        std::fs::create_dir_all(&root).expect("create directory root");
+        let retained = root.join("retained.txt");
+        std::fs::write(&retained, b"retained").expect("create retained file");
+
+        let error = remove_all_empty_dir(&root)
+            .expect_err("a nonempty directory must not report successful removal");
+
+        assert!(root.exists(), "failed removal must leave the root visible");
+        assert_eq!(
+            std::fs::read(&retained).expect("read retained file"),
+            b"retained"
+        );
+        assert!(
+            !error.to_string().is_empty(),
+            "failed removal must retain an actionable error"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_s11hm_remove_all_empty_dir_refuses_a_directory_symlink_root() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TestTempDir::new("rustdesk_refuse_empty_tree_symlink");
+        let target = tmp.join("target");
+        let link = tmp.join("link");
+        std::fs::create_dir_all(target.join("one/two"))
+            .expect("create empty target directory tree");
+        symlink(&target, &link).expect("create directory symlink");
+
+        remove_all_empty_dir(&link).expect_err("a directory symlink root must be refused");
+
+        assert!(
+            target.join("one/two").is_dir(),
+            "refusal must not traverse or remove the symlink target"
+        );
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .expect("inspect retained symlink")
+                .file_type()
+                .is_symlink(),
+            "refusal must leave the symlink itself for the leaf-removal path"
+        );
     }
 
     fn new_file_entry(name: &str) -> FileEntry {

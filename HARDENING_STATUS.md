@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e22e32dc30544d4ba57059815949eaf3f18e76ff2ede5cb40c9d31d08f9c9f9a  requirements.html
+6a454a1120d05a233732b34706c2d4362bdd2874cabda19afd7ac5443c304138  requirements.html
 ```
 
 ## Current Verdict
@@ -10961,33 +10961,43 @@ matrix. Historical implementation details remain in Git at
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**Status: SOURCE IMPLEMENTED AND FOCUSED-GATED; EXECUTABLE DART/FLUTTER/NATIVE
-AND TARGET-PLATFORM EVIDENCE OPEN.**
+**Status: SOURCE CORRECTED; EXECUTABLE DART/RUST REGRESSIONS AUTHORED BUT NOT RUN;
+DART/FLUTTER/NATIVE AND TARGET-PLATFORM EVIDENCE OPEN.**
 
-Current source captures the exact session and immutable entries, roots, direction,
-path style, hidden-file policy, peer compatibility inputs, and native paths before
-the first asynchronous boundary. Closed typed dependencies carry that session
-through send/remove/create/rename/cancel/add/resume operations; post-await job,
-directory, dialog, navigation, and refresh mutations revalidate it. Delete results
-reserve before dispatch in one map capped at 64 active, dispatch-draining, and
-timed-out exact session/action/file owners. A response cannot report success before
-dispatch settles, dispatch failure wins over an early response, exact job errors
-remain caller-visible, and tombstones prevent late-result reuse. Session replacement
-synchronously retires file-dialog admission, response and result waiters, job and
-policy state, dialogs, and page-owned wakelocks before awaited persistence/native
-cleanup. Old continuations cannot target or mutate a replacement.
+Current source captures exact sessions and immutable command inputs before asynchronous
+boundaries. Delete-file events settle only their bounded exact session/action/file owner;
+they cannot independently mutate a display job. The caller applies progress or error only
+after response-and-dispatch finality. Remote empty-directory removal uses a fresh operation
+ID and exact `(session, operation, 0)` result owner instead of reusing the display ID/file-0
+identity; local removal uses its direct fallible result. The shared filesystem sink now
+propagates nested link/directory and final-root removal failures instead of reporting
+unconditional success, and refuses a stable root symlink. Only then may the separate display
+job complete; deletion history removes only the exact deleted subtree rather than unrelated
+substring matches. Directory links enter the leaf-unlink command path and cannot trigger recursive
+target enumeration. Create-directory and rename now reserve exact
+file-0 result owners before dispatch and return only after local or remote operation finality;
+the local native producer emits that same canonical identity. Invalid or unowned cancel IDs fail before
+dispatch. Desktop/mobile create dialogs and the rename dialog capture their admitted directory,
+entry/name set, path style, direction, and session before their dialog awaits. Replacement still
+synchronously retires admissions, waiters, job/dialog policy,
+and page-owned wakelocks before awaited cleanup. Web file commands invoke the global JavaScript
+bridge in the caller's checked event-loop turn rather than deferring dispatch into a later `Future`.
 
-Focused Dart regressions are authored for immutable snapshots, no retarget after
-replacement, exact result correlation, response/dispatch finality, tombstone
-retention, visible error/retirement, and persisted-job isolation.
-scripts/verify-file-command-session-ownership.py and the independent workspace
-contract protect the corresponding source topology and absence of ambient-session
-or anonymous-result fallbacks. Exact Dart/Flutter/native execution, installed
-Android/iOS/Windows/Linux/macOS and applicable web behavior, task-swipe/reopen/
-Force-Stop, desktop focus/replacement, reordered-result behavior, cross-version
-transfer, performance/resource soak, and cleanup remain open under the global
-STOP-SHIP matrix. Historical implementation and run details remain in Git at
-56e48c7a3628b921bb01cabcb3b8455f2c58f001.
+The executable Dart suite now drives unmatched and exact delete events through the real
+job controller, response-before-dispatch finality, invalid cancel refusal, immutable rename
+dialog state, create-error finality, directory-link leaf removal, component-exact history cleanup,
+and remote empty-directory display-ID/result-ID separation,
+in addition to its existing send, correlation, timeout, retirement, and persisted-job cases.
+Focused Rust regressions are authored for complete empty-tree removal, nonempty-tree error propagation,
+and stable directory-symlink-root refusal without target traversal.
+The Dart suite remains wired into `scripts/dart-verify.sh`. The 859-line source-wording recognizer, its 572-line workspace
+duplicate, and shared/Apple invocations were deleted because they ran no Dart, bridge,
+filesystem command, target, or application behavior. No Dart/Flutter/native executable ran
+for this correction because no user-owned Docker/Podman/libvirt authority or host-independent
+Dart toolchain was available; no rootful or host product/toolchain execution fallback was used. Exact isolated
+execution on Android, iOS, Windows, Linux, macOS, and applicable web targets—including task
+swipe/reopen/Force Stop, desktop replacement, reordered results, cross-version transfer,
+performance/resource soak, and cleanup—remains OPEN under the global STOP-SHIP matrix.
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 

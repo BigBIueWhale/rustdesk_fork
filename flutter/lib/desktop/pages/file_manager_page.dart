@@ -788,6 +788,9 @@ class _FileManagerViewState extends State<FileManagerView> {
                       tooltip: translate('Create Folder'),
                       onPressed: () {
                         if (!isCurrentSession) return;
+                        final directoryPath = controller.directory.value.path;
+                        final targetIsWindows =
+                            controller.options.value.isWindows;
                         final name = TextEditingController();
                         String? errorText;
                         final dialog =
@@ -796,7 +799,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                             if (!isCurrentSession) return;
                             if (name.value.text.isNotEmpty) {
                               if (!PathUtil.validName(name.value.text,
-                                  controller.options.value.isWindows)) {
+                                  targetIsWindows)) {
                                 setState(() {
                                   errorText = translate("Invalid folder name");
                                 });
@@ -805,9 +808,9 @@ class _FileManagerViewState extends State<FileManagerView> {
                               late final bool created;
                               try {
                                 created = await controller.createDir(PathUtil.join(
-                                  controller.directory.value.path,
+                                  directoryPath,
                                   name.value.text,
-                                  controller.options.value.isWindows,
+                                  targetIsWindows,
                                 ), expectedSessionId: expectedSessionId);
                               } catch (e) {
                                 if (!mounted ||

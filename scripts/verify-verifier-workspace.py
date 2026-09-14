@@ -8575,7 +8575,7 @@ def validate_windows_helper_launch_contract(sources):
         ),
         (
             "verify",
-            "Windows token-switched helper environment finality (R-S11ay/R-S11e-65)",
+            "Windows token-switched child environment finality (R-S11ay/R-S11e-65)",
             "Windows target-user environment source gate",
         ),
         (
@@ -8590,7 +8590,7 @@ def validate_windows_helper_launch_contract(sources):
         ),
         (
             "hardening",
-            "R-S11e-65 — Windows token-switched helper environment finality",
+            "R-S11e-65 — Windows token-switched child environment finality",
             "Windows target-user environment hardening ledger",
         ),
     ):
@@ -49294,8 +49294,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Windows token-switched helper environment finality (R-S11ay/R-S11e-65)",
-            "Windows token-switched helper environment compatibility (R-S11ay/R-S11e-65)",
+            "Windows token-switched child environment finality (R-S11ay/R-S11e-65)",
+            "Windows token-switched child environment compatibility (R-S11ay/R-S11e-65)",
             "Windows target-user environment source gate",
         ),
         (
@@ -49312,8 +49312,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11e-65 — Windows token-switched helper environment finality",
-            "R-S11e-65 — Windows token-switched helper environment deferred",
+            "R-S11e-65 — Windows token-switched child environment finality",
+            "R-S11e-65 — Windows token-switched child environment deferred",
             "Windows target-user environment hardening ledger",
         ),
         (

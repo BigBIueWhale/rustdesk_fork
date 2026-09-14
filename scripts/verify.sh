@@ -7723,7 +7723,7 @@ if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/ho
 # (3b-iii-d9co) R-S11ay/R-S11e-65: every token-switched child launch
 # must receive a successfully created environment for the exact selected
 # token and may never inherit or fall back to the service environment.
-echo "== (3b-iii-d9co) Windows token-switched helper environment finality (R-S11ay/R-S11e-65) =="
+echo "== (3b-iii-d9co) Windows token-switched child environment finality (R-S11ay/R-S11e-65) =="
 r_s11e65=
 grep -qF 'if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))' src/platform/windows.cc \
   || r_s11e65="$r_s11e65 non-inherited-token-environment-missing"
@@ -7735,6 +7735,18 @@ grep -qF 'LPVOID processEnvironment = lpEnvironment;' src/platform/windows.cc \
   || r_s11e65="$r_s11e65 exact-token-environment-selection-missing"
 grep -qF 'dwCreationFlags, processEnvironment, currentDirectory,' src/platform/windows.cc \
   || r_s11e65="$r_s11e65 exact-token-environment-launch-use-missing"
+grep -qF "size_t searchStart = !entry.empty() && entry[0] == L'=' ? 1 : 0;" src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 drive-current-directory-key-parse-missing"
+grep -qF 'return compare_environment_text(left, right, TRUE) == 0;' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 environment-key-compare-not-case-insensitive-ordinal"
+grep -qF 'baseEntries.erase(' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 launcher-overlays-do-not-replace-token-environment"
+grep -qF '*existing = extra;' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 duplicate-launcher-overlay-finality-missing"
+grep -qF 'std::sort(entries.begin(), entries.end(), environment_entry_less)' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 environment-block-sort-missing"
+grep -qF 'dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 unicode-environment-flag-missing"
 windows_native_flat=$(tr '\n' ' ' < src/platform/windows.cc)
 if grep -Eq 'CreateEnvironmentBlock\([^;]*TRUE\)' <<<"$windows_native_flat"; then
   r_s11e65="$r_s11e65 inherited-caller-environment-present"
@@ -7772,10 +7784,10 @@ if grep -Eq 'CreateEnvironmentBlock\([^;]*TRUE\)' <<<"$(tr '\n' ' ' < "$privacy_
 fi
 grep -qF '<span class="id">R-S11ay</span>' requirements.html || r_s11e65="$r_s11e65 normative-requirement-missing"
 grep -qF '<tr><td>173</td>' requirements.html || r_s11e65="$r_s11e65 appendix-row-missing"
-grep -qF 'R-S11e-65 — Windows token-switched helper environment finality' HARDENING_STATUS.md \
+grep -qF 'R-S11e-65 — Windows token-switched child environment finality' HARDENING_STATUS.md \
   || r_s11e65="$r_s11e65 hardening-ledger-missing"
-if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched helper environment finality:$r_s11e65"; rc=1; else
-  echo "  ok  R-S11e-65 token-switched helpers and the privacy broker require a non-inherited exact-token environment and abort before launch if its construction fails"; fi
+if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched child environment finality:$r_s11e65"; rc=1; else
+  echo "  ok  R-S11e-65 token-switched children require a non-inherited exact-token environment and abort before launch if its construction fails"; fi
 
 # (3b-iii-d9cp) R-S11az/R-S11e-66: the only two macOS service
 # lifecycle scripts that request administrator privileges use one closed
@@ -9045,13 +9057,6 @@ grep -q 'Refusing root-to-user whiteboard launch; the user-context service must 
 grep -q 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11c8="$r_s11c8 windows-typed-whiteboard-launch-missing"
 grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-typed-helper-launcher-missing"
 grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
-grep -q 'environment_entry_key' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-helper-missing"
-grep -q 'environment_keys_equal' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-compare-missing"
-grep -q 'compare_environment_text(left, right, TRUE)' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-compare-not-case-insensitive"
-grep -q 'baseEntries.erase' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-extra-vars-do-not-override-base"
-grep -q 'std::sort(entries.begin(), entries.end(), environment_entry_less)' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-block-not-sorted"
-grep -q 'Windows helper launch environment authority' requirements.html || r_s11c8="$r_s11c8 windows-env-requirements-disposition-missing"
-grep -q 'R-S11c-15 — Windows helper launch environment authority' HARDENING_STATUS.md || r_s11c8="$r_s11c8 windows-env-hardening-ledger-missing"
 grep -Fq '<span class="id">R-S11dz</span>' requirements.html || r_s11c8="$r_s11c8 whiteboard-protocol-requirement-missing"
 grep -Fq '<tr><td>279</td>' requirements.html || r_s11c8="$r_s11c8 whiteboard-protocol-appendix-row-missing"
 grep -Fq 'R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality' HARDENING_STATUS.md || r_s11c8="$r_s11c8 whiteboard-protocol-ledger-missing"

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-286d9fafcbd8f9f741742bdb06dfe98011b6aeb21a4a5d976ccdc8757a47d4fc  requirements.html
+38a9039f63d662656ebbe23cfd7532f03b9966e5677ce4933c7cb25433ecca89  requirements.html
 ```
 
 ## Current Verdict
@@ -101,6 +101,13 @@ closed helper roles, WTS user-token selection, exact System32 winlogon image, to
 minimum rights, handle ownership, and obsolete fallback absence. No product source or native Windows target ran
 or changed; current Windows package, installed-negative-principal, full-peer, focus/reconnect, resource/latency,
 and cold-equality evidence remains open.
+
+R-S11ay and Appendix C #173 now state one timeless exact-token environment contract for user-token,
+service-token, and privacy-broker children. The stale claim that the service child receives only explicit
+variables, the duplicate Appendix C #62 finding, its `FIX`/verifier narration, and the redundant earlier status
+alias were deleted. The small merge invariants now live only in the R-S11e-65 focused gate; two documentation-
+wording oracles were removed. No product source or native Windows target changed or ran. Exact-artifact principal,
+collision, failure, child-observation, and cleanup scenarios remain open in the Windows release-blocking row.
 
 Appendix C row #59 now states the timeless installed-service lifecycle finality contract instead of preserving
 the original failure inventory, successive implementation narrative, `FIX` badge, and verifier receipts, reducing
@@ -1106,7 +1113,6 @@ exists only to make the current source disposition discoverable.
 - R-S11b-3m — typed permanent-password PRS authority reaches CPace admission
 - R-S11c-13 — service-owned process close has dedicated receiver authority
 - R-S11c-14 — service-owned voice-call input IPC mutation gate
-- R-S11c-15 — Windows helper launch environment authority
 - R-S11b-4d — local credential-bearing store file hardening
 - R-S11b-4e — ordinary main IPC credential mirror excised
 - R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective
@@ -1234,7 +1240,7 @@ exists only to make the current source disposition discoverable.
 - R-S11e-62 — macOS variadic file-creation ABI
 - R-S11e-63 — complete Windows production-listener DACL coverage
 - R-S11e-64 — smoke container image, network, and dependency authority
-- R-S11e-65 — Windows token-switched helper environment finality
+- R-S11e-65 — Windows token-switched child environment finality
 - R-S11e-66 — macOS administrator-script environment finality
 - R-S11e-67 — Linux clipboard fusermount process-context finality
 - R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage

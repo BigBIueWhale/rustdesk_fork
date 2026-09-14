@@ -346,9 +346,8 @@ observed no product or operating-system behavior. Later-added normative clauses 
 gates and independent normal workspace validator without requiring the duplicate global catalog. The last catalog run
 was killed with exit 137 after roughly eight and a half minutes under a 1,536 MiB limit without emitting a phase or
 verdict; its cause and progress were not proven. The retained normal workspace check now completes in seconds.
-This reduces the workspace verifier from 3,076,257 bytes/72,709 lines to 1,899,126 bytes/45,497 lines and
-`requirements.html` from 2,224,640 to 2,223,739 bytes. Including this record, the ledger moves from 1,051,107 to
-1,051,700 bytes, or 350,567 conservative tokens by the documented method.
+The workspace verifier is 1,899,126 bytes/45,497 lines and `requirements.html` is 2,223,739 bytes. The live
+hardening ledger remains below its documented approximate 400,000-token budget.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -1415,12 +1414,6 @@ runner proves the exact portable executable, non-service role, process UID, cred
 termination/reap, and unchanged source inode/mode/content. Structural mutations reject source traversal, a
 missing fixture member, broad process killing, or a release snapshot relaxed from mode 0700.
 
-The first exact-commit transaction at `6cf6719f7d57b01149b161997685a77c618c782f` passed all nine source gates
-inside pass A, including the private non-root smoke, then stopped before Debian compilation at `A before debian`.
-Root-running verification containers had created ignored Cargo and Flutter state; the host-UID `git clean -ffdx`
-correctly refused 8,646 inaccessible removals. That attempt produced no platform artifact, A/B equality result,
-manifest, publication, or release evidence.
-
 Pass A and pass B are independent `git clone --no-hardlinks --no-checkout --reject-shallow` repositories. Each checks out the pinned
 commit detached, removes every remote, owns a private `.git` object database, rejects replacement/graft/alternate,
 shallow, sparse, and index-masking state, runs strict `git fsck`, and proves mount and inode-link closure before use.
@@ -1580,75 +1573,6 @@ are logical process-restart proofs, not physical power-loss simulation. The invo
 cooperative; root, kernel, trusted storage, and ext4 remain trusted. `RELEASE OK` is emitted only from signal-excluded
 EXIT finalization after publication reconciliation, descriptor-bound private-workspace deletion, and final parent sync.
 
-The exact pushed `705fe02c2b3690ac15dbe44e3b836012bfd1ce5d` build completed and reverified the canonical online
-snapshot, then stopped before platform compilation when pass-A verifier fixtures treated the outer detached release
-worktree as ambient stale state and invoked master-only source checks. It produced no artifact or manifest. The
-transaction-scoped fixture Git authority and branch-neutral exact-source contract above remove those assumptions;
-artifact evidence remains pending a new exact clean pushed commit and complete cold build.
-
-The exact pushed `b66d44d39317e3e3070aea54a8977d874116fc6c` cold build passed eight release gates, including the full
-runtime server smoke, then failed in pass A because the production dirty-source case invoked the master-only release
-wrapper from the detached pass repository. Cleanup then failed closed before mutation: the authenticated online tree
-alone had 188,598 descendants while the retained-authority helper admitted only 131,072; the complete retained workspace
-had 203,012 descendants. No Debian, Android, or Windows artifact, manifest, publication, release, or prerelease was
-created. Log `/tmp/rustdesk-build-b66d44d.log` has SHA-256
-`ca08d47857c7b243c445b5c011436f350148ccd72e15bbab1d658bba3de71d12`. The isolated production fixture,
-explicit capacity and capability proof, 524,288-entry bounded authority, authenticated executor, and empty-root-only
-terminal deletion design above supersede those failed paths. Exact-commit artifact evidence remains open pending a
-complete cold build from the exact pushed commit.
-
-The exact pushed `6d4030c05eae830c43d90d0a233759f660297db2` cold build passed all nine pass-A release gates, including
-core verification, the Windows harness, runtime server smoke, Flutter/Dart, native codec, Apple, Rust/Dart audit, and
-all fail-loud fixtures. Its first Debian package build then failed closed because `dpkg-deb` rejected mode-`0700`
-`preinst`; the private release snapshot's `umask 077` modes had crossed the package boundary through mode-preserving
-control-script copies. The same review established that ordinary copied payload files could retain private
-`0600`/`0700` modes even after `--root-owner-group` normalized archive ownership. The wrapper removed its workspace
-and produced no artifact, manifest, publication, release, or prerelease. Log `/tmp/rustdesk-build-6d4030c.log` has
-SHA-256 `aa19faf67ca0debec5fc1c9b5c7f3268e5f9baed92e878fe4d69d9ffd511a537`. The single exact-mode Debian tree
-constructor and archive-wide verifier above replace mode inheritance; exact-commit artifact evidence remains open
-pending a complete cold build from the corrected pushed commit.
-
-The exact pushed `3bd8d4faad27d484d8d77d7e5aff91ce5dd4debf` cold build passed all twelve release source gates,
-built and verified pass-A Debian SHA-256
-`0cfd0dfabef51b26aa91be5d242172d23572b9ecc658f6cda96242fa5afb68f0` and Android SHA-256
-`b9729f337970868422530bdb9fa909ae7d6f918273bd015963e61a759c4a9f61`, then stopped before Windows VM
-startup because the outer orchestrator had precreated the Windows publication path and nested harness state
-beneath it while the Windows builder correctly required an absent `OUT_DIR` for atomic publication. No Windows
-target build, pass B, manifest, publication, release, or prerelease followed. The retained workspace was proved
-mount- and inode-closed and removed through the authenticated descriptor-based cleanup helper. Log
-`/tmp/rustdesk-build-3bd8d4f.log` has SHA-256
-`b946f9501a6e6115302cfc99029eb21b1b062739a2c827d01916ada1133dbb07`. The output-ownership and disjoint-state
-contract above removes the contradiction; exact-commit artifact evidence remains open pending a complete cold
-build from the corrected pushed commit.
-
-The exact pushed `f4e77bebb1d8f05045b4d2d27c091a2f58103d64` cold build passed eleven of twelve release source
-gates and stopped in `smoke-server.sh` before any Debian, Android, or Windows target build. Under the
-source-gate load, the root portable password stage and headless file-transfer stage acted after fixed
-eight- and six-second startup delays before their independent IPC and direct-listener threads were ready;
-the former completed no mutation and the latter's execution-time `grep` discarded the pre-listener
-`CONNECT_FAIL` diagnostic. The isolated workspace was proved and removed, and no artifact, manifest,
-publication, release, or prerelease was created. Log `/tmp/rustdesk-build-f4e77be.log` has SHA-256
-`54a90796f549a8e8b7d6f6ec6374bb07bcc20431191ca82e6e24cd9b189ef3c7`. A standalone rerun reproduced
-both failures, while an immediate exact stage-2b run that first observed the live TCP and IPC objects
-completed the production password transaction and credential keying in 8.7 seconds. The source contract
-now removes every startup, event, capture, and teardown timing guess. A fixed 60-second monotonic checker
-captures the child start identity once immediately after spawn and requires that retained identity for every
-later observation and pidfd signal. Listening and parked proofs require exact TCP/UDP state, exact-process
-listener ownership, transition records, and both UID-scoped Unix-listener kernel inodes in that process's
-descriptor table. A dedicated typed main-IPC readiness response is connected under one hard deadline, bound
-by `SO_PEERCRED` to the retained PID, and start-identity checked before request and after response; the shell
-adds an outer hard timeout and re-proves both IPC inode mappings afterward. Probe and log files are
-descriptor-pinned, cleanup authority records device/inode identity before removing only exact entries, and
-the limiter's sole 64-second semantic interval continuously checks the retained child. The behavioral fixture
-rejects dead or substituted processes, foreign-owned IPC listeners, stale socket paths without a successful
-typed transaction, and a transaction that exceeds its complete deadline. Runtime containers mount source
-read-only; only the full-transcript build stage receives a writable bind. Isolated stages preserve their real
-exit status and use non-pipeline output assertions. The password watchdog is derived from the exported
-600-second admitted-operation recovery bound and has a finite forced-kill ceiling, and the file-transfer probe
-reports success only after successful serialization, successful protocol sends, and a non-empty
-`PeerInfo.username`. Exact-commit artifact evidence remains open pending a complete cold build from the
-corrected pushed commit.
-
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
 `docs/ANDROID-SIGNING-RECOVERY.md` closes the Android break-glass obligation: verified offline backup is the
@@ -1656,28 +1580,14 @@ only loss recovery for the existing identity; suspected compromise retires that 
 a new package name, new key/pin, clean build, authenticated notice, and data-wiping uninstall/reinstall. The
 current pipeline has no ad hoc certificate-lineage or pin-bypass path.
 
-Historical double-builds at older named commits exercised the harness and produced byte-identical artifacts.
-Those commits include `6fbae50`, `ede091e`, and `a5bd577`; their artifact hashes are intentionally not
-repeated in this live ledger because they prove only those old source states. The `5e03011` MSI proof was later
-invalidated across calendar days and led to the `SOURCE_DATE_EPOCH` fix. These records establish historical
-harness behavior, not current `.6` release evidence.
+No current-master R-B2/R-B10 Debian, Android, and Windows artifact set or A==B manifest exists. Historical
+successful and failed build transcripts, intermediate artifact hashes, temporary-log identities, and superseded
+QA narratives remain available in Git and the external audit; they are not current release evidence.
 
 The required sequence is: settle source and normative documentation, update inventory and codec/status hashes,
 bump `FORK_VERSION` last, verify, commit, push the exact clean HEAD, then run the full cold build. This tracked
 source does not substitute for the generated exact-commit artifact manifest, and no `.6` publication is claimed.
-## Historical live-QA closure (2026-07-06 through 2026-07-07)
 
-Acceptance testing of the old `v1.4.7-hardened.1` prerelease exposed five clusters: Windows service/status
-resilience, desktop settings/password coherence, stale UI surfaces, Android boot/capture lifecycle, and
-logind-less Linux connection-manager startup. The investigation log and its temporary present-tense
-investigation and treatment notes are superseded by the implemented closure rows in this ledger.
-
-The corresponding source treatments landed historically as `98fc028` (headless CM startup), `b1c243c`
-(settings/password and unlock-PIN excision), `66ec419` (Android boot/capture/listener teardown and honest
-status), `741d3b1` (Windows resilience and honest desktop status), and `79078c0` (remaining UI coherence).
-Later service, IPC, installer, input, and tunnel hardening further supersedes that snapshot. These old commits and
-their tests are historical traceability only; they do not prove current `.6` artifacts, whose native and
-reproducibility evidence must name the exact commit in the R-B2 manifest.
 ## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory
 
 Cross-checked (2026-06-29) the fork's hardening against the **complete public 2026

@@ -451,7 +451,7 @@ def verify(files: Mapping[str, str]) -> None:
         (
             "authorize_cm_ipc_connection(&stream)",
             "answer_cm_endpoint_challenge(&mut stream).await",
-            "tokio::spawn(IpcTaskRunner::<T>::ipc_task(stream, cm.clone()))",
+            "tokio::spawn(ipc_task(stream, cm.clone()))",
         ),
         "CM parent admission before mandatory launch-secret proof and task dispatch",
     )

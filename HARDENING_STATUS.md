@@ -12556,22 +12556,34 @@ independent reproduction; and external review.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 
-**SOURCE IMPLEMENTED; DEDICATED EXECUTABLE REGRESSION MISSING; EXACT NATIVE
-INSTALLED CM/ROUTE EVIDENCE OPEN.** One `IpcTaskRunner::run` owns the CM stream. Only
-the first server-validated authorized Login may activate it. On Windows, controlled-route
-admission and `MonitorReady` publication precede client-registry commit. EOF, framing
-failure, repeated Login, authority failure, route/readiness/registry refusal, bounded
-egress failure, disconnect, and ordinary completion converge on one terminal path without
-retry. An admitted client is retired while its exact route lease remains live, and route
-vacancy is proved under the registry lock before generation/channel allocation.
+**PRE-LOGIN SOURCE DEFECT CORRECTED; SIX TARGETED EXECUTABLE REGRESSIONS AUTHORED
+AND WIRED BUT NOT YET RUN; EXACT NATIVE INSTALLED CM/ROUTE EVIDENCE OPEN.** Review
+disproved the former source-closure claim: before Login, `ClickTime`,
+`PrivacyModeState`, `FileTransferLog`, and `ClipboardFileEnabled` could mutate process or
+UI state, and Windows `ClipboardFile` could stop the global clipboard context before its
+late `conn_id` check. The runner now derives pre-activation from absence of the exact
+client-registry owner and terminates on every message except Login, close/disconnect, and
+Windows' independently server-validated `AuthorizedClipboardNonFile` request. A
+response-only `ClipboardNonFile` is terminal. Production `ipc_task` still invokes the
+same whole-stream runner exactly once and binds its private validation seam to
+`validate_cm_connection_authority`; there is no retry or alternate authority path.
 
-The retained R-S11gz route tests execute the controlled-route vacancy and duplicate-ID
-primitive, but they do not execute CM stream activation, malformed input, readiness
-failure, or cleanup ordering. The deleted clipboard-route verifier was only source
-matching and deliberate mutation; it was not an R-S11it regression. R-S11it now
-explicitly requires executable first-Login, malformed-frame, route/readiness-refusal,
-cleanup-before-release, and vacancy-before-allocation scenarios. No replacement
-source-text verifier was added.
+Five Windows Rust tests drive that runner through the real framed `ConnectionTmpl`
+transport with an in-memory duplex endpoint. They cover inert pre-Login refusal,
+malformed framing, first-Login activation and repeated-Login finality, route collision,
+readiness-send failure, no client commit on either refusal, and observation that exact
+client removal occurs while the route remains occupied. A clipboard-crate regression
+drives the real controlled-route registry with test-only mint accounting and proves a
+duplicate ID consumes neither a route generation nor a channel. The suites are wired to
+the native Windows artifact lane, and the portable route-allocation test is wired to the
+confined Linux verifier. The old clipboard-route source/mutation verifier remains
+deleted; no replacement source-text R-S11it proof was added.
+
+These tests were not compiled or executed for this source change: the fixed rootless
+Docker socket is absent, session libvirt has no domain, and the repository-owned Windows
+golden image is absent. Host execution, privileged Docker, and a long release build were
+not used as fallbacks. Therefore even focused executable evidence remains open until the
+isolated Windows lane runs this exact source.
 
 Run the exact installed Windows candidate through those scenarios, EOF and abrupt-owner
 loss, same-ID route races, SCM restart, and complete file/clipboard transactions. Retain

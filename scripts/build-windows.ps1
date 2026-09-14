@@ -1166,6 +1166,12 @@ if /I "%~1"=="build" (
     cargo run --offline --locked --example windows_cm_lifecycle_probe --features "flutter,windows-cm-lifecycle-probe" --color never
     if ($LASTEXITCODE -ne 0) { Die "Windows CM lifecycle probe failed (exit $LASTEXITCODE) -- exact generation authentication and kill-on-owner-close must pass before build.py --flutter" }
 
+    Write-Host "[harness] testing terminal CM stream and controlled clipboard-route ownership -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
+    cargo test --offline --locked --lib --features flutter --color never r_s11it_ -- --test-threads=1
+    if ($LASTEXITCODE -ne 0) { Die "Terminal CM stream ownership suite failed (exit $LASTEXITCODE) -- first-Login activation and route finality must pass before build.py --flutter" }
+    cargo test --offline --locked -p clipboard --lib --color never r_s11it_ -- --test-threads=1
+    if ($LASTEXITCODE -ne 0) { Die "Controlled clipboard-route allocation suite failed (exit $LASTEXITCODE) -- refused IDs must not mint resources before build.py --flutter" }
+
     cargo test --offline --locked --lib --features flutter --color never windows_credential_
     if ($LASTEXITCODE -ne 0) { Die "Windows credential state-machine suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
     cargo test --offline --locked --lib --features flutter --color never windows_replica_

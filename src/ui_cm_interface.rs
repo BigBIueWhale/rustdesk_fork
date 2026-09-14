@@ -624,8 +624,8 @@ impl CmClientRegistry {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-struct IpcTaskRunner<T: InvokeUiCM> {
-    stream: Connection,
+struct IpcTaskRunner<T: InvokeUiCM, S> {
+    stream: ipc::ConnectionTmpl<S>,
     cm: ConnectionManager<T>,
     tx: CmEgressSender,
     rx: CmEgressReceiver,
@@ -640,6 +640,16 @@ struct IpcTaskRunner<T: InvokeUiCM> {
     file_transfer_enabled_peer: bool,
     /// Read jobs for CM-side file reading (server to client transfers)
     read_jobs: Vec<CmTransferJob>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn cm_message_is_admissible_before_login(data: &Data) -> bool {
+    match data {
+        Data::Login { .. } | Data::Close | Data::Disconnected => true,
+        #[cfg(target_os = "windows")]
+        Data::AuthorizedClipboardNonFile { .. } => true,
+        _ => false,
+    }
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -1009,8 +1019,39 @@ pub fn has_active_clients() -> bool {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-impl<T: InvokeUiCM> IpcTaskRunner<T> {
+impl<T, S> IpcTaskRunner<T, S>
+where
+    T: InvokeUiCM,
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     async fn run(&mut self) {
+        self.run_with_authority_validator(
+            |id, conn_type, cm_auth_token| async move {
+                ipc::validate_cm_connection_authority(id, conn_type, &cm_auth_token).await
+            },
+            || {
+                #[cfg(target_os = "windows")]
+                {
+                    ContextSend::is_enabled()
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    false
+                }
+            },
+        )
+        .await;
+    }
+
+    async fn run_with_authority_validator<V, VFut, C>(
+        &mut self,
+        mut validate_connection_authority: V,
+        mut _clipboard_context_enabled: C,
+    ) where
+        V: FnMut(i32, ipc::CmAuthConnType, String) -> VFut,
+        VFut: std::future::Future<Output = ResultType<ipc::CmConnectionAuthority>>,
+        C: FnMut() -> bool,
+    {
         use hbb_common::tokio::time::{self, Duration, Instant};
 
         const MILLI5: Duration = Duration::from_millis(5);
@@ -1040,10 +1081,18 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                             break;
                         }
                         Ok(Some(data)) => {
+                            if self.client_owner.is_none()
+                                && !cm_message_is_admissible_before_login(&data)
+                            {
+                                log::warn!(
+                                    "Rejected CM message before server-validated Login"
+                                );
+                                break;
+                            }
                             match data {
                                 Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, cm_auth_token} => {
                                     log::debug!("conn_id: {}", id);
-                                    if self.conn_id != 0 {
+                                    if self.client_owner.is_some() {
                                         log::warn!(
                                             "Rejected repeated CM login on connection {}: requested conn_id={}",
                                             self.conn_id,
@@ -1051,10 +1100,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         );
                                         break;
                                     }
-                                    let connection_authority = match ipc::validate_cm_connection_authority(
+                                    let connection_authority = match validate_connection_authority(
                                         id,
                                         conn_type,
-                                        &cm_auth_token,
+                                        cm_auth_token.clone(),
                                     )
                                     .await
                                     {
@@ -1096,7 +1145,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                             }
                                         };
                                     #[cfg(target_os = "windows")]
-                                    if ContextSend::is_enabled() {
+                                    if _clipboard_context_enabled() {
                                         log::debug!("Clipboard is enabled");
                                         if let Err(error) = self
                                             .stream
@@ -1257,15 +1306,19 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     if stop {
                                         ContextSend::set_is_stopped();
                                     } else {
-                                        if self.conn_id <= 0 {
-                                            log::debug!("Clipboard message from client peer, but not authorized");
-                                            continue;
-                                        }
                                         let conn_id = self.conn_id;
-                                        let _ = ContextSend::proc(|context| -> ResultType<()> {
-                                            context.server_clip_file(conn_id, _clip)
-                                                .map_err(|e| e.into())
-                                        });
+                                        if let Err(error) =
+                                            ContextSend::proc(|context| -> ResultType<()> {
+                                                context
+                                                    .server_clip_file(conn_id, _clip)
+                                                    .map_err(|e| e.into())
+                                            })
+                                        {
+                                            log::error!(
+                                                "failed to process CM file-clipboard message: {error}"
+                                            );
+                                            break;
+                                        }
                                     }
                                 }
                                 Data::ClipboardFileEnabled(_enabled) => {
@@ -1297,10 +1350,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 }
                                 #[cfg(target_os = "windows")]
                                 Data::AuthorizedClipboardNonFile { id, conn_type, cm_auth_token } => {
-                                    let connection_authority = match ipc::validate_cm_connection_authority(
+                                    let connection_authority = match validate_connection_authority(
                                         id,
                                         conn_type,
-                                        &cm_auth_token,
+                                        cm_auth_token,
                                     )
                                     .await
                                     {
@@ -1322,10 +1375,19 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                             "Rejected CM non-file clipboard read without matching clipboard-capable Remote authority: conn_id={}",
                                             id
                                         );
-                                        allow_err!(self.stream.send(&Data::ClipboardNonFile(Some((
-                                            "clipboard authority denied".to_owned(),
-                                            vec![]
-                                        )))).await);
+                                        if let Err(error) = self
+                                            .stream
+                                            .send(&Data::ClipboardNonFile(Some((
+                                                "clipboard authority denied".to_owned(),
+                                                vec![],
+                                            ))))
+                                            .await
+                                        {
+                                            log::error!(
+                                                "failed to publish CM clipboard-authority refusal: {error}"
+                                            );
+                                            break;
+                                        }
                                         continue;
                                     }
                                     match crate::clipboard::check_clipboard_cm() {
@@ -1354,27 +1416,53 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                                     special_name: c.special_name,
                                                 });
                                             }
-                                            allow_err!(self.stream.send(&Data::ClipboardNonFile(Some(("".to_owned(), main_data)))).await);
+                                            if let Err(error) = self
+                                                .stream
+                                                .send(&Data::ClipboardNonFile(Some((
+                                                    "".to_owned(),
+                                                    main_data,
+                                                ))))
+                                                .await
+                                            {
+                                                log::error!(
+                                                    "failed to publish CM non-file clipboard response: {error}"
+                                                );
+                                                break;
+                                            }
                                             if !raw_contents.is_empty() {
-                                                allow_err!(self.stream.send_raw(raw_contents.into()).await);
+                                                if let Err(error) =
+                                                    self.stream.send_raw(raw_contents.into()).await
+                                                {
+                                                    log::error!(
+                                                        "failed to publish CM non-file clipboard payload: {error}"
+                                                    );
+                                                    break;
+                                                }
                                             }
                                         }
                                         Err(e) => {
                                             log::debug!("Failed to get clipboard content. {}", e);
-                                            allow_err!(self.stream.send(&Data::ClipboardNonFile(Some((format!("{}", e), vec![])))).await);
+                                            if let Err(error) = self
+                                                .stream
+                                                .send(&Data::ClipboardNonFile(Some((
+                                                    format!("{}", e),
+                                                    vec![],
+                                                ))))
+                                                .await
+                                            {
+                                                log::error!(
+                                                    "failed to publish CM clipboard-read refusal: {error}"
+                                                );
+                                                break;
+                                            }
                                         }
                                     }
                                 }
                                 #[cfg(target_os = "windows")]
-                                Data::ClipboardNonFile(None) => {
-                                    log::warn!("Rejected unauthenticated CM non-file clipboard request");
-                                    allow_err!(self.stream.send(&Data::ClipboardNonFile(Some((
-                                        "clipboard authority denied".to_owned(),
-                                        vec![]
-                                    )))).await);
+                                Data::ClipboardNonFile(_) => {
+                                    log::warn!("Rejected response-only CM non-file clipboard message");
+                                    break;
                                 }
-                                #[cfg(target_os = "windows")]
-                                Data::ClipboardNonFile(Some(_)) => {}
                                 _ => {
 
                                 }
@@ -1433,7 +1521,12 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                     // If one way file transfer is enabled, don't send clipboard file to client
                                     // Don't call `ContextSend::set_is_stopped()`, because it will stop bidirectional file copy&paste.
                                 } else {
-                                    allow_err!(self.tx.send(Data::ClipboardFile(clip)));
+                                    if let Err(error) = self.tx.send(Data::ClipboardFile(clip)) {
+                                        log::error!(
+                                            "failed to publish CM file-clipboard message: {error}"
+                                        );
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -1477,30 +1570,31 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
         #[cfg(target_os = "windows")]
         drop(_cliprdr_route);
     }
+}
 
-    async fn ipc_task(stream: Connection, cm: ConnectionManager<T>) {
-        log::debug!("ipc task begin");
-        let (tx, rx) = cm_egress_channel();
-        let mut task_runner = Self {
-            stream,
-            cm,
-            tx,
-            rx,
-            close: true,
-            conn_id: 0,
-            client_owner: None,
-            file_authority: CmFileAuthority::absent(),
-            cm_auth_token: String::new(),
-            #[cfg(target_os = "windows")]
-            file_transfer_enabled: false,
-            #[cfg(target_os = "windows")]
-            file_transfer_enabled_peer: false,
-            read_jobs: Vec::new(),
-        };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn ipc_task<T: InvokeUiCM>(stream: Connection, cm: ConnectionManager<T>) {
+    log::debug!("ipc task begin");
+    let (tx, rx) = cm_egress_channel();
+    let mut task_runner = IpcTaskRunner {
+        stream,
+        cm,
+        tx,
+        rx,
+        close: true,
+        conn_id: 0,
+        client_owner: None,
+        file_authority: CmFileAuthority::absent(),
+        cm_auth_token: String::new(),
+        #[cfg(target_os = "windows")]
+        file_transfer_enabled: false,
+        #[cfg(target_os = "windows")]
+        file_transfer_enabled_peer: false,
+        read_jobs: Vec::new(),
+    };
 
-        task_runner.run().await;
-        log::debug!("ipc task end");
-    }
+    task_runner.run().await;
+    log::debug!("ipc task end");
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1539,7 +1633,7 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
                             );
                             continue;
                         }
-                        tokio::spawn(IpcTaskRunner::<T>::ipc_task(stream, cm.clone()));
+                        tokio::spawn(ipc_task(stream, cm.clone()));
                     }
                     Err(err) => {
                         log::error!("Couldn't get cm client: {:?}", err);
@@ -2900,7 +2994,7 @@ mod tests {
         }
     }
 
-    fn android_cm_test_login(id: i32) -> Data {
+    fn cm_test_login(id: i32) -> Data {
         Data::Login {
             id,
             is_file_transfer: false,
@@ -2908,7 +3002,7 @@ mod tests {
             is_terminal: false,
             port_forward: String::new(),
             conn_type: ipc::CmAuthConnType::Remote,
-            peer_id: "peer".to_owned(),
+            peer_id: format!("peer-{id}"),
             name: "name".to_owned(),
             avatar: String::new(),
             authorized: true,
@@ -2920,6 +3014,315 @@ mod tests {
             privacy_mode: false,
             cm_auth_token: "test-token".to_owned(),
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[derive(Clone, Default)]
+    struct CmRouteTestUi {
+        added: Arc<StdMutex<Vec<(i32, i64)>>>,
+        removed: Arc<StdMutex<Vec<(i32, i64, bool, bool)>>>,
+        file_logs: Arc<StdMutex<Vec<(String, String)>>>,
+    }
+
+    #[cfg(target_os = "windows")]
+    impl InvokeUiCM for CmRouteTestUi {
+        fn add_connection(&self, client: &Client) {
+            lock_cm_egress_test(&self.added).push((client.id, client.registry_generation));
+        }
+
+        fn remove_connection(&self, id: i32, registry_generation: i64, close: bool) {
+            let route_was_live = clipboard::register_cliprdr_controlled(id).is_err();
+            lock_cm_egress_test(&self.removed).push((
+                id,
+                registry_generation,
+                close,
+                route_was_live,
+            ));
+        }
+
+        fn new_message(&self, _id: i32, _registry_generation: i64, _text: String) {}
+
+        fn change_theme(&self, _dark: String) {}
+
+        fn change_language(&self) {}
+
+        fn update_voice_call_state(&self, _client: &Client) {}
+
+        fn file_transfer_log(&self, action: &str, log: &str) {
+            lock_cm_egress_test(&self.file_logs).push((action.to_owned(), log.to_owned()));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    type CmRouteTestStream = ipc::ConnectionTmpl<tokio::io::DuplexStream>;
+
+    #[cfg(target_os = "windows")]
+    fn cm_route_test_runner(
+        ui: CmRouteTestUi,
+    ) -> (
+        IpcTaskRunner<CmRouteTestUi, tokio::io::DuplexStream>,
+        CmRouteTestStream,
+    ) {
+        let (runner_io, peer_io) = tokio::io::duplex(64 * 1024);
+        let mut runner_stream = ipc::ConnectionTmpl::new(runner_io);
+        runner_stream.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
+        let mut peer_stream = ipc::ConnectionTmpl::new(peer_io);
+        peer_stream.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
+        let (tx, rx) = cm_egress_channel();
+        (
+            IpcTaskRunner {
+                stream: runner_stream,
+                cm: ConnectionManager::new(ui, 0),
+                tx,
+                rx,
+                close: true,
+                conn_id: 0,
+                client_owner: None,
+                file_authority: CmFileAuthority::absent(),
+                cm_auth_token: String::new(),
+                file_transfer_enabled: false,
+                file_transfer_enabled_peer: false,
+                read_jobs: Vec::new(),
+            },
+            peer_stream,
+        )
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn run_cm_route_test_runner(
+        mut runner: IpcTaskRunner<CmRouteTestUi, tokio::io::DuplexStream>,
+        validation_calls: Arc<std::sync::atomic::AtomicUsize>,
+        clipboard_context_enabled: bool,
+    ) {
+        runner
+            .run_with_authority_validator(
+                move |_id, _conn_type, _cm_auth_token| {
+                    validation_calls.fetch_add(1, Ordering::AcqRel);
+                    let authority: ResultType<ipc::CmConnectionAuthority> =
+                        Ok(ipc::CmConnectionAuthority {
+                            valid: true,
+                            file: true,
+                            clipboard: true,
+                        });
+                    std::future::ready(authority)
+                },
+                move || clipboard_context_enabled,
+            )
+            .await;
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn join_cm_route_test_runner(task: tokio::task::JoinHandle<()>) {
+        tokio::time::timeout(std::time::Duration::from_secs(3), task)
+            .await
+            .expect("CM stream runner must terminate within its focused bound")
+            .expect("CM stream runner must not panic");
+    }
+
+    #[cfg(target_os = "windows")]
+    fn assert_controlled_route_vacant(id: i32) {
+        let (receiver, lease) = clipboard::register_cliprdr_controlled(id)
+            .expect("controlled route must be vacant");
+        drop(receiver);
+        drop(lease);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11it_first_login_activates_once_and_cleanup_precedes_route_release() {
+        let id = 2_000_100_001;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert_controlled_route_vacant(id);
+        let ui = CmRouteTestUi::default();
+        let (runner, mut peer) = cm_route_test_runner(ui.clone());
+        let validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let first_login = cm_test_login(id);
+        peer.send(&first_login).await.unwrap();
+        let task = tokio::spawn(run_cm_route_test_runner(
+            runner,
+            Arc::clone(&validation_calls),
+            true,
+        ));
+
+        let readiness = tokio::time::timeout(std::time::Duration::from_secs(3), peer.next())
+            .await
+            .expect("CM readiness must be bounded")
+            .expect("CM readiness frame must be readable")
+            .expect("CM readiness frame must be valid");
+        assert!(matches!(
+            readiness,
+            Data::ClipboardFile(clipboard::ClipboardFile::MonitorReady)
+        ));
+        peer.send(&cm_test_login(id)).await.unwrap();
+        join_cm_route_test_runner(task).await;
+
+        assert_eq!(validation_calls.load(Ordering::Acquire), 1);
+        let added = lock_cm_egress_test(&ui.added);
+        assert_eq!(added.len(), 1);
+        assert_eq!(added[0].0, id);
+        let admitted_generation = added[0].1;
+        drop(added);
+        assert_eq!(
+            *lock_cm_egress_test(&ui.removed),
+            vec![(id, admitted_generation, true, true)]
+        );
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_controlled_route_vacant(id);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11it_prelogin_effect_is_terminal_and_inert() {
+        let id = 2_000_100_002;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert_controlled_route_vacant(id);
+        let ui = CmRouteTestUi::default();
+        let (runner, mut peer) = cm_route_test_runner(ui.clone());
+        let validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        peer.send(&Data::FileTransferLog((
+            "prelogin".to_owned(),
+            "must-not-publish".to_owned(),
+        )))
+        .await
+        .unwrap();
+        drop(peer);
+        let task = tokio::spawn(run_cm_route_test_runner(
+            runner,
+            Arc::clone(&validation_calls),
+            false,
+        ));
+        join_cm_route_test_runner(task).await;
+
+        assert_eq!(validation_calls.load(Ordering::Acquire), 0);
+        assert!(lock_cm_egress_test(&ui.added).is_empty());
+        assert!(lock_cm_egress_test(&ui.removed).is_empty());
+        assert!(lock_cm_egress_test(&ui.file_logs).is_empty());
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_controlled_route_vacant(id);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11it_malformed_frame_is_terminal_without_activation() {
+        let id = 2_000_100_003;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert_controlled_route_vacant(id);
+        let ui = CmRouteTestUi::default();
+        let (runner, mut peer) = cm_route_test_runner(ui.clone());
+        let validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        peer.send_raw(bytes::Bytes::from_static(b"{not-json"))
+            .await
+            .unwrap();
+        drop(peer);
+        let task = tokio::spawn(run_cm_route_test_runner(
+            runner,
+            Arc::clone(&validation_calls),
+            false,
+        ));
+        join_cm_route_test_runner(task).await;
+
+        assert_eq!(validation_calls.load(Ordering::Acquire), 0);
+        assert!(lock_cm_egress_test(&ui.added).is_empty());
+        assert!(lock_cm_egress_test(&ui.removed).is_empty());
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_controlled_route_vacant(id);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11it_route_collision_cannot_mutate_client_registry() {
+        let id = 2_000_100_004;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert_controlled_route_vacant(id);
+
+        let incumbent_ui = CmRouteTestUi::default();
+        let (incumbent_runner, mut incumbent_peer) =
+            cm_route_test_runner(incumbent_ui.clone());
+        let incumbent_validation_calls =
+            Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        incumbent_peer.send(&cm_test_login(id)).await.unwrap();
+        let incumbent_task = tokio::spawn(run_cm_route_test_runner(
+            incumbent_runner,
+            Arc::clone(&incumbent_validation_calls),
+            false,
+        ));
+        let incumbent_generation = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                loop {
+                    if let Some((_, generation)) =
+                        lock_cm_egress_test(&incumbent_ui.added).first().copied()
+                    {
+                        break generation;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            },
+        )
+        .await
+        .expect("incumbent CM route must activate within its focused bound");
+
+        let refused_ui = CmRouteTestUi::default();
+        let (refused_runner, mut refused_peer) = cm_route_test_runner(refused_ui.clone());
+        let refused_validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        refused_peer.send(&cm_test_login(id)).await.unwrap();
+        drop(refused_peer);
+        let refused_task = tokio::spawn(run_cm_route_test_runner(
+            refused_runner,
+            Arc::clone(&refused_validation_calls),
+            false,
+        ));
+        join_cm_route_test_runner(refused_task).await;
+
+        assert_eq!(incumbent_validation_calls.load(Ordering::Acquire), 1);
+        assert_eq!(refused_validation_calls.load(Ordering::Acquire), 1);
+        assert!(lock_cm_egress_test(&refused_ui.added).is_empty());
+        assert!(lock_cm_egress_test(&refused_ui.removed).is_empty());
+        assert!(lock_cm_egress_test(&incumbent_ui.removed).is_empty());
+        assert_eq!(
+            CLIENTS
+                .read()
+                .unwrap()
+                .clients
+                .get(&id)
+                .map(|client| client.registry_generation),
+            Some(incumbent_generation)
+        );
+        assert!(clipboard::register_cliprdr_controlled(id).is_err());
+
+        incumbent_peer.send(&Data::Close).await.unwrap();
+        join_cm_route_test_runner(incumbent_task).await;
+        assert_eq!(
+            *lock_cm_egress_test(&incumbent_ui.removed),
+            vec![(id, incumbent_generation, true, true)]
+        );
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_controlled_route_vacant(id);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11it_readiness_failure_releases_route_without_client_commit() {
+        let id = 2_000_100_005;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert_controlled_route_vacant(id);
+        let ui = CmRouteTestUi::default();
+        let (runner, mut peer) = cm_route_test_runner(ui.clone());
+        let validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        peer.send(&cm_test_login(id)).await.unwrap();
+        drop(peer);
+        let task = tokio::spawn(run_cm_route_test_runner(
+            runner,
+            Arc::clone(&validation_calls),
+            true,
+        ));
+        join_cm_route_test_runner(task).await;
+
+        assert_eq!(validation_calls.load(Ordering::Acquire), 1);
+        assert!(lock_cm_egress_test(&ui.added).is_empty());
+        assert!(lock_cm_egress_test(&ui.removed).is_empty());
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_controlled_route_vacant(id);
     }
 
     async fn wait_for_cm_test_admission(
@@ -2949,7 +3352,7 @@ mod tests {
         let (command_tx, command_rx) = mpsc::channel(2);
         let (terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
         let (egress_tx, _egress_rx) = cm_egress_channel();
-        command_tx.send(android_cm_test_login(id)).await.unwrap();
+        command_tx.send(cm_test_login(id)).await.unwrap();
         let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
 
         wait_for_cm_test_admission(&mut future, &ui.added).await;
@@ -2974,7 +3377,7 @@ mod tests {
         let (command_tx, command_rx) = mpsc::channel(2);
         let (_terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
         let (egress_tx, _egress_rx) = cm_egress_channel();
-        command_tx.send(android_cm_test_login(id)).await.unwrap();
+        command_tx.send(cm_test_login(id)).await.unwrap();
         let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
 
         wait_for_cm_test_admission(&mut future, &ui.added).await;

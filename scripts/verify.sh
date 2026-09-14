@@ -8798,10 +8798,10 @@ if grep -Fq 'ClipboardNonFile(None)' src/server/clipboard_service.rs; then
   r_s11c22="$r_s11c22 clipboard-service-bare-nonfile-request-present"
 fi
 grep -Fq 'Data::AuthorizedClipboardNonFile { id, conn_type, cm_auth_token }' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-authorized-clipboard-arm-missing"
-grep -Fq 'Rejected unauthenticated CM non-file clipboard request' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-bare-clipboard-reject-log-missing"
+grep -Fq 'Rejected response-only CM non-file clipboard message' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-response-only-clipboard-reject-log-missing"
 grep -Fq 'Rejected CM non-file clipboard read without matching clipboard-capable Remote authority' src/ui_cm_interface.rs || r_s11c22="$r_s11c22 cm-clipboard-authority-reject-log-missing"
-clipboard_nonfile_block=$(awk '/Data::AuthorizedClipboardNonFile/,/Data::ClipboardNonFile\(None\)/' src/ui_cm_interface.rs)
-clipboard_validate_line=$(echo "$clipboard_nonfile_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1)
+clipboard_nonfile_block=$(awk '/Data::AuthorizedClipboardNonFile \{ id, conn_type, cm_auth_token \} =>/,/Data::ClipboardNonFile\(_\)/' src/ui_cm_interface.rs)
+clipboard_validate_line=$(echo "$clipboard_nonfile_block" | grep -n 'validate_connection_authority' | head -1 | cut -d: -f1)
 clipboard_gate_line=$(echo "$clipboard_nonfile_block" | grep -n 'connection_authority.clipboard' | head -1 | cut -d: -f1)
 clipboard_read_line=$(echo "$clipboard_nonfile_block" | grep -n 'check_clipboard_cm' | head -1 | cut -d: -f1)
 if [ -z "$clipboard_validate_line" ] || [ -z "$clipboard_read_line" ] || [ "$clipboard_validate_line" -ge "$clipboard_read_line" ]; then
@@ -11233,6 +11233,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11it_ --color never -- --test-threads=1
 if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
   echo "  ok  R-S11hn/R-S11e-251 whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
 else

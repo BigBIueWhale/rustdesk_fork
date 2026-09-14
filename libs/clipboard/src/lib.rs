@@ -233,7 +233,13 @@ pub enum ClipboardFileEgressItem {
     Failed(ClipboardFileEgressFailure),
 }
 
+#[cfg(test)]
+static CLIPBOARD_FILE_EGRESS_CHANNEL_MINTS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 pub fn clipboard_file_egress_channel() -> (ClipboardFileEgressSender, ClipboardFileEgressReceiver) {
+    #[cfg(test)]
+    CLIPBOARD_FILE_EGRESS_CHANNEL_MINTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     clipboard_file_egress_channel_with_limits(CLIPBOARD_FILE_EGRESS_LIMITS)
 }
 
@@ -882,5 +888,27 @@ mod tests {
         drop(first_lease);
         assert_eq!(current_cliprdr_viewer_id(peer), None);
         drop(controlled_lease);
+    }
+
+    #[test]
+    fn r_s11it_controlled_route_collision_mints_no_generation_or_channel() {
+        let controlled_id = 2_000_100_006;
+        let (receiver, lease) = register_cliprdr_controlled(controlled_id).unwrap();
+        let generation_after_admission = *CLIPBOARD_FILE_ROUTE_GENERATION.lock().unwrap();
+        let channels_after_admission =
+            CLIPBOARD_FILE_EGRESS_CHANNEL_MINTS.load(std::sync::atomic::Ordering::Relaxed);
+
+        assert!(register_cliprdr_controlled(controlled_id).is_err());
+        assert_eq!(
+            *CLIPBOARD_FILE_ROUTE_GENERATION.lock().unwrap(),
+            generation_after_admission
+        );
+        assert_eq!(
+            CLIPBOARD_FILE_EGRESS_CHANNEL_MINTS.load(std::sync::atomic::Ordering::Relaxed),
+            channels_after_admission
+        );
+
+        drop(receiver);
+        drop(lease);
     }
 }

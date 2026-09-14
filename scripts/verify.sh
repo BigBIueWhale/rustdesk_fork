@@ -1384,7 +1384,7 @@ else
   echo "  FAIL R-S11e-287 outgoing Flutter event streams regained same-owner predecessor callback or finality authority"
   rc=1
 fi
-if python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test; then
+if python3 scripts/verify-android-client-lifecycle-drain.py --repo .; then
   echo "  ok  R-S11e-178 Android component lifecycle retires exact outgoing owners without waiting on native worker finality"
 else
   echo "  FAIL R-S11e-178 Android lifecycle retirement regained main-thread joins, detached cleanup, inexact completion, or pre-finality replacement admission"
@@ -12766,16 +12766,6 @@ grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.
   || android_client_owner_bad="$android_client_owner_bad admission-transition-regression-test-missing"
 grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad stale-activity-resume-refusal-test-missing"
-grep -qF 'android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad nonblocking-lifecycle-exact-drain-regression-test-missing"
-grep -qF 'android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad nonblocking-mobile-replacement-drain-regression-test-missing"
-grep -qF 'const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad one-slot-lifecycle-drain-missing"
-grep -qF '_worker: std::thread::JoinHandle<()>' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad retained-lifecycle-drain-worker-missing"
-grep -qF 'flutter::wait_for_android_client_owner_drain(&client_owner_id)?;' src/flutter_ffi.rs \
-  || android_client_owner_bad="$android_client_owner_bad mobile-add-lifecycle-drain-barrier-missing"
 grep -qF 'session.close_and_join();' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad owner-drain-does-not-join-worker"
 grep -qF 'session.close_and_join();' src/flutter_ffi.rs \
@@ -13143,12 +13133,6 @@ grep -qF '<tr><td>409</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad session-stream-generation-disposition-missing"
 grep -qF 'R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad session-stream-generation-ledger-missing"
-grep -qF '<span class="id">R-S11eq</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-requirement-missing"
-grep -qF '<tr><td>299</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-disposition-missing"
-grep -qF 'R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-ledger-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs src/flutter_ffi.rs \
   flutter/lib/models/model.dart flutter/lib/models/mobile_session_start_queue.dart \
   flutter/lib/models/session_stream_finality.dart \

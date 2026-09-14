@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2594b4b6e721314c3f27cee56f8083d980cd3f0c8c70a84e4908cddae0a4b209  requirements.html
+8ed16696dbd4ef5de6caed796654294aa5b65710611667e783b210f8ec201d34  requirements.html
 ```
 
 ## Current Verdict
@@ -494,6 +494,23 @@ capacity, finality, and wiping mutations. `requirements.html` falls from 2,174,9
 bytes. No product source or native target changed or ran. Exact installed macOS execution, cold artifacts,
 independent reproduction, and external review remain open. Including this record, the live ledger is 1,032,746
 bytes, or 344,249 conservative tokens by the documented method.
+
+R-S11eq now states the timeless Android component-thread retirement, process-owned drain, exact replacement
+barrier, and installed-runtime acceptance contract instead of preserving its defect narrative, implementation
+receipts, mutation inventory, Appendix/ledger coupling, and current evidence status. Appendix C #299 is deleted
+because it duplicated that requirement and introduced no independent risk or acceptance criterion. The focused
+lifecycle checker now reads only the five production Rust/Kotlin sources and performs one normal semantic pass;
+its self-loading/documentation/wiring checks and entire mutation-of-the-checker catalog are deleted. Duplicate
+R-S11eq source/test-name and document checks plus their mutations are removed from the broad Android voice owner
+checker, and the shared gate drops ten duplicate source greps and six document/status oracles while retaining the
+focused invocation and the executable production Rust lifecycle-test selection in `scripts/dart-verify.sh`.
+`requirements.html` falls from 2,174,154 to 2,171,437 bytes, the focused checker from 28,008 to 17,766 bytes,
+the broad Android checker from 291,443 to 288,227 bytes, and `scripts/verify.sh` from 1,297,286 to 1,295,780 bytes.
+No product source or native target changed or ran. The locally pinned Rust 1.75 verifier image and Cargo/bridge
+closure are absent, so the retained blocked-worker Rust behaviors could not be honestly re-executed in this
+documentation/verifier cleanup; exact current APK lifecycle, JNI latency, presentation, bounded-resource, cold
+artifact, independent-reproduction, and external-review evidence remains open. Including this record, the live
+ledger is 1,034,498 bytes, or 344,833 conservative tokens by the documented method.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

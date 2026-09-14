@@ -1142,26 +1142,6 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         flutter,
-        "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;",
-        "one-slot Android client lifecycle drain",
-    )
-    require(
-        flutter,
-        "_worker: std::thread::JoinHandle<()>",
-        "retained Android client lifecycle drain worker",
-    )
-    require(
-        flutter,
-        "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()",
-        "nonblocking lifecycle and exact replacement-barrier regression",
-    )
-    require(
-        flutter,
-        "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()",
-        "nonblocking lifecycle during mobile replacement-drain regression",
-    )
-    require(
-        flutter,
         "resume_android_client_owner(first_generation, first_session_id),\n            None",
         "Rust cross-isolate resume refusal regression",
     )
@@ -1695,26 +1675,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
         "exact Dart stream-generation hardening ledger",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11eq</span>',
-        "Android component-thread lifecycle-drain requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>299</td>",
-        "Android component-thread lifecycle-drain disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement",
-        "Android component-thread lifecycle-drain hardening ledger",
-    )
-    require(
-        sources["verify"],
-        "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test",
-        "shared Android lifecycle-drain focused gate",
     )
     mobile_reset = extract_item(
         dart_model, "  void mobileReset(", "mobile reusable-model reset"
@@ -5435,12 +5395,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "sessions::session_has_client_owner(session_id, client_owner_id)", "true", "start-time owner association"),
     ("flutter", "handler_session_id != session_id\n                        || handler.client_owner_id.as_ref() != Some(client_owner_id)", "handler_session_id != session_id\n                        && handler.client_owner_id.as_ref() != Some(client_owner_id)", "exact owner-and-session preservation"),
     ("flutter", "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()", "fn stale_mobile_session_close_can_select_replacement_from_same_owner()", "same-owner stale-close behavior proof"),
-    ("flutter", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 2;", "one-slot Android client lifecycle drain"),
-    ("flutter", "_worker: std::thread::JoinHandle<()>", "_worker: std::thread::Thread", "retained Android client lifecycle drain worker"),
-    ("flutter", "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()", "fn android_lifecycle_retirement_may_block_and_replacement_skips_exact_drain()", "nonblocking lifecycle exact-barrier behavior proof"),
-    ("flutter", "drop(owner_admission);\n    Ok(drain)", "Ok(drain)", "owner guard release before prior-mobile finality"),
-    ("flutter", "let owner_admission = acquire_android_client_owner(client_owner_id)?;\n\n    let mut preset_password", "// post-drain owner revalidation omitted\n\n    let mut preset_password", "post-drain exact-owner revalidation"),
-    ("flutter", "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()", "fn android_lifecycle_transition_waits_for_mobile_replacement_drain()", "nonblocking lifecycle during mobile replacement-drain behavior proof"),
     ("flutter_ffi", "client_owner_id: SessionID,", "client_owner_id: String,", "authored dual-identity bridge"),
     ("dart_main", "'register_client_session_owner', gFFI.clientOwnerId.toString())", "'register_client_session_owner', gFFI.sessionId.toString())", "Activity owner registration identity"),
     ("dart_model", "final _mobileClientOwnerId = Uuid().v4obj();", "final _mobileClientOwnerId = SessionID.nil();", "canonical mobile owner UUID"),
@@ -5909,10 +5863,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11ix</span>', '<span class="id">R-S11ix-disabled</span>', "exact Dart stream-generation requirement"),
     ("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "exact Dart stream-generation disposition"),
     ("hardening", "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation", "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation", "exact Dart stream-generation hardening ledger"),
-    ("requirements", '<span class="id">R-S11eq</span>', '<span class="id">R-S11eq-disabled</span>', "Android lifecycle-drain requirement"),
-    ("requirements", "<tr><td>299</td>", "<tr><td>299-disabled</td>", "Android lifecycle-drain disposition"),
-    ("hardening", "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement", "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement", "Android lifecycle-drain hardening ledger"),
-    ("verify", "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test", "true # Android lifecycle-drain focused gate disabled", "shared Android lifecycle-drain focused gate"),
 )
 
 

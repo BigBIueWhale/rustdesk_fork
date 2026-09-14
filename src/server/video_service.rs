@@ -2104,6 +2104,21 @@ mod video_frame_ack_tests {
         assert!(!controller.wait_for_progress(Duration::ZERO));
         retire_video_frame_round(VideoSource::Monitor, 10_005, current_round, 32);
         assert!(!controller.wait_for_progress(Duration::ZERO));
+        notify_video_frame_fetched(VideoSource::Monitor, 10_005, current_round, 32, None);
+        assert!(
+            !controller.wait_for_progress(Duration::ZERO),
+            "a receipt for a locally retired candidate must remain inert"
+        );
+
+        let successor_round = prepare(&controller, &ids(&[32]), 3);
+        notify_video_frame_fetched(
+            VideoSource::Monitor,
+            10_005,
+            successor_round,
+            32,
+            None,
+        );
+        assert!(controller.wait_for_progress(Duration::ZERO));
     }
 
     #[test]

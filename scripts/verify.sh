@@ -12964,14 +12964,10 @@ grep -qF 'const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;' src/server/video_s
   || android_client_owner_bad="$android_client_owner_bad video-ack-controller-cap-missing"
 grep -qF 'static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-exact-stream-registry-missing"
-grep -qF 'round.targets.extend(' src/server/video_service.rs \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-exact-round-targets-missing"
 grep -qF 'generation == 0 || generation <= round.generation' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-monotonic-round-missing"
 grep -qF 'round.generation != generation' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-pending-id-gate-missing"
-grep -qF '.wait_timeout_while(round, timeout, |round| !round.capture_may_advance())' src/server/video_service.rs \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-condition-wait-missing"
 grep -qF 'sp.send_video_frame_with_targets(' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-prepare-before-send-wiring-missing"
 grep -qF 'lock.video_frame_generation.checked_add(1)' src/server/service.rs \
@@ -13031,12 +13027,6 @@ grep -qF '<tr><td>310</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-disposition-missing"
 grep -qF 'R-S11fb/R-S11e-189' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-ledger-missing"
-grep -qF '<span class="id">R-S11fl</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-video-shared-pacing-requirement-missing"
-grep -qF '<tr><td>320</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-video-shared-pacing-disposition-missing"
-grep -qF 'R-S11fl/R-S11e-199 controlled-video shared capture pacing' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad controlled-video-shared-pacing-ledger-missing"
 grep -qF 'const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad bounded-audio-wake-cap-missing"
 grep -qF 'state.format.take().or_else(|| state.frame.take())' src/server/connection.rs \
@@ -13067,8 +13057,6 @@ grep -qF 'server::video_service::screenshot_ownership_tests::r_s11ef_' scripts/d
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-controlled-screenshot-test-filter-missing"
 grep -qF 'server::video_service::video_frame_ack_tests::r_s11eg_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-ack-test-filter-missing"
-grep -qF 'server::video_service::video_frame_ack_tests::r_s11fl_' scripts/dart-verify.sh \
-  || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-shared-pacing-test-filter-missing"
 grep -qF 'server::connection::video_egress_tests::r_s11fb_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-egress-test-filter-missing"
 grep -qF 'writer_receipt_tests::r_s11fb_' scripts/dart-verify.sh \

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-5e087b6600ac14cbef0a0f0365aa9ad264788c2d10a2103f573af93094395a6b  requirements.html
+131ec7584469faf501c0536a51918c8748555dccb7b97522f3b683507b0d8cf1  requirements.html
 ```
 
 ## Current Verdict
@@ -1348,7 +1348,10 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   decode, render, presentation, focus/background recovery, or exact-current packaged-platform evidence.
 - **R-S11fl/R-S11e-199 controlled-video shared capture pacing** — **PARTIAL / RELEASE-BLOCKING.** Per-generation
   target state permits the first valid exact peer receipt to advance shared capture without allowing local
-  supersession to manufacture progress; one stalled viewer cannot impose the inherited all-viewer barrier. A
+  supersession to manufacture progress; one stalled viewer cannot impose the inherited all-viewer barrier. The
+  focused Rust state regressions cover real blocked-wait wakeup, acknowledging-peer retirement, all-disconnected
+  release, refresh interruption, retired-receipt refusal, and successor progress. The global source-name,
+  documentation-wiring, and mutation duplicates are deleted while both focused Rust execution lanes remain. A
   historical portable Linux two-viewer run reached RGBA publication without reconnect while a second viewer
   withheld receipt, but it did not exercise Flutter/compositor presentation or current packaged artifacts.
 - **R-S11fm/R-S11e-200 desktop texture activation finality** — Source closed. A display slot publishes a new

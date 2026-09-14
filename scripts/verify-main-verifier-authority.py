@@ -150,8 +150,6 @@ def validate_contract(sources):
             "grep -qF 'if len > max_len {' \"$afr\" || r_d7a=\"$r_d7a android-raw-media-no-cap-enforcement\"",
             "grep -qF 'self.data.extend_from_slice(slice);' \"$afr\" || r_d7a=\"$r_d7a android-raw-media-no-owned-copy\"",
             "grep -qF 'media_thread: OwnedVideoThread' src/client/io_loop.rs",
-            "grep -qF 'round.targets.extend(' src/server/video_service.rs",
-            "grep -qF '.wait_timeout_while(round, timeout, |round| !round.capture_may_advance())' src/server/video_service.rs",
             'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),',
             'session_start.index("let mut thread_lock = s.thread.lock().unwrap();")\n        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")',
             "grep -qE '^\\s*reserved +2, *9, *12, *14;' libs/hbb_common/protos/message.proto",
@@ -773,18 +771,6 @@ MUTATIONS = (
         "grep -qF 'media_thread: OwnedVideoThread' src/client/io_loop.rs",
         "grep -qF 'media_thread: OwnedMediaThread' src/client/io_loop.rs",
         "exact video worker owner gate",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF 'round.targets.extend(' src/server/video_service.rs",
-        "grep -qF 'round.pending.clone_from(connection_ids);' src/server/video_service.rs",
-        "exact shared video target gate",
-    ),
-    Mutation(
-        "shell",
-        "grep -qF '.wait_timeout_while(round, timeout, |round| !round.capture_may_advance())' src/server/video_service.rs",
-        "grep -qF '.wait_timeout_while(round, timeout, |_| false)' src/server/video_service.rs",
-        "condition-driven shared video wait gate",
     ),
     Mutation(
         "shell",

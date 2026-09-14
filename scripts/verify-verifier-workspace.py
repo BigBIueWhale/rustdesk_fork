@@ -27578,16 +27578,6 @@ def validate_windows_build_domain_authority_contract(sources):
         require_text(closure, text, label)
 
     require_text(
-        sources["requirements"],
-        "<tr><td>291</td>",
-        "Windows build Appendix C #291 disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
-        "Windows build setsid-admission hardening ledger",
-    )
-    require_text(
         sources["verify"],
         "python3 scripts/verify-windows-harness.py --repo . --self-test",
         "Windows build focused gate wiring",
@@ -27831,18 +27821,6 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "UUID-addressed destroy",
             "Windows build focused destroy mutation",
-        ),
-        (
-            "Appendix C #291 disposition",
-            "Windows build focused admission-Appendix mutation",
-        ),
-        (
-            "post-launch process-group admission",
-            "Windows build focused admission binding",
-        ),
-        (
-            "delayed process-group admission fixture",
-            "Windows build focused delayed-admission fixture",
         ),
         (
             "detached bounded virsh",

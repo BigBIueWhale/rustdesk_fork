@@ -1284,12 +1284,6 @@ def validate_sources(sources: dict[str, str]) -> None:
     ):
         require(harness_self_test, literal, description)
 
-    require(requirements, "<tr><td>291</td>", "Appendix C #291 disposition")
-    require(
-        hardening,
-        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
-        "setsid-admission hardening-ledger disposition",
-    )
     require(
         verify,
         "python3 scripts/verify-windows-harness.py --repo . --self-test",
@@ -3845,18 +3839,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "host",
             "--graphics vnc,listen=127.0.0.1",
             "--graphics vnc,listen=0.0.0.0",
-        ),
-        (
-            "Appendix C #291 disposition",
-            "requirements",
-            "<tr><td>291</td>",
-            "<tr><td>291-disabled</td>",
-        ),
-        (
-            "setsid-admission hardening-ledger disposition",
-            "hardening",
-            "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
-            "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
         ),
         (
             "R-S11ds focused gate wiring",

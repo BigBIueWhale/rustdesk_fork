@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-d4473b5e48aa8772ec10a4cc56ae27147559f14cc695e775776cdaa911979bd9  requirements.html
+1d7ba9f2d2aa90b2406a29bf9ca1bef877be04d8ecb9383ae161e6daa6cfe48f  requirements.html
 ```
 
 ## Current Verdict
@@ -334,8 +334,14 @@ ledger, where progress belongs. This is documentation/verifier architecture clea
 Confined normal Windows-harness/workspace validation, five independently runnable behavioral self-tests, and five
 focused credential/VM-boundary weakenings pass. The VM-orchestrator and MSI-canonicalizer self-tests remain
 unexecuted here because the exact helper image and pinned `olefile` wheel are absent; no substitute was acquired.
-The global source-mutation checkpoint advances beyond the deleted Windows-evidence fixture but remains non-green
-at a separate stale `VERIFIER_FIXTURE_TMP` target.
+
+Appendix C #115 now states only the timeless host-verifier and descriptor-owned fixture scratch contract. Its defect
+history, `FIX` badge, implementation narration, and wording-based proof claims are deleted, as are the two ordinary
+shell probes of requirements/status prose, the global status-heading mutation, and the impossible nested
+`VERIFIER_FIXTURE_TMP` mutation left after ordinary verification stopped creating that directory. The authenticated
+shell workspace validator, descriptor-owned scratch implementation, executable failure-injection fixtures, and direct
+implementation mutations remain. The full source-mutation checkpoint now passes the retired nested-fixture target
+and stops at a separate stale Android listener-reservation mutation; no complete catalog pass is claimed.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -1377,35 +1383,15 @@ The pinned-image gate executes Gradle 7.6.4 under the production no-network/non-
 enabled, unset, and malformed flag states. The online-input mutation suite is now a mandatory release gate.
 Current artifact evidence remains open until a clean pushed exact commit completes the full R-B2 transaction.
 
-**R-B2 verifier fixture primary-error preservation — CLOSED / GATED (2026-07-19).** The verifier's
-descriptor-owned `ScratchRoot.directory` context previously raised an edge/cleanup error from its `finally` block
-without retaining an exception already raised by the fixture body. That contradicted the release contract that
-cleanup uncertainty augments rather than replaces the original failure. It also made an execution-environment
-failure before managed-child launch look like a descriptor-routing defect: a numeric UID without a passwd entry
-first failed at `pwd.getpwuid`, and a later user-systemd access attempt failed before unit creation, but the live-edge
-fixture reported only `scratch replacement fixture missed the descriptor-owned directory` and final scratch state.
-This was verifier failure-classification and evidence-integrity debt, not a shipped RustDesk runtime or privilege-
-escalation path.
-
-`ScratchRoot.directory` now captures the body exception, accumulates exact-tree removal, descriptor close, and
-post-cleanup scratch-authority failures independently, and reports them through the shared
-`report_cleanup_failures` contract. Successful exact cleanup still removes the owned tree; an edge replacement,
-mount/identity uncertainty, descriptor-close error, or postcondition failure remains fatal and is never repaired.
-When cleanup also fails, the body exception remains primary and the complete cleanup failure is attached as a
-secondary note. A missing current-principal passwd entry is now an explicit verifier failure rather than a raw
-`KeyError`; ambient `HOME` is not accepted as authority. A dedicated behavioral fixture renames the live child,
-installs an empty replacement, injects a distinct body failure, requires that exact failure plus the exact
-changed-edge cleanup note, proves both ambiguous directory identities and inventories remained unchanged, and only
-then independently restores and removes the recorded edges. The semantic verifier binds the primary-error capture,
-cleanup accumulator, note proof, fixture dispatch, and independent weakening mutations.
-
-Focused non-root, network-disabled, capability-free, no-new-privileges containers pass Python parsing, normal
-semantic verification, the exact primary/secondary-error behavioral fixture, and the complete independently invoked
-source-mutation matrix. The broad executable self-test is not promoted as passing in this execution model: its
-managed-command stages intentionally require a real same-principal systemd user scope, while `systemctl --user`
-from the diagnostic container was rejected with `No data available` before transient-unit creation. The earlier
-misdiagnosis is closed; exact managed-scope execution remains an environment prerequisite rather than being
-skipped, emulated, or weakened.
+**R-S11c-10w verifier scratch authority — SOURCE AND FOCUSED BEHAVIOR IMPLEMENTED; COMPLETE MANAGED-SCOPE
+SELF-TEST ENVIRONMENT OPEN.** `scripts/verify.sh` owns one authenticated private workspace and runs only the fast
+semantic baseline in the ordinary loop. Explicit executable self-test mode instead authenticates one caller-created,
+initially empty mode-0700 scratch root by descriptor, allocates unpredictable descriptor-relative fixture children,
+and rejects path, mount, inventory, external-link, cleanup, or final-emptiness ambiguity. Its failure-injection
+fixture proves that cleanup uncertainty remains secondary to the original body failure while both ambiguous directory
+objects remain unchanged. Direct source mutations bind those implementation and behavioral-fixture paths; no test
+depends on the status heading or a retired shell-owned `VERIFIER_FIXTURE_TMP`. Complete managed-command coverage still
+requires an isolated same-principal systemd user scope and is not inferred from confined source or scratch checks.
 
 The release source-gate boundary is closed before expensive input copying. `scripts/verify-release.sh
 --preflight` proves a fixed `/usr/bin/grep` that is an executable, root-owned, non-group/world-writable regular

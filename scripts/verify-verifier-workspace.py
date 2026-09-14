@@ -3457,7 +3457,6 @@ def validate_docs(sources):
         "Same-host release-smoke coexistence with an operational older RustDesk service",
         "This is a current-release harness defect",
         "The separate Linux service-child lifecycle redesign remains open for upcoming releases",
-        "preserves the original failure and every cleanup failure",
     ):
         require_text(requirements, text, "requirements release authority")
     for forbidden in (
@@ -3489,9 +3488,6 @@ def validate_docs(sources):
         "The invoking UID must keep the namespace",
         "Implemented current-release closure",
         "does not close or advance the upcoming-release",
-        "R-B2 verifier fixture primary-error preservation — CLOSED / GATED",
-        "the body exception remains primary",
-        "exact managed-scope execution remains an environment prerequisite",
     ):
         require_text(hardening, text, "hardening-status current release authority")
     if "`f_fsid` must be nonzero" in hardening:
@@ -53926,12 +53922,6 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"',
-            'VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"',
-            "verifier fixture scratch ownership",
-        ),
-        (
-            "verify",
             '--remove-private-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
             '--remove-private-root "$VERIFY_TMP"',
             "identity-bound workspace removal",
@@ -54141,21 +54131,9 @@ def run_source_mutations(sources):
             "requirements release authority",
         ),
         (
-            "requirements",
-            "preserves the original failure and every cleanup failure",
-            "replaces the original failure with a cleanup failure",
-            "requirements release authority",
-        ),
-        (
             "hardening",
             "does not close or advance the upcoming-release",
             "also closes the upcoming-release",
-            "hardening-status current release authority",
-        ),
-        (
-            "hardening",
-            "R-B2 verifier fixture primary-error preservation — CLOSED / GATED",
-            "R-B2 verifier fixture primary-error preservation — OPEN",
             "hardening-status current release authority",
         ),
         (

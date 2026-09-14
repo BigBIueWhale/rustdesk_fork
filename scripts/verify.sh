@@ -151,8 +151,6 @@ r_s11c10w=
 if ! /usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .; then
   r_s11c10w="$r_s11c10w workspace-or-release-source-baseline-failed"
 fi
-grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"
-grep -qF 'Verifier private scratch workspace authority' requirements.html || r_s11c10w="$r_s11c10w requirements-disposition-missing"
 grep -qF 'R-S11ej/R-S11e-154 current release target-contract authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w target-contract-ledger-missing"
 grep -qF '<span class="id">R-S11ej</span>' requirements.html || r_s11c10w="$r_s11c10w target-contract-requirement-missing"
 grep -qF '<tr><td>289</td>' requirements.html || r_s11c10w="$r_s11c10w target-contract-appendix-missing"

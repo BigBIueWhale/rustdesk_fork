@@ -43256,9 +43256,6 @@ def main():
             "android_voice_call_owner_test": (
                 repo / "scripts/android-voice-call-owner-state-test.kt"
             ).read_text(encoding="utf-8"),
-            "android_main_service_status_test": (
-                repo / "scripts/android-main-service-status-test.kt"
-            ).read_text(encoding="utf-8"),
             "android_main_service_generation_owner_test": (
                 repo / "scripts/android-main-service-generation-owner-test.kt"
             ).read_text(encoding="utf-8"),
@@ -43452,10 +43449,6 @@ def main():
             "android_common": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/common.kt"
-            ).read_text(encoding="utf-8"),
-            "android_main_service_status_owner": (
-                repo
-                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt"
             ).read_text(encoding="utf-8"),
             "android_main_service_generation_owner": (
                 repo

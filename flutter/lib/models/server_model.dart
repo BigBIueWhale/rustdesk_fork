@@ -414,8 +414,8 @@ class ServerModel with ChangeNotifier {
     _isStart = false;
     closeAll();
     // R-D7a: the real stop is the OS foreground-service lifecycle — invokeMethod("stop_service")
-    // -> MainActivity.stop_service -> MainService.destroy() -> onDestroy -> JNI deactivateServer, which
-    // deactivates the exact service-owned-listener generation so the accept loop drops the socket.
+    // -> MainActivity.stop_service -> Context.stopService + Activity unbind -> MainService.onDestroy,
+    // which deactivates the exact service-owned-listener generation so the accept loop drops the socket.
     // There is no stop-service config write (the listener reads no such option, R-D4).
     await parent.target?.invokeMethod("stop_service");
     notifyListeners();

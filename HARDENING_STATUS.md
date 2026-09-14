@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-8ac55587389014bd4976a8131891c38e427f6079875e82d117439c2fb03989db  requirements.html
+0104981cf18c1ff3b7dbb8bdbe2298034aee7c4db1d8b1a4bfdc7eff50506081  requirements.html
 ```
 
 ## Current Verdict
@@ -424,6 +424,26 @@ native target changed or ran. Including this architecture record, the live ledge
 341,670 conservative tokens by the
 documented method. Current installed APK capture/replacement/task-swipe/Force-Stop/reconnect/presentation,
 bounded-resource, cold-artifact, independent-reproduction, and external-review evidence remains open.
+
+R-S11en is now a timeless Android started-and-bound service status and Stop contract. Appendix C #296 is
+deleted outright because it duplicated R-S11en while preserving the old defect narrative, a `FIX` badge,
+implementation claims, verifier receipts, and repeated release-status prose. The rewrite makes the distinct
+command-in-flight versus observed-status authority explicit, admits `stopSelfResult(startId)` only for exact
+failed-start cleanup, and names the installed lifecycle/resource scenarios that must supply real evidence. This
+reduces `requirements.html` by 1,388 bytes. The 961-line/33,508-byte
+`verify-android-main-service-status.py` source matcher and all 41 of its deliberate string mutations are deleted;
+it never executed Kotlin, an Android component, or a framework lifecycle. Its seven-line shared invocation, the
+shared gate's test-sentence oracle/loader, and seven dead workspace source-loader lines are also deleted. The
+compact shared Android lifecycle source guard instead retains only direct product topology checks. The 95-line
+standalone executable Kotlin status-owner regression remains, but the current gate does not compile or run it and
+no result is inferred from its strings. The stale Dart comment naming the already-deleted
+`MainService.destroy()` path is corrected. Source review also found that Dart still writes observed `_isStart`
+optimistically and that an exceptional platform Stop can bypass Activity unbinding, so the current R-S11en entry
+is downgraded to PARTIAL instead of preserving a false source-complete claim. No Android product behavior or
+native target changed or ran in this cleanup. Exact current Kotlin/Flutter compilation, installed APK lifecycle,
+resource/failure behavior, cold artifacts, independent reproduction, and external review remain open. Including
+this record, the live ledger moves from 1,025,009 to 1,027,509 bytes, or 342,503 conservative tokens by the
+documented method.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -941,16 +961,21 @@ raw-video state. The pure owner regressions and focused source gate are suppleme
 APK capture/replacement/task-swipe/Force-Stop/reconnect/presentation and bounded-resource evidence remains
 open. R-S11em owns the complete contract.
 
-**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE
-IMPLEMENTED; DEVICE EVIDENCE OPEN.** One private serialized status owner publishes only the exact active
+**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE PARTIAL;
+PACKAGE/DEVICE EVIDENCE OPEN.** One private serialized status owner publishes only the exact active
 service generation and MediaProjection readiness. Current begin is idempotent, replacement resets
 readiness, stale updates/retirement cannot affect a replacement, and Activity-visible status remains
 observation rather than capture/listener/connection authority. Passive attachment to an existing
 service binds with flags `0`; `BIND_AUTO_CREATE` is used only for explicit initialization when no status
 is published. Explicit Stop calls `Context.stopService` and then retires the Activity binding so Android
 can deliver the sole resource teardown in `MainService.onDestroy`. The duplicate callable `destroy()`/
-`stopSelf()` path, generationless companion booleans, and dead clipboard capture-status replica are
-absent. R-S11en and Appendix C #296 own the complete contract.
+plain `stopSelf()` path, generationless companion booleans, and dead clipboard capture-status replica are
+absent; the internal exact-failed-start `stopSelfResult(startId)` path remains intentional. Two source gaps
+remain: Dart's observed `_isStart` field is still optimistically written by Start and Stop commands, and a
+runtime exception from `Context.stopService` can currently skip Activity unbinding. The standalone Kotlin
+owner regression is authored but is not executed by the current shared gate. R-S11en owns the complete
+contract; exact Flutter/Kotlin execution and installed start/status/Stop/binding/task-swipe/reopen/Force-Stop/
+replacement/failure/resource scenarios remain open in the global matrix.
 
 **R-S11eo/R-S11e-176 mobile outgoing-session preparation finality and failure visibility — SOURCE
 IMPLEMENTED; ANDROID/iOS PACKAGE AND DEVICE EVIDENCE OPEN.** Android and iOS mobile add use one typed

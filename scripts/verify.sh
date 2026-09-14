@@ -13578,13 +13578,6 @@ else
   echo "  FAIL R-S11em/R-S11eu/R-S11e-174/R-S11e-182: Android exact-generation raw-video or video-worker authority regressed"
   rc=1
 fi
-echo "== Android exact-generation service status and explicit-stop authority (R-S11en/R-S11e-175) =="
-if /usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo .; then
-  echo "  ok  R-S11en/R-S11e-175 Android exact-generation service status and explicit-stop authority"
-else
-  echo "  FAIL R-S11en/R-S11e-175: Android service status or explicit-stop authority regressed"
-  rc=1
-fi
 echo "== Android app-open exact-generation MainService startup transaction (R-S11hq/R-S11hr/R-S11e-254/R-S11e-255) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   direct_service::direct_connection_task_tests:: -- --test-threads=1
@@ -16185,7 +16178,6 @@ echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_activity_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
 r_s14_status_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt
-r_s14_status_test=scripts/android-main-service-status-test.kt
 r_s14_clipboard_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
 r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
@@ -16388,7 +16380,14 @@ grep -qF '"(IIIII)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing pointer-j
 grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-connection-id-or-result"
 grep -qF 'internal class MainServiceStatusOwner' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-owner"
 grep -qF 'fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-readiness-operation"
-grep -qF 'stale generation retired its replacement' "$r_s14_status_test" || r_s14_missing="$r_s14_missing service-status-stale-retirement-regression"
+grep -qF 'activeGeneration != null || generation <= greatestGeneration' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing service-status-successor-before-retirement"
+grep -qF 'private val statusOwner = MainServiceStatusOwner()' "$r_s14_kt" || r_s14_missing="$r_s14_missing private-service-status-owner"
+grep -qF 'if (!statusOwner.begin(generation))' "$r_s14_kt" || r_s14_missing="$r_s14_missing exact-service-status-begin"
+grep -qF 'statusOwner.retireOrConfirmInactive(retirement.generation)' "$r_s14_kt" || r_s14_missing="$r_s14_missing exact-service-status-retirement"
+grep -qF 'if (MainService.currentStatus() != null)' "$r_s14_activity_kt" || r_s14_missing="$r_s14_missing passive-service-status-observation"
+grep -qF 'bindMainService(createIfNeeded = false)' "$r_s14_activity_kt" || r_s14_missing="$r_s14_missing passive-service-bind-auto-creates"
+grep -qF 'val flags = if (createIfNeeded) Context.BIND_AUTO_CREATE else 0' "$r_s14_activity_kt" || r_s14_missing="$r_s14_missing service-bind-flags-not-explicit"
+[ "$(grep -cF 'Context.BIND_AUTO_CREATE' "$r_s14_activity_kt")" -eq 1 ] || r_s14_missing="$r_s14_missing service-auto-create-not-single-path"
 grep -qF 'let Some(generation) = scrap::android::bind_main_service_generation(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
 grep -qF 'crate::direct_service::android_begin_generation,' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-generation-not-object-authorized-before-allocation"
 grep -qF 'android_activate_generation(generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing reserved-listener-generation-not-explicitly-activated"

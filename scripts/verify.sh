@@ -15495,7 +15495,7 @@ elif [ -f vcpkg.json ] && grep -qE '"name"[[:space:]]*:[[:space:]]*"aom"' vcpkg.
 else
   echo "  ok  §18/R-R2b vcpkg.json native set is CPU-only software codec (no ffmpeg/mfx-dispatch/aom)"
 fi
-# R-R3 / Appendix D native-codec watch: cargo-audit/RustSec and Dart OSV scan do
+# R-R3 native-codec watch: cargo-audit/RustSec and Dart OSV scan do
 # not cover vcpkg C/C++ libraries. Keep this as an offline source/ledger sync
 # gate, not as a live network advisory query and not as a decoder-sandbox claim.
 native_watch_log=$(mktemp "$VERIFY_TMP/native-watch.XXXXXXXXXX")

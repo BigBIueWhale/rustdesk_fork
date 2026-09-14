@@ -108,8 +108,6 @@ def validate_contract(sources):
     pins = sources["pins"]
     dockerfile = sources["dockerfile"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     validator = sources["validator"]
     online_fetch = sources["online_fetch"]
     provenance = sources["provenance"]
@@ -585,53 +583,6 @@ def validate_contract(sources):
         "python3 scripts/verify-dart-audit-authority.py --repo . --self-test",
         "Dart audit authority self-test wiring",
     )
-    require('<span class="id">R-S11be</span>' in requirements, "requirements are missing R-S11be")
-    require("<tr><td>182</td>" in requirements, "requirements are missing Appendix C #182")
-    require('<span class="id">R-S11df</span>' in requirements, "requirements are missing R-S11df")
-    require("<tr><td>259</td>" in requirements, "requirements are missing Appendix C #259")
-    require_all(
-        requirements,
-        (
-            "never build, pull, or resolve an image tag",
-            "exact immutable local image content ID",
-            "exactly 30 days",
-            "stable private copies",
-            "bounded stderr telemetry",
-            "generation-specific GCS media object",
-            "current-user-private three-file context",
-            "VCS-free BuildKit provenance statement",
-            "single-link, mode-0400, untagged OCI archive",
-            "Recovery remains outside the verdict path",
-            "fixed local Unix socket",
-            "canonical <code>{}</code> <code>config.json</code>",
-        ),
-        "Dart advisory normative closure",
-    )
-    require(
-        "R-S11be/R-S11e-71 — Dart advisory result and scanner authority" in hardening,
-        "hardening ledger is missing the Dart audit closure",
-    )
-    require(
-        "R-S11df/R-S11e-124 — Dart advisory Docker client, daemon, and configuration authority"
-        in hardening,
-        "hardening ledger is missing the Dart audit Docker authority correction",
-    )
-    require_all(
-        hardening,
-        (
-            "RECOVERABLE\n  IMAGE DISTRIBUTION CLOSED/GATED",
-            "exact 30-day capture-age ceiling",
-            IMAGE_ID,
-            CONFIG_ID,
-            MANIFEST_ID,
-            ARCHIVE_SHA256,
-            "Networkless construction and distribution:",
-            "31 policy/freshness/status/schema decisions",
-            "199 packages reported",
-        ),
-        "Dart advisory hardening evidence",
-    )
-
     mutation_start = validator.index("\nMUTATIONS = (") + 1
     mutation_end = validator.index("\n)\n\n\ndef mutate_once", mutation_start)
     validator_mutations = validator[mutation_start:mutation_end]
@@ -650,11 +601,6 @@ def validate_contract(sources):
             '"fixed Docker image inspection"',
             '"fixed Docker launcher"',
             '"exact Docker authority cleanup"',
-            'Mutation("requirements", \'<span class="id">R-S11be</span>\'',
-            'Mutation("requirements", \'<span class="id">R-S11df</span>\'',
-            'Mutation("requirements", "<tr><td>259</td>"',
-            'Mutation("hardening", "Networkless construction and distribution:"',
-            'Mutation("hardening", "R-S11df/R-S11e-124"',
         ),
         "Dart audit authority validator mutation coverage",
     )
@@ -952,12 +898,6 @@ MUTATIONS = (
         "standalone input self-test",
     ),
     Mutation("verify", "python3 scripts/verify-dart-audit-authority.py --repo . --self-test", "python3 scripts/verify-dart-audit-authority.py --repo .", "shared semantic gate"),
-    Mutation("requirements", '<span class="id">R-S11be</span>', '<span class="id">R-S11be-disabled</span>', "normative requirement"),
-    Mutation("requirements", "<tr><td>182</td>", "<tr><td>182-disabled</td>", "Appendix disposition"),
-    Mutation("hardening", "Networkless construction and distribution:", "Networked construction and mutable distribution:", "hardening acquisition record"),
-    Mutation("requirements", '<span class="id">R-S11df</span>', '<span class="id">R-S11df-disabled</span>', "Docker authority requirement"),
-    Mutation("requirements", "<tr><td>259</td>", "<tr><td>259-disabled</td>", "Docker authority disposition"),
-    Mutation("hardening", "R-S11df/R-S11e-124", "R-S11df/R-S11e-XXX", "Docker authority ledger"),
 )
 
 
@@ -978,8 +918,6 @@ def load_sources(repo):
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "dockerfile": (repo / "scripts/Dockerfile.dart-audit").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "validator": (repo / "scripts/verify-dart-audit-authority.py").read_text(encoding="utf-8"),
         "online_fetch": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
         "provenance": (repo / "scripts/offline-image-provenance.py").read_text(encoding="utf-8"),

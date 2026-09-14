@@ -58,7 +58,7 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 yanked = "warn"
 ignore = [
   # ── code-vulns that the R-B5a 1.75 pin or "no upstream fix" blocks ──
-  { id = "RUSTSEC-2025-0022", reason = "openssl 0.10.68 Md::fetch/Cipher::fetch UAF. The fix (>=0.10.72) drags openssl-sys 0.9.117, which requires rustc 1.80 and breaks the R-B5a 1.75 pin. UNREACHABLE: RustDesk never calls the explicit-fetch provider API (Appendix D). Revisit only if the toolchain pin moves." },
+  { id = "RUSTSEC-2025-0022", reason = "openssl 0.10.68 Md::fetch/Cipher::fetch UAF. The fix (>=0.10.72) drags openssl-sys 0.9.117, which requires rustc 1.80 and breaks the R-B5a 1.75 pin. UNREACHABLE: RustDesk never calls the explicit-fetch provider API. Revisit only if the toolchain pin moves (R-R3)." },
   { id = "RUSTSEC-2025-0004", reason = "openssl 0.10.68 ssl::select_next_proto UAF — same openssl-sys 1.80 MSRV wall as 2025-0022 (fix needs >=0.10.70). ALPN-negotiation path. Accepted on the 1.75 build; revisit with the toolchain bump." },
   { id = "RUSTSEC-2020-0071", reason = "time 0.1.45 potential segfault (localtime_r). Pulled ONLY on macOS (the chrono oldtime path); the controlled box is Linux and R-R2 drops the macOS target, so it leaves the graph there. The v4-only Linux build never compiles it." },
   { id = "RUSTSEC-2024-0013", reason = "libgit2-sys 0.14.2 memory-corruption. Build/dev-time transitive only (git2 tooling), NOT in the controlled runtime binary; the fix is a major bump (>=0.16.2) cascading git2. Tracked for the build-tooling bump." },
@@ -70,13 +70,13 @@ ignore = [
   { id = "RUSTSEC-2026-0184", reason = "git2 0.16.1 blame-buffer Signature null-pointer unsoundness. Build-time shadow-rs is the sole puller and never uses blame_buffer or BlameHunk signatures; the >=0.21 fix requires a parent-major cascade." },
 
   # ── unmaintained/unsound accepted or cleared by completed fork/dependency work ──
-  { id = "RUSTSEC-2021-0145", reason = "atty unsound unaligned read. Build-time only; leaves with the bindgen 0.59->0.69 fork bump (Appendix D)." },
+  { id = "RUSTSEC-2021-0145", reason = "atty unsound unaligned read. Build-time only; leaves with the bindgen 0.59->0.69 fork bump (R-R3)." },
   { id = "RUSTSEC-2024-0375", reason = "atty unmaintained — same bindgen fork bump as 2021-0145." },
   { id = "RUSTSEC-2021-0139", reason = "ansi_term unmaintained. Build/CLI-color only; leaves with the bindgen fork bump (drops ansi_term together with atty)." },
 
   # ── unmaintained, no drop-in / no exploitable path: documented accepts ──
-  { id = "RUSTSEC-2021-0137", reason = "sodiumoxide deprecated. It IS the libsodium secretbox session layer (R-P2/R-P10) and the §3.2-pinned crypto; no maintained drop-in. Accepted (Appendix D); the construction is KAT-pinned and R-V3-audited." },
-  { id = "RUSTSEC-2024-0436", reason = "paste unmaintained. Compile-time proc-macro (token pasting), no runtime surface, no drop-in. Accepted (Appendix D)." },
+  { id = "RUSTSEC-2021-0137", reason = "sodiumoxide deprecated. It IS the libsodium secretbox session layer (R-P2/R-P10) and the §3.2-pinned crypto; no maintained drop-in. The construction is KAT-pinned and R-V3-audited; R-R3 governs the reasoned accept." },
+  { id = "RUSTSEC-2024-0436", reason = "paste unmaintained. Compile-time proc-macro (token pasting), no runtime surface, no drop-in; R-R3 governs the reasoned accept." },
   { id = "RUSTSEC-2022-0056", reason = "clipboard unmaintained. The clipboard feature is policy-gated and the payloads are R-S7-bounded; no maintained pristine drop-in (successors are different crates). Radio-silence class." },
   { id = "RUSTSEC-2023-0051", reason = "dlopen_derive unmaintained. Compile-time derive for dlopen; build-time, no runtime surface." },
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained. Compile-time only (macro diagnostics), no runtime surface." },

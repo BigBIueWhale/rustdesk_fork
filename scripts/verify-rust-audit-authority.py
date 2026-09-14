@@ -224,8 +224,6 @@ def validate_contract(sources):
     image_provenance = sources["image_provenance"]
     online_fetch = sources["online_fetch"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     validator = sources["validator"]
 
     validate_dockerfile(dockerfile)
@@ -766,35 +764,6 @@ def validate_contract(sources):
         ),
         "shared verifier wiring",
     )
-    require('<span class="id">R-S11bf</span>' in requirements, "requirements are missing R-S11bf")
-    require("<tr><td>183</td>" in requirements, "requirements are missing Appendix C #183")
-    require('<span class="id">R-S11dg</span>' in requirements, "requirements are missing R-S11dg")
-    require("<tr><td>260</td>" in requirements, "requirements are missing Appendix C #260")
-    require_all(
-        requirements,
-        (
-            "both image inspections and all three output-bounded launches",
-            "fixed local Unix socket",
-            "canonical <code>{}</code> <code>config.json</code>",
-            "R-S11e-125",
-        ),
-        "Rust advisory Docker authority requirement",
-    )
-    require(
-        "exact 2026-07-17 RustSec snapshot was reviewed on 2026-07-22" in requirements,
-        "current RustSec review status is missing",
-    )
-    require(
-        "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority" in hardening,
-        "hardening ledger is missing the Rust audit closure",
-    )
-    require(
-        "R-S11dg/R-S11e-125 — Rust advisory Docker client, daemon, and configuration authority"
-        in hardening,
-        "hardening ledger is missing the Rust audit Docker authority correction",
-    )
-    require("neither this item nor the overall release is claimed complete" in hardening, "ledger overclaims completion")
-
     mutation_text = validator[validator.index("\nMUTATIONS = (") : validator.index("\n)\n\n\ndef mutate_once")]
     require_all(
         mutation_text,
@@ -832,11 +801,6 @@ def validate_contract(sources):
             'Mutation("online_fetch", \'--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"\'',
             '"Rust image candidate network authority"',
             'Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test"',
-            'Mutation("requirements", \'<span class="id">R-S11bf</span>\'',
-            'Mutation("requirements", \'<span class="id">R-S11dg</span>\'',
-            'Mutation("requirements", "<tr><td>260</td>"',
-            'Mutation("hardening", "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority"',
-            'Mutation("hardening", "R-S11dg/R-S11e-125"',
         ),
         "Rust audit validator mutation coverage",
     )
@@ -1027,12 +991,6 @@ MUTATIONS = (
     ),
     Mutation("online_fetch", '"$SCRIPT_DIR/Dockerfile.audit" "$context/Dockerfile.audit"', '"$REPO_ROOT" "$context/repository"', "Dockerfile-only candidate context"),
     Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test", "python3 scripts/verify-rust-audit-authority.py --repo .", "shared mutation gate"),
-    Mutation("requirements", '<span class="id">R-S11bf</span>', '<span class="id">R-S11bf-disabled</span>', "normative requirement"),
-    Mutation("requirements", "<tr><td>183</td>", "<tr><td>183-disabled</td>", "Appendix disposition"),
-    Mutation("hardening", "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority", "R-S11bf/R-S11e-72 — Rust audit deferred", "hardening ledger"),
-    Mutation("requirements", '<span class="id">R-S11dg</span>', '<span class="id">R-S11dg-disabled</span>', "Docker authority requirement"),
-    Mutation("requirements", "<tr><td>260</td>", "<tr><td>260-disabled</td>", "Docker authority Appendix disposition"),
-    Mutation("hardening", "R-S11dg/R-S11e-125", "R-S11dg/R-S11e-XXX", "Docker authority hardening ledger"),
 )
 
 
@@ -1059,8 +1017,6 @@ def load_sources(repo):
             encoding="utf-8"
         ),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "validator": (repo / "scripts/verify-rust-audit-authority.py").read_text(encoding="utf-8"),
     }
 

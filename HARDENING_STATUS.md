@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-121de0b986d146b8d7255f07976b02eebdde4a02e5258aa897895de89d89e43b  requirements.html
+89f73cc94d3c2d6afe5fd77de6553c51662ccfb3ec6e3e7b108dcb08c5341a87  requirements.html
 ```
 
 ## Current Verdict
@@ -62,6 +62,26 @@ native evidence, and two checks that required particular documentation prose wer
 authority checks remain. These are completed cleanup slices, not completion of the documentation work item: other
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
+
+The dependency-advisory documentation now has the same single-owner shape. The dated Appendix D disposition
+ledger, its duplicate technical-debt row, and all dangling links to it were deleted; exact snapshot identities,
+scan dates, package-fix history, current verdicts, and open distribution evidence remain current-state material in
+this ledger, while per-advisory accepts remain in the machine-readable `deny.toml`. R-A7 and R-R3 now state only
+the timeless Rust, Dart/Pub, and native-codec freshness, authority, finality, policy, and release-failure rules.
+This reduced `requirements.html` from 2,135,760 to 2,127,416 bytes. The Rust and Dart focused advisory validators
+no longer load, mutate, or accept requirements/status prose as scanner evidence, reducing them by 2,827 and 3,293
+bytes; their product/source semantic suites still reject 100 and 90 deliberate mutations respectively. The
+workspace verifier's two duplicate advisory implementations, dispatch, and eight now-unused source bindings were
+deleted, reducing it by 36,314 bytes and 850 lines. Its remaining role is not to reimplement those focused gates.
+The normal workspace consistency pass is not green: after validating the new requirements identity and reaching
+unrelated X11 coverage, it stops at a pre-existing duplicate which expects a blank line before the focused X11
+validator's `@dataclass` boundary although that focused file has no such blank line; the focused X11 validator and
+its deliberate mutations pass directly. This is stale verifier-of-
+verifier cleanup debt, not an advisory-scanner failure, and was not expanded into this slice. No scanner image,
+product source, package, native target, or service ran or changed. Current advisory
+verdict provenance remains the R-R3 entry below, and every installed, artifact, presentation, performance,
+resource, independent-reproduction, and external-review obligation in the OPEN matrix remains unchanged. Including
+this record, the live ledger is 1,072,392 bytes, or 357,464 conservative tokens by the documented size method.
 
 R-S11a now states only the timeless cross-UID peer/process-authority, fresh-principal, and no-parent-adoption
 contract. Its original “Verified” snapshot, open-fix narration, source pointers, and CI prescription were deleted;

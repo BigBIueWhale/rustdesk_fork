@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-fb2caed66f39c3fda53af21d8560ecd0861bcfc23a15a0392cba1c4092901746  requirements.html
+e991aceff3bfe8ab6e40a7f26eda8af6c3b2cc3142552467513cda9bcd795427  requirements.html
 ```
 
 ## Current Verdict
@@ -1240,9 +1240,12 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   The obsolete void frame-admission export is absent on Windows, Linux, and macOS; the package contract permits
   only the canonical result-bearing ABI. Callback acceptance is not proof that pixels reached the compositor or
   display.
-- **R-S11fd/R-S11e-191 exact macOS launchd service-record authority** — Source closed. Launchd corroboration
-  accepts one exact top-level service record with canonical PID/path fields matching the already-authenticated
-  peer and trusted root-owned LaunchAgent definition; nested/duplicate diagnostic fields fail closed.
+- **R-S11fd/R-S11e-191 exact macOS launchd service-record authority** — Source closed. Textual launchd
+  corroboration is admitted only after socket audit-token, installed-code generation, exact argv, and trusted
+  root-owned LaunchAgent-plist proofs. One strict top-level canonical PID/path tuple must match those identities;
+  ambiguity fails closed. One focused source checker and a shared isolated Rust gate over the executable parser
+  regressions remain; the workspace verifier does not duplicate their source/test-name or documentation-wording
+  assertions. Signed native macOS execution remains open under the release-blocking matrix.
 - **R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources** — Source closed. The fixed `launchctl print`
   child has null input, byte-bounded nonblocking output, an absolute deadline, exact process ownership, and joined
   termination on every outcome. This remains portable child/source evidence, not signed macOS execution.

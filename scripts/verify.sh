@@ -2716,6 +2716,7 @@ echo "== (3b-iii-b) privileged service IPC is closed and directionally typed (R-
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_owned_password_value_limit_is_common --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_service_owned_launch_agent_plist_validation --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_launchctl_service_identity --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_bounded_child_stdout --color never
 r_s11b=
 service_request_enum=$(awk '/pub\(crate\) enum ServiceIpcRequest {/,/^}/' src/ipc.rs)

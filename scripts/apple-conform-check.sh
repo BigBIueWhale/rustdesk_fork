@@ -3493,10 +3493,6 @@ grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' "$REPO/src/
 grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-valid-link-missing"
 grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-entry-missing"
 grep -Fq 'acl_free(self.0)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-free-missing"
-grep -Fq 'macOS runtime service ACL inspection provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-runtime-acl-requirements-missing"
-grep -Fq 'R-S11c-17 — macOS runtime service ACL inspection provenance' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-runtime-acl-ledger-missing"
-grep -Fq 'macOS privileged installer ACL enforcement provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-installer-acl-requirements-missing"
-grep -Fq 'R-S11c-18 — macOS privileged installer ACL enforcement provenance' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-installer-acl-ledger-missing"
 grep -Fq 'fn macos_path_has_expected_type_and_permissions(' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-mode-check-helper-missing"
 grep -Fq 'fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-helper-codesign-check-missing"
 grep -Fq 'fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-app-codesign-check-missing"
@@ -4345,8 +4341,6 @@ grep -Fq 'trusted_unix_terminal_shell_returns_absolute_candidate_when_available'
 if echo "$unix_terminal_shell_block" | grep -qE 'std::env::var\("SHELL"\)|Ok\("/bin/sh"\.to_string\(\)\)|return Ok\(shell\)|CommandBuilder::new\("(sh|bash|zsh)"\)'; then
   r_s11c20="$r_s11c20 ambient-or-bare-shell-fallback"
 fi
-grep -q 'Unix terminal default-shell command provenance' "$REPO/requirements.html" || r_s11c20="$r_s11c20 requirements-disposition-missing"
-grep -q 'R-S11c-20 — Unix terminal default-shell command provenance' "$REPO/HARDENING_STATUS.md" || r_s11c20="$r_s11c20 hardening-ledger-missing"
 if [ -n "$r_s11c20" ]; then
   echo "  FAIL R-S11c-20 Unix terminal shell command provenance:$r_s11c20"
   rc=1

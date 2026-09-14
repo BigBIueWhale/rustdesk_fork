@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-8339b41c6ace8fbd33e8c1717a8e375447df99647afcd38588e49d2b98a47d21  requirements.html
+cebca3a25bf8b90b2facc5d4da409c870cfc5311e384945590536d1f9c735b57  requirements.html
 ```
 
 ## Current Verdict
@@ -73,6 +73,17 @@ it by 2,019 bytes; the Rust/MSI app-name test and source checks for reboot final
 folder resolution, component rejection, and ProgramData failure remain. No product source, driver, package, or
 native Windows target changed or ran; all Windows artifact, full-peer, lifecycle, focus/reconnect, performance,
 resource, and cold-equality evidence remains open.
+
+Appendix C rows #70 and #72–#75 now state only the timeless macOS runtime ACL, Windows privacy-broker
+served-session, macOS installer ACL, macOS LaunchAgent argv, and Unix terminal-shell authority contracts.
+Their historical failure narratives, <code>FIX</code> badges, implementation receipts, and verifier narration
+were deleted. Fourteen assertions whose only oracle was an exact requirement title or source-disposition index
+label were removed from the shared and Apple source-conformance gates; their focused product-source checks still
+bind native ACL use and formatter absence, receiver-session broker launch, checked installer ACL removal, exact
+live/plist argv, trusted shell paths, executable regressions, and forbidden fallback absence. No product source
+or native target changed or ran. Legitimate signed macOS installation/helper/launchd behavior, current Windows
+full-peer and session behavior, Unix installed-principal behavior, and all artifact/performance/resource evidence
+remain open in the release-blocking matrix.
 
 The native-codec advisory ledger no longer serves as a requirements registry. The first cleanup slice deleted
 34 later-added per-ID/Appendix mappings and 254 lines of prose-coupled assertions and mutations from the shared,
@@ -1150,10 +1161,10 @@ exists only to make the current source disposition discoverable.
 - R-S11c-25 — Windows terminal service principal authority
 - R-S11c-26 — protected service IPC resource boundary
 - R-S11c-5 — macOS privileged service packaging
-- R-S11c-17 — macOS runtime service ACL inspection provenance
-- R-S11c-18 — macOS privileged installer ACL enforcement provenance
+- R-S11c-17 — macOS runtime filesystem ACL authority
+- R-S11c-18 — macOS privileged installer ACL finality
 - R-S11c-19 — macOS LaunchAgent live argv authority
-- R-S11c-20 — Unix terminal default-shell command provenance
+- R-S11c-20 — Unix terminal shell executable provenance
 - R-S11c-21 — macOS privileged service template identity input
 - R-S11c-16 — Desktop service lifecycle completion authority
 - R-S11c-10a — Linux root-context desktop discovery shell interpolation

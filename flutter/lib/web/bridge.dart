@@ -1111,12 +1111,8 @@ class RustdeskImpl {
     throw UnimplementedError("cmGetClientsState");
   }
 
-  Future<String?> cmCheckClientsLength({required int length, dynamic hint}) {
-    throw UnimplementedError("cmCheckClientsLength");
-  }
-
   Future<int> cmGetClientsLength({dynamic hint}) {
-    throw UnimplementedError("cmCheckClientsLength");
+    throw UnimplementedError("cmGetClientsLength");
   }
 
   Future<void> mainInit({required String appDir, dynamic hint}) {

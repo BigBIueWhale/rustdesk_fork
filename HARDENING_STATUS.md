@@ -12606,8 +12606,9 @@ shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**CORE REGISTRY AND CM FILE-LOG SOURCE IMPLEMENTED; OTHER SIDE-EFFECT LIFETIME WORK REMAINS;
-NINE EXECUTABLE RUST REGRESSIONS AND THREE RELEVANT DART TESTS RETAINED OR AUTHORED;
+**CORE REGISTRY, SNAPSHOT RECONCILIATION, AND CM FILE-LOG SOURCE IMPLEMENTED;
+OTHER SIDE-EFFECT LIFETIME WORK REMAINS; NINE EXECUTABLE RUST REGRESSIONS AND FIVE
+RELEVANT DART TESTS RETAINED OR AUTHORED;
 ANDROID RUST FIXTURES ARE NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
 `CmClientRegistry` owns a checked process-lifetime
 generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
@@ -12628,11 +12629,21 @@ an action string cannot select or overwrite an authority field. Dart dispatch us
 and stores jobs plus speed-sampling state under the exact owner. Full-state refresh, add,
 replacement, remove, and close reconcile those tables; retirement deletes the predecessor table,
 and deferred tab selection rechecks both its request generation and client owner before
-publication. A full-state snapshot validates the complete positive-generation, unique-ID owner set
-before mutation; an asynchronous snapshot carries the local observation revision from before its
-native call and cannot overwrite an intervening client event. `closeAll` removes only the exact
-generations it captured, preserving a concurrently admitted successor. Disconnected owners retain
-their table only while that exact generation remains in the client registry. The unused
+publication. The former desktop length-only refresh gate is deleted: count is not state identity.
+The desktop CM and live mobile UI now use the same non-overlapping 500 ms repair turn, which obtains
+the complete native registry snapshot, validates the top-level list and every positive, unique
+connection ID and process-lifetime registry generation before any mutation, and canonicalizes
+admission order by generation. An asynchronous snapshot carries the
+local observation revision from before its native call and cannot overwrite an intervening add,
+remove, disconnect, or voice event. Reconciliation reuses only the exact `(id, generation)` Dart
+owner, preserves its UI-local unread state, replaces a successor rather than inheriting predecessor
+state, and rebuilds tabs only when owners or tab identity change; an unchanged snapshot causes no
+client-list, file-table, tab, or listener notification mutation. Native serialization borrows the
+registry entries and does not clone their egress senders on each repair turn. Consequently a missed
+same-count replacement, disconnect, voice transition, or remove-plus-add is repaired by the next
+refresh rather than persisting indefinitely. `closeAll` removes only the exact generations it
+captured, preserving a concurrently admitted successor. Disconnected owners retain their table only
+while that exact generation remains in the client registry. The unused
 process-global desktop click-time request/response and FFI surface are deleted end to end. The
 previously recorded Windows clipboard-cleanup gap is not reachable:
 the exact controlled-route lease remains occupied through registry retirement and native emptying,
@@ -12685,7 +12696,9 @@ supersession followed by a real `CreateDir` command. The last requires predecess
 termination with no directory effect, followed by exact successor cleanup.
 The shared runner retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
-`flutter/test/server_model_test.dart` retains registry-generation JSON serialization.
+`flutter/test/server_model_test.dart` retains registry-generation JSON serialization and adds two
+state regressions for same-count replacement/disconnect/voice repair, exact-owner UI-state retention,
+unchanged-snapshot inertness, canonical generation order, and whole-snapshot duplicate owner refusal.
 `flutter/test/cm_file_owner_test.dart`, now invoked by `scripts/dart-verify.sh`, adds two executable
 Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
 payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.

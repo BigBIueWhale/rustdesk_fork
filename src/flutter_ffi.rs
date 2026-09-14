@@ -1618,14 +1618,6 @@ pub fn cm_get_clients_state() -> String {
     crate::ui_cm_interface::get_clients_state()
 }
 
-pub fn cm_check_clients_length(length: usize) -> Option<String> {
-    if length != crate::ui_cm_interface::get_clients_length() {
-        Some(crate::ui_cm_interface::get_clients_state())
-    } else {
-        None
-    }
-}
-
 pub fn cm_get_clients_length() -> usize {
     crate::ui_cm_interface::get_clients_length()
 }

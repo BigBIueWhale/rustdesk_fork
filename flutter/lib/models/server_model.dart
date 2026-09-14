@@ -26,6 +26,83 @@ const kLoginDialogTag = "LOGIN";
 const kUsePermanentPassword = "use-permanent-password";
 const kUseBothPasswords = "use-both-passwords";
 
+class CmClientStateReconciliation {
+  const CmClientStateReconciliation({
+    required this.clients,
+    required this.changed,
+    required this.rebuildTabs,
+  });
+
+  final List<Client> clients;
+  final bool changed;
+  final bool rebuildTabs;
+}
+
+CmClientStateReconciliation reconcileCmClientState(
+    List<Client> current, String encodedSnapshot) {
+  final decoded = jsonDecode(encodedSnapshot);
+  if (decoded is! List<dynamic>) {
+    throw const FormatException('CM client state is not a list');
+  }
+
+  final snapshot = <Client>[];
+  final ids = <int>{};
+  final generations = <int>{};
+  for (final clientJson in decoded) {
+    if (clientJson is! Map<String, dynamic>) {
+      throw const FormatException('CM client entry is not an object');
+    }
+    final client = Client.fromJson(clientJson);
+    if (client.id <= 0 ||
+        client.registryGeneration <= 0 ||
+        !ids.add(client.id) ||
+        !generations.add(client.registryGeneration)) {
+      throw const FormatException('invalid CM client owner');
+    }
+    snapshot.add(client);
+  }
+  snapshot.sort((left, right) =>
+      left.registryGeneration.compareTo(right.registryGeneration));
+
+  var ownersChanged = current.length != snapshot.length;
+  if (!ownersChanged) {
+    for (var index = 0; index < snapshot.length; index += 1) {
+      if (!current[index].hasSameOwner(snapshot[index])) {
+        ownersChanged = true;
+        break;
+      }
+    }
+  }
+
+  final currentById = <int, Client>{
+    for (final client in current) client.id: client,
+  };
+  final reconciled = <Client>[];
+  var changed = ownersChanged;
+  var rebuildTabs = ownersChanged;
+  for (final candidate in snapshot) {
+    final existing = currentById[candidate.id];
+    if (existing == null || !existing.hasSameOwner(candidate)) {
+      reconciled.add(candidate);
+      continue;
+    }
+    if (!existing.hasSameNativeState(candidate)) {
+      changed = true;
+      if (!existing.hasSameTabIdentity(candidate)) {
+        rebuildTabs = true;
+      }
+      existing.copyNativeStateFrom(candidate);
+    }
+    reconciled.add(existing);
+  }
+
+  return CmClientStateReconciliation(
+    clients: reconciled,
+    changed: changed,
+    rebuildTabs: rebuildTabs,
+  );
+}
+
 class ServerModel with ChangeNotifier {
   final _androidServiceUiState = AndroidServiceUiState();
   bool _mediaOk = false;
@@ -121,19 +198,12 @@ class ServerModel with ChangeNotifier {
   }
 
   Future<void> _refreshStatus() async {
-    if (desktopType == DesktopType.cm) {
+    if (desktopType == DesktopType.cm || isMobile) {
+      // Incremental events are the low-latency path. This complete snapshot is the repair path:
+      // list length cannot detect replacement or state changes that preserve cardinality.
       final clientStateRevision = _clientStateRevision;
-      final res = await bind.cmCheckClientsLength(length: _clients.length);
-      if (res != null) {
-        debugPrint("clients not match!");
-        await updateClientState(res, clientStateRevision);
-      } else if (_clients.isEmpty) {
-        // R-S11gic: the server owns this CM generation across sessions. Keep its UI hidden while
-        // idle; closing the window here exits the process and defeats exact reuse.
-        await hideCmWindow();
-      } else if (!hideCm) {
-        await showCmWindow();
-      }
+      final snapshot = await bind.cmGetClientsState();
+      await updateClientState(snapshot, clientStateRevision);
     }
 
     await updatePasswordModel();
@@ -470,52 +540,43 @@ class ServerModel with ChangeNotifier {
     if (_clientStateRevision != requestRevision) {
       return;
     }
-    List<dynamic> clientsJson;
+    CmClientStateReconciliation reconciliation;
     try {
-      clientsJson = jsonDecode(res);
-    } catch (e) {
-      debugPrint("Failed to decode clientsJson: '$res', error $e");
-      return;
-    }
-
-    final nextClients = <Client>[];
-    final nextIds = <int>{};
-    try {
-      for (final clientJson in clientsJson) {
-        final client = Client.fromJson(clientJson);
-        if (client.id <= 0 ||
-            client.registryGeneration <= 0 ||
-            !nextIds.add(client.id)) {
-          throw FormatException('invalid CM client owner');
-        }
-        nextClients.add(client);
-      }
+      reconciliation = reconcileCmClientState(_clients, res);
     } catch (e) {
       debugPrint("Rejected malformed clients state: $e");
       return;
     }
 
-    _clients
-      ..clear()
-      ..addAll(nextClients);
-    tabController.state.value.tabs.clear();
-    for (final client in _clients) {
-      try {
-        _addTab(client);
-      } catch (e) {
-        debugPrint("Failed to add CM client tab: $e");
+    if (reconciliation.changed) {
+      _clients
+        ..clear()
+        ..addAll(reconciliation.clients);
+      if (reconciliation.rebuildTabs) {
+        tabController.state.value.tabs.clear();
+        for (final client in _clients) {
+          try {
+            _addTab(client);
+          } catch (e) {
+            debugPrint("Failed to add CM client tab: $e");
+          }
+        }
       }
+      _commitClientStateMutation();
     }
-    _commitClientStateMutation();
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
+        // R-S11gic: the server owns this CM generation across sessions. Keep its UI hidden while
+        // idle; closing the window here exits the process and defeats exact reuse.
         await hideCmWindow();
       } else if (!hideCm) {
         await showCmWindow();
       }
     }
-    notifyListeners();
-    if (isAndroid) androidUpdatekeepScreenOn();
+    if (reconciliation.changed) {
+      notifyListeners();
+      if (isAndroid) androidUpdatekeepScreenOn();
+    }
   }
 
   void addConnection(Map<String, dynamic> evt) {
@@ -733,11 +794,18 @@ class ServerModel with ChangeNotifier {
           element.id == client.id &&
           element.registryGeneration == client.registryGeneration);
       if (index != -1) {
-        _clients[index].inVoiceCall = client.inVoiceCall;
-        _clients[index].incomingVoiceCall = client.incomingVoiceCall;
-        if (client.incomingVoiceCall) {
+        final current = _clients[index];
+        final wasIncoming = current.incomingVoiceCall;
+        if (current.inVoiceCall == client.inVoiceCall &&
+            current.incomingVoiceCall == client.incomingVoiceCall) {
+          return;
+        }
+        current.inVoiceCall = client.inVoiceCall;
+        current.incomingVoiceCall = client.incomingVoiceCall;
+        _commitClientStateMutation();
+        if (current.incomingVoiceCall && !wasIncoming) {
           if (isAndroid) {
-            showVoiceCallDialog(client);
+            showVoiceCallDialog(current);
           } else {
             // Has incoming phone call, let's set the window on top.
             Future.delayed(Duration.zero, () {
@@ -851,6 +919,52 @@ class Client {
     data['in_voice_call'] = inVoiceCall;
     data['incoming_voice_call'] = incomingVoiceCall;
     return data;
+  }
+
+  bool hasSameOwner(Client other) =>
+      id == other.id && registryGeneration == other.registryGeneration;
+
+  bool hasSameNativeState(Client other) =>
+      hasSameOwner(other) &&
+      authorized == other.authorized &&
+      isFileTransfer == other.isFileTransfer &&
+      isViewCamera == other.isViewCamera &&
+      isTerminal == other.isTerminal &&
+      portForward == other.portForward &&
+      name == other.name &&
+      avatar == other.avatar &&
+      peerId == other.peerId &&
+      keyboard == other.keyboard &&
+      clipboard == other.clipboard &&
+      audio == other.audio &&
+      file == other.file &&
+      privacyMode == other.privacyMode &&
+      disconnected == other.disconnected &&
+      inVoiceCall == other.inVoiceCall &&
+      incomingVoiceCall == other.incomingVoiceCall;
+
+  bool hasSameTabIdentity(Client other) =>
+      hasSameOwner(other) && name == other.name && peerId == other.peerId;
+
+  void copyNativeStateFrom(Client other) {
+    id = other.id;
+    registryGeneration = other.registryGeneration;
+    authorized = other.authorized;
+    isFileTransfer = other.isFileTransfer;
+    isViewCamera = other.isViewCamera;
+    isTerminal = other.isTerminal;
+    portForward = other.portForward;
+    name = other.name;
+    avatar = other.avatar;
+    peerId = other.peerId;
+    keyboard = other.keyboard;
+    clipboard = other.clipboard;
+    audio = other.audio;
+    file = other.file;
+    privacyMode = other.privacyMode;
+    disconnected = other.disconnected;
+    inVoiceCall = other.inVoiceCall;
+    incomingVoiceCall = other.incomingVoiceCall;
   }
 
   ClientType type_() {

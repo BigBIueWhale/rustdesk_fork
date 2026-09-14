@@ -1012,8 +1012,14 @@ pub fn send_chat(id: i32, text: String) {
 #[inline]
 pub fn get_clients_state() -> String {
     let clients = CLIENTS.read().unwrap();
-    let res = Vec::from_iter(clients.clients.values().cloned());
-    serde_json::to_string(&res).unwrap_or("".into())
+    let state = Vec::from_iter(clients.clients.values());
+    match serde_json::to_string(&state) {
+        Ok(state) => state,
+        Err(error) => {
+            log::error!("failed to serialize CM client state: {error}");
+            String::new()
+        }
+    }
 }
 
 #[inline]

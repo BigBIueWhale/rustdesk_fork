@@ -4743,14 +4743,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2-000) R-S11hk bounded exact-session file-confirm ownership =="
-if python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test; then
-  note "ok  R-S11hk Apple/shared file-confirm events are typed, bounded, FIFO, exact-session-owned, and terminal-visible"
-else
-  echo "  FAIL R-S11hk Apple/shared file-confirm events regained raw maps, polling, unbounded retention, stale generation, silent refusal, or hidden failure"
-  rc=1
-fi
-
 echo "== (2g-c2-001) R-S11hl reserve-before-dispatch file-response ownership =="
 if python3 scripts/verify-file-response-ownership.py --repo . --self-test; then
   note "ok  R-S11hl Apple/shared file-directory responses reserve bounded exact-session owners before dispatch"

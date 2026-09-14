@@ -10896,8 +10896,8 @@ latency, resource, background/focus, reconnect, and cleanup obligations remain o
 
 ### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 
-**Status: SOURCE IMPLEMENTED AND FOCUSED-GATED; EXECUTABLE DART/FLUTTER/NATIVE
-AND TARGET-PLATFORM EVIDENCE OPEN.**
+**Status: SOURCE IMPLEMENTED; CURRENT EXECUTABLE DART/FLUTTER/NATIVE AND
+TARGET-PLATFORM EVIDENCE OPEN.**
 
 Current source admits each required overwrite/skip decision as one immutable canonical
 payload: positive signed-32-bit job ID, nonnegative signed-32-bit file number, exact
@@ -10909,14 +10909,17 @@ and callback failure use the visible exact-session terminal path; stale failures
 cannot close a replacement. Required work is never silently dropped, coalesced, or
 overwritten, and the idle owner has no timer or polling wakeup.
 
-Focused Dart regressions are authored for FIFO, capacity, closed admission,
-replacement serialization, callback failure, typed parsing, and path bounds.
-scripts/verify-file-dialog-event-ownership.py and the independent workspace
-contract protect the load-bearing source shape and fallback absence. They are
-supplementary: exact Dart execution and installed target-native file-transfer,
-replacement, Android task-swipe/reopen/Force-Stop, cross-version, latency/resource,
-and cleanup evidence remain open under the global STOP-SHIP matrix. Historical
-implementation and run details remain in Git at
+The executable `flutter/test/file_dialog_event_loop_test.dart` regression suite is
+authored for FIFO, capacity, closed admission, replacement serialization, callback
+failure, typed parsing, and path bounds, and remains wired into `scripts/dart-verify.sh`.
+The former 610-line Python source recognizer, its second workspace implementation,
+and shared/Apple invocations were deleted: those programs only parsed current source,
+test names, gate wiring, and documentation, so their passing result was not behavioral
+or independent evidence. No Dart, Flutter, native, package, or target runtime executed
+in this cleanup slice. Exact-current Dart execution and installed target-native
+file-transfer, replacement, Android task-swipe/reopen/Force-Stop, cross-version,
+latency/resource, and cleanup evidence remain open under the global STOP-SHIP matrix.
+Historical implementation and run details remain in Git at
 11402b7ba925a283b8284a14a194c59af9d98e3f.
 
 ### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership

@@ -11190,12 +11190,6 @@ else
   echo "  FAIL R-S11hi/R-S11e-246: peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
   rc=1
 fi
-if python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test; then
-  echo "  ok  R-S11hk/R-S11e-248 file-confirm events are typed, bounded, FIFO, exact-session-owned, and terminal-visible"
-else
-  echo "  FAIL R-S11hk/R-S11e-248: file-confirm events regained raw maps, polling, unbounded retention, stale generation, silent refusal, or hidden failure"
-  rc=1
-fi
 if python3 scripts/verify-file-response-ownership.py --repo . --self-test; then
   echo "  ok  R-S11hl/R-S11e-249 file-directory responses reserve bounded exact-session owners before dispatch"
 else

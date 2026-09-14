@@ -1156,7 +1156,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source implementation
   and five directly wired executable Rust regressions remain. Each `(session, display)` owns one immutable
   published frame plus at most one latest pending frame and exact event generation; stale consumers or
-  acknowledgements cannot publish or retain another session's pixels. Generated-bridge and native presentation,
+  acknowledgements cannot publish or retain another session's pixels. Offer results now distinguish a bounded
+  pending replacement from publication-token exhaustion, so exhaustion before an initial publication retires
+  the just-created exact mailbox instead of leaving an empty map entry. The exhaustion regression exercises the
+  real multi-consumer owner facade, but current compilation/execution is not claimed because the fixed rootless
+  Docker socket is absent and no host or rootful fallback was used. Generated-bridge and native presentation,
   lifecycle, performance, and artifact evidence remain open.
 - **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source closed.
   Native texture pointer creation, publication, replacement, view transfer, and retirement are tied to the exact

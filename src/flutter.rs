@@ -1067,6 +1067,13 @@ struct RgbaData {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+enum RgbaOffer {
+    Published(u64),
+    Pending,
+    Exhausted,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 enum RgbaAcknowledgement {
     Ignored,
     Drained,
@@ -1082,16 +1089,18 @@ enum RgbaRearm {
 }
 
 impl RgbaData {
-    fn offer_swap<F>(&mut self, incoming: &mut Vec<u8>, next_publication: F) -> Option<u64>
+    fn offer_swap<F>(&mut self, incoming: &mut Vec<u8>, next_publication: F) -> RgbaOffer
     where
         F: FnOnce() -> Option<u64>,
     {
         if !self.valid {
-            let publication = next_publication()?;
+            let Some(publication) = next_publication() else {
+                return RgbaOffer::Exhausted;
+            };
             std::mem::swap(incoming, &mut self.data);
             self.valid = true;
             self.publication = publication;
-            return Some(publication);
+            return RgbaOffer::Published(publication);
         }
 
         if let Some(pending) = self.pending.as_mut() {
@@ -1100,20 +1109,22 @@ impl RgbaData {
             std::mem::swap(incoming, &mut self.spare);
             self.pending = Some(std::mem::take(&mut self.spare));
         }
-        None
+        RgbaOffer::Pending
     }
 
-    fn offer_copy<F>(&mut self, incoming: &[u8], next_publication: F) -> Option<u64>
+    fn offer_copy<F>(&mut self, incoming: &[u8], next_publication: F) -> RgbaOffer
     where
         F: FnOnce() -> Option<u64>,
     {
         if !self.valid {
-            let publication = next_publication()?;
+            let Some(publication) = next_publication() else {
+                return RgbaOffer::Exhausted;
+            };
             self.valid = true;
             self.publication = publication;
             self.data.clear();
             self.data.extend_from_slice(incoming);
-            return Some(publication);
+            return RgbaOffer::Published(publication);
         }
         if self.pending.is_none() {
             self.pending = Some(std::mem::take(&mut self.spare));
@@ -1122,7 +1133,7 @@ impl RgbaData {
             pending.clear();
             pending.extend_from_slice(incoming);
         }
-        None
+        RgbaOffer::Pending
     }
 
     fn copy(&self, publication: u64) -> Option<Vec<u8>> {
@@ -1868,20 +1879,34 @@ impl FlutterHandler {
         let mut mailboxes = self.display_rgbas.write().unwrap();
         let mut notify = Vec::new();
         for session_id in preceding {
-            if let Some(publication) = mailboxes
-                .entry((*session_id, display))
+            let key = (*session_id, display);
+            let offer = mailboxes
+                .entry(key)
                 .or_default()
-                .offer_copy(incoming, || self.next_rgba_publication())
-            {
-                notify.push((*session_id, publication));
+                .offer_copy(incoming, || self.next_rgba_publication());
+            match offer {
+                RgbaOffer::Published(publication) => {
+                    notify.push((*session_id, publication));
+                }
+                RgbaOffer::Pending => {}
+                RgbaOffer::Exhausted => {
+                    mailboxes.remove(&key);
+                }
             }
         }
-        if let Some(publication) = mailboxes
-            .entry((*last, display))
+        let key = (*last, display);
+        let offer = mailboxes
+            .entry(key)
             .or_default()
-            .offer_swap(incoming, || self.next_rgba_publication())
-        {
-            notify.push((*last, publication));
+            .offer_swap(incoming, || self.next_rgba_publication());
+        match offer {
+            RgbaOffer::Published(publication) => {
+                notify.push((*last, publication));
+            }
+            RgbaOffer::Pending => {}
+            RgbaOffer::Exhausted => {
+                mailboxes.remove(&key);
+            }
         }
         notify
     }
@@ -5566,14 +5591,23 @@ mod mobile_session_lifecycle_tests {
     fn r_s11ew_rgba_mailbox_keeps_published_frame_stable_and_promotes_only_latest() {
         let mut mailbox = RgbaData::default();
         let mut first = vec![1; 16];
-        assert_eq!(mailbox.offer_swap(&mut first, || Some(1)), Some(1));
+        assert_eq!(
+            mailbox.offer_swap(&mut first, || Some(1)),
+            RgbaOffer::Published(1)
+        );
         assert_eq!(mailbox.data, vec![1; 16]);
         let published_ptr = mailbox.data.as_ptr();
 
         let mut second = vec![2; 16];
-        assert_eq!(mailbox.offer_swap(&mut second, || Some(2)), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut second, || Some(2)),
+            RgbaOffer::Pending
+        );
         let mut latest = vec![3; 16];
-        assert_eq!(mailbox.offer_swap(&mut latest, || Some(3)), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut latest, || Some(3)),
+            RgbaOffer::Pending
+        );
         assert_eq!(mailbox.data.as_ptr(), published_ptr);
         assert_eq!(mailbox.data, vec![1; 16]);
         assert_eq!(mailbox.pending.as_deref(), Some(&[3; 16][..]));
@@ -5605,16 +5639,25 @@ mod mobile_session_lifecycle_tests {
     fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame() {
         let mut mailbox = RgbaData::default();
         let mut first = vec![1; 16];
-        assert_eq!(mailbox.offer_swap(&mut first, || Some(1)), Some(1));
+        assert_eq!(
+            mailbox.offer_swap(&mut first, || Some(1)),
+            RgbaOffer::Published(1)
+        );
 
         assert_eq!(mailbox.rearm(|| Some(2)), RgbaRearm::Rearmed(2));
         assert_eq!(mailbox.copy(1), None);
         assert_eq!(mailbox.copy(2), Some(vec![1; 16]));
 
         let mut second = vec![2; 16];
-        assert_eq!(mailbox.offer_swap(&mut second, || Some(3)), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut second, || Some(3)),
+            RgbaOffer::Pending
+        );
         let mut latest = vec![3; 16];
-        assert_eq!(mailbox.offer_swap(&mut latest, || Some(4)), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut latest, || Some(4)),
+            RgbaOffer::Pending
+        );
         assert_eq!(mailbox.rearm(|| Some(3)), RgbaRearm::Rearmed(3));
         assert_eq!(mailbox.data, vec![3; 16]);
         assert!(mailbox.pending.is_none());
@@ -5642,9 +5685,15 @@ mod mobile_session_lifecycle_tests {
         assert!(!publication_requested);
 
         let mut first = vec![1; 8];
-        assert_eq!(mailbox.offer_swap(&mut first, || Some(1)), Some(1));
+        assert_eq!(
+            mailbox.offer_swap(&mut first, || Some(1)),
+            RgbaOffer::Published(1)
+        );
         let mut pending = vec![2; 8];
-        assert_eq!(mailbox.offer_swap(&mut pending, || Some(2)), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut pending, || Some(2)),
+            RgbaOffer::Pending
+        );
         assert_eq!(mailbox.rearm(|| None), RgbaRearm::Exhausted);
         assert!(!mailbox.valid);
         assert_eq!(mailbox.publication, 0);
@@ -5983,13 +6032,22 @@ mod mobile_session_lifecycle_tests {
     fn r_s11ew_rgba_publication_exhaustion_fails_closed() {
         let mut mailbox = RgbaData::default();
         let mut frame = vec![1; 4];
-        assert_eq!(mailbox.offer_swap(&mut frame, || None), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut frame, || None),
+            RgbaOffer::Exhausted
+        );
         assert!(!mailbox.valid);
         assert!(mailbox.data.is_empty());
 
-        assert_eq!(mailbox.offer_swap(&mut frame, || Some(1)), Some(1));
+        assert_eq!(
+            mailbox.offer_swap(&mut frame, || Some(1)),
+            RgbaOffer::Published(1)
+        );
         let mut pending = vec![2; 4];
-        assert_eq!(mailbox.offer_swap(&mut pending, || Some(2)), None);
+        assert_eq!(
+            mailbox.offer_swap(&mut pending, || Some(2)),
+            RgbaOffer::Pending
+        );
         assert_eq!(
             mailbox.acknowledge(1, || None),
             RgbaAcknowledgement::Exhausted
@@ -5997,6 +6055,19 @@ mod mobile_session_lifecycle_tests {
         assert!(!mailbox.valid);
         assert_eq!(mailbox.publication, 0);
         assert!(mailbox.pending.is_none());
+
+        let handler = FlutterHandler::default();
+        handler
+            .rgba_publication_counter
+            .store(i64::MAX as u64, Ordering::Relaxed);
+        let first = SessionID::new_v4();
+        let second = SessionID::new_v4();
+        let mut frame = vec![3; 4];
+        assert!(handler
+            .offer_rgba_to_sessions(&[first, second], 7, &mut frame)
+            .is_empty());
+        assert_eq!(frame, vec![3; 4]);
+        assert!(handler.display_rgbas.read().unwrap().is_empty());
     }
 
     #[test]

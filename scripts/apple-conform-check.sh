@@ -4687,14 +4687,6 @@ else
   rc=1
 fi
 
-echo "== (2f) R-S11bh mobile legacy at-rest migration requires live OS-key authority =="
-if python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test; then
-  note "ok  R-S11bh Android/iOS legacy decrypt is migration-only after successful OS-key installation"
-else
-  echo "  FAIL R-S11bh mobile legacy at-rest fallback can bypass unavailable OS-key authority"
-  rc=1
-fi
-
 echo "== (2g) R-S11bi macOS launchd explicit-domain lifecycle authority =="
 if python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test; then
   note "ok  R-S11bi macOS daemon/agent lifecycle uses explicit modern launchd domains and authoritative state proof"

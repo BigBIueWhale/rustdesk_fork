@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-6a454a1120d05a233732b34706c2d4362bdd2874cabda19afd7ac5443c304138  requirements.html
+f52d9a8dd9fbf40d0ebb058e716daf060048fe38a1e6bc69f7152ab4e665dbd1  requirements.html
 ```
 
 ## Current Verdict
@@ -659,6 +659,24 @@ review remain open. `requirements.html` falls from 2,171,437 to 2,168,163 bytes,
 1,295,780 to 1,295,246 bytes, the Apple checker from 402,942 to 400,512 bytes, and the workspace verifier from
 1,876,135 to 1,870,945 bytes. Including this record, the live ledger is 1,036,257 bytes, or 345,419
 conservative tokens by the documented method.
+
+R-S11bh now states only the timeless mobile OS-key prerequisite, authorized legacy-migration edge,
+fail-closed unavailable-key behavior, desktop distinction, and target-native acceptance contract. Its original
+rollout defect narrative, operational disclaimers, implementation receipt, verifier inventory, current evidence
+status, and duplicate Appendix C #197 finding were deleted, reducing `requirements.html` from 2,128,850 to
+2,126,089 bytes. The focused checker now reads only the four production Rust/Kotlin/Swift sources and performs
+one source-invariant pass; its requirements/ledger/gate-wiring oracles, Rust-test wording checks, diagnostic wording
+checks, and 12-item mutation catalog were deleted, reducing it from 10,691 to 5,254 bytes. The shared confined
+verifier now runs the exact Rust policy regression instead of proving only that its source strings exist. Both the
+source invariant and regression use its networkless, nonroot, read-only-root `RUN` container; this changes
+`scripts/verify.sh` from 1,288,980 to 1,289,218 bytes. The duplicate Apple invocation was deleted, reducing that
+checker from 395,561 to 395,175 bytes. The workspace verifier's entire duplicate 121-line verifier-of-verifier
+function, dispatch, and source load were deleted, reducing it from 1,712,314 to 1,707,194 bytes. The focused
+production-source checks remain. No product source or native target changed or ran in this cleanup.
+Exact Android KeyStore/iOS Keychain failure injection, successful recovery and durable reload, current packages,
+device behavior, cold artifacts, independent reproduction, and external review remain open. Including this record,
+the live ledger is 1,066,539 bytes, or 355,513 conservative tokens by the documented method, below its
+400,000-token budget.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -2310,36 +2328,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
 - **R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority — SOURCE
-  CLOSED/GATED 2026-07-21; NATIVE FAILURE INJECTION, iOS ARTIFACT, REAL-DEVICE, AND EXACT-RELEASE
-  EVIDENCE REMAIN OPEN.** Platforms: Android and iOS, with desktop compatibility preserved. Endpoint/action:
-  `password_security::open_at_rest_payload` and `open_with_existing_key_pair`, reached by permanent-password,
-  PRS, ID, peer-password, and encrypted JSON config reads. Boundary: transiently unavailable or rejected
-  AndroidKeyStore/iOS Keychain key ↔ plaintext config-keypair legacy migration authority. The initial OS-key
-  implementation in `09a7409912ed15e0422cdad65a4bb34e8c3f6af3` correctly made the OS key primary but sent
-  both current-key mismatch and total OS-key unavailability through `Config::get_existing_key_pair()`. On an
-  older mobile config, the latter branch could decrypt a credential without the intended OS authority. The
-  peer-config loader would also receive `should_rewrap=true` and immediately store the decrypted password and
-  password-equivalent PRS; because encryption could not obtain the missing OS key, the vector encryptor returned
-  empty fields, risking destructive credential replacement. This contradicted both startup diagnostics that said
-  encrypted reads fail closed. It is a source-proven local storage-authority and credential-availability defect,
-  not evidence of device/host compromise, a public listener, a host RustDesk/service/firewall mutation, Docker
-  escape, or privilege escalation.
-
-  The correction is one platform decision at the sole legacy-keypair read boundary. On Android/iOS,
-  `legacy_key_pair_fallback_authorized` returns true only when `primary_key.is_some()`: the OS-protected key was
-  installed and tried, but the payload is old. If the OS key is unavailable, authorization returns before
-  `Config::get_existing_key_pair()`, so no legacy plaintext, rewrap marker, or migration write can result. With a
-  live OS key, genuine legacy ciphertext still decrypts and sets `should_rewrap=true`. Desktop preserves its
-  existing machine-UID-unavailable keypair recovery and keeps `should_rewrap=false`. The focused Rust regression
-  pins all three decisions (mobile missing-key denial, mobile live-key migration, desktop recovery). The standalone
-  `scripts/verify-mobile-at-rest-fail-closed.py` binds the policy expression, platform classifier, authorization
-  before keypair access, sole keypair-read inventory, dispatcher edges, rewrap result, immediate peer migration
-  sink, Android/iOS startup order and diagnostics, requirement/disposition/ledger, and shared/Apple wiring; its
-  12 deliberate mutations must all fail. R-S11bh and Appendix C #197 make the corrected authority normative.
-  No device/emulator, AndroidKeyStore/Keychain failure injection, iOS compile/sign, or new APK build occurred in
-  this source slice. The existing older Android signed-artifact result below predates this correction and is not
-  promoted to exact-current evidence; live Android/iOS storage behavior, iOS artifact proof, and the exact clean
-  R-B2 release transaction remain open.
+  CLOSED; TARGET-NATIVE FAILURE INJECTION AND CURRENT PACKAGE EVIDENCE OPEN.** Android/iOS authorize the
+  decrypt-only config-keypair migration path only after a live OS-protected key was installed and failed to
+  open an older payload. Missing or rejected OS-key state fails before legacy-key access, plaintext release,
+  rewrap marking, or replacement storage; a genuine migration rewraps under the live key. Desktop read-only
+  recovery remains separate. The focused source invariant and Rust policy regression cover this topology,
+  but exact Android KeyStore/iOS Keychain failure and recovery, durable reload, current packages, and device
+  behavior remain open in the mobile and release matrices.
 - **R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains — SOURCE CLOSED/GATED
   2026-07-21; NATIVE APPLE AND EXACT SIGNED-ARTIFACT LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: macOS
   service installation, restart, and uninstallation. Endpoint/action: the root LaunchDaemon lifecycle inside

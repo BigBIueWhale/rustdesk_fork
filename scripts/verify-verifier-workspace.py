@@ -16747,129 +16747,6 @@ def validate_mobile_build_authority_verifier_contract(sources):
     )
 
 
-def validate_mobile_at_rest_fail_closed_contract(sources):
-    focused = sources["mobile_at_rest_fail_closed_verifier"]
-    for text, label in (
-        (
-            "grep -A20 '#\\[cfg(any(target_os = \"android\", target_os = \"ios\"))\\]' "
-            "libs/hbb_common/src/password_security.rs",
-            "obsolete mobile cfg-split keypair fallback shell check",
-        ),
-        (
-            "grep -A26 '#\\[cfg(any(target_os = \"android\", target_os = \"ios\"))\\]' "
-            "libs/hbb_common/src/password_security.rs",
-            "obsolete mobile cfg-split rewrap shell check",
-        ),
-        (
-            "[ \"$(grep -cF 'verify-android-mobile-key-artifact.py' "
-            "scripts/build-android.sh)\" -eq 2 ]",
-            "obsolete undifferentiated Android mobile-key checker path count",
-        ),
-    ):
-        require_absent(sources["verify"], text, label)
-    for text, label in (
-        ("def extract_rust_function(", "mobile at-rest Rust function parser"),
-        ("def validate(sources", "mobile at-rest semantic entry"),
-        (
-            '"if !legacy_key_pair_fallback_authorized(primary_key.is_some(), mobile)"',
-            "mobile at-rest pre-keypair authorization contract",
-        ),
-        (
-            '"Config::get_existing_key_pair()",\n        1,',
-            "mobile at-rest sole legacy-key read inventory",
-        ),
-        (
-            "test_mobile_legacy_keypair_fallback_requires_os_storage_key",
-            "mobile at-rest focused Rust regression",
-        ),
-        ("MUTATIONS: Tuple[Mutation, ...]", "mobile at-rest mutation inventory"),
-        ("run_mutations(sources)", "mobile at-rest mutation dispatch"),
-    ):
-        require_text(focused, text, label)
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
-        "mobile at-rest shared focused-verifier wiring",
-    )
-    require_text(
-        sources["verify"],
-        "grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' "
-        "flutter/android/app/proguard-rules.pro",
-        "mobile at-rest MainApplication active keep-rule source",
-    )
-    require_text(
-        sources["verify"],
-        "grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' "
-        "flutter/android/app/proguard-rules.pro",
-        "mobile at-rest key-wrapper active keep-rule source",
-    )
-    require_text(
-        sources["verify"],
-        "[ \"$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' "
-        "scripts/build-android.sh)\" -eq 2 ]",
-        "mobile at-rest shared immutable checker-mount cardinality",
-    )
-    require_text(
-        sources["verify"],
-        "[ \"$(grep -cF 'python3 /checks/verify-android-mobile-key-artifact.py' "
-        "scripts/build-android.sh)\" -eq 2 ]",
-        "mobile at-rest shared checker-invocation cardinality",
-    )
-    android_builder = sources["android_builder_authority_verifier"]
-    for text, label in (
-        (
-            "signed APK mobile-key verifier invocations",
-            "Android builder signed APK invocation-cardinality enforcement",
-        ),
-        (
-            "{} mobile-key checker mount before invocation",
-            "Android builder per-transaction mobile-key checker order enforcement",
-        ),
-        (
-            "verify-only mobile-key checker mount",
-            "Android builder verify-only checker-mount mutation authority",
-        ),
-        (
-            "signing mobile-key checker mount",
-            "Android builder signing checker-mount mutation authority",
-        ),
-        (
-            "verify-only mobile-key checker invocation",
-            "Android builder verify-only checker-invocation mutation authority",
-        ),
-        (
-            "signing mobile-key checker invocation",
-            "Android builder signing checker-invocation mutation authority",
-        ),
-    ):
-        require_text(android_builder, text, label)
-    require_text(
-        sources["apple"],
-        "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
-        "mobile at-rest Apple focused-verifier wiring",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11bh</span>',
-        "mobile at-rest live-OS-key requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>197</td>",
-        "mobile at-rest unavailable-key Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
-        "mobile at-rest unavailable-key hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11e-160 current mobile at-rest and signed-artifact gate authority",
-        "current mobile at-rest shared-gate hardening ledger",
-    )
-
-
 def validate_macos_launchd_lifecycle_contract(sources):
     focused = sources["macos_launchd_lifecycle_verifier"]
     for text, label in (
@@ -34466,7 +34343,6 @@ def validate_sources(sources):
     validate_windows_declarative_runtime_cleanup_contract(sources)
     validate_debian_vendor_unit_ownership_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
-    validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
     validate_linux_service_terminal_authority_contract(sources)
@@ -39137,9 +39013,6 @@ def main():
             "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"
-            ).read_text(encoding="utf-8"),
-            "mobile_at_rest_fail_closed_verifier": (
-                repo / "scripts/verify-mobile-at-rest-fail-closed.py"
             ).read_text(encoding="utf-8"),
             "macos_launchd_lifecycle_verifier": (
                 repo / "scripts/verify-macos-launchd-lifecycle.py"

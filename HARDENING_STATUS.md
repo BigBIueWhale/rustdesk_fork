@@ -12556,24 +12556,33 @@ independent reproduction; and external review.
 
 ### R-S11it/R-S11e-283 — terminal CM stream and route-setup ownership
 
-**PRE-LOGIN SOURCE DEFECT CORRECTED; SIX TARGETED EXECUTABLE REGRESSIONS AUTHORED
+**PRE-LOGIN SOURCE DEFECT CORRECTED; SEVEN TARGETED EXECUTABLE REGRESSIONS AUTHORED
 AND WIRED BUT NOT YET RUN; EXACT NATIVE INSTALLED CM/ROUTE EVIDENCE OPEN.** Review
 disproved the former source-closure claim: before Login, `ClickTime`,
 `PrivacyModeState`, `FileTransferLog`, and `ClipboardFileEnabled` could mutate process or
 UI state, and Windows `ClipboardFile` could stop the global clipboard context before its
-late `conn_id` check. The runner now derives pre-activation from absence of the exact
-client-registry owner and terminates on every message except Login, close/disconnect, and
-Windows' independently server-validated `AuthorizedClipboardNonFile` request. A
-response-only `ClipboardNonFile` is terminal. Production `ipc_task` still invokes the
+late `conn_id` check. The first correction also incorrectly treated the legitimate
+Windows privacy teardown callback as an ordinary pre-Login client effect and therefore
+made that callback unreachable. The runner now distinguishes one activated client stream
+from independently authorized one-shot actions. Before activation it accepts only Login,
+close/disconnect, Windows' server-validated non-file clipboard read, and the typed Windows
+privacy callback. The callback carries the originating connection's CM token, fixes its
+connection type to Remote at the receiver, repeats live connection validation, then under
+the registry lock requires the same token on the exact current owner before it publishes
+only the response form and terminates its auxiliary stream. The old bare-ID callback and
+broadcast helper are absent. Response-only clipboard and privacy messages are terminal.
+Production `ipc_task` still invokes the
 same whole-stream runner exactly once and binds its private validation seam to
 `validate_cm_connection_authority`; there is no retry or alternate authority path.
 
-Five Windows Rust tests drive that runner through the real framed `ConnectionTmpl`
+Six Windows Rust tests drive that runner through the real framed `ConnectionTmpl`
 transport with an in-memory duplex endpoint. They cover inert pre-Login refusal,
 malformed framing, first-Login activation and repeated-Login finality, route collision,
-readiness-send failure, no client commit on either refusal, and observation that exact
-client removal occurs while the route remains occupied. A clipboard-crate regression
-drives the real controlled-route registry with test-only mint accounting and proves a
+readiness-send failure, a token-validated one-shot privacy callback delivered to the exact
+activated owner without auxiliary client admission, no client commit on refusal, and
+observation that exact client removal occurs while the route remains occupied. A
+clipboard-crate regression drives the real controlled-route registry with test-only mint
+accounting and proves a
 duplicate ID consumes neither a route generation nor a channel. The suites are wired to
 the native Windows artifact lane, and the portable route-allocation test is wired to the
 confined Linux verifier. The old clipboard-route source/mutation verifier remains
@@ -12593,15 +12602,39 @@ shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**SOURCE IMPLEMENTED; SIX EXECUTABLE RUST REGRESSIONS AND ONE DART
-SERIALIZATION TEST RETAINED; ANDROID FIXTURE IS NOT EXECUTED; CURRENT
-DEVICE/NATIVE EVIDENCE OPEN.** `CmClientRegistry` owns a checked process-lifetime
-generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, stale source
-generations, active same-source collisions, and exhaustion without partial mutation.
+**CORE REGISTRY SOURCE IMPLEMENTED; KNOWN SIDE-EFFECT LIFETIME WORK REMAINS;
+SEVEN EXECUTABLE RUST REGRESSIONS AND ONE DART SERIALIZATION TEST RETAINED;
+ANDROID FIXTURE IS NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
+`CmClientRegistry` owns a checked process-lifetime
+generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
+authority tokens, stale source generations, active same-source collisions, and exhaustion
+without partial mutation. The registry token is internal, serde-skipped authority state;
+the UI-facing client representation omits it.
 Disconnected owners may be replaced; only a newer Android MainService generation may
 supersede an active predecessor, whose egress owner closes before replacement. Desktop
-source generation zero cannot supersede an active collision. Registry, clipboard, chat,
-voice, notification, input, capture, and UI effects first prove the exact owner.
+source generation zero cannot supersede an active collision. Registry mutation, chat,
+voice, Android notification/input/capture mirrors, and generation-bearing
+add/remove/chat/voice UI events carry or check the exact owner. This is not yet a blanket
+claim for every CM side effect: desktop removal releases the registry lock before its
+bare-ID clipboard cleanup, the process-global desktop click-time value and generation-less
+file-log publication are not owner-bearing, and Android CM filesystem dispatch does not
+recheck the registry owner. Their race and lifetime semantics remain open.
+
+Windows privacy mode now retains one typed connection owner containing the positive
+connection ID and nonempty CM authority token for the physical privacy resource's full
+lifetime. A same-ID request with a different token is not treated as the same owner.
+The native keyboard-hook teardown reuses the Tokio runtime handle retained by that owner;
+the former per-callback `#[tokio::main]` runtime is absent, and the synchronous bridge
+fails closed if called from a Tokio runtime thread. Teardown sends a distinct
+`AuthorizedPrivacyModeState` one-shot request; the CM fixes Remote as the type, validates
+the live token, and routes a token-free response only to a current registry entry retaining
+that same token. A validator-approved stale
+token therefore cannot cross a same-ID CM replacement. The old bare-ID
+`PrivacyModeState` request and multi-client broadcast helper are deleted. The existing
+unjoined, timeout-returning Windows asynchronous privacy activation thread remains a
+separate open lifetime issue:
+this callback correction does not prove that a timed-out activation cannot complete after
+its connection owner has retired.
 
 The Android CM/file bridge now runs as one retained child future of the exact network
 `Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
@@ -12618,9 +12651,13 @@ publication; stale callbacks are intended to be inert. The persistent foreground
 remains intentional, and cleanup correctness must not depend on task swipe or Force Stop.
 
 Four Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
-disconnected replacement, and generation-exhaustion no-commit. Two additional focused
-Rust tests drive the actual Android CM future through one-shot terminal completion and
-direct future cancellation after admission, and require exact single registry/UI removal.
+disconnected replacement, and generation-exhaustion no-commit. A fifth focused unit
+regression proves that a privacy resource rejects same-ID replacement with a different
+connection token. The callback regression first rejects a stale token at the registry
+egress edge, then drives the valid one-shot callback over the real framed runner. Two
+additional focused Rust tests drive the actual Android CM
+future through one-shot terminal completion and direct future cancellation after
+admission, and require exact single registry/UI removal.
 The shared runner retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
 `flutter/test/server_model_test.dart`, invoked by `scripts/dart-verify.sh`, executes

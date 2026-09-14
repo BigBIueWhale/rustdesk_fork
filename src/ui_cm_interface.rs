@@ -157,9 +157,10 @@ fn is_cm_egress_data(data: &Data) -> bool {
         | Data::CmErr(_)
         | Data::ChatMessage { .. }
         | Data::CmFileResponse(_)
-        | Data::PrivacyModeState(_)
         | Data::VoiceCallResponse(_)
         | Data::CloseVoiceCall(_) => true,
+        #[cfg(target_os = "windows")]
+        Data::PrivacyModeState(_) => true,
         #[cfg(target_os = "windows")]
         Data::ClipboardFile(_) => true,
         _ => false,
@@ -525,6 +526,8 @@ pub struct Client {
     #[serde(skip)]
     source_generation: u64,
     #[serde(skip)]
+    cm_auth_token: String,
+    #[serde(skip)]
     #[cfg(not(any(target_os = "ios")))]
     tx: CmEgressSender,
 }
@@ -538,6 +541,7 @@ struct CmClientOwner {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CmClientAdmissionError {
     InvalidConnectionId,
+    MissingAuthorityToken,
     GenerationExhausted,
     StaleSourceGeneration,
     ActiveIdCollision,
@@ -547,6 +551,7 @@ impl fmt::Display for CmClientAdmissionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let reason = match self {
             Self::InvalidConnectionId => "connection ID is not positive",
+            Self::MissingAuthorityToken => "connection authority token is empty",
             Self::GenerationExhausted => "client registry generation is exhausted",
             Self::StaleSourceGeneration => "client source generation is stale",
             Self::ActiveIdCollision => "connection ID is owned by an active peer generation",
@@ -569,6 +574,9 @@ impl CmClientRegistry {
     ) -> Result<(CmClientOwner, Option<Client>), CmClientAdmissionError> {
         if client.id <= 0 {
             return Err(CmClientAdmissionError::InvalidConnectionId);
+        }
+        if client.cm_auth_token.is_empty() {
+            return Err(CmClientAdmissionError::MissingAuthorityToken);
         }
         if let Some(current) = self.clients.get(&client.id) {
             if source_generation < current.source_generation {
@@ -647,7 +655,8 @@ fn cm_message_is_admissible_before_login(data: &Data) -> bool {
     match data {
         Data::Login { .. } | Data::Close | Data::Disconnected => true,
         #[cfg(target_os = "windows")]
-        Data::AuthorizedClipboardNonFile { .. } => true,
+        Data::AuthorizedClipboardNonFile { .. }
+        | Data::AuthorizedPrivacyModeState { .. } => true,
         _ => false,
     }
 }
@@ -767,24 +776,6 @@ fn cm_egress_sender(id: i32) -> Option<CmEgressSender> {
         .map(|client| client.tx.clone())
 }
 
-#[cfg(windows)]
-fn cm_egress_senders(id: i32) -> Vec<CmEgressSender> {
-    let clients = CLIENTS.read().unwrap();
-    if id == 0 {
-        clients
-            .clients
-            .values()
-            .map(|client| client.tx.clone())
-            .collect()
-    } else {
-        clients
-            .clients
-            .get(&id)
-            .map(|client| vec![client.tx.clone()])
-            .unwrap_or_default()
-    }
-}
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_exit_on_idle(exit_on_idle: bool) {
     EXIT_ON_IDLE.store(exit_on_idle, Ordering::SeqCst);
@@ -851,6 +842,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         audio: bool,
         file: bool,
         privacy_mode: bool,
+        cm_auth_token: String,
         #[cfg(not(any(target_os = "ios")))] tx: CmEgressSender,
     ) -> Result<CmClientOwner, CmClientAdmissionError> {
         let mut client = Client {
@@ -876,6 +868,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             in_voice_call: false,
             incoming_voice_call: false,
             source_generation: 0,
+            cm_auth_token,
         };
         let (owner, replaced) = CLIENTS
             .write()
@@ -1174,6 +1167,7 @@ where
                                         audio,
                                         file,
                                         privacy_mode,
+                                        cm_auth_token.clone(),
                                         self.tx.clone(),
                                     ) {
                                         Ok(owner) => owner,
@@ -1208,9 +1202,61 @@ where
                                     log::info!("cm ipc connection disconnect");
                                     break;
                                 }
-                                Data::PrivacyModeState((_id, _, _)) => {
-                                    #[cfg(windows)]
-                                    cm_inner_send(_id, data);
+                                #[cfg(target_os = "windows")]
+                                Data::AuthorizedPrivacyModeState {
+                                    id,
+                                    cm_auth_token,
+                                    state,
+                                    impl_key,
+                                } => {
+                                    if self.client_owner.is_some() {
+                                        log::warn!(
+                                            "Rejected auxiliary privacy callback on an activated CM stream"
+                                        );
+                                        break;
+                                    }
+                                    let connection_authority = match validate_connection_authority(
+                                        id,
+                                        ipc::CmAuthConnType::Remote,
+                                        cm_auth_token.clone(),
+                                    )
+                                    .await
+                                    {
+                                        Ok(authority) => authority,
+                                        Err(err) => {
+                                            log::warn!(
+                                                "Rejected CM privacy callback without server-validated authority: conn_id={}, err={}",
+                                                id,
+                                                err
+                                            );
+                                            ipc::CmConnectionAuthority::default()
+                                        }
+                                    };
+                                    if !connection_authority.valid {
+                                        log::warn!(
+                                            "Rejected CM privacy callback without matching live Remote connection: conn_id={}",
+                                            id
+                                        );
+                                        break;
+                                    }
+                                    if let Err(error) = send_privacy_mode_state_to_current_owner(
+                                        id,
+                                        &cm_auth_token,
+                                        state,
+                                        impl_key,
+                                    ) {
+                                        log::warn!(
+                                            "Rejected CM privacy callback without an exact current client owner: conn_id={}, err={}",
+                                            id,
+                                            error
+                                        );
+                                    }
+                                    break;
+                                }
+                                #[cfg(target_os = "windows")]
+                                Data::PrivacyModeState(_) => {
+                                    log::warn!("Rejected response-only CM privacy-state message");
+                                    break;
                                 }
                                 Data::ClickTime(ms) => {
                                     CLICK_TIME.store(ms, Ordering::SeqCst);
@@ -1758,6 +1804,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     audio,
                     file,
                     privacy_mode,
+                    cm_auth_token.clone(),
                     tx.clone(),
                 ) {
                     Ok(owner) => owner,
@@ -2868,16 +2915,26 @@ async fn remove_dir(
     )
 }
 
-#[cfg(windows)]
-fn cm_inner_send(id: i32, data: Data) {
-    let mut senders = cm_egress_senders(id);
-    let Some(last) = senders.pop() else {
-        return;
-    };
-    for tx in senders {
-        allow_err!(tx.send(data.clone()));
-    }
-    allow_err!(last.send(data));
+#[cfg(target_os = "windows")]
+fn send_privacy_mode_state_to_current_owner(
+    id: i32,
+    cm_auth_token: &str,
+    state: crate::privacy_mode::PrivacyModeState,
+    impl_key: String,
+) -> Result<(), CmEgressAdmissionError> {
+    let clients = CLIENTS.read().unwrap();
+    let client = clients
+        .clients
+        .get(&id)
+        .filter(|client| {
+            !cm_auth_token.is_empty()
+                && hbb_common::sodiumoxide::utils::memcmp(
+                    client.cm_auth_token.as_bytes(),
+                    cm_auth_token.as_bytes(),
+                )
+        })
+        .ok_or(CmEgressAdmissionError::ReceiverGone)?;
+    client.tx.send(Data::PrivacyModeState((state, impl_key)))
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
@@ -3166,6 +3223,102 @@ mod tests {
             *lock_cm_egress_test(&ui.removed),
             vec![(id, admitted_generation, true, true)]
         );
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_controlled_route_vacant(id);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11it_authorized_privacy_callback_targets_the_exact_activated_owner() {
+        let id = 2_000_100_006;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert_controlled_route_vacant(id);
+
+        let incumbent_ui = CmRouteTestUi::default();
+        let (incumbent_runner, mut incumbent_peer) = cm_route_test_runner(incumbent_ui.clone());
+        let incumbent_validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        incumbent_peer.send(&cm_test_login(id)).await.unwrap();
+        let incumbent_task = tokio::spawn(run_cm_route_test_runner(
+            incumbent_runner,
+            Arc::clone(&incumbent_validation_calls),
+            false,
+        ));
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while lock_cm_egress_test(&incumbent_ui.added).is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("incumbent CM owner must activate within the focused bound");
+
+        assert_eq!(
+            send_privacy_mode_state_to_current_owner(
+                id,
+                "stale-token",
+                crate::privacy_mode::PrivacyModeState::OffUnknown,
+                "stale-impl".to_owned(),
+            ),
+            Err(CmEgressAdmissionError::ReceiverGone)
+        );
+
+        let auxiliary_ui = CmRouteTestUi::default();
+        let (mut auxiliary_runner, mut auxiliary_peer) = cm_route_test_runner(auxiliary_ui.clone());
+        auxiliary_peer
+            .send(&Data::AuthorizedPrivacyModeState {
+                id,
+                cm_auth_token: "test-token".to_owned(),
+                state: crate::privacy_mode::PrivacyModeState::OffByPeer,
+                impl_key: "privacy-impl".to_owned(),
+            })
+            .await
+            .unwrap();
+        let auxiliary_validation_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed_calls = Arc::clone(&auxiliary_validation_calls);
+        let auxiliary_task = tokio::spawn(async move {
+            auxiliary_runner
+                .run_with_authority_validator(
+                    move |actual_id, conn_type, cm_auth_token| {
+                        observed_calls.fetch_add(1, Ordering::AcqRel);
+                        assert_eq!(actual_id, id);
+                        assert_eq!(conn_type, ipc::CmAuthConnType::Remote);
+                        assert_eq!(cm_auth_token, "test-token");
+                        let authority: ResultType<ipc::CmConnectionAuthority> =
+                            Ok(ipc::CmConnectionAuthority {
+                                valid: true,
+                                file: false,
+                                clipboard: false,
+                            });
+                        std::future::ready(authority)
+                    },
+                    || false,
+                )
+                .await;
+        });
+        join_cm_route_test_runner(auxiliary_task).await;
+
+        let callback = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            incumbent_peer.next(),
+        )
+        .await
+        .expect("privacy callback must be bounded")
+        .expect("privacy callback frame must be readable")
+        .expect("privacy callback frame must be valid");
+        assert!(matches!(
+            callback,
+            Data::PrivacyModeState((
+                crate::privacy_mode::PrivacyModeState::OffByPeer,
+                ref impl_key,
+            )) if impl_key == "privacy-impl"
+        ));
+        assert_eq!(auxiliary_validation_calls.load(Ordering::Acquire), 1);
+        assert!(lock_cm_egress_test(&auxiliary_ui.added).is_empty());
+        assert!(lock_cm_egress_test(&auxiliary_ui.removed).is_empty());
+        assert_eq!(lock_cm_egress_test(&incumbent_ui.added).len(), 1);
+
+        incumbent_peer.send(&Data::Close).await.unwrap();
+        join_cm_route_test_runner(incumbent_task).await;
+        assert_eq!(incumbent_validation_calls.load(Ordering::Acquire), 1);
         assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
         assert_controlled_route_vacant(id);
     }
@@ -4386,6 +4539,7 @@ mod tests {
             in_voice_call: false,
             incoming_voice_call: false,
             source_generation: 0,
+            cm_auth_token: "token".to_owned(),
             tx,
         };
         let client_json = serde_json::to_value(client).unwrap();
@@ -4410,6 +4564,7 @@ mod tests {
             );
         }
         assert!(!client_payload.contains_key("from_switch"));
+        assert!(!client_payload.contains_key("cm_auth_token"));
     }
 
     #[cfg(not(any(target_os = "ios")))]
@@ -4436,6 +4591,7 @@ mod tests {
             in_voice_call: false,
             incoming_voice_call: false,
             source_generation: 0,
+            cm_auth_token: format!("token-{peer_id}"),
             tx,
         }
     }
@@ -4486,6 +4642,12 @@ mod tests {
         assert!(matches!(
             registry.admit(&mut duplicate, 12),
             Err(CmClientAdmissionError::ActiveIdCollision)
+        ));
+        let mut missing_token = registry_test_client(8, "missing-token");
+        missing_token.cm_auth_token.clear();
+        assert!(matches!(
+            registry.admit(&mut missing_token, 12),
+            Err(CmClientAdmissionError::MissingAuthorityToken)
         ));
         assert_eq!(registry.generation, generation);
         assert!(registry.is_current(owner));

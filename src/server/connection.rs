@@ -5483,7 +5483,8 @@ impl Connection {
                                 }
                             }
                         }
-                        ipc::Data::PrivacyModeState((_, state, impl_key)) => {
+                        #[cfg(target_os = "windows")]
+                        ipc::Data::PrivacyModeState((state, impl_key)) => {
                             let msg_out = match state {
                                 privacy_mode::PrivacyModeState::OffSucceeded => {
                                     crate::common::make_privacy_mode_msg(
@@ -9714,7 +9715,12 @@ impl Connection {
                 }
             }
 
-            let turn_on_res = privacy_mode::turn_on_privacy(&impl_key, self.inner.id).await;
+            let turn_on_res = privacy_mode::turn_on_privacy(
+                &impl_key,
+                self.inner.id,
+                self.cm_auth_token.clone(),
+            )
+            .await;
             match turn_on_res {
                 Some(Ok(res)) => {
                     if res {

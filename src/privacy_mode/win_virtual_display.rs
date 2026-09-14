@@ -1,4 +1,7 @@
-use super::{PrivacyMode, PrivacyModeState, INVALID_PRIVACY_MODE_CONN_ID, NO_PHYSICAL_DISPLAYS};
+use super::{
+    PrivacyMode, PrivacyModeConnectionOwner, PrivacyModeState, INVALID_PRIVACY_MODE_CONN_ID,
+    NO_PHYSICAL_DISPLAYS,
+};
 use crate::virtual_display_manager::MonitorMode;
 use crate::{platform::windows::reg_display_settings, virtual_display_manager};
 use hbb_common::{allow_err, bail, log, ResultType};
@@ -37,7 +40,7 @@ struct Display {
 
 pub struct PrivacyModeImpl {
     impl_key: String,
-    conn_id: i32,
+    owner: Option<PrivacyModeConnectionOwner>,
     displays: Vec<Display>,
     virtual_displays: Vec<Display>,
     virtual_displays_added: Vec<u32>,
@@ -77,7 +80,7 @@ impl PrivacyModeImpl {
     pub fn new(impl_key: &str) -> Self {
         Self {
             impl_key: impl_key.to_owned(),
-            conn_id: INVALID_PRIVACY_MODE_CONN_ID,
+            owner: None,
             displays: Vec::new(),
             virtual_displays: Vec::new(),
             virtual_displays_added: Vec::new(),
@@ -453,15 +456,21 @@ impl PrivacyMode for PrivacyModeImpl {
     }
 
     fn clear(&mut self) {
-        allow_err!(self.turn_off_privacy(self.conn_id, None));
+        let conn_id = self
+            .owner
+            .as_ref()
+            .map(PrivacyModeConnectionOwner::conn_id)
+            .unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
+        allow_err!(self.turn_off_privacy(conn_id, None));
     }
 
-    fn turn_on_privacy(&mut self, conn_id: i32) -> ResultType<bool> {
+    fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
+        let conn_id = owner.conn_id();
         if !virtual_display_manager::is_virtual_display_supported() {
             bail!("idd_not_support_under_win10_2004_tip");
         }
 
-        if self.check_on_conn_id(conn_id)? {
+        if self.check_on_owner(&owner)? {
             log::debug!("Privacy mode of conn {} is already on", conn_id);
             return Ok(true);
         }
@@ -499,7 +508,7 @@ impl PrivacyMode for PrivacyModeImpl {
             reg_display_settings::diff_recent_connectivity(reg_connectivity_1, reg_connectivity_2)?;
 
         // OpenInputDesktop and block the others' input ?
-        guard.conn_id = conn_id;
+        guard.owner = Some(owner);
         guard.succeeded = true;
 
         allow_err!(super::win_input::hook());
@@ -525,24 +534,23 @@ impl PrivacyMode for PrivacyModeImpl {
             ));
         }
 
-        if self.conn_id != INVALID_PRIVACY_MODE_CONN_ID {
+        if let Some(owner) = self.owner.take() {
             if let Some(state) = state {
                 allow_err!(super::set_privacy_mode_state(
-                    conn_id,
+                    &owner,
                     state,
                     PRIVACY_MODE_IMPL.to_string(),
                     1_000
                 ));
             }
-            self.conn_id = INVALID_PRIVACY_MODE_CONN_ID.to_owned();
         }
 
         Ok(())
     }
 
     #[inline]
-    fn pre_conn_id(&self) -> i32 {
-        self.conn_id
+    fn connection_owner(&self) -> Option<&PrivacyModeConnectionOwner> {
+        self.owner.as_ref()
     }
 
     #[inline]
@@ -553,8 +561,12 @@ impl PrivacyMode for PrivacyModeImpl {
 
 impl Drop for PrivacyModeImpl {
     fn drop(&mut self) {
-        if self.conn_id != INVALID_PRIVACY_MODE_CONN_ID {
-            allow_err!(self.turn_off_privacy(self.conn_id, None));
+        if let Some(conn_id) = self
+            .owner
+            .as_ref()
+            .map(PrivacyModeConnectionOwner::conn_id)
+        {
+            allow_err!(self.turn_off_privacy(conn_id, None));
         }
     }
 }

@@ -7,7 +7,9 @@ mod ipc_fs;
 #[path = "ipc/password.rs"]
 pub(crate) mod password;
 
-use crate::{common::is_service_owned_server_process, privacy_mode::PrivacyModeState};
+use crate::common::is_service_owned_server_process;
+#[cfg(target_os = "windows")]
+use crate::privacy_mode::PrivacyModeState;
 use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
@@ -2630,7 +2632,15 @@ pub enum Data {
     },
     #[cfg(target_os = "windows")]
     ClipboardNonFile(Option<(String, Vec<ClipboardNonFile>)>),
-    PrivacyModeState((i32, PrivacyModeState, String)),
+    #[cfg(target_os = "windows")]
+    AuthorizedPrivacyModeState {
+        id: i32,
+        cm_auth_token: String,
+        state: PrivacyModeState,
+        impl_key: String,
+    },
+    #[cfg(target_os = "windows")]
+    PrivacyModeState((PrivacyModeState, String)),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Keyboard(DataKeyboard),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

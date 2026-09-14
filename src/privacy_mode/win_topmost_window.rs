@@ -1,4 +1,4 @@
-use super::{PrivacyMode, INVALID_PRIVACY_MODE_CONN_ID};
+use super::{PrivacyMode, PrivacyModeConnectionOwner, INVALID_PRIVACY_MODE_CONN_ID};
 use crate::{
     platform::windows::{get_current_process_session_id, get_user_token},
     privacy_mode::PrivacyModeState,
@@ -215,7 +215,7 @@ unsafe fn create_privacy_broker_job() -> ResultType<HANDLE> {
 
 pub struct PrivacyModeImpl {
     impl_key: String,
-    conn_id: i32,
+    owner: Option<PrivacyModeConnectionOwner>,
     handlers: WindowHandlers,
 }
 
@@ -229,11 +229,17 @@ impl PrivacyMode for PrivacyModeImpl {
     }
 
     fn clear(&mut self) {
-        allow_err!(self.turn_off_privacy(self.conn_id, None));
+        let conn_id = self
+            .owner
+            .as_ref()
+            .map(PrivacyModeConnectionOwner::conn_id)
+            .unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
+        allow_err!(self.turn_off_privacy(conn_id, None));
     }
 
-    fn turn_on_privacy(&mut self, conn_id: i32) -> ResultType<bool> {
-        if self.check_on_conn_id(conn_id)? {
+    fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
+        let conn_id = owner.conn_id();
+        if self.check_on_owner(&owner)? {
             log::debug!("Privacy mode of conn {} is already on", conn_id);
             return Ok(true);
         }
@@ -260,7 +266,7 @@ impl PrivacyMode for PrivacyModeImpl {
         unsafe {
             ShowWindow(hwnd as _, SW_SHOW);
         }
-        self.conn_id = conn_id;
+        self.owner = Some(owner);
         Ok(true)
     }
 
@@ -284,24 +290,23 @@ impl PrivacyMode for PrivacyModeImpl {
             }
         }
 
-        if self.conn_id != INVALID_PRIVACY_MODE_CONN_ID {
+        if let Some(owner) = self.owner.take() {
             if let Some(state) = state {
                 allow_err!(super::set_privacy_mode_state(
-                    conn_id,
+                    &owner,
                     state,
                     PRIVACY_MODE_IMPL.to_string(),
                     1_000
                 ));
             }
-            self.conn_id = INVALID_PRIVACY_MODE_CONN_ID.to_owned();
         }
 
         Ok(())
     }
 
     #[inline]
-    fn pre_conn_id(&self) -> i32 {
-        self.conn_id
+    fn connection_owner(&self) -> Option<&PrivacyModeConnectionOwner> {
+        self.owner.as_ref()
     }
 
     #[inline]
@@ -314,7 +319,7 @@ impl PrivacyModeImpl {
     pub fn new(impl_key: &str) -> Self {
         Self {
             impl_key: impl_key.to_owned(),
-            conn_id: INVALID_PRIVACY_MODE_CONN_ID,
+            owner: None,
             handlers: WindowHandlers {
                 hjob: 0,
                 hthread: 0,
@@ -477,8 +482,12 @@ impl PrivacyModeImpl {
 
 impl Drop for PrivacyModeImpl {
     fn drop(&mut self) {
-        if self.conn_id != INVALID_PRIVACY_MODE_CONN_ID {
-            allow_err!(self.turn_off_privacy(self.conn_id, None));
+        if let Some(conn_id) = self
+            .owner
+            .as_ref()
+            .map(PrivacyModeConnectionOwner::conn_id)
+        {
+            allow_err!(self.turn_off_privacy(conn_id, None));
         }
     }
 }

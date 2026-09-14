@@ -1,4 +1,4 @@
-use super::{PrivacyMode, PrivacyModeState};
+use super::{PrivacyMode, PrivacyModeConnectionOwner, PrivacyModeState};
 use hbb_common::{anyhow::anyhow, ResultType};
 
 extern "C" {
@@ -9,14 +9,14 @@ pub const PRIVACY_MODE_IMPL: &str = "privacy_mode_impl_macos";
 
 pub struct PrivacyModeImpl {
     impl_key: String,
-    conn_id: i32,
+    owner: Option<PrivacyModeConnectionOwner>,
 }
 
 impl PrivacyModeImpl {
     pub fn new(impl_key: &str) -> Self {
         Self {
             impl_key: impl_key.to_owned(),
-            conn_id: 0,
+            owner: None,
         }
     }
 }
@@ -34,18 +34,18 @@ impl PrivacyMode for PrivacyModeImpl {
         unsafe {
             MacSetPrivacyMode(false);
         }
-        self.conn_id = 0;
+        self.owner = None;
     }
 
-    fn turn_on_privacy(&mut self, conn_id: i32) -> ResultType<bool> {
-        if self.check_on_conn_id(conn_id)? {
+    fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool> {
+        if self.check_on_owner(&owner)? {
             return Ok(true);
         }
         let success = unsafe { MacSetPrivacyMode(true) };
         if !success {
             return Err(anyhow!("Failed to turn on privacy mode"));
         }
-        self.conn_id = conn_id;
+        self.owner = Some(owner);
         Ok(true)
     }
 
@@ -63,12 +63,12 @@ impl PrivacyMode for PrivacyModeImpl {
         if !success {
             return Err(anyhow!("Failed to turn off privacy mode"));
         }
-        self.conn_id = 0;
+        self.owner = None;
         Ok(())
     }
 
-    fn pre_conn_id(&self) -> i32 {
-        self.conn_id
+    fn connection_owner(&self) -> Option<&PrivacyModeConnectionOwner> {
+        self.owner.as_ref()
     }
 
     fn get_impl_key(&self) -> &str {
@@ -78,7 +78,7 @@ impl PrivacyMode for PrivacyModeImpl {
 
 impl Drop for PrivacyModeImpl {
     fn drop(&mut self) {
-        // Use the same cleanup logic as other code paths to keep conn_id consistent
+        // Use the same cleanup logic as other code paths to keep owner state consistent
         // and ensure all cleanup is centralized in one place.
         self.clear();
     }

@@ -44,34 +44,83 @@ pub enum PrivacyModeState {
     OffUnknown,
 }
 
+pub struct PrivacyModeConnectionOwner {
+    conn_id: i32,
+    cm_auth_token: String,
+    #[cfg(windows)]
+    runtime: tokio::runtime::Handle,
+}
+
+impl PrivacyModeConnectionOwner {
+    pub fn new(conn_id: i32, cm_auth_token: String) -> ResultType<Self> {
+        if conn_id <= 0 {
+            bail!("privacy mode requires a positive connection ID");
+        }
+        if cm_auth_token.is_empty() {
+            bail!("privacy mode requires an exact connection authority token");
+        }
+        #[cfg(windows)]
+        let runtime = tokio::runtime::Handle::try_current()
+            .map_err(|_| anyhow!("privacy mode requires the owning Tokio runtime"))?;
+        Ok(Self {
+            conn_id,
+            cm_auth_token,
+            #[cfg(windows)]
+            runtime,
+        })
+    }
+
+    pub fn conn_id(&self) -> i32 {
+        self.conn_id
+    }
+
+    fn matches(&self, other: &Self) -> bool {
+        self.conn_id == other.conn_id
+            && hbb_common::sodiumoxide::utils::memcmp(
+                self.cm_auth_token.as_bytes(),
+                other.cm_auth_token.as_bytes(),
+            )
+    }
+
+    #[cfg(windows)]
+    fn cm_auth_token(&self) -> &str {
+        &self.cm_auth_token
+    }
+
+    #[cfg(windows)]
+    fn runtime(&self) -> &tokio::runtime::Handle {
+        &self.runtime
+    }
+}
+
 pub trait PrivacyMode: Sync + Send {
     fn is_async_privacy_mode(&self) -> bool;
 
     fn init(&self) -> ResultType<()>;
     fn clear(&mut self);
-    fn turn_on_privacy(&mut self, conn_id: i32) -> ResultType<bool>;
+    fn turn_on_privacy(&mut self, owner: PrivacyModeConnectionOwner) -> ResultType<bool>;
     fn turn_off_privacy(&mut self, conn_id: i32, state: Option<PrivacyModeState>)
         -> ResultType<()>;
 
-    fn pre_conn_id(&self) -> i32;
+    fn connection_owner(&self) -> Option<&PrivacyModeConnectionOwner>;
 
     fn get_impl_key(&self) -> &str;
 
     #[inline]
-    fn check_on_conn_id(&self, conn_id: i32) -> ResultType<bool> {
-        let pre_conn_id = self.pre_conn_id();
-        if pre_conn_id == conn_id {
-            return Ok(true);
+    fn check_on_owner(&self, owner: &PrivacyModeConnectionOwner) -> ResultType<bool> {
+        match self.connection_owner() {
+            Some(current) if current.matches(owner) => Ok(true),
+            Some(_) => bail!(OCCUPIED),
+            None => Ok(false),
         }
-        if pre_conn_id != INVALID_PRIVACY_MODE_CONN_ID {
-            bail!(OCCUPIED);
-        }
-        Ok(false)
     }
 
     #[inline]
     fn check_off_conn_id(&self, conn_id: i32) -> ResultType<()> {
-        let pre_conn_id = self.pre_conn_id();
+        let pre_conn_id = self
+            .connection_owner()
+            .map(PrivacyModeConnectionOwner::conn_id)
+            .unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
         if pre_conn_id != INVALID_PRIVACY_MODE_CONN_ID
             && conn_id != INVALID_PRIVACY_MODE_CONN_ID
             && pre_conn_id != conn_id
@@ -202,11 +251,19 @@ fn get_supported_impl(impl_key: &str) -> String {
     cur_impl
 }
 
-pub async fn turn_on_privacy(impl_key: &str, conn_id: i32) -> Option<ResultType<bool>> {
+pub async fn turn_on_privacy(
+    impl_key: &str,
+    conn_id: i32,
+    cm_auth_token: String,
+) -> Option<ResultType<bool>> {
+    let owner = match PrivacyModeConnectionOwner::new(conn_id, cm_auth_token) {
+        Ok(owner) => owner,
+        Err(error) => return Some(Err(error)),
+    };
     if is_async_privacy_mode() {
-        turn_on_privacy_async(impl_key.to_string(), conn_id).await
+        turn_on_privacy_async(impl_key.to_string(), owner).await
     } else {
-        turn_on_privacy_sync(impl_key, conn_id)
+        turn_on_privacy_sync(impl_key, owner)
     }
 }
 
@@ -220,10 +277,13 @@ fn is_async_privacy_mode() -> bool {
 }
 
 #[inline]
-async fn turn_on_privacy_async(impl_key: String, conn_id: i32) -> Option<ResultType<bool>> {
+async fn turn_on_privacy_async(
+    impl_key: String,
+    owner: PrivacyModeConnectionOwner,
+) -> Option<ResultType<bool>> {
     let (tx, rx) = oneshot::channel();
     std::thread::spawn(move || {
-        let res = turn_on_privacy_sync(&impl_key, conn_id);
+        let res = turn_on_privacy_sync(&impl_key, owner);
         let _ = tx.send(res);
     });
     // Wait at most 7.5 seconds for the result.
@@ -238,7 +298,10 @@ async fn turn_on_privacy_async(impl_key: String, conn_id: i32) -> Option<ResultT
     }
 }
 
-fn turn_on_privacy_sync(impl_key: &str, conn_id: i32) -> Option<ResultType<bool>> {
+fn turn_on_privacy_sync(
+    impl_key: &str,
+    owner: PrivacyModeConnectionOwner,
+) -> Option<ResultType<bool>> {
     // Check if privacy mode is already on or occupied by another one
     let mut privacy_mode_lock = PRIVACY_MODE.lock().unwrap();
 
@@ -248,8 +311,8 @@ fn turn_on_privacy_sync(impl_key: &str, conn_id: i32) -> Option<ResultType<bool>
     let mut cur_impl_key = "".to_string();
     if let Some(privacy_mode) = privacy_mode_lock.as_ref() {
         cur_impl_key = privacy_mode.get_impl_key().to_string();
-        let check_on_conn_id = privacy_mode.check_on_conn_id(conn_id);
-        match check_on_conn_id.as_ref() {
+        let check_on_owner = privacy_mode.check_on_owner(&owner);
+        match check_on_owner.as_ref() {
             Ok(true) => {
                 if cur_impl_key == impl_key {
                     // Same peer, same implementation.
@@ -258,7 +321,7 @@ fn turn_on_privacy_sync(impl_key: &str, conn_id: i32) -> Option<ResultType<bool>
                     // Same peer, switch to new implementation.
                 }
             }
-            Err(_) => return Some(check_on_conn_id),
+            Err(_) => return Some(check_on_owner),
             _ => {}
         }
     }
@@ -280,7 +343,7 @@ fn turn_on_privacy_sync(impl_key: &str, conn_id: i32) -> Option<ResultType<bool>
     }
 
     // turn on privacy mode
-    Some(privacy_mode_lock.as_mut()?.turn_on_privacy(conn_id))
+    Some(privacy_mode_lock.as_mut()?.turn_on_privacy(owner))
 }
 
 #[inline]
@@ -294,28 +357,34 @@ pub fn turn_off_privacy(conn_id: i32, state: Option<PrivacyModeState>) -> Option
     )
 }
 
-#[inline]
-pub fn check_on_conn_id(conn_id: i32) -> Option<ResultType<bool>> {
-    Some(
-        PRIVACY_MODE
-            .lock()
-            .unwrap()
-            .as_ref()?
-            .check_on_conn_id(conn_id),
-    )
-}
-
 #[cfg(windows)]
-#[tokio::main(flavor = "current_thread")]
-async fn set_privacy_mode_state(
-    conn_id: i32,
+fn set_privacy_mode_state(
+    owner: &PrivacyModeConnectionOwner,
     state: PrivacyModeState,
     impl_key: String,
     ms_timeout: u64,
 ) -> ResultType<()> {
-    let mut c = crate::server::connect_authenticated_cm(ms_timeout, "--cm").await?;
-    c.send(&Data::PrivacyModeState((conn_id, state, impl_key)))
+    // The only state-bearing caller is the low-level keyboard hook's dedicated
+    // native thread. Reuse the owning server runtime instead of nesting one here.
+    if tokio::runtime::Handle::try_current().is_ok() {
+        bail!("privacy callback must run on its dedicated native hook thread");
+    }
+    let conn_id = owner.conn_id();
+    let cm_auth_token = owner.cm_auth_token().to_owned();
+    owner.runtime().block_on(async move {
+        tokio::time::timeout(std::time::Duration::from_millis(ms_timeout), async move {
+            let mut c = crate::server::connect_authenticated_cm(ms_timeout, "--cm").await?;
+            c.send(&Data::AuthorizedPrivacyModeState {
+                id: conn_id,
+                cm_auth_token,
+                state,
+                impl_key,
+            })
+            .await
+        })
         .await
+        .map_err(|_| anyhow!("privacy callback exceeded its bounded deadline"))?
+    })
 }
 
 pub fn get_supported_privacy_mode_impl() -> Vec<(&'static str, &'static str)> {
@@ -411,7 +480,8 @@ pub fn get_privacy_mode_conn_id() -> Option<i32> {
         .lock()
         .unwrap()
         .as_ref()
-        .map(|pm| pm.pre_conn_id())
+        .and_then(|pm| pm.connection_owner())
+        .map(PrivacyModeConnectionOwner::conn_id)
 }
 
 #[inline]
@@ -420,6 +490,25 @@ pub fn is_in_privacy_mode() -> bool {
         .lock()
         .unwrap()
         .as_ref()
-        .map(|pm| pm.pre_conn_id() != INVALID_PRIVACY_MODE_CONN_ID)
+        .map(|pm| pm.connection_owner().is_some())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PrivacyModeConnectionOwner;
+    use hbb_common::tokio;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_privacy_resource_owner_distinguishes_same_id_token_replacement() {
+        let incumbent = PrivacyModeConnectionOwner::new(71, "incumbent-token".to_owned()).unwrap();
+        let same = PrivacyModeConnectionOwner::new(71, "incumbent-token".to_owned()).unwrap();
+        let replacement =
+            PrivacyModeConnectionOwner::new(71, "replacement-token".to_owned()).unwrap();
+
+        assert!(incumbent.matches(&same));
+        assert!(!incumbent.matches(&replacement));
+        assert!(PrivacyModeConnectionOwner::new(0, "token".to_owned()).is_err());
+        assert!(PrivacyModeConnectionOwner::new(71, String::new()).is_err());
+    }
 }

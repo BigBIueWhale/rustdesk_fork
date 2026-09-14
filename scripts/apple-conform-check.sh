@@ -4183,54 +4183,6 @@ else
   note "ok  R-S11e-34 every production macOS child image is stdio-only; the unused dependency-owned PATH launch is absent"
 fi
 
-echo "== (2b-iv-a-1aa) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="
-r_s11e179=
-lock_dispatch=$(awk '/fn lock_screen_with_key_handler\(/,/#\[cfg\(any\(target_os = "linux", target_os = "macos"\)\)\]/' "$REPO/src/server/input_service.rs")
-windows_lock_workstation=$(awk '/pub fn lock_workstation\(\)/,/^}/' "$REPO/src/platform/windows.rs")
-for lock_binding in \
-  'if #[cfg(target_os = "linux")]' \
-  'rdev::linux_keycode_from_key(RdevKey::KeyL)' \
-  'dispatch_physical_lock_chord(&mut key_handler, &[ControlKey::Meta], code as u32)?;' \
-  'else if #[cfg(target_os = "macos")]' \
-  'rdev::macos_keycode_from_key(RdevKey::KeyQ)' \
-  '&[ControlKey::Meta, ControlKey::Control]' \
-  'else if #[cfg(target_os = "windows")]' \
-  'crate::platform::lock_workstation()?;'; do
-  grep -qF "$lock_binding" <<<"$lock_dispatch" \
-    || r_s11e179="$r_s11e179 platform-lock-dispatch-binding-missing"
-done
-if grep -qF 'crate::platform::lock_screen' "$REPO/src/server/input_service.rs"; then
-  r_s11e179="$r_s11e179 generic-platform-lock-abstraction-present"
-fi
-if grep -qE 'XDG_SCREENSAVER_PATHS|xdg_screensaver|xdg-screensaver|pub fn lock_screen\(' "$REPO/src/platform/linux.rs"; then
-  r_s11e179="$r_s11e179 dormant-linux-lock-helper-present"
-fi
-if grep -qE 'CGSession|pub fn lock_screen\(' "$REPO/src/platform/macos.rs"; then
-  r_s11e179="$r_s11e179 dormant-macos-lock-helper-present"
-fi
-for windows_binding in \
-  'pub fn lock_workstation() -> ResultType<()> {' \
-  'pub fn LockWorkStation() -> BOOL;' \
-  'if LockWorkStation() == FALSE {' \
-  'let error = GetLastError();' \
-  'bail!("LockWorkStation failed with Windows error {error}");' \
-  'Ok(())'; do
-  grep -qF "$windows_binding" <<<"$windows_lock_workstation" \
-    || r_s11e179="$r_s11e179 windows-native-lock-result-binding-missing"
-done
-grep -qF '<span class="id">R-S11er</span>' "$REPO/requirements.html" \
-  || r_s11e179="$r_s11e179 normative-requirement-missing"
-grep -qF '<tr><td>300</td>' "$REPO/requirements.html" \
-  || r_s11e179="$r_s11e179 appendix-row-missing"
-grep -qF 'R-S11er/R-S11e-179 desktop lock-screen mechanism authority' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e179="$r_s11e179 hardening-ledger-missing"
-if [ -n "$r_s11e179" ]; then
-  echo "  FAIL R-S11e-179 desktop lock-screen mechanism authority:$r_s11e179"
-  rc=1
-else
-  note "ok  R-S11e-179 macOS retains only the owned Control-Command-Q lock path; dormant CGSession launch is absent"
-fi
-
 echo "== (2b-iv-a-1a) macOS administrator-script environment finality (R-S11az/R-S11e-66) =="
 r_s11e66=
 macos_privileged_policy=$(awk '/fn configure_macos_privileged_script_command/,/fn macos_privileged_service_script_command/' "$REPO/src/platform/macos.rs")

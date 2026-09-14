@@ -8283,14 +8283,6 @@ for linux_behavior_binding in \
   grep -qF "$linux_behavior_binding" src/server/input_service.rs \
     || r_s11e179="$r_s11e179 linux-lock-chord-behavior-binding-missing"
 done
-grep -qF 'desktop lock-screen mechanism authority (R-S11er/R-S11e-179)' scripts/apple-conform-check.sh \
-  || r_s11e179="$r_s11e179 apple-source-conformance-gate-missing"
-grep -qF '<span class="id">R-S11er</span>' requirements.html \
-  || r_s11e179="$r_s11e179 normative-requirement-missing"
-grep -qF '<tr><td>300</td>' requirements.html \
-  || r_s11e179="$r_s11e179 appendix-row-missing"
-grep -qF 'R-S11er/R-S11e-179 desktop lock-screen mechanism authority' HARDENING_STATUS.md \
-  || r_s11e179="$r_s11e179 hardening-ledger-missing"
 if [ -n "$r_s11e179" ]; then
   echo "  FAIL R-S11e-179 desktop lock-screen mechanism authority:$r_s11e179"
   rc=1

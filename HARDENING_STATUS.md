@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-8ed16696dbd4ef5de6caed796654294aa5b65710611667e783b210f8ec201d34  requirements.html
+ab041240b6f6f880cd5974e9b4937b99033ef1a4b162519ab11e05e644df1f9f  requirements.html
 ```
 
 ## Current Verdict
@@ -511,6 +511,23 @@ closure are absent, so the retained blocked-worker Rust behaviors could not be h
 documentation/verifier cleanup; exact current APK lifecycle, JNI latency, presentation, bounded-resource, cold
 artifact, independent-reproduction, and external-review evidence remains open. Including this record, the live
 ledger is 1,034,498 bytes, or 344,833 conservative tokens by the documented method.
+
+R-S11er now states the timeless connection-owned desktop lock-request contract and installed native acceptance
+criteria instead of preserving its historical reachability correction, implementation narrative, verifier
+inventory, and current evidence status. Appendix C #300 is deleted because it duplicated that requirement and
+introduced no independent risk or acceptance criterion. The shared focused gate retains the executable production
+Linux dispatcher regression and the direct source checks for the three platform mechanisms, helper/fallback
+absence, and Windows failure propagation. Its four documentation/cross-gate oracles are deleted. The duplicate
+48-line Apple source-string gate and the 141-line workspace verifier of product source, other verifiers,
+requirements wording, Appendix row, and ledger label are deleted outright. No product source or native target
+changed or ran in this cleanup. The pinned Rust 1.75 development image and its offline Cargo/generated-bridge
+closure are absent, so the retained Rust regression was not re-executed through an unreviewed fetch or rebuild.
+Exact installed Linux, Windows, and macOS special-key and lock-on-disconnect
+behavior, refusal/failure cleanup, source-bound packages, cold artifacts, independent reproduction, and external
+review remain open. `requirements.html` falls from 2,171,437 to 2,168,163 bytes, `scripts/verify.sh` from
+1,295,780 to 1,295,246 bytes, the Apple checker from 402,942 to 400,512 bytes, and the workspace verifier from
+1,876,135 to 1,870,945 bytes. Including this record, the live ledger is 1,036,257 bytes, or 345,419
+conservative tokens by the documented method.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -1108,8 +1125,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   thread; one bounded process-lifetime coordinator owns the transferred tree, and replacement admission waits
   for its exact drain ticket off-thread. APK/device lifecycle behavior remains open.
 - **R-S11er/R-S11e-179 desktop lock-screen mechanism authority** — Source closed. Linux and macOS use their one
-  connection-owned physical key chord; the dormant external helpers are deleted. Windows uses the fallible
-  native `LockWorkStation` request. Native Windows/macOS outcome evidence remains open.
+  connection-owned physical key chord; the external-helper and generic-fallback surfaces are absent. Windows uses
+  the fallible native `LockWorkStation` request and treats success only as initiation. Installed Linux, Windows,
+  and macOS outcome, refusal, reconnect, and cleanup evidence remains open.
 - **R-S11es/R-S11e-180 Windows viewer keyboard interception authority** — Source closed. The dormant Sciter
   low-level hook, HWND relay, process-global Win-key state, FFI, and Flutter calls are absent. Viewer interception
   is owned by the existing rdev loop and exact window/session UUID; native Windows behavior remains open.

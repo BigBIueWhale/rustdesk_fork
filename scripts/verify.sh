@@ -14213,7 +14213,7 @@ grep -q 'setrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || 
 grep -q 'getrlimit(libc::RLIMIT_NOFILE' src/direct_service.rs                || r_t1_missing="$r_t1_missing self:rlimit-hard-preserved"
 grep -q 'self_enforce_resource_limits();' src/direct_service.rs              || r_t1_missing="$r_t1_missing self:rlimit-called"
 grep -q 'const MAX_AUTHED_SESSIONS' src/server/connection.rs                 || r_t1_missing="$r_t1_missing self:session-cap-const"
-grep -q 'AUTHED_CONNS.lock().unwrap().len() >= MAX_AUTHED_SESSIONS' src/server/connection.rs || r_t1_missing="$r_t1_missing self:session-cap-check"
+grep -q 'authenticated_connection_reservation_count() >= MAX_AUTHED_SESSIONS' src/server/connection.rs || r_t1_missing="$r_t1_missing self:session-cap-check"
 # R-D3a: the unit MUST NOT actively set NoNewPrivileges — it would break the owner's sudo in the
 # pinned-ON full-access terminal (R-F1) and the --service sudo -u drop. The launcher provides the
 # privilege sandbox WITHOUT this owner-breaking knob; the binary never self-applies one. (A comment
@@ -14698,12 +14698,25 @@ grep -q '(is_remote_input || is_remote_control) && !self.is_authed_remote_conn()
 ctrl=$(awk '/let is_remote_control = match/,/_ => false,/' "$conn")
 echo "$ctrl" | grep -q 'RestartRemoteDevice' || rs19="$rs19 restart-not-remote-only"
 echo "$ctrl" | grep -q 'TogglePrivacyMode'   || rs19="$rs19 privacy-toggle-not-remote-only"
+echo "$ctrl" | grep -q 'ToggleVirtualDisplay' || rs19="$rs19 virtual-display-not-remote-only"
+echo "$ctrl" | grep -qF 'misc::Union::ChangeResolution(_)' || rs19="$rs19 resolution-not-remote-only"
+echo "$ctrl" | grep -qF 'misc::Union::ChangeDisplayResolution(_)' || rs19="$rs19 display-resolution-not-remote-only"
 capset=$(awk '/let is_desktop_capture = match/,/_ => false,/' "$conn")
 if echo "$capset" | grep -q 'RestartRemoteDevice'; then rs19="$rs19 restart-still-in-capture"; fi
 if echo "$capset" | grep -q 'TogglePrivacyMode';   then rs19="$rs19 privacy-still-in-capture"; fi
+if echo "$capset" | grep -q 'ToggleVirtualDisplay'; then rs19="$rs19 virtual-display-still-in-capture"; fi
+if echo "$capset" | grep -qF 'misc::Union::ChangeResolution(_)'; then rs19="$rs19 resolution-still-in-capture"; fi
+if echo "$capset" | grep -qF 'misc::Union::ChangeDisplayResolution(_)'; then rs19="$rs19 display-resolution-still-in-capture"; fi
+# These mutate only an existing video user's bounded QoS state, but FileTransfer/Terminal/PortForward
+# sessions are not video users and must not reach even an inert per-ID mutation sink.
+echo "$capset" | grep -qF 'misc::Union::AutoAdjustFps(_)' || rs19="$rs19 auto-fps-not-video-gated"
+echo "$capset" | grep -qF 'misc::Union::ClientRecordStatus(_)' || rs19="$rs19 record-status-not-video-gated"
 # MessageQuery answers make_display_changed_msg (monitor geometry/resolution), so it MUST sit in the
 # Remote-or-ViewCamera capture allowlist — else a FileTransfer/Terminal/PortForward peer reads display metadata.
 echo "$capset" | grep -q 'MessageQuery'            || rs19="$rs19 messagequery-not-capture-gated"
+grep -qF 'if self.is_authed_remote_conn() && s.width != 0 && s.height != 0 {' "$conn" || rs19="$rs19 switch-display-resolution-not-remote-gated"
+change_resolution_body=$(awk '/fn change_resolution\(/,/^    }/' "$conn")
+echo "$change_resolution_body" | grep -qF 'if self.is_authed_remote_conn() && self.keyboard {' || rs19="$rs19 resolution-sink-not-remote-gated"
 # (c) flag-gated sinks key on AuthConnType / exact voice-call input ownership
 grep -q 'self.clipboard && self.is_authed_remote_conn()' "$conn"       || rs19="$rs19 clipboard-text-not-remote-gated"
 grep -q '!self.disable_audio && self.voice_call_input.is_some()' "$conn" || rs19="$rs19 audio-not-voice-gated"

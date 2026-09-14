@@ -4388,12 +4388,7 @@ impl WindowsServiceControlRequester {
     pub(crate) fn count_port_forward_sessions(self, stream: &Connection) -> ResultType<usize> {
         self.requester
             .revalidate(stream, "Windows service session-count requester")?;
-        Ok(crate::server::AUTHED_CONNS
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|connection| connection.conn_type == crate::server::AuthConnType::PortForward)
-            .count())
+        Ok(crate::server::live_port_forward_connection_count())
     }
 
     pub(crate) fn prepare_shutdown(

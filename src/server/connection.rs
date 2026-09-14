@@ -56,7 +56,7 @@ use scrap::android::{
 use scrap::camera;
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
 use std::sync::{atomic::AtomicUsize, mpsc as std_mpsc};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -64,7 +64,7 @@ use std::{
     num::NonZeroI64,
     path::PathBuf,
     sync::{
-        atomic::Ordering,
+        atomic::{AtomicU64, Ordering},
         Condvar, Mutex as StdMutex,
     },
 };
@@ -492,6 +492,670 @@ async fn enqueue_controlled_file_transfer_step(
 // systemd cgroup. A single owner never has this many concurrent sessions.
 const MAX_AUTHED_SESSIONS: usize = 16;
 
+static NEXT_AUTHED_CONN_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+fn next_authed_conn_generation() -> ResultType<u64> {
+    NEXT_AUTHED_CONN_GENERATION
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |generation| {
+            generation.checked_add(1)
+        })
+        .map_err(|_| {
+            hbb_common::anyhow::anyhow!("authenticated connection generation exhausted")
+        })
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FinalRemoteCleanupClaim {
+    revision: u64,
+    retry: bool,
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+#[derive(Debug, Eq, PartialEq)]
+enum FinalRemoteAdmissionDecision {
+    Admit(u64),
+    StartRetry(u64),
+    Wait { retry_revision: Option<u64> },
+    Failed(String),
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+struct FinalRemoteCleanupState {
+    next_lease: u64,
+    revision: u64,
+    active: HashSet<u64>,
+    pending: Option<FinalRemoteCleanupClaim>,
+    running: Option<FinalRemoteCleanupClaim>,
+    failure: Option<String>,
+    successful_retry: Option<u64>,
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+impl Default for FinalRemoteCleanupState {
+    fn default() -> Self {
+        Self {
+            next_lease: 1,
+            revision: 0,
+            active: HashSet::new(),
+            pending: None,
+            running: None,
+            failure: None,
+            successful_retry: None,
+        }
+    }
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+impl FinalRemoteCleanupState {
+    fn begin_admission(&mut self, joined_retry: Option<u64>) -> FinalRemoteAdmissionDecision {
+        if let Some(running) = self.running {
+            let retry_revision = running.retry.then_some(running.revision);
+            if joined_retry.is_some() && joined_retry != retry_revision {
+                return FinalRemoteAdmissionDecision::Failed(
+                    self.failure.clone().unwrap_or_else(|| {
+                        "the admission's final-Remote cleanup retry did not succeed".to_owned()
+                    }),
+                );
+            }
+            return FinalRemoteAdmissionDecision::Wait { retry_revision };
+        }
+        if let Some(pending) = self.pending {
+            if pending.retry {
+                if joined_retry.is_some() && joined_retry != Some(pending.revision) {
+                    return FinalRemoteAdmissionDecision::Failed(
+                        self.failure.clone().unwrap_or_else(|| {
+                            "the admission's final-Remote cleanup retry did not succeed".to_owned()
+                        }),
+                    );
+                }
+                return FinalRemoteAdmissionDecision::Wait {
+                    retry_revision: Some(pending.revision),
+                };
+            }
+        }
+        if let Some(error) = self.failure.as_ref() {
+            if joined_retry.is_some() || !self.active.is_empty() {
+                return FinalRemoteAdmissionDecision::Failed(error.clone());
+            }
+            let Some(next_revision) = self.revision.checked_add(1) else {
+                let error = "final-Remote cleanup revision exhausted before retry".to_owned();
+                self.failure = Some(error.clone());
+                return FinalRemoteAdmissionDecision::Failed(error);
+            };
+            self.revision = next_revision;
+            let claim = FinalRemoteCleanupClaim {
+                revision: self.revision,
+                retry: true,
+            };
+            self.pending = Some(claim);
+            return FinalRemoteAdmissionDecision::StartRetry(claim.revision);
+        }
+        if let Some(joined_retry) = joined_retry {
+            if self.successful_retry != Some(joined_retry) {
+                return FinalRemoteAdmissionDecision::Failed(
+                    "the admission's final-Remote cleanup retry was superseded".to_owned(),
+                );
+            }
+        }
+        if self.active.len() >= MAX_AUTHED_SESSIONS {
+            return FinalRemoteAdmissionDecision::Failed(
+                "too many active authenticated Remote sessions".to_owned(),
+            );
+        }
+
+        // A fresh Remote may supersede a final-exit cleanup that has not started. Once the worker
+        // claims it, admission waits for physical finality instead of racing display state.
+        self.pending = None;
+        let Some(next_lease) = self.next_lease.checked_add(1) else {
+            let error = "final-Remote cleanup lease generation exhausted".to_owned();
+            self.failure = Some(error.clone());
+            return FinalRemoteAdmissionDecision::Failed(error);
+        };
+        let Some(next_revision) = self.revision.checked_add(1) else {
+            let error = "final-Remote cleanup revision exhausted".to_owned();
+            self.failure = Some(error.clone());
+            return FinalRemoteAdmissionDecision::Failed(error);
+        };
+        let lease = self.next_lease;
+        self.next_lease = next_lease;
+        self.revision = next_revision;
+        if !self.active.insert(lease) {
+            let error = "final-Remote cleanup lease collision".to_owned();
+            self.failure = Some(error.clone());
+            return FinalRemoteAdmissionDecision::Failed(error);
+        }
+        FinalRemoteAdmissionDecision::Admit(lease)
+    }
+
+    fn retire(&mut self, lease: u64) -> Result<Option<u64>, String> {
+        if !self.active.remove(&lease) {
+            return Ok(None);
+        }
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| "final-Remote cleanup revision exhausted during retirement".to_owned())?;
+        if self.active.is_empty() {
+            self.successful_retry = None;
+            let claim = FinalRemoteCleanupClaim {
+                revision: self.revision,
+                retry: false,
+            };
+            self.pending = Some(claim);
+            Ok(Some(claim.revision))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn claim(&mut self) -> Option<FinalRemoteCleanupClaim> {
+        let claim = self.pending.take()?;
+        if !self.active.is_empty() || self.revision != claim.revision || self.running.is_some() {
+            return None;
+        }
+        self.running = Some(claim);
+        Some(claim)
+    }
+
+    fn finish(&mut self, claim: FinalRemoteCleanupClaim, result: Result<(), String>) {
+        if self.running != Some(claim) {
+            self.failure = Some("final-Remote cleanup completed for a stale claim".to_owned());
+            self.successful_retry = None;
+            return;
+        }
+        self.running = None;
+        match result {
+            Ok(()) => {
+                self.failure = None;
+                if claim.retry {
+                    self.successful_retry = Some(claim.revision);
+                }
+            }
+            Err(error) => {
+                self.failure = Some(error);
+                self.successful_retry = None;
+            }
+        }
+    }
+
+    fn fail_pending(&mut self, revision: u64, error: String) {
+        if self
+            .pending
+            .map(|claim| claim.revision == revision)
+            .unwrap_or(false)
+        {
+            self.pending = None;
+            self.failure = Some(error);
+            self.successful_retry = None;
+        }
+    }
+
+    fn is_drained(&self) -> bool {
+        self.active.is_empty()
+            && self.pending.is_none()
+            && self.running.is_none()
+            && self.failure.is_none()
+    }
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+struct FinalRemoteCleanupCoordinator {
+    state: StdMutex<FinalRemoteCleanupState>,
+    changed: tokio::sync::watch::Sender<()>,
+}
+
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    test
+))]
+impl FinalRemoteCleanupCoordinator {
+    fn new() -> Self {
+        let (changed, _) = tokio::sync::watch::channel(());
+        Self {
+            state: StdMutex::new(FinalRemoteCleanupState::default()),
+            changed,
+        }
+    }
+
+    fn notify(&self) {
+        self.changed.send_replace(());
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+struct FinalRemoteCleanupDispatcher {
+    wake: std_mpsc::SyncSender<()>,
+    _worker: StdMutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+struct FinalRemoteCleanupLease {
+    generation: u64,
+    retire_on_drop: bool,
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn start_final_remote_cleanup_dispatcher() -> Result<FinalRemoteCleanupDispatcher, String> {
+    let (wake, receiver) = std_mpsc::sync_channel(1);
+    let coordinator = Arc::clone(&FINAL_REMOTE_CLEANUP_COORDINATOR);
+    std::thread::Builder::new()
+        .name("rustdesk-final-remote-cleanup".to_owned())
+        .spawn(move || run_final_remote_cleanup_worker(coordinator, receiver))
+        .map(|worker| FinalRemoteCleanupDispatcher {
+            wake,
+            _worker: StdMutex::new(Some(worker)),
+        })
+        .map_err(|error| format!("failed to create final-Remote cleanup worker: {error}"))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn run_final_remote_cleanup_worker(
+    coordinator: Arc<FinalRemoteCleanupCoordinator>,
+    receiver: std_mpsc::Receiver<()>,
+) {
+    while receiver.recv().is_ok() {
+        loop {
+            let claim = coordinator.state.lock().unwrap().claim();
+            let Some(claim) = claim else {
+                break;
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                perform_final_remote_cleanup,
+            )) {
+                Ok(result) => result.map_err(|error| error.to_string()),
+                Err(_) => Err("final-Remote cleanup panicked before finality".to_owned()),
+            };
+            if let Err(error) = result.as_ref() {
+                log::error!("Final-Remote physical cleanup failed: {error}");
+            }
+            coordinator.state.lock().unwrap().finish(claim, result);
+            coordinator.notify();
+        }
+    }
+    log::error!("final-Remote cleanup worker stopped unexpectedly");
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn perform_final_remote_cleanup() -> ResultType<()> {
+    privacy_mode::wait_for_pending_privacy_activation()?;
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        *WALLPAPER_REMOVER.lock().unwrap() = None;
+    }
+
+    let mut failures = Vec::new();
+    if let Err(error) = display_service::restore_resolutions() {
+        failures.push(format!("resolution restoration failed: {error}"));
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(Err(error)) = privacy_mode::force_turn_off_privacy(None) {
+        failures.push(format!("privacy teardown failed: {error}"));
+    }
+    #[cfg(target_os = "windows")]
+    if let Err(error) = virtual_display_manager::reset_all() {
+        failures.push(format!("virtual-display teardown failed: {error}"));
+    }
+
+    try_stop_record_cursor_pos();
+    if !failures.is_empty() {
+        bail!(failures.join("; "));
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn dispatch_final_remote_cleanup(revision: u64) {
+    let result = match &*FINAL_REMOTE_CLEANUP_DISPATCHER {
+        Ok(dispatcher) => match dispatcher.wake.try_send(()) {
+            Ok(()) | Err(std_mpsc::TrySendError::Full(_)) => Ok(()),
+            Err(std_mpsc::TrySendError::Disconnected(_)) => {
+                Err("final-Remote cleanup worker stopped unexpectedly".to_owned())
+            }
+        },
+        Err(error) => Err(error.clone()),
+    };
+    if let Err(error) = result {
+        FINAL_REMOTE_CLEANUP_COORDINATOR
+            .state
+            .lock()
+            .unwrap()
+            .fail_pending(revision, error.clone());
+        FINAL_REMOTE_CLEANUP_COORDINATOR.notify();
+        log::error!("Final-Remote cleanup could not be dispatched: {error}");
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+async fn acquire_final_remote_cleanup_lease() -> ResultType<FinalRemoteCleanupLease> {
+    if let Err(error) = &*FINAL_REMOTE_CLEANUP_DISPATCHER {
+        bail!(error.clone());
+    }
+    let coordinator = &*FINAL_REMOTE_CLEANUP_COORDINATOR;
+    let mut changed = coordinator.changed.subscribe();
+    let mut joined_retry = None;
+    loop {
+        let decision = coordinator
+            .state
+            .lock()
+            .unwrap()
+            .begin_admission(joined_retry);
+        match decision {
+            FinalRemoteAdmissionDecision::Admit(generation) => {
+                return Ok(FinalRemoteCleanupLease {
+                    generation,
+                    retire_on_drop: true,
+                });
+            }
+            FinalRemoteAdmissionDecision::StartRetry(revision) => {
+                joined_retry = Some(revision);
+                dispatch_final_remote_cleanup(revision);
+            }
+            FinalRemoteAdmissionDecision::Wait { retry_revision } => {
+                if let Some(revision) = retry_revision {
+                    joined_retry = Some(revision);
+                }
+                changed.changed().await.map_err(|_| {
+                    hbb_common::anyhow::anyhow!(
+                        "final-Remote cleanup state publisher stopped unexpectedly"
+                    )
+                })?;
+            }
+            FinalRemoteAdmissionDecision::Failed(error) => bail!(error),
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+impl Drop for FinalRemoteCleanupLease {
+    fn drop(&mut self) {
+        if !self.retire_on_drop {
+            return;
+        }
+        let revision = {
+            let mut state = FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap();
+            match state.retire(self.generation) {
+                Ok(revision) => revision,
+                Err(error) => {
+                    state.failure = Some(error.clone());
+                    log::error!("Final-Remote cleanup retirement failed: {error}");
+                    None
+                }
+            }
+        };
+        FINAL_REMOTE_CLEANUP_COORDINATOR.notify();
+        if let Some(revision) = revision {
+            dispatch_final_remote_cleanup(revision);
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+impl FinalRemoteCleanupLease {
+    fn fail_closed(&mut self, error: String) {
+        self.retire_on_drop = false;
+        let mut state = FINAL_REMOTE_CLEANUP_COORDINATOR.state.lock().unwrap();
+        state.failure = Some(error);
+        state.successful_retry = None;
+        drop(state);
+        FINAL_REMOTE_CLEANUP_COORDINATOR.notify();
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+pub(crate) fn final_remote_cleanup_is_drained() -> bool {
+    FINAL_REMOTE_CLEANUP_COORDINATOR
+        .state
+        .lock()
+        .unwrap()
+        .is_drained()
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+pub(crate) fn final_remote_cleanup_is_drained() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod final_remote_cleanup_state_tests {
+    use super::{
+        ensure_authed_conn_registry_admission, mark_exact_authed_conn_retiring,
+        publish_exact_authed_conn, remove_exact_authed_conn, AuthConnType, AuthedConn,
+        FinalRemoteAdmissionDecision, FinalRemoteCleanupClaim, FinalRemoteCleanupState, SessionKey,
+        MAX_AUTHED_SESSIONS,
+    };
+
+    fn registry_entry(conn_id: i32, registry_generation: u64) -> AuthedConn {
+        AuthedConn {
+            conn_id,
+            conn_type: AuthConnType::Remote,
+            session_key: SessionKey {
+                peer_id: "peer".to_owned(),
+                name: "owner".to_owned(),
+                session_id: 1,
+            },
+            registry_generation,
+            published: true,
+            retiring: false,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cm_auth_token: "token".to_owned(),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cm_file: false,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cm_clipboard: true,
+        }
+    }
+
+    fn admit(state: &mut FinalRemoteCleanupState) -> u64 {
+        match state.begin_admission(None) {
+            FinalRemoteAdmissionDecision::Admit(lease) => lease,
+            decision => panic!("expected admission, got {decision:?}"),
+        }
+    }
+
+    fn retire_final(
+        state: &mut FinalRemoteCleanupState,
+        lease: u64,
+    ) -> FinalRemoteCleanupClaim {
+        let revision = state
+            .retire(lease)
+            .expect("retirement should preserve the state machine")
+            .expect("the final lease should schedule cleanup");
+        FinalRemoteCleanupClaim {
+            revision,
+            retry: false,
+        }
+    }
+
+    #[test]
+    fn r_s11iu_final_remote_unclaimed_cleanup_is_superseded_by_admission() {
+        let mut state = FinalRemoteCleanupState::default();
+        let first = admit(&mut state);
+        let pending = retire_final(&mut state, first);
+
+        let second = admit(&mut state);
+
+        assert_ne!(first, second);
+        assert_eq!(state.pending, None);
+        assert_eq!(state.running, None);
+        assert_eq!(state.claim(), None);
+        assert!(state.active.contains(&second));
+        assert_ne!(state.revision, pending.revision);
+    }
+
+    #[test]
+    fn r_s11iu_final_remote_claim_blocks_successor_until_completion() {
+        let mut state = FinalRemoteCleanupState::default();
+        let first = admit(&mut state);
+        let pending = retire_final(&mut state, first);
+        assert_eq!(state.claim(), Some(pending));
+
+        assert_eq!(
+            state.begin_admission(None),
+            FinalRemoteAdmissionDecision::Wait {
+                retry_revision: None
+            }
+        );
+        state.finish(pending, Ok(()));
+
+        assert!(matches!(
+            state.begin_admission(None),
+            FinalRemoteAdmissionDecision::Admit(_)
+        ));
+    }
+
+    #[test]
+    fn r_s11iu_final_remote_cleanup_waits_for_the_last_live_lease() {
+        let mut state = FinalRemoteCleanupState::default();
+        let first = admit(&mut state);
+        let second = admit(&mut state);
+
+        assert_eq!(state.retire(first), Ok(None));
+        assert!(state.active.contains(&second));
+        assert_eq!(state.pending, None);
+        assert_eq!(state.claim(), None);
+        assert!(!state.is_drained());
+
+        let final_claim = retire_final(&mut state, second);
+        assert_eq!(state.claim(), Some(final_claim));
+        assert!(!state.is_drained());
+        state.finish(final_claim, Ok(()));
+        assert!(state.is_drained());
+    }
+
+    #[test]
+    fn r_s11iu_final_remote_failure_has_one_retry_per_admission() {
+        let mut state = FinalRemoteCleanupState::default();
+        let lease = admit(&mut state);
+        let initial = retire_final(&mut state, lease);
+        assert_eq!(state.claim(), Some(initial));
+        state.finish(initial, Err("initial refusal".to_owned()));
+
+        let retry_revision = match state.begin_admission(None) {
+            FinalRemoteAdmissionDecision::StartRetry(revision) => revision,
+            decision => panic!("expected one explicit retry, got {decision:?}"),
+        };
+        assert_eq!(
+            state.begin_admission(None),
+            FinalRemoteAdmissionDecision::Wait {
+                retry_revision: Some(retry_revision)
+            }
+        );
+        let retry = FinalRemoteCleanupClaim {
+            revision: retry_revision,
+            retry: true,
+        };
+        assert_eq!(state.claim(), Some(retry));
+        state.finish(retry, Err("retry refusal".to_owned()));
+        assert!(!state.is_drained());
+
+        assert_eq!(
+            state.begin_admission(Some(retry_revision)),
+            FinalRemoteAdmissionDecision::Failed("retry refusal".to_owned())
+        );
+        let later_retry = match state.begin_admission(None) {
+            FinalRemoteAdmissionDecision::StartRetry(revision) => revision,
+            decision => panic!("expected a later admission retry, got {decision:?}"),
+        };
+        assert_ne!(later_retry, retry_revision);
+        assert_eq!(
+            state.begin_admission(Some(retry_revision)),
+            FinalRemoteAdmissionDecision::Failed("retry refusal".to_owned())
+        );
+        let later_claim = FinalRemoteCleanupClaim {
+            revision: later_retry,
+            retry: true,
+        };
+        assert_eq!(state.claim(), Some(later_claim));
+        state.finish(later_claim, Ok(()));
+        assert_eq!(
+            state.begin_admission(Some(retry_revision)),
+            FinalRemoteAdmissionDecision::Failed(
+                "the admission's final-Remote cleanup retry was superseded".to_owned()
+            )
+        );
+        assert!(matches!(
+            state.begin_admission(Some(later_retry)),
+            FinalRemoteAdmissionDecision::Admit(_)
+        ));
+    }
+
+    #[test]
+    fn r_s11iu_stale_final_remote_lease_retirement_is_inert() {
+        let mut state = FinalRemoteCleanupState::default();
+        let live = admit(&mut state);
+        let revision = state.revision;
+
+        assert_eq!(state.retire(live + 1), Ok(None));
+        assert_eq!(state.revision, revision);
+        assert!(state.active.contains(&live));
+        assert_eq!(state.pending, None);
+    }
+
+    #[test]
+    fn r_s11iu_authenticated_registry_refuses_id_overlap_and_stale_removal() {
+        let mut registry = vec![registry_entry(7, 11)];
+
+        assert!(ensure_authed_conn_registry_admission(&registry, 0).is_err());
+        assert!(ensure_authed_conn_registry_admission(&registry, 7).is_err());
+        assert!(ensure_authed_conn_registry_admission(&registry, 8).is_ok());
+        assert!(!remove_exact_authed_conn(&mut registry, 7, 12));
+        assert_eq!(registry[0].registry_generation, 11);
+        assert!(mark_exact_authed_conn_retiring(&mut registry, 7, 11));
+        assert!(!registry[0].is_live());
+        assert!(remove_exact_authed_conn(&mut registry, 7, 11));
+        assert!(registry.is_empty());
+
+        let mut reservation = registry_entry(8, 12);
+        reservation.published = false;
+        registry.push(reservation);
+        assert!(!registry[0].is_live());
+        assert!(ensure_authed_conn_registry_admission(&registry, 8).is_err());
+        assert!(!publish_exact_authed_conn(&mut registry, 8, 13));
+        assert!(publish_exact_authed_conn(&mut registry, 8, 12));
+        assert!(registry[0].is_live());
+        assert!(!publish_exact_authed_conn(&mut registry, 8, 12));
+
+        let full = (1..=MAX_AUTHED_SESSIONS)
+            .map(|offset| registry_entry(100 + offset as i32, 100 + offset as u64))
+            .collect::<Vec<_>>();
+        assert!(ensure_authed_conn_registry_admission(&full, 999).is_err());
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct WakelockSnapshot {
     connection_count: usize,
@@ -527,10 +1191,44 @@ lazy_static::lazy_static! {
     // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
     // an unbounded/never-decaying/full-IPv6-keyed map on dead paths; CPace's GUESS_FAILURES is live.
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
-    pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
+    static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
     static ref WAKELOCK_WORKER: WakelockWorker = start_wakelock_worker();
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    static ref FINAL_REMOTE_CLEANUP_COORDINATOR: Arc<FinalRemoteCleanupCoordinator> =
+        Arc::new(FinalRemoteCleanupCoordinator::new());
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    static ref FINAL_REMOTE_CLEANUP_DISPATCHER: Result<FinalRemoteCleanupDispatcher, String> =
+        start_final_remote_cleanup_dispatcher();
+}
+
+// Admission and shutdown count every unpublished, live, and retiring reservation.
+pub(crate) fn authenticated_connection_reservation_count() -> usize {
+    AUTHED_CONNS.lock().unwrap().len()
+}
+
+// Cursor finality must wait for every Remote reservation, including one not yet published or still
+// performing same-ID retirement.
+pub(crate) fn has_authenticated_remote_reservation() -> bool {
+    AUTHED_CONNS
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|connection| connection.conn_type == AuthConnType::Remote)
+}
+
+#[cfg(windows)]
+// Service replacement decisions use only published, non-retiring port-forward authority.
+pub(crate) fn live_port_forward_connection_count() -> usize {
+    AUTHED_CONNS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|connection| {
+            connection.is_live() && connection.conn_type == AuthConnType::PortForward
+        })
+        .count()
 }
 
 #[cfg(target_os = "linux")]
@@ -6101,7 +6799,7 @@ impl Connection {
         log::debug!("#{} Connection opened from {}.", self.inner.id, addr);
         // R-T1(a): reject past the global authorized-session cap (post-key, pre-authorization) so a
         // session/descriptor runaway is bounded under any launcher, not only the systemd cgroup.
-        if crate::server::AUTHED_CONNS.lock().unwrap().len() >= MAX_AUTHED_SESSIONS {
+        if authenticated_connection_reservation_count() >= MAX_AUTHED_SESSIONS {
             self.send_login_error("Too many active sessions").await;
             return false;
         }
@@ -6170,10 +6868,8 @@ impl Connection {
                 .await;
             return None;
         }
-        if Config::with_current_permanent_password_generation(self.credential_generation, || {
-            self.authorized = true;
-        })
-        .is_none()
+        if Config::with_current_permanent_password_generation(self.credential_generation, || ())
+            .is_none()
         {
             self.send_login_error("Permanent password changed during authorization")
                 .await;
@@ -6198,23 +6894,11 @@ impl Connection {
         // derivation is the ONLY real session-type confinement.
         self.confine_capabilities_to_conn_type(auth_conn_type);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if auth_conn_type == AuthConnType::Remote && !self.start_input_worker().await {
-            self.authorized = false;
-            self.send_login_error("Remote input service is unavailable")
-                .await;
-            return None;
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let cm_file = self.file && auth_conn_type == AuthConnType::FileTransfer;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let cm_clipboard =
             auth_conn_type == AuthConnType::Remote && self.can_sub_clipboard_service();
-        #[cfg(target_os = "windows")]
-        self.inner.set_cm_clipboard_authority(
-            auth_conn_type.to_cm_auth_conn_type(),
-            self.cm_auth_token.clone(),
-        );
-        self.authed_conn_id = Some(self::raii::AuthedConnID::new(
+        let authed_conn_id = match self::raii::AuthedConnID::new(
             self.inner.id(),
             auth_conn_type,
             self.session_key(),
@@ -6224,7 +6908,97 @@ impl Connection {
             cm_file,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             cm_clipboard,
-        ));
+        )
+        .await
+        {
+            Ok(owner) => owner,
+            Err(error) => {
+                self.authorized = false;
+                log::error!("Authenticated session admission failed: {error}");
+                self.send_login_error("Authenticated session resources are unavailable")
+                    .await;
+                return None;
+            }
+        };
+        self.authed_conn_id = Some(authed_conn_id);
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if auth_conn_type == AuthConnType::Remote && !self.start_input_worker().await {
+            self.authorized = false;
+            self.send_login_error("Remote input service is unavailable")
+                .await;
+            return None;
+        }
+        #[cfg(target_os = "macos")]
+        if super::effective_permanent_password_credential_snapshot()
+            .await
+            .generation()
+            != self.credential_generation
+        {
+            self.authorized = false;
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            self.stop_input_worker().await;
+            self.send_login_error("Permanent password changed during authorization")
+                .await;
+            return None;
+        }
+        let publication =
+            Config::with_current_permanent_password_generation(self.credential_generation, || {
+                self.authorized = true;
+                let result = self
+                    .authed_conn_id
+                    .as_mut()
+                    .ok_or_else(|| {
+                        hbb_common::anyhow::anyhow!(
+                            "authenticated connection owner disappeared"
+                        )
+                    })
+                    .and_then(self::raii::AuthedConnID::commit_publication);
+                if result.is_err() {
+                    self.authorized = false;
+                }
+                result
+            });
+        match publication {
+            None => {
+                self.authorized = false;
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                self.stop_input_worker().await;
+                self.send_login_error("Permanent password changed during authorization")
+                    .await;
+                return None;
+            }
+            Some(Err(error)) => {
+                self.authorized = false;
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                self.stop_input_worker().await;
+                log::error!("Authenticated session publication failed: {error}");
+                self.send_login_error("Authenticated session resources are unavailable")
+                    .await;
+                return None;
+            }
+            Some(Ok(())) => {}
+        }
+        let resource_publication = self
+            .authed_conn_id
+            .as_ref()
+            .ok_or_else(|| {
+                hbb_common::anyhow::anyhow!("authenticated connection owner disappeared")
+            })
+            .and_then(self::raii::AuthedConnID::publish_resources);
+        if let Err(error) = resource_publication {
+            self.authorized = false;
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            self.stop_input_worker().await;
+            log::error!("Authenticated session resource publication failed: {error}");
+            self.send_login_error("Authenticated session resources are unavailable")
+                .await;
+            return None;
+        }
+        #[cfg(target_os = "windows")]
+        self.inner.set_cm_clipboard_authority(
+            auth_conn_type.to_cm_auth_conn_type(),
+            self.cm_auth_token.clone(),
+        );
         #[allow(unused_mut)]
         let mut username = crate::platform::get_active_username();
         // On a headless unix box there is no logind/console session for `get_active_username` to
@@ -6687,10 +7461,13 @@ impl Connection {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn refresh_cm_clipboard_authority(&self) {
-        set_authed_conn_cm_clipboard_authority(
-            self.inner.id(),
-            self.is_authed_remote_conn() && self.can_sub_clipboard_service(),
-        );
+        if let Some(owner) = self.authed_conn_id.as_ref() {
+            set_authed_conn_cm_clipboard_authority(
+                self.inner.id(),
+                owner.registry_generation(),
+                self.is_authed_remote_conn() && self.can_sub_clipboard_service(),
+            );
+        }
     }
 
     fn audio_enabled(&self) -> bool {
@@ -7373,16 +8150,18 @@ impl Connection {
             if self.port_forward_socket.is_some() {
                 return true;
             }
-            // CVE-2026-58056 / CWE-863 (Appendix C #24): confine desktop INPUT and DISPLAY
-            // capture/control to the session's AuthConnType, not the broad `self.authorized` state.
+            // CVE-2026-58056 / CWE-863 (Appendix C #24): confine desktop INPUT, host
+            // mutation, and video observation/control to the session's AuthConnType, not the broad
+            // `self.authorized` state.
             // Upstream gates these on per-capability flags, and a FileTransfer login (unlike
             // terminal/view-camera) never cleared them — so a peer authorized only for FileTransfer
             // could inject input and capture the screen. Here input is Remote-only, and desktop
-            // capture/control is Remote-or-ViewCamera (view-camera legitimately drives its own camera
-            // displays — handle_switch_display/capture_displays have `view_camera` branches). All other
-            // message families (file transfer, clipboard, chat, options, audio, …) are unaffected, so a
-            // real FileTransfer session keeps working. This is the allowlist-keyed-by-AuthConnType the
-            // finding's own fix direction calls for; the per-handler view-camera guards below stay as
+            // host mutation is Remote-only, and video observation/control is Remote-or-ViewCamera
+            // (view-camera legitimately drives its own camera displays —
+            // handle_switch_display/capture_displays have `view_camera` branches). All other message
+            // families (file transfer, clipboard, chat, options, audio, …) are unaffected, so a real
+            // FileTransfer session keeps working. This is the allowlist-keyed-by-AuthConnType the
+            // finding's own fix direction calls for; the per-handler capability checks below stay as
             // secondary defense.
             {
                 let is_remote_input = matches!(
@@ -7391,20 +8170,24 @@ impl Connection {
                         | Some(message::Union::PointerDeviceEvent(_))
                         | Some(message::Union::KeyEvent(_))
                 );
-                // Remote-only control actions that are NOT screen capture (R-S19): reboot the host,
-                // toggle its privacy-mode screen blanking, or plug/unplug a virtual display. ViewCamera
-                // drives its own camera displays but has no business rebooting the box, blanking the
-                // host screen (turn_off_privacy has no per-handler Remote gate), or attaching a virtual
-                // monitor — so these are Remote-only, unlike the capture set below which ViewCamera shares.
+                // Remote-only host mutations (R-S19): reboot, privacy-mode screen blanking,
+                // virtual-display topology, and physical display resolution. ViewCamera drives its
+                // own camera subscriptions but cannot mutate the host display state whose finality is
+                // serialized by Remote cleanup leases.
                 let is_remote_control = match &msg.union {
                     Some(message::Union::Misc(m)) => matches!(
                         &m.union,
                         Some(misc::Union::RestartRemoteDevice(_))
                             | Some(misc::Union::TogglePrivacyMode(_))
                             | Some(misc::Union::ToggleVirtualDisplay(_))
+                            | Some(misc::Union::ChangeResolution(_))
+                            | Some(misc::Union::ChangeDisplayResolution(_))
                     ),
                     _ => false,
                 };
+                // Remote and ViewCamera are the only video sessions. This set is deliberately limited
+                // to observation, camera/monitor selection, refresh, and per-viewer video feedback; it
+                // contains no host display mutation.
                 let is_desktop_capture = match &msg.union {
                     Some(message::Union::ScreenshotRequest(_)) => true,
                     Some(message::Union::Misc(m)) => matches!(
@@ -7413,8 +8196,8 @@ impl Connection {
                             | Some(misc::Union::CaptureDisplays(_))
                             | Some(misc::Union::RefreshVideo(_))
                             | Some(misc::Union::RefreshVideoDisplay(_))
-                            | Some(misc::Union::ChangeResolution(_))
-                            | Some(misc::Union::ChangeDisplayResolution(_))
+                            | Some(misc::Union::AutoAdjustFps(_))
+                            | Some(misc::Union::ClientRecordStatus(_))
                             // MessageQuery answers with make_display_changed_msg — display
                             // geometry/resolution, the same monitor metadata ViewCamera legitimately
                             // needs but a FileTransfer/Terminal/PortForward peer has no business reading.
@@ -9093,7 +9876,7 @@ impl Connection {
             self.switch_display_to(display_idx, server);
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if s.width != 0 && s.height != 0 {
+            if self.is_authed_remote_conn() && s.width != 0 && s.height != 0 {
                 self.change_resolution(
                     None,
                     &Resolution {
@@ -9244,7 +10027,7 @@ impl Connection {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn change_resolution(&mut self, d: Option<i32>, r: &Resolution) {
-        if self.keyboard {
+        if self.is_authed_remote_conn() && self.keyboard {
             if !self.validate_peer_resolution_dims(r, "change resolution") {
                 return;
             }
@@ -12488,10 +13271,11 @@ impl Drop for Connection {
         // normal exit AND cancellation (the run-loop future being dropped at its `.await`). These
         // effects survive future cancellation. Exact-owner privacy retirement is transferred to
         // its retained bounded worker and never waits here for the global privacy transaction or
-        // native restore. The final-Remote virtual-display reset remains a separate synchronous
-        // field-Drop path and is tracked explicitly in HARDENING_STATUS.md. The server lock is taken
-        // with `if let Ok` (never `.unwrap()` — a poisoned-lock panic in Drop would abort), and each
-        // effect is best-effort.
+        // native restore. Final-Remote wallpaper, resolution, privacy, virtual-display, and cursor
+        // cleanup is submitted by the exact authenticated-Remote lease after this connection leaves
+        // the registry; a claimed cleanup is serialized against successor admission and executes on
+        // its retained process-lifetime worker. The server lock is taken with `if let Ok` (never
+        // `.unwrap()` — a poisoned-lock panic in Drop would abort), and each effect is best-effort.
         let id = self.inner.id();
         if let Some(tx) = self.inner.tx.as_ref() {
             video_service::cancel_take_screenshot(id, tx);
@@ -12506,8 +13290,6 @@ impl Drop for Connection {
             if let Ok(mut s) = s.write() {
                 s.remove_connection(&self.inner);
             }
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            try_stop_record_cursor_pos();
         }
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -12681,10 +13463,13 @@ pub fn get_control_permission_state(
     }
 }
 
-pub struct AuthedConn {
+struct AuthedConn {
     pub conn_id: i32,
     pub conn_type: AuthConnType,
     pub session_key: SessionKey,
+    registry_generation: u64,
+    published: bool,
+    retiring: bool,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub cm_auth_token: String,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -12693,16 +13478,90 @@ pub struct AuthedConn {
     pub cm_clipboard: bool,
 }
 
+impl AuthedConn {
+    fn is_live(&self) -> bool {
+        self.published && !self.retiring
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn set_authed_conn_cm_clipboard_authority(conn_id: i32, cm_clipboard: bool) {
+fn set_authed_conn_cm_clipboard_authority(
+    conn_id: i32,
+    registry_generation: u64,
+    cm_clipboard: bool,
+) {
     if let Some(conn) = AUTHED_CONNS
         .lock()
         .unwrap()
         .iter_mut()
-        .find(|conn| conn.conn_id == conn_id)
+        .find(|conn| {
+            conn.is_live()
+                && conn.conn_id == conn_id
+                && conn.registry_generation == registry_generation
+        })
     {
         conn.cm_clipboard = cm_clipboard;
     }
+}
+
+fn ensure_authed_conn_registry_admission(
+    authed_conns: &[AuthedConn],
+    conn_id: i32,
+) -> ResultType<()> {
+    if conn_id <= 0 {
+        bail!("authenticated connection ID must be positive");
+    }
+    if authed_conns.len() >= MAX_AUTHED_SESSIONS {
+        bail!("too many active authenticated sessions");
+    }
+    if authed_conns.iter().any(|conn| conn.conn_id == conn_id) {
+        bail!("authenticated connection ID is already reserved");
+    }
+    Ok(())
+}
+
+fn remove_exact_authed_conn(
+    authed_conns: &mut Vec<AuthedConn>,
+    conn_id: i32,
+    registry_generation: u64,
+) -> bool {
+    let position = authed_conns.iter().position(|conn| {
+        conn.conn_id == conn_id && conn.registry_generation == registry_generation
+    });
+    position.map(|position| authed_conns.remove(position)).is_some()
+}
+
+fn mark_exact_authed_conn_retiring(
+    authed_conns: &mut [AuthedConn],
+    conn_id: i32,
+    registry_generation: u64,
+) -> bool {
+    let Some(conn) = authed_conns.iter_mut().find(|conn| {
+        !conn.retiring
+            && conn.conn_id == conn_id
+            && conn.registry_generation == registry_generation
+    }) else {
+        return false;
+    };
+    conn.retiring = true;
+    true
+}
+
+fn publish_exact_authed_conn(
+    authed_conns: &mut [AuthedConn],
+    conn_id: i32,
+    registry_generation: u64,
+) -> bool {
+    let Some(conn) = authed_conns.iter_mut().find(|conn| {
+        !conn.published
+            && !conn.retiring
+            && conn.conn_id == conn_id
+            && conn.registry_generation == registry_generation
+    }) else {
+        return false;
+    };
+    conn.published = true;
+    true
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -12716,7 +13575,8 @@ pub(crate) fn validate_cm_connection_authority(
     }
     let authed_conns = AUTHED_CONNS.lock().unwrap();
     let Some(conn) = authed_conns.iter().find(|conn| {
-        conn.conn_id == conn_id
+        conn.is_live()
+            && conn.conn_id == conn_id
             && conn.cm_auth_token == cm_auth_token
             && match (conn.conn_type, conn_type) {
                 (AuthConnType::Remote, ipc::CmAuthConnType::Remote)
@@ -12738,7 +13598,7 @@ pub(crate) fn validate_cm_connection_authority(
 
 mod raii {
     // ALIVE_CONNS: all connections, including unauthorized connections
-    // AUTHED_CONNS: all authorized connections
+    // AUTHED_CONNS: exact authenticated-admission reservations, including live and retiring entries
     // CONTROL_PERMISSIONS_ARRAY: all non-None control permissions
 
     use super::*;
@@ -12760,50 +13620,108 @@ mod raii {
         }
     }
 
-    pub struct AuthedConnID(i32, AuthConnType);
+    pub struct AuthedConnID {
+        conn_id: i32,
+        conn_type: AuthConnType,
+        registry_generation: u64,
+        published: bool,
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+        final_remote_cleanup: Option<FinalRemoteCleanupLease>,
+    }
 
     impl AuthedConnID {
-        pub fn new(
+        pub async fn new(
             conn_id: i32,
             conn_type: AuthConnType,
             session_key: SessionKey,
             #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_auth_token: String,
             #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_file: bool,
             #[cfg(not(any(target_os = "android", target_os = "ios")))] cm_clipboard: bool,
-        ) -> Self {
-            AUTHED_CONNS.lock().unwrap().push(AuthedConn {
+        ) -> ResultType<Self> {
+            let registry_generation = next_authed_conn_generation()?;
+            ensure_authed_conn_registry_admission(&AUTHED_CONNS.lock().unwrap(), conn_id)?;
+
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+            let final_remote_cleanup = if conn_type == AuthConnType::Remote {
+                Some(acquire_final_remote_cleanup_lease().await?)
+            } else {
+                None
+            };
+
+            {
+                let mut authed_conns = AUTHED_CONNS.lock().unwrap();
+                ensure_authed_conn_registry_admission(&authed_conns, conn_id)?;
+                authed_conns.push(AuthedConn {
+                    conn_id,
+                    conn_type,
+                    session_key,
+                    registry_generation,
+                    published: false,
+                    retiring: false,
+                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                    cm_auth_token,
+                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                    cm_file,
+                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                    cm_clipboard,
+                });
+            }
+            Ok(Self {
                 conn_id,
                 conn_type,
-                session_key,
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                cm_auth_token,
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                cm_file,
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                cm_clipboard,
-            });
+                registry_generation,
+                published: false,
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                final_remote_cleanup,
+            })
+        }
+
+        pub(super) fn commit_publication(&mut self) -> ResultType<()> {
+            if self.published {
+                bail!("authenticated connection owner was already published");
+            }
+            {
+                let mut authed_conns = AUTHED_CONNS.lock().unwrap();
+                if !publish_exact_authed_conn(
+                    &mut authed_conns,
+                    self.conn_id,
+                    self.registry_generation,
+                ) {
+                    bail!("authenticated connection reservation is no longer current");
+                }
+            }
+            self.published = true;
+            Ok(())
+        }
+
+        pub(super) fn publish_resources(&self) -> ResultType<()> {
+            if !self.published {
+                bail!("authenticated connection resources require a published owner");
+            }
             Self::check_wake_lock();
             use std::sync::Once;
             static _ONCE: Once = Once::new();
             _ONCE.call_once(|| {
                 shutdown_hooks::add_shutdown_hook(connection_shutdown_hook);
             });
-            if conn_type == AuthConnType::Remote || conn_type == AuthConnType::ViewCamera {
+            if self.conn_type == AuthConnType::Remote
+                || self.conn_type == AuthConnType::ViewCamera
+            {
                 video_service::VIDEO_QOS
                     .lock()
                     .unwrap()
-                    .on_connection_open(conn_id);
+                    .on_connection_open(self.conn_id);
             }
-            Self(conn_id, conn_type)
+            Ok(())
         }
 
         fn check_wake_lock() {
             let authed_conns = AUTHED_CONNS.lock().unwrap();
             let snapshot = WakelockSnapshot {
-                connection_count: authed_conns.len(),
+                connection_count: authed_conns.iter().filter(|conn| conn.is_live()).count(),
                 remote_count: authed_conns
                     .iter()
-                    .filter(|conn| conn.conn_type == AuthConnType::Remote)
+                    .filter(|conn| conn.is_live() && conn.conn_type == AuthConnType::Remote)
                     .count(),
             };
             let published = publish_wakelock_snapshot(&WAKELOCK_WORKER.sender, snapshot);
@@ -12828,53 +13746,87 @@ mod raii {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|c| c.conn_type != AuthConnType::PortForward)
+                .filter(|c| c.is_live() && c.conn_type != AuthConnType::PortForward)
                 .count()
         }
 
         pub fn conn_type(&self) -> AuthConnType {
-            self.1
+            self.conn_type
+        }
+
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        pub fn registry_generation(&self) -> u64 {
+            self.registry_generation
         }
     }
 
     impl Drop for AuthedConnID {
         fn drop(&mut self) {
-            if self.1 == AuthConnType::Remote || self.1 == AuthConnType::ViewCamera {
-                scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::Remove(self.0));
+            let marked_retiring = mark_exact_authed_conn_retiring(
+                &mut AUTHED_CONNS.lock().unwrap(),
+                self.conn_id,
+                self.registry_generation,
+            );
+            if !marked_retiring {
+                let error = format!(
+                    "refusing stale authenticated connection cleanup for ID {} generation {}",
+                    self.conn_id,
+                    self.registry_generation
+                );
+                log::error!("{error}");
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                if let Some(lease) = self.final_remote_cleanup.as_mut() {
+                    lease.fail_closed(error);
+                }
+                return;
+            }
+
+            if self.published
+                && (self.conn_type == AuthConnType::Remote
+                    || self.conn_type == AuthConnType::ViewCamera)
+            {
+                scrap::codec::Encoder::update(scrap::codec::EncodingUpdate::Remove(self.conn_id));
                 video_service::VIDEO_QOS
                     .lock()
                     .unwrap()
-                    .on_connection_close(self.0);
+                    .on_connection_close(self.conn_id);
             }
-            // Clear per-connection state to avoid stale behavior if conn ids are reused.
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            clear_relative_mouse_active(self.0);
-            AUTHED_CONNS.lock().unwrap().retain(|c| c.conn_id != self.0);
-            let remote_count = AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|c| c.conn_type == AuthConnType::Remote)
-                .count();
-            if remote_count == 0 {
-                #[cfg(any(target_os = "windows", target_os = "linux"))]
-                {
-                    *WALLPAPER_REMOVER.lock().unwrap() = None;
-                }
+            if self.published {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                display_service::restore_resolutions();
-                #[cfg(windows)]
-                if let Err(error) = virtual_display_manager::reset_all() {
-                    log::error!("Failed to reset virtual displays after final Remote exit: {error}");
+                clear_relative_mouse_active(self.conn_id);
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                {
+                    use crate::whiteboard;
+                    whiteboard::unregister_whiteboard(self.conn_id);
                 }
-                // R-X12: scrap::wayland::pipewire::try_close_session() removed — the Wayland portal
-                // capture session is compiled out (X11-pinned, is_x11()==true).
             }
-            Self::check_wake_lock();
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                use crate::whiteboard;
-                whiteboard::unregister_whiteboard(self.0);
+
+            let removed = {
+                let mut authed_conns = AUTHED_CONNS.lock().unwrap();
+                remove_exact_authed_conn(
+                    &mut authed_conns,
+                    self.conn_id,
+                    self.registry_generation,
+                )
+            };
+            if !removed {
+                let error = format!(
+                    "authenticated connection ID {} generation {} disappeared during cleanup",
+                    self.conn_id,
+                    self.registry_generation
+                );
+                log::error!("{error}");
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                if let Some(lease) = self.final_remote_cleanup.as_mut() {
+                    lease.fail_closed(error);
+                }
+                return;
+            }
+
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+            drop(self.final_remote_cleanup.take());
+            if self.published {
+                Self::check_wake_lock();
             }
         }
     }

@@ -172,11 +172,10 @@ impl PrivacyModeImpl {
 
     fn restore_plug_out_monitor(&mut self) -> ResultType<()> {
         virtual_display_manager::plug_out_monitor_count(
-            self.created_virtual_display_count,
+            &mut self.created_virtual_display_count,
             true,
             false,
         )?;
-        self.created_virtual_display_count = 0;
         Ok(())
     }
 

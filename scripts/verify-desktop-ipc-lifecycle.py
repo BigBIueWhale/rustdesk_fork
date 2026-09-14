@@ -294,7 +294,7 @@ def validate(sources: Dict[str, str]) -> None:
     ordered(
         finalizer,
         (
-            "AUTHED_CONNS.lock().unwrap().len()",
+            "authenticated_connection_reservation_count()",
             "crate::server::input_service::fix_key_down_timeout_at_exit();",
             "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
             "std::process::exit(exit_code);",

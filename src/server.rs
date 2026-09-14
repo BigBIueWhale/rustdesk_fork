@@ -563,24 +563,26 @@ pub(crate) fn request_graceful_shutdown_after_authority_failure() {
 /// (2) signal every live connection to close gracefully (each run-loop's `cancelled()` arm sends
 /// its CloseReason, flushes, and delivers the CM `Close`); (3) wait up to a BOUNDED deadline —
 /// deliberately shorter than the unit's `TimeoutStopSec` (30 s) so systemd's SIGKILL stays only a
-/// backstop — for the authenticated sessions to finish their cleanup tail (an `AuthedConnID`'s
-/// `Drop`, which prunes `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero
-/// means cleanup actually completed); (4) terminate any still-live connection past the deadline.
-/// A normal requested shutdown exits 0; an unexpected authority-bearing listener loss that
-/// initiated the drain exits 1. The retained desktop lifecycle owner is the sole caller, after it
-/// has joined both the exact public-listener task and the exact native local-IPC worker.
+/// backstop — for authenticated sessions to retire and for the exact final-Remote physical cleanup
+/// transaction to drain on its retained off-runtime worker; (4) terminate any still-live connection
+/// or cleanup past the deadline. A normal requested shutdown exits 0; an unexpected authority-
+/// bearing listener loss that initiated the drain exits 1. The retained desktop lifecycle owner is
+/// the sole caller, after it has joined both the exact public-listener task and the exact native
+/// local-IPC worker.
 pub(crate) async fn finish_graceful_shutdown() -> ! {
     let deadline = std::time::Duration::from_secs(8);
     let start = std::time::Instant::now();
     loop {
-        let live = AUTHED_CONNS.lock().unwrap().len();
-        if live == 0 {
+        let remaining_sessions = authenticated_connection_reservation_count();
+        let final_remote_cleanup_drained = final_remote_cleanup_is_drained();
+        if remaining_sessions == 0 && final_remote_cleanup_drained {
             break;
         }
         if start.elapsed() >= deadline {
             log::warn!(
-                "R-T9: drain deadline reached with {} session(s) still live — forcing exit",
-                live
+                "R-T9: drain deadline reached with {} authenticated reservation(s) remaining and final-Remote cleanup drained={} — forcing exit",
+                remaining_sessions,
+                final_remote_cleanup_drained
             );
             break;
         }

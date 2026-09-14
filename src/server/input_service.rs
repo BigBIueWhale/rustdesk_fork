@@ -953,13 +953,7 @@ pub fn try_start_record_cursor_pos() -> Option<thread::JoinHandle<()>> {
 }
 
 pub fn try_stop_record_cursor_pos() {
-    let remote_count = AUTHED_CONNS
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|c| c.conn_type == AuthConnType::Remote)
-        .count();
-    if remote_count > 0 {
+    if has_authenticated_remote_reservation() {
         return;
     }
     RECORD_CURSOR_POS_RUNNING.store(false, Ordering::SeqCst);

@@ -9,7 +9,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc as std_mpsc,
-        Arc, Mutex,
+        Arc, Condvar, Mutex,
     },
     time::Duration,
 };
@@ -146,6 +146,20 @@ struct PrivacyOwnerLifecycle {
     activating: Option<PrivacyOwnerIdentity>,
 }
 
+struct PrivacyOwnerLifecycleCell {
+    state: Mutex<PrivacyOwnerLifecycle>,
+    changed: Condvar,
+}
+
+impl Default for PrivacyOwnerLifecycleCell {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(PrivacyOwnerLifecycle::default()),
+            changed: Condvar::new(),
+        }
+    }
+}
+
 struct PendingPrivacyActivation {
     owner: PrivacyOwnerIdentity,
 }
@@ -173,8 +187,8 @@ lazy_static::lazy_static! {
             .map_err(|error| format!("failed to create privacy activation reaper: {error}"))
     };
 
-    static ref PRIVACY_OWNER_LIFECYCLE: Mutex<PrivacyOwnerLifecycle> =
-        Mutex::new(PrivacyOwnerLifecycle::default());
+    static ref PRIVACY_OWNER_LIFECYCLE: PrivacyOwnerLifecycleCell =
+        PrivacyOwnerLifecycleCell::default();
 
     // Disconnect-time retirement must survive cancellation of the connection future without
     // making Drop wait for the global privacy transaction or native display restoration. The
@@ -223,14 +237,18 @@ fn run_privacy_activation_reaper(
 impl PendingPrivacyActivation {
     fn new(owner: &PrivacyModeConnectionOwner) -> Self {
         let owner = PrivacyOwnerIdentity::from_owner(owner);
-        PRIVACY_OWNER_LIFECYCLE.lock().unwrap().activating = Some(owner.clone());
+        PRIVACY_OWNER_LIFECYCLE
+            .state
+            .lock()
+            .unwrap()
+            .activating = Some(owner.clone());
         Self { owner }
     }
 }
 
 impl Drop for PendingPrivacyActivation {
     fn drop(&mut self) {
-        let mut lifecycle = PRIVACY_OWNER_LIFECYCLE.lock().unwrap();
+        let mut lifecycle = PRIVACY_OWNER_LIFECYCLE.state.lock().unwrap();
         if lifecycle
             .activating
             .as_ref()
@@ -238,17 +256,23 @@ impl Drop for PendingPrivacyActivation {
             .unwrap_or(false)
         {
             lifecycle.activating = None;
+            drop(lifecycle);
+            PRIVACY_OWNER_LIFECYCLE.changed.notify_all();
         }
     }
 }
 
 fn publish_privacy_owner(owner: Option<&PrivacyModeConnectionOwner>) {
-    PRIVACY_OWNER_LIFECYCLE.lock().unwrap().active = owner.map(PrivacyOwnerIdentity::from_owner);
+    PRIVACY_OWNER_LIFECYCLE
+        .state
+        .lock()
+        .unwrap()
+        .active = owner.map(PrivacyOwnerIdentity::from_owner);
 }
 
 #[cfg(any(windows, target_os = "macos"))]
 fn has_privacy_retirement_owner(conn_id: i32, cm_auth_token: &str) -> bool {
-    let lifecycle = PRIVACY_OWNER_LIFECYCLE.lock().unwrap();
+    let lifecycle = PRIVACY_OWNER_LIFECYCLE.state.lock().unwrap();
     lifecycle
         .active
         .as_ref()
@@ -259,6 +283,20 @@ fn has_privacy_retirement_owner(conn_id: i32, cm_auth_token: &str) -> bool {
             .as_ref()
             .map(|owner| owner.matches_parts(conn_id, cm_auth_token))
             .unwrap_or(false)
+}
+
+pub(crate) fn wait_for_pending_privacy_activation() -> ResultType<()> {
+    let mut lifecycle = PRIVACY_OWNER_LIFECYCLE
+        .state
+        .lock()
+        .map_err(|_| anyhow!("privacy owner lifecycle lock was poisoned"))?;
+    while lifecycle.activating.is_some() {
+        lifecycle = PRIVACY_OWNER_LIFECYCLE
+            .changed
+            .wait(lifecycle)
+            .map_err(|_| anyhow!("privacy owner lifecycle wait was poisoned"))?;
+    }
+    Ok(())
 }
 
 fn privacy_activation_reaper_sender() -> ResultType<std_mpsc::Sender<PrivacyActivationJoinRequest>> {

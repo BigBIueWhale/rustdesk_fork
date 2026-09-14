@@ -3,7 +3,6 @@ use hbb_common::{platform::windows::is_windows_version_or_greater, ResultType};
 pub const AMYUNI_IDD_DEVICE_STRING: &'static str = "USB Mobile Monitor Virtual Display\0";
 
 const IDD_IMPL_AMYUNI: &str = "amyuni_idd";
-const IDD_PLUG_OUT_ALL_INDEX: i32 = -1;
 
 #[derive(Debug, Copy, Clone)]
 pub struct MonitorMode {
@@ -63,12 +62,13 @@ pub fn plug_in_peer_request(_modes: Vec<Vec<MonitorMode>>) -> ResultType<usize> 
 }
 
 pub fn plug_out_monitor_count(
-    count: usize,
+    remaining: &mut usize,
     force_all: bool,
     force_one: bool,
 ) -> ResultType<()> {
-    for _ in 0..count {
+    while *remaining != 0 {
         amyuni_idd::plug_out_monitor(0, force_all, force_one)?;
+        *remaining -= 1;
     }
     Ok(())
 }
@@ -441,7 +441,16 @@ pub mod amyuni_idd {
 
     pub fn reset_all() -> ResultType<()> {
         let privacy_result = crate::privacy_mode::force_turn_off_privacy(None);
-        let monitor_result = plug_out_monitor(super::IDD_PLUG_OUT_ALL_INDEX, true, false);
+        // A failed privacy teardown retains its exact implementation-owned display count for retry.
+        // Do not mutate that count through the generic path or the owner could no longer complete
+        // coherently on the next attempt. Once privacy is absent or fully retired, remove only the
+        // process-counted displays that remain; zero owned displays is successful no-op finality.
+        let monitor_result = if matches!(&privacy_result, Some(Err(_))) {
+            Ok(())
+        } else {
+            let mut remaining = VIRTUAL_DISPLAY_COUNT.load(atomic::Ordering::SeqCst);
+            super::plug_out_monitor_count(&mut remaining, true, false)
+        };
         *LAST_PLUG_IN_HEADLESS_TIME.lock().unwrap() = None;
         match (privacy_result, monitor_result) {
             (Some(Err(privacy_error)), Err(monitor_error)) => Err(anyhow!(
@@ -612,40 +621,44 @@ pub mod amyuni_idd {
         plug_in_monitor_(true, is_async, Some(Duration::from_millis(3_000)))
     }
 
-    // Amyuni's control code does not select a stable display identity. Any nonnegative `index`
-    // requests one removal; -1 requests removal of all process-counted displays.
-    // `force_all` is used to forcibly plug out all virtual displays.
+    // Amyuni's control code does not select a stable display identity. A nonnegative `index`
+    // requests one removal from the process-owned count.
+    // `force_all` permits removal of the last process-owned display; bulk cleanup calls this once
+    // for each owned count.
     // `force_one` is used to forcibly plug out one virtual display managed by other processes
     //             if there're no virtual displays managed by RustDesk.
     pub fn plug_out_monitor(index: i32, force_all: bool, force_one: bool) -> ResultType<()> {
-        let plug_out_all = index == super::IDD_PLUG_OUT_ALL_INDEX;
-        // If `plug_out_all and force_all` is true, forcibly plug out all virtual displays.
-        // Though the driver may be controlled by other processes,
-        // we still forcibly plug out all virtual displays.
-        //
-        // 1. RustDesk plug in 2 virtual displays. (RustDesk)
-        // 2. Other process plug out all virtual displays. (User manually)
-        // 3. Other process plug in 1 virtual display. (User manually)
-        // 4. RustDesk plug out all virtual displays in this call. (RustDesk disconnect)
-        //
-        // This is not a normal scenario, RustDesk will plug out virtual display unexpectedly.
+        if index < 0 {
+            bail!("A negative virtual-display index cannot identify process-owned cleanup");
+        }
         let mut plug_in_count = VIRTUAL_DISPLAY_COUNT.load(atomic::Ordering::Relaxed);
         let amyuni_count = get_monitor_count();
-        if !plug_out_all {
-            if plug_in_count == 0 && amyuni_count > 0 {
-                if force_one {
-                    plug_in_count = 1;
-                } else {
-                    bail!("The virtual display is managed by other processes.");
-                }
+        if amyuni_count == 0 {
+            let retired_stale_count = VIRTUAL_DISPLAY_COUNT
+                .fetch_update(
+                    atomic::Ordering::SeqCst,
+                    atomic::Ordering::SeqCst,
+                    |count| count.checked_sub(1),
+                )
+                .is_ok();
+            if retired_stale_count {
+                log::info!(
+                    "Retired one process-owned virtual-display count after observing no Amyuni display"
+                );
             }
-        } else {
-            // Ignore the message if trying to plug out all virtual displays.
+            return Ok(());
+        }
+        if plug_in_count == 0 {
+            if force_one {
+                plug_in_count = 1;
+            } else {
+                bail!("The virtual display is managed by other processes.");
+            }
         }
 
         let all_count = windows::get_device_names(None).len();
         let mut to_plug_out_count = match all_count {
-            0 => return Ok(()),
+            0 => bail!("Virtual-display enumeration changed during cleanup."),
             1 => {
                 if plug_in_count == 0 {
                     bail!("No virtual displays to plug out.")
@@ -669,7 +682,7 @@ pub mod amyuni_idd {
                 }
             }
         };
-        if to_plug_out_count != 0 && !plug_out_all {
+        if to_plug_out_count != 0 {
             to_plug_out_count = 1;
         }
 

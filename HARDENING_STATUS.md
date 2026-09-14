@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-fddd37cca3adaf89f191bbd1c8a7e5c3b38822a79886b85e1aca40986f1ecd1f  requirements.html
+121de0b986d146b8d7255f07976b02eebdde4a02e5258aa897895de89d89e43b  requirements.html
 ```
 
 ## Current Verdict
@@ -746,8 +746,9 @@ historical commits recorded with that validation; this paragraph is not artifact
 authentication, the connection's validated `AuthConnType`—not broad `self.authorized` state or an
 independent permission Boolean—is the authority for every peer-triggerable capability. The server derives
 capability state from that type before applying peer login options. Its dispatcher admits desktop input and
-host control only for `Remote`, and capture/display metadata only for the appropriate `Remote` or
-`ViewCamera` source. Sink checks separately confine clipboard text, audio and voice-call state,
+host mutation, including physical resolution changes, only for `Remote`; capture/display metadata and
+per-video QoS feedback are admitted only for the appropriate `Remote` or `ViewCamera` source. Sink checks separately
+confine clipboard text, audio and voice-call state,
 cursor/window capture, whiteboard, Windows session behavior, and file clipboard. `FileTransfer` retains only
 its connection-owned filesystem and file-clipboard authority. This is the required structural disposition
 for CVE-2026-58056 and the broader R-S19 class; the §2 trusted-password-holder model does not remove this
@@ -759,8 +760,7 @@ session; Android MediaProjection demand comes from the typed Remote owner set; a
 requires the confined file/clipboard authority. Voice-call accept, close, and teardown admit only an owning
 `Remote`/`ViewCamera` connection with pending or active call state. On Linux, each FUSE file-content read uses
 a fresh bounded `(connection_id, stream_id)` route and rejects wrong-connection, wrong-stream, stale, or
-duplicate responses. The non-actuating `ClientRecordStatus` and `AutoAdjustFps` video-QoS metadata arms remain
-an accepted low-severity residual.
+duplicate responses.
 
 Focused source gates in `scripts/verify.sh` bind derivation-before-options, dispatcher and sink allowlists,
 exact screenshot ownership, viewer/mobile confinement, voice-call ownership, and the Linux response router;
@@ -12612,9 +12612,9 @@ shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**CORE REGISTRY, SNAPSHOT RECONCILIATION, AND CM FILE-LOG SOURCE IMPLEMENTED;
-OTHER SIDE-EFFECT LIFETIME WORK REMAINS; TWELVE EXECUTABLE RUST REGRESSIONS AND FIVE
-RELEVANT DART TESTS RETAINED OR AUTHORED;
+**CORE REGISTRY, SNAPSHOT RECONCILIATION, CM FILE-LOG, AND FINAL-REMOTE CLEANUP SOURCE
+IMPLEMENTED; OTHER SIDE-EFFECT LIFETIME WORK REMAINS; FOCUSED RUST AND DART REGRESSIONS
+RETAINED OR AUTHORED;
 ANDROID RUST FIXTURES ARE NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
 `CmClientRegistry` owns a checked process-lifetime
 generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
@@ -12732,15 +12732,42 @@ failure is logged and never falls back to inline teardown. Unsupported platforms
 or queue. The unused public `privacy_mode::init`, `clear`, and `switch` facades are deleted; the last
 could replace an implementation through destructor cleanup while discarding its failure, outside the
 one fallible activation-switch transaction. The trait's internal `clear` operation remains for that
-transaction. This is deliberately narrower than complete Drop finality. The
-`AuthedConnID::drop` final-Remote path still calls `virtual_display_manager::reset_all()`
-synchronously; that path can force privacy teardown and wait for global monitor removal on its
-caller thread. Explicit peer-off and capture-validation/activation-error rollback also remain
-synchronous and result-bearing. Moving or redesigning those paths without widening the race in
-which a delayed final-Remote reset could revoke a new connection requires one shared generation
-boundary and native Windows evidence. Those lifetimes plus real cancellation, disconnect,
-session-change, driver-delay/failure, restore-failure, queue refusal, and resource/latency behavior
-remain open for an exact installed Windows artifact.
+transaction. Final-Remote cleanup no longer infers global finality from an unlocked connection count
+or runs native display work in `AuthedConnID::drop`. Each desktop Remote owns an exact cleanup lease;
+the last retirement coalesces one cleanup request on a retained process-lifetime worker. Admission
+invalidates an unclaimed request or asynchronously waits for a claimed request, and a failed cleanup
+permits one retry bound to that admission's exact retry revision. A failed or older waiter cannot
+benefit from a later admission's retry. The authenticated registry assigns a checked generation,
+refuses same-ID overlap, retains an unpublished capacity-counted reservation before the next await,
+keeps its mutable entries private, and exposes only narrow read-only counts to shutdown, cursor, and
+Windows service-control consumers. The final credential-current commit atomically publishes that
+reservation; retirement marks the exact entry unavailable
+before local capability validation can use it,
+performs ID-keyed codec/QoS/mouse/whiteboard retirement while the ID remains reserved, and removes only
+that generation. If exact registry retirement cannot be proved, the Remote cleanup lease is poisoned;
+it cannot launch uncertain physical cleanup, and Remote admission plus graceful drain remain failed closed
+until process restart. Because cleanup admission may wait, authorization now revalidates the exact credential
+generation after cleanup and input-worker startup before committing `authorized = true`; mismatch drains
+those exact owners and fails login. The worker waits for any admitted privacy activation to join, restores wallpaper,
+resolution, privacy, virtual-display, and cursor state, aggregates fallible native results, and is
+part of graceful-shutdown drain; a latched cleanup failure is not reported as drained. Resolution
+restoration no longer holds its registry lock across a native call or clears failed work: a successful
+unchanged snapshot is removed, while failure or a concurrent replacement fails the transaction and
+remains retryable. Windows reset removes only the remaining process-counted virtual displays, treats
+zero owned displays as successful finality, rejects negative-index global removal, and does not mutate
+implementation-owned display state after a failed privacy teardown. Multi-display teardown decrements
+the exact owner's remaining count after each success, so a partial failure cannot over-remove on retry.
+When no Amyuni display remains observable, one successful exact cleanup step also retires one stale
+process-owned count; contradictory enumeration remains a visible retryable failure.
+The primary post-authentication type gate now reserves physical resolution changes and every other
+host-display mutation for Remote sessions, the only sessions that own final-cleanup leases. ViewCamera
+retains video observation, camera/display selection, refresh, query, and bounded video-feedback messages,
+while FileTransfer, Terminal, and PortForward cannot reach those per-video QoS sinks.
+Explicit peer-off and
+capture-validation/activation-error
+rollback remain synchronous and result-bearing. Real cancellation, disconnect, concurrent successor,
+session-change, driver-delay/failure, restore-failure, queue/worker refusal, shutdown, and bounded
+resource/latency behavior remain open for exact installed desktop artifacts.
 
 The Android CM/file bridge now runs as one retained child future of the exact network
 `Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
@@ -12778,6 +12805,11 @@ additional focused Rust tests drive the actual Android CM future through one-sho
 completion, direct future cancellation after admission, and same-ID service-generation
 supersession followed by a real `CreateDir` command. The last requires predecessor
 termination with no directory effect, followed by exact successor cleanup.
+Six additional Rust state regressions cover unclaimed-cleanup supersession, claimed-cleanup
+admission blocking, last-live-lease finality, exact-revision retry isolation, stale cleanup-lease
+retirement, and authenticated same-ID collision/stale-removal refusal. A focused resolution regression executes partial failure and
+concurrent-record replacement against the real restoration transaction helper. They are selected by
+the existing serial `r_s11iu_` target lanes but have not run for this source.
 The shared runner uses
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never -- --test-threads=1`
 because these regressions intentionally exercise one process-global activation admission gate.

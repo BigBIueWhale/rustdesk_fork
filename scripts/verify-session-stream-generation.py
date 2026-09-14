@@ -311,11 +311,6 @@ def validate(sources: Dict[str, str]) -> None:
         f"Requirements hash: {requirements_digest}",
         "exact requirements digest",
     )
-    require(
-        sources["native_watch"],
-        "The same identity additionally binds R-S11ix and Appendix C #409.",
-        "R-S11ix requirements-identity binding",
-    )
 
 
 MUTATIONS = (
@@ -355,7 +350,6 @@ MUTATIONS = (
     ("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "Appendix disposition"),
     ("hardening", "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation", "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation", "hardening ledger"),
     ("native_watch", "Requirements hash: ", "Requirements digest: ", "requirements digest"),
-    ("native_watch", "The same identity additionally binds R-S11ix and Appendix C #409.", "The same identity additionally binds R-S11ix-disabled and Appendix C #409.", "requirements identity binding"),
 )
 
 

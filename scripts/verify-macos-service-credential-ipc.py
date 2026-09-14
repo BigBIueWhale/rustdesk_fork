@@ -68,7 +68,6 @@ def validate(sources: Dict[str, str]) -> None:
     apple = sources["apple"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    native_watch = sources["native_watch"]
     workspace = sources["workspace"]
 
     for token, label in (
@@ -1134,15 +1133,12 @@ def validate(sources: Dict[str, str]) -> None:
             '<span class="id">R-S11ia</span>',
             "<tr><td>386</td>",
             "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
-            "The same identity additionally binds R-S11ia and Appendix C #386.",
             '<span class="id">R-S11ij</span>',
             "<tr><td>395</td>",
             "R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
-            "The same identity additionally binds R-S11ij and Appendix C #395.",
             '<span class="id">R-S11il</span>',
             "<tr><td>397</td>",
             "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
-            "The same identity additionally binds R-S11il and Appendix C #397.",
         ):
             require(gate, token, "{} documentation binding".format(label))
     for token, label in (
@@ -1219,21 +1215,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
         "typed macOS credential response hardening ledger",
     )
-    require(
-        native_watch,
-        "The same identity additionally binds R-S11ia and Appendix C #386.",
-        "native-watch exact credential response binding",
-    )
-    require(
-        native_watch,
-        "The same identity additionally binds R-S11ij and Appendix C #395.",
-        "native-watch typed runtime-PRS receiver binding",
-    )
-    require(
-        native_watch,
-        "The same identity additionally binds R-S11il and Appendix C #397.",
-        "native-watch typed macOS response binding",
-    )
     for token, label in (
         (
             '"macos_service_credential_ipc_verifier": (\n'
@@ -1284,14 +1265,6 @@ def validate(sources: Dict[str, str]) -> None:
         (
             '"focused macOS credential final argv mutation",',
             "independent focused-verifier mutation binding",
-        ),
-        (
-            '"shared macOS credential response finality proof",',
-            "independent shared-gate mutation binding",
-        ),
-        (
-            '"exact macOS credential requester finality identity binding",',
-            "independent requirement-ledger-digest mutation binding",
         ),
         (
             '"macOS child-side runtime PRS receiver final-action authority",',
@@ -2095,12 +2068,6 @@ MUTATIONS = (
         "exact credential response hardening ledger",
     ),
     Mutation(
-        "native_watch",
-        "The same identity additionally binds R-S11ia and Appendix C #386.",
-        "The same identity no longer binds R-S11ia and Appendix C #386.",
-        "native-watch exact credential response binding",
-    ),
-    Mutation(
         "verify",
         'grep -Fq \'<span class="id">R-S11ij</span>\' requirements.html',
         "true # typed macOS runtime PRS receiver requirement binding disabled",
@@ -2149,12 +2116,6 @@ MUTATIONS = (
         "typed macOS runtime-PRS receiver hardening ledger",
     ),
     Mutation(
-        "native_watch",
-        "The same identity additionally binds R-S11ij and Appendix C #395.",
-        "The same identity no longer binds R-S11ij and Appendix C #395.",
-        "native-watch typed macOS runtime-PRS receiver binding",
-    ),
-    Mutation(
         "verify",
         'grep -Fq \'<span class="id">R-S11il</span>\' requirements.html',
         "true # typed macOS credential response requirement binding disabled",
@@ -2195,12 +2156,6 @@ MUTATIONS = (
         "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
         "R-S11il-disabled/R-S11e-275 — typed macOS credential-replica response authority",
         "typed macOS credential response hardening ledger",
-    ),
-    Mutation(
-        "native_watch",
-        "The same identity additionally binds R-S11il and Appendix C #397.",
-        "The same identity no longer binds R-S11il and Appendix C #397.",
-        "native-watch typed macOS credential response binding",
     ),
     Mutation(
         "workspace",
@@ -2247,7 +2202,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "apple": "scripts/apple-conform-check.sh",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
-        "native_watch": "docs/NATIVE-CODEC-WATCH.md",
         "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {

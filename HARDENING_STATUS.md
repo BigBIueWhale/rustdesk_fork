@@ -63,6 +63,15 @@ authority checks remain. These are completed cleanup slices, not completion of t
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
 
+The native-codec advisory ledger no longer serves as a per-requirement ID/Appendix registry: 34 later-added
+lines that redundantly mapped unrelated R-S11 requirements to Appendix rows were deleted. The original
+whole-requirements digest and the codec source/advisory contract remain. The
+corresponding 254 lines of assertions and mutations were removed from the shared, Apple, credential, and
+session-stream verifiers because their only oracle was exact prose in the codec document. This reduces
+those six files by 18,522 bytes while preserving the requirements, Appendix rows, hardening entries,
+product-source checks, codec source-set checks, and the requirements digest. No product source or native
+target changed or ran, so all installed, device, performance, artifact, and release evidence remains open.
+
 Appendix C rows #31–#37, including #36a, now state only the timeless Windows service-child shutdown,
 Amyuni helper/removal, Linux helper/account lookup, clipboard FUSE, and self-relaunch authority contracts.
 Their later-added implementation histories, `FIX` badges, supersession narratives, and verifier receipts were

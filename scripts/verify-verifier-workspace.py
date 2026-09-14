@@ -9922,11 +9922,6 @@ def validate_linux_headless_cm_parent_contract(sources):
         f"Requirements hash: {requirements_digest}",
         "exact Linux CM readiness requirements digest",
     )
-    require_text(
-        native_watch,
-        "The same identity additionally binds R-S11iz and Appendix C #411.",
-        "Linux CM readiness requirements-identity binding",
-    )
     shared_readiness_gate = extract_between(
         verify,
         'echo "== (3b-iii-d9c3b) Linux headless CM readiness handshake finality',
@@ -11902,10 +11897,6 @@ def validate_linux_service_owned_password_requester_contract(sources):
             "grep -Fq 'R-S11hx/R-S11e-261 — exact Linux service-owned password requester role' HARDENING_STATUS.md",
             "shared Linux password requester hardening binding",
         ),
-        (
-            "grep -Fq 'The same identity additionally binds R-S11hx and Appendix C #383.' docs/NATIVE-CODEC-WATCH.md",
-            "shared Linux password requester digest binding",
-        ),
     ):
         require_text(sources["verify"], text, label)
     require_text(
@@ -11923,11 +11914,6 @@ def validate_linux_service_owned_password_requester_contract(sources):
         "R-S11hx/R-S11e-261 — exact Linux service-owned password requester role",
         "exact Linux service-owned password requester hardening ledger",
     )
-    require_text(
-        sources["native_watch"],
-        "The same identity additionally binds R-S11hx and Appendix C #383.",
-        "exact Linux service-owned password requester identity binding",
-    )
     for source, text, label in (
         (
             sources["requirements"],
@@ -11943,11 +11929,6 @@ def validate_linux_service_owned_password_requester_contract(sources):
             sources["hardening"],
             "R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
             "typed Linux post-polkit password authority hardening ledger",
-        ),
-        (
-            sources["native_watch"],
-            "The same identity additionally binds R-S11ie and Appendix C #390.",
-            "typed Linux post-polkit password authority identity binding",
         ),
     ):
         require_text(source, text, label)
@@ -12456,11 +12437,6 @@ def validate_windows_sensitive_password_admission_contract(sources):
             "R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission",
             "typed Windows password admission hardening ledger",
         ),
-        (
-            sources["native_watch"],
-            "The same identity additionally binds R-S11if and Appendix C #391.",
-            "typed Windows password admission identity binding",
-        ),
     ):
         require_text(source, text, label)
     require_exact_count(
@@ -12841,11 +12817,6 @@ def validate_linux_credential_replica_admission_contract(sources):
             sources["hardening"],
             "R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response",
             "typed Linux credential hardening ledger",
-        ),
-        (
-            sources["native_watch"],
-            "The same identity additionally binds R-S11ig and Appendix C #392.",
-            "typed Linux credential identity binding",
         ),
     ):
         require_text(source, text, label)
@@ -13419,11 +13390,6 @@ def validate_linux_runtime_prs_writer_contract(sources):
             sources["hardening"],
             "R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority",
             "typed Linux runtime PRS hardening ledger",
-        ),
-        (
-            sources["native_watch"],
-            "The same identity additionally binds R-S11ih and Appendix C #393.",
-            "typed Linux runtime PRS identity binding",
         ),
     ):
         require_text(source, text, label)
@@ -14065,11 +14031,6 @@ def validate_linux_runtime_prs_receiver_contract(sources):
             "R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority",
             "runtime PRS receiver hardening ledger",
         ),
-        (
-            sources["native_watch"],
-            "The same identity additionally binds R-S11ii and Appendix C #394.",
-            "runtime PRS receiver identity binding",
-        ),
     ):
         require_text(source, text, label)
     require_text(
@@ -14454,11 +14415,6 @@ def validate_linux_credential_runtime_prs_receiver_contract(sources):
             sources["hardening"],
             "R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority",
             "initial credential runtime PRS receiver hardening ledger",
-        ),
-        (
-            sources["native_watch"],
-            "The same identity additionally binds R-S11ik and Appendix C #396.",
-            "initial credential runtime PRS receiver identity binding",
         ),
         (
             sources["requirements"],
@@ -19984,27 +19940,21 @@ def validate_service_ipc_protocol_authority_contract(sources):
             '<span class="id">R-S11ia</span>',
             "<tr><td>386</td>",
             "R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality",
-            "The same identity additionally binds R-S11ia and Appendix C #386.",
             '<span class="id">R-S11ij</span>',
             "<tr><td>395</td>",
             "R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority",
-            "The same identity additionally binds R-S11ij and Appendix C #395.",
             '<span class="id">R-S11il</span>',
             "<tr><td>397</td>",
             "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
-            "The same identity additionally binds R-S11il and Appendix C #397.",
             '<span class="id">R-S11im</span>',
             "<tr><td>398</td>",
             "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
-            "The same identity additionally binds R-S11im and Appendix C #398.",
             '<span class="id">R-S11in</span>',
             "<tr><td>399</td>",
             "R-S11in/R-S11e-277 — read-only macOS password authorization verification",
-            "The same identity additionally binds R-S11in and Appendix C #399.",
             '<span class="id">R-S11io</span>',
             "<tr><td>400</td>",
             "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
-            "The same identity additionally binds R-S11io and Appendix C #400.",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -20084,11 +20034,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "macOS runtime PRS receiver hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11ij and Appendix C #395.",
-            "macOS runtime PRS receiver native-watch binding",
-        ),
-        (
             "requirements",
             '<span class="id">R-S11il</span>',
             "macOS typed credential response requirement-ledger-digest binding",
@@ -20119,11 +20064,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "macOS typed credential response hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11il and Appendix C #397.",
-            "macOS typed credential response native-watch binding",
-        ),
-        (
             "requirements",
             '<span class="id">R-S11im</span>',
             "macOS typed password-right action requirement-ledger-digest binding",
@@ -20152,11 +20092,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "hardening",
             "R-S11im/R-S11e-276 — typed macOS password-right policy-write authority",
             "macOS typed password-right action hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11im and Appendix C #398.",
-            "macOS typed password-right action native-watch binding",
         ),
         (
             "requirements",
@@ -20194,11 +20129,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "macOS read-only password verification hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11in and Appendix C #399.",
-            "macOS read-only password verification native-watch binding",
-        ),
-        (
             "requirements",
             '<span class="id">R-S11io</span>',
             "macOS password authorization creator requirement-ledger-digest binding",
@@ -20232,11 +20162,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "hardening",
             "R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit",
             "macOS password authorization creator hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11io and Appendix C #400.",
-            "macOS password authorization creator native-watch binding",
         ),
     ):
         require_text(sources[source_name], text, label)
@@ -25059,11 +24984,6 @@ def validate_session_stream_generation_contract(sources):
         sources["native_watch"],
         f"Requirements hash: {digest}",
         "session-stream generation requirements digest source",
-    )
-    require_text(
-        sources["native_watch"],
-        "The same identity additionally binds R-S11ix and Appendix C #409.",
-        "session-stream generation requirements-identity binding source",
     )
 
 
@@ -40315,11 +40235,6 @@ def validate_generic_desktop_privilege_probe_excision_contract(sources):
         1,
         "R-S11ip hardening ledger",
     )
-    require_text(
-        sources["native_watch"],
-        "The same identity additionally binds R-S11ip and Appendix C #401.",
-        "R-S11ip native-watch identity binding",
-    )
 
 
 def validate_sources(sources):
@@ -44476,12 +44391,6 @@ def run_source_mutations(sources):
             "R-S11ip hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11ip and Appendix C #401.",
-            "The same identity additionally binds R-S11ip-disabled and Appendix C #401.",
-            "R-S11ip native-watch identity binding",
-        ),
-        (
             "terminal_helper",
             "let mut cancellation_accepted = false;",
             "let mut cancellation_accepted = true;",
@@ -44786,12 +44695,6 @@ def run_source_mutations(sources):
             "R-S11iz/R-S11e-289 — exact Linux headless CM readiness handshake finality",
             "R-S11iz-disabled/R-S11e-289 — exact Linux headless CM readiness handshake finality",
             "Linux CM readiness hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11iz and Appendix C #411.",
-            "The same identity additionally binds R-S11iz-disabled and Appendix C #411.",
-            "Linux CM readiness requirements-identity binding",
         ),
         (
             "verify",
@@ -49493,12 +49396,6 @@ def run_source_mutations(sources):
             "shared Linux password requester hardening binding",
         ),
         (
-            "verify",
-            "grep -Fq 'The same identity additionally binds R-S11hx and Appendix C #383.' docs/NATIVE-CODEC-WATCH.md",
-            "true # Linux password requester digest binding disabled",
-            "shared Linux password requester digest binding",
-        ),
-        (
             "requirements",
             '<span class="id">R-S11hx</span>',
             '<span class="id">R-S11hx-disabled</span>',
@@ -49515,12 +49412,6 @@ def run_source_mutations(sources):
             "R-S11hx/R-S11e-261 — exact Linux service-owned password requester role",
             "R-S11hx-disabled/R-S11e-261 — exact Linux service-owned password requester role",
             "exact Linux service-owned password requester hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11hx and Appendix C #383.",
-            "The same identity no longer binds R-S11hx and Appendix C #383.",
-            "exact Linux service-owned password requester identity binding",
         ),
         (
             "verify",
@@ -49575,12 +49466,6 @@ def run_source_mutations(sources):
             "R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
             "R-S11ie-disabled/R-S11e-268 — typed Linux post-polkit password authority through ledger admission",
             "typed Linux post-polkit password authority hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11ie and Appendix C #390.",
-            "The same identity no longer binds R-S11ie and Appendix C #390.",
-            "typed Linux post-polkit password authority identity binding",
         ),
         (
             "workspace_verifier",
@@ -49850,12 +49735,6 @@ def run_source_mutations(sources):
             "R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response",
             "R-S11ig-disabled/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response",
             "typed Linux credential hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11ig and Appendix C #392.",
-            "The same identity no longer binds R-S11ig and Appendix C #392.",
-            "typed Linux credential identity binding",
         ),
         (
             "workspace_verifier",
@@ -50260,12 +50139,6 @@ def run_source_mutations(sources):
             "typed Linux runtime PRS hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11ih and Appendix C #393.",
-            "The same identity no longer binds R-S11ih and Appendix C #393.",
-            "typed Linux runtime PRS identity binding",
-        ),
-        (
             "workspace_verifier",
             "    validate_linux_runtime_prs_writer_contract(sources)\n",
             "    validate_linux_runtime_prs_writer_contract_disabled(sources)\n",
@@ -50632,12 +50505,6 @@ def run_source_mutations(sources):
             "runtime PRS receiver hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11ii and Appendix C #394.",
-            "The same identity no longer binds R-S11ii and Appendix C #394.",
-            "runtime PRS receiver identity binding",
-        ),
-        (
             "workspace_verifier",
             "    validate_linux_runtime_prs_receiver_contract(sources)\n",
             "    validate_linux_runtime_prs_receiver_contract_disabled(sources)\n",
@@ -50828,12 +50695,6 @@ def run_source_mutations(sources):
             "R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority",
             "R-S11ik-disabled/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority",
             "initial credential runtime PRS receiver hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11ik and Appendix C #396.",
-            "The same identity no longer binds R-S11ik and Appendix C #396.",
-            "initial credential runtime PRS receiver identity binding",
         ),
         (
             "workspace_verifier",
@@ -51032,12 +50893,6 @@ def run_source_mutations(sources):
             "R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission",
             "R-S11if-disabled/R-S11e-269 — typed Windows named-pipe password authority through user/service admission",
             "typed Windows password admission hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11if and Appendix C #391.",
-            "The same identity no longer binds R-S11if and Appendix C #391.",
-            "typed Windows password admission identity binding",
         ),
         (
             "workspace_verifier",
@@ -51354,12 +51209,6 @@ def run_source_mutations(sources):
             "macOS runtime PRS receiver hardening ledger",
         ),
         (
-            "native_watch",
-            "The same identity additionally binds R-S11ij and Appendix C #395.",
-            "The same identity no longer binds R-S11ij and Appendix C #395.",
-            "macOS runtime PRS receiver native-watch binding",
-        ),
-        (
             "workspace_verifier",
             "def extract_shell_python_call(\n",
             "def extract_shell_python_call_disabled(\n",
@@ -51418,12 +51267,6 @@ def run_source_mutations(sources):
             "R-S11il/R-S11e-275 — typed macOS credential-replica response authority",
             "R-S11il-disabled/R-S11e-275 — typed macOS credential-replica response authority",
             "macOS typed credential response hardening ledger",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11il and Appendix C #397.",
-            "The same identity no longer binds R-S11il and Appendix C #397.",
-            "macOS typed credential response native-watch binding",
         ),
         (
             "requirements",
@@ -68653,12 +68496,6 @@ def run_source_mutations(sources):
             "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
             "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation",
             "session-stream generation hardening ledger source",
-        ),
-        (
-            "native_watch",
-            "The same identity additionally binds R-S11ix and Appendix C #409.",
-            "The same identity additionally binds R-S11ix-disabled and Appendix C #409.",
-            "session-stream generation requirements-identity binding source",
         ),
         (
             "workspace_verifier",

@@ -2,40 +2,6 @@
 
 Native-Codec-Watch-Version: 1
 Requirements hash: 38a9039f63d662656ebbe23cfd7532f03b9966e5677ce4933c7cb25433ecca89
-The same identity additionally binds R-S11gv and Appendix C #357.
-The same identity additionally binds R-S11gw and Appendix C #358.
-The same identity additionally binds R-S11hb and Appendix C #363.
-The same identity additionally binds R-S11hc and Appendix C #364.
-The same identity additionally binds R-S11hd and Appendix C #365.
-The same identity additionally binds R-S11hx and Appendix C #383.
-The same identity additionally binds R-S11hy and Appendix C #384.
-The same identity additionally binds R-S11hz and Appendix C #385.
-The same identity additionally binds R-S11ia and Appendix C #386.
-The same identity additionally binds R-S11ib and Appendix C #387.
-The same identity additionally binds R-S11ic and Appendix C #388.
-The same identity additionally binds R-S11id and Appendix C #389.
-The same identity additionally binds R-S11ie and Appendix C #390.
-The same identity additionally binds R-S11if and Appendix C #391.
-The same identity additionally binds R-S11ig and Appendix C #392.
-The same identity additionally binds R-S11ih and Appendix C #393.
-The same identity additionally binds R-S11ii and Appendix C #394.
-The same identity additionally binds R-S11ij and Appendix C #395.
-The same identity additionally binds R-S11ik and Appendix C #396.
-The same identity additionally binds R-S11il and Appendix C #397.
-The same identity additionally binds R-S11im and Appendix C #398.
-The same identity additionally binds R-S11in and Appendix C #399.
-The same identity additionally binds R-S11io and Appendix C #400.
-The same identity additionally binds R-S11ip and Appendix C #401.
-The same identity additionally binds R-S11iq and Appendix C #402.
-The same identity additionally binds R-S11ir and Appendix C #403.
-The same identity additionally binds R-S11is and Appendix C #404.
-The same identity additionally binds R-S11it and Appendix C #405.
-The same identity additionally binds R-S11iu and Appendix C #406.
-The same identity additionally binds R-S11iv and Appendix C #407.
-The same identity additionally binds R-S11iw and Appendix C #408.
-The same identity additionally binds R-S11ix and Appendix C #409.
-The same identity additionally binds R-S11iy and Appendix C #410.
-The same identity additionally binds R-S11iz and Appendix C #411.
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++

@@ -28287,46 +28287,6 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows publication one test-only parent substitution",
     )
 
-    publication_requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11du",
-        "Windows exact result-publication requirement",
-    )
-    for text, label in (
-        (
-            "Windows result publication is exact-object, same-filesystem, no-clobber, durable, and authority-terminal",
-            "Windows publication requirement title",
-        ),
-        (
-            "complete candidate <span class=\"kw\">MUST</span> first be created inside the authenticated private run root",
-            "Windows publication normative candidate authority",
-        ),
-        (
-            "remove the exact remaining run-root identity through R-S11dt's "
-            "descriptor-relative private-tree closure while the requested destination is still absent",
-            "Windows publication normative run-state finality",
-        ),
-        (
-            "same-parent <code>renameat2(RENAME_NOREPLACE)</code>",
-            "Windows publication normative final no-clobber primitive",
-        ),
-        (
-            "without invoking the Windows builder main path",
-            "Windows publication source-only verification boundary",
-        ),
-    ):
-        require_text(publication_requirement, text, label)
-    require_text(
-        sources["requirements"],
-        "<tr><td>274</td>",
-        "Windows publication Appendix C #274 disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
-        "Windows publication hardening-ledger disposition",
-    )
-
     focused = sources["windows_harness_verifier"]
     for text, label in (
         (
@@ -28392,10 +28352,6 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "canonical publication checksum source modes",
             "Windows build focused publication checksum-mode binding",
-        ),
-        (
-            "Appendix C #274 disposition",
-            "Windows build focused publication Appendix mutation",
         ),
     ):
         require_text(focused, text, label)

@@ -1386,38 +1386,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
         "R-S11dt hardening-ledger disposition",
     )
-    publication_requirement = html_requirement(requirements, "R-S11du")
     storage_requirement = html_requirement(requirements, "R-S11gl")
-    for literal, description in (
-        (
-            "Windows result publication is exact-object, same-filesystem, no-clobber, durable, and authority-terminal",
-            "R-S11du requirement title",
-        ),
-        (
-            "complete candidate <span class=\"kw\">MUST</span> first be created inside the authenticated private run root",
-            "normative private candidate authority",
-        ),
-        (
-            "remove the exact remaining run-root identity through R-S11dt's "
-            "descriptor-relative private-tree closure while the requested destination is still absent",
-            "normative run-state finality before publication",
-        ),
-        (
-            "same-parent <code>renameat2(RENAME_NOREPLACE)</code>",
-            "normative final no-clobber publication",
-        ),
-        (
-            "without invoking the Windows builder main path",
-            "source-only publication verification boundary",
-        ),
-    ):
-        require(publication_requirement, literal, description)
-    require(requirements, "<tr><td>274</td>", "Appendix C #274 disposition")
-    require(
-        hardening,
-        "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
-        "R-S11du hardening-ledger disposition",
-    )
     for literal, description in (
         ("fixed current-principal mode-0700 directory lease", "normative singleton lease"),
         ("per-run reflink, full golden copy, or copy fallback is forbidden", "normative zero-copy golden"),
@@ -3630,31 +3599,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "publication",
             "identity(published) != identity(candidate_info)",
             "identity(published) != identity(published)",
-        ),
-        (
-            "R-S11du requirement",
-            "requirements",
-            '<span class="id">R-S11du</span>',
-            '<span class="id">R-S11du-disabled</span>',
-        ),
-        (
-            "normative exact run-root retirement before final publication",
-            "requirements",
-            "remove the exact remaining run-root identity through R-S11dt's "
-            "descriptor-relative private-tree closure while the requested destination is still absent",
-            "leave the run root for cleanup after final publication",
-        ),
-        (
-            "Appendix C #274 disposition",
-            "requirements",
-            "<tr><td>274</td>",
-            "<tr><td>274-disabled</td>",
-        ),
-        (
-            "R-S11du hardening-ledger disposition",
-            "hardening",
-            "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
-            "R-S11du/R-S11e-139 — Windows result publication is pathname-owned",
         ),
         (
             "R-S11gl requirement",

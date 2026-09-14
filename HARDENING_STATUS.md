@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-c16e03655148a975ea8473d2c8b44f5d08c7b8cda00da4a23c848c52d943368d  requirements.html
+44314e2f692deb67eff46b784a47c81d127b12ad12d255cade44c38c0240c10c  requirements.html
 ```
 
 ## Current Verdict
@@ -346,10 +346,12 @@ observed no product or operating-system behavior. Later-added normative clauses 
 gates and independent normal workspace validator without requiring the duplicate global catalog. The last catalog run
 was killed with exit 137 after roughly eight and a half minutes under a 1,536 MiB limit without emitting a phase or
 verdict; its cause and progress were not proven. The retained normal workspace check now completes in seconds.
-R-S11dv through R-S11eb and Appendix C #275–#281 now state only the durable Debian/Android publication, privileged
-service protocol, PulseAudio, whiteboard, desktop-URL, and mobile-session contracts; their defect diaries,
+R-S11du through R-S11eb and Appendix C #274–#281 now state only the durable Windows/Debian/Android publication,
+privileged service protocol, PulseAudio, whiteboard, desktop-URL, and mobile-session contracts; their defect diaries,
 source-review claims, verifier inventories, `FIX` badges, ledger bookkeeping, and current evidence disclaimers are
-removed. The workspace verifier is 1,899,126 bytes/45,497 lines and `requirements.html` is 2,190,486 bytes. The
+removed. The Windows focused and independent validators retain their publication code/fixture checks but no longer
+parse R-S11du/#274/status wording or mutate those documents: 100 lines and four non-product mutations are deleted.
+The workspace verifier is now 1,897,391 bytes/45,453 lines and `requirements.html` is 2,187,931 bytes. The
 normal macOS credential verifier also no longer loads or mutates requirements, this ledger, shared/Apple gate
 wording, or the independent verifier: 427
 lines and 35 non-product mutations are deleted, while all 84 product-source authority mutations and the focused

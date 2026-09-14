@@ -913,6 +913,11 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
     }
 
+    #[cfg(any(target_os = "android", test))]
+    fn is_current_client_owner(&self, owner: CmClientOwner) -> bool {
+        CLIENTS.read().unwrap().is_current(owner)
+    }
+
     fn new_message(&self, owner: CmClientOwner, text: String) {
         if CLIENTS.read().unwrap().is_current(owner) {
             self.ui_handler
@@ -1741,6 +1746,16 @@ pub async fn start_listen<T: InvokeUiCM>(
             }
             command = rx.recv() => command,
         };
+        if let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) {
+            if !cm.is_current_client_owner(owner) {
+                log::warn!(
+                    "Terminating superseded Android CM listener: conn_id={}, registry_generation={}",
+                    owner.id,
+                    owner.generation
+                );
+                break;
+            }
+        }
         match command {
             Some(Data::Login {
                 id,
@@ -3051,14 +3066,18 @@ mod tests {
         }
     }
 
-    fn cm_test_login(id: i32) -> Data {
+    fn cm_test_login_with_file_authority(id: i32, file: bool) -> Data {
         Data::Login {
             id,
-            is_file_transfer: false,
+            is_file_transfer: file,
             is_view_camera: false,
             is_terminal: false,
             port_forward: String::new(),
-            conn_type: ipc::CmAuthConnType::Remote,
+            conn_type: if file {
+                ipc::CmAuthConnType::FileTransfer
+            } else {
+                ipc::CmAuthConnType::Remote
+            },
             peer_id: format!("peer-{id}"),
             name: "name".to_owned(),
             avatar: String::new(),
@@ -3066,11 +3085,15 @@ mod tests {
             keyboard: true,
             clipboard: true,
             audio: true,
-            file: false,
+            file,
             file_transfer_enabled: false,
             privacy_mode: false,
             cm_auth_token: "test-token".to_owned(),
         }
+    }
+
+    fn cm_test_login(id: i32) -> Data {
+        cm_test_login_with_file_authority(id, false)
     }
 
     #[cfg(target_os = "windows")]
@@ -3541,6 +3564,110 @@ mod tests {
         assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
         assert_eq!(lock_cm_egress_test(&ui.removed)[0].0, id);
         assert!(lock_cm_egress_test(&ui.removed)[0].2);
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_superseded_android_cm_owner_cannot_dispatch_filesystem_work() {
+        let id = 2_000_000_003;
+        CLIENTS.write().unwrap().clients.remove(&id);
+        let temp = CmFileTestDir::new("stale_android_owner");
+        let stale_directory = temp.join("must-not-exist");
+
+        let predecessor_ui = CmTaskOwnerTestUi::default();
+        let predecessor_manager = ConnectionManager::new(predecessor_ui.clone(), 51);
+        let (predecessor_tx, predecessor_rx) = mpsc::channel(2);
+        let (_predecessor_terminal_tx, predecessor_terminal_rx) =
+            tokio::sync::oneshot::channel();
+        let (predecessor_egress_tx, mut predecessor_egress_rx) = cm_egress_channel();
+        predecessor_tx
+            .send(cm_test_login_with_file_authority(id, true))
+            .await
+            .unwrap();
+        let mut predecessor = Box::pin(start_listen(
+            predecessor_manager,
+            predecessor_rx,
+            predecessor_terminal_rx,
+            predecessor_egress_tx,
+        ));
+        wait_for_cm_test_admission(&mut predecessor, &predecessor_ui.added).await;
+        let predecessor_generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+
+        let successor_ui = CmTaskOwnerTestUi::default();
+        let successor_manager = ConnectionManager::new(successor_ui.clone(), 52);
+        let (successor_tx, successor_rx) = mpsc::channel(2);
+        let (successor_terminal_tx, successor_terminal_rx) = tokio::sync::oneshot::channel();
+        let (successor_egress_tx, _successor_egress_rx) = cm_egress_channel();
+        successor_tx
+            .send(cm_test_login_with_file_authority(id, true))
+            .await
+            .unwrap();
+        let mut successor = Box::pin(start_listen(
+            successor_manager,
+            successor_rx,
+            successor_terminal_rx,
+            successor_egress_tx,
+        ));
+        wait_for_cm_test_admission(&mut successor, &successor_ui.added).await;
+        let successor_generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+        assert!(successor_generation > predecessor_generation);
+
+        predecessor_tx
+            .send(Data::FS(ipc::FS::CreateDir {
+                path: stale_directory.to_string_lossy().into_owned(),
+                id: 1,
+                request_id: 1,
+            }))
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), predecessor)
+            .await
+            .expect("superseded Android CM listener must terminate before filesystem dispatch");
+        assert!(!stale_directory.exists());
+        assert!(lock_cm_egress_test(&predecessor_ui.removed).is_empty());
+        let predecessor_close = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            predecessor_egress_rx.recv(),
+        )
+        .await
+        .expect("superseded predecessor close must be bounded");
+        assert!(matches!(
+            predecessor_close,
+            Some(CmEgressItem::Data(Data::Close))
+        ));
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                predecessor_egress_rx.recv(),
+            )
+            .await
+            .expect("superseded predecessor egress retirement must be bounded")
+            .is_none()
+        );
+
+        successor_terminal_tx
+            .send(CmConnectionTerminal::Close)
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), successor)
+            .await
+            .expect("successor Android CM listener must cleanly terminate");
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_eq!(
+            *lock_cm_egress_test(&successor_ui.removed),
+            vec![(id, successor_generation, true)]
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -12603,8 +12603,8 @@ shape is not promoted to native or lifecycle proof.
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
 **CORE REGISTRY SOURCE IMPLEMENTED; KNOWN SIDE-EFFECT LIFETIME WORK REMAINS;
-SEVEN EXECUTABLE RUST REGRESSIONS AND ONE DART SERIALIZATION TEST RETAINED;
-ANDROID FIXTURE IS NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
+EIGHT EXECUTABLE RUST REGRESSIONS AND ONE DART SERIALIZATION TEST RETAINED;
+ANDROID RUST FIXTURES ARE NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
 `CmClientRegistry` owns a checked process-lifetime
 generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
 authority tokens, stale source generations, active same-source collisions, and exhaustion
@@ -12615,10 +12615,12 @@ supersede an active predecessor, whose egress owner closes before replacement. D
 source generation zero cannot supersede an active collision. Registry mutation, chat,
 voice, Android notification/input/capture mirrors, and generation-bearing
 add/remove/chat/voice UI events carry or check the exact owner. This is not yet a blanket
-claim for every CM side effect: desktop removal releases the registry lock before its
-bare-ID clipboard cleanup, the process-global desktop click-time value and generation-less
-file-log publication are not owner-bearing, and Android CM filesystem dispatch does not
-recheck the registry owner. Their race and lifetime semantics remain open.
+claim for every CM side effect: the process-global desktop click-time value and
+generation-less file-log publication are not owner-bearing, so their queued UI and
+replacement semantics remain open. The previously recorded Windows clipboard-cleanup
+gap is not reachable: the exact controlled-route lease remains occupied through registry
+retirement and native emptying, and a same-ID successor must acquire that route before it
+can enter the client registry.
 
 Windows privacy mode now retains one typed connection owner containing the positive
 connection ID and nonempty CM authority token for the physical privacy resource's full
@@ -12649,15 +12651,21 @@ mirror, input, delayed pointer work, voice, capture reconciliation, notification
 events, and Dart state. A newer same-ID owner retires predecessor resources before
 publication; stale callbacks are intended to be inert. The persistent foreground service
 remains intentional, and cleanup correctness must not depend on task swipe or Force Stop.
+The retained Android CM listener checks its exact registry owner before it processes each
+event after Login. Once a newer service generation replaces it, the next observed command
+is terminal before filesystem dispatch or any other command effect. Work admitted while
+the owner was current may finish; supersession does not invent rollback or report an
+already completed filesystem effect as unperformed.
 
 Four Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
 disconnected replacement, and generation-exhaustion no-commit. A fifth focused unit
 regression proves that a privacy resource rejects same-ID replacement with a different
 connection token. The callback regression first rejects a stale token at the registry
-egress edge, then drives the valid one-shot callback over the real framed runner. Two
-additional focused Rust tests drive the actual Android CM
-future through one-shot terminal completion and direct future cancellation after
-admission, and require exact single registry/UI removal.
+egress edge, then drives the valid one-shot callback over the real framed runner. Three
+additional focused Rust tests drive the actual Android CM future through one-shot terminal
+completion, direct future cancellation after admission, and same-ID service-generation
+supersession followed by a real `CreateDir` command. The last requires predecessor
+termination with no directory effect, followed by exact successor cleanup.
 The shared runner retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never`.
 `flutter/test/server_model_test.dart`, invoked by `scripts/dart-verify.sh`, executes
@@ -12670,7 +12678,7 @@ registry retirement without asserting documentation text. The duplicate workspac
 validator and the unrelated CM/listener checks formerly embedded in the Android voice
 and media source validators are deleted; none of those source checks executed these paths.
 
-The two child-future tests have not yet been executed against the current dependency
+The three child-future tests have not yet been executed against the current dependency
 closure because the pinned project builder is absent locally; Rust parsing alone is not
 their result. Required evidence remains exact Rust and Dart execution, an Android target
 compile, plus current Android package execution for same-ID supersession, stale/duplicate

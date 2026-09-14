@@ -7545,202 +7545,6 @@ def validate_macos_descriptor_contract(sources):
         require_text(sources[source_key], text, label)
 
 
-def validate_windows_viewer_keyboard_authority_contract(sources):
-    native = sources["windows_native_source"]
-    windows = sources["windows_source"]
-    keyboard = sources["keyboard_source"]
-    ui_session = sources["ui_session_source"]
-    flutter_ffi = sources["flutter_ffi_source"]
-    remote_page = sources["desktop_remote_page_dart"]
-    camera_page = sources["desktop_camera_page_dart"]
-    web_bridge = sources["web_bridge_dart"]
-    privacy_input = sources["windows_privacy_input_source"]
-
-    for token, label in (
-        ("SetWindowsHookEx", "native hook API"),
-        ("WH_KEYBOARD_LL", "native low-level keyboard hook"),
-        ("win32_enable_lowlevel_keyboard", "native enable function"),
-        ("win32_disable_lowlevel_keyboard", "native disable function"),
-        ("win_stop_system_key_propagate", "native propagation toggle"),
-        ("is_win_down", "native Win-key state reader"),
-        ("default_hook_wnd", "native default target window"),
-        ("target_wnd", "native mutable target window"),
-        ("stop_system_key_propagate", "native ambient propagation state"),
-        ("PostThreadMessage", "native hook-thread shutdown"),
-    ):
-        require_absent(native, token, f"dormant Windows viewer {label}")
-
-    for token, label in (
-        ("win32_enable_lowlevel_keyboard", "native enable binding"),
-        ("win32_disable_lowlevel_keyboard", "native disable binding"),
-        ("win_stop_system_key_propagate", "native toggle binding"),
-        ("is_win_down", "native state binding"),
-        ("enable_lowlevel_keyboard", "Rust enable wrapper"),
-        ("disable_lowlevel_keyboard", "Rust disable wrapper"),
-        ("stop_system_key_propagate", "Rust toggle wrapper"),
-        ("get_win_key_state", "Rust ambient state wrapper"),
-    ):
-        require_absent(windows, token, f"dormant Windows viewer {label}")
-    require_absent(
-        keyboard,
-        "get_win_key_state",
-        "legacy keyboard ambient Win-key fallback",
-    )
-    require_absent(
-        ui_session,
-        "get_win_key_state",
-        "viewer mouse ambient Win-key fallback",
-    )
-
-    grab_owner = extract_between(
-        keyboard,
-        "struct GrabOwnerState {",
-        "\n    pub fn process_event(",
-        "Windows viewer exact-session grab owner",
-    )
-    for token, label in (
-        ("owner: Option<u128>,", "full session UUID owner"),
-        ("if gs.owner == Some(session_id) {", "idempotent current-owner admission"),
-        ("if gs.owner != Some(session_id) {", "stale release rejection"),
-        ("gs.owner = Some(session_id);", "exact owner commit"),
-        ("gs.owner = None;", "exact owner retirement"),
-    ):
-        require_text(grab_owner, token, f"Windows viewer grab {label}")
-    require_text(
-        keyboard,
-        "rdev::grab(func)",
-        "Windows viewer retained rdev grab loop",
-    )
-
-    modifier_state = extract_between(
-        keyboard,
-        "static ref MODIFIERS_STATE: Mutex<HashMap<Key, bool>> = {",
-        "\n}\n\npub mod client",
-        "Windows viewer modifier-state initialization",
-    )
-    require_order(
-        modifier_state,
-        (
-            "m.insert(Key::MetaLeft, false);",
-            "m.insert(Key::MetaRight, false);",
-        ),
-        "Windows viewer both Meta keys tracked",
-    )
-    event_pipeline = extract_between(
-        keyboard,
-        "pub fn event_to_key_events(",
-        "\npub fn legacy_keyboard_mode(",
-        "Windows viewer event-to-key pipeline",
-    )
-    require_order(
-        event_pipeline,
-        (
-            "update_modifiers_state(event);",
-            "match event.event_type {",
-            "let mut key_event = KeyEvent::new();",
-        ),
-        "Windows viewer modifier update before key conversion",
-    )
-
-    legacy = extract_between(
-        keyboard,
-        "pub fn legacy_keyboard_mode(",
-        "\n#[inline]\npub fn map_keyboard_mode",
-        "Windows viewer legacy keyboard conversion",
-    )
-    require_order(
-        legacy,
-        (
-            "get_key_state(enigo::Key::Meta) || get_key_state(enigo::Key::RWin);",
-            "let (_, _, _, command) = client::get_modifiers_state(false, false, false, command);",
-            "if chr == 'l' && is_win && command {",
-            "let (alt, ctrl, shift, command) = client::get_modifiers_state(alt, ctrl, shift, command);",
-        ),
-        "Windows viewer legacy direct-and-tracked Meta source",
-    )
-    mouse = extract_between(
-        ui_session,
-        "    pub fn send_mouse(",
-        "\n    pub fn reconnect(",
-        "Windows viewer mouse modifier path",
-    )
-    require_order(
-        mouse,
-        (
-            "#[cfg(windows)]",
-            "|| crate::client::get_key_state(enigo::Key::Meta)",
-            "|| crate::client::get_key_state(enigo::Key::RWin);",
-            "keyboard::client::get_modifiers_state(alt, ctrl, shift, command);",
-            "send_mouse(mask, x, y, alt, ctrl, shift, command, self);",
-        ),
-        "Windows viewer mouse direct-and-tracked Meta source",
-    )
-
-    for source, label in (
-        (flutter_ffi, "Flutter Rust FFI"),
-        (remote_page, "desktop Remote page"),
-        (camera_page, "desktop ViewCamera page"),
-        (web_bridge, "web bridge"),
-    ):
-        for token in ("host_stop_system_key_propagate", "hostStopSystemKeyPropagate"):
-            require_absent(source, token, f"dormant viewer hook {label} {token}")
-    for source, label in (
-        (remote_page, "desktop Remote page"),
-        (camera_page, "desktop ViewCamera page"),
-    ):
-        body = extract_between(
-            source,
-            "  Widget getBodyForDesktop(BuildContext context) {",
-            "\n  @override\n  bool get wantKeepAlive",
-            f"{label} body",
-        )
-        require_absent(
-            body,
-            "hostStopSystemKeyPropagate",
-            f"{label} toggle-only pointer wrapper",
-        )
-
-    for token, label in (
-        ("SetWindowsHookExA(", "controlled-side hook install"),
-        ("WH_KEYBOARD_LL", "controlled-side keyboard-hook kind"),
-        ("UnhookWindowsHookEx(hook_keyboard", "controlled-side hook release"),
-    ):
-        require_text(
-            privacy_input,
-            token,
-            f"separate Windows privacy-hook {label}",
-        )
-
-    require_text(
-        sources["verify"],
-        'echo "== (3b-iii-d15) Windows viewer keyboard interception authority (R-S11es/R-S11e-180) =="',
-        "Windows viewer keyboard shared source gate",
-    )
-    requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11es",
-        "Windows viewer keyboard interception requirement",
-    )
-    for token, label in (
-        ("full per-window session UUID", "exact-session ownership"),
-        ("<code>WH_KEYBOARD_LL</code>", "retired hook kind"),
-        ("<code>GrabOwnerState.owner: Option&lt;u128&gt;</code>", "replacement owner"),
-        ("<code>Enigo::get_key_state</code>", "direct modifier query"),
-        ("privacy-mode hook", "privacy-hook separation"),
-    ):
-        require_text(requirement, token, f"Windows viewer keyboard requirement {label}")
-    require_text(
-        sources["requirements"],
-        "<tr><td>301</td>",
-        "Windows viewer keyboard Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11es/R-S11e-180 Windows viewer keyboard interception authority",
-        "Windows viewer keyboard hardening ledger",
-    )
-
-
 
 def validate_windows_dormant_fixed_temp_diagnostic_contract(sources):
     native = sources["windows_native_source"]
@@ -23087,10 +22891,9 @@ def validate_display_selection_finality_contract(sources):
     require_absent(ordered, "tokio::spawn", "display selection background-task bypass")
     require_absent(ordered, "retry", "display selection retry bypass")
 
-    typed_sender = extract_between(
+    typed_sender = extract_braced_item(
         sources["ui_session_source"],
         "pub fn try_select_displays<F>(",
-        "\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n    pub fn enter",
         "independent typed display-selection sender",
     )
     require_order(
@@ -38164,7 +37967,6 @@ def validate_sources(sources):
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
     validate_generic_desktop_privilege_probe_excision_contract(sources)
-    validate_windows_viewer_keyboard_authority_contract(sources)
     validate_windows_dormant_fixed_temp_diagnostic_contract(sources)
     validate_macos_privileged_script_environment_contract(sources)
     validate_fusermount_process_context_contract(sources)

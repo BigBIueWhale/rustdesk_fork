@@ -8,6 +8,7 @@ use crate::{client::get_key_state, common::GrabState};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::log;
 use hbb_common::message_proto::*;
+use hbb_common::SessionID;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use rdev::KeyCode;
 use rdev::{Event, EventType, Key};
@@ -103,7 +104,7 @@ pub mod client {
     /// spurious `Wait` events that arrive shortly after a `Run`.
     #[derive(Default)]
     struct GrabOwnerState {
-        owner: Option<u128>,
+        owner: Option<SessionID>,
         last_grab: Option<std::time::Instant>,
         /// True while a deferred-release thread is in flight. Prevents
         /// spawning redundant threads during the X11 feedback loop.
@@ -162,7 +163,7 @@ pub mod client {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn change_grab_status(state: GrabState, keyboard_mode: &str, session_id: u128) {
+    pub fn change_grab_status(state: GrabState, keyboard_mode: &str, session_id: SessionID) {
         #[cfg(feature = "flutter")]
         if !IS_RDEV_ENABLED.load(Ordering::SeqCst) {
             return;
@@ -190,17 +191,17 @@ pub mod client {
                     // timer with an up-to-date snapshot of last_grab.
                     gs.deferred_pending = false;
                     log::debug!(
-                        "[grab] Run(0x{:x}): already owner, refresh debounce",
+                        "[grab] Run({}): already owner, refresh debounce",
                         session_id
                     );
                     return;
                 }
 
                 log::debug!(
-                    "[grab] Run(0x{:x}): prev_owner={}, mode={}",
+                    "[grab] Run({}): prev_owner={}, mode={}",
                     session_id,
                     gs.owner
-                        .map_or("none".to_string(), |id| format!("0x{:x}", id)),
+                        .map_or_else(|| "none".to_owned(), |id| id.to_string()),
                     keyboard_mode,
                 );
 
@@ -225,10 +226,10 @@ pub mod client {
                 // session A from releasing session B's freshly acquired grab.
                 if gs.owner != Some(session_id) {
                     log::debug!(
-                        "[grab] Wait(0x{:x}): ignored, owner={}",
+                        "[grab] Wait({}): ignored, owner={}",
                         session_id,
                         gs.owner
-                            .map_or("none".to_string(), |id| format!("0x{:x}", id)),
+                            .map_or_else(|| "none".to_owned(), |id| id.to_string()),
                     );
                     return;
                 }
@@ -245,7 +246,7 @@ pub mod client {
                     if elapsed < GRAB_DEBOUNCE_MS {
                         if !gs.deferred_pending {
                             log::debug!(
-                                "[grab] Wait(0x{:x}): debounced ({}ms < {}ms), scheduling deferred release",
+                                "[grab] Wait({}): debounced ({}ms < {}ms), scheduling deferred release",
                                 session_id, elapsed, GRAB_DEBOUNCE_MS,
                             );
                             gs.deferred_pending = true;
@@ -261,7 +262,7 @@ pub mod client {
                                         let to_release = take_remote_keys();
                                         gs.deferred_pending = false;
                                         log::debug!(
-                                            "[grab] Wait(0x{:x}): deferred release",
+                                            "[grab] Wait({}): deferred release",
                                             session_id
                                         );
                                         KEYBOARD_HOOKED.store(false, Ordering::SeqCst);
@@ -270,7 +271,7 @@ pub mod client {
                                         Some(to_release)
                                     } else {
                                         log::debug!(
-                                            "[grab] Wait(0x{:x}): deferred release cancelled (grab refreshed)",
+                                            "[grab] Wait({}): deferred release cancelled (grab refreshed)",
                                             session_id,
                                         );
                                         None
@@ -283,7 +284,7 @@ pub mod client {
                             });
                         } else {
                             log::debug!(
-                                "[grab] Wait(0x{:x}): debounced, deferred release already pending",
+                                "[grab] Wait({}): debounced, deferred release already pending",
                                 session_id,
                             );
                         }
@@ -291,7 +292,7 @@ pub mod client {
                     }
                 }
 
-                log::debug!("[grab] Wait(0x{:x}): releasing grab", session_id);
+                log::debug!("[grab] Wait({}): releasing grab", session_id);
 
                 #[cfg(windows)]
                 rdev::set_get_key_unicode(false);

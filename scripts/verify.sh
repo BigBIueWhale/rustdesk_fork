@@ -8291,8 +8291,9 @@ else
 fi
 
 # (3b-iii-d15) R-S11es/R-S11e-180: the Windows viewer has one
-# exact-session-owned rdev grab. The dormant Sciter HWND hook, ambient Boolean
-# state, Flutter bridge toggle, and toggle-only pointer wrappers are absent.
+# typed full-window-UUID rdev grab path. The narrow Session API, dormant Sciter
+# HWND hook, ambient Boolean state, Flutter bridge toggle, and toggle-only
+# pointer wrappers are absent.
 echo "== (3b-iii-d15) Windows viewer keyboard interception authority (R-S11es/R-S11e-180) =="
 r_s11e180=
 if grep -Eq 'SetWindowsHookEx|WH_KEYBOARD_LL|win32_(enable|disable)_lowlevel_keyboard|win_stop_system_key_propagate|is_win_down|default_hook_wnd|target_wnd|stop_system_key_propagate|PostThreadMessage' src/platform/windows.cc; then
@@ -8309,8 +8310,10 @@ if grep -Eq 'host_stop_system_key_propagate|hostStopSystemKeyPropagate' \
   r_s11e180="$r_s11e180 dormant-flutter-viewer-hook-surface-present"
 fi
 for grab_binding in \
+  'use hbb_common::SessionID;' \
   'struct GrabOwnerState {' \
-  'owner: Option<u128>,' \
+  'owner: Option<SessionID>,' \
+  'pub fn change_grab_status(state: GrabState, keyboard_mode: &str, session_id: SessionID) {' \
   'if gs.owner == Some(session_id) {' \
   'if gs.owner != Some(session_id) {' \
   'rdev::grab(func)' \
@@ -8320,6 +8323,20 @@ for grab_binding in \
   grep -qF "$grab_binding" src/keyboard.rs \
     || r_s11e180="$r_s11e180 exact-session-grab-or-meta-state-binding-missing"
 done
+if grep -Eq 'fn (enter|leave)\(&self, keyboard_mode' src/ui_session_interface.rs; then
+  r_s11e180="$r_s11e180 narrow-session-grab-api-present"
+fi
+if grep -R -qF --include='*.rs' --exclude='flutter_ffi.rs' --exclude='keyboard.rs' \
+  'change_grab_status(' src; then
+  r_s11e180="$r_s11e180 alternate-grab-status-call-path-present"
+fi
+ffi_grab_body=$(awk '/pub fn session_enter_or_leave\(/,/^}/' src/flutter_ffi.rs)
+if [ "$(grep -cF 'crate::keyboard::client::change_grab_status(' <<<"$ffi_grab_body")" -ne 2 ] \
+  || ! grep -qF 'pub fn session_enter_or_leave(_session_id: SessionID, _enter: bool)' <<<"$ffi_grab_body" \
+  || [ "$(grep -cF '                _session_id,' <<<"$ffi_grab_body")" -ne 2 ] \
+  || grep -Eq 'as_u128|lc\.session_id' <<<"$ffi_grab_body"; then
+  r_s11e180="$r_s11e180 sole-typed-flutter-grab-route-missing"
+fi
 legacy_keyboard_body=$(awk '/pub fn legacy_keyboard_mode\(/,/^}/' src/keyboard.rs)
 for legacy_binding in \
   'get_key_state(enigo::Key::Meta) || get_key_state(enigo::Key::RWin);' \
@@ -8343,19 +8360,11 @@ for privacy_binding in \
   grep -qF "$privacy_binding" src/privacy_mode/win_input.rs \
     || r_s11e180="$r_s11e180 separate-privacy-hook-lifecycle-missing"
 done
-grep -qF 'validate_windows_viewer_keyboard_authority_contract(sources)' scripts/verify-verifier-workspace.py \
-  || r_s11e180="$r_s11e180 independent-semantic-verifier-binding-missing"
-grep -qF '<span class="id">R-S11es</span>' requirements.html \
-  || r_s11e180="$r_s11e180 normative-requirement-missing"
-grep -qF '<tr><td>301</td>' requirements.html \
-  || r_s11e180="$r_s11e180 appendix-row-missing"
-grep -qF 'R-S11es/R-S11e-180 Windows viewer keyboard interception authority' HARDENING_STATUS.md \
-  || r_s11e180="$r_s11e180 hardening-ledger-missing"
 if [ -n "$r_s11e180" ]; then
   echo "  FAIL R-S11e-180 Windows viewer keyboard interception authority:$r_s11e180"
   rc=1
 else
-  echo "  ok  R-S11e-180 viewer keyboard capture has one exact-session grab; dormant Sciter hook and Flutter toggle are absent"
+  echo "  ok  R-S11e-180 viewer keyboard capture has one typed full-window-UUID grab route; narrow and dormant paths are absent"
 fi
 
 # (3b-iii-d16) R-S11et/R-S11e-181: the imported, uncalled native

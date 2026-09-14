@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ab041240b6f6f880cd5974e9b4937b99033ef1a4b162519ab11e05e644df1f9f  requirements.html
+32c19797c4e4b590cfc0f4e33a891241fb4aacedfc6194f3b18029ec3e42ba37  requirements.html
 ```
 
 ## Current Verdict
@@ -1128,9 +1128,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   connection-owned physical key chord; the external-helper and generic-fallback surfaces are absent. Windows uses
   the fallible native `LockWorkStation` request and treats success only as initiation. Installed Linux, Windows,
   and macOS outcome, refusal, reconnect, and cleanup evidence remains open.
-- **R-S11es/R-S11e-180 Windows viewer keyboard interception authority** — Source closed. The dormant Sciter
-  low-level hook, HWND relay, process-global Win-key state, FFI, and Flutter calls are absent. Viewer interception
-  is owned by the existing rdev loop and exact window/session UUID; native Windows behavior remains open.
+- **R-S11es/R-S11e-180 Windows viewer keyboard interception authority** — Source topology closed. The sole
+  view-focus route now carries the typed full window `SessionID` into an owner of the same type; the dead
+  `Session::enter`/`Session::leave` narrow connection-ID route is deleted. The dormant Sciter low-level hook,
+  HWND relay, process-global Win-key state, FFI, and Flutter calls remain absent. The focused source invariant
+  protects this one-route shape; exact multi-window native Windows behavior and resource evidence remain open.
 - **R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority** — Source closed by deletion.
   The uncalled `flog` helper and fixed `C:\\Windows\\temp\\test_rustdesk.log` append path have no replacement,
   compatibility alias, or alternate ambient diagnostic sink.

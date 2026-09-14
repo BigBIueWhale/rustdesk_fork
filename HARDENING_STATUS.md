@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-4a1034b3a1ada2e1d90b1932b9c26e5bd313e84a537f7309ea03ed6edf32b3e8  requirements.html
+bbdf7495f8f1d2e58dc5d44d4bf9fa6348e614ec4d135d83bb11c88cd69bef15  requirements.html
 ```
 
 ## Current Verdict
@@ -346,7 +346,7 @@ observed no product or operating-system behavior. Later-added normative clauses 
 gates and independent normal workspace validator without requiring the duplicate global catalog. The last catalog run
 was killed with exit 137 after roughly eight and a half minutes under a 1,536 MiB limit without emitting a phase or
 verdict; its cause and progress were not proven. The retained normal workspace check now completes in seconds.
-The workspace verifier is 1,899,126 bytes/45,497 lines and `requirements.html` is 2,223,739 bytes. The live
+The workspace verifier is 1,899,126 bytes/45,497 lines and `requirements.html` is 2,207,292 bytes. The live
 hardening ledger remains below its documented approximate 400,000-token budget.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)

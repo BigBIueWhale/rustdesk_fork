@@ -687,17 +687,6 @@ def validate_contract(sources: dict[str, str]) -> None:
         "shared verifier wiring",
     )
     require_all(
-        sources["workspace"],
-        (
-            "validate_deb_builder_image_authority_contract(sources)\n"
-            "    validate_win_helper_image_authority_contract(sources)",
-            '"win_helper_image_authority_verifier": (',
-            'repo / "scripts/verify-win-helper-image-authority.py"',
-            "Windows helper image authority focused verifier",
-        ),
-        "independent workspace verifier",
-    )
-    require_all(
         sources["requirements"],
         (
             '<span class="id">R-S11dc</span>',
@@ -1045,14 +1034,6 @@ MUTATIONS = (
         "focused mutation gate",
     ),
     Mutation(
-        "workspace",
-        "validate_deb_builder_image_authority_contract(sources)\n"
-        "    validate_win_helper_image_authority_contract(sources)",
-        "validate_deb_builder_image_authority_contract(sources)\n"
-        "    true # Windows helper workspace contract removed",
-        "workspace dispatch",
-    ),
-    Mutation(
         "requirements",
         '<span class="id">R-S11dc</span>',
         '<span class="id">R-S11dc-disabled</span>',
@@ -1086,7 +1067,6 @@ def load_sources(repo: pathlib.Path) -> dict[str, str]:
         "golden": "scripts/verify-windows-golden.sh",
         "provenance": "scripts/offline-image-provenance.py",
         "verify": "scripts/verify.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
     }

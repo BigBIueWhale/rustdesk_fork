@@ -252,8 +252,8 @@ fi
 
 echo "== (0d1) authenticated Debian builder image distribution authority (R-S11db/R-S11e-120) =="
 r_s11db=
-if ! /usr/bin/python3 -I -S scripts/verify-deb-builder-image-authority.py --repo . --self-test; then
-  r_s11db="$r_s11db authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-deb-builder-image-authority.py --repo .; then
+  r_s11db="$r_s11db compact-source-gate-failed"
 fi
 if [ -n "$r_s11db" ]; then
   echo "  FAIL R-S11db Debian builder image distribution authority:$r_s11db"

@@ -1635,8 +1635,10 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   builder checker was reduced from 2,196 to 376 lines and its duplicate 912-line workspace block was deleted; and the guest
   runs the separate 31-decision Dart and 20-decision Rust scanner-result behavioral tests. The Android image-distribution
   checker is now a compact Android-specific pin/Dockerfile/loader/certification/promotion invariant rather than a
-  cross-document mutation catalog, and its duplicate workspace validator is absent. The same admitted UID/GID-4000 guest
-  executes the generic archive/OCI provenance self-test, including its 39 Android decisions.
+  cross-document mutation catalog, and its duplicate workspace validator is absent. The Debian image-distribution checker
+  is likewise a compact Debian-specific invariant rather than a cross-document mutation catalog; its reciprocal workspace
+  validator is absent. The same admitted UID/GID-4000 guest executes the generic archive/OCI provenance self-test, including
+  its 39 Android decisions and eight certified-Debian role/archive/direct-normalization decisions.
   It did not execute RustDesk, the verifier image, FRB code generation, a build, an OSV or RustSec scan, the
   complete source/input transaction, an artifact, or an output-publication transaction.
 - No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
@@ -6487,7 +6489,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   or complete R-V3 external review.
 - **R-S11db/R-S11e-120 — authenticated Debian builder image distribution authority —
   SOURCE, DIRECT-OCI DISTRIBUTION, REAL ARCHIVE/RUNTIME, INDEPENDENT RUNTIME-GRAPH
-  REPRODUCTION, AND FOCUSED/WORKSPACE MUTATION EVIDENCE RECORDED 2026-07-25; CLEAN
+  REPRODUCTION, AND COMPACT SOURCE/NO-NIC FIXTURE EVIDENCE PRESENT; CLEAN
   EXACT-COMMIT R-B2/R-B10 RELEASE, INSTALLED DEBIAN LIFECYCLE, OTHER MAINTENANCE-IMAGE
   DISTRIBUTION, DEVICE/NATIVE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
   acquisition/build host, its local Docker/BuildKit engine, and each offline Debian release
@@ -6592,35 +6594,24 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Networked acquisition can emit only `deb-builder-bootstrap-candidate`; Debian capture can
   archive only the bootstrap role; and generic final capture is absent. The old
   self-authorizing `build_deb_builder_image`, shared `capture_builder_image`, generic
-  `maintenance_capture_builder_images`, and its CLI entry point are absent. The new focused
-  semantic gate, its deliberate mutations, generalized provenance fixtures, independent
-  workspace contract/mutations, shared verifier wiring, exact requirement/Appendix disposition,
-  and this ledger bind those boundaries.
+  `maintenance_capture_builder_images`, and its CLI entry point are absent. The compact
+  Debian-specific gate now checks only exact pins/recipe, bootstrap-only acquisition and capture,
+  final-only loading, the local-OCI networkless certification transaction, verify-before-no-clobber
+  promotion, runtime-verifier arguments, and retired fallback absence. Common archive, attestation,
+  and canonicalization semantics remain owned by the executable provenance fixtures rather than a
+  reciprocal source verifier.
 
-  The self-excluding complete ignored online tree was regenerated through the canonical
-  maintenance writer and independently reverified at
-  `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`:
-  145,629 files, 42,831 directories, 41 symlinks, 30,669,039,776 content bytes,
-  16 hardlink groups, and 9 case collisions. Both real Debian archives independently passed
-  their mount-free semantic validators after publication; exact stat/hash replay confirmed
-  current UID/GID 1000 ownership, one link, mode 0400, and the pinned sizes and hashes, while
-  the promoted Debian candidate name was absent. The generalized provenance self-test,
-  Android image gate's 55 mutations, Debian image gate's 39 mutations, Dart image gate's 85,
-  Rust image gate's 95, online-container gate's 44, and the complete independent workspace
-  source-mutation matrix pass.
-
-  All project Bash/Python execution and verification for this slice ran in the immutable
-  unprivileged devcheck container with no network, read-only repository/root, no capabilities,
-  no-new-privileges, no Docker socket or published port, and explicit resource ceilings, except
-  direct host Docker/BuildKit orchestration required to create and load the reviewed image.
-  The certification Dockerfile's only execution was UID/GID 1000 and networkless. No root
-  command or root container, privileged flag, added capability, host namespace/device, Docker
-  socket passed into a container, published port, release build, or host RustDesk
-  process/service/configuration/listener/firewall/network inspection or mutation occurred.
-  This slice does not build the cold exact-commit Debian package, execute R-B2/R-B10 release
-  determinism, inspect package payload semantics beyond existing gates, test
-  install/upgrade/uninstall on a Debian target, authenticate other maintenance images, prove
-  device/native installed-platform behavior, or complete R-V3 external review.
+  The sole no-NIC verifier VM runs that compact gate as UID/GID 4000 and runs the generic
+  provenance self-test with a certified Debian archive/direct-OCI fixture. The Debian fixture
+  validates the role-specific Ubuntu 18.04 base, 21-entry history, runtime/tool/cat contract,
+  attestation source, and direct normalization, and refuses wrong role, base, and embedded
+  certification source. The shared Android fixture continues to exercise the larger common
+  archive/attestation/ownership/graph/contamination/no-clobber matrix. This generated fixture is
+  not the 462,076,812-byte release archive, a real BuildKit certification, or a loaded-container
+  fingerprint. The previously recorded exact real-archive/runtime and independent runtime-graph
+  results remain named historical evidence. Current cold exact-commit R-B2/R-B10 determinism,
+  installed Debian lifecycle, other maintenance images, native/device behavior, independent
+  reproduction, and external review remain open.
 - **R-S11dc/R-S11e-121 — authenticated Windows helper image distribution authority —
   SOURCE, DIRECT-OCI DISTRIBUTION, REAL ARCHIVE/RUNTIME, AND FOCUSED/WORKSPACE MUTATION
   EVIDENCE RECORDED 2026-07-25; CLEAN EXACT-COMMIT R-B2/R-B10 RELEASE, WINDOWS GUEST

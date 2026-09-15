@@ -34,6 +34,7 @@ readonly RUST_AUDIT_SCRIPT=$VERIFY_REPO/scripts/audit.sh
 readonly ANDROID_KEYSTORE_SCRIPT=$VERIFY_REPO/scripts/gen-android-keystore.sh
 readonly ANDROID_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-android.sh
 readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-builder-image-authority.py
+readonly DEB_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-deb-builder-image-authority.py
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
@@ -115,6 +116,7 @@ for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     verify-android-keystore-authority.py \
     build-android.sh verify-android-builder-authority.py \
     verify-android-builder-image-authority.py \
+    verify-deb-builder-image-authority.py \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
     online-fetch.sh android-rust-check.sh \
@@ -580,6 +582,22 @@ android_image_source_gate_output="$(
 printf '%s\n' "$android_image_source_gate_output"
 printf 'VERIFIER_VM_ANDROID_IMAGE_SOURCE_GATE=pass\n'
 
+deb_image_source_gate_status=0
+deb_image_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$DEB_BUILDER_IMAGE_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || deb_image_source_gate_status=$?
+[ "${#deb_image_source_gate_output}" -le 4096 ] \
+    || fail 'Debian builder-image source-gate diagnostic exceeded its bound'
+[ "$deb_image_source_gate_status" -eq 0 ] \
+    || fail "Debian builder-image compact source gate failed: $deb_image_source_gate_output"
+[ "$deb_image_source_gate_output" = \
+  'verify-deb-builder-image-authority: ok' ] \
+    || fail "Debian builder-image source-gate result differs: $deb_image_source_gate_output"
+printf '%s\n' "$deb_image_source_gate_output"
+printf 'VERIFIER_VM_DEB_IMAGE_SOURCE_GATE=pass\n'
+
 offline_image_provenance_status=0
 offline_image_provenance_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -593,7 +611,7 @@ offline_image_provenance_output="$(
   'offline image provenance self-test: PASS' ] \
     || fail "offline image-provenance result differs: $offline_image_provenance_output"
 printf '%s\n' "$offline_image_provenance_output"
-printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39\n'
+printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39 debian_decisions=8\n'
 
 if /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-android-rust-entry.out" 2>"$ROOT/root-android-rust-entry.err"; then

@@ -8708,6 +8708,166 @@ def self_test() -> None:
                 f"{android_checks}"
             )
 
+        deb_archive = (
+            Path(temporary) / "certified-deb-builder-image.tar.gz"
+        )
+        deb_spec = create_certified_builder_fixture_archive(
+            deb_archive,
+            role="deb-builder",
+        )
+        deb_bytes = deb_archive.read_bytes()
+        deb_sha = hashlib.sha256(deb_bytes).hexdigest()
+        deb_size = len(deb_bytes)
+        verify_archive(deb_archive, deb_sha, deb_spec, deb_size)
+        deb_payload = {
+            "Id": deb_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": deb_spec.runtime_config,
+        }
+        validate_inspect(deb_payload, deb_spec.image_id, deb_spec)
+        if deb_spec.display_name != "Debian builder" \
+           or deb_spec.argument_prefix != "DEB_BUILDER" \
+           or deb_spec.bootstrap_context_name != "deb-builder-bootstrap" \
+           or deb_spec.export_name != DEB_BUILDER_CERTIFICATION_EXPORT_NAME \
+           or deb_spec.export_oci_name != (
+               DEB_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+           ) \
+           or deb_spec.base != "ubuntu:18.04@sha256:" + "c" * 64 \
+           or deb_spec.runtime_environment != DEB_BUILDER_ENV \
+           or deb_spec.source_location_lines != range(20, 44) \
+           or deb_spec.history_count != 21 \
+           or deb_spec.bootstrap_layer_count != 3 \
+           or deb_spec.cat_path != "/bin/cat" \
+           or deb_spec.runtime_python_modules \
+           or deb_spec.runtime_tools != (
+               "ar",
+               "bash",
+               "cc",
+               "clang",
+               "cmake",
+               "curl",
+               "dpkg-deb",
+               "g++",
+               "gcc",
+               "git",
+               "make",
+               "nasm",
+               "ninja",
+               "pkg-config",
+               "python3",
+               "tar",
+               "unzip",
+               "wget",
+               "xz",
+               "yasm",
+               "zip",
+           ) \
+           or deb_spec.labels.get("org.opencontainers.image.ref.name") != (
+               "ubuntu"
+           ):
+            fail("certified Debian builder role contract differs")
+        deb_checks = 3
+
+        def deb_failure(
+            operation: Callable[[], object],
+            label: str,
+        ) -> None:
+            nonlocal deb_checks
+            expect_failure(operation, label)
+            deb_checks += 1
+
+        deb_failure(
+            lambda: verify_archive(
+                deb_archive,
+                deb_sha,
+                replace(deb_spec, role="android-builder"),
+                deb_size,
+            ),
+            "certified Debian builder role",
+        )
+        deb_failure(
+            lambda: verify_archive(
+                deb_archive,
+                deb_sha,
+                replace(
+                    deb_spec,
+                    base="ubuntu:24.04@sha256:" + "c" * 64,
+                ),
+                deb_size,
+            ),
+            "certified Debian builder base family",
+        )
+
+        deb_export = (
+            Path(temporary) / "certified-deb-builder-direct.oci.tar"
+        )
+        create_certified_builder_fixture_oci_export(
+            deb_archive,
+            deb_export,
+            deb_spec,
+        )
+        normalized_deb_archive = (
+            Path(temporary) / "normalized-certified-deb-builder.tar.gz"
+        )
+        (
+            normalized_deb_spec,
+            normalized_deb_sha,
+            normalized_deb_size,
+            deb_export_sha,
+            deb_export_size,
+        ) = canonicalize_certified_builder_oci_export(
+            deb_export,
+            normalized_deb_archive,
+            replace(deb_spec, image_id="sha256:" + "0" * 64),
+        )
+        if normalized_deb_spec != deb_spec \
+           or deb_export_sha != hashlib.sha256(
+               deb_export.read_bytes()
+           ).hexdigest() \
+           or deb_export_size != deb_export.stat().st_size \
+           or normalized_deb_size != normalized_deb_archive.stat().st_size \
+           or normalized_deb_sha != hashlib.sha256(
+               normalized_deb_archive.read_bytes()
+           ).hexdigest():
+            fail(
+                "certified Debian builder direct OCI normalization "
+                "identity differs"
+            )
+        verify_archive(
+            normalized_deb_archive,
+            normalized_deb_sha,
+            normalized_deb_spec,
+            normalized_deb_size,
+        )
+        deb_checks += 1
+
+        deb_source_drift = (
+            Path(temporary) / "source-drift-certified-deb-builder.tar.gz"
+        )
+        deb_source_drift_spec = create_certified_builder_fixture_archive(
+            deb_source_drift,
+            role="deb-builder",
+            embedded_dockerfile=b"FROM unreviewed\n",
+        )
+        deb_source_drift_bytes = deb_source_drift.read_bytes()
+        deb_failure(
+            lambda: verify_archive(
+                deb_source_drift,
+                hashlib.sha256(deb_source_drift_bytes).hexdigest(),
+                deb_source_drift_spec,
+                len(deb_source_drift_bytes),
+            ),
+            "certified Debian builder embedded Dockerfile",
+        )
+        verify_archive(deb_archive, deb_sha, deb_spec, deb_size)
+        deb_checks += 1
+        if deb_checks != 8:
+            fail(
+                "certified Debian builder image self-test count differs: "
+                f"{deb_checks}"
+            )
+
         win_archive = (
             Path(temporary) / "certified-win-helper-image.tar.gz"
         )

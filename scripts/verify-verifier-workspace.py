@@ -22542,184 +22542,6 @@ def validate_session_stream_generation_contract(sources):
 
 
 
-def validate_deb_builder_image_authority_contract(sources):
-    focused = sources["deb_builder_image_authority_verifier"]
-    dockerfile = sources["deb_builder_certification_dockerfile"]
-    online = sources["online_fetch"]
-    provenance = sources["offline_image_provenance"]
-    candidate = extract_between(
-        online,
-        "maintenance_build_deb_builder_certified_candidate() {",
-        "\n}\n\nmaintenance_build_android_builder_certified_candidate()",
-        "Debian builder certification transaction",
-    )
-    for text, label in (
-        (
-            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
-            "        == pin_value(pins, "
-            '"SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE")',
-            "Debian builder image focused Dockerfile-byte enforcement",
-        ),
-        (
-            "candidate-derived Debian image identity",
-            "Debian builder image focused candidate identity separation",
-        ),
-        (
-            "Debian certification transaction",
-            "Debian builder image focused build-authority binding",
-        ),
-        (
-            "Debian exact-pin promotion",
-            "Debian builder image focused promotion binding",
-        ),
-        (
-            "Windows-only bootstrap capture",
-            "Debian builder image focused legacy-capture rejection",
-        ),
-        (
-            "certified builder provenance authority",
-            "Debian builder image focused provenance binding",
-        ),
-        ("MUTATIONS = (", "Debian builder image focused mutation inventory"),
-        (
-            "run_mutations(sources)",
-            "Debian builder image focused mutation dispatch",
-        ),
-    ):
-        require_text(focused, text, label)
-    for text, label in (
-        ("FROM deb-builder-bootstrap", "Debian builder exact bootstrap base"),
-        ("USER 1000:1000", "Debian builder numeric nonroot certification"),
-        (
-            "RUN --network=none set -eu;",
-            "Debian builder networkless certification",
-        ),
-        (
-            "org.rustdesk.builder-certification.bootstrap-image-id=",
-            "Debian builder bootstrap identity label",
-        ),
-        (
-            "role=deb-builder",
-            "Debian builder live role-contract assertion",
-        ),
-    ):
-        require_text(dockerfile, text, label)
-    for text, label in (
-        (
-            "deb_builder_bootstrap_spec_args() {",
-            "Debian builder exact bootstrap specification",
-        ),
-        (
-            "deb_builder_certification_spec_args() {",
-            "Debian builder candidate-derived certification specification",
-        ),
-        (
-            "verify_or_load_deb_builder_image() {",
-            "Debian builder final-only release loader",
-        ),
-        (
-            "maintenance_build_deb_builder_certified_candidate() {",
-            "Debian builder explicit certification transaction",
-        ),
-        (
-            "deb-builder-bootstrap=oci-layout://${layout}@"
-            "${DEB_BUILDER_BOOTSTRAP_IMAGE_ID}",
-            "Debian builder local exact OCI material",
-        ),
-        (
-            "maintenance-normalize-certified-oci",
-            "Debian builder direct OCI canonicalization",
-        ),
-        (
-            "deb-builder-certified-candidate.docker.tar.gz",
-            "Debian builder persistent non-authoritative candidate",
-        ),
-        (
-            "maintenance_promote_deb_builder_certified_candidate() {",
-            "Debian builder exact-pin promotion",
-        ),
-        (
-            "maintenance_capture_deb_builder_bootstrap_image() {",
-            "Debian builder bootstrap-only historical capture",
-        ),
-    ):
-        require_text(online, text, label)
-    for text, label in (
-        (
-            "--network=none --pull=false --no-cache",
-            "Debian builder certification network/cache policy",
-        ),
-        (
-            "--platform=linux/amd64 --provenance=mode=max",
-            "Debian builder mode-max provenance",
-        ),
-        (
-            '--output="type=oci,name=${export_name},dest=${candidate_oci},'
-            "tar=true,compression=gzip,oci-mediatypes=true,"
-            'rewrite-timestamp=true"',
-            "Debian builder isolated deterministic OCI output",
-        ),
-    ):
-        require_text(candidate, text, label)
-    for text, label in (
-        (
-            "class CertifiedBuilderSpec:",
-            "shared certified builder archive specification",
-        ),
-        (
-            'if args.role in {"android-builder", "deb-builder", "win-helper"}:',
-            "Debian certified-builder parser role",
-        ),
-        (
-            "def validate_certified_builder_attestation(",
-            "Debian exact attestation validator",
-        ),
-        (
-            "def prepare_certified_builder_oci_export(",
-            "Debian exact direct OCI graph preparation",
-        ),
-        (
-            "def canonicalize_certified_builder_oci_export(",
-            "Debian deterministic direct OCI canonicalizer",
-        ),
-        (
-            "direct certified builder OCI export must name exactly",
-            "Debian referrer-contamination rejection",
-        ),
-    ):
-        require_text(provenance, text, label)
-    require_text(
-        sources["lib"],
-        '[ "$role" = android-builder ] \\\n'
-        '        || [ "$role" = deb-builder ] \\\n'
-        '        || [ "$role" = win-helper ]; then',
-        "ordinary Debian builder certification verifier",
-    )
-    require_text(
-        sources["verify"],
-        "/usr/bin/python3 -I -S "
-        "scripts/verify-deb-builder-image-authority.py "
-        "--repo . --self-test",
-        "Debian builder image authority focused verifier",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11db</span>',
-        "Debian builder image authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>255</td>",
-        "Debian builder image authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11db/R-S11e-120 — authenticated Debian builder image "
-        "distribution authority",
-        "Debian builder image authority hardening ledger",
-    )
-
-
 def validate_win_helper_image_authority_contract(sources):
     focused = sources["win_helper_image_authority_verifier"]
     dockerfile = sources["win_helper_certification_dockerfile"]
@@ -32707,7 +32529,6 @@ def validate_sources(sources):
     validate_viewer_audio_mailbox_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_session_stream_generation_contract(sources)
-    validate_deb_builder_image_authority_contract(sources)
     validate_win_helper_image_authority_contract(sources)
     validate_windows_helper_authority_contract(sources)
     validate_cleanup_docker_authority_contract(sources)
@@ -36939,9 +36760,6 @@ def main():
             "android_builder_certification_dockerfile": (
                 repo / "scripts/Dockerfile.android-builder-certify"
             ).read_text(encoding="utf-8"),
-            "deb_builder_certification_dockerfile": (
-                repo / "scripts/Dockerfile.deb-builder-certify"
-            ).read_text(encoding="utf-8"),
             "win_helper_certification_dockerfile": (
                 repo / "scripts/Dockerfile.win-helper-certify"
             ).read_text(encoding="utf-8"),
@@ -37468,9 +37286,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_gradle_release_gate": (
                 repo / "scripts/test-android-gradle-cache.sh"
-            ).read_text(encoding="utf-8"),
-            "deb_builder_image_authority_verifier": (
-                repo / "scripts/verify-deb-builder-image-authority.py"
             ).read_text(encoding="utf-8"),
             "win_helper_image_authority_verifier": (
                 repo / "scripts/verify-win-helper-image-authority.py"

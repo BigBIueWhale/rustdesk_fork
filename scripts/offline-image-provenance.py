@@ -322,12 +322,14 @@ class CertifiedBuilderInputSpec:
 
     @property
     def history_count(self) -> int:
-        if self.role == "android-builder":
-            return 21
-        if self.role == "win-helper":
-            return 20
+        return self.bootstrap_history_count + 8
+
+    @property
+    def bootstrap_history_count(self) -> int:
+        if self.role in {"android-builder", "win-helper"}:
+            return 13
         if self.role == "deb-builder":
-            return 21
+            return 14
         raise ProvenanceError(
             f"unsupported certified builder role: {self.role}"
         )
@@ -10320,7 +10322,8 @@ def self_test() -> None:
             android_spec.image_id,
             android_spec,
         )
-        if android_spec.history_count != 21:
+        if android_spec.bootstrap_history_count != 13 \
+           or android_spec.history_count != 21:
             fail("certified Android builder history topology differs")
         android_checks = 2
 
@@ -10753,7 +10756,8 @@ def self_test() -> None:
            or deb_spec.base != "ubuntu:18.04@sha256:" + "c" * 64 \
            or deb_spec.runtime_environment != DEB_BUILDER_ENV \
            or deb_spec.source_location_lines != range(20, 44) \
-           or deb_spec.history_count != 21 \
+           or deb_spec.bootstrap_history_count != 14 \
+           or deb_spec.history_count != 22 \
            or deb_spec.bootstrap_layer_count != 3 \
            or deb_spec.cat_path != "/bin/cat" \
            or deb_spec.runtime_python_modules \
@@ -10923,7 +10927,8 @@ def self_test() -> None:
            ) \
            or win_spec.runtime_environment != WIN_HELPER_ENV \
            or win_spec.source_location_lines != range(20, 45) \
-           or win_spec.history_count != 20 \
+           or win_spec.bootstrap_history_count != 13 \
+           or win_spec.history_count != 21 \
            or win_spec.bootstrap_layer_count != 3 \
            or win_spec.cat_path != "/usr/bin/cat" \
            or win_spec.runtime_python_modules != ("olefile",) \

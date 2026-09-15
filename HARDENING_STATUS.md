@@ -1614,6 +1614,21 @@ current-user mode-0400 one-link identity. The reviewed bootstrap pins are now im
 certified Debian construction/review/promotion, compiler/product workloads, native/installed targets, cold artifacts,
 independent reproduction, external review, and release remain open.
 
+The pin-bound Debian bootstrap was no-clobber promoted by `run.RaghSM3PH7` at clean pushed commit
+`5765cbb12d54d7d89bd962abad6dcf2345f6029a`; its 48-second compact receipt binds full candidate/final
+reverification, candidate retirement, unchanged host listeners, no host forwarding, denied UDP, and joined cleanup.
+The first ensuing certified build, `run.zHiuvMH6SF`, completed the exact networkless UID/GID-1000 certification
+operation and direct OCI export, then failed closed before candidate publication because the verifier expected 21
+history entries while the real result contained 22. Read-only inspection proves this is reviewed topology rather
+than an unexplained operation: the exact Ubuntu 18.04 bootstrap has six base, six acquisition, and two metadata-seal
+entries, while the certification Dockerfile adds exactly five build arguments, `USER`, its sole `RUN`, and its sole
+`LABEL`. The contract and realistic fixtures now derive 22 as 14 inherited plus eight certification entries; they
+also correct the pending same-base Windows-helper renewal from a stale 20 to the Ubuntu 24.04 topology of 13 plus
+eight, or 21. The failed run published no candidate, left identical before/during/after listener inventories, and
+left no VM process. A successful renewed certified Debian candidate, deliberate identity review, pin transition,
+promotion, compiler/product workloads, native/installed targets, cold artifacts, independent reproduction,
+external review, and release remain open.
+
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
 with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded
@@ -6451,7 +6466,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The sole no-NIC verifier VM runs that compact gate as UID/GID 4000 and runs the generic
   provenance self-test with a certified Debian archive/direct-OCI fixture. The Debian fixture
-  validates the role-specific Ubuntu 18.04 base, 21-entry history, runtime/tool/cat contract,
+  validates the role-specific Ubuntu 18.04 base, 22-entry history, runtime/tool/cat contract,
   attestation source, and direct normalization, and refuses wrong role, base, and embedded
   certification source. The shared Android fixture continues to exercise the larger common
   archive/attestation/ownership/graph/contamination/no-clobber matrix. This generated fixture is

@@ -318,8 +318,14 @@ def validate(repo: pathlib.Path) -> None:
     normalized_capture = extract(
         provenance,
         "def canonicalize_certified_builder_oci_export(",
-        "\n\ndef capture(",
+        "\n\ndef canonicalize_bootstrap_capture_archive(",
         "certified OCI normalization",
+    )
+    bootstrap_normalization = extract(
+        provenance,
+        "def canonicalize_bootstrap_capture_archive(",
+        "\n\ndef capture(",
+        "bootstrap archive normalization",
     )
     image_capture = extract(
         provenance,
@@ -334,6 +340,7 @@ def validate(repo: pathlib.Path) -> None:
     )
     for body, label in (
         (normalized_capture, "certified OCI normalization"),
+        (bootstrap_normalization, "bootstrap archive normalization"),
         (image_capture, "image archive capture"),
     ):
         require(
@@ -346,6 +353,16 @@ def validate(repo: pathlib.Path) -> None:
             "CAPTURE_ARCHIVE_BYTE_LIMIT",
             f"{label} independent byte bound",
         )
+    require(
+        bootstrap_normalization,
+        "allow_unreferenced_blobs=True",
+        "discard-only source parsing",
+    )
+    require(
+        bootstrap_normalization,
+        "require_private=True",
+        "strict normalized bootstrap verification",
+    )
     forbid(
         image_capture,
         "stderr=subprocess.PIPE",

@@ -779,6 +779,16 @@ class DirectOciExport:
     blob_names: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ArchiveScan:
+    identity: ArchiveIdentity | None
+    files: frozenset[str]
+    directories: frozenset[str]
+    metadata: dict[str, bytes]
+    member_sizes: dict[str, int]
+    member_hashes: dict[str, str]
+
+
 def requires_private_archive(spec: ImageSpec) -> bool:
     return isinstance(
         spec,
@@ -3892,6 +3902,7 @@ def validate_modern_archive(
     spec: ImageSpec,
     *,
     private_archive: bool,
+    allow_unreferenced_blobs: bool = False,
 ) -> ArchiveIdentity:
     if "repositories" in files:
         fail("content-addressed Docker archive must not contain legacy repositories metadata")
@@ -4176,9 +4187,18 @@ def validate_modern_archive(
     ) and len(attestations) != 1:
         fail(f"Docker archive {spec.role} image must contain exactly one provenance attestation")
     blob_files = {name for name in files if name.startswith("blobs/sha256/")}
-    if blob_files != expected_blobs:
+    if not expected_blobs.issubset(blob_files) \
+       or (
+           not allow_unreferenced_blobs
+           and blob_files != expected_blobs
+       ):
         fail("Docker archive contains an absent, duplicate, or unreferenced OCI blob")
-    if files != expected_blobs | {"index.json", "manifest.json", "oci-layout"}:
+    if allow_unreferenced_blobs and any(
+        member_hashes.get(name) != name.rsplit("/", 1)[1]
+        for name in blob_files - expected_blobs
+    ):
+        fail("Docker archive discard-only blob does not match its content address")
+    if files != blob_files | {"index.json", "manifest.json", "oci-layout"}:
         fail("Docker archive contains an unreferenced non-blob file")
     if not directories.issubset({"blobs", "blobs/sha256"}):
         fail("Docker archive contains an unreferenced directory")
@@ -4232,12 +4252,13 @@ def validate_legacy_archive(
     validate_config(parse_json(metadata.get(expected_config), "image config"), layers, spec)
 
 
-def validate_archive_stream(
+def scan_archive_stream(
     stream: BinaryIO,
     spec: ImageSpec,
     *,
     require_private: bool = False,
-) -> ArchiveIdentity | None:
+    allow_unreferenced_blobs: bool = False,
+) -> ArchiveScan:
     seen: set[str] = set()
     folded: set[str] = set()
     files: set[str] = set()
@@ -4299,7 +4320,7 @@ def validate_archive_stream(
     if modern_markers:
         if modern_markers != {"index.json", "oci-layout"}:
             fail("Docker archive has an incomplete content-addressed layout")
-        return validate_modern_archive(
+        identity = validate_modern_archive(
             item,
             files,
             directories,
@@ -4308,10 +4329,34 @@ def validate_archive_stream(
             member_hashes,
             spec,
             private_archive=private_archive,
+            allow_unreferenced_blobs=allow_unreferenced_blobs,
         )
     else:
+        if allow_unreferenced_blobs:
+            fail("discard-only blob normalization requires an OCI archive")
         validate_legacy_archive(item, files, directories, metadata, member_hashes, spec)
-        return None
+        identity = None
+    return ArchiveScan(
+        identity=identity,
+        files=frozenset(files),
+        directories=frozenset(directories),
+        metadata=metadata,
+        member_sizes=member_sizes,
+        member_hashes=member_hashes,
+    )
+
+
+def validate_archive_stream(
+    stream: BinaryIO,
+    spec: ImageSpec,
+    *,
+    require_private: bool = False,
+) -> ArchiveIdentity | None:
+    return scan_archive_stream(
+        stream,
+        spec,
+        require_private=require_private,
+    ).identity
 
 
 def hash_open_file(stream: BinaryIO) -> str:
@@ -5629,6 +5674,258 @@ def canonicalize_certified_builder_oci_export(
         os.close(source_fd)
 
 
+def canonicalize_bootstrap_capture_archive(
+    source: Path,
+    output: Path,
+    expected_source_sha: str,
+    expected_source_size: int,
+    spec: Spec,
+) -> tuple[str, int, ArchiveIdentity]:
+    expected_source_sha = require_sha(
+        expected_source_sha,
+        "bootstrap Docker-save source SHA-256",
+    )
+    if expected_source_size <= 0 \
+       or expected_source_size > CAPTURE_ARCHIVE_BYTE_LIMIT:
+        fail("bootstrap Docker-save source size is outside its bound")
+    if source.parent != output.parent:
+        fail("bootstrap archive normalization must remain in one directory")
+    validate_private_output_parent(source.parent)
+    if output.exists() or output.is_symlink():
+        fail(f"refusing to replace existing image archive: {output}")
+
+    source_fd = open_archive(source)
+    output_fd = -1
+    output_identity: tuple[int, int] | None = None
+    try:
+        source_before = os.fstat(source_fd)
+        if not stat.S_ISREG(source_before.st_mode) \
+           or source_before.st_nlink != 1 \
+           or source_before.st_uid != os.getuid() \
+           or source_before.st_gid != os.getgid() \
+           or stat.S_IMODE(source_before.st_mode) != 0o400 \
+           or source_before.st_size != expected_source_size:
+            fail(
+                "bootstrap Docker-save source must be one exact-size, "
+                "current-user-owned mode-0400 non-hardlinked file"
+            )
+
+        os.lseek(source_fd, 0, os.SEEK_SET)
+        source_hashing = HashingReader(os.fdopen(os.dup(source_fd), "rb"))
+        try:
+            scanned = scan_archive_stream(
+                source_hashing,
+                spec,
+                require_private=True,
+                allow_unreferenced_blobs=True,
+            )
+            while source_hashing.read(1024 * 1024):
+                pass
+        finally:
+            source_hashing.stream.close()
+        if source_hashing.digest.hexdigest() != expected_source_sha:
+            fail("bootstrap Docker-save source differs from its captured hash")
+        stable_file(source_before, os.fstat(source_fd), source)
+        identity = scanned.identity
+        if identity is None:
+            fail("bootstrap Docker-save source has no OCI image identity")
+
+        manifest = parse_json(
+            scanned.metadata.get("manifest.json"),
+            "bootstrap Docker-save compatibility manifest",
+        )
+        if not isinstance(manifest, list) \
+           or len(manifest) != 1 \
+           or not isinstance(manifest[0], dict):
+            fail("bootstrap Docker-save compatibility manifest is malformed")
+        item = manifest[0]
+        config_name = item.get("Config")
+        layer_names = item.get("Layers")
+        if not isinstance(config_name, str) \
+           or not isinstance(layer_names, list) \
+           or not layer_names \
+           or any(not isinstance(name, str) for name in layer_names):
+            fail("bootstrap Docker-save reachable blob set is malformed")
+        reachable_blobs = {
+            config_name,
+            *layer_names,
+            (
+                "blobs/sha256/"
+                + identity.manifest_id.removeprefix("sha256:")
+            ),
+        }
+        root_metadata = {
+            name: scanned.metadata.get(name)
+            for name in ("index.json", "manifest.json", "oci-layout")
+        }
+        if any(value is None for value in root_metadata.values()):
+            fail("bootstrap Docker-save root metadata was not retained")
+
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            output_fd = os.open(output, flags, 0o600)
+        except OSError as exc:
+            fail(f"cannot create normalized bootstrap archive: {exc}")
+        output_before = os.fstat(output_fd)
+        output_identity = (output_before.st_dev, output_before.st_ino)
+        with os.fdopen(output_fd, "wb") as raw:
+            output_fd = -1
+            writer = BoundedDigestingWriter(
+                raw,
+                CAPTURE_ARCHIVE_BYTE_LIMIT,
+                "normalized bootstrap image archive",
+            )
+            os.lseek(source_fd, 0, os.SEEK_SET)
+            source_hashing = HashingReader(
+                os.fdopen(os.dup(source_fd), "rb")
+            )
+            copied: list[str] = []
+            seen: set[str] = set()
+            folded: set[str] = set()
+            try:
+                with gzip.GzipFile(
+                    filename="",
+                    mode="wb",
+                    fileobj=writer,
+                    compresslevel=9,
+                    mtime=0,
+                ) as compressed:
+                    with tarfile.open(
+                        fileobj=compressed,
+                        mode="w|",
+                        format=tarfile.USTAR_FORMAT,
+                    ) as destination:
+                        for name in ("blobs", "blobs/sha256"):
+                            destination.addfile(
+                                deterministic_tar_info(
+                                    name,
+                                    mode=0o755,
+                                    directory=True,
+                                )
+                            )
+                        archive = tarfile.open(
+                            fileobj=source_hashing,
+                            mode="r|gz",
+                        )
+                        with archive:
+                            for member in archive:
+                                validate_archive_name(
+                                    member.name,
+                                    seen,
+                                    folded,
+                                )
+                                canonical = member.name.rstrip("/")
+                                if member.isdir():
+                                    continue
+                                if not member.isfile():
+                                    fail(
+                                        "bootstrap Docker-save member is "
+                                        f"not a regular file: {canonical}"
+                                    )
+                                extracted = archive.extractfile(member)
+                                if extracted is None:
+                                    fail(
+                                        "cannot reread bootstrap Docker-save "
+                                        f"member: {canonical}"
+                                    )
+                                if canonical in reachable_blobs:
+                                    destination.addfile(
+                                        deterministic_tar_info(
+                                            canonical,
+                                            size=member.size,
+                                            mode=0o444,
+                                        ),
+                                        extracted,
+                                    )
+                                    copied.append(canonical)
+                                elif canonical in root_metadata:
+                                    if extracted.read() != root_metadata[canonical]:
+                                        fail(
+                                            "bootstrap Docker-save root metadata "
+                                            f"changed: {canonical}"
+                                        )
+                                else:
+                                    while extracted.read(1024 * 1024):
+                                        pass
+                        while source_hashing.read(1024 * 1024):
+                            pass
+                        if copied != sorted(reachable_blobs):
+                            fail(
+                                "bootstrap Docker-save reachable blobs are "
+                                "absent, duplicated, or noncanonical in order"
+                            )
+                        for name, mode in (
+                            ("index.json", 0o644),
+                            ("manifest.json", 0o644),
+                            ("oci-layout", 0o444),
+                        ):
+                            value = root_metadata[name]
+                            if value is None:
+                                fail(
+                                    "bootstrap Docker-save root metadata "
+                                    f"is absent: {name}"
+                                )
+                            destination.addfile(
+                                deterministic_tar_info(
+                                    name,
+                                    size=len(value),
+                                    mode=mode,
+                                ),
+                                io.BytesIO(value),
+                            )
+            except (tarfile.TarError, EOFError, OSError) as exc:
+                fail(f"cannot normalize bootstrap Docker-save archive: {exc}")
+            finally:
+                source_hashing.stream.close()
+            if source_hashing.digest.hexdigest() != expected_source_sha:
+                fail(
+                    "bootstrap Docker-save source changed during "
+                    "normalization"
+                )
+            stable_file(source_before, os.fstat(source_fd), source)
+            os.fchmod(raw.fileno(), 0o400)
+            raw.flush()
+            os.fsync(raw.fileno())
+            if os.fstat(raw.fileno()).st_size != writer.byte_count:
+                fail("normalized bootstrap archive size accounting differs")
+            archive_size = writer.byte_count
+            archive_sha = writer.hexdigest()
+
+        verified_identity = verify_archive(
+            output,
+            archive_sha,
+            spec,
+            archive_size,
+            require_private=True,
+        )
+        if verified_identity != identity:
+            fail("normalized bootstrap archive identity changed")
+        return archive_sha, archive_size, identity
+    except BaseException:
+        if output_identity is not None:
+            try:
+                current = os.lstat(output)
+            except FileNotFoundError:
+                current = None
+            except OSError as exc:
+                fail(f"cannot inspect failed bootstrap archive output: {exc}")
+            if current is not None:
+                if (current.st_dev, current.st_ino) != output_identity \
+                   or not stat.S_ISREG(current.st_mode):
+                    fail("failed bootstrap archive output identity changed")
+                try:
+                    os.unlink(output)
+                except OSError as exc:
+                    fail(f"cannot remove failed bootstrap archive output: {exc}")
+        raise
+    finally:
+        if output_fd >= 0:
+            os.close(output_fd)
+        os.close(source_fd)
+
+
 def capture(
     output: Path,
     spec: ImageSpec,
@@ -5640,6 +5937,7 @@ def capture(
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
     private_archive = requires_private_archive(spec) or require_private
+    normalize_bootstrap = require_private and isinstance(spec, Spec)
     if private_archive:
         validate_private_output_parent(output.parent)
         save_ref = spec.image_id
@@ -5653,13 +5951,31 @@ def capture(
     temporary = output.with_name(output.name + ".part")
     if temporary.exists() or temporary.is_symlink():
         fail(f"stale image archive capture temporary exists: {temporary}")
+    docker_save_temporary = (
+        output.with_name(output.name + ".docker-save")
+        if normalize_bootstrap
+        else temporary
+    )
+    if docker_save_temporary != temporary \
+       and (
+           docker_save_temporary.exists()
+           or docker_save_temporary.is_symlink()
+       ):
+        fail(
+            "stale bootstrap Docker-save temporary exists: "
+            f"{docker_save_temporary}"
+        )
     layout_sha: str | None = None
+    docker_save_identity: tuple[int, int] | None = None
+    normalized_identity: tuple[int, int] | None = None
     process = subprocess.Popen([DOCKER, "save", save_ref], stdout=subprocess.PIPE)
     try:
         if process.stdout is None:
             fail("docker save stdout is unavailable")
         with process.stdout:
-            with temporary.open("xb") as raw:
+            with docker_save_temporary.open("xb") as raw:
+                created = os.fstat(raw.fileno())
+                docker_save_identity = (created.st_dev, created.st_ino)
                 writer = BoundedDigestingWriter(
                     raw,
                     CAPTURE_ARCHIVE_BYTE_LIMIT,
@@ -5678,13 +5994,38 @@ def capture(
                         compressed.write(block)
                 raw.flush()
                 os.fsync(raw.fileno())
-                count = writer.byte_count
-                archive_sha = writer.hexdigest()
+                docker_save_size = writer.byte_count
+                docker_save_sha = writer.hexdigest()
         process_status = process.wait()
         if process_status != 0:
             fail(f"docker save failed with status {process_status}")
+        if normalize_bootstrap:
+            docker_save_temporary.chmod(0o400)
+            archive_sha, count, _ = canonicalize_bootstrap_capture_archive(
+                docker_save_temporary,
+                temporary,
+                docker_save_sha,
+                docker_save_size,
+                spec,
+            )
+            normalized = os.lstat(temporary)
+            normalized_identity = (normalized.st_dev, normalized.st_ino)
+            source_after = os.lstat(docker_save_temporary)
+            if (source_after.st_dev, source_after.st_ino) \
+               != docker_save_identity \
+               or not stat.S_ISREG(source_after.st_mode):
+                fail("bootstrap Docker-save temporary identity changed")
+            os.unlink(docker_save_temporary)
+            if docker_save_temporary.exists() \
+               or docker_save_temporary.is_symlink():
+                fail("bootstrap Docker-save temporary removal failed")
+            docker_save_identity = None
+        else:
+            archive_sha = docker_save_sha
+            count = docker_save_size
         if private_archive:
-            temporary.chmod(0o400)
+            if not normalize_bootstrap:
+                temporary.chmod(0o400)
             verify_archive(
                 temporary,
                 archive_sha,
@@ -5706,16 +6047,41 @@ def capture(
                     layout_output,
                 )
             rename_noreplace(temporary, output)
+            normalized_identity = None
         else:
             os.replace(temporary, output)
+            docker_save_identity = None
     except BaseException:
         if process.poll() is None:
             process.kill()
             process.wait()
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        for path, identity, label in (
+            (
+                docker_save_temporary,
+                docker_save_identity,
+                "Docker-save capture temporary",
+            ),
+            (
+                temporary,
+                normalized_identity,
+                "normalized bootstrap capture temporary",
+            ),
+        ):
+            if identity is None:
+                continue
+            try:
+                current = os.lstat(path)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                fail(f"cannot inspect failed {label}: {exc}")
+            if (current.st_dev, current.st_ino) != identity \
+               or not stat.S_ISREG(current.st_mode):
+                fail(f"failed {label} identity changed")
+            try:
+                os.unlink(path)
+            except OSError as exc:
+                fail(f"cannot remove failed {label}: {exc}")
         raise
     identity = verify_archive(
         output,
@@ -5772,6 +6138,8 @@ def create_modern_fixture_archive(
     spec: Spec,
     *,
     tagged: bool = True,
+    discard_only_blob: bytes | None = None,
+    discard_only_digest: str | None = None,
 ) -> str:
     def encoded(value: object) -> bytes:
         return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
@@ -5893,6 +6261,13 @@ def create_modern_fixture_archive(
         members[
             "blobs/sha256/" + fixture_spec.image_id.removeprefix("sha256:")
         ] = image_index
+    if discard_only_blob is not None:
+        digest = (
+            discard_only_digest
+            if discard_only_digest is not None
+            else hashlib.sha256(discard_only_blob).hexdigest()
+        )
+        members["blobs/sha256/" + digest] = discard_only_blob
     with path.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
             with tarfile.open(fileobj=compressed, mode="w|") as archive:
@@ -8910,6 +9285,98 @@ def self_test() -> None:
            or not IMAGE_ID.fullmatch(modern_identity.manifest_id) \
            or not IMAGE_ID.fullmatch(modern_identity.config_id):
             fail("bootstrap candidate archive identity extraction failed")
+
+        legacy_config = canonical_json(
+            {
+                "created": "1970-01-01T00:00:00Z",
+                "id": "1" * 64,
+                "os": "linux",
+            }
+        )
+        legacy_config_digest = hashlib.sha256(legacy_config).hexdigest()
+        docker_save_source = (
+            Path(temporary) / "private-modern-docker-save.tar.gz"
+        )
+        if create_modern_fixture_archive(
+            docker_save_source,
+            base_spec,
+            tagged=False,
+            discard_only_blob=legacy_config,
+        ) != private_modern_spec.image_id:
+            fail("bootstrap Docker-save fixture identity differs")
+        docker_save_sha = hashlib.sha256(
+            docker_save_source.read_bytes()
+        ).hexdigest()
+        docker_save_size = docker_save_source.stat().st_size
+        docker_save_source.chmod(0o400)
+        expect_failure(
+            lambda: verify_archive(
+                docker_save_source,
+                docker_save_sha,
+                private_modern_spec,
+                docker_save_size,
+                require_private=True,
+            ),
+            "bootstrap Docker-save unreferenced legacy config",
+        )
+        normalized_bootstrap = (
+            Path(temporary) / "normalized-private-modern.tar.gz"
+        )
+        (
+            normalized_bootstrap_sha,
+            normalized_bootstrap_size,
+            normalized_bootstrap_identity,
+        ) = canonicalize_bootstrap_capture_archive(
+            docker_save_source,
+            normalized_bootstrap,
+            docker_save_sha,
+            docker_save_size,
+            private_modern_spec,
+        )
+        if normalized_bootstrap_identity != modern_identity \
+           or normalized_bootstrap_sha != hashlib.sha256(
+               normalized_bootstrap.read_bytes()
+           ).hexdigest() \
+           or normalized_bootstrap_size \
+               != normalized_bootstrap.stat().st_size:
+            fail("normalized bootstrap archive identity differs")
+        verify_archive(
+            normalized_bootstrap,
+            normalized_bootstrap_sha,
+            private_modern_spec,
+            normalized_bootstrap_size,
+            require_private=True,
+        )
+        with tarfile.open(normalized_bootstrap, mode="r:gz") as archive:
+            if (
+                "blobs/sha256/" + legacy_config_digest
+            ) in {member.name.rstrip("/") for member in archive}:
+                fail("normalized bootstrap archive retained legacy config")
+
+        wrong_discard_source = (
+            Path(temporary) / "wrong-discard-docker-save.tar.gz"
+        )
+        create_modern_fixture_archive(
+            wrong_discard_source,
+            base_spec,
+            tagged=False,
+            discard_only_blob=legacy_config,
+            discard_only_digest="f" * 64,
+        )
+        wrong_discard_sha = hashlib.sha256(
+            wrong_discard_source.read_bytes()
+        ).hexdigest()
+        wrong_discard_source.chmod(0o400)
+        expect_failure(
+            lambda: canonicalize_bootstrap_capture_archive(
+                wrong_discard_source,
+                Path(temporary) / "wrong-discard-normalized.tar.gz",
+                wrong_discard_sha,
+                wrong_discard_source.stat().st_size,
+                private_modern_spec,
+            ),
+            "bootstrap Docker-save false discard-only content address",
+        )
         wrong_private_modern_spec = Spec(
             role=private_modern_spec.role,
             image_id="sha256:" + "f" * 64,

@@ -13,9 +13,27 @@
 # therefore excluded from this reproducible release advisory verdict.
 #
 # Usage: scripts/audit.sh
+#        scripts/audit.sh --self-test-vm-authority
 set -euo pipefail
+export PATH=/usr/bin:/bin
+export LC_ALL=C
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly AUDIT_UID="$(/usr/bin/id -u)"
+readonly AUDIT_GID="$(/usr/bin/id -g)"
+
+audit_die() {
+  echo "audit.sh: $*" >&2
+  exit 2
+}
+
+[ "$AUDIT_UID" -ne 0 ] || audit_die "refuses host or container-root execution"
+[ "$AUDIT_GID" -ne 0 ] || audit_die "refuses a root primary group"
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+  && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+  || audit_die "verifier-VM entry preflight is absent or ambiguous"
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
@@ -26,17 +44,32 @@ readonly POLICY=deny.toml
 readonly VENDOR_DIR=online/cargo-vendor
 readonly VENDOR_CONFIG=online/cargo-vendor-config.toml
 readonly PYTHON_BIN=/usr/bin/python3
-readonly AUDIT_UID="$(/usr/bin/id -u)"
-readonly AUDIT_GID="$(/usr/bin/id -g)"
 readonly MAX_SCANNER_OUTPUT_BLOCKS=65536 # Bash ulimit -f units: 64 MiB on Linux.
 readonly AUDIT_IMAGE_ROOT=/var/tmp/rustdesk-rust-audit
 readonly AUDIT_IMAGE_DB="$AUDIT_IMAGE_ROOT/advisory-db"
 readonly AUDIT_IMAGE_CARGO_AUDIT="$AUDIT_IMAGE_ROOT/tools/bin/cargo-audit"
 readonly AUDIT_IMAGE_CARGO_DENY="$AUDIT_IMAGE_ROOT/tools/bin/cargo-deny"
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+  "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+  || audit_die "guest Docker authority differs from its repository pin"
+readonly VERIFIER_VM_MARKER_DOCKER
 
-audit_die() {
-  echo "audit.sh: $*" >&2
-  exit 2
+verifier_vm_docker() {
+  local status=0
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+    DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+    "$VERIFIER_VM_DOCKER_CLIENT" \
+      --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+      --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  return "$status"
 }
 
 # Bound stdout and stderr at the Docker client as well as bounding parser input.
@@ -56,11 +89,27 @@ run_bounded_docker() (
   else
     audit_die "scanner output-file limit is malformed"
   fi
-  local_docker "$@"
+  verifier_vm_docker "$@"
 )
 
-[ "$AUDIT_UID" -ne 0 ] || audit_die "refuses host or container-root execution"
-[ "$AUDIT_GID" -ne 0 ] || audit_die "refuses a root primary group"
+case "$#" in
+  0) ;;
+  1)
+    [ "$1" = --self-test-vm-authority ] \
+      || audit_die "unknown argument: $1"
+    authority_version="$(verifier_vm_docker version \
+      --format '{{.Client.Version}}|{{.Server.Version}}')" \
+      || audit_die "verifier-VM Docker authority self-test failed"
+    [ "$authority_version" = \
+      "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+      || audit_die "verifier-VM Docker authority version differs: $authority_version"
+    printf 'RUST_AUDIT_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed\n' \
+      "$AUDIT_UID" "$AUDIT_GID" "$VERIFIER_VM_DOCKER_VERSION"
+    exit 0
+    ;;
+  *) audit_die "accepts no arguments except --self-test-vm-authority" ;;
+esac
+
 [ -x "$PYTHON_BIN" ] || audit_die "trusted Python interpreter is unavailable at $PYTHON_BIN"
 
 [ -f "$LOCKFILE" ] && [ ! -L "$LOCKFILE" ] \
@@ -114,11 +163,7 @@ cleanup_audit_tmp() {
   local status=$? cleanup_failed=0
   trap - EXIT HUP INT TERM
   if [ -n "$AUDIT_TMP" ]; then
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-      && ! remove_local_docker_authority; then
-      echo "audit.sh: preserving changed private Docker authority: $AUDIT_TMP" >&2
-      cleanup_failed=1
-    elif [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
+    if [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
       || [ "$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP" 2>/dev/null)" != "$AUDIT_TMP_ID" ]; then
       echo "audit.sh: private workspace identity is unavailable or changed: $AUDIT_TMP" >&2
       cleanup_failed=1
@@ -146,10 +191,9 @@ AUDIT_TMP_ID="$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP")"
 readonly AUDIT_TMP AUDIT_TMP_ID
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$AUDIT_UID:$AUDIT_GID:700" ] \
   || audit_die "private workspace is not current-user/current-group mode 0700"
-initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"
 
-# Validate policy and stage stable private copies before touching the Docker
-# daemon. The freshness check intentionally has no caller override; even a
+# Validate policy and stage stable private copies after authenticating the VM.
+# The freshness check intentionally has no caller override; even a
 # deliberately refreshed pin becomes release-blocking after this fixed window.
 ACCEPT_COUNT="$($PYTHON_BIN scripts/rust-audit-policy.py prepare \
   --policy "$POLICY" --lockfile "$LOCKFILE" \
@@ -181,13 +225,13 @@ readonly SOURCE_LOCK_SHA SOURCE_POLICY_SHA SOURCE_VENDOR_CONFIG_SHA
   --tree "$VENDOR_DIR" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
   || audit_die "the Cargo vendor closure does not match its canonical pin"
 
-IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_ID")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_ID")" \
   || audit_die "the pinned Rust advisory image is not present locally (no pull/build fallback)"
 [ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_ID" ] \
   || audit_die "Docker did not resolve the exact pinned Rust advisory content ID"
 readonly IMAGE_ID
 
-IMAGE_METADATA="$(local_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
+IMAGE_METADATA="$(verifier_vm_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
   || audit_die "could not inspect the pinned Rust advisory image metadata"
 EXPECTED_IMAGE_METADATA="$IMAGE_ID|linux|amd64|1000:1000|rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}|${RUST_AUDIT_RUST_VERSION}|${CARGO_AUDIT_VERSION}|${CARGO_AUDIT_SOURCE_COMMIT}|${CARGO_AUDIT_SOURCE_TREE}|${CARGO_DENY_VERSION}|${CARGO_DENY_SOURCE_COMMIT}|${CARGO_DENY_SOURCE_TREE}|${ADVISORY_DB_COMMIT}|${ADVISORY_DB_COMMIT_EPOCH}|1000:1000"
 [ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ] \

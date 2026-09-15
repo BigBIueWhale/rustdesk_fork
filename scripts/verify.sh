@@ -15245,8 +15245,8 @@ fi
 
 # R-R3/R-A7 advisory scans are intentionally outside the fast verifier, but the
 # verifier executes their behavioral result/freshness tests and compact launcher
-# contracts. The real Dart-audit entry authority is exercised in the no-NIC VM.
-# Both Rust tools remain wired to one strict policy.
+# contracts. The real Rust- and Dart-audit entry authorities are exercised in
+# the no-NIC VM. Both Rust tools remain wired to one strict policy.
 echo "== R-R3/R-A7 dependency-advisory gate wiring =="
 r_r3_gate=
 grep -qF 'load_pins' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-pins-env"
@@ -15272,8 +15272,8 @@ grep -qF 'SHA256_CARGO_VENDOR_CLOSURE_V1=' scripts/pins.env || r_r3_gate="$r_r3_
 if ! python3 scripts/rust-audit-policy.py --self-test; then
   r_r3_gate="$r_r3_gate rust:policy-result-self-test-failed"
 fi
-if ! python3 scripts/verify-rust-audit-authority.py --repo . --self-test; then
-  r_r3_gate="$r_r3_gate rust:scanner-authority-mutation-gate-failed"
+if ! python3 scripts/verify-rust-audit-authority.py --repo .; then
+  r_r3_gate="$r_r3_gate rust:scanner-authority-contract-failed"
 fi
 grep -qF 'accepted advisory has no reason' scripts/dart-audit-result.py || r_r3_gate="$r_r3_gate dart:no-accept-reason-parser"
 grep -qF 'expected exactly one advisory id' scripts/dart-audit-result.py || r_r3_gate="$r_r3_gate dart:no-strict-id-parser"

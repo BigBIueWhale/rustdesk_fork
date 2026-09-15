@@ -1597,8 +1597,17 @@ infrastructure defect hidden by source-only gates. The corrected source separate
 0.20.0 linux/amd64 release by exact version, commit, size, and publisher SHA-256; carries it as inert read-only/noexec
 VM input; revalidates a fixed root-owned guest source and a private admitted-user plugin copy; and funnels every
 build through the default in-daemon `docker` driver while refusing a Buildx-managed builder container. This
-correction is not yet runtime evidence: authenticated input acquisition, the focused real-VM plugin/driver probe,
-and a repeated certified Android transaction remain open.
+input was acquired and reverified at its exact 65,241,240-byte publisher digest. The first focused VM probe then
+executed the private plugin and failed closed because the release binary reports the full commit
+`8e30c4669ca5aace9dd682650053c307f75fe5cc`, not the initially recorded short form `8e30c46`; its retained run has
+identical listener inventories, empty new-listener sets, joined cleanup, and no published output. After correcting
+that metadata without weakening exact matching, `run.Nv6TPNuhz3` passed the real plugin/default-driver probe at
+clean pushed commit `31297240964db37659248fcc59fc84b3370a7558` in 18 seconds. Its compact receipt binds the private
+plugin's exact full identity, the in-daemon `docker` driver, absence of a Buildx-managed container, denied UDP and
+host forwarding, unchanged listeners, and joined cleanup; the run root and process generation are absent. This is
+Buildx/acquisition execution-authority evidence only. A repeated certified Android transaction, candidate review
+and promotion, product workloads, native targets, cold artifacts, reproduction, external review, and release remain
+open.
 
 Current source at `a81ffdf79afa87a75dfc5d692a33752bf305599b` requires byte-identical complete
 before/during/after listener inventories and, only after joined cleanup and exact run-root retirement, no-clobber

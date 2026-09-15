@@ -22,15 +22,70 @@ readonly BUILD_GID="$(/usr/bin/id -g)"
 [ "$BUILD_GID" -ne 0 ] \
     || { echo "Debian artifact building refuses a root primary group" >&2; exit 1; }
 
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+    && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+    || { echo "Debian artifact building requires the verifier-VM entry preflight" >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
+
 if [ -n "${ONLINE_DIR+x}" ]; then
     printf 'build-debian: ONLINE_DIR is not an operator override; release snapshots use RUSTDESK_RELEASE_ONLINE_SNAPSHOT\n' >&2
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+
+SELF_TEST_VM_AUTHORITY=0
+PROBE_IMAGE_ID=""
+case "$#:${1:-}" in
+    0:) ;;
+    2:--self-test-vm-authority)
+        SELF_TEST_VM_AUTHORITY=1
+        PROBE_IMAGE_ID=$2
+        ;;
+    *)
+        echo "usage: scripts/build-debian.sh [--self-test-vm-authority PROBE_IMAGE_ID]" >&2
+        exit 2
+        ;;
+esac
+
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+    "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+    || die "guest Docker authority differs from its repository pin"
+readonly VERIFIER_VM_MARKER_DOCKER
+
+verifier_vm_docker() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        "$VERIFIER_VM_DOCKER_CLIENT" \
+            --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+            --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+verifier_vm_image_provenance() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@" \
+        || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 OUT_PARENT=""
@@ -63,11 +118,7 @@ PENDING_RESULT_ID=""
 cleanup_owned_workspace() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-        && ! remove_local_docker_authority; then
-        warn "preserving changed private Debian builder Docker authority: $OWNED_WORKSPACE"
-        status=1
-    elif [ -n "$OWNED_WORKSPACE" ]; then
+    if [ -n "$OWNED_WORKSPACE" ]; then
         if ! remove_owned_workspace_exact; then
             warn "preserving changed private Debian build workspace: $OWNED_WORKSPACE"
             status=1
@@ -284,7 +335,6 @@ prepare_execution_contract() {
         || die "private Debian build-workspace identity is unavailable"
     [[ "$OWNED_WORKSPACE_ID" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
         || die "private Debian build-workspace identity is malformed"
-    initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -304,7 +354,7 @@ prepare_execution_contract() {
 }
 
 resolve_image() {
-    require_pinned_builder_image deb-builder "$IMAGE_ID"
+    require_pinned_builder_image deb-builder "$IMAGE_ID" verifier_vm_image_provenance
     if [ "$RELEASE_CHILD" -eq 1 ] && [ "$RELEASE_DOCKER_IMAGE_ID" != "$IMAGE_ID" ]; then
         die "release Debian image ID does not equal DEB_BUILDER_IMAGE_ID"
     fi
@@ -321,8 +371,8 @@ activate_online_snapshot() {
 }
 
 verify_active_online_snapshot() {
-    assert_local_docker_authority \
-        || die "Debian builder local Docker authority changed"
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+        || die "Debian builder verifier-VM authority changed"
     assert_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 }
 
@@ -426,6 +476,151 @@ verify_deb_control_scripts() {
     }
 }
 
+debian_compiler_run() {
+    [ "$#" -ge 2 ] || die "Debian compiler launch requires IMAGE COMMAND [ARG...]"
+    local image=$1
+    shift
+    verifier_vm_docker run --rm --pull=never \
+        --network=none \
+        --read-only \
+        --user "$BUILD_UID:$BUILD_GID" \
+        --cap-drop=ALL \
+        --security-opt=no-new-privileges \
+        --security-opt=apparmor=docker-default \
+        --cgroupns=private \
+        --ipc=private \
+        --pids-limit=1024 \
+        --memory=16g \
+        --memory-swap=16g \
+        --cpus=4 \
+        --ulimit core=0:0 \
+        --ulimit nofile=65536:65536 \
+        --ulimit fsize=4294967296:4294967296 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g \
+        --env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
+        --env RUSTDESK_CANARY_OFFLINE=1 \
+        --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src,bind-recursive=disabled" \
+        --tmpfs /src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --workdir /src \
+        "$image" "$@"
+}
+
+run_vm_authority_self_test() {
+    [[ "$PROBE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Debian builder verifier-VM probe image ID is malformed"
+    local authority_version containers_before containers_after online_before online_after
+    local profile_output profile_probe
+    authority_version="$(verifier_vm_docker version \
+        --format '{{.Client.Version}}|{{.Server.Version}}')" \
+        || die "Debian builder verifier-VM Docker authority self-test failed"
+    [ "$authority_version" = \
+      "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+        || die "verifier-VM Docker authority version differs: $authority_version"
+
+    OWNED_WORKSPACE="$(umask 077 && /usr/bin/mktemp -d /tmp/rustdesk-debian-profile.XXXXXXXXXX)" \
+        || die "cannot create private Debian profile workspace"
+    /usr/bin/chmod 0700 "$OWNED_WORKSPACE" \
+        || die "cannot protect private Debian profile workspace"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$OWNED_WORKSPACE")" = \
+      "$BUILD_UID:$BUILD_GID:700" ] \
+        || die "Debian profile workspace is not current-principal mode 0700"
+    OWNED_WORKSPACE_ID="$(/usr/bin/stat -c '%d:%i' -- "$OWNED_WORKSPACE")" \
+        || die "cannot record private Debian profile workspace identity"
+    BUILD_SOURCE_ROOT=$OWNED_WORKSPACE/source
+    ONLINE_DIR=$OWNED_WORKSPACE/online
+    /usr/bin/mkdir "$BUILD_SOURCE_ROOT" "$BUILD_SOURCE_ROOT/.git" "$ONLINE_DIR"
+    /usr/bin/chmod 0700 "$BUILD_SOURCE_ROOT" "$BUILD_SOURCE_ROOT/.git" "$ONLINE_DIR"
+    printf 'must be hidden\n' >"$BUILD_SOURCE_ROOT/.git/host-only"
+    printf 'immutable input\n' >"$ONLINE_DIR/input"
+    /usr/bin/chmod 0400 "$BUILD_SOURCE_ROOT/.git/host-only" "$ONLINE_DIR/input"
+    online_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$ONLINE_DIR/input"):$(/usr/bin/sha256sum "$ONLINE_DIR/input")"
+    containers_before="$(verifier_vm_docker ps --all --quiet --no-trunc | /usr/bin/sort)" \
+        || die "cannot record the initial guest container inventory"
+
+    profile_probe='
+        [ "$$" = 1 ]
+        [ "$SOURCE_DATE_EPOCH" = "$1" ]
+        [ "$RUSTDESK_CANARY_OFFLINE" = 1 ]
+        uid= gid= cap= nnp= seccomp=
+        while IFS=":" read -r key value; do
+            set -- $value
+            case "$key" in
+                Uid) uid="$1:$2:$3:$4" ;;
+                Gid) gid="$1:$2:$3:$4" ;;
+                CapEff) cap=$1 ;;
+                NoNewPrivs) nnp=$1 ;;
+                Seccomp) seccomp=$1 ;;
+            esac
+        done </proc/self/status
+        [ "$uid" = 4000:4000:4000:4000 ]
+        [ "$gid" = 4000:4000:4000:4000 ]
+        [ "$cap" = 0000000000000000 ]
+        [ "$nnp" = 1 ]
+        [ "$seccomp" = 2 ]
+        IFS= read -r apparmor </proc/self/attr/current
+        case "$apparmor" in docker-default\ *) ;; *) exit 90 ;; esac
+        IFS= read -r pids_max </sys/fs/cgroup/pids.max
+        IFS= read -r memory_max </sys/fs/cgroup/memory.max
+        IFS= read -r swap_max </sys/fs/cgroup/memory.swap.max
+        IFS=" " read -r cpu_quota cpu_period </sys/fs/cgroup/cpu.max
+        [ "$pids_max" = 1024 ]
+        [ "$memory_max" = 17179869184 ]
+        [ "$swap_max" = 0 ]
+        [ "$cpu_quota:$cpu_period" = 400000:100000 ]
+        [ "$(ulimit -c)" = 0 ]
+        [ "$(ulimit -n)" = 65536 ]
+        fsize_limit=
+        while IFS=" " read -r first second third soft hard unit remainder; do
+            case "$first:$second:$third" in
+                Max:file:size) fsize_limit="$soft:$hard:$unit" ;;
+            esac
+        done </proc/self/limits
+        [ "$fsize_limit" = 4294967296:4294967296:bytes ]
+        set -- /sys/class/net/*
+        [ "$#" = 1 ] && [ "$1" = /sys/class/net/lo ]
+        if (: >/forbidden-root-write) 2>/dev/null; then exit 91; fi
+        [ ! -e /src/.git/host-only ]
+        if (: >/src/.git/forbidden-write) 2>/dev/null; then exit 92; fi
+        [ "$(IFS= read -r line </online/input; printf %s "$line")" = "immutable input" ]
+        if (: >/online/forbidden-write) 2>/dev/null; then exit 93; fi
+        printf "private build output\n" >/src/profile-output
+        tmp_options= git_options=
+        while IFS=" " read -r device mountpoint filesystem options remainder; do
+            case "$mountpoint" in
+                /tmp) tmp_options=$options ;;
+                /src/.git) git_options=$options ;;
+            esac
+        done </proc/mounts
+        case ",$tmp_options," in *,rw,*nosuid,*nodev,*) ;; *) exit 94 ;; esac
+        case ",$git_options," in *,ro,*nosuid,*nodev,*noexec,*) ;; *) exit 95 ;; esac
+        printf "profile=debian-compiler uid=4000 network=none root=readonly caps=none nnp=on seccomp=filter apparmor=docker-default mounts=source-rw,git-hidden-ro,online-ro\n"
+    '
+    profile_output="$(debian_compiler_run "$PROBE_IMAGE_ID" \
+        -euc "$profile_probe" debian-compiler "$SOURCE_DATE_EPOCH")" \
+        || die "Debian compiler production profile failed"
+    [ "$profile_output" = \
+      'profile=debian-compiler uid=4000 network=none root=readonly caps=none nnp=on seccomp=filter apparmor=docker-default mounts=source-rw,git-hidden-ro,online-ro' ] \
+        || die "Debian compiler profile receipt differs: $profile_output"
+    [ "$(<"$BUILD_SOURCE_ROOT/profile-output")" = 'private build output' ] \
+        || die "Debian compiler profile did not write only its private source fixture"
+    [ "$(<"$BUILD_SOURCE_ROOT/.git/host-only")" = 'must be hidden' ] \
+        || die "Debian compiler profile changed hidden Git authority"
+    online_after="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$ONLINE_DIR/input"):$(/usr/bin/sha256sum "$ONLINE_DIR/input")"
+    [ "$online_after" = "$online_before" ] \
+        || die "Debian compiler profile changed its read-only online input"
+    [ ! -e "$ONLINE_DIR/forbidden-write" ] && [ ! -L "$ONLINE_DIR/forbidden-write" ] \
+        || die "Debian compiler profile wrote its online input"
+    containers_after="$(verifier_vm_docker ps --all --quiet --no-trunc | /usr/bin/sort)" \
+        || die "cannot record the final guest container inventory"
+    [ "$containers_after" = "$containers_before" ] \
+        || die "Debian compiler profile left a guest container behind"
+    remove_owned_workspace_exact \
+        || die "Debian compiler profile workspace cleanup failed"
+    printf 'DEBIAN_BUILDER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined\n' \
+        "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
+}
+
 # build_one PROFILE FEATURES PASS: run upstream's build.py in the pinned container,
 # network removed, ./online mounted read-only. Validate the exact private .deb and
 # retain only its object identity and digest for later no-clobber publication.
@@ -440,24 +635,7 @@ build_one() {
     # git-ignored artifacts) so the gate below can ONLY find a package THIS run produced.
     rm -f "$BUILD_SOURCE_ROOT"/rustdesk-*.deb
     verify_active_online_snapshot
-    if ! local_docker run --rm --pull=never \
-        --network=none \
-        --read-only \
-        --user "$BUILD_UID:$BUILD_GID" \
-        --cap-drop=ALL \
-        --security-opt=no-new-privileges \
-        --pids-limit=1024 \
-        --memory=16g \
-        --memory-swap=16g \
-        --cpus=4 \
-        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g \
-        -e "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
-        -e RUSTDESK_CANARY_OFFLINE=1 \
-        --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src" \
-        --tmpfs /src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
-        -w /src \
-        "$IMAGE_ID" \
+    if ! debian_compiler_run "$IMAGE_ID" \
         bash -euo pipefail -c '
             # The container is the pinned, immutable template (R-B8): everything
             # comes from /online (R-B5a), nothing is fetched (--network=none).
@@ -681,10 +859,8 @@ publish_result() {
     PENDING_RESULT_ID=""
     verify_active_online_snapshot
     verify_build_source_postcondition "final Debian build-source state"
-    assert_local_docker_authority \
-        || die "Debian builder Docker authority changed before retirement"
-    remove_local_docker_authority \
-        || die "Debian builder Docker authority could not retire before publication"
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+        || die "Debian builder verifier-VM authority changed before publication"
     prepare_pending_result
     remove_owned_workspace_exact \
         || die "private Debian build workspace could not retire before final publication"
@@ -719,4 +895,8 @@ main() {
     publish_result
 }
 
-main "$@"
+if [ "$SELF_TEST_VM_AUTHORITY" -eq 1 ]; then
+    run_vm_authority_self_test
+else
+    main
+fi

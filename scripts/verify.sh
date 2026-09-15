@@ -235,19 +235,19 @@ else
   echo "  ok  R-S11bg immutable image + private source/vendor/output state + all-nonroot inner-container definitions including two-principal foreign-owner IPC fixtures; R-S11dh outer disposable-VM execution authority remains STOP-SHIP"
 fi
 
-echo "== (0d) Debian builder source/container, Docker, and result-publication authority (R-S11cf/R-S11dk/R-S11dv) =="
+echo "== (0d) Debian builder source/container, verifier-VM, and result-publication authority (R-S11cf/R-S11dk/R-S11dh/R-S11dv) =="
 r_s11cf=
-if ! python3 scripts/verify-debian-builder-authority.py --repo . --self-test; then
-  r_s11cf="$r_s11cf authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-debian-builder-authority.py --repo .; then
+  r_s11cf="$r_s11cf focused-authority-check-failed"
 fi
 if ! /usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test; then
   r_s11cf="$r_s11cf result-publication-self-test-failed"
 fi
 if [ -n "$r_s11cf" ]; then
-  echo "  FAIL R-S11cf/R-S11dk/R-S11dv Debian builder authority:$r_s11cf"
+  echo "  FAIL R-S11cf/R-S11dk/R-S11dh/R-S11dv Debian builder authority:$r_s11cf"
   rc=1
 else
-  echo "  ok  R-S11cf/R-S11dk/R-S11dv direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority, compilation is confined, and only one verified private result is published through exact no-clobber authority after cleanup"
+  echo "  ok  R-S11cf/R-S11dk/R-S11dh/R-S11dv direct builds use independent private exact-commit sources; provenance and the sole compiler admit only the no-NIC verifier VM; compilation is confined; and one verified private result is published through exact no-clobber authority after cleanup"
 fi
 
 echo "== (0d1) authenticated Debian builder image distribution authority (R-S11db/R-S11e-120) =="

@@ -37,6 +37,8 @@ readonly ANDROID_GRADLE_SCRIPT=$VERIFY_REPO/scripts/test-android-gradle-cache.sh
 readonly ANDROID_GRADLE_CHECKER=$VERIFY_REPO/scripts/verify-android-gradle-authority.py
 readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-builder-image-authority.py
 readonly DEB_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-deb-builder-image-authority.py
+readonly DEBIAN_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-debian.sh
+readonly DEBIAN_BUILDER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-debian-builder-authority.py
 readonly WIN_HELPER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-win-helper-image-authority.py
 readonly WINDOWS_HELPER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-windows-helper-authority.py
 readonly WINDOWS_HELPER_RUNTIME_TEST=$VERIFY_REPO/scripts/test-windows-helper-vm-runtime.sh
@@ -122,7 +124,8 @@ for verify_source in verify.sh verify-release.sh frb-codegen.sh dart-verify.sh s
     build-android.sh verify-android-builder-authority.py \
     test-android-gradle-cache.sh verify-android-gradle-authority.py \
     verify-android-builder-image-authority.py \
-    verify-deb-builder-image-authority.py \
+    verify-deb-builder-image-authority.py build-debian.sh \
+    verify-debian-builder-authority.py \
     verify-win-helper-image-authority.py verify-windows-helper-authority.py \
     test-windows-helper-vm-runtime.sh windows-helper-runtime.sh \
     windows-helper-extract-kernel.py windows-golden-inspect.sh \
@@ -618,6 +621,16 @@ deb_image_source_gate_output="$(
 printf '%s\n' "$deb_image_source_gate_output"
 printf 'VERIFIER_VM_DEB_IMAGE_SOURCE_GATE=pass\n'
 
+debian_builder_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$DEBIAN_BUILDER_AUTHORITY_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || fail 'Debian builder compact source gate failed'
+[ "$debian_builder_source_gate_output" = 'verify-debian-builder-authority: ok' ] \
+    || fail "Debian builder source-gate result differs: $debian_builder_source_gate_output"
+printf '%s\n' "$debian_builder_source_gate_output"
+printf 'VERIFIER_VM_DEBIAN_BUILDER_SOURCE_GATE=pass\n'
+
 win_helper_image_source_gate_status=0
 win_helper_image_source_gate_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -793,6 +806,37 @@ tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
         - "$IMAGE" >"$ROOT/image-id"
 [[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || fail 'probe image ID is malformed'
+
+if /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
+    >"$ROOT/root-debian-builder-entry.out" 2>"$ROOT/root-debian-builder-entry.err"; then
+    fail 'VM root passed the Debian builder verifier entry'
+fi
+[ ! -s "$ROOT/root-debian-builder-entry.out" ] \
+    || fail 'root Debian builder refusal produced standard output'
+[ "$(<"$ROOT/root-debian-builder-entry.err")" = \
+  'Debian artifact building refuses host or container-root execution' ] \
+    || fail 'root Debian builder refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
+    >"$ROOT/foreign-debian-builder-entry.out" 2>"$ROOT/foreign-debian-builder-entry.err"; then
+    fail 'foreign principal passed the Debian builder verifier entry'
+fi
+[ ! -s "$ROOT/foreign-debian-builder-entry.out" ] \
+    || fail 'foreign Debian builder refusal produced standard output'
+[ "$(<"$ROOT/foreign-debian-builder-entry.err")" = \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+    || fail 'foreign Debian builder refusal diagnostic differs'
+debian_builder_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
+)" || fail 'authorized Debian builder verifier entry failed'
+expected_debian_builder_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+DEBIAN_BUILDER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined"
+[ "$debian_builder_entry_output" = "$expected_debian_builder_entry_output" ] \
+    || fail "Debian builder verifier entry result differs: $debian_builder_entry_output"
+printf '%s\n' "$debian_builder_entry_output"
+printf 'VERIFIER_VM_DEBIAN_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined\n' \
+    "$EXPECTED_VERSION"
 
 if /bin/bash "$ANDROID_GRADLE_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/root-android-gradle-entry.out" 2>"$ROOT/root-android-gradle-entry.err"; then

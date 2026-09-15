@@ -1381,9 +1381,30 @@ def validate_bootstrap_seal_inspects(
     expected_config = dict(discovery_config)
     expected_config["Labels"] = expected_labels
     if candidate_config != expected_config:
+        changed_keys = sorted(
+            key
+            for key in set(discovery_config) | set(candidate_config)
+            if candidate_config.get(key) != expected_config.get(key)
+        )
+        details = []
+        for key in changed_keys:
+            before = json.dumps(
+                expected_config.get(key),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            after = json.dumps(
+                candidate_config.get(key),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            details.append(
+                f"{key}: expected={before[:512]!r}, observed={after[:512]!r}"
+            )
         fail(
             "bootstrap metadata seal changed configuration other than the "
-            "review-candidate package-manifest label"
+            "review-candidate package-manifest label: "
+            + "; ".join(details)
         )
 
 

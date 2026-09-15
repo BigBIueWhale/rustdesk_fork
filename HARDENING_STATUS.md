@@ -1580,6 +1580,12 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
 | Verification/build authority | Focused source/model gates remain supplementary. R-S11dh's authenticated ordinary-user, zero-NIC QEMU smoke proves direct boot, guest-only Docker, private Unix control, selected root/foreign refusal, bounded containers, listener invariance, finality, and joined cleanup; its script entries have no host-Docker fallback. Those authority probes do not execute most real Dart/FRB, advisory, Android, Apple, full-peer, certified Debian/Windows, or RustDesk product workloads. R-S11cj's distinct outbound-only VM has real pinned-HTTPS/cache-transport authority evidence and, at `cd3891fae9c4b9f98b14aabc246d18f35af2d74b`, successful and expected-failure runs proving the acquisition principal inherits the exact descriptor budget needed for private-workspace finality. Successive real Android attempts exposed tag-created `repositories` metadata, the classic store's direct-manifest root, its uncompressed layer/diff-ID contract, and discard-only v1 config blobs. At clean pushed commit `337753d692594531ca522d8927a8e6c606b819e8`, `run.dODxMdeH1n` completed the actual build, seal, bounded normalization, strict archive validation, OCI materialization, and no-replace candidate publication in 325 seconds. The outer terminal receipt reported listeners unchanged and cleanup joined; the successful run root was then retired, so its raw listener snapshots are not retained. The candidate is independently reverified at UID/GID 1000, mode 0400, one link, 468,001,119 bytes, and SHA-256 `d67c950403691bb6db099e1fb19e8113a31a24366d8279b5b83a741c90fabdbc`. It is not promoted or pinned. Complete cache/producers, exact full-peer source/input/output transport, prepared toolchain/image reproduction, fresh independent verifier-image rebuild, native targets, and cold release remain open. |
 
+Current source at `a81ffdf79afa87a75dfc5d692a33752bf305599b` requires byte-identical complete
+before/during/after listener inventories and, only after joined cleanup and exact run-root retirement, no-clobber
+publishes one private 64 KiB-bounded source/result-digest receipt. Real `run.iANlepal0v` exercised that topology in
+16 seconds; its mode-0400, one-link, 2,087-byte receipt remains while the exact run root and process generation do
+not. This improves future success evidence but cannot recreate the retired raw files from `run.dODxMdeH1n`.
+
 The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
 nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
 nor the overall release is claimed complete.
@@ -3911,6 +3917,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   inspection found no QEMU, timeout, or virtiofsd process for the retired run. The success policy removed the run
   root after those checks, so raw listener snapshots/logs are not retained and this limitation is not laundered into
   stronger evidence.
+
+  The subsequent `a81ffdf79afa87a75dfc5d692a33752bf305599b` harness correction requires exact equality of all three
+  complete listener inventories and retains a compact success receipt only after exact run-root retirement. Real
+  authority-smoke `run.iANlepal0v` completed in 16 seconds with no host forwarding, TCP-only guest acquisition,
+  guest-only Docker, listener equality, and joined cleanup. Its current-user-owned mode-0400, one-link, 2,087-byte
+  receipt binds the exact commit/tree/source bundle, request/mode, elapsed time, verified authority lines, listener
+  inventory digest/size, and serial/result digests/sizes. The run root and exact process generation are absent. This
+  is acquisition-authority/finality evidence only, not Android product, native-device, artifact, or release evidence.
 
   The unpromoted proposal at
   `online/inputs/build-images/android-builder-bootstrap-candidate.docker.tar.gz` is current-user-owned mode 0400,

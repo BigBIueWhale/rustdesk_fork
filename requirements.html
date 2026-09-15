@@ -2173,6 +2173,25 @@ A client then reaches <code>&lt;static-IPv4&gt;:21118</code> with that password 
  <tr><td>411</td><td><strong>Linux headless connection-manager readiness ownership</strong> — independently sampled headless decisions, reusable queues, or inferred readiness can disagree about whether the exact connection owns an authenticated CM peer.</td><td><strong>Required disposition.</strong> One connection-local headless decision feeds two Linux-only one-shot directions. The desktop-to-bootstrap signal is only a nonblocking wake hint. Bootstrap-to-connection readiness is published only after authenticated stream, exact peer, and bootstrap establishment; only that positive result before the finite deadline permits peer login success. Sender loss, timeout, missing or repeated consumption, and publication refusal are terminal. No retry, reconnect path, queue, second state replica, detached owner, or unbounded wait exists. See R-S11iz.</td></tr>
  <tr><td>412</td><td><strong>Android MainService callback-thread finality</strong> — retaining only a callback <code>Looper</code> and requesting safe quit permits already-due callbacks to run after controlled state retires, while dropping the thread without joining lets <code>onDestroy()</code> return before its exact worker is dead.</td><td><strong>Required disposition.</strong> Own the exact callback <code>HandlerThread</code> and handler, require both before listener-generation reservation, preserve a healthy Service-owned worker across ordinary generation repair, but release projection state and join a dead worker before replacement. On Service destruction, retire callback-visible resources first, terminate the obsolete queue, join despite interruption, restore interruption after finality, and only then retire/release the Service object. Installed Android execution must prove blocked/in-queue teardown, dead-worker health recovery, and clean replacement. See R-S11ja.</td></tr>
 </table>
+<section>
+<h2>Builder bootstrap-candidate refresh clarification</h2>
+<p><strong>R-S11da/R-S11db/R-S11dc — current final pins are never acquisition inputs.</strong>
+A bootstrap refresh <span class="kw">MUST NOT</span> require a new networked build to reproduce the
+currently reviewed final recipe or package-manifest pins. The authenticated exact-commit acquisition
+recipe and pinned base produce one root-capable discovery image, install packages exactly once, write
+one canonical sorted package manifest, derive its SHA-256 from those bytes in the same filesystem
+layer, and bind that derived value into the embedded contract without asserting it as a configuration
+label. A second build <span class="kw">MUST</span> consume the exact local discovery image ID through
+the fixed four-instruction <code>Dockerfile.builder-bootstrap-seal</code> supplied on standard input
+with no filesystem context, no pull, no cache, fixed Linux/amd64, and network disabled; it may add
+only the derived package-manifest label. Validation must execute the discovery image as confined
+numeric non-root with no network, require live/stored manifest equality and the self-derived contract,
+and prove the sealed candidate has the identical rootfs and identical runtime configuration except
+for that one label. Candidate capture reports the proposed recipe, package, image, config, manifest,
+archive, size, and layout identities for review. Existing final pins remain unchanged until the
+separate exact-pin no-clobber bootstrap promotion, and the promoted bootstrap remains non-release
+authority until the separate networkless UID/GID-1000 certification transaction succeeds.</p>
+</section>
 <footer>
  <p><strong>requirements.html</strong> — normative security requirements for a hardened RustDesk fork. Base pinned at upstream <a href="https://github.com/rustdesk/rustdesk/releases/tag/1.4.7"><code>1.4.7</code></a> (<code>0c86d46</code>) + <code>hbb_common</code>@<code>df6badc</code>; build pinned by the committed <code>Cargo.lock</code> (898 package records; 36 git-sourced records from 26 unique source URLs, all rev-locked), the provenance-recorded in-tree <code>portable-pty</code>, and the toolchain of §3.1. Every architectural and surface claim was verified by direct read of that tree. The bar is SSH. Corrections, adversarial review of the §10 handshake, and an independent audit of the chosen PAKE implementation are actively welcomed.</p>
 </footer>

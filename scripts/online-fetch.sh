@@ -2243,6 +2243,8 @@ maintenance_capture_rust_audit_image() {
 # promoted bootstrap still requires the networkless nonroot certification
 # transaction before it can become release authority.
 BUILT_BOOTSTRAP_IMAGE_ID=
+BUILT_BOOTSTRAP_DPKG_SHA256=
+BUILT_BOOTSTRAP_RECIPE_SHA256=
 
 builder_bootstrap_candidate_spec_args() {
     [ "$#" -eq 5 ] || die "internal bootstrap candidate specification error"
@@ -2302,52 +2304,102 @@ capture_builder_bootstrap_candidate() {
     printf '%s_BOOTSTRAP_CONFIG_ID="%s"\n' "$prefix" "$config_id"
     printf '%s_BOOTSTRAP_MANIFEST_ID="%s"\n' "$prefix" "$manifest_id"
     printf '%s_BOOTSTRAP_IMAGE_ARCHIVE_SIZE="%s"\n' "$prefix" "$archive_size"
+    printf 'SHA256_%s_DOCKERFILE="%s"\n' "$prefix" "$dockerfile_sha"
+    printf 'SHA256_%s_DPKG_MANIFEST="%s"\n' "$prefix" "$dpkg_sha"
     printf 'SHA256_%s_BOOTSTRAP_IMAGE_ARCHIVE="%s"\n' "$prefix" "$archive_sha"
     printf 'SHA256_%s_BOOTSTRAP_OCI_LAYOUT="%s"\n' "$prefix" "$layout_sha"
     printf 'candidate=%s\n' "$output"
 }
 
+build_builder_bootstrap_image() {
+    [ "$#" -eq 4 ] || die "internal bootstrap discovery specification error"
+    local display="$1" role="$2" base="$3" dockerfile_name="$4"
+    local dockerfile="$LIB_DIR/$dockerfile_name"
+    local seal_dockerfile="$LIB_DIR/Dockerfile.builder-bootstrap-seal"
+    local discovery_tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-${role}-bootstrap-discovery"
+    local candidate_tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-${role}-bootstrap-candidate"
+    local recipe_sha discovery_id discovery_result observed_discovery_id
+    local dpkg_sha candidate_id
+    case "$role" in
+        android-builder|deb-builder|win-helper) ;;
+        *) die "unsupported bootstrap discovery role: $role" ;;
+    esac
+    [ -f "$dockerfile" ] && [ ! -L "$dockerfile" ] \
+        || die "$display bootstrap discovery Dockerfile is absent or unsafe"
+    [ -f "$seal_dockerfile" ] && [ ! -L "$seal_dockerfile" ] \
+        || die "$display bootstrap seal Dockerfile is absent or unsafe"
+    recipe_sha="$(/usr/bin/sha256sum "$dockerfile" | /usr/bin/awk '{print $1}')"
+    [[ "$recipe_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || die "$display bootstrap discovery Dockerfile identity is malformed"
+    online_docker build \
+        --network=default --pull=false --no-cache --platform=linux/amd64 \
+        --build-arg "BASE_DIGEST=${base#*@}" \
+        --build-arg "DOCKERFILE_SHA256=${recipe_sha}" \
+        -t "$discovery_tag" -f "$dockerfile" "$LIB_DIR"
+    discovery_id="$(
+        online_docker image inspect --format '{{.Id}}' "$discovery_tag"
+    )" || die "cannot resolve the $display bootstrap discovery image"
+    [[ "$discovery_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "$display bootstrap discovery image identity is malformed"
+    discovery_result="$(
+        online_image_provenance maintenance-inspect-bootstrap-discovery \
+            --image-ref "$discovery_tag" \
+            --role "${role}-bootstrap-candidate" \
+            --expected-id "$discovery_id" \
+            --base "$base" \
+            --dockerfile-sha "$recipe_sha"
+    )" || die "$display bootstrap discovery inspection failed"
+    [ "$(/usr/bin/grep -c '^discovery_image_id=' <<<"$discovery_result")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -c '^dpkg_sha256=' <<<"$discovery_result")" -eq 1 ] \
+        && [ "$(/usr/bin/wc -l <<<"$discovery_result")" -eq 2 ] \
+        || die "$display bootstrap discovery result is malformed"
+    observed_discovery_id="$(
+        /usr/bin/sed -n 's/^discovery_image_id=//p' <<<"$discovery_result"
+    )"
+    dpkg_sha="$(/usr/bin/sed -n 's/^dpkg_sha256=//p' <<<"$discovery_result")"
+    [ "$observed_discovery_id" = "$discovery_id" ] \
+        && [[ "$dpkg_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || die "$display bootstrap discovery identities are malformed"
+    online_docker build \
+        --network=none --pull=false --no-cache --platform=linux/amd64 \
+        --build-arg "BOOTSTRAP_IMAGE=${discovery_id}" \
+        --build-arg "DPKG_MANIFEST_SHA256=${dpkg_sha}" \
+        -t "$candidate_tag" - <"$seal_dockerfile"
+    candidate_id="$(
+        online_docker image inspect --format '{{.Id}}' "$candidate_tag"
+    )" || die "cannot resolve the $display bootstrap candidate"
+    [[ "$candidate_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "$display bootstrap candidate identity is malformed"
+    online_image_provenance maintenance-verify-bootstrap-seal \
+        --discovery-image-ref "$discovery_tag" \
+        --discovery-id "$discovery_id" \
+        --image-ref "$candidate_tag" \
+        --role "${role}-bootstrap-candidate" \
+        --expected-id "$candidate_id" \
+        --base "$base" \
+        --dockerfile-sha "$recipe_sha" \
+        --dpkg-sha "$dpkg_sha" \
+        || die "$display bootstrap metadata seal verification failed"
+    BUILT_BOOTSTRAP_IMAGE_ID="$candidate_id"
+    BUILT_BOOTSTRAP_DPKG_SHA256="$dpkg_sha"
+    BUILT_BOOTSTRAP_RECIPE_SHA256="$recipe_sha"
+}
+
 build_deb_builder_bootstrap_image() {
-    require_image_pin SHA256_DEB_BUILDER_DOCKERFILE
-    require_image_pin SHA256_DEB_BUILDER_DPKG_MANIFEST
-    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder-candidate"
-    online_docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
-        --build-arg "DOCKERFILE_SHA256=${SHA256_DEB_BUILDER_DOCKERFILE}" \
-        --build-arg "DPKG_MANIFEST_SHA256=${SHA256_DEB_BUILDER_DPKG_MANIFEST}" \
-        --no-cache \
-        -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
-    local image_id
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
-        || die "cannot resolve the Debian builder bootstrap candidate"
-    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
-        || die "Debian builder bootstrap candidate identity is malformed"
-    online_image_provenance verify-local --image-ref "$tag" \
-        --role deb-builder-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
-        --dockerfile-sha "$SHA256_DEB_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST"
-    BUILT_BOOTSTRAP_IMAGE_ID="$image_id"
+    build_builder_bootstrap_image \
+        "Debian builder" deb-builder \
+        "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        Dockerfile.deb-builder
 }
 
 # Explicit networked bootstrap acquisition only. This image is not release
 # authority; maintenance_build_android_builder_certified_candidate authenticates
 # an exact captured bootstrap through a separate networkless nonroot build.
 build_android_builder_bootstrap_image() {
-    require_image_pin SHA256_ANDROID_BUILDER_DOCKERFILE
-    require_image_pin SHA256_ANDROID_BUILDER_DPKG_MANIFEST
-    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder-candidate"
-    online_docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        --build-arg "DOCKERFILE_SHA256=${SHA256_ANDROID_BUILDER_DOCKERFILE}" \
-        --build-arg "DPKG_MANIFEST_SHA256=${SHA256_ANDROID_BUILDER_DPKG_MANIFEST}" \
-        --no-cache \
-        -t "$tag" -f "$LIB_DIR/Dockerfile.android-builder" "$LIB_DIR"
-    local image_id
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
-        || die "cannot resolve the Android builder bootstrap candidate"
-    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
-        || die "Android builder bootstrap candidate identity is malformed"
-    online_image_provenance verify-local --image-ref "$tag" \
-        --role android-builder-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        --dockerfile-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST"
-    BUILT_BOOTSTRAP_IMAGE_ID="$image_id"
+    build_builder_bootstrap_image \
+        "Android builder" android-builder \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        Dockerfile.android-builder
 }
 
 # ── The Windows VM helper bootstrap: genisoimage + libguestfs + MSI tooling ──
@@ -2358,23 +2410,10 @@ build_android_builder_bootstrap_image() {
 # This acquisition result is bootstrap material only; a separate networkless
 # certification transaction creates the release helper.
 build_windows_helper_bootstrap_image() {
-    require_image_pin SHA256_WIN_HELPER_DOCKERFILE
-    require_image_pin SHA256_WIN_HELPER_DPKG_MANIFEST
-    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper-candidate"
-    online_docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        --build-arg "DOCKERFILE_SHA256=${SHA256_WIN_HELPER_DOCKERFILE}" \
-        --build-arg "DPKG_MANIFEST_SHA256=${SHA256_WIN_HELPER_DPKG_MANIFEST}" \
-        --no-cache \
-        -t "$tag" -f "$LIB_DIR/Dockerfile.win-helper" "$LIB_DIR"
-    local image_id
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
-        || die "cannot resolve the Windows helper bootstrap candidate"
-    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
-        || die "Windows helper bootstrap candidate identity is malformed"
-    online_image_provenance verify-local --image-ref "$tag" \
-        --role win-helper-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST"
-    BUILT_BOOTSTRAP_IMAGE_ID="$image_id"
+    build_builder_bootstrap_image \
+        "Windows helper" win-helper \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        Dockerfile.win-helper
 }
 
 maintenance_build_deb_builder_bootstrap_candidate() {
@@ -2393,14 +2432,16 @@ maintenance_build_deb_builder_bootstrap_candidate() {
         || die "Debian builder bootstrap candidate archive already exists"
     online_docker pull "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
     BUILT_BOOTSTRAP_IMAGE_ID=
+    BUILT_BOOTSTRAP_DPKG_SHA256=
+    BUILT_BOOTSTRAP_RECIPE_SHA256=
     build_deb_builder_bootstrap_image
     result="$(capture_builder_bootstrap_candidate \
         "Debian builder" DEB_BUILDER \
         deb-builder-bootstrap-candidate.docker.tar.gz \
         deb-builder "$BUILT_BOOTSTRAP_IMAGE_ID" \
         "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
-        "$SHA256_DEB_BUILDER_DOCKERFILE" \
-        "$SHA256_DEB_BUILDER_DPKG_MANIFEST")"
+        "$BUILT_BOOTSTRAP_RECIPE_SHA256" \
+        "$BUILT_BOOTSTRAP_DPKG_SHA256")"
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the builder image archive lock"
     exec {lock_fd}<&-
@@ -2423,14 +2464,16 @@ maintenance_build_android_builder_bootstrap_candidate() {
         || die "Android builder bootstrap candidate archive already exists"
     online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
     BUILT_BOOTSTRAP_IMAGE_ID=
+    BUILT_BOOTSTRAP_DPKG_SHA256=
+    BUILT_BOOTSTRAP_RECIPE_SHA256=
     build_android_builder_bootstrap_image
     result="$(capture_builder_bootstrap_candidate \
         "Android builder" ANDROID_BUILDER \
         android-builder-bootstrap-candidate.docker.tar.gz \
         android-builder "$BUILT_BOOTSTRAP_IMAGE_ID" \
         "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
-        "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST")"
+        "$BUILT_BOOTSTRAP_RECIPE_SHA256" \
+        "$BUILT_BOOTSTRAP_DPKG_SHA256")"
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the builder image archive lock"
     exec {lock_fd}<&-
@@ -2453,14 +2496,16 @@ maintenance_build_win_helper_bootstrap_candidate() {
         || die "Windows helper bootstrap candidate archive already exists"
     online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
     BUILT_BOOTSTRAP_IMAGE_ID=
+    BUILT_BOOTSTRAP_DPKG_SHA256=
+    BUILT_BOOTSTRAP_RECIPE_SHA256=
     build_windows_helper_bootstrap_image
     result="$(capture_builder_bootstrap_candidate \
         "Windows helper" WIN_HELPER \
         win-helper-bootstrap-candidate.docker.tar.gz \
         win-helper "$BUILT_BOOTSTRAP_IMAGE_ID" \
         "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        "$SHA256_WIN_HELPER_DOCKERFILE" \
-        "$SHA256_WIN_HELPER_DPKG_MANIFEST")"
+        "$BUILT_BOOTSTRAP_RECIPE_SHA256" \
+        "$BUILT_BOOTSTRAP_DPKG_SHA256")"
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the builder image archive lock"
     exec {lock_fd}<&-

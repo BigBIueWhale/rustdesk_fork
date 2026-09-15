@@ -199,6 +199,32 @@ class Spec:
 
 
 @dataclass(frozen=True)
+class BootstrapDiscoverySpec:
+    role: str
+    image_id: str
+    base: str
+    dockerfile_sha256: str
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            LABEL_PREFIX + "contract": CONTRACT,
+            LABEL_PREFIX + "role": self.role,
+            LABEL_PREFIX + "base": self.base,
+            LABEL_PREFIX + "dockerfile-sha256": self.dockerfile_sha256,
+        }
+
+    def contract_bytes(self, dpkg_sha256: str) -> bytes:
+        return (
+            f"contract={CONTRACT}\n"
+            f"role={self.role}\n"
+            f"base={self.base}\n"
+            f"dockerfile_sha256={self.dockerfile_sha256}\n"
+            f"dpkg_manifest_sha256={dpkg_sha256}\n"
+        ).encode("ascii")
+
+
+@dataclass(frozen=True)
 class ArchiveIdentity:
     image_id: str
     manifest_id: str
@@ -730,6 +756,7 @@ class RustAuditSpec:
 
 ImageSpec = Union[
     Spec,
+    BootstrapDiscoverySpec,
     CertifiedBuilderSpec,
     VerifierSpec,
     AppleCheckSpec,
@@ -1164,6 +1191,42 @@ def spec_from_args(
     )
 
 
+def bootstrap_discovery_spec_from_args(
+    args: argparse.Namespace,
+) -> BootstrapDiscoverySpec:
+    roles = {
+        "android-builder-bootstrap-candidate": "android-builder",
+        "deb-builder-bootstrap-candidate": "deb-builder",
+        "win-helper-bootstrap-candidate": "win-helper",
+    }
+    role = roles.get(args.role)
+    if role is None:
+        fail(
+            "bootstrap discovery accepts only an explicit "
+            "builder-bootstrap-candidate role"
+        )
+    expected_release = "18[.]04" if role == "deb-builder" else "24[.]04"
+    if not re.fullmatch(
+        rf"ubuntu:{expected_release}@sha256:[0-9a-f]{{64}}",
+        args.base,
+    ):
+        fail(f"{role} bootstrap discovery base identity is malformed")
+    return BootstrapDiscoverySpec(
+        role=role,
+        image_id=require_image_id(
+            args.discovery_id
+            if getattr(args, "discovery_id", None)
+            else args.expected_id,
+            "bootstrap discovery image ID",
+        ),
+        base=args.base,
+        dockerfile_sha256=require_sha(
+            args.dockerfile_sha,
+            "bootstrap discovery Dockerfile SHA-256",
+        ),
+    )
+
+
 def run(command: list[str], *, input_stream: BinaryIO | None = None) -> subprocess.CompletedProcess[bytes]:
     try:
         return subprocess.run(
@@ -1252,6 +1315,78 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
             fail(f"image label {name} mismatch: expected {expected!r}, got {labels.get(name)!r}")
 
 
+def validate_bootstrap_discovery_inspect(
+    payload: dict[str, object],
+    image_ref: str,
+    spec: BootstrapDiscoverySpec,
+) -> None:
+    if payload.get("Id") != spec.image_id:
+        fail(
+            f"bootstrap discovery reference {image_ref} resolves to "
+            f"{payload.get('Id')!r}, expected {spec.image_id}"
+        )
+    if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
+        fail("bootstrap discovery platform must be exactly linux/amd64")
+    config = payload.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    if not isinstance(labels, dict):
+        fail("bootstrap discovery provenance labels are absent")
+    for name, expected in spec.labels.items():
+        if labels.get(name) != expected:
+            fail(
+                f"bootstrap discovery label {name} mismatch: "
+                f"expected {expected!r}, got {labels.get(name)!r}"
+            )
+    if LABEL_PREFIX + "dpkg-manifest-sha256" in labels:
+        fail("bootstrap discovery image prematurely asserts a package-manifest pin")
+
+
+def validate_bootstrap_seal_inspects(
+    discovery: dict[str, object],
+    candidate: dict[str, object],
+    discovery_ref: str,
+    candidate_ref: str,
+    discovery_spec: BootstrapDiscoverySpec,
+    candidate_spec: Spec,
+) -> None:
+    validate_bootstrap_discovery_inspect(
+        discovery,
+        discovery_ref,
+        discovery_spec,
+    )
+    validate_inspect(candidate, candidate_ref, candidate_spec)
+    if discovery_spec.image_id == candidate_spec.image_id:
+        fail("bootstrap metadata seal did not produce a distinct image identity")
+    discovery_rootfs = discovery.get("RootFS")
+    candidate_rootfs = candidate.get("RootFS")
+    if not isinstance(discovery_rootfs, dict) \
+       or discovery_rootfs.get("Type") != "layers" \
+       or not isinstance(discovery_rootfs.get("Layers"), list) \
+       or not discovery_rootfs["Layers"]:
+        fail("bootstrap discovery rootfs identity is malformed")
+    if candidate_rootfs != discovery_rootfs:
+        fail("bootstrap metadata seal changed the discovery rootfs")
+    discovery_config = discovery.get("Config")
+    candidate_config = candidate.get("Config")
+    if not isinstance(discovery_config, dict) \
+       or not isinstance(candidate_config, dict):
+        fail("bootstrap metadata seal image configuration is malformed")
+    discovery_labels = discovery_config.get("Labels")
+    if not isinstance(discovery_labels, dict):
+        fail("bootstrap discovery labels are malformed")
+    expected_labels = dict(discovery_labels)
+    expected_labels[LABEL_PREFIX + "dpkg-manifest-sha256"] = (
+        candidate_spec.dpkg_sha256
+    )
+    expected_config = dict(discovery_config)
+    expected_config["Labels"] = expected_labels
+    if candidate_config != expected_config:
+        fail(
+            "bootstrap metadata seal changed configuration other than the "
+            "review-candidate package-manifest label"
+        )
+
+
 def validate_package_manifest(manifest: bytes) -> str:
     if not manifest or not manifest.endswith(b"\n") or b"\r" in manifest or b"\0" in manifest:
         fail("installed-package manifest is empty or not canonical LF-terminated text")
@@ -1275,6 +1410,126 @@ def validate_package_manifest(manifest: bytes) -> str:
         previous = line
         packages.add(fields[0])
     return hashlib.sha256(manifest).hexdigest()
+
+
+def read_bootstrap_provenance(
+    image_id: str,
+) -> tuple[bytes, bytes, bytes, bytes]:
+    command = (
+        "set -eu; "
+        "p=/usr/local/share/rustdesk-build-provenance; "
+        "cat \"$p/contract-v1\"; printf '\\0'; "
+        "cat \"$p/dpkg-manifest.tsv\"; printf '\\0'; "
+        "dpkg-query -W -f='${binary:Package}\\t${Version}\\n' | LC_ALL=C sort; printf '\\0'; "
+        "cat \"$p/Dockerfile\""
+    )
+    result = run(
+        [
+            DOCKER,
+            "run",
+            "--rm",
+            "--pull=never",
+            "--network=none",
+            "--read-only",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=64",
+            "--memory=512m",
+            "--memory-swap=512m",
+            "--cpus=1",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m",
+            "--entrypoint",
+            "/bin/sh",
+            image_id,
+            "-c",
+            command,
+        ]
+    )
+    if result.returncode != 0:
+        fail(
+            f"cannot read embedded provenance from {image_id}: "
+            + result.stderr.decode(errors="replace").strip()
+        )
+    parts = result.stdout.split(b"\0")
+    if len(parts) != 4:
+        fail("embedded image provenance output is malformed")
+    return parts[0], parts[1], parts[2], parts[3]
+
+
+def validate_bootstrap_provenance(
+    provenance: tuple[bytes, bytes, bytes, bytes],
+    *,
+    role: str,
+    base: str,
+    dockerfile_sha256: str,
+    expected_dpkg_sha256: str | None,
+) -> str:
+    contract, stored_manifest, live_manifest, dockerfile = provenance
+    stored_sha = validate_package_manifest(stored_manifest)
+    live_sha = validate_package_manifest(live_manifest)
+    if stored_manifest != live_manifest or stored_sha != live_sha:
+        fail("embedded and live installed-package manifests differ")
+    if expected_dpkg_sha256 is not None \
+       and stored_sha != expected_dpkg_sha256:
+        fail("embedded and live installed-package manifests do not equal the audited pin")
+    expected_contract = (
+        f"contract={CONTRACT}\n"
+        f"role={role}\n"
+        f"base={base}\n"
+        f"dockerfile_sha256={dockerfile_sha256}\n"
+        f"dpkg_manifest_sha256={stored_sha}\n"
+    ).encode("ascii")
+    if contract != expected_contract:
+        fail("embedded image provenance contract is absent, malformed, or stale")
+    if hashlib.sha256(dockerfile).hexdigest() != dockerfile_sha256:
+        fail("embedded Dockerfile bytes do not equal the audited pin")
+    return stored_sha
+
+
+def inspect_bootstrap_discovery(
+    image_ref: str,
+    spec: BootstrapDiscoverySpec,
+) -> str:
+    if os.getuid() == 0 or os.getgid() == 0:
+        fail("bootstrap discovery inspection refuses root execution")
+    validate_bootstrap_discovery_inspect(
+        inspect_image(image_ref),
+        image_ref,
+        spec,
+    )
+    return validate_bootstrap_provenance(
+        read_bootstrap_provenance(spec.image_id),
+        role=spec.role,
+        base=spec.base,
+        dockerfile_sha256=spec.dockerfile_sha256,
+        expected_dpkg_sha256=None,
+    )
+
+
+def verify_bootstrap_seal(
+    discovery_ref: str,
+    candidate_ref: str,
+    discovery_spec: BootstrapDiscoverySpec,
+    candidate_spec: Spec,
+) -> None:
+    observed_dpkg_sha256 = inspect_bootstrap_discovery(
+        discovery_ref,
+        discovery_spec,
+    )
+    if observed_dpkg_sha256 != candidate_spec.dpkg_sha256:
+        fail("bootstrap metadata seal uses a different package-manifest identity")
+    validate_bootstrap_seal_inspects(
+        inspect_image(discovery_ref),
+        inspect_image(candidate_ref),
+        discovery_ref,
+        candidate_ref,
+        discovery_spec,
+        candidate_spec,
+    )
+    verify_local(candidate_ref, candidate_spec)
 
 
 def verify_local(image_ref: str, spec: ImageSpec) -> None:
@@ -1612,53 +1867,15 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
         if result.stdout != expected or result.stderr:
             fail("devcheck runtime fingerprint differs from the reviewed pins")
         return
-    command = (
-        "set -eu; "
-        "p=/usr/local/share/rustdesk-build-provenance; "
-        "cat \"$p/contract-v1\"; printf '\\0'; "
-        "cat \"$p/dpkg-manifest.tsv\"; printf '\\0'; "
-        "dpkg-query -W -f='${binary:Package}\\t${Version}\\n' | LC_ALL=C sort; printf '\\0'; "
-        "cat \"$p/Dockerfile\""
+    if isinstance(spec, BootstrapDiscoverySpec):
+        fail("bootstrap discovery must use its dedicated inspection operation")
+    validate_bootstrap_provenance(
+        read_bootstrap_provenance(spec.image_id),
+        role=spec.role,
+        base=spec.base,
+        dockerfile_sha256=spec.dockerfile_sha256,
+        expected_dpkg_sha256=spec.dpkg_sha256,
     )
-    result = run(
-        [
-            DOCKER,
-            "run",
-            "--rm",
-            "--pull=never",
-            "--network=none",
-            "--read-only",
-            "--user",
-            f"{os.getuid()}:{os.getgid()}",
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
-            "--pids-limit=64",
-            "--memory=512m",
-            "--memory-swap=512m",
-            "--cpus=1",
-            "--tmpfs",
-            "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m",
-            "--entrypoint",
-            "/bin/sh",
-            spec.image_id,
-            "-c",
-            command,
-        ]
-    )
-    if result.returncode != 0:
-        fail(f"cannot read embedded provenance from {spec.image_id}: {result.stderr.decode(errors='replace').strip()}")
-    parts = result.stdout.split(b"\0")
-    if len(parts) != 4:
-        fail("embedded image provenance output is malformed")
-    contract, stored_manifest, live_manifest, dockerfile = parts
-    if contract != spec.contract_bytes():
-        fail("embedded image provenance contract is absent, malformed, or stale")
-    stored_sha = validate_package_manifest(stored_manifest)
-    live_sha = validate_package_manifest(live_manifest)
-    if stored_manifest != live_manifest or stored_sha != spec.dpkg_sha256 or live_sha != spec.dpkg_sha256:
-        fail("embedded and live installed-package manifests do not equal the audited pin")
-    if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
-        fail("embedded Dockerfile bytes do not equal the audited pin")
 
 
 class HashingReader:
@@ -8290,6 +8507,122 @@ def self_test() -> None:
     dpkg_sha = validate_package_manifest(manifest)
     expect_failure(lambda: validate_package_manifest(b"beta\t1\nalpha\t1\n"), "unsorted package manifest")
     expect_failure(lambda: validate_package_manifest(b"bad line\n"), "malformed package manifest")
+    discovery_recipe = b"reviewed bootstrap recipe"
+    discovery_recipe_sha = hashlib.sha256(discovery_recipe).hexdigest()
+    discovery_spec = BootstrapDiscoverySpec(
+        role="android-builder",
+        image_id="sha256:" + "3" * 64,
+        base="ubuntu:24.04@sha256:" + "4" * 64,
+        dockerfile_sha256=discovery_recipe_sha,
+    )
+    discovery_config = {
+        "User": "",
+        "Env": ["PATH=/usr/bin", "DEBIAN_FRONTEND=noninteractive"],
+        "Cmd": ["/bin/bash"],
+        "Labels": {
+            "org.opencontainers.image.version": "24.04",
+            **discovery_spec.labels,
+        },
+    }
+    discovery_payload = {
+        "Id": discovery_spec.image_id,
+        "Os": "linux",
+        "Architecture": "amd64",
+        "Config": discovery_config,
+        "RootFS": {"Type": "layers", "Layers": ["sha256:" + "6" * 64]},
+    }
+    validate_bootstrap_discovery_inspect(
+        discovery_payload,
+        discovery_spec.image_id,
+        discovery_spec,
+    )
+    observed_dpkg_sha = validate_bootstrap_provenance(
+        (
+            discovery_spec.contract_bytes(dpkg_sha),
+            manifest,
+            manifest,
+            discovery_recipe,
+        ),
+        role=discovery_spec.role,
+        base=discovery_spec.base,
+        dockerfile_sha256=discovery_recipe_sha,
+        expected_dpkg_sha256=None,
+    )
+    if observed_dpkg_sha != dpkg_sha:
+        fail("bootstrap discovery did not derive the package-manifest identity")
+    premature_payload = json.loads(json.dumps(discovery_payload))
+    premature_payload["Config"]["Labels"][
+        LABEL_PREFIX + "dpkg-manifest-sha256"
+    ] = dpkg_sha
+    expect_failure(
+        lambda: validate_bootstrap_discovery_inspect(
+            premature_payload,
+            discovery_spec.image_id,
+            discovery_spec,
+        ),
+        "bootstrap discovery premature package pin",
+    )
+    expect_failure(
+        lambda: validate_bootstrap_provenance(
+            (
+                discovery_spec.contract_bytes("f" * 64),
+                manifest,
+                manifest,
+                discovery_recipe,
+            ),
+            role=discovery_spec.role,
+            base=discovery_spec.base,
+            dockerfile_sha256=discovery_recipe_sha,
+            expected_dpkg_sha256=None,
+        ),
+        "bootstrap discovery stale package contract",
+    )
+    candidate_spec = Spec(
+        role=discovery_spec.role,
+        image_id="sha256:" + "7" * 64,
+        base=discovery_spec.base,
+        dockerfile_sha256=discovery_spec.dockerfile_sha256,
+        dpkg_sha256=dpkg_sha,
+    )
+    candidate_payload = json.loads(json.dumps(discovery_payload))
+    candidate_payload["Id"] = candidate_spec.image_id
+    candidate_payload["Config"]["Labels"][
+        LABEL_PREFIX + "dpkg-manifest-sha256"
+    ] = dpkg_sha
+    validate_bootstrap_seal_inspects(
+        discovery_payload,
+        candidate_payload,
+        discovery_spec.image_id,
+        candidate_spec.image_id,
+        discovery_spec,
+        candidate_spec,
+    )
+    changed_rootfs = json.loads(json.dumps(candidate_payload))
+    changed_rootfs["RootFS"]["Layers"].append("sha256:" + "8" * 64)
+    expect_failure(
+        lambda: validate_bootstrap_seal_inspects(
+            discovery_payload,
+            changed_rootfs,
+            discovery_spec.image_id,
+            candidate_spec.image_id,
+            discovery_spec,
+            candidate_spec,
+        ),
+        "bootstrap seal filesystem mutation",
+    )
+    changed_config = json.loads(json.dumps(candidate_payload))
+    changed_config["Config"]["User"] = "0:0"
+    expect_failure(
+        lambda: validate_bootstrap_seal_inspects(
+            discovery_payload,
+            changed_config,
+            discovery_spec.image_id,
+            candidate_spec.image_id,
+            discovery_spec,
+            candidate_spec,
+        ),
+        "bootstrap seal unrelated configuration mutation",
+    )
     base_spec = Spec(
         role="deb-builder",
         image_id="sha256:" + "0" * 64,
@@ -10225,6 +10558,16 @@ def argument_parser() -> argparse.ArgumentParser:
     local = subparsers.add_parser("verify-local")
     add_spec_arguments(local)
     local.add_argument("--image-ref")
+    discovery = subparsers.add_parser(
+        "maintenance-inspect-bootstrap-discovery"
+    )
+    add_spec_arguments(discovery)
+    discovery.add_argument("--image-ref")
+    seal = subparsers.add_parser("maintenance-verify-bootstrap-seal")
+    add_spec_arguments(seal)
+    seal.add_argument("--image-ref")
+    seal.add_argument("--discovery-id", required=True)
+    seal.add_argument("--discovery-image-ref", required=True)
     load = subparsers.add_parser("verify-load")
     add_spec_arguments(load)
     load.add_argument("--archive", type=Path, required=True)
@@ -10327,6 +10670,33 @@ def main() -> int:
         print(f"archive={args.output}")
         print(f"sha256={archive_sha}")
         print(f"bytes={archive_size}")
+        return 0
+    if args.command == "maintenance-inspect-bootstrap-discovery":
+        if args.dpkg_sha is not None:
+            fail("bootstrap discovery inspection derives rather than accepts a package pin")
+        discovery_spec = bootstrap_discovery_spec_from_args(args)
+        dpkg_sha256 = inspect_bootstrap_discovery(
+            args.image_ref or discovery_spec.image_id,
+            discovery_spec,
+        )
+        print(f"discovery_image_id={discovery_spec.image_id}")
+        print(f"dpkg_sha256={dpkg_sha256}")
+        return 0
+    if args.command == "maintenance-verify-bootstrap-seal":
+        discovery_spec = bootstrap_discovery_spec_from_args(args)
+        candidate_spec = spec_from_args(args)
+        if not isinstance(candidate_spec, Spec):
+            fail("bootstrap metadata seal requires a bootstrap candidate specification")
+        verify_bootstrap_seal(
+            args.discovery_image_ref,
+            args.image_ref or candidate_spec.image_id,
+            discovery_spec,
+            candidate_spec,
+        )
+        print(
+            f"verified bootstrap seal {discovery_spec.image_id} "
+            f"-> {candidate_spec.image_id}"
+        )
         return 0
     spec = spec_from_args(args)
     if args.command == "verify-local":

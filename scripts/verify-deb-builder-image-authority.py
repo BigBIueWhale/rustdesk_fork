@@ -170,6 +170,51 @@ def validate_dockerfile(source: str, pins: str) -> None:
     )
 
 
+def validate_bootstrap_dockerfiles(acquisition: str, seal: str) -> None:
+    require_count(acquisition, "\nFROM ", 1, "bootstrap discovery base")
+    require_count(acquisition, "\nRUN ", 1, "bootstrap discovery install")
+    require_all(
+        acquisition,
+        (
+            "FROM ubuntu:18.04@${BASE_DIGEST}",
+            "ARG DOCKERFILE_SHA256",
+            "COPY Dockerfile.deb-builder ",
+            "apt-get update && apt-get install",
+            "dpkg-query -W -f='${binary:Package}\\t${Version}\\n'",
+            'DPKG_MANIFEST_SHA256="$(sha256sum ',
+            "dpkg_manifest_sha256=%s",
+            'org.rustdesk.build-input.role="deb-builder"',
+            'org.rustdesk.build-input.dockerfile-sha256="${DOCKERFILE_SHA256}"',
+        ),
+        "bootstrap discovery Dockerfile",
+    )
+    require_absent(
+        acquisition,
+        (
+            "ARG DPKG_MANIFEST_SHA256",
+            '"$DPKG_MANIFEST_SHA256" /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv | sha256sum -c',
+            "org.rustdesk.build-input.dpkg-manifest-sha256=",
+        ),
+        "bootstrap discovery Dockerfile",
+    )
+    instructions = tuple(
+        line
+        for line in seal.splitlines()
+        if line and not line.startswith("#")
+    )
+    require(
+        instructions
+        == (
+            "ARG BOOTSTRAP_IMAGE=sha256:"
+            + "0" * 64,
+            "FROM ${BOOTSTRAP_IMAGE}",
+            "ARG DPKG_MANIFEST_SHA256",
+            'LABEL org.rustdesk.build-input.dpkg-manifest-sha256="${DPKG_MANIFEST_SHA256}"',
+        ),
+        "bootstrap seal Dockerfile must be one exact metadata-only label build",
+    )
+
+
 def validate_online_fetch(source: str) -> None:
     without_vcs = shell_function(source, "online_docker_without_vcs")
     require_all(
@@ -248,16 +293,65 @@ def validate_online_fetch(source: str) -> None:
         "ordinary release loader",
     )
 
+    bootstrap_helper = shell_function(source, "build_builder_bootstrap_image")
+    require_all(
+        bootstrap_helper,
+        (
+            'recipe_sha="$(/usr/bin/sha256sum "$dockerfile"',
+            "--network=default --pull=false --no-cache --platform=linux/amd64",
+            '--build-arg "DOCKERFILE_SHA256=${recipe_sha}"',
+            "maintenance-inspect-bootstrap-discovery",
+            '--role "${role}-bootstrap-candidate"',
+            'dpkg_sha="$(/usr/bin/sed -n',
+            "--network=none --pull=false --no-cache --platform=linux/amd64",
+            '--build-arg "BOOTSTRAP_IMAGE=${discovery_id}"',
+            '--build-arg "DPKG_MANIFEST_SHA256=${dpkg_sha}"',
+            '-t "$candidate_tag" - <"$seal_dockerfile"',
+            "maintenance-verify-bootstrap-seal",
+            'BUILT_BOOTSTRAP_IMAGE_ID="$candidate_id"',
+            'BUILT_BOOTSTRAP_DPKG_SHA256="$dpkg_sha"',
+            'BUILT_BOOTSTRAP_RECIPE_SHA256="$recipe_sha"',
+        ),
+        "shared bootstrap discovery and metadata seal",
+    )
+    require_order(
+        bootstrap_helper,
+        (
+            "--network=default",
+            "maintenance-inspect-bootstrap-discovery",
+            "--network=none",
+            "maintenance-verify-bootstrap-seal",
+        ),
+        "bootstrap discovery/seal order",
+    )
+    require_absent(
+        bootstrap_helper,
+        (
+            "SHA256_ANDROID_BUILDER_DOCKERFILE",
+            "SHA256_ANDROID_BUILDER_DPKG_MANIFEST",
+            "SHA256_DEB_BUILDER_DOCKERFILE",
+            "SHA256_DEB_BUILDER_DPKG_MANIFEST",
+            "SHA256_WIN_HELPER_DOCKERFILE",
+            "SHA256_WIN_HELPER_DPKG_MANIFEST",
+            "--privileged",
+            "--network=host",
+            "--pull=true",
+            "\nRUN ",
+            "\nCOPY ",
+            "\nADD ",
+        ),
+        "bootstrap discovery and metadata seal",
+    )
     bootstrap = shell_function(source, "build_deb_builder_bootstrap_image")
     require_all(
         bootstrap,
-        ("online_docker build", "--role deb-builder-bootstrap-candidate"),
-        "bootstrap-only acquisition",
-    )
-    require_absent(
-        bootstrap,
-        ("--role deb-builder ", "DEB_BUILDER_IMAGE_ID="),
-        "bootstrap-only acquisition",
+        (
+            "build_builder_bootstrap_image",
+            '"Debian builder" deb-builder',
+            '"ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"',
+            "Dockerfile.deb-builder",
+        ),
+        "Debian bootstrap-only acquisition",
     )
 
     bootstrap_acquisition = shell_function(
@@ -272,6 +366,8 @@ def validate_online_fetch(source: str) -> None:
             'online_docker pull "ubuntu:18.04@',
             "build_deb_builder_bootstrap_image",
             "capture_builder_bootstrap_candidate",
+            '"$BUILT_BOOTSTRAP_RECIPE_SHA256"',
+            '"$BUILT_BOOTSTRAP_DPKG_SHA256"',
         ),
         "persistent bootstrap-candidate acquisition",
     )
@@ -307,6 +403,8 @@ def validate_online_fetch(source: str) -> None:
             "layout_sha256",
             "BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
             "BOOTSTRAP_OCI_LAYOUT",
+            "SHA256_%s_DOCKERFILE",
+            "SHA256_%s_DPKG_MANIFEST",
         ),
         "private bootstrap-candidate capture",
     )
@@ -513,6 +611,14 @@ def main() -> int:
             encoding="utf-8"
         ),
         pins,
+    )
+    validate_bootstrap_dockerfiles(
+        (repo / "scripts/Dockerfile.deb-builder").read_text(
+            encoding="utf-8"
+        ),
+        (repo / "scripts/Dockerfile.builder-bootstrap-seal").read_text(
+            encoding="utf-8"
+        ),
     )
     validate_online_fetch(
         (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8")

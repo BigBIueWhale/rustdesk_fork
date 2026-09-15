@@ -230,6 +230,13 @@ def validate(repo: pathlib.Path) -> None:
         ),
         ('SIZE_VERIFIER_VM_BUILDX="65241240"', "Buildx size pin"),
         ('SHA256_VERIFIER_VM_BUILDX="8b21d3ce1011c4c072d64d4a7311c591cf1c2eb6b35bfdfe28f8e0b76e51621b"', "Buildx digest pin"),
+        ('VERIFIER_VM_BUILDKIT_VERSION="0.18.2"', "BuildKit version pin"),
+        (
+            'VERIFIER_VM_BUILDKIT_COMMIT="e4da654b1251f91e914fab18eba33743aefd7080"',
+            "BuildKit commit pin",
+        ),
+        ('SIZE_VERIFIER_VM_BUILDKIT="81953628"', "BuildKit size pin"),
+        ('SHA256_VERIFIER_VM_BUILDKIT="5662f23cfa5e475ff50932dd2b71d2c5812928fad631d1e8c9f8f5592a4c1568"', "BuildKit digest pin"),
         ('VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION="1.10.0-1ubuntu0.1"', "virtiofsd package version pin"),
         ('SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE="8069325e87cd4485fdb4dd2dde0e54dc68345847c92a1f5d9e9916dadd549b07"', "virtiofsd package pin"),
         ('SHA256_VERIFIER_VM_VIRTIOFSD_BINARY="e256a63975f3ba343d651ce001fdc1f1128a5967612f0f102ab1387727ead140"', "virtiofsd binary pin"),

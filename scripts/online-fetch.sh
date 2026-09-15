@@ -36,6 +36,7 @@ acquire_verifier_vm_inputs() {
     [ "$#" -eq 0 ] || die "--verifier-vm-inputs takes no arguments"
     local uid gid state_root vm_root transaction transaction_id staging=
     local image_name image_path docker_name docker_path buildx_name buildx_path
+    local buildkit_name buildkit_path
     local git_name git_path
     local virtiofsd_name virtiofsd_path
     uid="$(/usr/bin/id -u)"
@@ -163,6 +164,8 @@ acquire_verifier_vm_inputs() {
     docker_path="$vm_root/$docker_name"
     buildx_name="buildx-v${VERIFIER_VM_BUILDX_VERSION}.linux-amd64"
     buildx_path="$vm_root/$buildx_name"
+    buildkit_name="buildkit-v${VERIFIER_VM_BUILDKIT_VERSION}.linux-amd64.tar.gz"
+    buildkit_path="$vm_root/$buildkit_name"
     git_name="git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
     git_path="$vm_root/$git_name"
     virtiofsd_name="virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
@@ -182,6 +185,11 @@ acquire_verifier_vm_inputs() {
         "https://github.com/docker/buildx/releases/download/v${VERIFIER_VM_BUILDX_VERSION}/$buildx_name" \
         "$buildx_path" "$SIZE_VERIFIER_VM_BUILDX" sha256 \
         "$SHA256_VERIFIER_VM_BUILDX"
+    acquire_verifier_vm_file \
+        "BuildKit verifier-VM daemon bundle" \
+        "https://github.com/moby/buildkit/releases/download/v${VERIFIER_VM_BUILDKIT_VERSION}/$buildkit_name" \
+        "$buildkit_path" "$SIZE_VERIFIER_VM_BUILDKIT" sha256 \
+        "$SHA256_VERIFIER_VM_BUILDKIT"
     acquire_verifier_vm_file \
         "Git verifier-VM runtime package" \
         "https://deb.debian.org/debian/pool/main/g/git/$git_name" \

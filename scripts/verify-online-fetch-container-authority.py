@@ -335,6 +335,7 @@ def validate(repo: pathlib.Path) -> None:
         ),
         ("verify_docker_daemon_generation", "Docker pre/post daemon-executable binding"),
         ("verify_buildkit_daemon_generation", "BuildKit pre/post daemon-executable binding"),
+        ('mapfile -d \'\' -t buildkit_argv', "BuildKit root-owned argv binding"),
         ("stop_buildkit_daemon", "joined BuildKit shutdown"),
         ("stop_docker_daemon", "joined Docker shutdown"),
     ):
@@ -395,7 +396,6 @@ def validate(repo: pathlib.Path) -> None:
         ("guest Docker image-store authority differs", "containerd image-store proof"),
         ("guest BuildKit daemon generation differs", "BuildKit generation proof"),
         ("guest BuildKit filesystem or socket authority differs", "BuildKit Unix-socket proof"),
-        ("guest BuildKit daemon arguments differ", "BuildKit argv proof"),
         ("guest BuildKit daemon version differs", "BuildKit version proof"),
         ("guest-only BuildKit bridge identity differs", "BuildKit bridge proof"),
         ("TCP-only acquisition filter authority differs", "BuildKit and Docker UDP-denial proof"),

@@ -120,13 +120,21 @@ verify_docker_daemon_generation() {
 verify_buildkit_daemon_generation() {
     [ "$#" -eq 1 ] || return 1
     local expected_start=$1
+    local -a buildkit_argv=()
     [ -n "$BUILDKIT_PID" ] && [ -r "/proc/$BUILDKIT_PID/stat" ] \
         && [ "$(/usr/bin/awk '{print $22}' "/proc/$BUILDKIT_PID/stat")" = "$expected_start" ] \
         && [ "$(/usr/bin/readlink -f -- "/proc/$BUILDKIT_PID/exe")" = "$BUILDKIT_BIN/buildkitd" ] \
         && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$BUILDKIT_PID/exe")" = \
              "$(/usr/bin/stat -c '%d:%i:%s' -- "$BUILDKIT_BIN/buildkitd")" ] \
         && [ "$(/usr/bin/sha256sum "/proc/$BUILDKIT_PID/exe" | /usr/bin/awk '{print $1}')" = \
-             "$SHA256_VERIFIER_VM_BUILDKITD" ]
+             "$SHA256_VERIFIER_VM_BUILDKITD" ] \
+        || return 1
+    mapfile -d '' -t buildkit_argv <"/proc/$BUILDKIT_PID/cmdline" \
+        || return 1
+    [ "${#buildkit_argv[@]}" -eq 3 ] \
+        && [ "${buildkit_argv[0]}" = "$BUILDKIT_BIN/buildkitd" ] \
+        && [ "${buildkit_argv[1]}" = --config ] \
+        && [ "${buildkit_argv[2]}" = "$BUILDKIT_CONFIG" ]
 }
 
 stop_buildkit_daemon() {

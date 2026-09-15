@@ -186,11 +186,6 @@ done
     || fail 'guest Docker image-store authority differs'
 [ -r "/proc/$DOCKER_PID/stat" ] \
     && [ "$(/usr/bin/awk '{print $22}' "/proc/$DOCKER_PID/stat")" = "$DOCKER_START" ] \
-    && [ "$(/usr/bin/readlink -f -- "/proc/$DOCKER_PID/exe")" = "$DOCKER_DAEMON" ] \
-    && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$DOCKER_PID/exe")" = \
-         "$(/usr/bin/stat -c '%d:%i:%s' -- "$DOCKER_DAEMON")" ] \
-    && [ "$(/usr/bin/sha256sum "/proc/$DOCKER_PID/exe" | /usr/bin/awk '{print $1}')" = \
-         "$EXPECTED_DOCKER_DAEMON_SHA" ] \
     || fail 'guest Docker daemon generation differs'
 [ "$(/usr/bin/awk '/^Uid:/ {print $2":"$3":"$4":"$5}' "/proc/$DOCKER_PID/status")" = 0:0:0:0 ] \
     || fail 'guest Docker daemon is not VM-local root'
@@ -301,21 +296,9 @@ expected_buildkit_config="$(/usr/bin/printf '%s\n' \
     || fail 'guest BuildKit filesystem or socket authority differs'
 [ -r "/proc/$BUILDKIT_PID/stat" ] \
     && [ "$(/usr/bin/awk '{print $22}' "/proc/$BUILDKIT_PID/stat")" = "$BUILDKIT_START" ] \
-    && [ "$(/usr/bin/readlink -f -- "/proc/$BUILDKIT_PID/exe")" = "$BUILDKIT_DAEMON" ] \
-    && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$BUILDKIT_PID/exe")" = \
-         "$(/usr/bin/stat -c '%d:%i:%s' -- "$BUILDKIT_DAEMON")" ] \
-    && [ "$(/usr/bin/sha256sum "/proc/$BUILDKIT_PID/exe" | /usr/bin/awk '{print $1}')" = \
-         "$EXPECTED_BUILDKITD_SHA" ] \
     || fail 'guest BuildKit daemon generation differs'
 [ "$(/usr/bin/awk '/^Uid:/ {print $2":"$3":"$4":"$5}' "/proc/$BUILDKIT_PID/status")" = 0:0:0:0 ] \
     || fail 'guest BuildKit daemon is not VM-local root'
-mapfile -d '' -t buildkit_argv <"/proc/$BUILDKIT_PID/cmdline" \
-    || fail 'cannot read the guest BuildKit daemon arguments'
-[ "${#buildkit_argv[@]}" -eq 3 ] \
-    && [ "${buildkit_argv[0]}" = "$BUILDKIT_DAEMON" ] \
-    && [ "${buildkit_argv[1]}" = --config ] \
-    && [ "${buildkit_argv[2]}" = "$BUILDKIT_CONFIG" ] \
-    || fail 'guest BuildKit daemon arguments differ'
 [ "$(/usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent \
        "$BUILDKIT_DAEMON" --version)" = \
   "buildkitd github.com/moby/buildkit v${VERIFIER_VM_BUILDKIT_VERSION} ${VERIFIER_VM_BUILDKIT_COMMIT}" ] \

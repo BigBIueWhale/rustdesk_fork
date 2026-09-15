@@ -51,6 +51,9 @@ readonly RESULT_ROOT=/run/rustdesk-online-fetch-result
 readonly RESULT_STDOUT=$RESULT_ROOT/transaction.stdout
 readonly RESULT_STDERR=$RESULT_ROOT/transaction.stderr
 readonly ACQUISITION_NOFILE_LIMIT=524544
+readonly RESULT_STREAM_LIMIT=16777216
+readonly RESULT_STREAM_BLOCK_SIZE=1048576
+readonly RESULT_STREAM_BLOCK_COUNT=16
 readonly EXPECTED_MAC=52:54:00:52:44:01
 readonly EXPECTED_ADDRESS=10.0.2.15/24
 readonly EXPECTED_GATEWAY=10.0.2.2
@@ -60,10 +63,23 @@ DAEMON_PID=
 CONTAINER_ID=
 PROBE_IMAGE_ID=
 RUN_COMPLETE=0
+TRANSACTION_PID=
+RESULT_READER_PIDS=()
+RESULT_CAPTURE_PATHS=()
 
 docker_client() {
     /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent \
         "$CLIENT" --host "unix://$SOCKET" "$@"
+}
+
+bounded_result_reader() {
+    [ "$#" -eq 3 ] || return 2
+    local input=$1 output=$2 overflow=$3
+    (
+        /usr/bin/dd bs="$RESULT_STREAM_BLOCK_SIZE" \
+            count="$RESULT_STREAM_BLOCK_COUNT" iflag=fullblock status=none
+        /usr/bin/dd bs=1 count=1 of="$overflow" status=none
+    ) <"$input" >"$output"
 }
 
 verify_daemon_generation() {
@@ -95,6 +111,23 @@ stop_daemon() {
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
+    if [ -n "$TRANSACTION_PID" ]; then
+        /usr/bin/kill -TERM "$TRANSACTION_PID" 2>/dev/null || true
+        wait "$TRANSACTION_PID" 2>/dev/null || true
+        TRANSACTION_PID=
+    fi
+    local reader_pid
+    for reader_pid in "${RESULT_READER_PIDS[@]}"; do
+        if /usr/bin/kill -0 "$reader_pid" 2>/dev/null; then
+            /usr/bin/kill -TERM "$reader_pid" 2>/dev/null || true
+        fi
+        wait "$reader_pid" 2>/dev/null || true
+    done
+    RESULT_READER_PIDS=()
+    if [ "${#RESULT_CAPTURE_PATHS[@]}" -ne 0 ]; then
+        /usr/bin/rm -f -- "${RESULT_CAPTURE_PATHS[@]}" || status=1
+        RESULT_CAPTURE_PATHS=()
+    fi
     if [ -n "$CONTAINER_ID" ] && [ -x "$CLIENT" ]; then
         docker_client rm -f "$CONTAINER_ID" >/dev/null 2>&1 || status=1
         CONTAINER_ID=
@@ -484,7 +517,30 @@ fi
 
 run_online_fetch() {
     local -a command=(/bin/bash "$REPO/scripts/online-fetch.sh")
+    local stdout_fifo=$ROOT/transaction.stdout.pipe
+    local stderr_fifo=$ROOT/transaction.stderr.pipe
+    local stdout_overflow=$ROOT/transaction.stdout.overflow
+    local stderr_overflow=$ROOT/transaction.stderr.overflow
+    local transaction_status=0 reader_status=0 reader_pid path
     [ "$REQUEST" = __full__ ] || command+=("$REQUEST")
+    [ -z "$TRANSACTION_PID" ] \
+        && [ "${#RESULT_READER_PIDS[@]}" -eq 0 ] \
+        && [ "${#RESULT_CAPTURE_PATHS[@]}" -eq 0 ] \
+        || fail 'transaction result-capture state is already occupied'
+    for path in "$stdout_fifo" "$stderr_fifo" \
+        "$stdout_overflow" "$stderr_overflow" \
+        "$RESULT_STDOUT" "$RESULT_STDERR"; do
+        [ ! -e "$path" ] && [ ! -L "$path" ] \
+            || fail 'transaction result-capture path is occupied'
+    done
+    /usr/bin/mkfifo -m 0600 -- "$stdout_fifo" "$stderr_fifo"
+    RESULT_CAPTURE_PATHS=(
+        "$stdout_fifo" "$stderr_fifo" "$stdout_overflow" "$stderr_overflow"
+    )
+    bounded_result_reader "$stdout_fifo" "$RESULT_STDOUT" "$stdout_overflow" &
+    RESULT_READER_PIDS+=("$!")
+    bounded_result_reader "$stderr_fifo" "$RESULT_STDERR" "$stderr_overflow" &
+    RESULT_READER_PIDS+=("$!")
     (
         if ! ulimit -Sn "$ACQUISITION_NOFILE_LIMIT" 2>/dev/null; then
             ulimit -Hn "$ACQUISITION_NOFILE_LIMIT"
@@ -501,15 +557,69 @@ run_online_fetch() {
                 [ "$(ulimit -Sn)" = "$1" ] && [ "$(ulimit -Hn)" = "$1" ] \
                     || exit 125
                 shift
-                ulimit -f 32768
                 exec "$@"
             ' online-fetch "$ACQUISITION_NOFILE_LIMIT" "${command[@]}"
-    ) >"$RESULT_STDOUT" 2>"$RESULT_STDERR"
+    ) >"$stdout_fifo" 2>"$stderr_fifo" &
+    TRANSACTION_PID=$!
+    wait "$TRANSACTION_PID" || transaction_status=$?
+    TRANSACTION_PID=
+    for reader_pid in "${RESULT_READER_PIDS[@]}"; do
+        wait "$reader_pid" || reader_status=1
+    done
+    RESULT_READER_PIDS=()
+    /usr/bin/rm -- "$stdout_fifo" "$stderr_fifo"
+    RESULT_CAPTURE_PATHS=("$stdout_overflow" "$stderr_overflow")
+    [ "$reader_status" -eq 0 ] \
+        || fail 'transaction result-capture reader failed'
+    [ ! -s "$stdout_overflow" ] && [ ! -s "$stderr_overflow" ] \
+        || fail 'online-fetch result exceeded its output bound'
+    /usr/bin/rm -- "$stdout_overflow" "$stderr_overflow"
+    RESULT_CAPTURE_PATHS=()
+    return "$transaction_status"
+}
+
+verify_bounded_result_reader() {
+    local fifo=$ROOT/result-boundary-smoke.pipe
+    local output=$ROOT/result-boundary-smoke.output
+    local overflow=$ROOT/result-boundary-smoke.overflow
+    local producer_status=0 reader_status=0 path
+    [ -z "$TRANSACTION_PID" ] \
+        && [ "${#RESULT_READER_PIDS[@]}" -eq 0 ] \
+        && [ "${#RESULT_CAPTURE_PATHS[@]}" -eq 0 ] \
+        || fail 'result-boundary smoke state is already occupied'
+    for path in "$fifo" "$output" "$overflow"; do
+        [ ! -e "$path" ] && [ ! -L "$path" ] \
+            || fail 'result-boundary smoke path is occupied'
+    done
+    /usr/bin/mkfifo -m 0600 -- "$fifo"
+    RESULT_CAPTURE_PATHS=("$fifo" "$output" "$overflow")
+    bounded_result_reader "$fifo" "$output" "$overflow" &
+    RESULT_READER_PIDS=("$!")
+    (
+        /usr/bin/dd if=/dev/zero bs="$RESULT_STREAM_BLOCK_SIZE" \
+            count="$RESULT_STREAM_BLOCK_COUNT" status=none
+        /usr/bin/printf X
+    ) >"$fifo" &
+    TRANSACTION_PID=$!
+    wait "$TRANSACTION_PID" || producer_status=$?
+    TRANSACTION_PID=
+    wait "${RESULT_READER_PIDS[0]}" || reader_status=$?
+    RESULT_READER_PIDS=()
+    [ "$producer_status" -eq 0 ] && [ "$reader_status" -eq 0 ] \
+        || fail 'result-boundary smoke producer or reader failed'
+    /usr/bin/rm -- "$fifo"
+    RESULT_CAPTURE_PATHS=("$output" "$overflow")
+    [ "$(/usr/bin/stat -c '%s' -- "$output")" = "$RESULT_STREAM_LIMIT" ] \
+        && [ "$(/usr/bin/stat -c '%s' -- "$overflow")" = 1 ] \
+        || fail 'result-boundary smoke did not detect the first excess byte'
+    /usr/bin/rm -- "$output" "$overflow"
+    RESULT_CAPTURE_PATHS=()
 }
 
 run_authority_smoke() {
     local rootfs=$ROOT/probe-rootfs probe_output=$ROOT/probe.bin inspect interpreter
     local -a interpreters=()
+    verify_bounded_result_reader
     /usr/bin/install -d -m 0755 -- "$rootfs"
     copy_runtime_binary() {
         local binary=$1 dependency
@@ -630,8 +740,8 @@ verify_daemon_generation "$daemon_start" \
     || fail 'live guest Docker daemon executable generation changed during the transaction'
 [ -z "$(docker_client ps -q)" ] \
     || fail 'online-fetch transaction left a running guest container'
-[ "$(/usr/bin/stat -c '%s' -- "$RESULT_STDOUT")" -le 16777216 ] \
-    && [ "$(/usr/bin/stat -c '%s' -- "$RESULT_STDERR")" -le 16777216 ] \
+[ "$(/usr/bin/stat -c '%s' -- "$RESULT_STDOUT")" -le "$RESULT_STREAM_LIMIT" ] \
+    && [ "$(/usr/bin/stat -c '%s' -- "$RESULT_STDERR")" -le "$RESULT_STREAM_LIMIT" ] \
     || fail 'online-fetch result exceeded its output bound'
 /usr/bin/sync -f "$REPO/online"
 /usr/bin/sync -f "$REPO/online/inputs"

@@ -67,6 +67,7 @@ IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 PACKAGE = re.compile(rb"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
 DOCKER = "/usr/bin/docker"
 RENAME_NOREPLACE = 1
+CAPTURE_ARCHIVE_BYTE_LIMIT = 2_147_483_648
 DEV_CHECK_ENV = [
     "PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "RUSTUP_HOME=/usr/local/rustup",
@@ -1920,6 +1921,40 @@ class HashingReader:
 
     def readable(self) -> bool:
         return True
+
+
+class BoundedDigestingWriter:
+    def __init__(self, stream: BinaryIO, limit: int, label: str):
+        if limit <= 0:
+            fail(f"{label} byte limit must be positive")
+        self.stream = stream
+        self.limit = limit
+        self.label = label
+        self.digest = hashlib.sha256()
+        self.byte_count = 0
+        self.failure: str | None = None
+
+    def write(self, data: bytes) -> int:
+        if self.failure is not None:
+            fail(self.failure)
+        if len(data) > self.limit - self.byte_count:
+            self.failure = (
+                f"{self.label} exceeds its {self.limit}-byte ceiling"
+            )
+            fail(self.failure)
+        written = self.stream.write(data)
+        if written != len(data):
+            self.failure = f"short write while producing {self.label}"
+            fail(self.failure)
+        self.digest.update(data)
+        self.byte_count += written
+        return written
+
+    def flush(self) -> None:
+        self.stream.flush()
+
+    def hexdigest(self) -> str:
+        return self.digest.hexdigest()
 
 
 def validate_archive_name(name: str, seen: set[str], folded: set[str]) -> None:
@@ -5389,27 +5424,13 @@ def canonicalize_certified_builder_oci_export(
             )
         output_before = os.fstat(output_fd)
         temporary_identity = (output_before.st_dev, output_before.st_ino)
-        digest = hashlib.sha256()
-        count = 0
-
         with os.fdopen(output_fd, "wb") as raw:
             output_fd = -1
-
-            class DigestingWriter:
-                def write(self, data: bytes) -> int:
-                    nonlocal count
-                    written = raw.write(data)
-                    if written != len(data):
-                        fail(
-                            "short write while normalizing the certified "
-                            "builder OCI export"
-                        )
-                    digest.update(data)
-                    count += written
-                    return written
-
-                def flush(self) -> None:
-                    raw.flush()
+            writer = BoundedDigestingWriter(
+                raw,
+                CAPTURE_ARCHIVE_BYTE_LIMIT,
+                "certified builder normalized archive",
+            )
 
             os.lseek(source_fd, 0, os.SEEK_SET)
             hashing = HashingReader(os.fdopen(os.dup(source_fd), "rb"))
@@ -5417,7 +5438,7 @@ def canonicalize_certified_builder_oci_export(
                 with gzip.GzipFile(
                     filename="",
                     mode="wb",
-                    fileobj=DigestingWriter(),
+                    fileobj=writer,
                     compresslevel=9,
                     mtime=0,
                 ) as compressed:
@@ -5517,13 +5538,14 @@ def canonicalize_certified_builder_oci_export(
             os.fchmod(raw.fileno(), 0o400)
             raw.flush()
             os.fsync(raw.fileno())
-            if os.fstat(raw.fileno()).st_size != count:
+            if os.fstat(raw.fileno()).st_size != writer.byte_count:
                 fail(
                     "certified builder normalized archive size "
                     "accounting differs"
                 )
+            count = writer.byte_count
+            archive_sha = writer.hexdigest()
 
-        archive_sha = digest.hexdigest()
         verify_archive(temporary, archive_sha, spec, count)
         normalized_before = os.lstat(temporary)
         rename_noreplace(temporary, output)
@@ -5615,38 +5637,38 @@ def capture(
     temporary = output.with_name(output.name + ".part")
     if temporary.exists() or temporary.is_symlink():
         fail(f"stale image archive capture temporary exists: {temporary}")
-    digest = hashlib.sha256()
-    count = 0
     layout_sha: str | None = None
-    process = subprocess.Popen([DOCKER, "save", save_ref], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([DOCKER, "save", save_ref], stdout=subprocess.PIPE)
     try:
         if process.stdout is None:
             fail("docker save stdout is unavailable")
-        with temporary.open("xb") as raw:
-            class DigestingWriter:
-                def write(self, data: bytes) -> int:
-                    nonlocal count
-                    digest.update(data)
-                    count += len(data)
-                    return raw.write(data)
-
-                def flush(self) -> None:
-                    raw.flush()
-
-            with gzip.GzipFile(filename="", mode="wb", fileobj=DigestingWriter(), mtime=0) as compressed:
-                while True:
-                    block = process.stdout.read(1024 * 1024)
-                    if not block:
-                        break
-                    compressed.write(block)
-            raw.flush()
-            os.fsync(raw.fileno())
-        stderr = process.stderr.read() if process.stderr is not None else b""
-        if process.wait() != 0:
-            fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
+        with process.stdout:
+            with temporary.open("xb") as raw:
+                writer = BoundedDigestingWriter(
+                    raw,
+                    CAPTURE_ARCHIVE_BYTE_LIMIT,
+                    "image archive capture",
+                )
+                with gzip.GzipFile(
+                    filename="",
+                    mode="wb",
+                    fileobj=writer,
+                    mtime=0,
+                ) as compressed:
+                    while True:
+                        block = process.stdout.read(1024 * 1024)
+                        if not block:
+                            break
+                        compressed.write(block)
+                raw.flush()
+                os.fsync(raw.fileno())
+                count = writer.byte_count
+                archive_sha = writer.hexdigest()
+        process_status = process.wait()
+        if process_status != 0:
+            fail(f"docker save failed with status {process_status}")
         if private_archive:
             temporary.chmod(0o400)
-            archive_sha = digest.hexdigest()
             verify_archive(
                 temporary,
                 archive_sha,
@@ -5679,7 +5701,6 @@ def capture(
         except FileNotFoundError:
             pass
         raise
-    archive_sha = digest.hexdigest()
     identity = verify_archive(
         output,
         archive_sha,
@@ -8533,6 +8554,28 @@ def expect_failure(operation: Callable[[], object], label: str) -> None:
 
 
 def self_test() -> None:
+    bounded_output = io.BytesIO()
+    bounded_writer = BoundedDigestingWriter(
+        bounded_output,
+        4,
+        "self-test archive",
+    )
+    if bounded_writer.write(b"test") != 4 \
+       or bounded_writer.byte_count != 4 \
+       or bounded_writer.hexdigest() != hashlib.sha256(b"test").hexdigest():
+        fail("bounded archive writer exact-limit accounting differs")
+    expect_failure(
+        lambda: bounded_writer.write(b"!"),
+        "bounded archive writer excess byte",
+    )
+    expect_failure(
+        lambda: bounded_writer.write(b""),
+        "bounded archive writer refusal finality",
+    )
+    if bounded_output.getvalue() != b"test" \
+       or bounded_writer.byte_count != 4 \
+       or bounded_writer.hexdigest() != hashlib.sha256(b"test").hexdigest():
+        fail("bounded archive writer changed output after refusal")
     manifest = b"alpha\t1.0-1\nbeta:amd64\t2:3.4+5\n"
     dpkg_sha = validate_package_manifest(manifest)
     expect_failure(lambda: validate_package_manifest(b"beta\t1\nalpha\t1\n"), "unsorted package manifest")

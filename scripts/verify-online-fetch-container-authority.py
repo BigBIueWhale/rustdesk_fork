@@ -54,6 +54,9 @@ def validate(repo: pathlib.Path) -> None:
     closure = (repo / "scripts/verify-private-tree-closure.py").read_text(
         encoding="utf-8"
     )
+    provenance = (repo / "scripts/offline-image-provenance.py").read_text(
+        encoding="utf-8"
+    )
 
     dispatch = 'if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then'
     require(online, dispatch, "outer VM dispatch")
@@ -209,7 +212,20 @@ def validate(repo: pathlib.Path) -> None:
             '[ "$(ulimit -Sn)" = "$1" ] && [ "$(ulimit -Hn)" = "$1" ]',
             "dropped-principal descriptor-limit replay",
         ),
-        ("ulimit -f 32768", "transaction-output bound"),
+        ("readonly RESULT_STREAM_LIMIT=16777216", "transaction-result byte bound"),
+        ("bounded_result_reader() {", "bounded transaction-result reader"),
+        (
+            'count="$RESULT_STREAM_BLOCK_COUNT" iflag=fullblock',
+            "full-block transaction-result ceiling",
+        ),
+        (
+            '[ ! -s "$stdout_overflow" ] && [ ! -s "$stderr_overflow" ]',
+            "transaction-result overflow refusal",
+        ),
+        (
+            "local -a interpreters=()\n    verify_bounded_result_reader",
+            "real transaction-result overflow smoke",
+        ),
         ("verify_daemon_generation", "root pre/post daemon-executable binding"),
     ):
         require(guest, token, label)
@@ -220,12 +236,32 @@ def validate(repo: pathlib.Path) -> None:
     guest_limit = re.search(
         r"(?m)^readonly ACQUISITION_NOFILE_LIMIT=([0-9]+)$", guest
     )
+    result_limit = re.search(
+        r"(?m)^readonly RESULT_STREAM_LIMIT=([0-9]+)$", guest
+    )
+    result_block_size = re.search(
+        r"(?m)^readonly RESULT_STREAM_BLOCK_SIZE=([0-9]+)$", guest
+    )
+    result_block_count = re.search(
+        r"(?m)^readonly RESULT_STREAM_BLOCK_COUNT=([0-9]+)$", guest
+    )
     if entry_limit is None or reserve is None or guest_limit is None:
         raise AuthorityError("private-workspace descriptor budget is not explicit")
     if int(guest_limit.group(1)) != int(entry_limit.group(1)) + int(reserve.group(1)):
         raise AuthorityError(
             "acquisition descriptor limit differs from the closure authority bound"
         )
+    if result_limit is None \
+       or result_block_size is None \
+       or result_block_count is None:
+        raise AuthorityError("transaction-result byte budget is not explicit")
+    if int(result_limit.group(1)) != (
+        int(result_block_size.group(1)) * int(result_block_count.group(1))
+    ):
+        raise AuthorityError(
+            "transaction-result reader geometry differs from its byte bound"
+        )
+    forbid(guest, "ulimit -f", "process-wide transaction file-size limit")
     forbid(guest, "mount -t 9p", "legacy guest 9p mount")
     for token, label in (
         ("--host tcp", "guest Docker TCP endpoint"),
@@ -278,6 +314,43 @@ def validate(repo: pathlib.Path) -> None:
         ("noreplace=cross-parent collision=no-clobber exchange=nonempty", "behavioral rename receipt"),
     ):
         require(rename_probe, token, label)
+
+    normalized_capture = extract(
+        provenance,
+        "def canonicalize_certified_builder_oci_export(",
+        "\n\ndef capture(",
+        "certified OCI normalization",
+    )
+    image_capture = extract(
+        provenance,
+        "def capture(",
+        "\n\ndef create_fixture_archive(",
+        "image archive capture",
+    )
+    require(
+        provenance,
+        "CAPTURE_ARCHIVE_BYTE_LIMIT = 2_147_483_648",
+        "independent image-archive byte bound",
+    )
+    for body, label in (
+        (normalized_capture, "certified OCI normalization"),
+        (image_capture, "image archive capture"),
+    ):
+        require(
+            body,
+            "BoundedDigestingWriter(",
+            f"{label} bounded writer",
+        )
+        require(
+            body,
+            "CAPTURE_ARCHIVE_BYTE_LIMIT",
+            f"{label} independent byte bound",
+        )
+    forbid(
+        image_capture,
+        "stderr=subprocess.PIPE",
+        "undrained Docker-save stderr pipe",
+    )
 
     for function_name, network, pids, memory in (
         ("online_docker_run", "bridge", "2048", "16g"),

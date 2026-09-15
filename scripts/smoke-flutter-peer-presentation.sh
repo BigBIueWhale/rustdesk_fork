@@ -1,15 +1,78 @@
 #!/usr/bin/env bash
-# Exact-commit full RustDesk capture-to-Flutter peer-presentation evidence, confined to Docker.
+# Exact-commit full RustDesk capture-to-Flutter peer-presentation evidence, admitted only inside
+# the authenticated no-NIC verifier VM and confined to its guest-owned Docker daemon.
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH=/usr/bin:/bin
+export LC_ALL=C
+
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly HOST_UID="$(/usr/bin/id -u)"
+readonly HOST_GID="$(/usr/bin/id -g)"
+die(){ echo "FATAL: $*" >&2; exit 1; }
+[ "$HOST_UID" -ne 0 ] \
+  || { echo 'flutter peer presentation smoke refuses host or container-root execution' >&2; exit 1; }
+[ "$HOST_GID" -ne 0 ] \
+  || { echo 'flutter peer presentation smoke refuses a root primary group' >&2; exit 1; }
+for name in DOCKER_HOST DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH \
+    DOCKER_TLS_VERIFY DOCKER_TLS; do
+  [ -z "${!name:-}" ] || die "caller $name authority is forbidden"
+done
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+  && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+  || { echo 'flutter peer presentation verifier-VM entry preflight is absent or ambiguous' >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
+
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 cd "$REPO_ROOT"
 umask 077
 
-readonly HOST_UID="$(/usr/bin/id -u)"
-readonly HOST_GID="$(/usr/bin/id -g)"
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+  "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+  || die 'Flutter peer-presentation guest Docker authority differs from its repository pin'
+readonly VERIFIER_VM_MARKER_DOCKER
+
+peer_vm_docker() {
+  local status=0
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+    DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+    "$VERIFIER_VM_DOCKER_CLIENT" \
+      --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+      --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  return "$status"
+}
+
+PEER_VM_AUTHORITY_SELF_TEST=0
+case "$#" in
+  0) ;;
+  1)
+    [ "$1" = --self-test-vm-authority ] || die "unknown argument: $1"
+    PEER_VM_AUTHORITY_SELF_TEST=1
+    ;;
+  *) die 'accepts no arguments except --self-test-vm-authority' ;;
+esac
+if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
+  authority_version="$(peer_vm_docker version \
+    --format '{{.Client.Version}}|{{.Server.Version}}')" \
+    || die 'Flutter peer-presentation verifier-VM Docker authority self-test failed'
+  [ "$authority_version" = \
+    "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+    || die "Flutter peer-presentation verifier-VM Docker version differs: $authority_version"
+  printf 'FLUTTER_PEER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed workload=unexecuted\n' \
+    "$HOST_UID" "$HOST_GID" "$VERIFIER_VM_DOCKER_VERSION"
+  exit 0
+fi
+
 readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
 readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1"
 readonly XVFB_INPUTS="$ONLINE_DIR/xvfb-debs"
@@ -24,9 +87,8 @@ cleanup_container() {
   [ -f "$cid_file" ] && [ ! -L "$cid_file" ] || return 0
   cid=$(<"$cid_file")
   [[ "$cid" =~ ^[0-9a-f]{64}$ ]] || return 125
-  if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-    && local_docker container inspect "$cid" >/dev/null 2>&1; then
-    local_docker rm --force "$cid" >/dev/null || return 125
+  if peer_vm_docker container inspect "$cid" >/dev/null 2>&1; then
+    peer_vm_docker rm --force "$cid" >/dev/null || return 125
   fi
   rm -- "$cid_file"
 }
@@ -37,9 +99,6 @@ cleanup() {
   for cid_file in "${CID_FILES[@]}"; do
     cleanup_container "$cid_file" || cleanup_status=$?
   done
-  if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
-    remove_local_docker_authority || cleanup_status=$?
-  fi
   if [ -n "$WORKSPACE" ]; then
     if [ -z "$WORKSPACE_ID" ] || [ ! -d "$WORKSPACE" ] || [ -L "$WORKSPACE" ] \
       || [ "$(stat -c '%d:%i:%u:%g:%a' "$WORKSPACE" 2>/dev/null)" != "$WORKSPACE_ID" ]; then
@@ -58,9 +117,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-require_cmd git tar sha256sum stat find chmod docker
-[ "$HOST_UID" -ne 0 ] || die 'flutter peer presentation smoke refuses host root'
-[ "$HOST_GID" -ne 0 ] || die 'flutter peer presentation smoke refuses a root primary group'
+require_cmd git tar sha256sum stat find chmod
 assert_clean_worktree
 readonly SOURCE_COMMIT="$(git rev-parse HEAD)"
 readonly SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
@@ -93,12 +150,9 @@ WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
   && [ "$(stat -c '%u:%g:%a' "$WORKSPACE")" = "$HOST_UID:$HOST_GID:700" ] \
   || die 'private workspace creation failed'
 WORKSPACE_ID="$(stat -c '%d:%i:%u:%g:%a' "$WORKSPACE")"
-initialize_local_docker_authority "$WORKSPACE/docker-config" \
-  'flutter-peer-presentation-smoke'
-
 require_exact_local_image() {
   local label=$1 expected=$2 actual
-  actual="$(local_docker image inspect --format '{{.Id}}' "$expected")" \
+  actual="$(peer_vm_docker image inspect --format '{{.Id}}' "$expected")" \
     || die "$label image is not locally available by its exact content ID"
   [ "$actual" = "$expected" ] \
     || die "$label image content ID differs: expected $expected, got $actual"
@@ -145,7 +199,7 @@ run_owned_container() {
   local cid_file=$1 run_status=0 cleanup_status=0
   shift
   CID_FILES+=("$cid_file")
-  local_docker run --cidfile "$cid_file" "$@" || run_status=$?
+  peer_vm_docker run --cidfile "$cid_file" "$@" || run_status=$?
   cleanup_container "$cid_file" || cleanup_status=$?
   [ "$cleanup_status" -eq 0 ] || return 125
   return "$run_status"
@@ -163,17 +217,17 @@ inspect_container_contract() {
     viewer) expected_passwd_source=$VIEWER_PASSWD ;;
     *) die "unknown inspected runtime label: $label" ;;
   esac
-  network="$(local_docker container inspect --format '{{.HostConfig.NetworkMode}}' "$cid")"
-  ipc="$(local_docker container inspect --format '{{.HostConfig.IpcMode}}' "$cid")"
-  pid="$(local_docker container inspect --format '{{.HostConfig.PidMode}}' "$cid")"
-  uts="$(local_docker container inspect --format '{{.HostConfig.UTSMode}}' "$cid")"
-  privileged="$(local_docker container inspect --format '{{.HostConfig.Privileged}}' "$cid")"
-  read_only="$(local_docker container inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")"
-  user="$(local_docker container inspect --format '{{.Config.User}}' "$cid")"
-  ports="$(local_docker container inspect --format '{{json .HostConfig.PortBindings}}' "$cid")"
-  devices="$(local_docker container inspect --format '{{json .HostConfig.Devices}}' "$cid")"
-  caps="$(local_docker container inspect --format '{{json .HostConfig.CapDrop}}' "$cid")"
-  security="$(local_docker container inspect --format '{{json .HostConfig.SecurityOpt}}' "$cid")"
+  network="$(peer_vm_docker container inspect --format '{{.HostConfig.NetworkMode}}' "$cid")"
+  ipc="$(peer_vm_docker container inspect --format '{{.HostConfig.IpcMode}}' "$cid")"
+  pid="$(peer_vm_docker container inspect --format '{{.HostConfig.PidMode}}' "$cid")"
+  uts="$(peer_vm_docker container inspect --format '{{.HostConfig.UTSMode}}' "$cid")"
+  privileged="$(peer_vm_docker container inspect --format '{{.HostConfig.Privileged}}' "$cid")"
+  read_only="$(peer_vm_docker container inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")"
+  user="$(peer_vm_docker container inspect --format '{{.Config.User}}' "$cid")"
+  ports="$(peer_vm_docker container inspect --format '{{json .HostConfig.PortBindings}}' "$cid")"
+  devices="$(peer_vm_docker container inspect --format '{{json .HostConfig.Devices}}' "$cid")"
+  caps="$(peer_vm_docker container inspect --format '{{json .HostConfig.CapDrop}}' "$cid")"
+  security="$(peer_vm_docker container inspect --format '{{json .HostConfig.SecurityOpt}}' "$cid")"
   [ "$network" = "$expected_network" ] || die "$label network mode differs: $network"
   { [ -z "$ipc" ] || [ "$ipc" = private ]; } || die "$label IPC namespace is not private"
   [ -z "$pid" ] && [ -z "$uts" ] || die "$label shares a PID or UTS namespace"
@@ -188,7 +242,7 @@ inspect_container_contract() {
     *) die "$label lacks the exact no-new-privileges contract" ;;
   esac
   mounts_path="$WORKSPACE/$label.mounts.tsv"
-  local_docker container inspect \
+  peer_vm_docker container inspect \
     --format '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}{{printf "end"}}' \
     "$cid" > "$mounts_path"
   while IFS=$'\t' read -r record_kind source destination writable extra \
@@ -370,7 +424,7 @@ BUILD_WORK=
 echo '== start the exact controlled peer in an external-interface-free namespace =='
 readonly SERVER_CID_FILE="$WORKSPACE/server.cid"
 CID_FILES+=("$SERVER_CID_FILE")
-local_docker run --detach --cidfile "$SERVER_CID_FILE" \
+peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
@@ -394,11 +448,11 @@ for _ in $(seq 1 900); do
     server_ready=1
     break
   fi
-  [ "$(local_docker inspect --format '{{.State.Running}}' "$SERVER_CID")" = true ] || break
+  [ "$(peer_vm_docker inspect --format '{{.State.Running}}' "$SERVER_CID")" = true ] || break
   sleep 0.1
 done
 if [ "$server_ready" -ne 1 ]; then
-  local_docker logs "$SERVER_CID" > "$WORKSPACE/server.log" 2>&1 || true
+  peer_vm_docker logs "$SERVER_CID" > "$WORKSPACE/server.log" 2>&1 || true
   cat "$WORKSPACE/server.log" >&2
   die 'controlled peer did not become ready'
 fi
@@ -407,7 +461,7 @@ echo '== authenticate through the real prompt and observe current pixels across 
 readonly VIEWER_CID_FILE="$WORKSPACE/viewer.cid"
 CID_FILES+=("$VIEWER_CID_FILE")
 set +e
-local_docker run --cidfile "$VIEWER_CID_FILE" \
+peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --pull=never --network="container:$SERVER_CID" --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
@@ -440,16 +494,16 @@ fi
 
 server_stopped=0
 for _ in $(seq 1 900); do
-  if [ "$(local_docker inspect --format '{{.State.Running}}' "$SERVER_CID")" = false ]; then
+  if [ "$(peer_vm_docker inspect --format '{{.State.Running}}' "$SERVER_CID")" = false ]; then
     server_stopped=1
     break
   fi
   sleep 0.1
 done
-local_docker logs "$SERVER_CID" > "$WORKSPACE/server.log" 2>&1 || true
+peer_vm_docker logs "$SERVER_CID" > "$WORKSPACE/server.log" 2>&1 || true
 cat "$WORKSPACE/server.log"
 [ "$server_stopped" -eq 1 ] || die 'controlled peer container did not retire'
-server_status="$(local_docker inspect --format '{{.State.ExitCode}}' "$SERVER_CID")"
+server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_CID")"
 [[ "$server_status" =~ ^[0-9]+$ ]] || die 'server exit status is malformed'
 
 [ "$viewer_status" -eq 0 ] || exit "$viewer_status"

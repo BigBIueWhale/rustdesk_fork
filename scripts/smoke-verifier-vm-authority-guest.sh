@@ -295,7 +295,7 @@ done
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
 for verify_source in verify.sh verify-release.sh build-release.sh apple-conform-check.sh \
-    frb-codegen.sh dart-verify.sh smoke-server.sh \
+    smoke-flutter-peer-presentation.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
@@ -338,6 +338,7 @@ done
 source "$VERIFY_REPO/scripts/pins.env"
 readonly RELEASE_PARENT_SCRIPT="$VERIFY_REPO/scripts/build-release.sh"
 readonly APPLE_CHECK_SCRIPT="$VERIFY_REPO/scripts/apple-conform-check.sh"
+readonly FLUTTER_PEER_SCRIPT="$VERIFY_REPO/scripts/smoke-flutter-peer-presentation.sh"
 [ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
     || fail 'main verifier and guest probe use different entry-preflight paths'
 entry_source_metadata="$(stat -c '%F:%u:%g:%a:%h' -- \
@@ -626,6 +627,54 @@ APPLE_CHECK_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel
     || fail "Apple-check verifier-VM entry result differs: $apple_entry_output"
 printf '%s\n' "$apple_entry_output"
 printf 'VERIFIER_VM_APPLE_CHECK_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused docker=%s prepost=replayed workload=unexecuted\n' \
+    "$EXPECTED_VERSION"
+
+if /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-flutter-peer.out" 2>"$ROOT/root-flutter-peer.err"; then
+    fail 'VM root passed the Flutter full-peer entry'
+fi
+[ ! -s "$ROOT/root-flutter-peer.out" ] \
+    || fail 'root Flutter full-peer refusal produced standard output'
+[ "$(<"$ROOT/root-flutter-peer.err")" = \
+  'flutter peer presentation smoke refuses host or container-root execution' ] \
+    || fail 'root Flutter full-peer refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-flutter-peer.out" 2>"$ROOT/foreign-flutter-peer.err"; then
+    fail 'foreign numeric principal passed the Flutter full-peer entry'
+fi
+[ ! -s "$ROOT/foreign-flutter-peer.out" ] \
+    || fail 'foreign Flutter full-peer refusal produced standard output'
+foreign_flutter_peer_error="$(<"$ROOT/foreign-flutter-peer.err")"
+if [ "$foreign_flutter_peer_error" != \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-flutter-peer.err")" -le 4096 ] \
+        || fail 'foreign Flutter full-peer refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign Flutter full-peer diagnostic was %q\n' \
+        "$foreign_flutter_peer_error" >&2
+    fail 'foreign Flutter full-peer refusal diagnostic differs'
+fi
+if setpriv --reuid=4000 --regid=4000 --clear-groups \
+    /usr/bin/env DOCKER_HOST=unix:///tmp/forbidden-docker.sock \
+    /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/caller-flutter-peer.out" 2>"$ROOT/caller-flutter-peer.err"; then
+    fail 'caller Docker authority passed the Flutter full-peer entry'
+fi
+[ ! -s "$ROOT/caller-flutter-peer.out" ] \
+    || fail 'caller Docker-authority Flutter full-peer refusal produced standard output'
+[ "$(<"$ROOT/caller-flutter-peer.err")" = \
+  'FATAL: caller DOCKER_HOST authority is forbidden' ] \
+    || fail 'caller Docker-authority Flutter full-peer refusal diagnostic differs'
+flutter_peer_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot Flutter full-peer verifier-VM entry failed'
+expected_flutter_peer_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+FLUTTER_PEER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed workload=unexecuted"
+[ "$flutter_peer_entry_output" = "$expected_flutter_peer_entry_output" ] \
+    || fail "Flutter full-peer verifier-VM entry result differs: $flutter_peer_entry_output"
+printf '%s\n' "$flutter_peer_entry_output"
+printf 'VERIFIER_VM_FLUTTER_PEER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused docker=%s prepost=replayed workload=unexecuted\n' \
     "$EXPECTED_VERSION"
 
 if setpriv --reuid=4001 --regid=4001 --clear-groups \

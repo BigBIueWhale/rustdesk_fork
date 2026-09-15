@@ -42,8 +42,12 @@ PATHS = {
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
     "bind_shim": "scripts/smoke-bind-loopback.c",
+    "entry_preflight": "scripts/verify-vm-entry-preflight.sh",
+    "vm_outer": "scripts/smoke-verifier-vm-authority.sh",
+    "vm_guest": "scripts/smoke-verifier-vm-authority-guest.sh",
     "verify": "scripts/verify.sh",
     "readme": "scripts/README.md",
+    "requirements": "requirements.html",
 }
 
 
@@ -63,6 +67,48 @@ def validate(sources: dict[str, str]) -> None:
     controller = sources["controller"]
     source = sources["source"]
     bind_shim = sources["bind_shim"]
+    vm_outer = sources["vm_outer"]
+    vm_guest = sources["vm_guest"]
+
+    require_order(
+        host,
+        (
+            "export PATH=/usr/bin:/bin",
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            "for name in DOCKER_HOST DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH",
+            "readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh",
+            '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            "readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm",
+            "peer_vm_docker() {",
+            "PEER_VM_AUTHORITY_SELF_TEST=0",
+            'peer_vm_docker version',
+            "FLUTTER_PEER_VM_AUTHORITY=pass",
+            "assert_clean_worktree",
+        ),
+        "VM-only authority before full-peer input admission",
+    )
+    for authority_contract in (
+        "readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker",
+        "readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock",
+        "readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config",
+        "/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent",
+        'DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET"',
+        'DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG"',
+        '--host "unix://$VERIFIER_VM_DOCKER_SOCKET"',
+        '--config "$VERIFIER_VM_DOCKER_CONFIG"',
+        '--self-test-vm-authority',
+        "prepost=replayed workload=unexecuted",
+    ):
+        require(host, authority_contract, "guest-only Docker authority")
+    for forbidden_authority in (
+        "local_docker",
+        "initialize_local_docker_authority",
+        "remove_local_docker_authority",
+        "/var/run/docker.sock",
+    ):
+        forbid(host, forbidden_authority, "host-Docker authority")
 
     require_order(
         host,
@@ -75,7 +121,7 @@ def validate(sources: dict[str, str]) -> None:
             "smoke-flutter-peer-presentation-stage.sh pub-cache",
             "smoke-flutter-peer-presentation-stage.sh build",
             "smoke-flutter-peer-presentation-stage.sh pub-cache-check",
-            'local_docker run --detach --cidfile "$SERVER_CID_FILE"',
+            'peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE"',
             "--pull=never --network=none --read-only",
             'inspect_container_contract "$SERVER_CID" none server',
             '--network="container:$SERVER_CID" --read-only',
@@ -117,7 +163,7 @@ def validate(sources: dict[str, str]) -> None:
         host,
         (
             'readonly VIEWER_CID_FILE="$WORKSPACE/viewer.cid"',
-            'local_docker run --cidfile "$VIEWER_CID_FILE"',
+            'peer_vm_docker run --cidfile "$VIEWER_CID_FILE"',
             'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
             "dbus-run-session --",
         ),
@@ -147,7 +193,7 @@ def validate(sources: dict[str, str]) -> None:
             "local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0",
             "local passwd_mounts=0",
             "local receipt_ends=0",
-            "network=\"$(local_docker container inspect --format '{{.HostConfig.NetworkMode}}' \"$cid\")\"",
+            "network=\"$(peer_vm_docker container inspect --format '{{.HostConfig.NetworkMode}}' \"$cid\")\"",
             'mounts_path="$WORKSPACE/$label.mounts.tsv"',
         ),
         "nounset-safe inspected-container receipt path",
@@ -230,6 +276,38 @@ def validate(sources: dict[str, str]) -> None:
         "systemctl", "ufw ", "iptables", "nft ", "/dev/kvm",
     ):
         forbid(host, unsafe, "host authority expansion")
+
+    require_order(
+        vm_outer,
+        (
+            'readonly FLUTTER_PEER_SOURCE="$SCRIPT_DIR/smoke-flutter-peer-presentation.sh"',
+            'for source in "$OUTER_SOURCE" "$GUEST_SCRIPT"',
+            '"$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE"',
+            '"repo/scripts/smoke-flutter-peer-presentation.sh=$FLUTTER_PEER_SOURCE"',
+            "VERIFIER_VM_FLUTTER_PEER_ENTRY=pass",
+            '"$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE"',
+        ),
+        "outer no-NIC VM payload, receipt, and final source replay",
+    )
+    require_order(
+        vm_guest,
+        (
+            "smoke-flutter-peer-presentation.sh frb-codegen.sh",
+            'readonly FLUTTER_PEER_SCRIPT="$VERIFY_REPO/scripts/smoke-flutter-peer-presentation.sh"',
+            "if /bin/bash \"$FLUTTER_PEER_SCRIPT\" --self-test-vm-authority",
+            "setpriv --reuid=4001 --regid=4001 --clear-groups",
+            "/usr/bin/env DOCKER_HOST=unix:///tmp/forbidden-docker.sock",
+            "setpriv --reuid=4000 --regid=4000 --clear-groups",
+            "FLUTTER_PEER_VM_AUTHORITY=pass uid=4000 gid=4000",
+            "VERIFIER_VM_FLUTTER_PEER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused",
+        ),
+        "real guest authority decision matrix",
+    )
+    require(
+        sources["requirements"],
+        'The transaction itself <span class="kw">MUST</span> be admitted only inside the authenticated no-NIC verifier VM',
+        "normative VM-only full-peer authority",
+    )
 
     require_order(
         stage,

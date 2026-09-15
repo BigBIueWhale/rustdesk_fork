@@ -14,9 +14,18 @@ readonly STATE_ROOT="$REPO_ROOT/.harness-state/verifier-vm"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
 readonly BASE="$STATE_ROOT/$IMAGE_NAME"
 readonly DOCKER_BUNDLE="$STATE_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
+readonly BOOT_ROOT="$STATE_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
+readonly KERNEL="$BOOT_ROOT/vmlinuz"
+readonly INITRD="$BOOT_ROOT/initrd.img"
+readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
+readonly BOOT_DERIVER="$SCRIPT_DIR/derive-verifier-vm-boot-assets.sh"
 readonly CAPTURE_HELPER="$SCRIPT_DIR/bounded-unix-stream-capture.py"
+readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
+readonly LIB_SOURCE="$SCRIPT_DIR/lib.sh"
+readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly SERIAL_LIMIT=8388608
+readonly VM_TIMEOUT_SECONDS=90
 
 RUN=
 RUN_ID=
@@ -26,6 +35,8 @@ VM_PID=
 VM_START=
 CAPTURE_PID=
 CAPTURE_START=
+KERNEL_FD=
+INITRD_FD=
 RUN_COMPLETE=0
 
 fail() {
@@ -119,6 +130,14 @@ cleanup() {
         CAPTURE_PID=
         CAPTURE_START=
     fi
+    if [ -n "$KERNEL_FD" ]; then
+        exec {KERNEL_FD}<&- || cleanup_failed=1
+        KERNEL_FD=
+    fi
+    if [ -n "$INITRD_FD" ]; then
+        exec {INITRD_FD}<&- || cleanup_failed=1
+        INITRD_FD=
+    fi
     if [ -n "$RUN" ] && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RUN" 2>/dev/null)" = "$RUN_ID" ]; then
         reconcile_socket "$RUN/serial.sock" || cleanup_failed=1
@@ -194,12 +213,32 @@ if data.get("format") != "qcow2" or data.get("backing-filename") is not None:
 if data.get("virtual-size") != 3 * 1024 * 1024 * 1024:
     raise SystemExit("verifier-VM base virtual size differs")
 PY
-for source in "$GUEST_SCRIPT" "$CAPTURE_HELPER"; do
+for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" \
+    "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
 done
 [ -x "$GUEST_SCRIPT" ] && [ -x "$CAPTURE_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
+[ -x "$BOOT_DERIVER" ] || fail 'verifier-VM boot deriver must be executable'
+"$BOOT_DERIVER"
+[ -d "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
+    || fail 'direct-boot cache is absent or ambiguous'
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BOOT_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
+    || fail 'direct-boot cache directory metadata differs'
+[ "$(/usr/bin/find "$BOOT_ROOT" -mindepth 1 -maxdepth 1 -printf x)" = xx ] \
+    || fail 'direct-boot cache inventory differs'
+for input in "$KERNEL:$SIZE_VERIFIER_VM_KERNEL" "$INITRD:$SIZE_VERIFIER_VM_INITRD"; do
+    path=${input%:*}
+    size=${input##*:}
+    [ -f "$path" ] && [ ! -L "$path" ] \
+        || fail "direct-boot input is absent or symlinked: $path"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+      "$HOST_UID:$HOST_GID:400:1:$size" ] \
+        || fail "direct-boot input metadata differs: $path"
+done
+verify_sha256 "$KERNEL" "$SHA256_VERIFIER_VM_KERNEL"
+verify_sha256 "$INITRD" "$SHA256_VERIFIER_VM_INITRD"
 
 RUN="$(/usr/bin/mktemp -d "$STATE_ROOT/run.XXXXXXXXXX")" \
     || fail 'cannot create the private verifier-VM run'
@@ -222,7 +261,10 @@ readonly NEW_AFTER=$RUN/listeners.new-after
 
 base_before="$(/usr/bin/sha512sum "$BASE")"
 docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
-sources_before="$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$CAPTURE_HELPER")"
+boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
+kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
+initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
 capture_listeners >"$LISTENERS_BEFORE"
 /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" 6G
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
@@ -255,7 +297,7 @@ printf '%s\n' \
     'trap finish EXIT' \
     'mkdir -p /mnt/rustdesk-verifier-inputs' \
     'mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec /mnt/rustdesk-verifier-inputs' \
-    "bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC" \
+    "bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
     >"$RUN/seed/user-data"
 printf '%s\n' \
     'instance-id: rustdesk-verifier-authority-v1' \
@@ -272,7 +314,16 @@ printf '%s\n' 'version: 2' 'ethernets: {}' >"$RUN/seed/network-config"
   "$HOST_UID:$HOST_GID:400:1" ] \
     || fail 'read-only cloud-init media metadata differs'
 
-/usr/bin/timeout --signal=TERM --kill-after=10s 420s \
+exec {KERNEL_FD}<"$KERNEL" || fail 'cannot retain the exact verifier-VM kernel'
+exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramfs'
+[ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a:%h:%s' -- "/proc/$$/fd/$KERNEL_FD")" = \
+  "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL")" ] \
+    || fail 'retained kernel descriptor identity differs'
+[ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a:%h:%s' -- "/proc/$$/fd/$INITRD_FD")" = \
+  "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD")" ] \
+    || fail 'retained initramfs descriptor identity differs'
+vm_started_seconds=$SECONDS
+/usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
     /usr/bin/qemu-system-x86_64 \
         -name rustdesk-verifier-authority \
         -machine q35 \
@@ -286,6 +337,9 @@ printf '%s\n' 'version: 2' 'ethernets: {}' >"$RUN/seed/network-config"
         -display none \
         -parallel none \
         -nic none \
+        -kernel "/proc/self/fd/$KERNEL_FD" \
+        -initrd "/proc/self/fd/$INITRD_FD" \
+        -append "root=UUID=$VERIFIER_VM_ROOT_FILESYSTEM_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket" \
         -sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny \
         -pidfile "$QEMU_PIDFILE" \
         -chardev "socket,id=serial0,path=$SERIAL_SOCKET,server=on,wait=on" \
@@ -342,6 +396,7 @@ vm_status=0
 wait "$VM_OWNER_PID" || vm_status=$?
 VM_OWNER_PID=
 VM_OWNER_START=
+vm_elapsed_seconds=$((SECONDS - vm_started_seconds))
 capture_status=0
 wait "$CAPTURE_PID" || capture_status=$?
 CAPTURE_PID=
@@ -360,7 +415,7 @@ reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 
 /usr/bin/grep -Fq \
-    "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default" \
+    "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'guest authority result marker is absent'; }
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
@@ -369,9 +424,17 @@ reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
     || fail 'read-only Debian base changed'
 [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \
     || fail 'read-only Docker bundle changed'
-[ "$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$CAPTURE_HELPER")" = "$sources_before" ] \
+[ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")" = "$boot_root_before" ] \
+    || fail 'direct-boot cache directory changed during execution'
+[ "$(/usr/bin/find "$BOOT_ROOT" -mindepth 1 -maxdepth 1 -printf x)" = xx ] \
+    || fail 'direct-boot cache inventory changed during execution'
+[ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")" = "$kernel_before" ] \
+    || fail 'direct-boot kernel changed during execution'
+[ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
+    || fail 'direct-boot initramfs changed during execution'
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 
 RUN_COMPLETE=1
-printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none channels=unix listeners=unchanged base=sha512 docker=sha256 output_bound=%s cleanup=joined\n' \
-    "$HOST_UID" "$SERIAL_LIMIT"
+printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
+    "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"

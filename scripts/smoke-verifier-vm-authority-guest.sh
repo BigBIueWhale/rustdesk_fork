@@ -2,12 +2,14 @@
 set -euo pipefail
 umask 077
 
-[ "$#" -eq 4 ] \
-    || { echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ VERSION SIZE SHA256' >&2; exit 2; }
+[ "$#" -eq 6 ] \
+    || { echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID' >&2; exit 2; }
 readonly DOCKER_ARCHIVE=$1
 readonly EXPECTED_VERSION=$2
 readonly EXPECTED_SIZE=$3
 readonly EXPECTED_SHA256=$4
+readonly EXPECTED_KERNEL_RELEASE=$5
+readonly EXPECTED_ROOT_UUID=$6
 readonly ROOT=/var/tmp/rustdesk-verifier-authority
 readonly BIN=$ROOT/bin
 readonly DAEMON_PATH=$BIN:/usr/sbin:/usr/bin:/sbin:/bin
@@ -70,6 +72,20 @@ trap 'exit 143' TERM
     || fail 'Docker version pin is malformed'
 case "$EXPECTED_SIZE" in 0|*[!0-9]*|'') fail 'Docker size pin is malformed' ;; esac
 [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'Docker digest pin is malformed'
+[[ "$EXPECTED_KERNEL_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cloud-amd64$ ]] \
+    || fail 'kernel-release pin is malformed'
+[[ "$EXPECTED_ROOT_UUID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+    || fail 'root-filesystem UUID pin is malformed'
+[ "$(uname -r)" = "$EXPECTED_KERNEL_RELEASE" ] \
+    || fail 'running guest kernel release differs'
+expected_cmdline="root=UUID=$EXPECTED_ROOT_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket"
+[ "$(< /proc/cmdline)" = "$expected_cmdline" ] \
+    || fail 'running guest kernel command line differs'
+for masked_unit in systemd-networkd-wait-online.service ssh.service ssh.socket; do
+    mask="/run/systemd/generator.early/$masked_unit"
+    [ -L "$mask" ] && [ "$(readlink -- "$mask")" = /dev/null ] \
+        || fail "runtime boot mask is absent: $masked_unit"
+done
 [ -f "$DOCKER_ARCHIVE" ] && [ ! -L "$DOCKER_ARCHIVE" ] \
     || fail 'Docker bundle is not one regular payload file'
 [ "$(stat -c '%s:%h' -- "$DOCKER_ARCHIVE")" = "$EXPECTED_SIZE:1" ] \
@@ -96,10 +112,6 @@ case "$("$parser" --version 2>&1 | head -n 1)" in
     'AppArmor parser version '*) ;;
     *) fail 'pinned cloud base AppArmor parser identity differs' ;;
 esac
-
-# A networkless verifier appliance has no use for an SSH daemon. Stop the
-# cloud image's default service before recording the guest listener baseline.
-systemctl stop ssh.service || fail 'cannot stop the unnecessary guest SSH service'
 
 mapfile -t interfaces < <(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
 [ "${#interfaces[@]}" -eq 1 ] && [ "${interfaces[0]}" = lo ] \
@@ -291,5 +303,5 @@ cmp -s "$ROOT.network-before" "$ROOT.network-after" \
     || fail 'guest network state changed across Docker execution'
 [ ! -e /sys/class/net/docker0 ] || fail 'Docker bridge remains after shutdown'
 
-printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default\n' \
-    "$EXPECTED_VERSION"
+printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default\n' \
+    "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"

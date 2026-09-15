@@ -524,7 +524,7 @@ def validate(repo: pathlib.Path) -> None:
         ("^buildx_buildkit_", "managed builder-container refusal"),
         ('--builder "$ONLINE_FETCH_BUILDX_BUILDER" build "$@"', "sole remote Buildx build funnel"),
         ("driver=remote buildkit=%s endpoint=guest-unix", "remote BuildKit runtime receipt"),
-        ('"rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_ID}"', "Apple local OCI base context"),
+        ('"rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_MANIFEST_ID}"', "Apple local OCI base context"),
     ):
         require(online, token, label)
     if online.count("online_buildx_build") != 7:

@@ -480,7 +480,7 @@ def validate_online_fetch(source: str) -> None:
             "type=oci,name=${export_name},dest=${candidate_oci},tar=true",
             "oci-mediatypes=true,rewrite-timestamp=true",
             "android-builder-bootstrap=oci-layout://${layout}@"
-            "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}",
+            "${ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID}",
             "android_builder_certification_candidate_spec_args",
             "maintenance-normalize-certified-oci",
             'manifest_id="$(/usr/bin/sed -n',

@@ -488,7 +488,7 @@ def validate_online_fetch(source: str) -> None:
             "type=oci,name=${export_name},dest=${candidate_oci},tar=true",
             "oci-mediatypes=true,rewrite-timestamp=true",
             "win-helper-bootstrap=oci-layout://${layout}@"
-            "${WIN_HELPER_BOOTSTRAP_IMAGE_ID}",
+            "${WIN_HELPER_BOOTSTRAP_MANIFEST_ID}",
             "WIN_HELPER_BOOTSTRAP_IMAGE_ID="
             "${WIN_HELPER_BOOTSTRAP_IMAGE_ID}",
             "WIN_HELPER_BOOTSTRAP_MANIFEST_ID="

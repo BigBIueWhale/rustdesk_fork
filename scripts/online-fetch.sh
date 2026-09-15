@@ -2842,7 +2842,7 @@ maintenance_build_deb_builder_certified_candidate() {
             --platform=linux/amd64 --provenance=mode=max \
             --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
             --build-context \
-            "deb-builder-bootstrap=oci-layout://${layout}@${DEB_BUILDER_BOOTSTRAP_IMAGE_ID}" \
+            "deb-builder-bootstrap=oci-layout://${layout}@${DEB_BUILDER_BOOTSTRAP_MANIFEST_ID}" \
             --build-arg "DEB_BUILDER_BOOTSTRAP_IMAGE_ID=${DEB_BUILDER_BOOTSTRAP_IMAGE_ID}" \
             --build-arg "DEB_BUILDER_BOOTSTRAP_MANIFEST_ID=${DEB_BUILDER_BOOTSTRAP_MANIFEST_ID}" \
             --build-arg "DEB_BUILDER_RECIPE_SHA256=${SHA256_DEB_BUILDER_DOCKERFILE}" \
@@ -2978,7 +2978,7 @@ maintenance_build_android_builder_certified_candidate() {
             --platform=linux/amd64 --provenance=mode=max \
             --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
             --build-context \
-            "android-builder-bootstrap=oci-layout://${layout}@${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}" \
+            "android-builder-bootstrap=oci-layout://${layout}@${ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID}" \
             --build-arg "ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID=${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}" \
             --build-arg "ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID=${ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID}" \
             --build-arg "ANDROID_BUILDER_RECIPE_SHA256=${SHA256_ANDROID_BUILDER_DOCKERFILE}" \
@@ -3114,7 +3114,7 @@ maintenance_build_win_helper_certified_candidate() {
             --platform=linux/amd64 --provenance=mode=max \
             --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
             --build-context \
-            "win-helper-bootstrap=oci-layout://${layout}@${WIN_HELPER_BOOTSTRAP_IMAGE_ID}" \
+            "win-helper-bootstrap=oci-layout://${layout}@${WIN_HELPER_BOOTSTRAP_MANIFEST_ID}" \
             --build-arg "WIN_HELPER_BOOTSTRAP_IMAGE_ID=${WIN_HELPER_BOOTSTRAP_IMAGE_ID}" \
             --build-arg "WIN_HELPER_BOOTSTRAP_MANIFEST_ID=${WIN_HELPER_BOOTSTRAP_MANIFEST_ID}" \
             --build-arg "WIN_HELPER_RECIPE_SHA256=${SHA256_WIN_HELPER_DOCKERFILE}" \
@@ -3372,7 +3372,7 @@ maintenance_build_apple_check_image_candidate() {
         --platform=linux/amd64 --provenance=mode=max \
         --output=type=docker,rewrite-timestamp=true \
         --build-context \
-        "rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_ID}" \
+        "rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_MANIFEST_ID}" \
         --build-arg "DEV_CHECK_IMAGE_REF=rd-devcheck@${DEV_CHECK_IMAGE_ID}" \
         --build-arg "DEV_CHECK_IMAGE_ID=${DEV_CHECK_IMAGE_ID}" \
         --build-arg "DEV_CHECK_IMAGE_MANIFEST_ID=${DEV_CHECK_IMAGE_MANIFEST_ID}" \

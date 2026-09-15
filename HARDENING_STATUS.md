@@ -1600,6 +1600,20 @@ of invoking those gates with an incomplete read-only repository subset. This is 
 authority evidence, not a successful real Debian or Windows-helper bootstrap capture, certified-builder renewal,
 product build, native target result, cold artifact, independent reproduction, external review, or release result.
 
+The first real post-correction Debian bootstrap acquisition, `run.4hBhz1Wip5` at clean pushed commit
+`fd1e3fc5a8b587327e2618c961cbde02d39f94ba`, completed in 373 seconds. Its compact receipt binds the exact source,
+outbound-only QEMU/user network with no host forwarding, denied UDP, guest-only Docker and remote BuildKit, unchanged
+host listeners, and joined cleanup; the successful run root is absent. Independent read-only review confirmed the
+current 3,444-byte recipe byte-for-byte, a strictly sorted/unique 522-row installed-package manifest, the embedded
+contract, direct OCI manifest/config/layer content addresses, mode-0444 provenance files, and the private candidate's
+current-user mode-0400 one-link identity. The reviewed bootstrap pins are now image/config
+`sha256:7fcb86e05617e2b70fc645d24205d3cd8cab13e31f4c172c43d610cfa52ed919`, manifest
+`sha256:4b6d5df1dee2b8ee1d132d51ab29e99ad697e69e37a8c0b44ddda39617fff4a5`, archive SHA-256
+`ca955262563bfe5b0190dc0b6127a55c0986502bb0430ca754511d835f51e83e` at 453,785,262 bytes, and OCI-layout SHA-256
+`17f64d3dbf1ce147971b5692e6fff58b03a0649bee7267711fcd6a66bf84e089`. Pin-bound no-clobber promotion, renewed
+certified Debian construction/review/promotion, compiler/product workloads, native/installed targets, cold artifacts,
+independent reproduction, external review, and release remain open.
+
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
 with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded

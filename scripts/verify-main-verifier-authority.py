@@ -78,22 +78,30 @@ def validate_contract(sources):
     requirements = sources["requirements"]
     hardening = sources["hardening"]
     docker_run_definitions = re.findall(
-        r"(?m)^(?:local_docker run |RUN=\(local_docker run |  local_docker run )",
+        r"(?m)^(?:verifier_vm_docker run |RUN=\(verifier_vm_docker run |  verifier_vm_docker run )",
         shell,
     )
     require(
         len(docker_run_definitions) == 3,
         "verify.sh must have exactly three fixed Docker run definitions",
     )
-    require(shell.count("RUN=(local_docker run ") == 1, "verify.sh must have exactly one ordinary run definition")
+    require(shell.count("RUN=(verifier_vm_docker run ") == 1, "verify.sh must have exactly one ordinary run definition")
     require('"$DOCKER_BIN" run ' not in shell, "verify.sh retained a direct ambient Docker launch")
     require(
         re.search(r"(?m)^readonly DOCKER_BIN=/usr/bin/docker$", shell) is None,
         "verify.sh retained its obsolete direct Docker client",
     )
     require(
-        shell.count("local_docker image inspect --format") == 2,
+        shell.count("verifier_vm_docker image inspect --format") == 2,
         "verify.sh must have exactly two fixed Docker image inspections",
+    )
+    require(
+        re.search(
+            r"(?m)^[ \t]*(?:local_docker(?:[ \t]|$)|RUN=\(local_docker(?:[ \t]|$))",
+            shell,
+        )
+        is None,
+        "verify.sh retained an executable host-Docker call",
     )
     require_all(
         shell,
@@ -102,8 +110,13 @@ def validate_contract(sources):
             'readonly VERIFY_GID="$(/usr/bin/id -g)"',
             '[ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution"',
             '[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group"',
+            'readonly VERIFIER_VM_ENTRY_PREFLIGHT=scripts/verify-vm-entry-preflight.sh',
+            '"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1',
+            '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
+            'readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock',
+            'verifier_vm_docker() {',
             '[[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
-            'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"',
+            'IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"',
             '[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ]',
             'archive_current_source >"$VERIFY_SOURCE_ARCHIVE"',
             'install -d -m 0700 "$VERIFY_SOURCE" "$VERIFY_TARGET"',
@@ -129,7 +142,7 @@ def validate_contract(sources):
             '"$VERIFY_UID:$VERIFY_GID:644:1"',
             'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum',
             '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
-            'FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"',
+            'FINAL_IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"',
             'VERIFY_SUCCESS_MESSAGE="VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green"',
         ),
         "main verifier transaction",
@@ -137,11 +150,14 @@ def validate_contract(sources):
     require(
         shell.index('[ "$VERIFY_UID" -ne 0 ]')
         < shell.index('[ "$VERIFY_GID" -ne 0 ]')
+        < shell.index("readonly VERIFIER_VM_ENTRY_PREFLIGHT=")
+        < shell.index('/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"')
         < shell.index("source scripts/lib.sh")
         < shell.index("load_pins")
+        < shell.index('[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ]')
         < shell.index("VERIFY_TMP=$(umask 077")
         < shell.index("verify_scan_self_test")
-        < shell.index("local_docker image inspect"),
+        < shell.index("verifier_vm_docker image inspect"),
         "verifier identity and private workspace are not established before verdict preparation",
     )
     cleanup = extract(
@@ -162,7 +178,7 @@ def validate_contract(sources):
         < shell.index("snapshot-subtree-create")
         < shell.index('create_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"')
         < shell.index('/usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh"')
-        < shell.index("RUN=(local_docker run "),
+        < shell.index("RUN=(verifier_vm_docker run "),
         "private source/vendor/bridge setup does not precede ordinary execution",
     )
     require(
@@ -176,7 +192,7 @@ def validate_contract(sources):
     require(
         shell.rindex("verify-subtree")
         < shell.index('SOURCE_DIGEST_AFTER="$(archive_current_source')
-        < shell.index('FINAL_IMAGE_ID="$(local_docker image inspect'),
+        < shell.index('FINAL_IMAGE_ID="$(verifier_vm_docker image inspect'),
         "verifier postconditions are not ordered",
     )
 
@@ -192,7 +208,7 @@ def validate_contract(sources):
 
     preflight = extract(
         shell,
-        'local_docker run --rm --pull=never --network=none --read-only \\\n  --user "$VERIFY_UID:$VERIFY_GID"',
+        'verifier_vm_docker run --rm --pull=never --network=none --read-only \\\n  --user "$VERIFY_UID:$VERIFY_GID"',
         'IMAGE_PREFLIGHT_STATUS=$?',
         "devcheck preflight",
     )
@@ -220,7 +236,7 @@ def validate_contract(sources):
 
     ordinary = extract(
         shell,
-        "RUN=(local_docker run --rm --pull=never --network=none --read-only",
+        "RUN=(verifier_vm_docker run --rm --pull=never --network=none --read-only",
         "/work/scripts/verify-container-command.sh)",
         "ordinary verifier container",
     )
@@ -562,8 +578,14 @@ def validate_contract(sources):
         "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority" in hardening,
         "hardening ledger is missing the main verifier authority closure",
     )
-    require("recoverable archive distribution" in hardening, "hardening ledger hides image archive closure")
-    require("fresh independent rebuild" in hardening, "hardening ledger hides remaining rebuild debt")
+    require(
+        "archive is neither locally present\nnor published by this repository" in hardening,
+        "hardening ledger hides the absent image archive",
+    )
+    require(
+        "fresh independent reconstruction and distribution remain open" in hardening,
+        "hardening ledger hides remaining image reconstruction debt",
+    )
 
 
 MUTATIONS = (
@@ -571,8 +593,15 @@ MUTATIONS = (
     Mutation("shell", 'readonly VERIFY_GID="$(/usr/bin/id -g)"', 'readonly VERIFY_GID="$(id -g)"', "absolute host GID source"),
     Mutation("shell", '[ "$VERIFY_UID" -ne 0 ]', '[ "$VERIFY_UID" -ge 0 ]', "host UID-root refusal"),
     Mutation("shell", '[ "$VERIFY_GID" -ne 0 ]', '[ "$VERIFY_GID" -ge 0 ]', "host GID-root refusal"),
-    Mutation("shell", 'IMAGE_ID="$(local_docker image inspect', 'IMAGE_ID="rd-devcheck-$( local_docker image inspect', "immutable image lookup"),
-    Mutation("shell", 'IMAGE_ID="$(local_docker image inspect', 'IMAGE_ID="$(/usr/bin/docker image inspect', "fixed initial image inspection"),
+    Mutation(
+        "shell",
+        '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"\n# shellcheck source=scripts/lib.sh',
+        'true # verifier-VM entry authority bypassed\n# shellcheck source=scripts/lib.sh',
+        "initial verifier-VM entry authority",
+    ),
+    Mutation("shell", 'verifier_vm_docker() {', 'local_docker() {', "guest-only Docker launcher definition"),
+    Mutation("shell", 'IMAGE_ID="$(verifier_vm_docker image inspect', 'IMAGE_ID="rd-devcheck-$( verifier_vm_docker image inspect', "immutable image lookup"),
+    Mutation("shell", 'IMAGE_ID="$(verifier_vm_docker image inspect', 'IMAGE_ID="$(/usr/bin/docker image inspect', "fixed initial image inspection"),
     Mutation("shell", '[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ]', '[ -n "$IMAGE_ID" ]', "image identity equality"),
     Mutation("shell", 'archive_current_source >"$VERIFY_SOURCE_ARCHIVE"', 'cp -a . "$VERIFY_SOURCE"', "normalized source snapshot"),
     Mutation("shell", 'for generated_bridge_mountpoint in src/bridge_generated.rs src/bridge_generated.io.rs; do', 'for generated_bridge_mountpoint in src/bridge_generated.rs; do', "complete generated bridge mountpoint inventory"),
@@ -584,9 +613,9 @@ MUTATIONS = (
     Mutation("shell", '--expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"', '--expected 0000000000000000', "vendor closure pin"),
     Mutation("shell", 'chmod 0400 "$VERIFY_CARGO_CONFIG"', 'chmod 0600 "$VERIFY_CARGO_CONFIG"', "read-only Cargo config"),
     Mutation("shell", '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]', '[ -n "$SOURCE_DIGEST_AFTER" ]', "real-source postcondition"),
-    Mutation("shell", 'FINAL_IMAGE_ID="$(local_docker image inspect', 'FINAL_IMAGE_ID="$IMAGE_ID" # local_docker image inspect', "final image postcondition"),
-    Mutation("shell", 'FINAL_IMAGE_ID="$(local_docker image inspect', 'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect', "fixed final image inspection"),
-    Mutation("shell", "local_docker run --rm", "/usr/bin/docker run --rm", "fixed Docker launcher"),
+    Mutation("shell", 'FINAL_IMAGE_ID="$(verifier_vm_docker image inspect', 'FINAL_IMAGE_ID="$IMAGE_ID" # verifier_vm_docker image inspect', "final image postcondition"),
+    Mutation("shell", 'FINAL_IMAGE_ID="$(verifier_vm_docker image inspect', 'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect', "fixed final image inspection"),
+    Mutation("shell", "verifier_vm_docker run --rm", "/usr/bin/docker run --rm", "fixed Docker launcher"),
     Mutation("shell", "--pull=never", "--pull=always", "pull refusal"),
     Mutation("shell", "--network=none", "--network=bridge", "network isolation"),
     Mutation("shell", "--read-only", "--hostname=verify", "read-only root"),
@@ -625,7 +654,7 @@ MUTATIONS = (
     Mutation("shell", "&& ! cleanup_nonroot_ipc_fixture; then", "&& false; then", "failure-path IPC fixture cleanup"),
     Mutation("shell", 'run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup', 'run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" cleanup', "actor-owned IPC fixture cleanup"),
     Mutation("shell", '--foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"', '--foreign-uid "$VERIFY_UID" --foreign-gid "$VERIFY_GID"', "distinct cleanup principal"),
-    Mutation("shell", "RUN=(local_docker run", "docker build -t rd-devcheck .\nRUN=(local_docker run", "image build absence"),
+    Mutation("shell", "RUN=(verifier_vm_docker run", "docker build -t rd-devcheck .\nRUN=(verifier_vm_docker run", "image build absence"),
     Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked", "exec cargo", "locked offline Cargo wrapper"),
     Mutation("wrapper", '[ "$#" -eq 3 ] && [ "$2" = -p ] && [ "$3" = rustdesk ]', "true", "exact Cargo clean"),
     Mutation("wrapper", 'install -m 0400 -- /tmp/cargo-config.toml "$CARGO_HOME/config.toml"', "true # private clean config removed", "Cargo clean source map"),

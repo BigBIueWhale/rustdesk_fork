@@ -2,22 +2,30 @@
 set -euo pipefail
 umask 077
 
-[ "$#" -eq 6 ] \
-    || { echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID' >&2; exit 2; }
+[ "$#" -eq 7 ] \
+    || { echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID' >&2; exit 2; }
 readonly DOCKER_ARCHIVE=$1
-readonly EXPECTED_VERSION=$2
-readonly EXPECTED_SIZE=$3
-readonly EXPECTED_SHA256=$4
-readonly EXPECTED_KERNEL_RELEASE=$5
-readonly EXPECTED_ROOT_UUID=$6
+readonly ENTRY_PREFLIGHT=$2
+readonly EXPECTED_VERSION=$3
+readonly EXPECTED_SIZE=$4
+readonly EXPECTED_SHA256=$5
+readonly EXPECTED_KERNEL_RELEASE=$6
+readonly EXPECTED_ROOT_UUID=$7
+readonly AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly MARKER=$AUTHORITY_ROOT/authority
+readonly CONFIG_ROOT=$AUTHORITY_ROOT/docker-config
+readonly CONFIG=$CONFIG_ROOT/config.json
 readonly ROOT=/var/tmp/rustdesk-verifier-authority
 readonly BIN=$ROOT/bin
 readonly DAEMON_PATH=$BIN:/usr/sbin:/usr/bin:/sbin:/bin
 readonly DATA=$ROOT/data
 readonly EXEC=$ROOT/exec
-readonly SOCK=$ROOT/docker.sock
-readonly PIDFILE=$ROOT/docker.pid
+readonly SOCK=$AUTHORITY_ROOT/docker.sock
+readonly PIDFILE=$AUTHORITY_ROOT/docker.pid
+readonly DAEMON_IDENTITY=$AUTHORITY_ROOT/docker.identity
 readonly LOG=$ROOT/dockerd.log
+readonly VERIFY_REPO=/mnt/rustdesk-verifier-inputs/repo
+readonly VERIFY_SCRIPT=$VERIFY_REPO/scripts/verify.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
 
@@ -78,7 +86,7 @@ case "$EXPECTED_SIZE" in 0|*[!0-9]*|'') fail 'Docker size pin is malformed' ;; e
     || fail 'root-filesystem UUID pin is malformed'
 [ "$(uname -r)" = "$EXPECTED_KERNEL_RELEASE" ] \
     || fail 'running guest kernel release differs'
-expected_cmdline="root=UUID=$EXPECTED_ROOT_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket"
+expected_cmdline="root=UUID=$EXPECTED_ROOT_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.verifier_vm=1 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket"
 [ "$(< /proc/cmdline)" = "$expected_cmdline" ] \
     || fail 'running guest kernel command line differs'
 for masked_unit in systemd-networkd-wait-online.service ssh.service ssh.socket; do
@@ -88,6 +96,19 @@ for masked_unit in systemd-networkd-wait-online.service ssh.service ssh.socket; 
 done
 [ -f "$DOCKER_ARCHIVE" ] && [ ! -L "$DOCKER_ARCHIVE" ] \
     || fail 'Docker bundle is not one regular payload file'
+[ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
+    || fail 'verifier-entry preflight is not one regular payload file'
+for verify_source in verify.sh verify-vm-entry-preflight.sh verify-scan.sh \
+    verify-private-tree-closure.py lib.sh pins.env; do
+    verify_path="$VERIFY_REPO/scripts/$verify_source"
+    [ -f "$verify_path" ] && [ ! -L "$verify_path" ] \
+        || fail "main verifier entry source is absent or ambiguous: $verify_source"
+done
+[ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
+    || fail 'main verifier and guest probe use different entry-preflight paths'
+entry_source_metadata="$(stat -c '%F:%u:%g:%a:%h' -- \
+    "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh")" \
+    || fail 'main verifier entry-preflight metadata cannot be read'
 [ "$(stat -c '%s:%h' -- "$DOCKER_ARCHIVE")" = "$EXPECTED_SIZE:1" ] \
     || fail 'Docker bundle size or link count differs inside the guest'
 [ "$(sha256sum "$DOCKER_ARCHIVE" | awk '{print $1}')" = "$EXPECTED_SHA256" ] \
@@ -97,6 +118,9 @@ mount_options="$(findmnt -n -o OPTIONS --target "$DOCKER_ARCHIVE")" \
 case ",$mount_options," in *,ro,*) ;; *) fail 'Docker payload is not read-only' ;; esac
 case ",$mount_options," in *,nodev,*) ;; *) fail 'Docker payload permits devices' ;; esac
 case ",$mount_options," in *,nosuid,*) ;; *) fail 'Docker payload permits set-user-ID execution' ;; esac
+case ",$mount_options," in *,noexec,*) ;; *) fail 'Docker payload permits direct execution' ;; esac
+printf 'VERIFIER_VM_ENTRY_SOURCE=metadata=%s mount=noexec-readonly\n' \
+    "$entry_source_metadata"
 
 [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ] \
     || fail 'AppArmor kernel enforcement is not enabled'
@@ -122,8 +146,11 @@ mapfile -t interfaces < <(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%
     || fail 'guest IPv6 forwarding is enabled before Docker'
 network_inventory >"$ROOT.network-before"
 
-mkdir -p "$BIN" "$DATA" "$EXEC" "$ROOT/rootfs/bin" "$ROOT/rootfs/lib" "$ROOT/rootfs/lib64"
-chmod 0700 "$ROOT" "$DATA" "$EXEC"
+mkdir -p "$AUTHORITY_ROOT" "$BIN" "$CONFIG_ROOT" "$DATA" "$EXEC" \
+    "$ROOT/rootfs/bin" "$ROOT/rootfs/lib" "$ROOT/rootfs/lib64"
+chmod 0755 "$AUTHORITY_ROOT"
+chmod 0755 "$ROOT"
+chmod 0700 "$DATA" "$EXEC"
 archive_inventory="$(tar -tzf "$DOCKER_ARCHIVE")" || fail 'Docker bundle inventory cannot be read'
 [ "$archive_inventory" = $'docker/\ndocker/runc\ndocker/containerd\ndocker/docker-init\ndocker/dockerd\ndocker/containerd-shim-runc-v2\ndocker/docker-proxy\ndocker/docker\ndocker/ctr' ] \
     || fail 'Docker bundle has a noncanonical member inventory or order'
@@ -131,8 +158,8 @@ tar -xzf "$DOCKER_ARCHIVE" --strip-components=1 --no-same-owner --no-same-permis
     -C "$BIN" \
     docker/runc docker/containerd docker/docker-init docker/dockerd \
     docker/containerd-shim-runc-v2 docker/docker-proxy docker/docker docker/ctr
-chmod 0500 "$BIN"/*
-[ "$(find "$BIN" -mindepth 1 -maxdepth 1 -type f -perm 0500 | wc -l)" -eq 8 ] \
+chmod 0555 "$BIN" "$BIN"/*
+[ "$(find "$BIN" -mindepth 1 -maxdepth 1 -type f -perm 0555 | wc -l)" -eq 8 ] \
     || fail 'extracted Docker binary inventory differs'
 [ -z "$(find "$BIN" -mindepth 1 -maxdepth 1 ! -type f -print -quit)" ] \
     || fail 'extracted Docker bundle contains a non-regular entry'
@@ -141,6 +168,13 @@ docker_version="$($BIN/docker --version)"
 dockerd_version="$($BIN/dockerd --version)"
 case "$docker_version" in "Docker version $EXPECTED_VERSION,"*) ;; *) fail "Docker client version differs: $docker_version" ;; esac
 case "$dockerd_version" in "Docker version $EXPECTED_VERSION,"*) ;; *) fail "Docker daemon version differs: $dockerd_version" ;; esac
+printf '{}\n' >"$CONFIG"
+printf 'rustdesk-verifier-vm-authority-v1 docker=%s\n' "$EXPECTED_VERSION" >"$MARKER"
+chmod 0444 "$CONFIG" "$MARKER"
+chmod 0555 "$CONFIG_ROOT"
+[ "$(sha256sum "$CONFIG" | awk '{ print $1 }')" = \
+  ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356 ] \
+    || fail 'canonical empty Docker configuration digest differs'
 
 PATH="$DAEMON_PATH" \
     "$BIN/dockerd" \
@@ -180,7 +214,20 @@ done
 [ "$ready" -eq 1 ] || fail 'guest-only Docker daemon did not become ready'
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
-[ "$(stat -c '%u:%g' -- "$SOCK")" = 0:0 ] || fail 'Docker Unix socket ownership differs'
+chown 0:4000 "$SOCK"
+chmod 0660 "$SOCK"
+chmod 0444 "$PIDFILE"
+[ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:4000:660 ] \
+    || fail 'Docker Unix socket authority differs'
+[ "$(readlink -f -- "/proc/$DAEMON_PID/exe")" = "$BIN/dockerd" ] \
+    || fail 'Docker daemon executable identity differs before generation publication'
+daemon_start="$(awk '{ print $22 }' "/proc/$DAEMON_PID/stat")" \
+    || fail 'Docker daemon start time cannot be read'
+[[ "$daemon_start" =~ ^[1-9][0-9]*$ ]] || fail 'Docker daemon start time is malformed'
+printf 'pid=%s start=%s sha256=%s\n' \
+    "$DAEMON_PID" "$daemon_start" "$(sha256sum "$BIN/dockerd" | awk '{ print $1 }')" \
+    >"$DAEMON_IDENTITY"
+chmod 0444 "$DAEMON_IDENTITY"
 [ ! -e /sys/class/net/docker0 ] || fail 'Docker created a guest bridge despite --bridge=none'
 [ "$(cat /proc/sys/net/ipv4/ip_forward)" = 0 ] \
     || fail 'Docker enabled guest IPv4 forwarding'
@@ -189,6 +236,37 @@ done
 network_inventory >"$ROOT.network-during"
 cmp -s "$ROOT.network-before" "$ROOT.network-during" \
     || fail 'guest Docker created an INET listener'
+
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
+    >"$ROOT/foreign-entry.out" 2>"$ROOT/foreign-entry.err"; then
+    fail 'foreign numeric principal passed the main verifier entry'
+fi
+[ ! -s "$ROOT/foreign-entry.out" ] \
+    || fail 'foreign main-verifier refusal produced standard output'
+foreign_entry_error="$(<"$ROOT/foreign-entry.err")"
+if [ "$foreign_entry_error" != \
+    'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-entry.err")" -le 4096 ] \
+        || fail 'foreign main-verifier refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign main-verifier diagnostic was %q\n' \
+        "$foreign_entry_error" >&2
+    fail 'foreign main-verifier refusal diagnostic differs'
+fi
+ulimit -Hn 524544 || fail 'verifier descriptor hard limit cannot be established'
+ulimit -Sn 524544 || fail 'verifier descriptor soft limit cannot be established'
+[ "$(ulimit -Sn):$(ulimit -Hn)" = 524544:524544 ] \
+    || fail 'verifier descriptor limit differs'
+main_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$VERIFY_SCRIPT" --self-test-workspace
+)" || fail 'numeric-nonroot main verifier entry failed'
+expected_main_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+verify workspace self-test: OK"
+[ "$main_entry_output" = "$expected_main_entry_output" ] \
+    || fail "main verifier entry result differs: $main_entry_output"
+printf '%s\n' "$main_entry_output"
+printf 'VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 foreign=refused nofile=524544 workspace_cleanup=joined\n'
 
 cp --parents -L /bin/dash "$ROOT/rootfs"
 while IFS= read -r library; do

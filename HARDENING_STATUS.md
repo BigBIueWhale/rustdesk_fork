@@ -94,12 +94,37 @@ pull/network, read-only root, no capabilities, no-new-privileges, Docker's enfor
 profile, seccomp filter mode, private PID/IPC/cgroup namespaces, no explicit device/bind/port authority, and
 behaviorally observed PID/memory/no-swap/CPU/core/descriptor/file-size bounds. The VM, daemon, container, bounded
 capture, overlay, media, and sockets were joined or identity-reconciled; the host listener set was unchanged and
-successful pass-private residue was removed. This is only a runtime proof of the outer topology and inner probe:
-the shared launchers still address the forbidden host-root socket, no real verifier image/source/input/output
-transaction has been moved into the VM, the verifier image still needs a fresh independent rebuild, and the
-prepared verifier toolchain/image and exact source/input/output transaction do not yet exist inside this topology.
-Routing every consumer through one authenticated bounded VM transaction and producing that reproducible prepared
-base remain STOP-SHIP; direct boot retires only the focused smoke's prior absent-network delay.
+successful pass-private residue was removed.
+
+The main verifier entry now consumes that same runtime authority instead of initializing the shared host-Docker
+client path. Before sourcing repository helpers, creating scratch, or contacting a daemon, `verify.sh` requires
+`verify-vm-entry-preflight.sh` to prove the exact `rustdesk.verifier_vm=1` direct-boot marker, loopback-only guest
+interface inventory, fixed root-owned executable/configuration/marker state, group-bound guest Unix socket, and a
+live VM-root daemon generation. VM root validates the exact daemon executable and seals PID, `/proc` start time,
+and binary digest; the numeric-nonroot verifier replays PID/start time, independently hashes the immutable daemon
+bytes, and uses Unix `SO_PEERCRED` plus a bounded Docker ping to prove the connected socket's exact root peer PID,
+then replays the daemon generation, credentials, and socket metadata before issuing its pass receipt, because normal
+procfs policy correctly prevents it from dereferencing the root process's `exe` link.
+Every image inspection or container launch expressed directly in the main verifier now revalidates that record
+before and after one
+empty-environment call to the fixed guest client/socket/configuration. The previous
+`initialize_local_docker_authority` and `/var/run/docker.sock` route is absent from this entry. Real KVM execution
+ran the exact `verify.sh --self-test-workspace` entry as UID/GID 4000 through its descriptor-safe cleanup, refused
+the same entry as foreign UID/GID 4001 at the socket-authority boundary, established its required exact 524,544-
+descriptor limit, ran the confined probe, and completed twice in 10 and 11 seconds with unchanged host listeners
+and joined residue-free cleanup; three earlier live
+attempts exposed and then failed closed on `/run`'s `noexec` mount, Docker's no-newline PID file, and unprivileged
+procfs executable-link denial. Exact-entry integration additionally failed closed before correction on noexec
+access-bit semantics, a duplicate ISO hardlink, and an inherited descriptor hard limit below cleanup's required
+bound. Every failed run's zero-listener-delta evidence was inspected and its exact retained private tree was
+reconciled.
+
+This is an executable entry-authority slice, not a full-verifier result. The pinned devcheck archive has no
+published release/package source, the local Cargo vendor/config and image archive inputs are absent, and no exact
+source/offline-input/output transaction or real verifier workload has entered the VM. Other shared build, scanner,
+provenance, and smoke launchers still address root-equivalent host Docker and remain forbidden here. The complete
+single-topology launcher migration, reproducible prepared verifier toolchain/image, fresh independent image rebuild,
+bounded read-only inputs, validated outputs, and a current full gate remain STOP-SHIP.
 
 The dependency-advisory documentation now has the same single-owner shape. The dated Appendix D disposition
 ledger, its duplicate technical-debt row, and all dangling links to it were deleted; exact snapshot identities,
@@ -1528,10 +1553,11 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The main-verifier checker covers only R-S11bg's inner-container/image/input/fixture contract and does not treat a pinned host rootful-Docker endpoint as safe execution authority. The standalone R-S11dh smoke now behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; a guest-only no-bridge/no-firewall-mutation Docker daemon; an AppArmor/seccomp-confined numeric-nonroot bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. It does not yet run the real verifier or replace any shared launcher: those still target root-equivalent `/var/run/docker.sock` and must not be used on this host. Full VM routing, exact bounded source/input/output transfer, a reproducible prepared verifier toolchain/base, and a fresh independent verifier-image rebuild remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh` now admits only that exact entry authority and every Docker operation expressed directly in it uses the fixed guest socket/configuration/client with pre/post replay; it has no direct host-Docker fallback. The real verifier workload and the remaining call graph have not migrated: its invoked `frb-codegen.sh` and other shared consumers still target root-equivalent host Docker and must not run here, required devcheck/vendor inputs are absent, and exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
 
-The main verifier has recoverable archive distribution, but still requires a fresh independent rebuild.
-Neither this item nor the overall release is claimed complete.
+The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
+nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
+nor the overall release is claimed complete.
 
 EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING.
 
@@ -1563,8 +1589,9 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   AppArmor/seccomp/resource/namespace, no-bridge/no-forward/no-firewall-mutation, private-channel,
   listener-invariance, complete-bounded-capture, joined-process, and successful-run residue-free cleanup assertions.
   Controlled cancellation joined the exact processes and left no listener while retaining only exact private
-  diagnostics, which were then explicitly reconciled. It did not execute RustDesk, the verifier image, a build, a
-  scanner, a source tree, an artifact, or an output-publication transaction.
+  diagnostics, which were then explicitly reconciled. It executed only the minimal read-only repository subset
+  needed for the real `verify.sh --self-test-workspace` entry; it did not execute RustDesk, the verifier image, a
+  build, a scanner, the complete source/input transaction, an artifact, or an output-publication transaction.
 - No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
   a VM NIC, root/sudo on the host, or a non-loopback host listener.
 
@@ -1579,7 +1606,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE FOUNDATION GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete runs now take about twelve seconds rather than roughly two minutes. Current Docker launchers nevertheless still select the host rootful daemon and must not run here. Move the actual verifier and then every build/test/scanner/provenance consumer into this one VM topology; admit exact read-only source/offline inputs; validate and publish complete bounded outputs; remove every direct-host/rootless-host fallback; create and authenticate the reproducible prepared verifier toolchain/base; and freshly rebuild the verifier image independently. The probe is not product, artifact, scanner, or full-gate evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE FOUNDATION GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete runs now take about twelve seconds rather than roughly two minutes. The actual `verify.sh` entry now refuses anything except that authority and has no direct host-Docker fallback, but its invoked `frb-codegen.sh` and every other shared Docker launcher still select the host rootful daemon and must not run here. Move the full verifier workload and then every build/test/scanner/provenance consumer into this one VM topology; admit exact read-only source/offline inputs; validate and publish complete bounded outputs; remove every remaining direct-host/rootless-host fallback; create and authenticate the reproducible prepared verifier toolchain/base; and freshly rebuild the verifier image independently. The probe and workspace self-test are not product, artifact, scanner, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED

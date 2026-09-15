@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# verify.sh — the day-to-day "secure by assertion" CI gate (§9.2/§9.3, R-V3).
+# verify.sh — the guest side of the day-to-day verification gate (§9.2/§9.3, R-V3).
 #
 # Runs against one already-present immutable devcheck image on the pinned 1.75
 # toolchain. This verdict path never builds, pulls, tags, or resolves an image:
@@ -36,7 +36,8 @@
 # is NOT a build target (R-R2). The Linux `cargo check` below cannot see the cfg(macos)/
 # cfg(ios) clusters, so that gate is where their hardening is proven.
 #
-# Usage:  scripts/verify.sh
+# This script is not a host-side launcher. R-S11dh admits it only inside the
+# authenticated, zero-NIC verifier VM; the outer launcher remains STOP-SHIP.
 set -euo pipefail
 
 VERIFY_WORKSPACE_SELF_TEST=0
@@ -57,9 +58,35 @@ readonly VERIFY_UID="$(/usr/bin/id -u)"
 readonly VERIFY_GID="$(/usr/bin/id -g)"
 [ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution" >&2; exit 1; }
 [ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group" >&2; exit 1; }
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=scripts/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+  && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+  || { echo "verify: verifier-VM entry preflight is absent or ambiguous" >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
 # shellcheck source=scripts/lib.sh
 source scripts/lib.sh
 load_pins
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/var/tmp/rustdesk-verifier-authority/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+  || { echo "verify: guest Docker authority differs from its repository pin" >&2; exit 1; }
+readonly VERIFIER_VM_MARKER_DOCKER
+
+verifier_vm_docker() {
+  local status=0
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+    DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+    "$VERIFIER_VM_DOCKER_CLIENT" \
+      --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+      --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  return "$status"
+}
 
 # shellcheck source=scripts/verify-scan.sh
 source scripts/verify-scan.sh
@@ -80,11 +107,7 @@ cleanup_verify_tmp() {
       echo "verify: preserving unclean non-root IPC fixture: $IPC_FIXTURE_ROOT" >&2
       cleanup_failed=1
     fi
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-      && ! remove_local_docker_authority; then
-      echo "verify: preserving changed private Docker authority: $VERIFY_TMP" >&2
-      cleanup_failed=1
-    elif [ "$cleanup_failed" -ne 0 ]; then
+    if [ "$cleanup_failed" -ne 0 ]; then
       :
     elif [ -z "$VERIFY_TMP_ID" ] || [ ! -d "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ] \
       || [ "$(stat -c '%d:%i' -- "$VERIFY_TMP" 2>/dev/null)" != "$VERIFY_TMP_ID" ]; then
@@ -138,7 +161,6 @@ if [ "$VERIFY_WORKSPACE_MISSING_SELF_TEST" -eq 1 ]; then
   echo "verify workspace missing self-test: REACHED" >&2
   exit 0
 fi
-initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"
 verify_scan_self_test "$VERIFY_TMP"
 
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
@@ -593,7 +615,7 @@ echo "== preparing the confined compile/test transaction (R-S11bg) =="
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || { echo "verify: Cargo vendor source map differs from its pin" >&2; exit 1; }
 
-IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
   || { echo "verify: immutable devcheck image is not present locally" >&2; exit 1; }
 [ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ] \
   || { echo "verify: local devcheck image identity differs from its pin" >&2; exit 1; }
@@ -679,7 +701,7 @@ done
 readonly IMAGE_PREFLIGHT_OUT="$VERIFY_TMP/image-preflight.out"
 readonly IMAGE_PREFLIGHT_ERR="$VERIFY_TMP/image-preflight.err"
 set +e
-local_docker run --rm --pull=never --network=none --read-only \
+verifier_vm_docker run --rm --pull=never --network=none --read-only \
   --user "$VERIFY_UID:$VERIFY_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
@@ -714,7 +736,7 @@ chmod 0600 "$EXPECTED_IMAGE_PREFLIGHT"
 cmp "$EXPECTED_IMAGE_PREFLIGHT" "$IMAGE_PREFLIGHT_OUT" \
   || { echo "verify: immutable devcheck image contents differ from reviewed pins" >&2; exit 1; }
 
-RUN=(local_docker run --rm --pull=never --network=none --read-only
+RUN=(verifier_vm_docker run --rm --pull=never --network=none --read-only
   --user "$VERIFY_UID:$VERIFY_GID"
   --cap-drop=ALL --security-opt=no-new-privileges
   --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4
@@ -781,7 +803,7 @@ run_nonroot_ipc_command() {
   output="$VERIFY_TMP/nonroot-ipc-$label.out"
   error="$VERIFY_TMP/nonroot-ipc-$label.err"
   set +e
-  local_docker run --rm --pull=never --network=none --read-only \
+  verifier_vm_docker run --rm --pull=never --network=none --read-only \
     --user "$run_uid:$run_gid" \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
@@ -11550,7 +11572,7 @@ case "$version_ignore_status" in
   1) ;;
   *) version_output_bad="$version_output_bad ignore-matcher-failed" ;;
 esac
-verify_run_block="$(awk '/^RUN=\(local_docker run --rm/{inside=1} inside{print} inside && /\/work\/scripts\/verify-container-command.sh\)$/{exit}' scripts/verify.sh)"
+verify_run_block="$(awk '/^RUN=\(verifier_vm_docker run --rm/{inside=1} inside{print} inside && /\/work\/scripts\/verify-container-command.sh\)$/{exit}' scripts/verify.sh)"
 if ! grep -qE '^  --mount "type=bind,source=\$VERIFY_SOURCE,target=/work,readonly"$' <<<"$verify_run_block"; then
   version_output_bad="$version_output_bad mutable-main-cargo-source"
 fi
@@ -16882,7 +16904,7 @@ r_s11bg_post=
 SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
 [ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
   || r_s11bg_post="$r_s11bg_post real-source-state-changed"
-FINAL_IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$IMAGE_ID" 2>/dev/null)" \
+FINAL_IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$IMAGE_ID" 2>/dev/null)" \
   || r_s11bg_post="$r_s11bg_post immutable-image-disappeared"
 [ "${FINAL_IMAGE_ID:-}" = "$IMAGE_ID" ] \
   || r_s11bg_post="$r_s11bg_post immutable-image-identity-changed"

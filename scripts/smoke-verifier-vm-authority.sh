@@ -19,6 +19,9 @@ readonly KERNEL="$BOOT_ROOT/vmlinuz"
 readonly INITRD="$BOOT_ROOT/initrd.img"
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
+readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
+readonly VERIFY_SCRIPT="$SCRIPT_DIR/verify.sh"
+readonly VERIFY_SCAN_SOURCE="$SCRIPT_DIR/verify-scan.sh"
 readonly BOOT_DERIVER="$SCRIPT_DIR/derive-verifier-vm-boot-assets.sh"
 readonly CAPTURE_HELPER="$SCRIPT_DIR/bounded-unix-stream-capture.py"
 readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
@@ -213,12 +216,14 @@ if data.get("format") != "qcow2" or data.get("backing-filename") is not None:
 if data.get("virtual-size") != 3 * 1024 * 1024 * 1024:
     raise SystemExit("verifier-VM base virtual size differs")
 PY
-for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" \
+for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" \
+    "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" \
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
 done
-[ -x "$GUEST_SCRIPT" ] && [ -x "$CAPTURE_HELPER" ] \
+[ -x "$GUEST_SCRIPT" ] && [ -x "$ENTRY_PREFLIGHT" ] && [ -x "$VERIFY_SCRIPT" ] \
+    && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
 [ -x "$BOOT_DERIVER" ] || fail 'verifier-VM boot deriver must be executable'
 "$BOOT_DERIVER"
@@ -264,7 +269,7 @@ docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
 capture_listeners >"$LISTENERS_BEFORE"
 /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" 6G
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
@@ -272,7 +277,13 @@ capture_listeners >"$LISTENERS_BEFORE"
 
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
     -joliet -rock -graft-points -output "$PAYLOAD" \
-    "guest.sh=$GUEST_SCRIPT" "docker.tgz=$DOCKER_BUNDLE"
+    "guest.sh=$GUEST_SCRIPT" \
+    "repo/scripts/verify.sh=$VERIFY_SCRIPT" \
+    "repo/scripts/verify-vm-entry-preflight.sh=$ENTRY_PREFLIGHT" \
+    "repo/scripts/verify-scan.sh=$VERIFY_SCAN_SOURCE" \
+    "repo/scripts/verify-private-tree-closure.py=$CLEANUP_HELPER" \
+    "repo/scripts/lib.sh=$LIB_SOURCE" "repo/scripts/pins.env=$PIN_SOURCE" \
+    "docker.tgz=$DOCKER_BUNDLE"
 /usr/bin/chmod 0400 "$PAYLOAD"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$PAYLOAD")" = \
   "$HOST_UID:$HOST_GID:400:1" ] \
@@ -297,7 +308,7 @@ printf '%s\n' \
     'trap finish EXIT' \
     'mkdir -p /mnt/rustdesk-verifier-inputs' \
     'mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec /mnt/rustdesk-verifier-inputs' \
-    "bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
+    "bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
     >"$RUN/seed/user-data"
 printf '%s\n' \
     'instance-id: rustdesk-verifier-authority-v1' \
@@ -339,7 +350,7 @@ vm_started_seconds=$SECONDS
         -nic none \
         -kernel "/proc/self/fd/$KERNEL_FD" \
         -initrd "/proc/self/fd/$INITRD_FD" \
-        -append "root=UUID=$VERIFIER_VM_ROOT_FILESYSTEM_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket" \
+        -append "root=UUID=$VERIFIER_VM_ROOT_FILESYSTEM_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.verifier_vm=1 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket" \
         -sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny \
         -pidfile "$QEMU_PIDFILE" \
         -chardev "socket,id=serial0,path=$SERIAL_SOCKET,server=on,wait=on" \
@@ -418,6 +429,14 @@ reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
     "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'guest authority result marker is absent'; }
+/usr/bin/grep -Fq \
+    "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$VERIFIER_VM_DOCKER_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'guest verifier-entry authority marker is absent'; }
+/usr/bin/grep -Fq \
+    "VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 foreign=refused nofile=524544 workspace_cleanup=joined" \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'main verifier exact-entry result marker is absent'; }
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
@@ -432,7 +451,7 @@ reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 
 RUN_COMPLETE=1

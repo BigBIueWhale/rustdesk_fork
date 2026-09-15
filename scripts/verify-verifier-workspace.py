@@ -33299,7 +33299,7 @@ def validate_main_verifier_authority_contract(sources):
     ipc_fs = sources["ipc_fs_source"]
 
     docker_run_definitions = re.findall(
-        r"(?m)^(?:local_docker run |RUN=\(local_docker run |  local_docker run )",
+        r"(?m)^(?:verifier_vm_docker run |RUN=\(verifier_vm_docker run |  verifier_vm_docker run )",
         shell,
     )
     if len(docker_run_definitions) != 3:
@@ -33312,7 +33312,11 @@ def validate_main_verifier_authority_contract(sources):
         ('readonly VERIFY_GID="$(/usr/bin/id -g)"', "main verifier absolute GID source"),
         ('[ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution"', "main verifier UID-root refusal"),
         ('[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group"', "main verifier GID-root refusal"),
-        ('IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier fixed initial image inspection"),
+        ('readonly VERIFIER_VM_ENTRY_PREFLIGHT=scripts/verify-vm-entry-preflight.sh', "main verifier VM entry preflight"),
+        ('"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1', "main verifier VM entry-preflight metadata"),
+        ('readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock', "main verifier guest-only Docker socket"),
+        ('verifier_vm_docker() {', "main verifier guest-only Docker launcher"),
+        ('IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier fixed initial image inspection"),
         ('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"', "main verifier normalized source snapshot"),
         ('for generated_bridge_mountpoint in src/bridge_generated.rs src/bridge_generated.io.rs; do', "main verifier generated bridge mountpoint inventory"),
         ('[ ! -e "$VERIFY_SOURCE/$generated_bridge_mountpoint" ]', "main verifier generated bridge mountpoint absence"),
@@ -33323,7 +33327,7 @@ def validate_main_verifier_authority_contract(sources):
         ('/usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh"', "main verifier exact-snapshot bridge generation"),
         ('verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"', "main verifier fresh-bridge online postcondition"),
         ('sha256sum --check .frb-manifest.sha256', "main verifier fresh-bridge manifest verification"),
-        ("RUN=(local_docker run --rm --pull=never --network=none --read-only", "main verifier ordinary pull/network/root isolation"),
+        ("RUN=(verifier_vm_docker run --rm --pull=never --network=none --read-only", "main verifier ordinary pull/network/root isolation"),
         ('--mount "type=bind,source=$VERIFY_SOURCE,target=/work,readonly"', "main verifier private source mount"),
         ('--mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"', "main verifier private vendor mount"),
         ('--mount "type=bind,source=$VERIFY_TARGET,target=/build"', "main verifier private target mount"),
@@ -33341,11 +33345,16 @@ def validate_main_verifier_authority_contract(sources):
         ('--foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"', "main verifier cleanup foreign identity"),
         ('IPC_FIXTURE_CLEANED=1', "main verifier fixture cleanup finality"),
         ('SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum', "main verifier source postcondition"),
-        ('FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"', "main verifier fixed final image inspection"),
+        ('FINAL_IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"', "main verifier fixed final image inspection"),
     ):
         require_text(shell, text, label)
-    require_exact_count(shell, "RUN=(local_docker run ", 1, "main verifier ordinary container inventory")
-    require_exact_count(shell, "local_docker image inspect --format", 2, "main verifier fixed image-inspection inventory")
+    require_exact_count(shell, "RUN=(verifier_vm_docker run ", 1, "main verifier ordinary container inventory")
+    require_exact_count(shell, "verifier_vm_docker image inspect --format", 2, "main verifier fixed image-inspection inventory")
+    if re.search(
+        r"(?m)^[ \t]*(?:local_docker(?:[ \t]|$)|RUN=\(local_docker(?:[ \t]|$))",
+        shell,
+    ):
+        raise VerificationError("main verifier retained an executable host-Docker call")
     require_absent(shell, '"$DOCKER_BIN" run ', "main verifier direct ambient Docker launch")
     require_absent(shell, "--user 0:0", "main verifier UID-0 container")
     if re.search(r"(?m)^readonly DOCKER_BIN=/usr/bin/docker$", shell):
@@ -33369,11 +33378,14 @@ def validate_main_verifier_authority_contract(sources):
         (
             '[ "$VERIFY_UID" -ne 0 ]',
             '[ "$VERIFY_GID" -ne 0 ]',
+            "readonly VERIFIER_VM_ENTRY_PREFLIGHT=",
+            '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
             "source scripts/lib.sh",
             "load_pins",
+            '[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ]',
             "VERIFY_TMP=$(umask 077",
             "verify_scan_self_test",
-            "local_docker image inspect",
+            "verifier_vm_docker image inspect",
         ),
         "main verifier identity and private-workspace initialization",
     )
@@ -33533,11 +33545,11 @@ def validate_main_verifier_authority_contract(sources):
     for text, label in (
         ('Mutation("shell", "--network=none", "--network=bridge"', "main verifier network mutation"),
         (
-            'Mutation("shell", \'FINAL_IMAGE_ID="$(local_docker image inspect\', \'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect\'',
+            'Mutation("shell", \'FINAL_IMAGE_ID="$(verifier_vm_docker image inspect\', \'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect\'',
             "main verifier focused Docker final inspection mutation",
         ),
         (
-            'Mutation("shell", "local_docker run --rm", "/usr/bin/docker run --rm"',
+            'Mutation("shell", "verifier_vm_docker run --rm", "/usr/bin/docker run --rm"',
             "main verifier focused Docker launcher mutation",
         ),
         ('Mutation("shell", \'--user "$run_uid:$run_gid"\'', "main verifier nonroot fixture-user mutation"),

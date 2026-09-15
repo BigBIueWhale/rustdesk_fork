@@ -66,11 +66,15 @@ SHA-256 — the hash, not a URL, is the reproducibility anchor (Microsoft re-iss
 ### Each release
 
 ```sh
-scripts/build-release.sh           # cold, all 3 platforms, each byte-identical double-build (A==B)
+# STOP-SHIP until the common no-NIC VM has the complete release input/output transport:
+scripts/build-release.sh           # VM-internal A/B transaction; a direct host invocation refuses
 scripts/publish-github-release.sh  # publish dist/ as a GitHub prerelease (--final for a full release)
 ```
 
-`build-release.sh` cleans from scratch, refuses a dirty/stale tree, pins the release commit so the whole
+`build-release.sh` is the non-root transaction run inside the authenticated no-NIC verifier VM. It refuses a
+direct orchestration-host production invocation rather than using host Docker. The outer full-release transport
+is not implemented yet, so no current release should be attempted or claimed. Once that transport is present,
+the transaction cleans from scratch, refuses a dirty/stale tree, pins the release commit so the whole
 set is **coherent** (it rejects itself if `HEAD` moves mid-build), and writes the authoritative manifest
 `dist/SHA256SUMS`. It emits four artifacts:
 

@@ -294,7 +294,7 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh verify-release.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
+for verify_source in verify.sh verify-release.sh build-release.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
@@ -335,6 +335,7 @@ done
     || fail 'installed-systemd lifecycle script metadata differs'
 # shellcheck source=/dev/null
 source "$VERIFY_REPO/scripts/pins.env"
+readonly RELEASE_PARENT_SCRIPT="$VERIFY_REPO/scripts/build-release.sh"
 [ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
     || fail 'main verifier and guest probe use different entry-preflight paths'
 entry_source_metadata="$(stat -c '%F:%u:%g:%a:%h' -- \
@@ -512,6 +513,64 @@ verify workspace self-test: OK"
     || fail "main verifier entry result differs: $main_entry_output"
 printf '%s\n' "$main_entry_output"
 printf 'VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 foreign=refused nofile=524544 workspace_cleanup=joined\n'
+
+# build-release.sh deliberately resolves the invoking principal through the
+# guest's passwd database before it closes its environment.  Give both test
+# principals real, isolated guest identities so UID 4000 exercises the admitted
+# path and UID 4001 reaches the VM channel-authority rejection.
+for principal in 4000 4001; do
+    ! getent passwd "$principal" >/dev/null \
+        || fail "release-parent fixture UID $principal already exists"
+    ! getent group "$principal" >/dev/null \
+        || fail "release-parent fixture GID $principal already exists"
+    /usr/sbin/groupadd --gid "$principal" "rustdesk-verifier-$principal" \
+        || fail "cannot create release-parent fixture GID $principal"
+    /usr/sbin/useradd --uid "$principal" --gid "$principal" \
+        --home-dir "/home/rustdesk-verifier-$principal" --no-create-home \
+        --shell /usr/sbin/nologin "rustdesk-verifier-$principal" \
+        || fail "cannot create release-parent fixture UID $principal"
+    install -d -m 0700 -o "$principal" -g "$principal" \
+        "/home/rustdesk-verifier-$principal" \
+        || fail "cannot create release-parent fixture home for UID $principal"
+    [ "$(getent passwd "$principal" | awk -F: '{ print $3 ":" $4 ":" $6 }')" = \
+      "$principal:$principal:/home/rustdesk-verifier-$principal" ] \
+        || fail "release-parent fixture identity $principal differs"
+done
+
+if /bin/bash "$RELEASE_PARENT_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-release-parent.out" 2>"$ROOT/root-release-parent.err"; then
+    fail 'VM root passed the release-parent entry'
+fi
+[ ! -s "$ROOT/root-release-parent.out" ] \
+    || fail 'root release-parent refusal produced standard output'
+[ "$(<"$ROOT/root-release-parent.err")" = \
+  'build-release: refuses host or container-root release authority' ] \
+    || fail 'root release-parent refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$RELEASE_PARENT_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-release-parent.out" 2>"$ROOT/foreign-release-parent.err"; then
+    fail 'foreign numeric principal passed the release-parent entry'
+fi
+[ ! -s "$ROOT/foreign-release-parent.out" ] \
+    || fail 'foreign release-parent refusal produced standard output'
+foreign_release_parent_error="$(<"$ROOT/foreign-release-parent.err")"
+if [ "$foreign_release_parent_error" != \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-release-parent.err")" -le 4096 ] \
+        || fail 'foreign release-parent refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign release-parent diagnostic was %q\n' \
+        "$foreign_release_parent_error" >&2
+    fail 'foreign release-parent refusal diagnostic differs'
+fi
+release_parent_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$RELEASE_PARENT_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot release-parent verifier-VM entry failed'
+[ "$release_parent_output" = \
+  'RELEASE_PARENT_VM_AUTHORITY=pass uid=4000 gid=4000 network=none channel=guest-unix parent_docker=absent cleanup=descriptor-bound children=vm-only' ] \
+    || fail "release-parent verifier-VM entry result differs: $release_parent_output"
+printf '%s\n' "$release_parent_output"
+printf 'VERIFIER_VM_RELEASE_PARENT_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused parent_docker=absent cleanup=descriptor-bound children=vm-only\n'
 
 if setpriv --reuid=4001 --regid=4001 --clear-groups \
     /bin/bash "$FRB_SCRIPT" --self-test-vm-authority \

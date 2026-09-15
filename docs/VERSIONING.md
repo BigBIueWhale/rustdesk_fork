@@ -47,9 +47,12 @@ indistinguishable — so they are separate, and `FORK_VERSION` is the one you bu
 7. **Push the exact clean `HEAD`.** Use `git push origin HEAD:master`. The build reads live `refs/heads/master` from `origin`
    and requires that full commit ID to equal the pinned local `HEAD` before
    and after verification and target builds.
-8. **Run the full cold build.** Execute `./scripts/build-release.sh`. Its entrypoint starts from an empty
-   environment, binds Docker to the local Unix socket, and supplies each child through an `env -i`
-   allowlist. It creates two independent `--no-hardlinks --reject-shallow`, mode-0700 private repositories, removes their remotes,
+8. **Run the full cold build only through the completed no-NIC VM launcher.** The checked-in
+   `./scripts/build-release.sh` is now the verifier-VM-internal transaction and deliberately refuses a direct
+   orchestration-host production invocation. The complete source/online/image/signing/Windows-golden input and
+   bounded artifact-return transport is still STOP-SHIP work; until it exists, do not attempt or claim a release.
+   The transaction starts from an empty environment, has no parent Docker calls, and supplies each child through
+   an `env -i` allowlist. It creates two independent `--no-hardlinks --reject-shallow`, mode-0700 private repositories, removes their remotes,
    and checks out the exact commit detached. Debian, Android, and Windows each run once in each repository with
    independent target, Flutter, generated, output, and Windows state.
    Each pass owns the `outputs/` parent but leaves its three target leaves absent. Debian and Android create their

@@ -9861,16 +9861,16 @@ else
   echo "  ok  R-S11e-130 installed-Debian lifecycle dependency staging exists only inside the common no-NIC verifier VM; VM-root Docker admits one bounded numeric-nonroot profile and is joined before installed RustDesk starts"
 fi
 
-echo "== (3b-iii-h2m2) release-parent fixed Docker authority (R-S11dm/R-S11e-131) =="
+echo "== (3b-iii-h2m2) Docker-free release-parent authority (R-S11dm/R-S11e-131) =="
 r_s11dm=
-if ! python3 scripts/verify-release-parent-docker-authority.py --repo . --self-test; then
-  r_s11dm="$r_s11dm authority-or-mutation-self-test-failed"
+if ! python3 -I -S scripts/verify-release-parent-authority.py --repo .; then
+  r_s11dm="$r_s11dm authority-invariant-failed"
 fi
 if [ -n "$r_s11dm" ]; then
-  echo "  FAIL R-S11dm release-parent Docker authority:$r_s11dm"
+  echo "  FAIL R-S11dm release-parent authority:$r_s11dm"
   rc=1
 else
-  echo "  ok  R-S11e-131 release parent owns one exact fixed local Docker authority without sharing it with children, routes every writable bind as the invoking numeric non-root principal with no added capabilities, and retires authority without an ambient fallback"
+  echo "  ok  R-S11e-131 release parent has no Docker authority, passes only pinned content IDs to VM-only children, and normalizes/removes only its exact current-user tree through retained descriptors"
 fi
 
 echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="

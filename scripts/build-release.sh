@@ -54,6 +54,17 @@ bootstrap_closed_environment "$@"
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RELEASE_VM_REQUIRED=0
+case "$#:${1:-}" in
+    0:|1:--self-test-vm-authority) RELEASE_VM_REQUIRED=1 ;;
+esac
+if [ "$RELEASE_VM_REQUIRED" -eq 1 ]; then
+    readonly VERIFIER_VM_ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
+    [ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+        && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+        || { printf 'build-release: production requires the verifier-VM entry preflight\n' >&2; exit 1; }
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null
+fi
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 # shellcheck source=scripts/fork-version.sh
@@ -71,6 +82,7 @@ SELF_TEST=0
 SELF_TEST_RESET=0
 SELF_TEST_CLEANUP_MISSING=0
 SELF_TEST_SOURCE_STATE=0
+SELF_TEST_VM_AUTHORITY=0
 EXPECTED_SOURCE_COMMIT=""
 for argument in "$@"; do
     case "$argument" in
@@ -78,15 +90,16 @@ for argument in "$@"; do
         --self-test) SELF_TEST=1 ;;
         --self-test-reset) SELF_TEST_RESET=1 ;;
         --self-test-cleanup-missing) SELF_TEST_CLEANUP_MISSING=1 ;;
+        --self-test-vm-authority) SELF_TEST_VM_AUTHORITY=1 ;;
         --self-test-source-state=*)
             SELF_TEST_SOURCE_STATE=1
             EXPECTED_SOURCE_COMMIT="${argument#*=}"
             ;;
-        -h|--help) printf 'usage: %s [--doctor|--self-test|--self-test-reset|--self-test-cleanup-missing|--self-test-source-state=COMMIT]\n' "${0##*/}"; exit 0 ;;
+        -h|--help) printf 'usage: %s [--doctor|--self-test|--self-test-reset|--self-test-cleanup-missing|--self-test-source-state=COMMIT|--self-test-vm-authority]\n' "${0##*/}"; exit 0 ;;
         *) die "unknown argument '$argument'" ;;
     esac
 done
-[ "$((DOCTOR + SELF_TEST + SELF_TEST_RESET + SELF_TEST_CLEANUP_MISSING + SELF_TEST_SOURCE_STATE))" -le 1 ] \
+[ "$((DOCTOR + SELF_TEST + SELF_TEST_RESET + SELF_TEST_CLEANUP_MISSING + SELF_TEST_SOURCE_STATE + SELF_TEST_VM_AUTHORITY))" -le 1 ] \
     || die "build-release operating modes are mutually exclusive"
 if [ "$SELF_TEST_SOURCE_STATE" -eq 1 ]; then
     [[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -111,8 +124,6 @@ PINNED_HEAD_SHORT=""
 FORK_VER=""
 WORKSPACE=""
 WORKSPACE_ID=""
-DOCKER_AUTHORITY_ROOT=""
-DOCKER_AUTHORITY_ROOT_ID=""
 PRIVATE_TREE_CLOSURE_PROBE=""
 PRIVATE_TREE_CLOSURE_HASH=""
 PRIVATE_TREE_CLOSURE_FD=""
@@ -280,16 +291,17 @@ for directory in (paths[0].parent, paths[0].parent.parent):
 PY
 }
 
-verify_release_builder_image() {
-    local role="$1" image_id="$2"
-    require_pinned_builder_image "$role" "$image_id" \
-        || die "release preflight rejected the pinned $role image"
-}
-
-verify_all_release_builder_images() {
-    verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"
-    verify_release_builder_image android-builder "$ANDROID_IMAGE_ID"
-    verify_release_builder_image win-helper "$WINDOWS_IMAGE_ID"
+assert_release_builder_image_ids() {
+    local role image_id
+    for role in debian android windows; do
+        case "$role" in
+            debian) image_id="$DEBIAN_IMAGE_ID" ;;
+            android) image_id="$ANDROID_IMAGE_ID" ;;
+            windows) image_id="$WINDOWS_IMAGE_ID" ;;
+        esac
+        [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || die "release $role builder image ID is malformed"
+    done
 }
 
 acquire_publication_lock() {
@@ -360,18 +372,6 @@ create_workspace() {
             || die "cannot read final release publisher from the pinned commit"
         [ "$publisher_private_hash" = "$commit_hash" ] \
             || die "final release publisher differs from the pinned commit"
-    fi
-    if [ "$SELF_TEST" -eq 0 ] && [ "$SELF_TEST_CLEANUP_MISSING" -eq 0 ]; then
-        DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d /tmp/rustdesk-release-docker.XXXXXXXXXX)" \
-            || die "cannot create private release Docker authority root"
-        chmod 0700 "$DOCKER_AUTHORITY_ROOT"
-        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$DOCKER_AUTHORITY_ROOT")" = \
-          "$(/usr/bin/id -u):$(/usr/bin/id -g):700" ] \
-            || die "release Docker authority root is not current-user/current-group mode 0700"
-        DOCKER_AUTHORITY_ROOT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$DOCKER_AUTHORITY_ROOT")" \
-            || die "cannot record release Docker authority root identity"
-        initialize_local_docker_authority \
-            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"
     fi
     VERIFIER_VM_RUN_ROOT="$WORKSPACE/verifier-vm-runs"
     install -d -m 0700 "$VERIFIER_VM_RUN_ROOT"
@@ -444,7 +444,7 @@ recorded_private_tree_identity() {
     esac
 }
 
-offline_normalize_owned_tree_modes() {
+normalize_owned_tree_modes() {
     local path="$1" expected_identity="$2" role="$3" resolved observed uid gid
     uid="$(id -u)"
     gid="$(id -g)"
@@ -464,24 +464,9 @@ offline_normalize_owned_tree_modes() {
         warn "$role contains a mount boundary: $path"
         return 1
     fi
-    [ -n "$DEBIAN_IMAGE_ID" ] \
-        || { warn "$role cannot be normalized without the pinned Debian image ID"; return 1; }
-    if ! (verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"); then
-        warn "$role normalization image failed provenance verification"
-        return 1
-    fi
-    if ! (
-        local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \
-            --cap-drop=ALL \
-            --security-opt no-new-privileges \
-            --ulimit nofile=524544:524544 \
-            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \
-            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
-            "$PRIVATE_TREE_CLOSURE_HASH" \
-            --normalize-owned-root /cleanup --expected-identity "$expected_identity" \
-            < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
-    ); then
-        warn "$role offline owner-only mode normalization failed: $path"
+    if ! run_private_tree_closure_from_descriptor \
+        --normalize-owned-root "$path" --expected-identity "$expected_identity"; then
+        warn "$role descriptor-bound owner-only mode normalization failed: $path"
         return 1
     fi
     observed="$(stat -c '%d:%i:%u:%g:%a' -- "$path" 2>/dev/null)" \
@@ -495,18 +480,8 @@ offline_normalize_owned_tree_modes() {
 }
 
 verify_private_tree_authority_capacity() {
-    local uid gid
-    uid="$(id -u)"
-    gid="$(id -g)"
     run_private_tree_closure_from_descriptor --check-descriptor-budget \
         || { warn "release preflight cannot establish the host retained-authority budget"; return 1; }
-    local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \
-        --cap-drop=ALL --security-opt no-new-privileges \
-        --ulimit nofile=524544:524544 \
-        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
-        "$PRIVATE_TREE_CLOSURE_HASH" --check-exact-descriptor-budget \
-        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD" \
-        || { warn "release preflight cannot establish the exact container retained-authority budget"; return 1; }
 }
 
 acquire_private_tree_closure_execution() {
@@ -539,7 +514,7 @@ run_private_tree_closure_from_descriptor() {
         "$PRIVATE_TREE_CLOSURE_HASH" "$@" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
 }
 
-offline_remove_owned_tree_contents() {
+remove_owned_tree_contents() {
     local path="$1" expected_identity="$2" role="$3" resolved observed uid gid
     uid="$(id -u)"
     gid="$(id -g)"
@@ -557,21 +532,8 @@ offline_remove_owned_tree_contents() {
         || { warn "$role root authority differs: $path"; return 1; }
     run_private_tree_closure_from_descriptor --mount-root "$path" \
         || { warn "$role contains a mount boundary: $path"; return 1; }
-    [ -n "$DEBIAN_IMAGE_ID" ] \
-        || { warn "$role cannot be removed without the pinned Debian image ID"; return 1; }
-    if ! (verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"); then
-        warn "$role removal image failed provenance verification"
-        return 1
-    fi
-    if ! local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \
-        --cap-drop=ALL \
-        --security-opt no-new-privileges \
-        --ulimit nofile=524544:524544 \
-        --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \
-        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
-        "$PRIVATE_TREE_CLOSURE_HASH" \
-        --remove-owned-tree-contents /cleanup --expected-identity "$expected_identity" \
-        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"; then
+    if ! run_private_tree_closure_from_descriptor \
+        --remove-owned-tree-contents "$path" --expected-identity "$expected_identity"; then
         warn "$role descriptor-bound content removal failed: $path"
         return 1
     fi
@@ -589,25 +551,15 @@ verify_private_tree_owner_removal() {
     install -d -m 1700 "$fixture/sticky" || return 1
     printf 'sticky-owner\n' > "$fixture/sticky/user-entry" || return 1
     fixture_id="$(stat -c '%d:%i' -- "$fixture")" || return 1
-    if ! local_docker run --rm --pull=never --network=none --read-only --user "$uid:$gid" \
-        --cap-drop=ALL \
-        --security-opt no-new-privileges \
-        --ulimit nofile=524544:524544 \
-        --mount "type=bind,src=$fixture,dst=/capability,bind-recursive=disabled" \
-        "$DEBIAN_IMAGE_ID" /bin/sh -ceu '
-            printf owner > /capability/owner-entry
-            chmod 0000 /capability/owner-entry
-            mkdir /capability/locked
-            printf owner > /capability/locked/owner-entry
-            chmod 0500 /capability/locked
-        '; then
-        warn "release preflight cannot prepare the exact owner-only terminal-removal fixture"
-        return 1
-    fi
+    printf owner > "$fixture/owner-entry" || return 1
+    chmod 0000 "$fixture/owner-entry" || return 1
+    mkdir "$fixture/locked" || return 1
+    printf owner > "$fixture/locked/owner-entry" || return 1
+    chmod 0500 "$fixture/locked" || return 1
     observed="$(stat -c '%u:%g:%a' -- "$fixture/owner-entry" 2>/dev/null)" || return 1
     [ "$observed" = "$uid:$gid:0" ] \
         || { warn "release preflight terminal-removal fixture lacks owner-only mode-0000 state"; return 1; }
-    offline_remove_owned_tree_contents "$fixture" "$fixture_id" \
+    remove_owned_tree_contents "$fixture" "$fixture_id" \
         "owner-only terminal-removal preflight" || return 1
     run_private_tree_closure_from_descriptor --remove-empty-private-root "$fixture" \
         --expected-identity "$fixture_id" || return 1
@@ -633,7 +585,7 @@ normalize_snapshot_access() {
     esac
     expected="$(recorded_private_tree_identity "$source")" \
         || die "$phase: snapshot identity is unavailable"
-    offline_normalize_owned_tree_modes "$source" "$expected" "$phase snapshot" \
+    normalize_owned_tree_modes "$source" "$expected" "$phase snapshot" \
         || die "$phase: cannot normalize generated snapshot ownership/access"
     [ "$(stat -c '%d:%i:%u:%g:%a' "$source")" = \
       "$expected:$(id -u):$(id -g):700" ] \
@@ -646,7 +598,6 @@ cleanup_release_workspace() {
     trap '' HUP INT TERM
     if [ "$WINDOWS_UNSAFE" -eq 1 ] || [ "$KEEP_WORKSPACE" -eq 1 ]; then
         printf 'build-release: preserving private workspace for Windows reconciliation: %s\n' "$WORKSPACE" >&2
-        retire_release_docker_authority || status=1
         exit "$status"
     fi
     if [ "$FINAL_PUBLICATION_RECONCILIATION" -eq 1 ]; then
@@ -666,15 +617,8 @@ cleanup_release_workspace() {
         [ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1
         if [ "$FIXTURE_MODE" -eq 0 ] && [ "$workspace_state" = valid ] \
             && [ "$cleanup_failed" -eq 0 ]; then
-            if [ -n "$DEBIAN_IMAGE_ID" ] \
-                && [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
-                offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \
-                    "release workspace" || cleanup_failed=1
-            else
-                printf 'build-release: production cleanup lacks exact terminal-removal image/Docker authority; retained path: %s\n' \
-                    "$WORKSPACE" >&2
-                cleanup_failed=1
-            fi
+            remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \
+                "release workspace" || cleanup_failed=1
         fi
         if [ "$workspace_state" = valid ] && [ "$cleanup_failed" -eq 0 ]; then
             if [ "$FIXTURE_MODE" -eq 0 ]; then
@@ -701,28 +645,12 @@ cleanup_release_workspace() {
                 "$workspace_state" "$WORKSPACE" >&2
         fi
     fi
-    retire_release_docker_authority || cleanup_failed=1
     if [ "$cleanup_failed" -ne 0 ]; then
         [ "$status" -ne 0 ] || status=1
     elif [ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]; then
         log "$RELEASE_SUCCESS_MESSAGE"
     fi
     exit "$status"
-}
-
-retire_release_docker_authority() {
-    local observed
-    [ -n "$DOCKER_AUTHORITY_ROOT" ] || return 0
-    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-        || { warn "release parent Docker authority state was lost; retained path: $DOCKER_AUTHORITY_ROOT"; return 125; }
-    remove_local_docker_authority || return 125
-    observed="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$DOCKER_AUTHORITY_ROOT" 2>/dev/null)" \
-        || { warn "release Docker authority root disappeared before exact removal"; return 125; }
-    [ "$observed" = "$DOCKER_AUTHORITY_ROOT_ID" ] \
-        || { warn "release Docker authority root identity changed; retained path: $DOCKER_AUTHORITY_ROOT"; return 125; }
-    /usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT" || return 125
-    DOCKER_AUTHORITY_ROOT=""
-    DOCKER_AUTHORITY_ROOT_ID=""
 }
 
 release_preflight() {
@@ -763,11 +691,10 @@ release_preflight() {
         && [ "$(stat -c '%u:%g:%a' -- "$HOST_VERIFIER_VM_INPUT_ROOT")" = \
              "$(id -u):$(id -g):700" ] \
         || die "release verifier-VM input root is not private and canonical"
-    local_docker version >/dev/null || die "local Docker daemon is unavailable"
     DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
     ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
     WINDOWS_IMAGE_ID="${WIN_HELPER_IMAGE_ID:-}"
-    verify_all_release_builder_images
+    assert_release_builder_image_ids
     verify_private_tree_cleanup_preflight \
         || die "release preflight cannot establish the complete terminal cleanup authority"
     create_release_online_snapshot
@@ -958,7 +885,6 @@ build_snapshot() {
         invoke_target "$label" "$target" "$source" "$output/$target" "$set_dir"
         if [ "$FIXTURE_MODE" -eq 0 ]; then
             reset_snapshot_build_state "$source" "$label after $target"
-            verify_all_release_builder_images
         fi
     done
 }
@@ -1162,7 +1088,6 @@ write_fixture_target() {
         else
             printf '[ -z "${HARNESS_STATE_DIR+x}" ]\n'
         fi
-        printf 'docker fixture-probe >/dev/null\n'
         if [ "$target" = windows ]; then
             printf 'OUT_DIR="$(mktemp -d "$(dirname "$fixture_output")/.windows-publish.XXXXXXXX")"\n'
         else
@@ -1213,10 +1138,6 @@ run_reset_self_test() {
     [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" = "$PINNED_HEAD" ] \
         || die "reset self-test private Git authority is not at the exact source commit"
     assert_git_object_authority
-    DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
-    [ -n "$DEBIAN_IMAGE_ID" ] || die "reset self-test has no pinned Debian image ID"
-    local_docker version >/dev/null || die "reset self-test cannot reach the local Docker daemon"
-    verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"
     verify_private_tree_cleanup_preflight \
         || die "reset self-test cannot establish the complete terminal cleanup authority"
     SOURCE_A="$WORKSPACE/pass-A/source"
@@ -1232,7 +1153,7 @@ run_reset_self_test() {
     ln "$sentinel" "$SOURCE_A/target/reset-hardlink/external-hardlink"
     source_identity="$(recorded_private_tree_identity "$SOURCE_A")" \
         || die "reset self-test cannot resolve snapshot identity"
-    if offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"; then
+    if normalize_owned_tree_modes "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"; then
         die "reset self-test accepted an inode linked outside the snapshot"
     fi
     [ "$(stat -c '%d:%i:%u:%g:%a' "$sentinel"):$(sha256sum "$sentinel" | awk '{print $1}')" = "$sentinel_proof" ] \
@@ -1240,22 +1161,20 @@ run_reset_self_test() {
     rm -rf -- "$SOURCE_A/target"
     assert_snapshot_exact "$SOURCE_A" "external-hardlink rejection fixture"
     if ! (
-        local_docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g)" \
-            --cap-drop=ALL \
-            --security-opt no-new-privileges \
-            --mount "type=bind,src=$SOURCE_A,dst=/fixture,bind-recursive=disabled" \
-            "$DEBIAN_IMAGE_ID" /bin/sh -ceu '
-                /bin/mkdir -p /fixture/target/reset-proof/locked /fixture/flutter/.dart_tool/reset-proof/locked
-                printf target > /fixture/target/reset-proof/locked/marker
-                printf flutter > /fixture/flutter/.dart_tool/reset-proof/locked/marker
-                printf internal > /fixture/target/reset-proof/internal-a
-                /bin/ln /fixture/target/reset-proof/internal-a /fixture/target/reset-proof/internal-b
-                printf special > /fixture/target/reset-proof/special-mode
-                /bin/chmod 6755 /fixture/target/reset-proof/special-mode
-                /bin/ln -s "$1" /fixture/target/reset-proof/external-link
-                /bin/chmod 0000 /fixture/target/reset-proof/locked/marker /fixture/flutter/.dart_tool/reset-proof/locked/marker
-                /bin/chmod 0500 /fixture/target/reset-proof/locked /fixture/flutter/.dart_tool/reset-proof/locked
-            ' _ "$sentinel"
+        mkdir -p "$SOURCE_A/target/reset-proof/locked" \
+            "$SOURCE_A/flutter/.dart_tool/reset-proof/locked"
+        printf target > "$SOURCE_A/target/reset-proof/locked/marker"
+        printf flutter > "$SOURCE_A/flutter/.dart_tool/reset-proof/locked/marker"
+        printf internal > "$SOURCE_A/target/reset-proof/locked/internal-a"
+        ln "$SOURCE_A/target/reset-proof/locked/internal-a" \
+            "$SOURCE_A/target/reset-proof/locked/internal-b"
+        printf special > "$SOURCE_A/target/reset-proof/locked/special-mode"
+        chmod 6755 "$SOURCE_A/target/reset-proof/locked/special-mode"
+        ln -s "$sentinel" "$SOURCE_A/target/reset-proof/locked/external-link"
+        chmod 0000 "$SOURCE_A/target/reset-proof/locked/marker" \
+            "$SOURCE_A/flutter/.dart_tool/reset-proof/locked/marker"
+        chmod 0500 "$SOURCE_A/target/reset-proof/locked" \
+            "$SOURCE_A/flutter/.dart_tool/reset-proof/locked"
     ); then
         die "reset self-test could not create current-owner hostile generated state"
     fi
@@ -1287,12 +1206,12 @@ PY
     [ -d "$SOURCE_A/flutter/.dart_tool/reset-proof/locked" ] \
         || die "reset self-test negative control did not preserve the hostile Flutter directory"
 
-    offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity" \
+    normalize_owned_tree_modes "$SOURCE_A" "$source_identity" \
         "retained-authority normalization transition fixture" \
         || die "reset self-test could not normalize hostile generated state"
     /usr/bin/python3 - "$SOURCE_A" "$hostile_dir" \
         "$SOURCE_A/flutter/.dart_tool/reset-proof/locked" \
-        "$SOURCE_A/target/reset-proof/special-mode" "$(id -u)" "$(id -g)" <<'PY'
+        "$hostile_dir/special-mode" "$(id -u)" "$(id -g)" <<'PY'
 import os
 import stat
 import sys
@@ -1843,7 +1762,7 @@ PY
 }
 
 run_self_test() {
-    local fixture_bin fixture_repo final_fixture expected_lines
+    local fixture_repo final_fixture expected_lines
     FIXTURE_MODE=1
     FORK_VER=1.4.7-hardened.6
     create_workspace
@@ -1860,16 +1779,9 @@ run_self_test() {
     PINNED_HEAD="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
         || die "release self-test cannot resolve its private Git commit"
     PINNED_HEAD_SHORT="${PINNED_HEAD:0:12}"
-    fixture_bin="$WORKSPACE/bin"
-    install -d -m 0700 "$fixture_bin"
     FIXTURE_LOG="$WORKSPACE/invocations.log"
     : > "$FIXTURE_LOG"
-    {
-        printf '#!/usr/bin/env bash\n'
-        printf '[ "$1" = fixture-probe ]\n'
-    } > "$fixture_bin/docker"
-    chmod 0700 "$fixture_bin/docker"
-    CHILD_PATH="$fixture_bin:$SAFE_PATH"
+    CHILD_PATH="$SAFE_PATH"
     ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"
     HOST_KEYSTORE="$WORKSPACE/key.jks"
     HOST_KEYSTORE_PASS_FILE="$WORKSPACE/pass"
@@ -1966,6 +1878,11 @@ run_self_test() {
 }
 
 main() {
+    if [ "$SELF_TEST_VM_AUTHORITY" -eq 1 ]; then
+        printf 'RELEASE_PARENT_VM_AUTHORITY=pass uid=%s gid=%s network=none channel=guest-unix parent_docker=absent cleanup=descriptor-bound children=vm-only\n' \
+            "$(/usr/bin/id -u)" "$(/usr/bin/id -g)"
+        return 0
+    fi
     if [ "$SELF_TEST" -eq 1 ]; then
         run_self_test
         return 0

@@ -947,191 +947,66 @@ def validate_verify_workspace(source):
 
 
 def validate_build_release(source):
-    normalizer = extract_between(
-        source,
-        "offline_normalize_owned_tree_modes() {",
-        "\n}\n\nverify_private_tree_authority_capacity() {",
-        "private-tree normalizer",
-    )
-    capacity_check = extract_between(
-        source,
-        "verify_private_tree_authority_capacity() {",
-        "\n}\n\nacquire_private_tree_closure_execution() {",
-        "retained-authority capacity preflight",
-    )
-    execution_authority = extract_between(
-        source,
-        "acquire_private_tree_closure_execution() {",
-        "\n}\n\nclose_private_tree_closure_execution() {",
-        "private-tree helper execution authority",
-    )
-    execution_close = extract_between(
-        source,
-        "close_private_tree_closure_execution() {",
-        "\n}\n\nrun_private_tree_closure_from_descriptor() {",
-        "private-tree helper execution-authority close",
-    )
-    descriptor_executor = extract_between(
-        source,
-        "run_private_tree_closure_from_descriptor() {",
-        "\n}\n\noffline_remove_owned_tree_contents() {",
-        "private-tree descriptor executor",
-    )
-    tree_remover = extract_between(
-        source,
-        "offline_remove_owned_tree_contents() {",
-        "\n}\n\nverify_private_tree_owner_removal() {",
-        "private-tree terminal remover",
-    )
-    removal_capability = extract_between(
-        source,
-        "verify_private_tree_owner_removal() {",
-        "\n}\n\nverify_private_tree_cleanup_preflight() {",
-        "private-tree removal-capability preflight",
-    )
-    cleanup_preflight = extract_between(
-        source,
-        "verify_private_tree_cleanup_preflight() {",
-        "\n}\n\nnormalize_snapshot_access() {",
-        "complete private-tree cleanup preflight",
-    )
-    snapshot_normalizer = extract_between(
-        source,
-        "normalize_snapshot_access() {",
-        "\n}\n\ncleanup_release_workspace() {",
-        "snapshot normalizer",
-    )
-    cleanup = extract_between(
-        source,
-        "cleanup_release_workspace() {",
-        "\n}\n\nretire_release_docker_authority() {",
-        "release cleanup",
-    )
-    docker_retirement = extract_between(
-        source,
-        "retire_release_docker_authority() {",
-        "\n}\n\nrelease_preflight() {",
-        "release Docker-authority retirement",
-    )
-    create_snapshot = extract_between(
-        source,
-        "create_snapshot() {",
-        "\n}\n\nreset_snapshot_build_state() {",
-        "release snapshot creation",
-    )
-    reset = extract_between(
-        source,
-        "reset_snapshot_build_state() {",
-        "\n}\n\nrun_child() {",
-        "generated-state reset",
-    )
-    verification = extract_between(
-        source,
-        "run_verification() {",
-        "\n}\n\ncopy_artifact() {",
-        "release verification consumer",
-    )
-    target_invocation = extract_between(
-        source,
-        "invoke_target() {",
-        "\n}\n\nbuild_snapshot() {",
-        "release target invocation",
-    )
-    build_snapshot = extract_between(
-        source,
-        "build_snapshot() {",
-        "\n}\n\nassert_exact_set() {",
-        "snapshot build loop",
-    )
-    artifact_lifecycle = extract_between(
-        source,
-        "run_final_debian_artifact_lifecycle() {",
-        "\n}\n\nwrite_manifest() {",
-        "final Debian artifact lifecycle",
-    )
-    fixture_target = extract_between(
-        source,
-        "write_fixture_target() {",
-        "\n}\n\nwrite_fixture_debian_artifact_lifecycle() {",
-        "release target fixture writer",
-    )
-    fixture_artifact_lifecycle = extract_between(
-        source,
-        "write_fixture_debian_artifact_lifecycle() {",
-        "\n}\n\nrun_reset_self_test() {",
-        "release Debian artifact lifecycle fixture writer",
-    )
-    reset_self_test = extract_between(
-        source,
-        "run_reset_self_test() {",
-        "\n}\n\nrun_self_test() {",
-        "owner-only reset self-test",
-    )
-    publication_self_test = extract_between(
-        source,
-        "run_publication_reconciliation_self_test() {",
-        "\n}\n\nrun_self_test() {",
-        "publication reconciliation self-test",
-    )
-    transaction_self_test = extract_between(
-        source,
-        "run_self_test() {",
-        "\n}\n\nmain() {",
-        "release transaction self-test",
-    )
     create_workspace = extract_between(
         source,
         "create_workspace() {",
         "\n}\n\nassert_release_online_snapshot() {",
         "release workspace creation",
     )
-    publication_tool = extract_between(
+    normalizer = extract_between(
         source,
-        "publication_tool() {",
-        "\n}\n\nprove_published_dist() {",
-        "final release publisher dispatch",
+        "normalize_owned_tree_modes() {",
+        "\n}\n\nverify_private_tree_authority_capacity() {",
+        "release tree normalizer",
     )
-    published_proof = extract_between(
+    remover = extract_between(
         source,
-        "prove_published_dist() {",
-        "\n}\n\nrecover_pending_publications() {",
-        "published release-set proof dispatch",
+        "remove_owned_tree_contents() {",
+        "\n}\n\nverify_private_tree_owner_removal() {",
+        "release tree remover",
     )
-    reconciliation = extract_between(
+    reset = extract_between(
         source,
-        "reconcile_final_publication() {",
-        "\n}\n\natomic_install_dist() {",
-        "publication reconciliation",
+        "reset_snapshot_build_state() {",
+        "\n}\n\nrun_child() {",
+        "release snapshot reset",
     )
-    recovery = extract_between(
+    child = extract_between(
         source,
-        "recover_pending_publications() {",
-        "\n}\n\nreconcile_final_publication() {",
-        "restartable publication recovery",
+        "run_child() {",
+        "\n}\n\nrun_verification() {",
+        "release child launcher",
     )
-    atomic_install = extract_between(
+    target = extract_between(
         source,
-        "atomic_install_dist() {",
-        "\n}\n\nprepare_release_snapshots() {",
-        "atomic final-dist installation",
+        "invoke_target() {",
+        "\n}\n\nbuild_snapshot() {",
+        "release target dispatch",
+    )
+    build_snapshot = extract_between(
+        source,
+        "build_snapshot() {",
+        "\n}\n\nassert_exact_set() {",
+        "release snapshot build loop",
+    )
+    lifecycle = extract_between(
+        source,
+        "run_final_debian_artifact_lifecycle() {",
+        "\n}\n\nwrite_manifest() {",
+        "final Debian artifact lifecycle",
+    )
+    cleanup = extract_between(
+        source,
+        "cleanup_release_workspace() {",
+        "\n}\n\nrelease_preflight() {",
+        "release cleanup",
     )
     main = extract_between(source, "main() {", "\n}\n\nmain\n", "release main transaction")
-    normalization_command = extract_between(
-        normalizer,
-        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\',
-        "\n    ); then",
-        "descriptor-bound private-tree normalizer",
-    )
-    removal_command = extract_between(
-        tree_remover,
-        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\',
-        "; then",
-        "descriptor-bound private-tree terminal remover",
-    )
+
     require_text(
         source,
         "#!/usr/bin/env -S -i /usr/bin/bash --noprofile --norc",
-        "release empty-environment entrypoint",
+        "release closed-environment entrypoint",
     )
     require_order(
         source,
@@ -1141,171 +1016,132 @@ def validate_build_release(source):
             'gid="$(/usr/bin/id -g)"',
             '[ "$uid" -ne 0 ]',
             '[ "$gid" -ne 0 ]',
-            'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
             'source "$SCRIPT_DIR/lib.sh"',
             "load_pins",
         ),
-        "release pre-source root refusal",
+        "release pre-source principal refusal",
     )
-    require_text(source, 'readonly FINAL_OUT_DIR="$REPO_ROOT/dist"', "non-overridable final dist")
-    if "readonly RELEASE_SRC_COMMIT ANDROID_KEY_ALIAS OUT_DIR" in source:
-        raise VerificationError("fatal readonly OUT_DIR assignment remains")
     for variable in (
         "BASH_ENV",
         "PYTHONPATH",
-        "HARNESS_PREFIX",
         "GIT_*",
         "DOCKER_*",
+        "BUILDKIT_*",
+        "COMPOSE_*",
         "SOURCE_DATE_EPOCH",
-        "DOUBLE_BUILD",
         "OUT_DIR",
         "WINDOWS_*",
         "RELEASE_*",
     ):
         require_text(source, variable, f"closed inherited environment {variable}")
-    require_text(
-        source,
-        "run_child() {\n    /usr/bin/env -i",
-        "child environment allowlist",
+    for forbidden in (
+        "/var/run/docker.sock",
+        "local_docker",
+        "initialize_local_docker_authority",
+        "require_pinned_builder_image",
+        "DOCKER_AUTHORITY_ROOT",
+        "docker run",
+        "--cap-add",
+        "fixture-probe",
+    ):
+        if forbidden in source:
+            raise VerificationError(
+                f"release parent retains Docker authority or its synthetic fixture: {forbidden}"
+            )
+
+    require_order(
+        create_workspace,
+        (
+            "trap cleanup_release_workspace EXIT",
+            "mktemp -d /tmp/rustdesk-release.",
+            'chmod 0700 "$WORKSPACE"',
+            'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
+            '"$PINNED_HEAD:scripts/verify-private-tree-closure.py"',
+            '[ "$private_hash" = "$commit_hash" ]',
+            'install -m 0500 "$FINALIZE_RELEASE_SET_SOURCE" "$FINALIZE_RELEASE_SET_PROBE"',
+            '"$PINNED_HEAD:scripts/finalize-release-set.py"',
+            '[ "$publisher_private_hash" = "$commit_hash" ]',
+            'VERIFIER_VM_RUN_ROOT="$WORKSPACE/verifier-vm-runs"',
+            "acquire_private_tree_closure_execution",
+        ),
+        "private release workspace and committed helpers",
     )
-    require_text(
-        source,
-        'initialize_local_docker_authority \\\n'
-        '            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"',
-        "release-parent fixed local Docker authority",
+    for body, operation in (
+        (normalizer, "--normalize-owned-root"),
+        (remover, "--remove-owned-tree-contents"),
+    ):
+        require_order(
+            body,
+            (
+                '[ "$resolved" = "$path" ]',
+                '[ "$observed" = "$expected_identity:$uid:$gid:700" ]',
+                'run_private_tree_closure_from_descriptor --mount-root "$path"',
+                f'{operation} "$path" --expected-identity "$expected_identity"',
+            ),
+            f"descriptor-bound {operation}",
+        )
+        for forbidden in ("docker", "rm -rf", "chmod -R"):
+            if forbidden in body:
+                raise VerificationError(
+                    f"release {operation} retains a container/pathname fallback: {forbidden}"
+                )
+
+    require_order(
+        cleanup,
+        (
+            "reconcile_final_publication",
+            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1',
+            'remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
+            '--remove-empty-private-root "$WORKSPACE"',
+            "close_private_tree_closure_execution",
+            '[ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]',
+            'log "$RELEASE_SUCCESS_MESSAGE"',
+            'exit "$status"',
+        ),
+        "release terminal cleanup before success",
     )
+    for forbidden in ("docker", "rm -rf", "chmod -R"):
+        if forbidden in cleanup:
+            raise VerificationError(f"release cleanup retains fallback: {forbidden}")
     require_text(
-        source,
-        'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
-        '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
-        "independent private Docker-authority root",
+        cleanup,
+        "cleanup failed; recorded private workspace state is %s",
+        "release cleanup preservation diagnostic",
     )
-    require_text(source, 'VERIFIER_VM_RUN_ROOT="$WORKSPACE/verifier-vm-runs"', "private verifier-VM scratch")
-    require_text(
-        source,
-        '"$(stat -c \'%u:%a\' "$VERIFIER_VM_RUN_ROOT")" = "$(id -u):700"',
-        "private verifier-VM scratch authority",
-    )
-    require_text(source, 'ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"', "single online snapshot location")
-    require_text(
-        source,
-        "require_cmd cmp git python3 sha256sum stat readlink install find date flock /usr/bin/grep",
-        "release host-tool preflight",
-    )
-    require_text(
-        source,
-        'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
-        "release source-gate preflight",
-    )
-    require_text(
-        source,
-        'HOST_VERIFIER_VM_INPUT_ROOT="$(readlink -f -- ',
-        "canonical verifier-VM input acquisition",
-    )
+
     require_order(
         source,
         (
-            'require_cmd cmp git python3 sha256sum stat readlink install find date flock /usr/bin/grep',
             "acquire_publication_lock\n",
             "FINAL_PUBLICATION_RECONCILIATION=1",
             'recover_pending_publications "$REPO_ROOT" "$FINAL_OUT_DIR"',
             "assert_repo_state\n",
             'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
             "require_online_complete\n",
+            "assert_release_builder_image_ids",
             "verify_private_tree_cleanup_preflight",
             "create_release_online_snapshot\n",
         ),
-        "release preflight ordering",
+        "release preflight",
     )
-    if source.count('create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"') != 1:
-        raise VerificationError("release transaction must create exactly one private online snapshot")
-    if "HOST_ONLINE_DIR" in source:
-        raise VerificationError("release transaction retains the mutable canonical-online child path")
-    require_text(source, "run_snapshot_consumer() {", "online snapshot consumer wrapper")
-    require_exact_count(source, "run_snapshot_consumer ", 7, "before/after online snapshot consumption")
-    require_text(
-        source,
-        'assert_release_online_snapshot "before final dist installation"',
-        "pre-publication online snapshot proof",
-    )
-    require_text(source, "verify_all_release_builder_images", "pinned builder provenance checks")
-    require_text(source, 'require_pinned_builder_image "$role" "$image_id"', "builder image helper contract")
-    for mutable_name in (
-        "rustdesk-fork-harness-deb-builder",
-        "rustdesk-fork-harness-android-builder",
-        "rustdesk-fork-harness-win-helper",
-    ):
-        if mutable_name in source:
-            raise VerificationError(f"release transaction retains mutable image name {mutable_name}")
-    require_text(source, 'create_snapshot A "$SOURCE_A"', "snapshot A creation")
-    require_text(source, 'create_snapshot B "$SOURCE_B"', "snapshot B creation")
-    for operation in ("add", "remove", "prune"):
-        if re.search(rf"(?:^|\s)worktree\s+{operation}(?:\s|$)", source):
-            raise VerificationError(
-                f"release build retains production Git worktree {operation} authority"
-            )
-    for text, label in (
-        ('git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow', "independent complete-history snapshot clone"),
-        ('checkout --quiet --detach "$PINNED_HEAD"', "detached pinned-commit snapshot checkout"),
-        ('assert_git_object_authority "$source"', "snapshot object-authority rejection"),
-        ('run_private_tree_closure_from_descriptor --mount-root "$source"', "snapshot mount closure"),
-        ('run_private_tree_closure_from_descriptor --inode-root "$source"', "snapshot inode-link closure"),
-    ):
-        require_text(create_snapshot, text, label)
-    require_exact_count(
-        source,
-        'assert_git_object_authority "$source"',
-        2,
-        "snapshot object-authority rejection",
-    )
+    require_text(source, 'ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"', "private online snapshot")
+    require_text(source, "run_snapshot_consumer() {", "online snapshot consumer envelope")
+    require_text(source, 'HOST_VERIFIER_VM_INPUT_ROOT="$(readlink -f -- ', "VM input root")
+    require_text(source, 'readonly FINAL_OUT_DIR="$REPO_ROOT/dist"', "fixed final destination")
+
     require_order(
-        create_snapshot,
+        source,
         (
             'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
             'git_closed -C "$source" checkout --quiet --detach "$PINNED_HEAD"',
             'git_closed -C "$source" remote remove origin',
-            '[ "$common" = "$source/.git" ]',
-            'assert_git_object_authority "$source"',
             'git_closed -C "$source" fsck --full --strict --no-reflogs',
-            'chmod 0700 "$source"',
             'run_private_tree_closure_from_descriptor --mount-root "$source"',
             'run_private_tree_closure_from_descriptor --inode-root "$source"',
             'assert_snapshot_exact "$source" "snapshot $label creation"',
         ),
-        "independent release snapshot acquisition",
+        "independent source snapshot construction",
     )
-    require_text(create_snapshot, 'chmod 0700 "$source"', "private release snapshot mode")
-    for text, label in (
-        ('shallow="$common_dir/shallow"', "shallow declaration authority"),
-        ('[ ! -e "$shallow" ] && [ ! -L "$shallow" ]', "shallow control-file rejection"),
-        ('rev-parse --is-shallow-repository', "Git shallow-state query"),
-        ('rev-parse --is-shallow-repository 2>/dev/null)" = false ]', "complete Git history requirement"),
-    ):
-        require_text(source, text, label)
-    require_text(
-        reset_self_test,
-        'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo"',
-        "reset fixture complete-history Git clone",
-    )
-    require_text(
-        reset_self_test,
-        "verify_private_tree_cleanup_preflight",
-        "reset fixture complete terminal-cleanup preflight",
-    )
-    require_exact_count(
-        source,
-        "--reject-shallow",
-        2,
-        "complete-history private clone policy",
-    )
-    require_text(
-        create_snapshot,
-        '[ "$(stat -c \'%u:%a\' "$source")" = "$(id -u):700" ]',
-        "private release snapshot metadata proof",
-    )
-    require_text(reset, 'normalize_snapshot_access "$source" "$label"', "snapshot-scoped ownership reset")
-    if 'normalize_snapshot_access "$WORKSPACE"' in reset:
-        raise VerificationError("generated-state reset broadens ownership authority to the whole workspace")
     require_order(
         reset,
         (
@@ -1315,335 +1151,73 @@ def validate_build_release(source):
             'git_closed -C "$source" clean -nffdx',
             'assert_snapshot_exact "$source" "$label after generated-state reset"',
         ),
-        "generated-state reset ordering",
+        "generated-state reset",
     )
-    expected_normalization_command = (
-        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
-        "            --cap-drop=ALL \\\n"
-        "            --security-opt no-new-privileges \\\n"
-        "            --ulimit nofile=524544:524544 \\\n"
-        '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
-        '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n'
-        '            "$PRIVATE_TREE_CLOSURE_HASH" \\\n'
-        '            --normalize-owned-root /cleanup --expected-identity "$expected_identity" \\\n'
-        '            < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
-    )
-    require_exact_count(normalizer, "local_docker run ", 1, "single descriptor-bound normalizer container")
-    if normalization_command != expected_normalization_command:
-        raise VerificationError("private-tree normalizer command is not the exact authority allowlist")
-    for text, label in (
-        ("--pull=never", "normalizer no-pull policy"),
-        ("--network=none", "normalizer network isolation"),
-        ("--read-only", "normalizer immutable container root"),
-        ('--user "$uid:$gid"', "normalizer invoking principal"),
-        ("--cap-drop=ALL", "normalizer capability reset"),
-        ("--security-opt no-new-privileges", "normalizer privilege ceiling"),
-        ("--ulimit nofile=524544:524544", "normalizer retained-authority descriptor budget"),
-        ('"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR"', "authenticated normalizer executor"),
-        ('"$PRIVATE_TREE_CLOSURE_HASH"', "normalizer committed helper digest"),
-        ('--normalize-owned-root /cleanup --expected-identity "$expected_identity"', "identity-bound owner-only normalization dispatch"),
-        ('run_private_tree_closure_from_descriptor --mount-root "$path"', "normalizer mount closure proof"),
-        ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor-sourced normalizer implementation"),
-        ("bind-recursive=disabled", "normalizer recursive-bind exclusion"),
-        ('[ "$observed" = "$expected_identity:$uid:$gid:700" ]', "normalizer identity and owner postcondition"),
-    ):
-        require_text(normalizer, text, label)
-    if "--cap-add=" in normalizer or "--cap-add=" in reset_self_test:
-        raise VerificationError("owner-only normalization adds a Linux capability")
-    require_exact_count(normalizer, "bind-recursive=disabled", 1, "normalizer recursive-bind exclusions")
-    require_exact_count(normalizer, 'run_private_tree_closure_from_descriptor --mount-root "$path"', 2, "normalizer mount closure stages")
-    require_exact_count(normalizer, '[ "$observed" = "$expected_identity:$uid:$gid:700" ]', 2, "normalizer identity and owner stages")
+    require_text(child, "/usr/bin/env -i", "empty release-child environment")
+    for forbidden in ("DOCKER_HOST=", "DOCKER_CONFIG=", "LOCAL_DOCKER_"):
+        if forbidden in child:
+            raise VerificationError(f"release child inherits parent Docker state: {forbidden}")
+
     require_text(
-        normalizer,
-        'if ! (verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"); then\n'
-        '        warn "$role normalization image failed provenance verification"\n'
-        "        return 1\n"
-        "    fi",
-        "normalizer live image provenance",
+        target,
+        'invoke_target() {',
+        "release target dispatcher",
     )
+    require_text(target, 'RELEASE_DOCKER_IMAGE_ID="$DEBIAN_IMAGE_ID"', "Debian content-ID handoff")
+    require_text(target, 'RELEASE_DOCKER_IMAGE_ID="$ANDROID_IMAGE_ID"', "Android content-ID handoff")
+    require_text(target, 'WINDOWS_UNSAFE=1', "Windows ownership guard")
+    require_text(target, '"$source/scripts/build-windows-vm.sh"', "Windows target")
     require_order(
-        normalizer,
+        build_snapshot,
         (
-            '[ "$resolved" = "$path" ]',
-            '[ "$observed" = "$expected_identity:$uid:$gid:700" ]',
-            'run_private_tree_closure_from_descriptor --mount-root "$path"',
-            'verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"',
-            '--user "$uid:$gid"',
-            "--cap-drop=ALL",
-            "--normalize-owned-root /cleanup",
-            "disappeared after normalization",
-            "identity or owner authority changed during normalization",
-            "gained a mount boundary during normalization",
+            'run_verification "$source" "$label"',
+            'for target in debian android windows; do',
+            'invoke_target "$label" "$target" "$source" "$output/$target" "$set_dir"',
+            'reset_snapshot_build_state "$source" "$label after $target"',
         ),
-        "private-tree authority ordering",
+        "per-snapshot release build",
     )
-    for forbidden in (
-        "--privileged",
-        "--cap-add=ALL",
-        "--device",
-        "--pid=host",
-        "--ipc=host",
-        "--uts=host",
-        "--userns=host",
-        "--cgroupns=host",
-        "--network=host",
-        "--volume",
-        "--mount=",
-        "/var/run/docker.sock",
-        "--entrypoint",
-        "seccomp=unconfined",
-        "apparmor=unconfined",
-        "/bin/sh",
-        "/bin/chown",
-        "/bin/chmod",
-        "/usr/bin/find /cleanup",
+    require_text(source, 'build_snapshot A "$SOURCE_A"', "snapshot A build")
+    require_text(source, 'build_snapshot B "$SOURCE_B"', "snapshot B build")
+    require_text(source, "independent snapshot mismatch for $name", "A/B artifact comparison")
+
+    for value in (
+        'artifact="$SET_A/rustdesk-x86_64.deb"',
+        'sha256sum "$SET_B/rustdesk-x86_64.deb"',
+        'run_snapshot_consumer "final Debian artifact lifecycle"',
+        'VERIFIER_VM_INPUT_ROOT="$HOST_VERIFIER_VM_INPUT_ROOT"',
+        'VERIFIER_VM_RUN_ROOT="$VERIFIER_VM_RUN_ROOT"',
+        '"$SOURCE_A/scripts/smoke-verifier-vm-authority.sh"',
+        "--debian-systemd-lifecycle",
+        '--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"',
+        '--devcheck-archive "$devcheck_archive"',
     ):
-        if forbidden in normalizer:
-            raise VerificationError(f"private-tree normalizer retains forbidden Docker authority: {forbidden}")
-    for text, label in (
-        ('--check-descriptor-budget', "host retained-authority capacity proof"),
-        ('--check-exact-descriptor-budget', "container exact retained-authority capacity proof"),
-        ('--ulimit nofile=524544:524544', "capacity-preflight descriptor limit"),
-        ('--pull=never', "capacity-preflight no-pull policy"),
-        ('--network=none', "capacity-preflight network isolation"),
-        ('--read-only', "capacity-preflight immutable container root"),
-        ('--cap-drop=ALL', "capacity-preflight capability reset"),
-        ('--security-opt no-new-privileges', "capacity-preflight privilege ceiling"),
-    ):
-        require_text(capacity_check, text, label)
-    if "--cap-add=" in capacity_check:
-        raise VerificationError("retained-authority capacity preflight adds a capability")
-    for text, label in (
-        ('path_state="$(stat -c \'%d:%i:%u:%g:%a:%h:%F\'', "helper pathname identity acquisition"),
-        ('[ "$path_state" = "$(stat -c \'%d:%i\' -- "$PRIVATE_TREE_CLOSURE_PROBE"):$(id -u):$(id -g):500:1:regular file" ]', "helper pathname metadata proof"),
-        ('exec {PRIVATE_TREE_CLOSURE_FD}< "$PRIVATE_TREE_CLOSURE_PROBE"', "open helper execution authority"),
-        ('stat -Lc \'%d:%i:%u:%g:%a:%h:%F\'', "helper descriptor identity proof"),
-        ('[ "$descriptor_state" = "$path_state" ]', "helper pathname/descriptor identity equality"),
-        ('sha256sum "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "helper descriptor content proof"),
-        ('[ "$observed_hash" = "$PRIVATE_TREE_CLOSURE_HASH" ]', "helper committed-content equality"),
-        ('[ -z "$PRIVATE_TREE_CLOSURE_FD" ] || return 1', "duplicate helper-authority rejection"),
-    ):
-        require_text(execution_authority, text, label)
-    for text, label in (
-        ('[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 0', "absent helper-close identity"),
-        ('exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1', "helper descriptor close"),
-        ('PRIVATE_TREE_CLOSURE_FD=""', "helper descriptor retirement"),
-    ):
-        require_text(execution_close, text, label)
-    require_order(
-        execution_close,
-        (
-            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 0',
-            'exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1',
-            'PRIVATE_TREE_CLOSURE_FD=""',
-        ),
-        "helper descriptor close ordering",
-    )
-    for text, label in (
-        ('[ -n "$PRIVATE_TREE_CLOSURE_FD" ] && [ -n "$PRIVATE_TREE_CLOSURE_HASH" ]', "descriptor executor authority precondition"),
-        ('/usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR"', "bounded descriptor executor"),
-        ('"$PRIVATE_TREE_CLOSURE_HASH" "$@"', "descriptor executor committed digest"),
-        ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor executor byte source"),
-    ):
-        require_text(descriptor_executor, text, label)
-    for text, label in (
-        ('readonly PRIVATE_TREE_CLOSURE_EXECUTOR=', "immutable bounded helper executor"),
-        ('sys.stdin.buffer.read(1048577)', "bounded terminal-removal helper input"),
-        ('len(source) <= 1048576 or sys.exit(126)', "oversized terminal-removal helper rejection"),
-        ('expected = sys.argv.pop(1)', "helper digest argument removal"),
-        ('hashlib.sha256(source).hexdigest() == expected or sys.exit(126)', "in-memory helper digest proof"),
-        ('exec(compile(source, "/probe.py", "exec"))', "authenticated in-memory helper execution"),
-    ):
-        require_text(source, text, label)
-    expected_removal_command = (
-        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
-        "        --cap-drop=ALL \\\n"
-        "        --security-opt no-new-privileges \\\n"
-        "        --ulimit nofile=524544:524544 \\\n"
-        '        --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
-        '        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n'
-        '        "$PRIVATE_TREE_CLOSURE_HASH" \\\n'
-        '        --remove-owned-tree-contents /cleanup --expected-identity "$expected_identity" \\\n'
-        '        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
-    )
-    if removal_command != expected_removal_command:
-        raise VerificationError("private-tree terminal remover command is not the exact authority allowlist")
-    if "--cap-add=" in tree_remover:
-        raise VerificationError("owner-only terminal remover adds a Linux capability")
-    for text, label in (
-        ('[ "$observed" = "$expected_identity:$uid:$gid:700" ]', "terminal-removal root metadata proof"),
-        ('run_private_tree_closure_from_descriptor --mount-root "$path"', "terminal-removal mount closure"),
-        ('verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"', "terminal-removal image provenance"),
-        ('"$PRIVATE_TREE_CLOSURE_HASH"', "terminal-removal helper digest"),
-        ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor-sourced terminal-removal helper"),
-        ('--remove-owned-tree-contents /cleanup', "owner-only terminal content-removal operation"),
-        ('root authority changed during content removal', "terminal-removal root postcondition"),
-    ):
-        require_text(tree_remover, text, label)
-    if '"$PRIVATE_TREE_CLOSURE_PROBE"' in tree_remover:
-        raise VerificationError("private-tree terminal remover executes a mutable helper pathname")
-    for forbidden in (
-        '/usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE"',
-        'src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py',
-    ):
-        if forbidden in source:
-            raise VerificationError(
-                f"release transaction executes a mutable private-tree helper pathname: {forbidden}"
-            )
-    for forbidden in ("--privileged", "--cap-add=", "--user 0", "--network=host"):
-        if forbidden in tree_remover:
-            raise VerificationError(f"private-tree terminal remover retains forbidden authority: {forbidden}")
-    require_text(snapshot_normalizer, '"$SOURCE_A"|"$SOURCE_B"', "snapshot normalizer scope")
-    require_text(
-        snapshot_normalizer,
-        'offline_normalize_owned_tree_modes "$source" "$expected" "$phase snapshot"',
-        "snapshot normalizer exact-tree call",
-    )
-    require_text(snapshot_normalizer, '"$expected:$(id -u):$(id -g):700"', "snapshot root metadata proof")
-    require_order(
-        cleanup,
-        (
-            'if [ "$WINDOWS_UNSAFE" -eq 1 ] || [ "$KEEP_WORKSPACE" -eq 1 ]',
-            "reconcile_final_publication",
-            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1',
-            "offline_remove_owned_tree_contents",
-            "run_private_tree_closure_from_descriptor",
-            '--remove-empty-private-root "$WORKSPACE"',
-            "close_private_tree_closure_execution",
-            "retire_release_docker_authority || cleanup_failed=1",
-        ),
-        "descriptor-bound terminal workspace cleanup ordering",
-    )
-    require_text(
-        cleanup,
-        "cleanup failed; recorded private workspace state is %s",
-        "cleanup failure preservation",
-    )
-    require_text(cleanup, "workspace_state=absent", "missing-workspace failure state")
-    require_text(cleanup, "workspace_state=invalid", "changed-workspace failure state")
-    require_text(cleanup, 'elif [ ! -e "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ]', "missing workspace detection")
-    if 'elif [ -n "$DEBIAN_IMAGE_ID" ]' in cleanup:
-        raise VerificationError("workspace cleanup can delete without an installed closure probe")
-    for forbidden in (
-        "prepare_unprivileged_workspace_removal",
-        'find -P "$WORKSPACE"',
-        "chmod -R",
-    ):
-        if forbidden in source:
-            raise VerificationError(
-                f"workspace cleanup retains pathname mutation authority: {forbidden}"
-            )
-    require_text(
-        cleanup,
-        'if [ "$FIXTURE_MODE" -eq 0 ] && [ "$workspace_state" = valid ]',
-        "production-only retained-authority workspace removal",
-    )
-    require_text(
-        cleanup,
-        "production cleanup lacks exact terminal-removal image/Docker authority; retained path",
-        "missing production cleanup image/authority rejection",
-    )
-    require_text(
-        cleanup,
-        '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
-        "no ambient terminal-cleanup fallback",
-    )
-    require_order(
-        docker_retirement,
-        (
-            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
-            "remove_local_docker_authority",
-            'observed="$(/usr/bin/stat -c',
-            '[ "$observed" = "$DOCKER_AUTHORITY_ROOT_ID" ]',
-            '/usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT"',
-            'DOCKER_AUTHORITY_ROOT=""',
-        ),
-        "exact release Docker-authority retirement",
-    )
-    require_text(
-        cleanup,
-        'elif ! run_private_tree_closure_from_descriptor \\\n                --remove-private-root "$WORKSPACE"',
-        "fixture-only recursive workspace removal",
-    )
-    for text, label in (
-        ('install -d -m 0700 "$fixture"', "capability fixture private root"),
-        ('install -d -m 1700 "$fixture/sticky"', "capability fixture sticky directory"),
-        ('printf \'sticky-owner\\n\' > "$fixture/sticky/user-entry"', "capability fixture foreign sticky entry"),
-        ('--user "$uid:$gid"', "owner fixture invoking principal"),
-        ('--cap-drop=ALL', "owner fixture capability removal"),
-        ('chmod 0000 /capability/owner-entry', "owner fixture inaccessible current-owner file"),
-        ('chmod 0500 /capability/locked', "owner fixture traversable current-owner directory"),
-        ('[ "$observed" = "$uid:$gid:0" ]', "owner fixture ownership proof"),
-        ('offline_remove_owned_tree_contents "$fixture" "$fixture_id"', "owner fixture terminal removal"),
-        ('--remove-empty-private-root "$fixture"', "capability fixture empty-root removal"),
-        ('[ ! -e "$fixture" ] && [ ! -L "$fixture" ]', "capability fixture absence proof"),
-    ):
-        require_text(removal_capability, text, label)
-    if "--cap-add=" in removal_capability or "--user 0" in removal_capability:
-        raise VerificationError("owner-only terminal-removal preflight gains privilege")
-    require_order(
-        cleanup_preflight,
-        (
-            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 1',
-            "verify_private_tree_authority_capacity",
-            "verify_private_tree_owner_removal",
-        ),
-        "complete terminal-cleanup preflight ordering",
-    )
-    require_text(
-        create_workspace,
-        'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
-        "private closure-probe installation",
-    )
-    require_order(
-        create_workspace,
-        ("trap cleanup_release_workspace EXIT", 'mktemp -d /tmp/rustdesk-release.', 'chmod 0700 "$WORKSPACE"'),
-        "workspace trap installation",
-    )
-    require_order(
-        create_workspace,
-        (
-            'PRIVATE_TREE_CLOSURE_PROBE="$WORKSPACE/private-tree-closure.py"',
-            'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
-            'PRIVATE_TREE_CLOSURE_HASH="$private_hash"',
-            '"$PINNED_HEAD:scripts/verify-private-tree-closure.py"',
-            '[ "$private_hash" = "$commit_hash" ]',
-            'FINALIZE_RELEASE_SET_PROBE="$WORKSPACE/finalize-release-set.py"',
-            'install -m 0500 "$FINALIZE_RELEASE_SET_SOURCE" "$FINALIZE_RELEASE_SET_PROBE"',
-            '"$PINNED_HEAD:scripts/finalize-release-set.py"',
-            '[ "$publisher_private_hash" = "$commit_hash" ]',
-            'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
-            '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
-            "DOCKER_AUTHORITY_ROOT_ID=",
-            "initialize_local_docker_authority",
-            "acquire_private_tree_closure_execution",
-        ),
-        "private release-helper installation",
-    )
+        require_text(lifecycle, value, "final Debian artifact lifecycle")
     require_order(
         main,
         (
-            'DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"',
-            "create_workspace",
-            "release_preflight",
+            "compare_snapshots\n",
+            "run_final_debian_artifact_lifecycle\n",
+            "compare_snapshots\n",
+            'write_manifest "$SET_A"',
+            'atomic_install_dist "$SET_A"',
         ),
-        "production cleanup image initialization",
+        "final lifecycle before release publication",
     )
-    require_text(cleanup, "trap '' HUP INT TERM", "cleanup signal exclusion")
-    require_exact_count(cleanup, '[ "$status" -ne 0 ] || status=1', 1, "cleanup original-status preservation")
-    require_order(
-        cleanup,
-        (
-            "trap '' HUP INT TERM",
-            "reconcile_final_publication",
-            '--remove-empty-private-root "$WORKSPACE"',
-            "retire_release_docker_authority || cleanup_failed=1",
-            '[ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]',
-            'log "$RELEASE_SUCCESS_MESSAGE"',
-            'exit "$status"',
-        ),
-        "success-after-cleanup finalization",
-    )
+
+    for value in (
+        '/usr/bin/python3 -I -S "$FINALIZE_RELEASE_SET_PROBE"',
+        "publication_tool --verify",
+        "publication_tool --recover",
+        "publication_tool --publish",
+        'flock -n "$PUBLICATION_LOCK_FD"',
+        "--verify-apk",
+        "release self-test did not execute exactly six target commands",
+        "release self-test did not use two independent snapshots",
+        "build-release owner-only reset self-test: OK",
+        "build-release cleanup-missing self-test: REACHED",
+    ):
+        require_text(source, value, "release publication/behavior contract")
     for marker in (
         'log "RELEASE OK:',
         'log "DOCTOR OK:',
@@ -1651,375 +1225,7 @@ def validate_build_release(source):
         'log "build-release owner-only reset self-test: OK"',
     ):
         if marker in source:
-            raise VerificationError("a build-release success marker bypasses final cleanup")
-    for marker in (
-        'RELEASE_SUCCESS_MESSAGE="RELEASE OK:',
-        'RELEASE_SUCCESS_MESSAGE="DOCTOR OK:',
-        'RELEASE_SUCCESS_MESSAGE="build-release self-test: OK"',
-        'RELEASE_SUCCESS_MESSAGE="build-release owner-only reset self-test: OK"',
-    ):
-        require_text(source, marker, "deferred build-release success marker")
-    require_text(
-        source,
-        '--mount "type=bind,src=$SOURCE_A,dst=/fixture,bind-recursive=disabled"',
-        "reset fixture recursive-bind exclusion",
-    )
-    require_text(
-        source,
-        "printf 'build-release cleanup-missing self-test: REACHED\\n' >&2",
-        "release missing-workspace reached marker",
-    )
-    require_order(
-        verification,
-        (
-            'reset_snapshot_build_state "$source" "$label before verification"',
-            'run_snapshot_consumer "$label complete release verification"',
-            'reset_snapshot_build_state "$source" "$label after verification"',
-        ),
-        "verification reset envelope",
-    )
-    require_order(
-        build_snapshot,
-        (
-            'run_verification "$source" "$label"',
-            'invoke_target "$label" "$target"',
-            'reset_snapshot_build_state "$source" "$label after $target"',
-            "verify_all_release_builder_images",
-        ),
-        "post-target reset ordering",
-    )
-    require_text(
-        build_snapshot,
-        'invoke_target "$label" "$target" "$source" "$output/$target" "$set_dir"',
-        "exact target-leaf invocation topology",
-    )
-    if re.search(r'(?m)^\s*(?:mkdir|install)\b[^\n]*\$output\b', target_invocation):
-        raise VerificationError("release orchestrator precreates a target publication path")
-    require_order(
-        target_invocation,
-        (
-            '{ [ ! -e "$output" ] && [ ! -L "$output" ]; }',
-            'case "$target" in',
-            'windows_state="$(dirname "$source")/windows-state"',
-            '{ [ ! -e "$windows_state" ] && [ ! -L "$windows_state" ]; }',
-            "WINDOWS_UNSAFE=1",
-            'HARNESS_STATE_DIR="$windows_state"',
-            '"$source/scripts/build-windows-vm.sh"',
-        ),
-        "absent target publication and output-disjoint Windows state",
-    )
-    for text, label in (
-        ('[ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]', "fixture target-output absence proof"),
-        ('[ ! -e "$HARNESS_STATE_DIR" ] && [ ! -L "$HARNESS_STATE_DIR" ]', "fixture Windows-state absence proof"),
-        ('state_path="$(realpath -m -- "$HARNESS_STATE_DIR")"', "fixture canonical Windows-state path"),
-        ('output_path="$(realpath -m -- "$fixture_output")"', "fixture canonical Windows-output path"),
-        ('case "$state_path/" in "$output_path/"*) exit 1 ;; esac', "fixture Windows-state descendant rejection"),
-        ('case "$output_path/" in "$state_path/"*) exit 1 ;; esac', "fixture Windows-state ancestor rejection"),
-        ('OUT_DIR="$(mktemp -d "$(dirname "$fixture_output")/.windows-publish.XXXXXXXX")"', "fixture private Windows staging directory"),
-        ('mv -T --no-clobber -- "$OUT_DIR" "$fixture_output"', "fixture atomic Windows publication"),
-        ('[ -z "${HARNESS_STATE_DIR+x}" ]', "fixture non-Windows state-authority rejection"),
-    ):
-        require_text(fixture_target, text, label)
-    require_exact_count(
-        fixture_target,
-        '[ ! -e "$fixture_output" ] && [ ! -L "$fixture_output" ]',
-        1,
-        "fixture post-state Windows-output absence proof",
-    )
-    for text, label in (
-        ("release self-test target output topology is not exact", "exact target-output fixture topology"),
-        ("release self-test gave non-Windows targets harness state authority", "non-Windows fixture state isolation"),
-        ("release self-test Windows state is not pass-private and output-disjoint", "Windows fixture state isolation"),
-    ):
-        require_text(transaction_self_test, text, label)
-    require_exact_count(source, "DOUBLE_BUILD=0", 3, "single target invocation per outer snapshot")
-    require_text(source, 'build_snapshot A "$SOURCE_A"', "snapshot A target execution")
-    require_text(source, 'build_snapshot B "$SOURCE_B"', "snapshot B target execution")
-    require_text(source, "independent snapshot mismatch for $name", "all-artifact A/B comparison")
-    for text, label in (
-        ('artifact="$SET_A/rustdesk-x86_64.deb"', "final Debian artifact selection"),
-        ('"$(id -u):$(id -g):400:1"', "final Debian artifact metadata authority"),
-        ('sha256sum "$SET_B/rustdesk-x86_64.deb"', "final Debian artifact A/B hash binding"),
-        ('assert_snapshot_exact "$SOURCE_A" "before final Debian artifact lifecycle"', "pre-artifact snapshot-A proof"),
-        ('assert_snapshot_exact "$SOURCE_B" "before final Debian artifact lifecycle"', "pre-artifact snapshot-B proof"),
-        ('run_snapshot_consumer "final Debian artifact lifecycle"', "artifact lifecycle online-input envelope"),
-        ('VERIFIER_VM_INPUT_ROOT="$HOST_VERIFIER_VM_INPUT_ROOT"', "verifier-VM input handoff"),
-        ('VERIFIER_VM_RUN_ROOT="$VERIFIER_VM_RUN_ROOT"', "private verifier-VM scratch handoff"),
-        ('"$SOURCE_A/scripts/smoke-verifier-vm-authority.sh"', "snapshot-owned common VM driver"),
-        ('--debian-systemd-lifecycle', "installed lifecycle scenario"),
-        ('--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"', "hash-and-commit-bound artifact lifecycle dispatch"),
-        ('--devcheck-archive "$devcheck_archive"', "authenticated devcheck archive handoff"),
-        ('assert_snapshot_exact "$SOURCE_A" "after final Debian artifact lifecycle"', "post-artifact snapshot-A proof"),
-        ('assert_snapshot_exact "$SOURCE_B" "after final Debian artifact lifecycle"', "post-artifact snapshot-B proof"),
-    ):
-        require_text(artifact_lifecycle, text, label)
-    require_order(
-        artifact_lifecycle,
-        (
-            'assert_exact_set "$SET_A" 0',
-            'sha256sum "$SET_B/rustdesk-x86_64.deb"',
-            'assert_snapshot_exact "$SOURCE_A" "before final Debian artifact lifecycle"',
-            'run_snapshot_consumer "final Debian artifact lifecycle"',
-            '--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"',
-            'assert_snapshot_exact "$SOURCE_A" "after final Debian artifact lifecycle"',
-        ),
-        "final Debian artifact lifecycle transaction",
-    )
-    require_order(
-        main,
-        (
-            'compare_snapshots\n',
-            'run_final_debian_artifact_lifecycle\n',
-            'compare_snapshots\n',
-            'write_manifest "$SET_A"',
-            'atomic_install_dist "$SET_A"',
-        ),
-        "artifact lifecycle before manifest and publication",
-    )
-    for text, label in (
-        ('[ "$#" = 9 ]', "artifact fixture closed argv"),
-        ('[ "$1" = --debian-systemd-lifecycle ] && [ "$2" = --release-deb ] && [ "$4" = --sha256 ] && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ]', "artifact fixture typed argv"),
-        ('"$(id -u):$(id -g):400:1"', "artifact fixture metadata proof"),
-        ('sha256sum "$artifact"', "artifact fixture hash proof"),
-        ('${VERIFIER_VM_INPUT_ROOT:?}', "artifact fixture input-root requirement"),
-        ('${VERIFIER_VM_RUN_ROOT:?}', "artifact fixture scratch requirement"),
-        ('debian-artifact-lifecycle|%%s|%%s|%%s', "artifact fixture bound result"),
-    ):
-        require_text(fixture_artifact_lifecycle, text, label)
-    require_order(
-        transaction_self_test,
-        (
-            'compare_snapshots\n',
-            'run_final_debian_artifact_lifecycle\n',
-            'compare_snapshots\n',
-            'release self-test did not execute the final Debian artifact lifecycle exactly once',
-            'release self-test final Debian artifact lifecycle binding differs',
-            'write_manifest "$SET_A"',
-        ),
-        "final Debian artifact lifecycle self-test",
-    )
-    require_text(source, "# reproducibility: independent-snapshots-a-equals-b", "manifest reproducibility identity")
-    require_order(
-        publication_tool,
-        (
-            '/usr/bin/python3 -I -S "$FINALIZE_RELEASE_SET_PROBE"',
-            '"$@"',
-        ),
-        "isolated final release publisher dispatch",
-    )
-    require_order(
-        published_proof,
-        (
-            'publication_tool --verify --path "$destination"',
-            '--commit "$PINNED_HEAD" --version "$FORK_VER" --epoch "$SOURCE_DATE_EPOCH_PIN"',
-        ),
-        "exact published release-set proof dispatch",
-    )
-    require_order(
-        recovery,
-        (
-            '[ "$(dirname "$destination")" = "$parent" ]',
-            'base="$(basename "$destination")"',
-            'publication_tool --recover --parent "$parent" --destination "$base"',
-        ),
-        "bounded publication recovery dispatch",
-    )
-    require_order(
-        reconciliation,
-        (
-            '[ -n "$FINALIZE_RELEASE_SET_PROBE" ] || return 0',
-            '[ -f "$FINALIZE_RELEASE_SET_PROBE" ] && [ ! -L "$FINALIZE_RELEASE_SET_PROBE" ]',
-            'recover_pending_publications "$REPO_ROOT" "$FINAL_OUT_DIR"',
-        ),
-        "cleanup publication reconciliation authority",
-    )
-    require_order(
-        atomic_install,
-        (
-            'parent="$(dirname "$destination")"',
-            'base="$(basename "$destination")"',
-            'publication_tool --publish --parent "$parent" --destination "$base"',
-            '--source "$source" --commit "$PINNED_HEAD" --version "$FORK_VER"',
-            '--epoch "$SOURCE_DATE_EPOCH_PIN"',
-        ),
-        "exact final release publication dispatch",
-    )
-    for forbidden in ("renameat2", "RENAME_EXCHANGE", "RENAME_NOREPLACE", "O_TMPFILE"):
-        if forbidden in source:
-            raise VerificationError(
-                f"build-release retains inlined publication primitive {forbidden}"
-            )
-    require_text(source, "git --no-replace-objects", "Git replacement-object suppression")
-    require_text(source, "Git grafts are forbidden for release builds", "Git graft rejection")
-    require_text(source, "Git object alternates are forbidden for release builds", "Git alternate rejection")
-    require_text(source, "Git replacement refs are forbidden for release builds", "Git replacement-ref rejection")
-    require_text(source, "GIT_NO_REPLACE_OBJECTS=1", "child replacement-object suppression")
-    for text, label in (
-        ('exec {PUBLICATION_LOCK_FD}< "$common_dir"', "repository-directory publication lock descriptor"),
-        ('flock -n "$PUBLICATION_LOCK_FD"', "exclusive publication lock"),
-        ('"/proc/self/fd/$PUBLICATION_LOCK_FD"', "publication lock descriptor identity proof"),
-    ):
-        require_text(source, text, label)
-    require_text(source, '--verify-apk "$SET_A/rustdesk-arm64.apk"', "staged final APK certificate proof")
-    require_text(source, "WINDOWS_UNSAFE=1", "Windows-owned state guard")
-    require_text(source, "workspace retained because VM ownership is unresolved", "Windows failure retention")
-    require_text(source, "run_self_test()", "release behavioral fixture")
-    require_text(source, "release self-test did not execute exactly six target commands", "target execution fixture")
-    require_text(source, "release self-test did not use two independent snapshots", "snapshot independence fixture")
-    require_text(source, "release self-test target outputs are not distinct", "output isolation fixture")
-    for text, label in (
-        ("verify_release_builder_image deb-builder", "reset fixture image provenance"),
-        ("negative control removed inaccessible current-owner state", "reset fixture negative control"),
-        ('reset_snapshot_build_state "$SOURCE_A" "owner-only reset self-test"', "reset fixture production-call proof"),
-        ("external symlink target", "reset fixture no-follow proof"),
-        ("accepted an inode linked outside the snapshot", "reset fixture external-hardlink rejection"),
-        ("internal-a", "reset fixture closed internal hardlink"),
-        ("special-mode", "reset fixture special-mode input"),
-        ("both current-owner mode-0500 directories", "reset fixture dual hostile-mode proof"),
-        ("hostile Flutter directory", "reset fixture dual negative control"),
-        ("retained-authority normalization differs", "reset fixture retained-authority postcondition"),
-        ("build-release owner-only reset self-test: OK", "reset fixture success marker"),
-    ):
-        require_text(reset_self_test, text, label)
-    require_text(
-        reset_self_test,
-        'if git_closed -C "$SOURCE_A" clean -ffdx >/dev/null 2>"$WORKSPACE/negative-clean.log"; then',
-        "reset fixture live negative control",
-    )
-    require_text(
-        reset_self_test,
-        "metadata.st_uid != os.geteuid()",
-        "reset fixture live hostile-mode predicate",
-    )
-    require_text(
-        reset_self_test,
-        'assert_exact_checkout_state "reset self-test"',
-        "reset fixture branch-neutral exact-checkout caller",
-    )
-    require_text(source, 'assert_exact_checkout_state "cleanup-missing self-test"', "cleanup-missing branch-neutral exact-checkout caller")
-    require_text(source, 'assert_exact_checkout_state "$phase"', "master-only release wrapper exact-checkout dispatch")
-    require_text(source, 'release checkout is detached', "master-only release detached-checkout rejection")
-    require_text(source, 'release branch must be master', "master-only release branch rejection")
-    for text, label in (
-        ('fixture-repository', "private fixture Git authority"),
-        ('git_closed init --quiet --initial-branch=master', "transaction fixture private Git initialization"),
-        ('git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow', "reset fixture complete-history Git clone"),
-        ('assert_git_object_authority', "reset fixture independent object-authority proof"),
-    ):
-        require_text(source, text, label)
-    require_exact_count(
-        create_workspace,
-        'if [ "$SELF_TEST" -eq 0 ]; then',
-        2,
-        "reset fixture pinned closure-probe provenance",
-    )
-    require_order(
-        reset_self_test,
-        (
-            'offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"',
-            'rm -rf -- "$SOURCE_A/target"',
-            'local_docker run --rm --pull=never',
-            "for path in sys.argv[1:]",
-            'check-ignore -q target/reset-proof/locked',
-            'if git_closed -C "$SOURCE_A" clean -ffdx',
-            "negative control did not preserve the hostile directory",
-            "negative control did not preserve the hostile Flutter directory",
-            'offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity"',
-            '"$SOURCE_A/target/reset-proof/special-mode"',
-            "retained-authority normalization differs",
-            'reset_snapshot_build_state "$SOURCE_A" "owner-only reset self-test"',
-            '[ ! -e "$SOURCE_A/target/reset-proof" ]',
-            '[ ! -e "$SOURCE_A/flutter/.dart_tool/reset-proof" ]',
-            "external symlink target",
-        ),
-        "reset fixture adversarial ordering",
-    )
-    require_text(
-        main,
-        'if [ "$SELF_TEST_RESET" -eq 1 ]; then\n        run_reset_self_test\n        return 0',
-        "reset fixture main dispatch",
-    )
-    require_text(
-        main,
-        'if [ "$SELF_TEST_SOURCE_STATE" -eq 1 ]; then\n        run_source_state_self_test\n        return 0',
-        "exact source-state fixture main dispatch",
-    )
-    require_text(source, 'assert_exact_checkout_state "source-state self-test"', "exact source-state fixture dispatch")
-    require_text(source, 'build-release source-state self-test: OK', "exact source-state fixture marker")
-    for text, label in (
-        ('install -d -m 0770 "$writable"', "group-writable parent rejection fixture"),
-        ("publication accepted a group-writable parent", "group-writable parent rejection diagnostic"),
-        ("publication recovery deleted an unbound initializing payload", "unbound initializing-payload fixture"),
-        ("publication recovery accepted a raced first destination", "first-publication no-clobber race fixture"),
-        ("first-publication fixture", "no-prior-destination fixture"),
-        ("first-publication restart fixture", "first-publication restart fixture"),
-        ("publication restart fixture", "existing-destination restart fixture"),
-        ("partial-rollback fixture could not resume payload deletion", "partial rollback resumption fixture"),
-        ("publication recovery accepted an incomplete prepared payload", "incomplete prepared-payload rejection fixture"),
-        ("publication recovery accepted an unknown reserved namespace entry", "reserved-namespace rejection fixture"),
-        ("publication recovery did not classify malformed $category state exactly", "malformed reserved-namespace fixture"),
-        ("publication recovery did not reject a canonical wrong-token payload", "wrong-token payload ownership fixture"),
-        ("wrong-token payload rejection changed transaction state", "wrong-token payload preservation fixture"),
-        ("publication recovery did not reject a canonical wrong-token next record", "wrong-token next-record ownership fixture"),
-        ("wrong-token next-record rejection changed transaction state", "wrong-token next-record preservation fixture"),
-        ("publication recovery accepted multiple active transaction records", "multiple-record rejection fixture"),
-        ("publication recovery accepted an oversized transaction record", "record-size rejection fixture"),
-        ("publication recovery accepted a missing displaced prior set", "missing-prior rejection fixture"),
-        ("publication recovery accepted a content-equal replacement destination", "destination-ABA rejection fixture"),
-        ("publication recovery accepted a writable published artifact", "published-mode rejection fixture"),
-        ("publication recovery accepted a special release entry", "published-special-type rejection fixture"),
-        ("publication recovery accepted a multiply-linked published artifact", "published-hardlink rejection fixture"),
-        ("publication recovery accepted an artifact extended attribute", "published-xattr rejection fixture"),
-        ('publication_tool --publish --parent "$parent" --destination "$(basename "$destination")"', "production publisher fixture dispatch"),
-        ('recover_pending_publications "$parent" "$destination"', "production recovery fixture dispatch"),
-        ("prove_published_dist", "published-set fixture proof"),
-    ):
-        require_text(publication_self_test, text, label)
-    require_exact_count(
-        publication_self_test,
-        "for point in staging prepared rollback-record exchange cleanup-record payload-removal; do",
-        2,
-        "complete publication restart matrix",
-    )
-    require_exact_count(
-        publication_self_test,
-        "pre-exchange recovery at $point",
-        2,
-        "state-accurate pre-exchange recovery diagnostics",
-    )
-    if "prepared recovery" in publication_self_test:
-        raise VerificationError("publication fixture conflates durable recovery states")
-    require_text(
-        publication_self_test,
-        "for category in transaction next payload; do",
-        "complete malformed reserved-namespace matrix",
-    )
-    require_text(
-        source,
-        'run_publication_reconciliation_self_test "$SET_A"',
-        "publication reconciliation fixture dispatch",
-    )
-    require_exact_count(main, "compare_snapshots\n", 2, "release transaction")
-    require_order(
-        main,
-        (
-            'prepare_release_snapshots\n',
-            'build_snapshot A "$SOURCE_A"',
-            'build_snapshot B "$SOURCE_B"',
-            'run_snapshot_consumer "final APK certificate proof"',
-            'reset_snapshot_build_state "$SOURCE_A" "after final APK certificate proof"',
-            "compare_snapshots\n",
-            "run_final_debian_artifact_lifecycle\n",
-            "compare_snapshots\n",
-            'write_manifest "$SET_A"',
-            'assert_release_source_state "before final dist installation"',
-            'assert_live_origin_master "before final dist installation"',
-            'atomic_install_dist "$SET_A"',
-            'RELEASE_SUCCESS_MESSAGE="RELEASE OK:',
-        ),
-        "release transaction",
-    )
-
+            raise VerificationError("build-release success bypasses terminal cleanup")
 
 def validate_release_finalizer(source):
     try:
@@ -3402,209 +2608,6 @@ def validate_systemd_smoke_contract(sources):
     require_text(sources["requirements"], '<span class="id">R-S11dl</span>', "lifecycle requirement")
     require_text(sources["requirements"], "<tr><td>265</td>", "lifecycle Appendix C row")
     require_text(sources["hardening"], "R-S11dl/R-S11e-130", "lifecycle hardening ledger")
-
-
-def validate_release_parent_docker_authority_contract(sources):
-    focused = sources["release_parent_authority"]
-    build = sources["build"]
-    child = extract_between(
-        build,
-        "run_child() {",
-        "\n}\n\nrun_verification() {",
-        "release-parent child isolation",
-    )
-    cleanup = extract_between(
-        build,
-        "cleanup_release_workspace() {",
-        "\n}\n\nretire_release_docker_authority() {",
-        "release-parent cleanup",
-    )
-    retirement = extract_between(
-        build,
-        "retire_release_docker_authority() {",
-        "\n}\n\nrelease_preflight() {",
-        "release-parent Docker-authority retirement",
-    )
-
-    for text, label in (
-        (
-            '"""Validate the release parent\'s fixed local-Docker authority."""',
-            "release-parent focused verifier purpose",
-        ),
-        (
-            "def validate_shared_authority(lib: str) -> None:",
-            "release-parent focused shared-authority validator",
-        ),
-        (
-            "complete release-parent launch inventory",
-            "release-parent focused launch inventory",
-        ),
-        (
-            "terminal workspace cleanup before exact Docker-authority retirement",
-            "release-parent focused cleanup order",
-        ),
-        (
-            "MUTATIONS = (",
-            "release-parent focused mutation inventory",
-        ),
-        (
-            "run_mutations(sources)",
-            "release-parent focused mutation dispatch",
-        ),
-        (
-            '"release": read_regular(repo, "scripts/build-release.sh")',
-            "release-parent focused production-source loading",
-        ),
-        (
-            '"lib": read_regular(repo, "scripts/lib.sh")',
-            "release-parent focused shared-library loading",
-        ),
-        (
-            '"workspace": read_regular(repo, "scripts/verify-verifier-workspace.py")',
-            "release-parent focused independent-gate loading",
-        ),
-        (
-            "pre-source root refusal, isolated "
-            '"\n        "fixed client/daemon/configuration, non-root capability-free writable-bind funnel',
-            "release-parent focused green disposition",
-        ),
-    ):
-        require_text(focused, text, label)
-
-    require_order(
-        build,
-        (
-            "bootstrap_closed_environment() {",
-            'uid="$(/usr/bin/id -u)"',
-            'gid="$(/usr/bin/id -g)"',
-            '[ "$uid" -ne 0 ]',
-            '[ "$gid" -ne 0 ]',
-            'source "$SCRIPT_DIR/lib.sh"',
-            "load_pins",
-        ),
-        "release-parent pre-source root refusal",
-    )
-    for text, label in (
-        (
-            'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
-            '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
-            "release-parent independent authority root",
-        ),
-        (
-            "DOCKER_AUTHORITY_ROOT_ID=",
-            "release-parent authority-root identity",
-        ),
-        (
-            'initialize_local_docker_authority \\\n'
-            '            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"',
-            "release-parent shared authority initialization",
-        ),
-        (
-            'require_pinned_builder_image "$role" "$image_id"',
-            "release-parent shared image provenance",
-        ),
-        (
-            "local_docker version",
-            "release-parent fixed daemon check",
-        ),
-    ):
-        require_text(build, text, label)
-    require_exact_count(
-        build,
-        "local_docker run ",
-        5,
-        "release-parent fixed Docker launch inventory",
-    )
-    require_exact_count(
-        build,
-        "--cap-drop=ALL",
-        5,
-        "release-parent capability-free launch inventory",
-    )
-    for forbidden, label in (
-        ("docker_local() {", "bespoke release-parent Docker wrapper"),
-        ("assert_release_docker_config() {", "bespoke release-parent config assertion"),
-        ("DOCKER_HOST_URI=", "bespoke release-parent endpoint"),
-        ("DOCKER_CONFIG_DIR=", "bespoke release-parent config"),
-        ("command docker --host", "PATH-selected release-parent Docker client"),
-        ("--cap-add", "release-parent added Linux capability"),
-    ):
-        require_absent(build, forbidden, label)
-    require_no_root_docker_user(build, "release-parent container root principal")
-
-    require_text(child, "/usr/bin/env -i", "release-child closed environment")
-    for forbidden, label in (
-        ("DOCKER_HOST=", "parent Docker host in child"),
-        ("DOCKER_CONFIG=", "parent Docker config in child"),
-        ("LOCAL_DOCKER_", "parent shared authority in child"),
-    ):
-        require_absent(child, forbidden, label)
-
-    require_order(
-        cleanup,
-        (
-            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
-            'offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
-            '--remove-empty-private-root "$WORKSPACE"',
-            "close_private_tree_closure_execution",
-            "retire_release_docker_authority || cleanup_failed=1",
-        ),
-        "release-parent no-fallback terminal cleanup",
-    )
-    require_order(
-        retirement,
-        (
-            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
-            "remove_local_docker_authority",
-            '[ "$observed" = "$DOCKER_AUTHORITY_ROOT_ID" ]',
-            '/usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT"',
-        ),
-        "release-parent exact authority retirement",
-    )
-
-    for text, label in (
-        (
-            "python3 scripts/verify-release-parent-docker-authority.py --repo . --self-test",
-            "release-parent focused verifier shared wiring",
-        ),
-        (
-            "R-S11e-131 release parent owns one exact fixed local Docker "
-            "authority without sharing it with children",
-            "release-parent shared disposition",
-        ),
-    ):
-        require_text(sources["verify"], text, label)
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11dm</span>',
-        "release-parent Docker authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11gm</span>',
-        "release-parent owner-closed writable-bind requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>266</td>",
-        "release-parent Docker authority Appendix C row",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>348</td>",
-        "release-parent writable-bind principal Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
-        "  configuration, writable-bind principal, and cleanup authority",
-        "release-parent Docker authority hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11gm/R-S11e-225 release-parent writable-bind principal closure",
-        "release-parent writable-bind principal hardening ledger",
-    )
 
 
 def validate_service_manager_template_contract(
@@ -31459,7 +30462,6 @@ def validate_sources(sources):
     validate_linux_privileged_tray_boundary(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(sources)
-    validate_release_parent_docker_authority_contract(sources)
     validate_service_manager_template_contract(
         sources["verify"],
         sources["service_openrc"],
@@ -35742,9 +34744,6 @@ def main():
             "systemd_lifecycle_authority_mode": os.lstat(
                 repo / "scripts/verify-debian-systemd-lifecycle-authority.py"
             ).st_mode,
-            "release_parent_authority": (
-                repo / "scripts/verify-release-parent-docker-authority.py"
-            ).read_text(encoding="utf-8"),
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
             "systemd_smoke_guest_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").st_mode,
             "systemd_smoke_loginctl": (repo / "scripts/smoke-debian-systemd-loginctl.sh").read_text(encoding="utf-8"),

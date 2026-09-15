@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-85477df86b8d275a20bd361ccefb62859f3e859eedcf1dfeb5e95cb34f3b6ec8  requirements.html
+c1df1df37ef101ac8e972d21aa0a8f75852a26acf79f6e648c4c4908889281fb  requirements.html
 ```
 
 ## Current Verdict
@@ -7054,97 +7054,93 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   architectural invariant, and the duplicate workspace-verifier block was
   compressed to the current VM topology; neither is counted as runtime evidence.
 
-- **R-S11dm/R-S11e-131 — release-parent Docker client, daemon,
-  configuration, writable-bind principal, and cleanup authority — SOURCE VERIFIED
-  2026-07-26; EXACT COLD RELEASE/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.**
-  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
-  `scripts/build-release.sh` builder-image provenance, its four terminal
-  mode-normalization/removal helper shapes, the reset fixture, and cleanup of the
-  release transaction's generated state. Boundary: invoking release
-  user and private exact-commit workspace ↔ Docker client/daemon/configuration,
-  writable-bind container principal/capabilities, build-child isolation, and
-  terminal cleanup authority.
+- **R-S11dm/R-S11e-131 — release-parent host-Docker removal, verifier-VM
+  admission, and descriptor-bound workspace lifecycle — SOURCE CORRECTED;
+  REAL CLEANUP AND VM-ENTRY EVIDENCE GREEN 2026-09-15; FULL COLD RELEASE,
+  NATIVE/DEVICE, INDEPENDENT, AND EXTERNAL EVIDENCE PENDING.**
+  Platform: ordinary-user Linux orchestration host and the authenticated
+  no-NIC Debian verifier VM. Endpoint/action: <code>scripts/build-release.sh</code>
+  production admission, builder content-ID handoff, private snapshot reset,
+  transaction cleanup, and release publication. Boundary: orchestration host ↔
+  admitted UID/GID 4000 verifier-VM transaction ↔ VM-only build children, plus
+  the exact current-principal release workspace.
 
-  The inherited release parent already closed its process environment, rejected
-  all inherited `DOCKER_*`/`BUILDKIT_*`/`COMPOSE_*` names, created two
-  independent exact-commit source snapshots, kept Docker routing/configuration
-  out of child environments, proved pinned builder images, and launched its
-  explicit root fixtures with no pull, no network, read-only container root,
-  all default capabilities dropped, no-new-privileges, and exact
-  recursive-bind-disabled inputs. It nevertheless sourced repository shell
-  before any UID/GID refusal, could run as host root, selected `docker` through
-  a path containing `/usr/local/bin`, exported bespoke Docker host/config state
-  for provenance, checked only a mutable configuration shape before direct
-  calls, and stored that configuration inside the recursively removed
-  workspace. The inner flags therefore did not completely prove which
-  client/daemon/configuration interpreted root-fixture or artifact-authority
-  operations.
+  The prior parent used the orchestration host's fixed rootful Docker socket for
+  three duplicate builder-image provenance checks and five invocations covering
+  mode normalization, descriptor capacity, cleanup-fixture construction, reset
+  fixture construction, and terminal removal. Later hardening made those
+  containers numeric-nonroot and capability-free, but this did not cure the
+  outer authority: a rootful daemon still interprets bind mounts against the
+  host, and a container running the same UID gave the descriptor helper no
+  permission unavailable to the caller. This was real release-verdict,
+  host-filesystem, cleanup, and local-privilege authority debt. It is not
+  evidence that the path was exploited, a container escaped, root was acquired,
+  a listener or port was exposed, or host RustDesk, Haggai, firewall, routing,
+  interface, service, configuration, or artifact state changed.
 
-  Docker's official CLI reference documents host, context, configuration,
-  certificate/TLS, API-version, platform, content-trust/server, and
-  custom-header inputs and their precedence. Docker's Engine security guidance
-  treats control of a rootful daemon as powerful host authority. Its bind-mount
-  documentation states that mounts are interpreted on the selected daemon host
-  and directly expose host filesystem objects. The old path was real
-  release-verdict, daemon/configuration-selection, root-fixture, and cleanup
-  authority debt. It is not evidence that another client/daemon/configuration
-  was used, a root fixture escaped, source/input/artifact bytes changed, host
-  root was acquired, a listener or port was exposed, host RustDesk/service/
-  configuration/firewall/network state changed, exploitation occurred, or the
-  host was compromised.
+  The release parent now refuses UID or primary GID zero and closes inherited
+  Docker/build state before repository shell or pins. Normal production and its
+  authority probe require the common verifier-VM preflight before those
+  repository helpers. A direct orchestration-host production invocation fails
+  before workspace creation because the authenticated VM marker, fixed guest
+  client/configuration/socket, daemon generation, Unix peer, and zero-NIC
+  topology are absent. There is no host-rootful, rootless-host, TCP/context,
+  Podman, privilege, or ambient fallback.
 
-  The bootstrap now captures numeric UID and primary GID through
-  `/usr/bin/id`, rejects either zero, and does so before resolving or sourcing
-  repository shell/pins. The release parent creates one unpredictable
-  current-user/current-group mode-0700 Docker-authority root separate from the
-  release workspace, records its exact identity, and initializes the shared
-  `release parent` local-Docker authority there. That shared boundary admits
-  only exact root-owned non-symlink mode-0755 single-link `/usr/bin/docker` and
-  the exact root-owned non-symlink single-link fixed local
-  `/var/run/docker.sock`; creates a canonical-empty no-clobber mode-0600
-  configuration; runs the client and image-provenance helper in otherwise empty
-  environments with redundant explicit local host/config arguments; and
-  reproves parent/configuration/client/socket identities plus configuration
-  bytes before and after every operation.
+  All parent Docker configuration, socket checks, daemon requests, image
+  provenance, container launches, and fake Docker fixtures are deleted.
+  <code>assert_release_builder_image_ids</code> validates only the three exact
+  <code>sha256:</code> content-ID strings loaded from the commit-bound pins.
+  The parent passes the relevant string through its empty child environment;
+  each Android, Debian, Windows-helper, verification, advisory, and lifecycle
+  child retains its own guest-only admission and provenance proof. Parent state
+  cannot substitute for a child's image proof.
 
-  The bespoke `DOCKER_HOST_URI`, `DOCKER_CONFIG_DIR`,
-  `assert_release_docker_config`, `docker_local`, PATH-selected client, and
-  exported provenance state are deleted. All five release-parent launch sites
-  use `local_docker`; both daemon checks use it; and
-  `require_pinned_builder_image` necessarily selects the shared isolated
-  provenance path. `run_child` remains an empty-environment launcher carrying
-  no parent Docker or shared-authority state, so each verifier/advisory/
-  Android/Debian/lifecycle child retains its own separately proved authority.
-  The ordinary non-Docker and cleanup-missing self-tests do not manufacture a
-  Docker dependency.
+  Workspace normalization and terminal removal now invoke the committed
+  <code>verify-private-tree-closure.py</code> bytes directly through the already
+  open, identity- and SHA-256-bound descriptor in isolated Python. The helper
+  retains the exact tree root, mount ID, bounded complete inventory, uniform
+  current-principal ownership, every inode edge, and internal hardlink closure
+  before changing a mode or unlinking an entry. The cleanup preflight creates
+  real current-owner mode-0000 files and a mode-0500 directory, then removes
+  them through the production helper and retires the exact empty fixture root.
+  Snapshot reset similarly proves external-hardlink refusal before normalizing
+  owner access and running Git cleanup. Foreign ownership, mount crossings,
+  special objects, external hardlinks, changed identities, or incomplete
+  cleanup remain preservation-first failures with the exact retained path.
 
-  Terminal production cleanup has no ambient fallback: it uses Docker only
-  while the shared authority is initialized and the exact pinned removal image
-  is present. That authority removes only the identity-bound release-workspace
-  contents; the descriptor-bound helper then removes the empty exact workspace
-  root. Only afterward does cleanup reprove and nonrecursively remove the exact
-  Docker configuration and separately identity-bound empty authority root.
-  Preserving a Windows-reconciliation workspace still retires Docker
-  configuration. Missing, substituted, or changed authority is preserved and
-  fails with a retained path.
+  Executable evidence is primary for this slice. The ordinary release
+  transaction fixture completed both A/B Debian, Android, and Windows target
+  paths, final Debian-lifecycle dispatch, manifest/publication/recovery
+  behavior, and terminal workspace removal in about twelve seconds with no
+  Docker executable or socket. The clean-commit reset fixture exercised the
+  actual inaccessible-mode, internal-hardlink, external-hardlink, normalization,
+  Git cleanup, and final exact-tree proof. The cleanup-missing fixture retained
+  the visible fail-closed result. The common real VM authority run refused the
+  release entry as VM root and UID/GID 4001, admitted UID/GID 4000, and emitted
+  <code>VERIFIER_VM_RELEASE_PARENT_ENTRY=pass ... parent_docker=absent
+  cleanup=descriptor-bound children=vm-only</code> while QEMU had
+  <code>-nic none</code>, Unix-only channels, unchanged host listeners, bounded
+  output, and joined residue-free teardown. This is entry and cleanup evidence,
+  not an artifact build.
 
-  R-S11dm and Appendix C #266 make the fixed client/daemon/configuration correction normative.
-  `scripts/verify-release-parent-docker-authority.py` owns the complete
-  pre-source root refusal, closed environment, separate authority construction,
-  shared client/socket/configuration/provenance implementation, five-launch
-  inventory, child separation, no-fallback cleanup,
-  exact retirement, old-surface absence, requirements/Appendix/ledger state,
-  and deliberate mutations. The last focused source run rejected all 27 of its
-  mutations. The Android builder gate no longer cross-validates this unrelated
-  release-parent surface; current native/cold evidence remains the authority
-  required below.
+  The former 950-line, 27-mutation checker tied to the retired host socket is
+  deleted. <code>scripts/verify-release-parent-authority.py</code> is a compact
+  architecture invariant with no mutation-catalog pretense. The global
+  workspace verifier's duplicated Docker-parent block and most of its obsolete
+  release checker were deleted; it retains only compact transaction topology
+  checks. The real behavioral fixtures, not either source checker, establish
+  cleanup behavior.
 
-  R-S11gm/R-S11e-225 later supersedes this row's former allowance for UID-0/capability-bearing writable-bind
-  fixtures and mixed-owner cleanup. This row does not claim execution of `scripts/build-release.sh`, any
-  package/artifact builder, KVM guest, or exact cold release
-  transaction. Exact cold committed R-B2/R-B10 artifacts, installed/native/
-  device behavior, and R-V3 external review remain separately open. The
-  broader Ralph-loop goal remains active.
+  Remaining STOP-SHIP work is explicit: the outer common VM does not yet carry
+  the complete release source/online/image/signing/Windows-golden input set or
+  return the full bounded artifact set. Therefore a direct host release fails
+  closed and a complete cold current-commit R-B2/R-B10 transaction has not run.
+  The present VM entry probe does not compile RustDesk, execute certified
+  builder images, launch the nested Windows guest, produce A==B artifacts,
+  install a package, exercise a peer, prove native/device lifecycle or
+  display/focus/reconnect latency, reproduce independently, or supply R-V3
+  external review. The broader Ralph goal remains active.
 - **R-S11dn/R-S11e-132 — mandatory Android release-gate source,
   resource, cleanup, and Docker authority — BOTH OUTER AUTHORITIES MIGRATED;
   BOTH GRADLE PRODUCTION PROFILES GREEN; ACTUAL GRADLE/RUST WORKLOADS OPEN.**
@@ -9012,18 +9008,28 @@ snapshots cannot be retained as diagnostics. Inconclusive identity/process/domai
 state and blocks another run rather than guessing. Current read-only inventory finds no `.harness-state`,
 lease, owned domain, or retained run to reconcile.
 
-### R-S11gm/R-S11e-225 release-parent writable-bind principal closure (2026-08-13)
+### R-S11gm/R-S11e-225 release-parent workspace principal closure (2026-09-15)
 
-**Source closed; cold release execution remains open.** Every persistent release-workspace object is intended
-to remain owned by the invoking numeric nonroot principal. The five release-parent container launches use
-that UID/GID with all capabilities dropped and no `--cap-add`; owner/group-selection, `fchown`, and
-container-root cleanup APIs are absent. Descriptor-bound normalization changes only modes, and cleanup
-requires exact root identity, same mount, uniform current-principal ownership, bounded inventory, and complete
-internal hardlink closure. Foreign ownership, non-traversable or changed state, external hardlinks, special
-objects, and descendant mounts are preserved for explicit reconciliation. The pinned release builder images
-and authenticated complete offline input closure are currently absent, so this source design has not been
-rerun as a current cold release transaction.
+**Source closed; real reset/terminal-cleanup fixtures pass; cold release remains
+open.** The release parent has no container launches, Docker socket, image
+provenance request, capability grant, root fixture, or ownership-conversion
+path. Every persistent release-workspace object must remain owned by the
+admitted numeric nonroot principal. The commit-bound in-memory helper directly
+performs mode normalization and cleanup only after exact root identity, same
+mount, bounded inventory, uniform current-principal ownership, retained inode
+edges, and complete internal hardlink closure. Foreign ownership,
+non-traversable or changed state, external hardlinks, special objects, and
+descendant mounts are preserved for explicit reconciliation.
 
+The current ordinary-user reset fixture behaviorally rejected an external
+hardlink without changing its target, handled internal hardlinks plus
+current-owner mode-0000 files and mode-0500 directories, stripped unsafe mode
+bits, removed only ignored generated state, and restored the exact source
+snapshot. The terminal-removal fixture exercised the same production helper and
+exact empty-root retirement. These runs used no Docker. The pinned complete
+offline closure and full release transport are absent, so no current cold
+release proves that every real builder returns only current-principal-owned
+state.
 ### R-B10 reproducible consumer-only online closure after cleanup regression (2026-08-13)
 
 **Source rule retained; current input/release evidence is absent.** The acquisition model rejects

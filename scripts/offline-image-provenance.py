@@ -2304,10 +2304,13 @@ def validate_certified_builder_attestation(
            {
                "uri": (
                    f"pkg:oci/{spec.bootstrap_context_name}?"
-                   f"digest={spec.bootstrap_image_id}&platform=linux%2Famd64"
+                   f"digest={spec.bootstrap_manifest_id}"
+                   "&platform=linux%2Famd64"
                ),
                "digest": {
-                   "sha256": spec.bootstrap_image_id.removeprefix("sha256:")
+                   "sha256": spec.bootstrap_manifest_id.removeprefix(
+                       "sha256:"
+                   )
                },
            }
        ]:
@@ -2327,7 +2330,7 @@ def validate_certified_builder_attestation(
     )
     context_match = re.fullmatch(
         r"oci-layout://([a-z0-9]{20,64})@"
-        + re.escape(spec.bootstrap_image_id),
+        + re.escape(spec.bootstrap_manifest_id),
         context_argument or "",
     )
     if context_match is None:
@@ -2596,7 +2599,7 @@ def validate_certified_builder_attestation(
                     "identifier": (
                         "oci-layout://docker.io/library/"
                         f"{spec.bootstrap_context_name}@"
-                        f"{spec.bootstrap_image_id}"
+                        f"{spec.bootstrap_manifest_id}"
                     ),
                 }
             },
@@ -4109,18 +4112,15 @@ def validate_modern_archive(
                     f"{descriptor.get('annotations')!r}"
                 )
         elif isinstance(spec, CertifiedBuilderSpec):
-            expected_annotations = (
-                None
-                if position < spec.bootstrap_layer_count
-                else {
-                    "buildkit/rewritten-timestamp": (
-                        str(spec.source_date_epoch)
-                    )
-                }
-            )
-            expected_keys = {"digest", "mediaType", "size"}
-            if expected_annotations is not None:
-                expected_keys.add("annotations")
+            expected_annotations = {
+                "buildkit/rewritten-timestamp": str(spec.source_date_epoch)
+            }
+            expected_keys = {
+                "annotations",
+                "digest",
+                "mediaType",
+                "size",
+            }
             if set(descriptor) != expected_keys \
                or descriptor.get("annotations") != expected_annotations:
                 fail(
@@ -8488,12 +8488,12 @@ def create_certified_builder_fixture_archive(
         for position in range(4)
     ]
     layer_descriptors: list[dict[str, object]] = []
-    for position, layer in enumerate(layers):
-        extra: dict[str, object] = {}
-        if position == 3:
-            extra["annotations"] = {
+    for layer in layers:
+        extra: dict[str, object] = {
+            "annotations": {
                 "buildkit/rewritten-timestamp": str(layer_epoch)
             }
+        }
         layer_descriptors.append(
             blob_descriptor(
                 layer,
@@ -8557,7 +8557,7 @@ def create_certified_builder_fixture_archive(
     store = "fixturestore000000000000000"
     session = "fixturesession0000000000000"
     context_value = (
-        f"{context_scheme}://{store}@{bootstrap_image_id}"
+        f"{context_scheme}://{store}@{bootstrap_manifest_id}"
     )
     prefix = preliminary.argument_prefix
     context_name = preliminary.bootstrap_context_name
@@ -8610,7 +8610,7 @@ def create_certified_builder_fixture_archive(
                         "identifier": (
                             "oci-layout://docker.io/library/"
                             f"{context_name}@"
-                            f"{bootstrap_image_id}"
+                            f"{bootstrap_manifest_id}"
                         ),
                     }
                 },
@@ -8735,7 +8735,9 @@ def create_certified_builder_fixture_archive(
             "source": "https://example.invalid/unreviewed.git",
         }
     material_id = (
-        "sha256:" + "f" * 64 if wrong_material else bootstrap_image_id
+        "sha256:" + "f" * 64
+        if wrong_material
+        else bootstrap_manifest_id
     )
     statement = encoded(
         {

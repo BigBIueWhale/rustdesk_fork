@@ -1583,7 +1583,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, and `smoke-server.sh` now admit only that exact entry authority, and every Docker/provenance operation expressed directly in those entries uses the fixed guest socket/configuration/client with pre/post replay; none has a direct host-Docker fallback. The Dart entry self-test also proves its nested FRB child uses that authority. The real verifier and server-smoke payloads and the remaining call graph have not migrated: Dart/FRB generation/analysis/tests and every RustDesk server/protocol/video stage remain unexecuted because the certified builder/image and exact source/vendor/Xvfb inputs are absent from the VM smoke, while other shared consumers still target root-equivalent host Docker and must not run here. Exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, and `dart-audit.sh` now admit only that exact entry authority, and every Docker/provenance operation expressed directly in those entries uses the fixed guest socket/configuration/client with pre/post replay; none has a direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child uses that authority. The real verifier, Dart advisory, and server-smoke payloads and the remaining call graph have not migrated: Dart/FRB generation/analysis/tests, the exact OSV image/scan, and every RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb inputs are absent from the VM smoke, while other shared consumers still target root-equivalent host Docker and must not run here. Exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
 
 The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
 nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
@@ -1615,17 +1615,21 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
   Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
   derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves
-  the exact kernel command line and runtime unit masks. Repeated passes complete in about 12–13 seconds and passed
+  the exact kernel command line and runtime unit masks. Expanded five-entry passes complete in about 20 seconds and
+  pass
   AppArmor/seccomp/resource/namespace, no-bridge/no-forward/no-firewall-mutation, private-channel,
   listener-invariance, complete-bounded-capture, joined-process, and successful-run residue-free cleanup assertions.
   Controlled cancellation joined the exact processes and left no listener while retaining only exact private
   diagnostics, which were then explicitly reconciled. It executed the minimal read-only repository subset needed
-  for the real `verify.sh --self-test-workspace`, `dart-verify.sh --self-test-vm-authority`, and
-  `frb-codegen.sh --self-test-vm-authority` entries, including actual fixed-client Docker requests with
-  client/daemon pre/post generation replay, root/foreign-principal refusal, and Dart-to-FRB child chaining; its focused
-  source/mutation checker also ran inside the guest and rejected all 128 deliberate mutations after obsolete
-  host-Docker checks were removed.
-  It did not execute RustDesk, the verifier image, FRB code generation or image provenance, a build, a scanner, the
+  for the real `verify.sh --self-test-workspace`, `dart-verify.sh --self-test-vm-authority`,
+  `frb-codegen.sh --self-test-vm-authority`, `smoke-server.sh --self-test-vm-authority`, and
+  `dart-audit.sh --self-test-vm-authority` entries. Each performs an actual fixed-client Docker request with
+  client/daemon pre/post generation replay; the applicable entries reject root and a foreign principal, and the Dart
+  verifier proves its nested FRB child. The retained Dart/FRB focused checker runs inside the guest; the Dart-advisory
+  checker was reduced from a 958-line cross-subsystem mutation catalog to a compact no-fallback/launch-shape check,
+  and the guest runs the separate 31-decision scanner-result behavioral test. Acquisition and OCI provenance retain
+  their own focused gates.
+  It did not execute RustDesk, the verifier image, FRB code generation or image provenance, a build, an OSV scan, the
   complete source/input transaction, an artifact, or an output-publication transaction.
 - No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
   a VM NIC, root/sudo on the host, or a non-loopback host listener.
@@ -1641,7 +1645,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE AND FOUR REAL ENTRY PATHS GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–17 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, and `smoke-server.sh` entries now refuse anything except that authority and have no direct host-Docker fallback; root/foreign server-smoke callers are behaviorally refused and the authorized guest caller completes an actual Docker client/server request. Real Dart/FRB and RustDesk server/protocol/video payloads remain unexecuted because their certified images and source/vendor/Xvfb inputs are absent from this smoke, while remaining shared Docker launchers still select the host rootful daemon and must not run here. Move each remaining consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, remove every direct-host/rootless-host fallback, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, or full-gate evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE AND FIVE REAL ENTRY PATHS GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–20 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, and `dart-audit.sh` entries now refuse anything except that authority and have no direct host-Docker fallback; root/foreign Dart-audit and server-smoke callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. Real Dart/FRB, OSV scan, and RustDesk server/protocol/video payloads remain unexecuted because their certified images and source/vendor/Xvfb inputs are absent from this smoke, while remaining shared Docker launchers still select the host rootful daemon and must not run here. Move each remaining consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, remove every direct-host/rootless-host fallback, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -7005,76 +7009,24 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   present. The exact development image and complete source/vendor/Xvfb input medium are likewise
   absent, so no RustDesk build, listener, protocol, display, video, root fixture, installed-service,
   artifact, native-platform, or performance/soak claim is made.
-- **R-S11df/R-S11e-124 — Dart advisory Docker client, daemon, and configuration authority —
-  SOURCE, CONFINED SEMANTIC/MUTATION GATES, AMBIENT-CONTEXT REJECTION, AND CURRENT
-  EXACT SCAN VERIFIED 2026-07-26; RUST/OTHER DOCKER CONSUMERS AND BROADER RELEASE
-  EVIDENCE REMAIN OPEN.**
-  Platform: the unprivileged Linux source-verification host. Endpoint/action:
-  `scripts/dart-audit.sh` immutable-image inspection plus its mount-free OSV preflight and
-  one-lockfile advisory scan. Boundary: the invoking user and private advisory workspace ↔
-  Docker-client selection, daemon selection, client configuration, and the truth of the
-  release advisory verdict.
-
-  R-S11be correctly made acquisition separate and both verdict containers immutable,
-  no-pull, networkless, read-only-root, numeric non-root, capability-free,
-  no-new-privileges, resource-bounded, socket/port/host-namespace-free, and limited the
-  scanner to one staged lockfile. Current source review nevertheless found that absolute
-  `/usr/bin/docker` inspection and both launches inherited Docker host, context,
-  configuration, TLS, platform, trust, and header inputs. The fixed client pathname and
-  container flags therefore did not prove which daemon interpreted the verdict or what
-  client configuration augmented it. This was real scanner-verdict and daemon/configuration
-  selection authority debt. It is not evidence that another daemon or malicious
-  configuration was used, source/scanner/image bytes changed, Docker escaped, host root was
-  acquired, a listener or port was exposed, host RustDesk/service/configuration/firewall/
-  network state changed, exploitation occurred, or the host was compromised.
-
-  The verdict now captures numeric identity through absolute `/usr/bin/id`, refuses UID or
-  primary GID zero, and initializes the shared fixed local Docker authority beneath its
-  exact private mode-0700 workspace before stable-input preparation. That authority admits
-  only the exact root-owned non-symlink mode-0755 single-link `/usr/bin/docker` and
-  root-owned non-symlink single-link `/var/run/docker.sock`; rejects inherited client
-  routing/configuration inputs; and creates one current-user mode-0600 single-link
-  canonical `{}` `config.json` with no-clobber semantics. It captures and rechecks the
-  private parent/configuration, client, socket, and configuration bytes around every
-  operation.
-
-  Image inspection and both output-bounded launches now use the common empty-environment
-  wrapper with fixed `PATH`, private `HOME`, fixed local `DOCKER_HOST`, private
-  `DOCKER_CONFIG`, absolute client, and explicit `--host`/`--config`. Cleanup first
-  reproves and removes only the exact configuration file and directory. Changed authority
-  is preserved and fails before the descriptor-safe private-workspace remover can recurse.
-  R-S11df and Appendix C #259 make this correction normative.
-
-  Bash syntax, Python compilation, the focused semantic gate with all 96 deliberate
-  mutations, the independent workspace normal contract, and its complete in-memory
-  source-mutation catalog pass in immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
-  Each project gate ran as numeric UID:GID 1000:1000 with no network, a read-only
-  container root and repository, all capabilities dropped, no-new-privileges, no
-  Docker socket, host namespace, device, or published port, and explicit PID,
-  memory/no-swap, CPU, and scratch ceilings. The first complete source-mutation run
-  correctly rejected the new image-inspection mutation but refused to count that
-  rejection because the catalog expected a different diagnostic label. Aligning the
-  expected label with the independent gate's actual first failure and rerunning the
-  complete catalog produced a clean verdict.
-
-  From an empty caller environment, the exact current `scripts/dart-audit.sh`
-  transaction authenticated immutable image
-  `sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65`,
-  reported the pinned Pub snapshot fresh, validated zero documented accepts, and
-  returned the strict green OSV status/telemetry/structured-result verdict. Both
-  containers used the fixed local authority and retained the existing non-root,
-  no-pull/network, read-only-root, capability, resource, mount, socket, namespace,
-  and publication restrictions. A separate empty-environment invocation with
-  `DOCKER_CONTEXT=untrusted-remote` failed during authority initialization with
-  status 1 before any Docker operation.
-
-  This slice ran no release build, root container, networked or published
-  container, host process scan, or host RustDesk process/service/configuration/
-  firewall/network inspection or mutation. The successful current scan is not a
-  cold input acquisition or exact clean-commit R-B2/R-B10 artifact transaction.
-  Rust advisory and other Docker/build consumers, installed/native/device behavior,
-  and R-V3 external review remain separately open.
+- **R-S11df/R-S11e-124 — Dart advisory execution authority — VM ENTRY IMPLEMENTED;
+  CURRENT OSV SCAN AND RELEASE EVIDENCE OPEN.** `scripts/dart-audit.sh` refuses UID/GID
+  zero and authenticates R-S11dh before reading the lockfile/policy or creating scratch.
+  Image inspection and both bounded scanner launches use only the fixed guest client,
+  guest-private socket, and root-owned read-only configuration in an empty environment,
+  with VM preflight replay before and after every operation. Its former host
+  `/var/run/docker.sock` authority and private host-client configuration lifecycle are
+  deleted. The KVM harness carries the actual entry on read-only media, rejects VM root
+  and UID/GID 4001, admits only UID/GID 4000, and completes a real Docker client/server
+  request without a VM NIC or host listener; repeated current runs finished in 19–20
+  seconds with joined cleanup. The old 958-line cross-subsystem mutation
+  catalog is replaced by a compact no-fallback and launch-shape source check; the same
+  guest executes the separate 31-decision scanner-result behavioral test, while
+  acquisition/OCI provenance retain their own focused gates.
+  The exact audit image and fresh Pub snapshot are absent from the admitted VM inputs, so
+  no current OSV verdict is claimed. Rust advisory and other Docker consumers, exact
+  input/output transport, current cold artifacts, independent reproduction, and external
+  review remain open.
 - **R-S11dg/R-S11e-125 — Rust advisory Docker client, daemon, and configuration authority —
   SOURCE, CONFINED SEMANTIC/MUTATION GATES, AMBIENT-CONTEXT REJECTION, AND CURRENT
   EXACT SCAN VERIFIED 2026-07-26; OTHER DOCKER CONSUMERS AND BROADER RELEASE

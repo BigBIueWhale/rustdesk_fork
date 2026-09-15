@@ -30,6 +30,7 @@ readonly VERIFY_SCRIPT=$VERIFY_REPO/scripts/verify.sh
 readonly FRB_SCRIPT=$VERIFY_REPO/scripts/frb-codegen.sh
 readonly DART_SCRIPT=$VERIFY_REPO/scripts/dart-verify.sh
 readonly SMOKE_SERVER_SCRIPT=$VERIFY_REPO/scripts/smoke-server.sh
+readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
 
@@ -102,8 +103,9 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
-    verify-dart-verifier-authority.py verify-vm-entry-preflight.sh verify-scan.sh \
+for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh dart-audit.sh dart-audit-result.py \
+    verify-dart-verifier-authority.py verify-dart-audit-authority.py \
+    verify-vm-entry-preflight.sh verify-scan.sh \
     verify-private-tree-closure.py lib.sh pins.env; do
     verify_path="$VERIFY_REPO/scripts/$verify_source"
     [ -f "$verify_path" ] && [ ! -L "$verify_path" ] \
@@ -387,6 +389,66 @@ SMOKE_SERVER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channe
 printf '%s\n' "$smoke_server_entry_output"
 printf 'VERIFIER_VM_SMOKE_SERVER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed\n' \
     "$EXPECTED_VERSION"
+
+if /bin/bash "$DART_AUDIT_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-dart-audit-entry.out" 2>"$ROOT/root-dart-audit-entry.err"; then
+    fail 'VM root passed the Dart-audit verifier entry'
+fi
+[ ! -s "$ROOT/root-dart-audit-entry.out" ] \
+    || fail 'root Dart-audit refusal produced standard output'
+[ "$(<"$ROOT/root-dart-audit-entry.err")" = \
+  'dart-audit.sh: refuses host or container-root execution' ] \
+    || fail 'root Dart-audit refusal diagnostic differs'
+
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$DART_AUDIT_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-dart-audit-entry.out" 2>"$ROOT/foreign-dart-audit-entry.err"; then
+    fail 'foreign numeric principal passed the Dart-audit verifier-VM entry'
+fi
+[ ! -s "$ROOT/foreign-dart-audit-entry.out" ] \
+    || fail 'foreign Dart-audit verifier-VM refusal produced standard output'
+foreign_dart_audit_error="$(<"$ROOT/foreign-dart-audit-entry.err")"
+if [ "$foreign_dart_audit_error" != \
+    'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-dart-audit-entry.err")" -le 4096 ] \
+        || fail 'foreign Dart-audit refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign Dart-audit diagnostic was %q\n' \
+        "$foreign_dart_audit_error" >&2
+    fail 'foreign Dart-audit refusal diagnostic differs'
+fi
+dart_audit_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$DART_AUDIT_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot Dart-audit verifier-VM entry failed'
+expected_dart_audit_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+DART_AUDIT_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed"
+[ "$dart_audit_entry_output" = "$expected_dart_audit_entry_output" ] \
+    || fail "Dart-audit verifier-VM entry result differs: $dart_audit_entry_output"
+printf '%s\n' "$dart_audit_entry_output"
+printf 'VERIFIER_VM_DART_AUDIT_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed\n' \
+    "$EXPECTED_VERSION"
+
+dart_audit_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S \
+        "$VERIFY_REPO/scripts/verify-dart-audit-authority.py" \
+        --repo "$VERIFY_REPO"
+)" || fail 'Dart-audit compact source gate failed'
+[ "$dart_audit_source_gate_output" = 'verify-dart-audit-authority: ok' ] \
+    || fail "Dart-audit compact source-gate result differs: $dart_audit_source_gate_output"
+printf '%s\n' "$dart_audit_source_gate_output"
+printf 'VERIFIER_VM_DART_AUDIT_SOURCE_GATE=pass\n'
+
+dart_audit_result_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S \
+        "$VERIFY_REPO/scripts/dart-audit-result.py" --self-test
+)" || fail 'Dart-audit result behavioral gate failed'
+[ "$dart_audit_result_gate_output" = \
+  'dart-audit-result self-test: ok (31 policy/freshness/status/schema decisions)' ] \
+    || fail "Dart-audit result behavioral result differs: $dart_audit_result_gate_output"
+printf '%s\n' "$dart_audit_result_gate_output"
+printf 'VERIFIER_VM_DART_AUDIT_RESULT_GATE=pass decisions=31\n'
 
 dart_frb_source_gate_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \

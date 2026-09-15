@@ -15244,8 +15244,9 @@ else
 fi
 
 # R-R3/R-A7 advisory scans are intentionally outside the fast verifier, but the
-# verifier executes their behavioral result/freshness tests and the mutation-bound
-# Docker authority contract. Both Rust tools remain wired to one strict policy.
+# verifier executes their behavioral result/freshness tests and compact launcher
+# contracts. The real Dart-audit entry authority is exercised in the no-NIC VM.
+# Both Rust tools remain wired to one strict policy.
 echo "== R-R3/R-A7 dependency-advisory gate wiring =="
 r_r3_gate=
 grep -qF 'load_pins' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-pins-env"
@@ -15279,8 +15280,8 @@ grep -qF 'expected exactly one advisory id' scripts/dart-audit-result.py || r_r3
 if ! python3 scripts/dart-audit-result.py --self-test; then
   r_r3_gate="$r_r3_gate dart:result-behavior-self-test-failed"
 fi
-if ! python3 scripts/verify-dart-audit-authority.py --repo . --self-test; then
-  r_r3_gate="$r_r3_gate dart:scanner-authority-mutation-gate-failed"
+if ! python3 scripts/verify-dart-audit-authority.py --repo .; then
+  r_r3_gate="$r_r3_gate dart:scanner-authority-contract-failed"
 fi
 if grep -qE 'no[^<]{0,30}<code>deny[.]toml</code>|cargo[- ]audit</code> is not wired|not <code>cargo[- ]audit</code>-clean today|R-A7'\''s "audit green" does <em>not</em> hold as-is|dependency tree remains <strong>outstanding work</strong> \\(#16\\)' requirements.html; then
   r_r3_gate="$r_r3_gate requirements:stale-r-r3-text"

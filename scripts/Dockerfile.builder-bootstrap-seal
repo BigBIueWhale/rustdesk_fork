@@ -3,7 +3,6 @@
 # This Dockerfile is consumed through stdin with no filesystem context.  It
 # must remain metadata-only: the acquisition image already contains the
 # canonical package manifest and its self-derived contract.
-ARG BOOTSTRAP_IMAGE_HANDLE
-FROM ${BOOTSTRAP_IMAGE_HANDLE}
+FROM rustdesk-fork-harness-bootstrap-discovery:local
 ARG DPKG_MANIFEST_SHA256
 LABEL org.rustdesk.build-input.dpkg-manifest-sha256="${DPKG_MANIFEST_SHA256}"

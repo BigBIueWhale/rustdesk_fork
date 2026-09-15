@@ -2503,10 +2503,10 @@ BUILT_BOOTSTRAP_RECIPE_SHA256=
 
 builder_bootstrap_candidate_spec_args() {
     [ "$#" -eq 5 ] || die "internal bootstrap candidate specification error"
-    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5"
+    local role="$1" target_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5"
     printf '%s\0' \
         --role "${role}-bootstrap-candidate" \
-        --expected-id "$image_id" \
+        --expected-id "$target_id" \
         --base "$base" \
         --dockerfile-sha "$dockerfile_sha" \
         --dpkg-sha "$dpkg_sha"
@@ -2515,7 +2515,7 @@ builder_bootstrap_candidate_spec_args() {
 capture_builder_bootstrap_candidate() {
     [ "$#" -eq 8 ] || die "internal bootstrap candidate capture error"
     local display="$1" prefix="$2" filename="$3" role="$4"
-    local image_id="$5" base="$6" dockerfile_sha="$7" dpkg_sha="$8"
+    local target_id="$5" base="$6" dockerfile_sha="$7" dpkg_sha="$8"
     local directory="$ONLINE_DIR/build-images"
     local output="$directory/$filename"
     local layout="$ONLINE_FETCH_TMP/${filename%.docker.tar.gz}.oci"
@@ -2527,7 +2527,7 @@ capture_builder_bootstrap_candidate() {
         || die "$display bootstrap candidate OCI workspace already exists"
     mapfile -d '' args < <(
         builder_bootstrap_candidate_spec_args \
-            "$role" "$image_id" "$base" "$dockerfile_sha" "$dpkg_sha"
+            "$role" "$target_id" "$base" "$dockerfile_sha" "$dpkg_sha"
     )
     /usr/bin/install -d -m 0700 "$layout"
     result="$(
@@ -2548,7 +2548,9 @@ capture_builder_bootstrap_candidate() {
     archive_sha="$(/usr/bin/sed -n 's/^sha256=//p' <<<"$result")"
     archive_size="$(/usr/bin/sed -n 's/^bytes=//p' <<<"$result")"
     layout_sha="$(/usr/bin/sed -n 's/^layout_sha256=//p' <<<"$result")"
-    [ "$captured_image" = "$image_id" ] && [ "$captured_path" = "$output" ] \
+    [ "$captured_image" = "$config_id" ] \
+        && [ "$captured_image" != "$target_id" ] \
+        && [ "$captured_path" = "$output" ] \
         && [[ "$manifest_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
         && [[ "$config_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
         && [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] \
@@ -2563,6 +2565,7 @@ capture_builder_bootstrap_candidate() {
     printf 'SHA256_%s_DPKG_MANIFEST="%s"\n' "$prefix" "$dpkg_sha"
     printf 'SHA256_%s_BOOTSTRAP_IMAGE_ARCHIVE="%s"\n' "$prefix" "$archive_sha"
     printf 'SHA256_%s_BOOTSTRAP_OCI_LAYOUT="%s"\n' "$prefix" "$layout_sha"
+    printf 'acquisition_target_id=%s\n' "$target_id"
     printf 'candidate=%s\n' "$output"
 }
 
@@ -2571,7 +2574,7 @@ build_builder_bootstrap_image() {
     local display="$1" role="$2" base="$3" dockerfile_name="$4"
     local dockerfile="$LIB_DIR/$dockerfile_name"
     local seal_dockerfile="$LIB_DIR/Dockerfile.builder-bootstrap-seal"
-    local discovery_tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-${role}-bootstrap-discovery"
+    local discovery_tag="rustdesk-fork-harness-bootstrap-discovery:local"
     local candidate_tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-${role}-bootstrap-candidate"
     local recipe_sha discovery_id discovery_result observed_discovery_id
     local dpkg_sha candidate_id
@@ -2622,7 +2625,6 @@ build_builder_bootstrap_image() {
         || die "$display bootstrap discovery handle changed before sealing"
     online_docker build \
         --network=none --pull=false --no-cache --platform=linux/amd64 \
-        --build-arg "BOOTSTRAP_IMAGE_HANDLE=${discovery_tag}" \
         --build-arg "DPKG_MANIFEST_SHA256=${dpkg_sha}" \
         -t "$candidate_tag" - <"$seal_dockerfile"
     candidate_id="$(

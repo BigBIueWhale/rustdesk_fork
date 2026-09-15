@@ -2181,16 +2181,21 @@ currently reviewed final recipe or package-manifest pins. The authenticated exac
 recipe and pinned base produce one root-capable discovery image, install packages exactly once, write
 one canonical sorted package manifest, derive its SHA-256 from those bytes in the same filesystem
 layer, and bind that derived value into the embedded contract without asserting it as a configuration
-label. A second build <span class="kw">MUST</span> address the discovery image through its freshly
-created transaction-local tag only after proving immediately before the build that the tag resolves
-to the exact recorded local image ID. The tag is a builder handle, not identity or evidence authority.
-The build uses the fixed four-instruction <code>Dockerfile.builder-bootstrap-seal</code> supplied on
+label. A second build <span class="kw">MUST</span> address the discovery image through the one fixed,
+freshly created transaction-local tag only after proving immediately before the build that the tag
+resolves to the exact recorded local image ID. The tag is a builder handle, not identity or evidence
+authority, and is not caller-selectable. The build uses the fixed three-instruction
+<code>Dockerfile.builder-bootstrap-seal</code> supplied on
 standard input with no filesystem context, no pull, no cache, fixed Linux/amd64, and network disabled;
 it may add only the derived package-manifest label. Validation must re-prove that the tag still resolves
 to the recorded image ID, execute the discovery image as confined numeric non-root with no network,
 require live/stored manifest equality and the self-derived contract, and prove the sealed candidate has
 the identical rootfs and identical runtime configuration except for that one label. Candidate capture
-reports the proposed recipe, package, image, config, manifest,
+must bind the raw containerd target index and its complete content-addressed image/attestation closure,
+stream-verify every compressed layer against the runtime configuration's ordered uncompressed diff IDs,
+and discard the transient acquisition index and attestation while producing one private direct-manifest
+archive. The canonical bootstrap image ID is the runtime config digest, not the transient target-index
+digest. Candidate capture reports both identities and the proposed recipe, package, config, manifest,
 archive, size, and layout identities for review. Existing final pins remain unchanged until the
 separate exact-pin no-clobber bootstrap promotion, and the promoted bootstrap remains non-release
 authority until the separate networkless UID/GID-1000 certification transaction succeeds.</p>

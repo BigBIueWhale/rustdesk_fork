@@ -29005,7 +29005,6 @@ def validate_main_verifier_authority_contract(sources):
             '"digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]}',
             "main verifier attested base identity",
         ),
-        ("expected_tags = spec.archive_tags", "main verifier untagged archive"),
         ("save_ref = spec.image_id", "main verifier exact-ID capture"),
         ("RENAME_NOREPLACE = 1", "main verifier archive no-clobber primitive"),
         (

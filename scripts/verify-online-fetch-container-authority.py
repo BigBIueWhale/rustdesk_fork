@@ -351,6 +351,16 @@ def validate(repo: pathlib.Path) -> None:
         "stderr=subprocess.PIPE",
         "undrained Docker-save stderr pipe",
     )
+    require(
+        image_capture,
+        "if private_archive:\n        validate_private_output_parent(output.parent)\n        save_ref = spec.image_id",
+        "private exact-image-ID archive capture",
+    )
+    forbid(
+        image_capture,
+        "cannot create fixed bootstrap capture tag",
+        "bootstrap candidate compatibility tag",
+    )
 
     for function_name, network, pids, memory in (
         ("online_docker_run", "bridge", "2048", "16g"),

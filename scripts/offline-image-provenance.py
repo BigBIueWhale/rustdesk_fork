@@ -3890,6 +3890,8 @@ def validate_modern_archive(
     member_sizes: dict[str, int],
     member_hashes: dict[str, str],
     spec: ImageSpec,
+    *,
+    private_archive: bool,
 ) -> ArchiveIdentity:
     if "repositories" in files:
         fail("content-addressed Docker archive must not contain legacy repositories metadata")
@@ -3905,18 +3907,10 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
-    if isinstance(
-        spec,
-        (
-            CertifiedBuilderSpec,
-            AppleCheckSpec,
-            DartAuditSpec,
-            RustAuditSpec,
-        ),
-    ):
-        expected_annotations = None
-    elif isinstance(spec, VerifierSpec):
-        expected_annotations = spec.root_annotations
+    if private_archive:
+        expected_annotations = (
+            None if isinstance(spec, Spec) else spec.root_annotations
+        )
     else:
         repository_name = spec.capture_tag.rsplit(":", 1)[0]
         expected_name = (
@@ -3928,27 +3922,15 @@ def validate_modern_archive(
             "io.containerd.image.name": expected_name,
             "org.opencontainers.image.ref.name": spec.capture_tag.rsplit(":", 1)[1],
         }
+    expected_root_keys = {"digest", "mediaType", "size"}
+    if expected_annotations is not None:
+        expected_root_keys.add("annotations")
     if not isinstance(root_descriptor, dict) \
+       or set(root_descriptor) != expected_root_keys \
        or root_descriptor.get("mediaType") != "application/vnd.oci.image.index.v1+json" \
        or root_descriptor.get("digest") != expected_digest \
        or root_descriptor.get("annotations") != expected_annotations:
         fail("Docker archive root OCI descriptor does not bind the expected image identity")
-    if isinstance(
-        spec,
-        (
-            CertifiedBuilderSpec,
-            AppleCheckSpec,
-            DartAuditSpec,
-            RustAuditSpec,
-        ),
-    ) and set(root_descriptor) != {
-        "digest",
-        "mediaType",
-        "size",
-    }:
-        fail(
-            f"Docker archive {spec.role} root descriptor has undeclared annotations"
-        )
     expected_index_name, image_index_bytes = descriptor_blob(
         root_descriptor, metadata, member_sizes, member_hashes, "image index"
     )
@@ -4215,6 +4197,8 @@ def validate_legacy_archive(
 def validate_archive_stream(
     stream: BinaryIO,
     spec: ImageSpec,
+    *,
+    require_private: bool = False,
 ) -> ArchiveIdentity | None:
     seen: set[str] = set()
     folded: set[str] = set()
@@ -4266,8 +4250,9 @@ def validate_archive_stream(
     if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
         fail("Docker archive must contain exactly one compatibility image manifest")
     item = manifest[0]
-    if requires_private_archive(spec) and not isinstance(spec, Spec):
-        expected_tags = spec.archive_tags
+    private_archive = requires_private_archive(spec) or require_private
+    if private_archive:
+        expected_tags = None if isinstance(spec, Spec) else spec.archive_tags
     else:
         expected_tags = [spec.capture_tag]
     if item.get("RepoTags") != expected_tags:
@@ -4284,6 +4269,7 @@ def validate_archive_stream(
             member_sizes,
             member_hashes,
             spec,
+            private_archive=private_archive,
         )
     else:
         validate_legacy_archive(item, files, directories, metadata, member_hashes, spec)
@@ -4341,7 +4327,11 @@ def verify_archive_fd(
     os.lseek(fd, 0, os.SEEK_SET)
     hashing = HashingReader(os.fdopen(os.dup(fd), "rb"))
     try:
-        identity = validate_archive_stream(hashing, spec)
+        identity = validate_archive_stream(
+            hashing,
+            spec,
+            require_private=private_archive,
+        )
     finally:
         hashing.stream.close()
     if hashing.digest.hexdigest() != expected_archive_sha:
@@ -5358,6 +5348,7 @@ def prepare_certified_builder_oci_export(
         canonical_sizes,
         canonical_hashes,
         spec,
+        private_archive=True,
     )
     if image_index_name not in scanned.blob_names \
        or image_manifest_name not in scanned.blob_names:
@@ -5612,21 +5603,7 @@ def capture(
     private_archive = requires_private_archive(spec) or require_private
     if private_archive:
         validate_private_output_parent(output.parent)
-        if isinstance(spec, Spec):
-            result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
-            if result.returncode != 0:
-                fail(
-                    "cannot create fixed bootstrap capture tag: "
-                    + result.stderr.decode(errors="replace").strip()
-                )
-            validate_inspect(
-                inspect_image(spec.capture_tag),
-                spec.capture_tag,
-                spec,
-            )
-            save_ref = spec.capture_tag
-        else:
-            save_ref = spec.image_id
+        save_ref = spec.image_id
     else:
         output.parent.mkdir(parents=True, exist_ok=True)
         result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
@@ -5751,7 +5728,12 @@ def create_fixture_archive(path: Path, spec: Spec) -> str:
     return fixture_spec.image_id
 
 
-def create_modern_fixture_archive(path: Path, spec: Spec) -> str:
+def create_modern_fixture_archive(
+    path: Path,
+    spec: Spec,
+    *,
+    tagged: bool = True,
+) -> str:
     def encoded(value: object) -> bytes:
         return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
 
@@ -5801,27 +5783,33 @@ def create_modern_fixture_archive(path: Path, spec: Spec) -> str:
         dockerfile_sha256=spec.dockerfile_sha256,
         dpkg_sha256=spec.dpkg_sha256,
     )
+    root_descriptor: dict[str, object] = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": fixture_spec.image_id,
+        "size": len(image_index),
+    }
+    if tagged:
+        root_descriptor["annotations"] = {
+            "io.containerd.image.name": f"docker.io/{fixture_spec.capture_tag}",
+            "org.opencontainers.image.ref.name": fixture_spec.capture_tag.rsplit(":", 1)[1],
+        }
     index = encoded(
         {
             "schemaVersion": 2,
             "mediaType": "application/vnd.oci.image.index.v1+json",
-            "manifests": [
-                {
-                    "mediaType": "application/vnd.oci.image.index.v1+json",
-                    "digest": fixture_spec.image_id,
-                    "size": len(image_index),
-                    "annotations": {
-                        "io.containerd.image.name": f"docker.io/{fixture_spec.capture_tag}",
-                        "org.opencontainers.image.ref.name": fixture_spec.capture_tag.rsplit(":", 1)[1],
-                    },
-                }
-            ],
+            "manifests": [root_descriptor],
         }
     )
     config_name = "blobs/sha256/" + config_descriptor["digest"].removeprefix("sha256:")
     layer_name = "blobs/sha256/" + layer_descriptor["digest"].removeprefix("sha256:")
     manifest = encoded(
-        [{"Config": config_name, "RepoTags": [fixture_spec.capture_tag], "Layers": [layer_name]}]
+        [
+            {
+                "Config": config_name,
+                "RepoTags": [fixture_spec.capture_tag] if tagged else None,
+                "Layers": [layer_name],
+            }
+        ]
     )
     members = {
         "index.json": index,
@@ -8773,48 +8761,92 @@ def self_test() -> None:
                 modern_archive,
                 modern_sha,
                 modern_spec,
-                modern_archive.stat().st_size + 1,
+                modern_archive.stat().st_size,
+                require_private=True,
+            ),
+            "tagged bootstrap candidate archive",
+        )
+
+        private_modern_archive = Path(temporary) / "private-modern-image.tar.gz"
+        private_modern_id = create_modern_fixture_archive(
+            private_modern_archive,
+            base_spec,
+            tagged=False,
+        )
+        private_modern_spec = Spec(
+            role=base_spec.role,
+            image_id=private_modern_id,
+            base=base_spec.base,
+            dockerfile_sha256=base_spec.dockerfile_sha256,
+            dpkg_sha256=base_spec.dpkg_sha256,
+        )
+        private_modern_sha = hashlib.sha256(
+            private_modern_archive.read_bytes()
+        ).hexdigest()
+        private_modern_archive.chmod(0o400)
+        expect_failure(
+            lambda: verify_archive(
+                private_modern_archive,
+                private_modern_sha,
+                private_modern_spec,
+                private_modern_archive.stat().st_size + 1,
                 require_private=True,
             ),
             "bootstrap candidate wrong exact size",
         )
-        modern_archive.chmod(0o600)
+        private_modern_archive.chmod(0o600)
         expect_failure(
             lambda: verify_archive(
-                modern_archive,
-                modern_sha,
-                modern_spec,
-                modern_archive.stat().st_size,
+                private_modern_archive,
+                private_modern_sha,
+                private_modern_spec,
+                private_modern_archive.stat().st_size,
                 require_private=True,
             ),
             "bootstrap candidate writable mode",
         )
-        modern_archive.chmod(0o400)
+        private_modern_archive.chmod(0o400)
         modern_link = Path(temporary) / "modern-image-hardlink.tar.gz"
-        os.link(modern_archive, modern_link)
+        os.link(private_modern_archive, modern_link)
         expect_failure(
             lambda: verify_archive(
-                modern_archive,
-                modern_sha,
-                modern_spec,
-                modern_archive.stat().st_size,
+                private_modern_archive,
+                private_modern_sha,
+                private_modern_spec,
+                private_modern_archive.stat().st_size,
                 require_private=True,
             ),
             "bootstrap candidate hard link",
         )
         modern_link.unlink()
         modern_identity = verify_archive(
-            modern_archive,
-            modern_sha,
-            modern_spec,
-            modern_archive.stat().st_size,
+            private_modern_archive,
+            private_modern_sha,
+            private_modern_spec,
+            private_modern_archive.stat().st_size,
             require_private=True,
         )
         if modern_identity is None \
-           or modern_identity.image_id != modern_id \
+           or modern_identity.image_id != private_modern_id \
            or not IMAGE_ID.fullmatch(modern_identity.manifest_id) \
            or not IMAGE_ID.fullmatch(modern_identity.config_id):
             fail("bootstrap candidate archive identity extraction failed")
+        pinned_private_modern_spec = Spec(
+            role=private_modern_spec.role,
+            image_id=private_modern_spec.image_id,
+            base=private_modern_spec.base,
+            dockerfile_sha256=private_modern_spec.dockerfile_sha256,
+            dpkg_sha256=private_modern_spec.dpkg_sha256,
+            config_id=modern_identity.config_id,
+            manifest_id=modern_identity.manifest_id,
+        )
+        if verify_archive(
+            private_modern_archive,
+            private_modern_sha,
+            pinned_private_modern_spec,
+            private_modern_archive.stat().st_size,
+        ) != modern_identity:
+            fail("pinned private archive identity verification differs")
 
         android_archive = (
             Path(temporary) / "certified-android-builder-image.tar.gz"

@@ -1,17 +1,58 @@
 #!/usr/bin/env bash
-# Shared least-authority Docker runtime for the pinned Windows build helper.
-# This file is sourced after scripts/lib.sh and scripts/pins.env are loaded.
+# Shared least-authority verifier-VM runtime for the pinned Windows build helper.
+# This file is sourced after verifier-VM admission, scripts/lib.sh, and pins.env.
 
 export PATH=/usr/bin:/bin
 WINDOWS_HELPER_RUNTIME_ROOT=""
 WINDOWS_HELPER_RUNTIME_ROOT_ID=""
 WINDOWS_HELPER_RUNTIME_READY=0
-WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=0
+WINDOWS_HELPER_AUTHORITY_OPEN=0
 WINDOWS_HELPER_KVM_GID=""
 WINDOWS_HELPER_EXTRACTOR_SHA256=""
 WINDOWS_HELPER_INSPECTOR_SHA256=""
 WINDOWS_HELPER_VALIDATED_MOUNT_TARGET=""
 WINDOWS_HELPER_VALIDATED_MOUNT_VALUE=""
+readonly WINDOWS_HELPER_VM_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
+readonly WINDOWS_HELPER_DOCKER_CLIENT=/usr/bin/docker
+readonly WINDOWS_HELPER_DOCKER_SOCKET=/run/rustdesk-verifier-vm/docker.sock
+readonly WINDOWS_HELPER_DOCKER_CONFIG=/run/rustdesk-verifier-vm/docker-config
+
+windows_helper_assert_vm_authority() {
+    [ "${WINDOWS_HELPER_BUILD_UID:-}" = "$(/usr/bin/id -u)" ] \
+        || { echo "Windows helper captured UID authority changed" >&2; return 1; }
+    [ "${WINDOWS_HELPER_BUILD_GID:-}" = "$(/usr/bin/id -g)" ] \
+        || { echo "Windows helper captured GID authority changed" >&2; return 1; }
+    [ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
+        && [ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ] \
+        || { echo "Windows helper refuses root authority" >&2; return 1; }
+    /usr/bin/bash "$WINDOWS_HELPER_VM_PREFLIGHT" >/dev/null
+}
+
+windows_helper_docker() {
+    local status=0
+    windows_helper_assert_vm_authority || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$WINDOWS_HELPER_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$WINDOWS_HELPER_DOCKER_CONFIG" \
+        "$WINDOWS_HELPER_DOCKER_CLIENT" \
+            --host "unix://$WINDOWS_HELPER_DOCKER_SOCKET" \
+            --config "$WINDOWS_HELPER_DOCKER_CONFIG" \
+            "$@" || status=$?
+    windows_helper_assert_vm_authority || return 1
+    return "$status"
+}
+
+windows_helper_image_provenance() {
+    local status=0
+    windows_helper_assert_vm_authority || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$WINDOWS_HELPER_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$WINDOWS_HELPER_DOCKER_CONFIG" \
+        /usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" \
+            "$@" || status=$?
+    windows_helper_assert_vm_authority || return 1
+    return "$status"
+}
 
 windows_helper_assert_private_directory() {
     local path="$1" label="$2" resolved metadata
@@ -38,7 +79,8 @@ windows_helper_assert_authority_file() {
 windows_helper_assert_runtime() {
     local kernel="$WINDOWS_HELPER_RUNTIME_ROOT/kernel/vmlinuz" metadata
     [ "$WINDOWS_HELPER_RUNTIME_READY" = 1 ] || die "Windows helper runtime is not resolved"
-    assert_local_docker_authority || die "Windows helper local-Docker authority changed"
+    windows_helper_assert_vm_authority \
+        || die "Windows helper verifier-VM authority changed"
     windows_helper_assert_private_directory \
         "$WINDOWS_HELPER_RUNTIME_ROOT/authority" "Windows helper program authority"
     windows_helper_assert_private_directory \
@@ -64,18 +106,10 @@ windows_helper_assert_runtime() {
 
 windows_helper_authority_open() {
     [ -z "$WINDOWS_HELPER_RUNTIME_ROOT" ] || die "Windows helper authority is already open"
-    [ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 0 ] \
-        || die "Windows helper Docker authority state is already open"
-    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \
-        || die "Windows helper refuses an existing process-local Docker authority"
-    [ "${WINDOWS_HELPER_BUILD_UID:-}" = "$(/usr/bin/id -u)" ] \
-        || die "Windows helper captured UID authority is unavailable or changed"
-    [ "${WINDOWS_HELPER_BUILD_GID:-}" = "$(/usr/bin/id -g)" ] \
-        || die "Windows helper captured GID authority is unavailable or changed"
-    [ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
-        || die "Windows helper containers refuse host or container-root execution"
-    [ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ] \
-        || die "Windows helper containers refuse a root primary group"
+    [ "$WINDOWS_HELPER_AUTHORITY_OPEN" -eq 0 ] \
+        || die "Windows helper authority state is already open"
+    windows_helper_assert_vm_authority \
+        || die "Windows helper requires the authenticated verifier VM"
     WINDOWS_HELPER_RUNTIME_ROOT="$(
         umask 077
         /usr/bin/mktemp -d /tmp/rustdesk-windows-helper.XXXXXXXXXX
@@ -89,28 +123,23 @@ windows_helper_authority_open() {
     /usr/bin/install -d -m 0700 \
         "$WINDOWS_HELPER_RUNTIME_ROOT/authority" \
         "$WINDOWS_HELPER_RUNTIME_ROOT/kernel"
-    initialize_local_docker_authority \
-        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \
-        "Windows helper runtime"
-    WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=1
+    windows_helper_assert_vm_authority \
+        || die "Windows helper verifier-VM authority changed during open"
+    WINDOWS_HELPER_AUTHORITY_OPEN=1
 }
 
 windows_helper_authority_close() {
     if [ -z "$WINDOWS_HELPER_RUNTIME_ROOT" ]; then
-        [ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 0 ] \
-            && [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \
-            || { echo "Windows helper empty runtime has live Docker authority state" >&2; return 1; }
+        [ "$WINDOWS_HELPER_AUTHORITY_OPEN" -eq 0 ] \
+            || { echo "Windows helper empty runtime has live authority state" >&2; return 1; }
         return 0
     fi
-    if [ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 1 ]; then
-        [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-            || { echo "Windows helper preserving runtime after premature Docker authority loss" >&2; return 1; }
-        remove_local_docker_authority || return 1
-        WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=0
-    elif [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
-        echo "Windows helper preserving runtime with unowned Docker authority" >&2
+    if [ "$WINDOWS_HELPER_AUTHORITY_OPEN" -ne 1 ]; then
+        echo "Windows helper preserving runtime with uncommitted authority" >&2
         return 1
     fi
+    windows_helper_assert_vm_authority \
+        || { echo "Windows helper preserving runtime after verifier-VM authority loss" >&2; return 1; }
     /usr/bin/env -i PATH=/usr/bin:/bin \
         /usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py" \
             --remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT" \
@@ -122,7 +151,7 @@ windows_helper_authority_close() {
     WINDOWS_HELPER_RUNTIME_ROOT=""
     WINDOWS_HELPER_RUNTIME_ROOT_ID=""
     WINDOWS_HELPER_RUNTIME_READY=0
-    WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=0
+    WINDOWS_HELPER_AUTHORITY_OPEN=0
     WINDOWS_HELPER_KVM_GID=""
 }
 
@@ -272,7 +301,8 @@ windows_helper_run_profile() {
         )
     fi
     if [ "$profile" = bootstrap ]; then
-        assert_local_docker_authority || die "Windows helper local-Docker authority changed"
+        windows_helper_assert_vm_authority \
+            || die "Windows helper verifier-VM authority changed"
         windows_helper_assert_authority_file \
             "$WINDOWS_HELPER_RUNTIME_ROOT/authority/windows-helper-extract-kernel.py" \
             "$WINDOWS_HELPER_EXTRACTOR_SHA256" "Windows helper kernel extractor"
@@ -283,7 +313,7 @@ windows_helper_run_profile() {
         windows_helper_assert_runtime
     fi
     local status
-    if local_docker run --rm --pull=never --network=none --read-only \
+    if windows_helper_docker run --rm --pull=never --network=none --read-only \
         --user "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID" \
         --cap-drop=ALL --security-opt=no-new-privileges \
         --ulimit core=0:0 --ulimit nofile=4096:4096 \
@@ -295,7 +325,8 @@ windows_helper_run_profile() {
         status=$?
     fi
     if [ "$profile" = bootstrap ]; then
-        assert_local_docker_authority || die "Windows helper local-Docker authority changed"
+        windows_helper_assert_vm_authority \
+            || die "Windows helper verifier-VM authority changed"
     else
         windows_helper_assert_runtime
     fi
@@ -345,15 +376,18 @@ windows_helper_verify_archive() {
 windows_helper_runtime_resolve() {
     local archive="$1" extractor_source inspector_source kernel
     [ "$WINDOWS_HELPER_RUNTIME_READY" = 0 ] || die "Windows helper runtime is already resolved"
-    assert_local_docker_authority || die "Windows helper local-Docker authority changed"
+    windows_helper_assert_vm_authority \
+        || die "Windows helper verifier-VM authority changed"
     archive="$(readlink -f -- "$archive" 2>/dev/null)" \
         || die "cannot resolve the pinned Windows helper image archive"
     [ -f "$archive" ] && [ ! -L "$archive" ] \
         || die "pinned Windows helper image archive must be a regular non-symlink file"
     windows_helper_verify_archive "$archive" \
         || die "pinned Windows helper image archive provenance verification failed"
-    require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"
-    assert_local_docker_authority || die "Windows helper local-Docker authority changed"
+    require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \
+        windows_helper_image_provenance
+    windows_helper_assert_vm_authority \
+        || die "Windows helper verifier-VM authority changed"
 
     extractor_source="$LIB_DIR/windows-helper-extract-kernel.py"
     inspector_source="$LIB_DIR/windows-golden-inspect.sh"

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ed6ec7e3d54d5f45498b466a856d8df1d786908851d2dccffd1cca8695f6d83a  requirements.html
+7fb3cf1a99bc3e3f889d53f654da31aa5394a3ec0a489b368701864f63188782  requirements.html
 ```
 
 ## Current Verdict
@@ -1583,7 +1583,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`, `build-android.sh`, and `android-rust-check.sh` now admit only that exact authority, use the fixed guest socket/configuration/client with pre/post replay, and have no direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child. Real Dart/FRB generation/analysis/tests, exact OSV/RustSec scans, normal Android signing generation/building/Rust checking, and every RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb/signing/result inputs are absent from the smoke; other shared consumers still target root-equivalent host Docker and must not run here. Exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`, `build-android.sh`, `android-rust-check.sh`, and the shared Windows build/provision/golden helper runtime now admit only that exact authority, use the fixed guest socket/configuration/client with pre/post replay, and have no direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child; the Windows helper entry executes the production small-profile launch and mount validator against the real guest daemon. Real Dart/FRB generation/analysis/tests, exact OSV/RustSec scans, normal Android signing generation/building/Rust checking, the certified Windows helper archive/kernel/KVM/Windows workloads, and every RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb/signing/result inputs are absent from the smoke. Other shared consumers still target root-equivalent host Docker and must not run here. Exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
 
 The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
 nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
@@ -1638,9 +1638,14 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   cross-document mutation catalog, and its duplicate workspace validator is absent. The Debian image-distribution checker
   is likewise a compact Debian-specific invariant rather than a cross-document mutation catalog; its reciprocal workspace
   validator is absent. The same admitted UID/GID-4000 guest executes the generic archive/OCI provenance self-test, including
-  its 39 Android decisions and eight certified-Debian role/archive/direct-normalization decisions.
-  It did not execute RustDesk, the verifier image, FRB code generation, a build, an OSV or RustSec scan, the
-  complete source/input transaction, an artifact, or an output-publication transaction.
+  its 39 Android decisions, eight certified-Debian role/archive/direct-normalization decisions, and 21 Windows
+  role/archive/direct-normalization decisions. The current Windows-helper smoke also executes the production runtime's
+  `small` profile against the real guest daemon: root and UID/GID-4001 are refused, UID/GID-4000 completes, seven hostile
+  mount shapes are refused, resource/security/read-only/network properties are observed in the container, and exact cleanup
+  joins without residue. Complete authority runs finished in 28–29 seconds with host listeners unchanged.
+  It did not execute RustDesk, the verifier image, FRB code generation, a build, an OSV or RustSec scan, the certified
+  Windows helper archive/kernel/KVM/Windows workloads, the complete source/input transaction, an artifact, or an
+  output-publication transaction.
 - No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
   a VM NIC, root/sudo on the host, or a non-loopback host listener.
 
@@ -1655,7 +1660,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE AND NINE REAL ENTRY PATHS GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–25 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, Android signing, Android building, and Android Rust-check authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building/Rust checking, and RustDesk server/protocol/video payloads remain unexecuted because their certified images and complete source/vendor/Xvfb/signing/result inputs are absent from this smoke, while remaining shared Docker launchers still select the host rootful daemon and must not run here. Move each remaining consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, remove every direct-host/rootless-host fallback, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, or full-gate evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE, NINE PRIOR ENTRY PATHS, AND THE REAL WINDOWS-HELPER SMALL PROFILE GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–29 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, Android signing, Android building, Android Rust-check, and Windows helper authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. The Windows build, provisioner, and golden verifier are source-wired to the one VM-only helper funnel, but the smoke executes only its minimal real `small` profile—not the certified helper archive, kernel derivation, KVM/libguestfs, Windows, or artifact paths. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building/Rust checking, RustDesk server/protocol/video payloads, and those Windows workloads remain unexecuted because their certified images and complete source/vendor/Xvfb/signing/result inputs are absent. Move each remaining host-Docker consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, certified-helper, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -3729,100 +3734,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   identity-access-free authority branch. No established keystore/password was listed, opened, mounted,
   hashed, regenerated, replaced, or otherwise inspected. Current one-time execution, APK signing/upgrade,
   device behavior, cold R-B2/R-B10 artifacts, installed/native behavior, and external review remain open.
-- **R-S11ch/R-S11e-100 — Windows helper container and KVM authority — CORRECTED SOURCE COMMITTED
-  2026-07-23 AT `1b5f4b665a4389151bdf50ff82eaaa136d55ed4a`
-  (TREE `2d22f7a9e4ca5fcc82280ac19d96f94fcaadd5ad`); EXACT CLEAN-COMMIT
-  FOCUSED/WORKSPACE/HARNESS GATES AND DISPOSABLE NON-ROOT TCG/KVM/RELATIVE-OVERLAY PROBES PASS;
-  ESTABLISHED-GOLDEN, WINDOWS-ARTIFACT, AND RELEASE EVIDENCE PENDING.** Platform: the unprivileged
-  Linux build host and the pinned
-  Ubuntu helper used around the Windows KVM harness. Endpoint/action: WiX extraction, offline-ISO creation,
-  output-disk creation, overlay EFI preparation, result extraction, MSI canonicalization, and read-only golden
-  completion/inventory inspection. Boundary: caller Docker authority, captured helper/archive bytes, private
-  build outputs, the exact golden image, and `/dev/kvm` ↔ containerized `tar`, `genisoimage`, Python,
-  libguestfs/supermin, and QEMU.
+- **R-S11ch/R-S11e-100 — Windows helper container and KVM envelope — SOURCE
+  IMPLEMENTED; ACTUAL SMALL-PROFILE VM EXECUTION GREEN; CERTIFIED HELPER/KVM/WINDOWS EVIDENCE OPEN.**
+  `scripts/windows-helper-runtime.sh` remains the sole launch funnel for the Windows build, golden
+  provisioner, and golden verifier. It verifies the exact certified helper image and captured archive,
+  derives the independently pinned kernel through a snapshotted nonroot extractor, and applies one numeric-
+  nonroot, no-pull, network-none, read-only-root, capability-free, no-new-privileges envelope with profile
+  PID/memory/no-swap/CPU/tmpfs and finite ulimit bounds. Caller mounts are canonical explicit nonrecursive
+  binds; only fresh exact outputs are writable. Ordinary operations receive no device; the two exact-golden
+  inspection consumers alone may receive one `/dev/kvm:rw` grant and its proved nonroot group. Established
+  and diagnostic goldens are hashed before inspection, and a new provision is accepted only after its final
+  digest matches.
 
-  The three consumers previously contained seven independent helper launch shapes. The build path eventually
-  resolved the immutable image ID and every launch was networkless with no published port, Docker socket, or
-  host namespace, but the helpers retained a writable container root, default capabilities and privilege-gain
-  semantics, implicit pull behavior, no resource ceilings, caller Docker-client configuration, and broad
-  writable run/pass/script mounts. Provision and diagnostic verification selected a mutable
-  harness-prefixed tag, ran as container root, mounted the complete harness-state tree read-only, and granted
-  `/dev/kvm`. This is source-proven build-output/device authority debt. It is not evidence that a helper
-  listened publicly, container root became host root, Docker escaped, the established golden changed, host
-  RustDesk or a host service/firewall/network setting changed, or any system was exploited or compromised.
-
-  `scripts/windows-helper-runtime.sh` now owns the only helper-container launch. It refuses host UID or
-  primary GID 0, validates the root-owned fixed `/usr/bin/docker`, fixes the local Unix daemon, rejects
-  context/TLS endpoint inputs, and replaces any inherited client configuration with a random current-UID
-  mode-0700 runtime containing a mode-0600 single-link canonical `{}` config. The runtime supplies
-  `--host`/`--config` explicitly and re-proves that authority before and after every daemon operation. It
-  verifies the exact `WIN_HELPER_IMAGE_ID`, embedded role/base/Dockerfile/dpkg provenance, and independently
-  pinned captured image archive. `scripts/offline-image-provenance.py` now uses `/usr/bin/docker` and its
-  embedded-provenance reader itself refuses root and runs non-root/no-pull/networkless/read-only-root with all
-  capabilities dropped, no-new-privileges, and explicit process/memory/no-swap/CPU/tmpfs bounds.
-
-  The captured Ubuntu image's `/boot/vmlinuz-6.8.0-134-generic` is root-owned mode 0600, so a direct UID-1000
-  libguestfs invocation correctly failed. The correction does not add root or `CAP_DAC_READ_SEARCH`.
-  `scripts/windows-helper-extract-kernel.py` is snapshotted mode 0400 and executed as the invoking numeric
-  UID:GID inside the same exact image. It parses the already-pinned offline Docker archive as data, requires
-  one image and unique referenced layers, rejects duplicate/ambiguous/whiteout kernel members, extracts exactly
-  `boot/vmlinuz-$WIN_HELPER_KERNEL_VERSION` no-clobber, independently verifies
-  `SHA256_WIN_HELPER_KERNEL`, synchronizes the file/directory, and leaves a private mode-0400 kernel. The runtime
-  mounts that leaf read-only and fixes `SUPERMIN_KERNEL`, modules, version, cache, and temporary roots, allowing
-  supermin/QEMU to remain UID 1000.
-
-  Every launch is `--pull=never`, networkless, read-only-root, numeric non-root, capability-free,
-  no-new-privileges, and bounded by one of three explicit PID/memory/no-swap/CPU/tmpfs profiles. Caller
-  options accept only lexically canonical explicit bind mounts backed by regular files/directories, refuse
-  special files and protected runtime targets, and require writable sources to be current-UID, not
-  group/world writable, and single-link when regular. The build's six operations now mount the
-  exact WiX archive/private output, verified online snapshot plus exact manifest/private ISO output, exact raw
-  output disk, exact relative-backed overlay plus private golden, exact read-only output disk plus fresh extract
-  directory, and exact read-only MSI/worker plus fresh canonical output. No whole run root, pass root, source
-  scripts tree, or permanent output tree is writable. The relative `../golden.qcow2` backing identity resolves
-  to the same private leaf in host and container layouts.
-
-  Provision and golden verification address the immutable ID and mount only the exact golden leaf read-only at
-  `/authority/golden.qcow2`; their snapshotted fixed worker has only `marker` and `inventory` operations.
-  Existing-golden reuse and diagnostic verification hash-check before inspection. During a new provision, the
-  loop reads only the exact provision-owned in-progress leaf to test the terminal marker and verifies the final
-  pinned hash immediately before accepting that marker as completion. Ordinary build libguestfs receives no host
-  device. Only these two golden-read consumers receive exactly `/dev/kvm:rwm` and its one non-root numeric
-  supplemental group, while retaining zero capabilities and no-new-privileges. No consumer has an image
-  build/pull fallback, mutable helper tag, privileged/root identity, added capability, published port, Docker
-  socket, host namespace, or broad harness-state mount.
-
-  `scripts/verify-windows-helper-authority.py` binds the shared runtime, all six build and two golden-inspection
-  consumer shapes, fixed image/client/config, archive/kernel derivation and pins, provenance-reader confinement,
-  exact mounts, relative overlay, sole KVM grant, forbidden authority, R-S11ch, Appendix C #227, this ledger,
-  operator documentation, shared-gate wiring, and independent workspace ownership through deliberate mutations.
-  From the exact clean corrected source commit/tree above, the focused verifier rejected all 42 deliberate
-  weakenings—including established-golden prehash, provision marker/final-hash/acceptance order, and diagnostic
-  prehash—under immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`;
-  the independent workspace source-mutation catalog passed under the same image. The broader Windows-harness
-  verifier passed 139 mutations and four bounded behavioral suites under exact helper image
-  `sha256:aa9abae2debc838591649fb0b7b94f9f2f24e7848c699cd70e1103a690db21ce`.
-  Dependency inventory normal/self-test, Bash syntax and isolated Python bytecode compilation,
-  offline-image-provenance self-test, native-codec normal/negative gates, `git diff --check`, and synchronized
-  requirements SHA-256 `dd7d7cff62ef3affa5352b9b9eda85f3a0046562516bcc25a1b68eb7e4628f3e`
-  also passed from that clean commit. The monolithic `scripts/verify.sh` was deliberately not invoked because it
-  includes two UID-0 containers with `CAP_CHOWN`/`CAP_FOWNER`; running those would have violated this
-  investigation's explicit no-root boundary. Its R-S11ch focused gate and independent ownership binding were
-  instead executed directly under the non-root confined images above. No full-verifier verdict is claimed.
-
-  Disposable private 64-MiB raw disks exercised the production runtime under both TCG and the exact KVM
-  authorization. Both completed partition/VFAT guestfish operations as UID/GID 1000 with the exact derived
-  kernel, zero added capabilities, no network, read-only root, no-new-privileges, and bounded scratch/resources;
-  outputs remained current-user mode-0600 single-link files and were removed. A production-layout disposable
-  qcow2 overlay recorded `../golden.qcow2`, resolved the exact synthetic read-only base at the same identity
-  inside the container, accepted a write through the overlay, and returned that byte through a separate
-  read-only invocation. A deliberately mode-0644 writable probe was rejected before its helper launch; the
-  production `umask 077` shape then passed. Archive/image provenance and the independent derived-kernel pin were
-  reproved before and after extraction. These exact-commit probes built or pulled no image and did not open the
-  established golden, boot or define a VM/domain, compile Windows/RustDesk, access a host service, or
-  inspect/change host RustDesk, listeners, firewall/UFW/nftables/iptables, or host network state. Full golden
-  behavior, Windows artifacts, double-build equality, and the complete cold release remain R-B2 obligations.
+  The current R-S11do VM run executed the production shared runtime's `small` profile against a real
+  guest-only Docker daemon and observed numeric UID/GID 4000, loopback-only container networking, read-only
+  root and input, exact writable output, zero capabilities, no-new-privileges, seccomp filtering, and the
+  expected PID/memory/no-swap/CPU/core/descriptor limits. It also behaviorally refused traversal, protected
+  targets, duplicate targets, a FIFO, unsafe writable mode, writable hard links, and a terminal symlink.
+  This is real envelope/mount/cleanup behavior, but the probe image is deliberately minimal and is not the
+  certified Windows helper. Exact helper-archive provenance/runtime contents, kernel extraction, KVM/
+  libguestfs, golden inspection, Windows provisioning/building, cold artifacts, native behavior,
+  independent reproduction, and external review remain open.
 - **R-S11ci/R-S11e-101 — Apple conformance verifier authority — SOURCE AND AUTHENTICATED
   IMAGE-CLOSURE IMPLEMENTED 2026-07-25; FOCUSED/WORKSPACE MUTATION GATES, ARCHIVE/PROVENANCE
   VERIFICATION, REPRODUCIBLE RUNTIME MANIFEST, AND COMPLETE THREE-TARGET APPLE SOURCE GATE PASS;
@@ -7349,125 +7281,41 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   execution. No Android Rust workload, Gradle workload, APK, release
   transaction, installed/device behavior, or external review is claimed.
 
-- **R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority —
-  SOURCE IMPLEMENTED AND CONFINED SOURCE/STRUCTURE/MUTATION VERIFIED
-  2026-07-26.**
-  Platform: the unprivileged Linux Windows-release and diagnostic host.
-  Endpoint/action: `scripts/windows-helper-runtime.sh` as invoked by
-  `scripts/build-windows-vm.sh`, `scripts/provision-windows-vm.sh`, and
-  `scripts/verify-windows-golden.sh`. Boundary: invoking user and live
-  repository/runtime inputs ↔ Docker client/daemon/configuration, immutable
-  helper-image provenance, kernel/program authority, caller and fixed binds,
-  process resources, `/dev/kvm`, and terminal cleanup.
+- **R-S11do/R-S11e-133 — Windows-helper verifier-VM, mount, resource, KVM, and cleanup authority —
+  SOURCE IMPLEMENTED; ACTUAL SMALL-PROFILE GUEST-DOCKER BEHAVIOR GREEN; CERTIFIED HELPER/KVM/WINDOWS
+  EVIDENCE OPEN.** Platform/boundary: the unprivileged Windows release and diagnostic caller ↔ the sole
+  authenticated no-NIC verifier VM, its guest-only Docker daemon, immutable helper inputs, exact mounts,
+  process limits, `/dev/kvm`, and terminal cleanup.
 
-  R-S11ch already made the shared Windows helper an immutable-image,
-  no-pull, networkless, read-only-root, numeric-nonroot, capability-free,
-  no-new-privileges, profile-resource-bounded runtime with exact helper
-  archive/kernel/program identities, a narrow operation inventory, explicit
-  mount validation, and KVM only for the two golden-image inspection callers.
-  The three callers nevertheless sourced repository shell before the
-  runtime's UID/GID-zero refusal. The runtime exported a bespoke Docker
-  host/configuration, called the absolute client through a private wrapper,
-  and let `require_pinned_builder_image` use the shared library's ambient
-  provenance fallback. Cleanup recursively changed and removed a pathname
-  without a recorded root identity. Caller and fixed internal binds inherited
-  recursive descendant inclusion, core/descriptor/file-size limits were
-  inherited, and the sole KVM grant was `rwm` rather than the needed `rw`.
+  The removed path initialized `/var/run/docker.sock` from all three Windows callers, giving their helper
+  launches and provenance checks root-equivalent host-daemon authority. Admission occurred only after repository
+  shell was sourced, and `require_pinned_builder_image` could select its ambient provenance fallback. That was
+  daemon-selection and host-build authority debt; it was not evidence that the authority was exploited or that
+  any host service, RustDesk process, firewall, network state, listener, input, or artifact was changed.
 
-  Docker's official CLI reference documents host/context/configuration/TLS/
-  API/platform/trust/header inputs and precedence. Docker's Engine security
-  guidance treats rootful-daemon control as powerful host authority and
-  cgroups as denial-of-service containment. Its bind-mount documentation says
-  binds act on the selected daemon host and include descendant mounts by
-  default, while `bind-recursive=disabled` omits them. Its run reference
-  documents explicit `ulimit` and per-device `r`/`w`/`m` permissions. The
-  Linux KVM API is a file-descriptor/ioctl API reached by opening the existing
-  `/dev/kvm`; the helper has no device-node creation need. The old path was
-  release/diagnostic-verdict, daemon/configuration-selection, recursive-bind,
-  resource, KVM-device, cleanup, and build-host authority debt. It is not
-  evidence that another daemon/configuration was used, KVM escaped, input or
-  artifact bytes changed, host root was acquired, a listener or port was
-  exposed, host RustDesk/service/configuration/firewall/network state changed,
-  exploitation occurred, or the host was compromised.
+  `build-windows-vm.sh`, `provision-windows-vm.sh`, and `verify-windows-golden.sh` now refuse UID/GID zero and
+  authenticate the exact verifier-VM generation before sourcing repository libraries or reading product inputs.
+  `windows-helper-runtime.sh` has one Docker mode: fixed `/usr/bin/docker`, fixed guest Unix socket, fixed
+  root-owned canonical-empty guest configuration, empty environment, redundant explicit routing, and pre/post
+  generation replay around every client and provenance operation. No host/rootless-host socket or ambient fallback
+  remains. `require_pinned_builder_image` accepts a caller-proved executor so the Windows funnel cannot escape that
+  authority. Mount, profile, KVM `rw`-only, archive/kernel/program, and descriptor-bound cleanup rules from R-S11ch
+  remain source-enforced.
 
-  All three callers now close `PATH`, capture UID/GID through absolute
-  `/usr/bin/id`, and refuse either zero before resolving or sourcing repository
-  code. The runtime revalidates those captured identities, creates one
-  unpredictable current-principal mode-0700 root, records its exact filesystem
-  identity before population, and initializes the repository's shared fixed
-  local-Docker authority beneath it. Immutable Windows-helper image provenance
-  and every container launch use only the shared empty-environment
-  pre/post-proved wrappers and their exact root-owned client, root-owned local
-  socket, canonical-empty private configuration, and redundant explicit
-  routing. The bespoke exported/direct Docker path and stale
-  `require_cmd docker` preflights are absent.
+  The fast no-NIC VM smoke behaviorally refuses root and UID/GID-4001, then runs the production runtime as
+  UID/GID-4000 against the real guest daemon. It refuses traversal, protected and duplicate targets, FIFO,
+  unsafe-writable, writable-hard-link, and terminal-symlink mounts. Its successful `small` launch observes zero
+  capabilities, no-new-privileges, seccomp filtering, the exact PID/memory/no-swap/CPU/core/descriptor ceilings,
+  loopback as the only interface, read-only root/input, exact writable output, and residue-free joined cleanup.
+  Complete outer runs passed in 28–29 seconds with host listeners unchanged. A deliberately synthetic kernel and
+  minimal probe image exercise only this envelope; they are not certified helper or kernel evidence.
 
-  R-S11ch's exact workload semantics remain. The shared mount normalizer adds
-  `bind-recursive=disabled` to every caller bind; both fixed kernel/inspector
-  binds carry the same exclusion. Every profile retains its PID,
-  memory/no-swap, CPU, and bounded-tmpfs limits and now also has core zero,
-  exact finite descriptor, and 128-GiB file-size ceilings. KVM retains the
-  exact device, proved non-root group, and one `/dev/kvm:rw` grant; device-node
-  creation permission remains absent. Cleanup first reproves and removes the
-  exact Docker configuration, then invokes the descriptor-safe private-tree
-  closer against the recorded runtime-root identity. Changed authority is
-  preserved and fails without a recursive pathname fallback. Runtime-owned
-  open state distinguishes a pre-initialization failure from premature loss
-  of an authority that had committed successfully; the latter is preserved
-  and fails rather than being mistaken for cleanup of a partial open.
-
-  R-S11do and Appendix C #268 make this source boundary normative. The focused
-  Windows-helper verifier, shared gate, independent workspace contract, and
-  complete source-mutation catalog bind it.
-
-  Confined source evidence on 2026-07-26 is green. The focused Windows-helper
-  verifier rejects all 78 deliberate mutations. The adjacent release-parent,
-  Debian systemd-lifecycle, Debian builder, and Android builder gates reject
-  27, 44, 62, and 145 mutations respectively. The independent workspace normal
-  contract passes, and its complete catalog rejects all 2,368 deliberate
-  source mutations from mutation one. Native-codec normal and negative
-  self-test modes, shell/Python syntax, requirements HTML parsing/hash
-  synchronization, and diff hygiene pass. Every project gate ran in immutable
-  verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric non-root with no pull or network, read-only root/repository, all
-  capabilities dropped, no-new-privileges, bounded
-  PID/memory/no-swap/CPU/descriptor/file-size/tmpfs resources, and no Docker
-  socket, host namespace, device, port, service, or host-configuration mount.
-  Each unprivileged host Docker-client launch used a fresh private exact
-  canonical-empty configuration removed immediately afterward.
-
-  Two preliminary complete mutation runs correctly refused ineffective
-  verifier fixtures: the first new mutation expected a shorter label than the
-  shared fixed local-Docker initialization contract emitted; the second
-  expected the generic KVM label after its `rw`→`rwm` mutation was rejected by
-  the more specific forbidden-mknod contract. Only the mutation fixtures'
-  expected diagnostics changed, and the complete catalog was restarted from
-  mutation one after each correction. Two later focused baseline attempts
-  correctly stopped because new cleanup-order assertions matched the global
-  empty-state declarations rather than the terminal branch; the assertions
-  were narrowed to the unique branch/reset sequences before the focused
-  catalog restarted from mutation one. A later complete independent run
-  correctly refused an ineffective early-initializer fixture because its
-  sequential order matcher could select the unchanged later initializer. The
-  fixture now swaps the one identity/population/initializer block, leaving no
-  later stage that could satisfy the order contract, and the complete catalog
-  was restarted from mutation one. The next complete run rejected the
-  analogous duplicated-early-environment cleanup fixture; it now reorders the
-  single exact cleanup block so no unchanged later environment stage can
-  satisfy the contract. The catalog was again restarted from mutation one.
-  Final diff review then added exact-one initializer, Docker-retirement, and
-  private-root-closer cardinality contracts so a duplicated later stage cannot
-  evade an order-only matcher; all three have focused and independent
-  mutations, and the complete catalog was restarted once more.
-  These were verifier-development defects, not helper, Docker-workload, KVM,
-  Windows, host, or service execution.
-
-  No helper workload, KVM operation, Windows builder/provisioner,
-  artifact/package builder, root fixture, release transaction, or
-  installed/native/device test is claimed here. Exact cold committed
-  R-B2/R-B10 Windows artifacts and R-V3 external review remain separately
-  open; the broader Ralph-loop goal remains active.
+  The former 78-mutation checker and duplicate workspace validator were deleted. The remaining compact source
+  invariant protects the sole funnel, no-fallback wiring, caller admission, mount/KVM/cleanup envelope, and real
+  behavioral-test connection; it is supplementary to the VM result. Exact certified helper archive/image
+  provenance, kernel extraction, KVM/libguestfs, golden inspection, Windows provisioning/building, cold artifacts,
+  native behavior, independent reproduction, and external review remain open. The broader Ralph-loop goal remains
+  active.
 - **R-S11dp/R-S11e-134 — generic cleanup has no daemon-global Docker
   enumeration or prefix-deletion authority — SOURCE IMPLEMENTED AND
   CONFINED SOURCE/MUTATION VERIFIED 2026-07-26.**

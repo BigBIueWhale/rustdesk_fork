@@ -298,13 +298,13 @@ else
   echo "  ok  R-S11cg/R-S11di one-time Android identity generation is verifier-VM-only with no host-Docker fallback, fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution, file-only secrets, and durable no-clobber publication"
 fi
 
-echo "== (0f) Windows helper container/KVM/local-Docker authority (R-S11ch/R-S11do/R-S11e-100/R-S11e-133) =="
+echo "== (0f) Windows helper container/KVM/verifier-VM authority (R-S11ch/R-S11do/R-S11e-100/R-S11e-133) =="
 r_s11ch=
-if ! python3 scripts/verify-windows-helper-authority.py --repo . --self-test; then
-  r_s11ch="$r_s11ch authority-or-mutation-self-test-failed"
+if ! python3 scripts/verify-windows-helper-authority.py --repo .; then
+  r_s11ch="$r_s11ch authority-source-gate-failed"
 fi
 if [ -n "$r_s11ch" ]; then
-  echo "  FAIL R-S11ch/R-S11do Windows helper container/KVM/local-Docker authority:$r_s11ch"
+  echo "  FAIL R-S11ch/R-S11do Windows helper container/KVM/verifier-VM authority:$r_s11ch"
   rc=1
 else
   echo "  ok  R-S11ch/R-S11do all Windows helpers refuse root before repository code and use one exact fixed local-Docker authority, immutable non-root/no-pull/networkless/read-only-root/capability-free/resource-bounded execution, recursively-disabled narrow binds, descriptor-safe cleanup, a pinned derived libguestfs kernel, and exact read/write-only KVM golden inspection"

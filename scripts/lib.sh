@@ -328,8 +328,10 @@ remove_local_docker_authority() {
 }
 
 require_pinned_builder_image() {
-    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || die "require_pinned_builder_image requires ROLE [IMAGE_REF]"
-    local role="$1" image_ref="${2:-}" prefix base image_id dockerfile_sha dpkg_sha
+    [ "$#" -ge 1 ] && [ "$#" -le 3 ] \
+        || die "require_pinned_builder_image requires ROLE [IMAGE_REF] [PROVENANCE_EXECUTOR]"
+    local role="$1" image_ref="${2:-}" provenance_executor="${3:-}"
+    local prefix base image_id dockerfile_sha dpkg_sha
     case "$role" in
         deb-builder) prefix=DEB_BUILDER; base="ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" ;;
         android-builder) prefix=ANDROID_BUILDER; base="ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" ;;
@@ -342,7 +344,11 @@ require_pinned_builder_image() {
     dpkg_sha="${!dpkg_var:-}"
     [ -n "$image_id" ] && [ -n "$dockerfile_sha" ] && [ -n "$dpkg_sha" ] \
         || die "pins.env is missing $image_var, $dockerfile_var, or $dpkg_var"
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
+    if [ -n "$provenance_executor" ]; then
+        [[ "$provenance_executor" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
+            && declare -F "$provenance_executor" >/dev/null \
+            || die "pinned builder-image provenance executor is unavailable"
+    elif [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
         [ -x /usr/bin/python3 ] || die "trusted Python interpreter is unavailable at /usr/bin/python3"
         assert_local_docker_authority || die "local Docker authority is unavailable"
     else
@@ -386,7 +392,10 @@ require_pinned_builder_image() {
         )
     fi
     [ -z "$image_ref" ] || args+=(--image-ref "$image_ref")
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
+    if [ -n "$provenance_executor" ]; then
+        "$provenance_executor" "${args[@]}" \
+            || die "pinned $role image provenance verification failed"
+    elif [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
         local_docker_image_provenance "${args[@]}" \
             || die "pinned $role image provenance verification failed"
     else

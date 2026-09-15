@@ -36,6 +36,8 @@ readonly ANDROID_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-android.sh
 readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-builder-image-authority.py
 readonly DEB_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-deb-builder-image-authority.py
 readonly WIN_HELPER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-win-helper-image-authority.py
+readonly WINDOWS_HELPER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-windows-helper-authority.py
+readonly WINDOWS_HELPER_RUNTIME_TEST=$VERIFY_REPO/scripts/test-windows-helper-vm-runtime.sh
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
@@ -118,7 +120,9 @@ for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     build-android.sh verify-android-builder-authority.py \
     verify-android-builder-image-authority.py \
     verify-deb-builder-image-authority.py \
-    verify-win-helper-image-authority.py windows-helper-runtime.sh \
+    verify-win-helper-image-authority.py verify-windows-helper-authority.py \
+    test-windows-helper-vm-runtime.sh windows-helper-runtime.sh \
+    windows-helper-extract-kernel.py windows-golden-inspect.sh \
     build-windows-vm.sh provision-windows-vm.sh verify-windows-golden.sh \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
@@ -617,6 +621,16 @@ win_helper_image_source_gate_output="$(
 printf '%s\n' "$win_helper_image_source_gate_output"
 printf 'VERIFIER_VM_WIN_HELPER_IMAGE_SOURCE_GATE=pass\n'
 
+windows_helper_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$WINDOWS_HELPER_AUTHORITY_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || fail 'Windows helper compact source gate failed'
+[ "$windows_helper_source_gate_output" = 'verify-windows-helper-authority: ok' ] \
+    || fail "Windows helper source-gate result differs: $windows_helper_source_gate_output"
+printf '%s\n' "$windows_helper_source_gate_output"
+printf 'VERIFIER_VM_WINDOWS_HELPER_SOURCE_GATE=pass\n'
+
 offline_image_provenance_status=0
 offline_image_provenance_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -766,6 +780,34 @@ tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
         - "$IMAGE" >"$ROOT/image-id"
 [[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || fail 'probe image ID is malformed'
+
+if /bin/bash "$WINDOWS_HELPER_RUNTIME_TEST" "$(<"$ROOT/image-id")" \
+    >"$ROOT/root-windows-helper.out" 2>"$ROOT/root-windows-helper.err"; then
+    fail 'VM root passed the Windows helper runtime test entry'
+fi
+[ ! -s "$ROOT/root-windows-helper.out" ] \
+    || fail 'root Windows helper refusal produced standard output'
+[ "$(<"$ROOT/root-windows-helper.err")" = \
+  'Windows helper VM runtime test refuses root execution' ] \
+    || fail 'root Windows helper refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$WINDOWS_HELPER_RUNTIME_TEST" "$(<"$ROOT/image-id")" \
+    >"$ROOT/foreign-windows-helper.out" 2>"$ROOT/foreign-windows-helper.err"; then
+    fail 'foreign principal passed the Windows helper runtime test entry'
+fi
+[ ! -s "$ROOT/foreign-windows-helper.out" ] \
+    || fail 'foreign Windows helper refusal produced standard output'
+[ "$(<"$ROOT/foreign-windows-helper.err")" = \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+    || fail 'foreign Windows helper refusal diagnostic differs'
+windows_helper_runtime_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$WINDOWS_HELPER_RUNTIME_TEST" "$(<"$ROOT/image-id")"
+)" || fail 'authorized Windows helper runtime test failed'
+[ "$windows_helper_runtime_output" = \
+  'WINDOWS_HELPER_VM_RUNTIME=pass uid=4000 gid=4000 decisions=8 profile=small docker=real cleanup=joined' ] \
+    || fail "Windows helper runtime result differs: $windows_helper_runtime_output"
+printf '%s\n' "$windows_helper_runtime_output"
 
 CONTAINER_ID="$(
     "$CLIENT" --host "unix://$SOCK" create \

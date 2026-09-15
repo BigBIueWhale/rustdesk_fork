@@ -1514,7 +1514,12 @@ def validate_sources(sources: dict[str, str]) -> None:
         'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
         "pinned Windows helper image",
     )
-    require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "pinned FRB builder image")
+    require(
+        host,
+        'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \\\n'
+        "        windows_helper_image_provenance",
+        "VM-routed Debian builder image provenance",
+    )
     for literal, description in (
         (
             '"$STATE_DIR/.windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1.XXXXXXXX"',
@@ -1928,7 +1933,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         'WORK_ROOT="$(umask 077 && mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"',
         "private FRB generation",
     )
-    require(frb, 'require_pinned_builder_image deb-builder "$IMAGE_ID"', "FRB image provenance")
+    require(frb, "verifier_vm_image_provenance verify-local", "FRB VM image provenance")
     require(frb, "verify_online_shas", "FRB archive pins")
     require(frb, "FRB installation metadata does not match the pinned build contract", "FRB tool metadata")
     require(frb, "FRB source snapshot has a writable entry", "read-only FRB source")
@@ -3968,7 +3973,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             '--source-root "$SOURCE_SNAPSHOT" --online-root "$ONLINE_DIR" --output-root "$frb_root"',
             '--source-root "$SOURCE_SNAPSHOT" --cache-root "$ONLINE_DIR" --output-root "$frb_root"',
         ),
-        ("FRB image provenance", "frb", 'require_pinned_builder_image deb-builder "$IMAGE_ID"', 'docker image inspect "$IMAGE_ID"'),
+        ("FRB image provenance", "frb", "verifier_vm_image_provenance verify-local", 'docker image inspect "$IMAGE_ID"'),
         ("FRB exact manifest", "host", "FRB manifest does not describe exactly the four canonical outputs", "FRB manifest accepted"),
         ("FRB read-only source", "frb", "FRB source snapshot has a writable entry", "FRB source snapshot accepted"),
         ("FRB publish", "frb", 'mv -T --no-clobber -- "$PUBLISH_ROOT" "$OUTPUT_ROOT"', 'cp -a "$PUBLISH_ROOT" "$OUTPUT_ROOT"'),

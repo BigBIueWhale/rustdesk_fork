@@ -27,7 +27,8 @@ readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
     || { printf 'provision-windows-vm refuses host or container-root execution\n' >&2; exit 1; }
 [ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ] \
     || { printf 'provision-windows-vm refuses a root primary group\n' >&2; exit 1; }
-SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+/usr/bin/bash "$SCRIPT_DIR/verify-vm-entry-preflight.sh" >/dev/null
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins

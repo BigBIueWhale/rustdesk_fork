@@ -2359,7 +2359,7 @@ def validate_certified_builder_attestation(
         else None
     )
     context_match = re.fullmatch(
-        r"oci-layout://([a-z0-9]{20,64})@"
+        r"oci-layout://([a-z0-9]{20,64}):latest@"
         + re.escape(spec.bootstrap_manifest_id),
         context_argument or "",
     )
@@ -8602,7 +8602,7 @@ def create_certified_builder_fixture_archive(
     store = "fixturestore000000000000000"
     session = "fixturesession0000000000000"
     context_value = (
-        f"{context_scheme}://{store}@{bootstrap_manifest_id}"
+        f"{context_scheme}://{store}:latest@{bootstrap_manifest_id}"
     )
     prefix = preliminary.argument_prefix
     context_name = preliminary.bootstrap_context_name

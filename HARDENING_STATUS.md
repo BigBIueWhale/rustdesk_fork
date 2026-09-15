@@ -1578,7 +1578,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source/model gates remain supplementary. R-S11dh's authenticated ordinary-user, zero-NIC QEMU smoke proves direct boot, guest-only Docker, private Unix control, selected root/foreign refusal, bounded containers, listener invariance, finality, and joined cleanup; its script entries have no host-Docker fallback. Those authority probes do not execute most real Dart/FRB, advisory, Android, Apple, full-peer, certified Debian/Windows, or RustDesk product workloads. R-S11cj's distinct outbound-only VM now has focused runtime evidence at exact source commit `c8817457dde6e874fbbe380f37022d4b77b40c4d`: no host Docker/live-source mount/forwarding, three exact rootless virtiofs exports, TCP-only guest/container networking, numeric-nonroot pinned HTTPS retrieval, flagged rename, unchanged host listeners, and joined residue-free cleanup. The complete cache/producers, exact full-peer source/input/output transport, prepared toolchain/image reproduction, fresh independent verifier-image rebuild, native targets, and cold release remain open. |
+| Verification/build authority | Focused source/model gates remain supplementary. R-S11dh's authenticated ordinary-user, zero-NIC QEMU smoke proves direct boot, guest-only Docker, private Unix control, selected root/foreign refusal, bounded containers, listener invariance, finality, and joined cleanup; its script entries have no host-Docker fallback. Those authority probes do not execute most real Dart/FRB, advisory, Android, Apple, full-peer, certified Debian/Windows, or RustDesk product workloads. R-S11cj's distinct outbound-only VM has real pinned-HTTPS/cache-transport authority evidence and, at `cd3891fae9c4b9f98b14aabc246d18f35af2d74b`, successful and expected-failure runs proving the acquisition principal inherits the exact descriptor budget needed for private-workspace finality. The clean-cache bootstrap-image build/capture sequence is still incoherent across disposable VM generations; complete cache/producers, exact full-peer source/input/output transport, prepared toolchain/image reproduction, fresh independent verifier-image rebuild, native targets, and cold release remain open. |
 
 The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
 nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
@@ -1664,7 +1664,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES AND THE DISTINCT ONLINE-ACQUISITION AUTHORITY SMOKE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** The R-S11dh entry paths admit only the authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and have no host-Docker fallback; the focused entries behaviorally refuse applicable root/foreign callers and exercise real bounded guest containers. R-S11cj separately executes networked acquisition inside ordinary-user QEMU with three exact rootless virtiofs exports, TCP-only guest/container egress, no host forwarding, and unchanged host listeners. At exact source commit `c8817457dde6e874fbbe380f37022d4b77b40c4d`, its 16-second focused run refused root and a foreign principal, retrieved and digest-checked the pinned 114,565-byte HTTPS object as numeric nonroot, exercised the flagged-rename/cache transports, and joined QEMU, Docker, and all three virtiofsd processes without residue. This proves execution-authority mechanics only. Real Dart/FRB and advisory scans, normal Android signing/build/Gradle/Rust workloads, Apple source work, full-peer presentation, certified Debian/Windows workloads, cold artifacts, prepared verifier inputs, fresh independent image reproduction, and external review remain open. Entry gates are not product, artifact, scanner, native-platform, or full-release evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES AND THE DISTINCT ONLINE-ACQUISITION AUTHORITY SMOKE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** The R-S11dh entry paths admit only the authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and have no host-Docker fallback; the focused entries behaviorally refuse applicable root/foreign callers and exercise real bounded guest containers. R-S11cj separately executes networked acquisition inside ordinary-user QEMU with three exact rootless virtiofs exports, TCP-only guest/container egress, no host forwarding, and unchanged host listeners. Its pinned-HTTPS authority run remains green; at `cd3891fae9c4b9f98b14aabc246d18f35af2d74b`, another successful 16-second run validated the exact 524,544-descriptor acquisition budget, while a 27-second expected missing-image transaction reached clean private-workspace finality and joined the VM processes with listeners unchanged. This proves execution-authority and cleanup mechanics only. The clean-cache bootstrap-image build/capture sequence remains broken across disposable guest generations. Real Dart/FRB and advisory scans, normal Android signing/build/Gradle/Rust workloads, Apple source work, full-peer presentation, certified Debian/Windows workloads, cold artifacts, prepared verifier inputs, fresh independent image reproduction, and external review remain open. Entry gates are not product, artifact, scanner, native-platform, or full-release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -3790,8 +3790,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   pass predates this VM-only entry and is not current-tree evidence. Native macOS/iOS compilation, signing,
   installation, helper/launchd behavior, runtime, packages, cold release, independent reproduction, and
   external review remain open.
-- **R-S11cj/R-S11e-102 — isolated online-acquisition VM and non-root producer authority — SOURCE AND
-  FOCUSED AUTHORITY BEHAVIOR VERIFIED 2026-09-15; FULL CACHE/PRODUCERS, COLD RELEASE,
+- **R-S11cj/R-S11e-102 — isolated online-acquisition VM and non-root producer authority — SOURCE,
+  FOCUSED AUTHORITY, AND PRIVATE-WORKSPACE FAILURE FINALITY VERIFIED; FULL CACHE/PRODUCERS, COLD RELEASE,
   INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.** Platform/boundary: one ordinary-user Linux
   orchestrator owns a disposable QEMU/KVM VM; VM-local root alone owns its outbound NIC, TCP resolver,
   Unix-only Docker daemon, private bridge/firewall/NAT, and sealed Git runtime. The exact admitted UID:GID
@@ -3824,10 +3824,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and nonempty-directory `RENAME_EXCHANGE`; wrote both cache-state children and the systemd export; returned
   bounded results through the third export; observed no published port or host TCP/UDP listener change; and
   joined QEMU, Docker, serial capture, and all three virtiofsd processes with no retained successful-run root.
-  This proves the focused authority/transport mechanics only. The complete cache, real producer workloads and
-  output semantics, product builds, cold R-B2/R-B10 artifacts, independent reproduction, and external review
-  remain open. No host RustDesk/service/configuration, Haggai environment, host Docker, firewall, route,
-  interface, or sysctl was used or changed.
+  At exact source commit `cd3891fae9c4b9f98b14aabc246d18f35af2d74b`, the guest transaction owner now
+  establishes a soft and hard `RLIMIT_NOFILE` of 524,544 before dropping to the acquisition principal: the
+  private-tree closer's 524,288-entry bound plus its 256-descriptor reserve. A compact source invariant derives
+  and compares those constants so either side cannot drift silently. The successful authority transaction
+  completed in 16 seconds and the outer owner accepted the exact descriptor-budget completion receipt.
+
+  The behavioral failure test used the real `--maintenance-capture-android-builder-bootstrap-image` VM route.
+  Before the correction, it reported both the genuine absent-image error and `retained-authority descriptor hard
+  limit is below the tree bound`, leaving the private guest workspace unretired. Repeating the same transaction
+  at `cd3891f` reported only the absent-image error: the private workspace closer completed, the before/during/
+  after listener inventories were byte-identical, no owned QEMU or virtiofsd generation survived, and the exact
+  bounded failure record was inspected before retirement. This closes the acquisition process's descriptor-
+  budget/failure-cleanup defect, not the requested producer work.
+
+  The run also proves a distinct remaining clean-reconstruction defect: the bootstrap build operation creates
+  images only in one disposable guest Docker store, while each existing capture operation starts a later fresh
+  guest and therefore cannot see that image. The current empty cache cannot reach a certified Android builder or
+  real Gradle producer until that build-to-persistent-candidate transaction is corrected. The complete cache,
+  real producer workloads and output semantics, product builds, cold R-B2/R-B10 artifacts, independent
+  reproduction, and external review remain open. No host RustDesk/service/configuration, Haggai environment,
+  host Docker, firewall, route, interface, or sysctl was used or changed.
 - **R-S11ck/R-S11e-103 — networked Gradle warmer source authority — SOURCE TOPOLOGY
   CORRECTED; ACQUISITION-VM AUTHORITY/TRANSPORT EVIDENCE RETAINED; EXACT-CURRENT GRADLE
   SOURCE-LIFECYCLE, REAL PRODUCER, AND COLD-RELEASE EVIDENCE OPEN.** The sole supported entry crosses
@@ -3855,7 +3872,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   with the real Gradle producer; cover first construction and retained reuse, normal generated extras,
   producer failure, committed-input tampering, forbidden Git metadata, publication refusal, and exact cleanup;
   then retain artifact/source identities, listener invariance, resource bounds, cold R-B2/R-B10 equality,
-  independent reproduction, and external review. R-S11cl owns the distinct cache/SDK output transaction.
+  independent reproduction, and external review. The current clean-cache prerequisite is blocked by R-S11cj's
+  cross-generation bootstrap build/capture defect; the descriptor-budget repair does not substitute for Gradle.
+  R-S11cl owns the distinct cache/SDK output transaction.
 - **R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority — SOURCE IMPLEMENTED
   2026-07-23; CONFINED TRANSACTION/FIXTURE EVIDENCE RECORDED; OTHER ONLINE PRODUCERS AND EXACT COLD
   RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and Android

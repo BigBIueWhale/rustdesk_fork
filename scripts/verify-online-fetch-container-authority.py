@@ -337,6 +337,12 @@ def validate(repo: pathlib.Path) -> None:
         ("verify_buildkit_daemon_generation", "BuildKit pre/post daemon-executable binding"),
         ('mapfile -d \'\' -t buildkit_argv', "BuildKit root-owned argv binding"),
         ("stop_buildkit_daemon", "joined BuildKit shutdown"),
+        ('[ "$daemon_status" -eq 1 ]', "pinned BuildKit signal-exit contract"),
+        ('msg="stopping server"', "BuildKit graceful-stop marker"),
+        (
+            "buildkitd: got 1 SIGTERM/SIGINTs, forcing shutdown",
+            "BuildKit signal-context marker",
+        ),
         ("stop_docker_daemon", "joined Docker shutdown"),
     ):
         require(guest, token, label)

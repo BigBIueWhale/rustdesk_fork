@@ -143,8 +143,13 @@ stop_buildkit_daemon() {
     /usr/bin/kill -TERM "$BUILDKIT_PID" \
         || fail 'cannot signal the exact guest BuildKit daemon'
     wait "$BUILDKIT_PID" || daemon_status=$?
-    [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] \
-        || fail "guest BuildKit daemon shutdown returned $daemon_status"
+    [ "$daemon_status" -eq 1 ] \
+        || fail "guest BuildKit daemon shutdown returned $daemon_status, expected 1"
+    [ "$(/usr/bin/grep -Fc 'msg="stopping server"' "$BUILDKIT_LOG")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fxc \
+               'buildkitd: got 1 SIGTERM/SIGINTs, forcing shutdown' \
+               "$BUILDKIT_LOG")" -eq 1 ] \
+        || fail 'guest BuildKit daemon did not report its pinned graceful shutdown path'
     [ ! -r "/proc/$BUILDKIT_PID/stat" ] \
         || fail 'guest BuildKit daemon remains after joined shutdown'
     [ ! -S "$BUILDKIT_SOCKET" ] \

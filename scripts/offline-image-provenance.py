@@ -3907,6 +3907,7 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
+    direct_bootstrap_manifest = private_archive and isinstance(spec, Spec)
     if private_archive:
         expected_annotations = (
             None if isinstance(spec, Spec) else spec.root_annotations
@@ -3925,26 +3926,39 @@ def validate_modern_archive(
     expected_root_keys = {"digest", "mediaType", "size"}
     if expected_annotations is not None:
         expected_root_keys.add("annotations")
+    expected_root_media_type = (
+        "application/vnd.oci.image.manifest.v1+json"
+        if direct_bootstrap_manifest
+        else "application/vnd.oci.image.index.v1+json"
+    )
     if not isinstance(root_descriptor, dict) \
        or set(root_descriptor) != expected_root_keys \
-       or root_descriptor.get("mediaType") != "application/vnd.oci.image.index.v1+json" \
-       or root_descriptor.get("digest") != expected_digest \
+       or root_descriptor.get("mediaType") != expected_root_media_type \
+       or (
+           not direct_bootstrap_manifest
+           and root_descriptor.get("digest") != expected_digest
+       ) \
        or root_descriptor.get("annotations") != expected_annotations:
         fail("Docker archive root OCI descriptor does not bind the expected image identity")
-    expected_index_name, image_index_bytes = descriptor_blob(
-        root_descriptor, metadata, member_sizes, member_hashes, "image index"
-    )
-    image_index = parse_json(image_index_bytes, "image index blob")
-    if not isinstance(image_index, dict) or image_index.get("schemaVersion") != 2 \
-       or image_index.get("mediaType") != "application/vnd.oci.image.index.v1+json":
-        fail("Docker archive image index blob is malformed")
-    descriptors = image_index.get("manifests")
-    if not isinstance(descriptors, list) or not descriptors:
-        fail("Docker archive image index has no manifests")
-    image_descriptors = [
-        descriptor for descriptor in descriptors
-        if isinstance(descriptor, dict) and descriptor.get("platform") == {"architecture": "amd64", "os": "linux"}
-    ]
+    if direct_bootstrap_manifest:
+        expected_index_name = None
+        descriptors = [root_descriptor]
+        image_descriptors = descriptors
+    else:
+        expected_index_name, image_index_bytes = descriptor_blob(
+            root_descriptor, metadata, member_sizes, member_hashes, "image index"
+        )
+        image_index = parse_json(image_index_bytes, "image index blob")
+        if not isinstance(image_index, dict) or image_index.get("schemaVersion") != 2 \
+           or image_index.get("mediaType") != "application/vnd.oci.image.index.v1+json":
+            fail("Docker archive image index blob is malformed")
+        descriptors = image_index.get("manifests")
+        if not isinstance(descriptors, list) or not descriptors:
+            fail("Docker archive image index has no manifests")
+        image_descriptors = [
+            descriptor for descriptor in descriptors
+            if isinstance(descriptor, dict) and descriptor.get("platform") == {"architecture": "amd64", "os": "linux"}
+        ]
     if len(image_descriptors) != 1:
         fail("Docker archive must contain exactly one linux/amd64 image manifest")
     image_descriptor = image_descriptors[0]
@@ -3978,6 +3992,9 @@ def validate_modern_archive(
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json":
         fail("Docker archive image config media type is unsupported")
+    if direct_bootstrap_manifest \
+       and config_descriptor.get("digest") != spec.image_id:
+        fail("Docker archive bootstrap image config differs from its immutable image ID")
     if isinstance(
         spec,
         (
@@ -3996,7 +4013,9 @@ def validate_modern_archive(
     if not isinstance(layer_descriptors, list) or not layer_descriptors:
         fail("Docker archive image manifest has no layers")
     actual_layers: list[str] = []
-    expected_blobs = {expected_index_name, image_manifest_name, config_name}
+    expected_blobs = {image_manifest_name, config_name}
+    if expected_index_name is not None:
+        expected_blobs.add(expected_index_name)
     for position, descriptor in enumerate(layer_descriptors):
         if not isinstance(descriptor, dict) or descriptor.get("mediaType") != "application/vnd.oci.image.layer.v1.tar+gzip":
             fail("Docker archive image layer media type is unsupported")
@@ -4573,7 +4592,7 @@ def verify_oci_layout(
            or not isinstance(root_digest, str) \
            or root_digest.removeprefix("sha256:") \
                not in blob_names:
-            fail("OCI layout index does not bind one retained image index")
+            fail("OCI layout index does not bind one retained root descriptor")
         manifest = parse_json(
             metadata["manifest.json"],
             "OCI compatibility manifest",
@@ -4633,6 +4652,7 @@ def materialize_oci_layout(
             expected_archive_sha,
             spec,
             expected_archive_size,
+            require_private=True,
         )
         if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
            or stat.S_IMODE(before.st_mode) != 0o400 \
@@ -5776,22 +5796,33 @@ def create_modern_fixture_archive(
             "manifests": [image_descriptor],
         }
     )
+    fixture_image_id = (
+        "sha256:" + hashlib.sha256(image_index).hexdigest()
+        if tagged
+        else config_descriptor["digest"]
+    )
     fixture_spec = Spec(
         role=spec.role,
-        image_id="sha256:" + hashlib.sha256(image_index).hexdigest(),
+        image_id=fixture_image_id,
         base=spec.base,
         dockerfile_sha256=spec.dockerfile_sha256,
         dpkg_sha256=spec.dpkg_sha256,
     )
-    root_descriptor: dict[str, object] = {
-        "mediaType": "application/vnd.oci.image.index.v1+json",
-        "digest": fixture_spec.image_id,
-        "size": len(image_index),
-    }
     if tagged:
-        root_descriptor["annotations"] = {
-            "io.containerd.image.name": f"docker.io/{fixture_spec.capture_tag}",
-            "org.opencontainers.image.ref.name": fixture_spec.capture_tag.rsplit(":", 1)[1],
+        root_descriptor: dict[str, object] = {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": fixture_spec.image_id,
+            "size": len(image_index),
+            "annotations": {
+                "io.containerd.image.name": f"docker.io/{fixture_spec.capture_tag}",
+                "org.opencontainers.image.ref.name": fixture_spec.capture_tag.rsplit(":", 1)[1],
+            },
+        }
+    else:
+        root_descriptor = {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": image_descriptor["digest"],
+            "size": len(image_manifest),
         }
     index = encoded(
         {
@@ -5815,14 +5846,23 @@ def create_modern_fixture_archive(
         "index.json": index,
         "manifest.json": manifest,
         "oci-layout": encoded({"imageLayoutVersion": "1.0.0"}),
-        "blobs/sha256/" + fixture_spec.image_id.removeprefix("sha256:"): image_index,
         "blobs/sha256/" + image_descriptor["digest"].removeprefix("sha256:"): image_manifest,
         config_name: config,
         layer_name: layer,
     }
+    if tagged:
+        members[
+            "blobs/sha256/" + fixture_spec.image_id.removeprefix("sha256:")
+        ] = image_index
     with path.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
             with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name in ("blobs/", "blobs/sha256/"):
+                    info = tarfile.TarInfo(name)
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o755
+                    info.mtime = 0
+                    archive.addfile(info)
                 for name, content in sorted(members.items()):
                     info = tarfile.TarInfo(name)
                     info.size = len(content)
@@ -8831,6 +8871,23 @@ def self_test() -> None:
            or not IMAGE_ID.fullmatch(modern_identity.manifest_id) \
            or not IMAGE_ID.fullmatch(modern_identity.config_id):
             fail("bootstrap candidate archive identity extraction failed")
+        wrong_private_modern_spec = Spec(
+            role=private_modern_spec.role,
+            image_id="sha256:" + "f" * 64,
+            base=private_modern_spec.base,
+            dockerfile_sha256=private_modern_spec.dockerfile_sha256,
+            dpkg_sha256=private_modern_spec.dpkg_sha256,
+        )
+        expect_failure(
+            lambda: verify_archive(
+                private_modern_archive,
+                private_modern_sha,
+                wrong_private_modern_spec,
+                private_modern_archive.stat().st_size,
+                require_private=True,
+            ),
+            "bootstrap candidate wrong config image ID",
+        )
         pinned_private_modern_spec = Spec(
             role=private_modern_spec.role,
             image_id=private_modern_spec.image_id,
@@ -8847,6 +8904,42 @@ def self_test() -> None:
             private_modern_archive.stat().st_size,
         ) != modern_identity:
             fail("pinned private archive identity verification differs")
+        expect_failure(
+            lambda: verify_archive(
+                private_modern_archive,
+                private_modern_sha,
+                replace(
+                    pinned_private_modern_spec,
+                    manifest_id="sha256:" + "f" * 64,
+                ),
+                private_modern_archive.stat().st_size,
+            ),
+            "bootstrap candidate wrong manifest pin",
+        )
+        private_modern_layout = Path(temporary) / "private-modern-image.oci"
+        private_modern_layout.mkdir(mode=0o700)
+        try:
+            private_modern_layout_sha = materialize_oci_layout(
+                private_modern_archive,
+                private_modern_sha,
+                private_modern_archive.stat().st_size,
+                private_modern_spec,
+                private_modern_layout,
+            )
+            if verify_oci_layout(
+                private_modern_layout,
+                private_modern_layout_sha,
+            ) != private_modern_layout_sha:
+                fail("materialized private OCI layout identity differs")
+        finally:
+            for directory in (
+                private_modern_layout / "blobs" / "sha256",
+                private_modern_layout / "blobs",
+            ):
+                try:
+                    directory.chmod(0o700)
+                except FileNotFoundError:
+                    pass
 
         android_archive = (
             Path(temporary) / "certified-android-builder-image.tar.gz"

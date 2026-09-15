@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-aae787845cdf79583ddb63356a1b6471b467a8f1fbe18b89dc0d6c2e72159916  requirements.html
+de214c7c8ecda15cc3a9e62d8823d07c0d8cf7fb78b827752c10ab0065e1c835  requirements.html
 ```
 
 ## Current Verdict
@@ -8790,19 +8790,16 @@ completion, presented the new blue frame in 139 ms, then cleaned up before windo
 zero app exit. Its raw ignored evidence is no longer local. This does not prove a real peer, current packaged
 artifacts, Android service/task lifecycle, cross-version behavior, or sustained resource/latency behavior.
 
-### R-S11gk/R-S11e-223 real Windows full-peer focus/presentation transaction (2026-08-12)
+### R-S11gk/R-S11e-223 — real Windows full-peer focus/presentation transaction
 
-**OPEN / STOP-SHIP: no valid Windows full-peer runtime result exists.** The source harness is designed to run
-a real Flutter viewer and controlled `--server` inside one zero-interface Windows VM, require continuous and
-minimized color changes, post-focus/restore freshness within 2500 ms, actual mapped remote input, exact
-loopback TCP ownership without reconnect, unchanged release artifacts, and complete process/listener/domain
-cleanup. Its first exact native attempt at `c85c792e0172ceee1a2313370398baf66cc05ddc` built the ordinary
-artifacts but failed an order-sensitive inventory check before either peer launched; the check was corrected,
-but later attempts produced no admissible peer result. Read-only inventory on 2026-09-11 finds no repository
-`.harness-state`, owned Windows domain, golden, input closure, or pinned builder/helper image. A future run
-must provision authenticated disposable assets and execute exact-current source; source conformance, the two
-narrow compositor transactions above, and Linux peer evidence cannot substitute for it. The reported
-display-only delay after Windows focus loss while control remains responsive, reconnect recovery,
+**OPEN / STOP-SHIP: no valid exact-current Windows full-peer runtime result exists.** The source harness is
+designed to run a real Flutter viewer and controlled `--server` inside one zero-interface Windows VM, require
+continuous and minimized color changes, post-focus/restore freshness within 2500 ms, mapped remote input, one
+exact loopback TCP session without reconnect, unchanged release artifacts, and complete process, listener, and
+domain cleanup. The repository-local state contains no Windows golden or complete Windows input closure, so an
+exact-current native transaction cannot start from the present inputs. Source conformance, narrow compositor
+tests, result-verifier fixtures, and Linux peer evidence cannot substitute. The reported display-only delay after
+Windows focus loss while control remains responsive, reconnect recovery, capture-to-present queue behavior,
 cross-version behavior, soak, and current release artifacts all remain open.
 
 ### R-S11gl/R-S11e-224 — bounded Windows harness storage lifecycle

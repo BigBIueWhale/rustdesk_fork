@@ -3989,6 +3989,7 @@ def validate_modern_archive(
     config_name, config_bytes = descriptor_blob(
         config_descriptor, metadata, member_sizes, member_hashes, "image config"
     )
+    config_json = parse_json(config_bytes, "image config blob")
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json":
         fail("Docker archive image config media type is unsupported")
@@ -4016,9 +4017,18 @@ def validate_modern_archive(
     expected_blobs = {image_manifest_name, config_name}
     if expected_index_name is not None:
         expected_blobs.add(expected_index_name)
+    expected_layer_media_type = (
+        "application/vnd.oci.image.layer.v1.tar"
+        if direct_bootstrap_manifest
+        else "application/vnd.oci.image.layer.v1.tar+gzip"
+    )
     for position, descriptor in enumerate(layer_descriptors):
-        if not isinstance(descriptor, dict) or descriptor.get("mediaType") != "application/vnd.oci.image.layer.v1.tar+gzip":
+        if not isinstance(descriptor, dict) \
+           or descriptor.get("mediaType") != expected_layer_media_type:
             fail("Docker archive image layer media type is unsupported")
+        if direct_bootstrap_manifest \
+           and set(descriptor) != {"digest", "mediaType", "size"}:
+            fail("Docker archive bootstrap image layer descriptor is malformed")
         if isinstance(spec, AppleCheckSpec):
             expected_annotations = (
                 None
@@ -4067,9 +4077,18 @@ def validate_modern_archive(
         )
         actual_layers.append(name)
         expected_blobs.add(name)
+    if direct_bootstrap_manifest:
+        rootfs = (
+            config_json.get("rootfs")
+            if isinstance(config_json, dict)
+            else None
+        )
+        diff_ids = rootfs.get("diff_ids") if isinstance(rootfs, dict) else None
+        if diff_ids != [descriptor["digest"] for descriptor in layer_descriptors]:
+            fail("Docker archive bootstrap layer digests differ from config diff IDs")
     if item.get("Config") != config_name or item.get("Layers") != actual_layers:
         fail("Docker archive compatibility manifest disagrees with the OCI image manifest")
-    validate_config(parse_json(config_bytes, "image config blob"), actual_layers, spec)
+    validate_config(config_json, actual_layers, spec)
 
     actual_digest = image_descriptor.get("digest")
     attestations = [descriptor for descriptor in descriptors if descriptor is not image_descriptor]
@@ -5765,17 +5784,37 @@ def create_modern_fixture_archive(
             **extra,
         }
 
-    layer = gzip.compress(b"fixture layer", mtime=0)
+    layer = (
+        gzip.compress(b"fixture layer", mtime=0)
+        if tagged
+        else b"fixture layer"
+    )
+    layer_descriptor = blob_descriptor(
+        layer,
+        (
+            "application/vnd.oci.image.layer.v1.tar+gzip"
+            if tagged
+            else "application/vnd.oci.image.layer.v1.tar"
+        ),
+    )
     config = encoded(
         {
             "architecture": "amd64",
             "config": {"Labels": spec.labels},
             "os": "linux",
-            "rootfs": {"type": "layers", "diff_ids": ["sha256:" + "a" * 64]},
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    (
+                        "sha256:" + "a" * 64
+                        if tagged
+                        else layer_descriptor["digest"]
+                    )
+                ],
+            },
         }
     )
     config_descriptor = blob_descriptor(config, "application/vnd.oci.image.config.v1+json")
-    layer_descriptor = blob_descriptor(layer, "application/vnd.oci.image.layer.v1.tar+gzip")
     image_manifest = encoded(
         {
             "schemaVersion": 2,

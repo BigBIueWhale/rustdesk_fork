@@ -410,8 +410,8 @@ def validate(sources: dict[str, str]) -> None:
 
     library = shell_function(sources["library"], "require_pinned_builder_image")
     for token, label in (
-        ("[PROVENANCE_EXECUTOR]", "explicit provenance-executor API"),
-        ('provenance_executor="${3:-}"', "provenance executor capture"),
+        ("ROLE IMAGE_REF PROVENANCE_EXECUTOR", "explicit provenance-executor API"),
+        ('provenance_executor="$3"', "required provenance executor capture"),
         ('declare -F "$provenance_executor"', "executor function proof"),
         ('"$provenance_executor" "${args[@]}"', "executor dispatch"),
     ):

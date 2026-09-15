@@ -441,6 +441,9 @@ def validate_library(source: str) -> None:
     require_all(
         block,
         (
+            '[ "$#" -eq 3 ]',
+            'local role="$1" image_ref="$2" provenance_executor="$3"',
+            'declare -F "$provenance_executor"',
             'win-helper) prefix=WIN_HELPER; base="ubuntu:24.04@',
             '|| [ "$role" = win-helper ]; then',
             '"${prefix}_CONFIG_ID"',
@@ -455,8 +458,20 @@ def validate_library(source: str) -> None:
             '--bootstrap-manifest-id "${!bootstrap_manifest_var}"',
             '--config-id "${!config_var}"',
             '--manifest-id "${!manifest_var}"',
+            '"$provenance_executor" "${args[@]}"',
         ),
         "ordinary runtime verifier",
+    )
+    require_absent(
+        block,
+        (
+            "LOCAL_DOCKER_AUTHORITY",
+            "local_docker",
+            'python3 "$LIB_DIR/offline-image-provenance.py"',
+            "require_cmd python3 docker",
+            '${3:-}',
+        ),
+        "retired implicit provenance authority",
     )
 
 

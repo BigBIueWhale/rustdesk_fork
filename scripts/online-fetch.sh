@@ -3030,7 +3030,7 @@ maintenance_capture_win_helper_bootstrap_image() {
 require_online_fetch_builder_image() {
     local role="$1" image_id="$2"
     assert_online_fetch_docker_authority
-    require_pinned_builder_image "$role" "$image_id"
+    require_pinned_builder_image "$role" "$image_id" online_image_provenance
     assert_online_fetch_docker_authority
 }
 

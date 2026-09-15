@@ -1202,11 +1202,9 @@ deadline and visible fallback logging. The checked-in connection-type regression
 Current native Windows IPC success/failure/concurrency, thread/handle, first-presented-frame, and focus/minimize evidence
 remains open; this source debt is not claimed as the delay's cause.
 
-Two unrelated verifier diary entries formerly embedded here are reduced to current redirects. The
-R-S11ej/R-S11e-154 current release target-contract authority is source-aligned, while the clean committed R-B2/R-B10
-transaction remains open (Appendix C #289). The R-S11cr/R-S11e-110 archive-specific PID mutation authority is subsumed
-by the canonical R-S11cr Android SDK acquisition/publication entry; corrected disposable acquisition, cold release,
-device evidence, independent reproduction, and external review remain open.
+The R-S11cr/R-S11e-110 archive-specific PID mutation authority is subsumed by the canonical R-S11cr Android SDK
+acquisition/publication entry; corrected disposable acquisition, cold release, device evidence, independent
+reproduction, and external review remain open.
 
 ### Release-blocking behavioral evidence
 
@@ -6750,9 +6748,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cross-subsystem mutation catalog and requirements/status coupling were
   deleted. The duplicate 912-line workspace verifier-of-verifier block, its
   dispatch, and its source loading were deleted outright. The same workspace
-  oracle's stale Android half of a combined Debian/Android target validator and
-  fake-host-Docker fixture was also deleted; the Debian-owned half remains. The
-  independent Android-builder image gate remains separate and passes its normal contract and
+  oracle's combined Debian/Android fake-host-Docker target fixture is now entirely absent; current
+  Debian and Android entry evidence comes from their real no-NIC VM envelopes, not a fake client.
+  The independent Android-builder image gate remains separate and passes its normal contract and
   all 54 focused provenance mutations. Shell syntax, isolated Python
   compilation, the compact Android gate, and HTML parsing are targeted checks
   for this slice; none substitutes for the runtime result above.

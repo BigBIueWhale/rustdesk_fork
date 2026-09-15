@@ -224,7 +224,10 @@ def validate(repo: pathlib.Path) -> None:
         ('SHA256_VERIFIER_VM_GIT_PACKAGE="637a85ddd6247fab13bdd0592f2f39aff04ce4dbf0655d3ab553ac359a38ce6f"', "Git package pin"),
         ('SHA256_VERIFIER_VM_GIT_BINARY="2540879925a6881e3877ff7e3330746ba3027b04edf16a3a12dccd1644c4f32d"', "Git binary pin"),
         ('VERIFIER_VM_BUILDX_VERSION="0.20.0"', "Buildx version pin"),
-        ('VERIFIER_VM_BUILDX_COMMIT="8e30c46"', "Buildx commit pin"),
+        (
+            'VERIFIER_VM_BUILDX_COMMIT="8e30c4669ca5aace9dd682650053c307f75fe5cc"',
+            "Buildx commit pin",
+        ),
         ('SIZE_VERIFIER_VM_BUILDX="65241240"', "Buildx size pin"),
         ('SHA256_VERIFIER_VM_BUILDX="8b21d3ce1011c4c072d64d4a7311c591cf1c2eb6b35bfdfe28f8e0b76e51621b"', "Buildx digest pin"),
         ('VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION="1.10.0-1ubuntu0.1"', "virtiofsd package version pin"),

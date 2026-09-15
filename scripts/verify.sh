@@ -360,14 +360,14 @@ fi
 
 echo "== (0g) Apple conformance verifier authority (R-S11ci/R-S11e-101) =="
 r_s11ci=
-if ! /usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test; then
-  r_s11ci="$r_s11ci authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo .; then
+  r_s11ci="$r_s11ci VM-authority-or-architecture-check-failed"
 fi
 if [ -n "$r_s11ci" ]; then
   echo "  FAIL R-S11ci Apple conformance verifier authority:$r_s11ci"
   rc=1
 else
-  echo "  ok  R-S11ci authenticated archived Apple image/provenance + reproducible runtime manifest + fixed three-target matrix + private source/vendor/output state + non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution"
+  echo "  ok  R-S11ci VM-only Docker authority + authenticated Apple image/provenance + fixed three-target private source transaction"
 fi
 
 echo "== (0h) online acquisition container execution authority (R-S11cj/R-S11e-102) =="
@@ -15703,7 +15703,7 @@ expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(
   aarch64-apple-ios
 )'
 [ "$readonly_apple_targets" = "$expected_apple_targets" ] || apple_gate_bad="$apple_gate_bad target-matrix"
-grep -qF '[ -z "${APPLE_TARGET:-}" ] && [ -z "${APPLE_TARGETS:-}" ]' "$apple_gate" || apple_gate_bad="$apple_gate_bad target-override-not-rejected"
+grep -qF 'DOCKER_TLS_VERIFY DOCKER_TLS APPLE_TARGET APPLE_TARGETS MACOS_SDK_DIR' "$apple_gate" || apple_gate_bad="$apple_gate_bad caller-authority-not-rejected"
 grep -qF 'for target in "${SELECTED_APPLE_TARGETS[@]}"; do' "$apple_gate" || apple_gate_bad="$apple_gate_bad selected-target-matrix-unused"
 grep -qF 'flutter,unix-file-copy-paste' "$apple_gate" || apple_gate_bad="$apple_gate_bad macos-real-features"
 grep -qF 'target_features()' "$apple_gate" || apple_gate_bad="$apple_gate_bad feature-dispatch"
@@ -15711,8 +15711,9 @@ grep -qF 'plistlib' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-parse
 grep -qF 'duplicate plist key' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-duplicate-check"
 grep -qF 'APPLE_POD_ALLOWLISTS' "$apple_gate" || apple_gate_bad="$apple_gate_bad pod-allowlist"
 grep -qF 'PBXShellScriptBuildPhase allow-list' "$apple_gate" || apple_gate_bad="$apple_gate_bad pbx-shell-allowlist"
-grep -qF 'source scripts/lib.sh' "$apple_gate" || apple_gate_bad="$apple_gate_bad pin-loader-missing"
+grep -qF 'source "$SCRIPT_DIR/lib.sh"' "$apple_gate" || apple_gate_bad="$apple_gate_bad pin-loader-missing"
 grep -qF 'load_pins' "$apple_gate" || apple_gate_bad="$apple_gate_bad pins-not-loaded"
+grep -qF '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"' "$apple_gate" || apple_gate_bad="$apple_gate_bad VM-entry-preflight-missing"
 [ "$(grep -cF -- '--env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"' "$apple_gate")" -eq 1 ] || apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"
 [ "$(grep -cF -- '--mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"' "$apple_gate")" -eq 2 ] || apple_gate_bad="$apple_gate_bad private-source-mounts-not-readonly"
 grep -qF 'source tree has no generated src/version.rs' "$apple_gate" || apple_gate_bad="$apple_gate_bad non-mutating-version-proof"

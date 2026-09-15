@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/apple-conform-check.sh - R-R2 Apple (macOS/iOS) source-conformance gate.
 #
-# Apple is not an artifact target on this Linux build host, but the macOS/iOS
-# source must still inherit the fork's security posture. This gate proves the
+# Apple is not an artifact target in this Linux verification pipeline, but the
+# macOS/iOS source must still inherit the fork's security posture. This gate
+# runs only inside the authenticated no-NIC verifier VM and proves the
 # source layer with:
 #   1. retain-and-check over the Apple source, plist, entitlement, pod, and Xcode
 #      project surfaces;
@@ -14,15 +15,103 @@
 #      using the real Apple features: macOS = flutter,unix-file-copy-paste;
 #      iOS = flutter.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-REPO="$PWD"
+export PATH=/usr/bin:/bin
+export LC_ALL=C
+
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
+die(){ echo "FATAL: $*" >&2; exit 1; }
+[ "$BUILD_UID" -ne 0 ] \
+  || { echo 'apple-conform-check refuses host or container-root execution' >&2; exit 1; }
+[ "$BUILD_GID" -ne 0 ] \
+  || { echo 'apple-conform-check refuses a root primary group' >&2; exit 1; }
+for name in DOCKER_HOST DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH \
+    DOCKER_TLS_VERIFY DOCKER_TLS APPLE_TARGET APPLE_TARGETS MACOS_SDK_DIR; do
+  [ -z "${!name:-}" ] || die "caller $name authority is forbidden"
+done
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+  && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+  || { echo 'apple-conform-check verifier-VM entry preflight is absent or ambiguous' >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
 
 # shellcheck source=scripts/lib.sh
-source scripts/lib.sh
+source "$SCRIPT_DIR/lib.sh"
 load_pins
+cd "$REPO_ROOT"
+readonly REPO=$REPO_ROOT
+
+note(){ echo "  $*"; }
+rc=0
+readonly IMG="$APPLE_CHECK_IMAGE_ID"
+readonly APPLE_TOOLCHAIN_ROOT=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu
+readonly APPLE_TOOLCHAIN_BIN="$APPLE_TOOLCHAIN_ROOT/bin"
+readonly APPLE_CHECK_PATH="$APPLE_TOOLCHAIN_BIN:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+readonly SELECTED_APPLE_TARGETS=(
+  aarch64-apple-darwin
+  x86_64-apple-darwin
+  aarch64-apple-ios
+)
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+  "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+  || die 'Apple verifier guest Docker authority differs from its repository pin'
+readonly VERIFIER_VM_MARKER_DOCKER
+
+verifier_vm_docker() {
+  local status=0
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+    DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+    "$VERIFIER_VM_DOCKER_CLIENT" \
+      --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+      --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  return "$status"
+}
+
+verifier_vm_image_provenance() {
+  local status=0
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+    DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+    DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@" \
+    || status=$?
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+  return "$status"
+}
+
+APPLE_VM_AUTHORITY_SELF_TEST=0
+case "$#" in
+  0) ;;
+  1)
+    [ "$1" = --self-test-vm-authority ] \
+      || die "unknown argument: $1"
+    APPLE_VM_AUTHORITY_SELF_TEST=1
+    ;;
+  *) die 'accepts no arguments except --self-test-vm-authority' ;;
+esac
+if [ "$APPLE_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
+  authority_version="$(verifier_vm_docker version \
+    --format '{{.Client.Version}}|{{.Server.Version}}')" \
+    || die 'Apple verifier-VM Docker authority self-test failed'
+  [ "$authority_version" = \
+    "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+    || die "Apple verifier-VM Docker version differs: $authority_version"
+  printf 'APPLE_CHECK_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed\n' \
+    "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
+  exit 0
+fi
 
 # shellcheck source=scripts/verify-scan.sh
-source scripts/verify-scan.sh
+source "$SCRIPT_DIR/verify-scan.sh"
 verify_scan_preflight
 
 APPLE_CHECK_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-apple-check.XXXXXXXXXX)
@@ -69,63 +158,6 @@ then
 fi
 verify_scan_self_test "$APPLE_CHECK_TMP"
 
-die(){ echo "FATAL: $*" >&2; exit 1; }
-note(){ echo "  $*"; }
-rc=0
-readonly DOCKER_BIN=/usr/bin/docker
-readonly APPLE_DOCKER_HOST=unix:///var/run/docker.sock
-readonly APPLE_DOCKER_CONFIG="$APPLE_CHECK_TMP/docker-config"
-readonly BUILD_UID="$(id -u)"
-readonly BUILD_GID="$(id -g)"
-readonly IMG="$APPLE_CHECK_IMAGE_ID"
-readonly APPLE_TOOLCHAIN_ROOT=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu
-readonly APPLE_TOOLCHAIN_BIN="$APPLE_TOOLCHAIN_ROOT/bin"
-readonly APPLE_CHECK_PATH="$APPLE_TOOLCHAIN_BIN:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-readonly SELECTED_APPLE_TARGETS=(
-  aarch64-apple-darwin
-  x86_64-apple-darwin
-  aarch64-apple-ios
-)
-
-verify_apple_docker_authority() {
-  [ "$(stat -c '%u:%g:%a:%h' -- "$APPLE_DOCKER_CONFIG")" = "$BUILD_UID:$BUILD_GID:700:2" ] \
-    || die "private Docker configuration directory metadata changed"
-  [ "$(stat -c '%u:%g:%a:%h' -- "$APPLE_DOCKER_CONFIG/config.json")" = "$BUILD_UID:$BUILD_GID:600:1" ] \
-    || die "private Docker configuration file metadata changed"
-  [ "$(cat "$APPLE_DOCKER_CONFIG/config.json")" = "{}" ] \
-    || die "private Docker configuration bytes changed"
-}
-
-apple_docker() {
-  local status=0
-  verify_apple_docker_authority
-  env -i \
-    PATH=/usr/bin:/bin \
-    HOME="$APPLE_CHECK_TMP" \
-    DOCKER_HOST="$APPLE_DOCKER_HOST" \
-    DOCKER_CONFIG="$APPLE_DOCKER_CONFIG" \
-    "$DOCKER_BIN" \
-      --host "$APPLE_DOCKER_HOST" \
-      --config "$APPLE_DOCKER_CONFIG" \
-      "$@" || status=$?
-  verify_apple_docker_authority
-  return "$status"
-}
-
-apple_image_provenance() {
-  local status=0
-  verify_apple_docker_authority
-  env -i \
-    PATH=/usr/bin:/bin \
-    HOME="$APPLE_CHECK_TMP" \
-    DOCKER_HOST="$APPLE_DOCKER_HOST" \
-    DOCKER_CONFIG="$APPLE_DOCKER_CONFIG" \
-    /usr/bin/python3 "$REPO/scripts/offline-image-provenance.py" \
-      "$@" || status=$?
-  verify_apple_docker_authority
-  return "$status"
-}
-
 archive_current_source() {
   /usr/bin/git -C "$REPO" ls-files -z --cached --others --exclude-standard \
     | /usr/bin/python3 -c '
@@ -141,42 +173,6 @@ for relative in sys.stdin.buffer.read().split(b"\0"):
         --no-recursion --files-from=- --sort=name --format=gnu --mtime='@0' \
         --owner=0 --group=0 --numeric-owner
 }
-
-echo "== (0) Apple checker host scratch uses one private workspace (R-S11c-10x) =="
-r_s11c10x=
-grep -qE '^APPLE_CHECK_TMP=\$\(umask 077 && mktemp -d /tmp/rustdesk-apple-check\.XXXXXXXXXX\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-private-workspace-create"
-grep -qE '^readonly APPLE_CHECK_TMP$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x workspace-not-readonly"
-grep -qF 'readonly APPLE_CHECK_TMP_IDENTITY="$(stat -c '\''%d:%i'\'' -- "$APPLE_CHECK_TMP")"' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x workspace-identity-not-retained"
-grep -qE '^trap cleanup_apple_check_tmp EXIT$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-exit-cleanup"
-grep -qE "^trap 'exit 129' HUP$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-hup-failure"
-grep -qE "^trap 'exit 130' INT$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-int-failure"
-grep -qE "^trap 'exit 143' TERM$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-term-failure"
-grep -qE '^[[:space:]]+trap - EXIT HUP INT TERM$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-traps-not-disarmed"
-grep -qE '^  if ! /usr/bin/python3 -I -S "\$REPO/scripts/restore-private-directory-modes\.py"' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x nofollow-directory-mode-restorer-missing"
-grep -qE '^[[:space:]]+--expected-identity "\$APPLE_CHECK_TMP_IDENTITY"' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-identity-not-reproved"
-grep -qE '^[[:space:]]+if ! rm -rf -- "\$APPLE_CHECK_TMP"; then$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-not-fail-closed"
-grep -qE '^metadata = os\.lstat\(sys\.argv\[1\]\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x nofollow-metadata-proof-missing"
-grep -qE '^[[:space:]]+not stat\.S_ISDIR\(metadata\.st_mode\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x directory-type-not-enforced"
-grep -qE '^[[:space:]]+or metadata\.st_uid != os\.geteuid\(\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x owner-not-enforced"
-grep -qE '^[[:space:]]+or stat\.S_IMODE\(metadata\.st_mode\) != 0o700$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x mode-not-enforced"
-grep -qE '^[[:space:]]+anchor_log="\$APPLE_CHECK_TMP/apple-anchor-\$target\.log"$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x anchor-log-not-private"
-grep -qE '^[[:space:]]+log="\$APPLE_CHECK_TMP/apple-xcheck-\$target\.log"$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x target-log-not-private"
-if grep -nE '/tmp/(r_s11b3_apple|r[d]_apple|apple-xcheck-)' "$REPO/scripts/apple-conform-check.sh"; then
-  r_s11c10x="$r_s11c10x predictable-host-scratch-name-present"
-fi
-public_tmp_redirections=$(grep -nE "[0-9]*(>>?|<<?)[[:space:]]*['\"]?/t[m]p/" "$REPO/scripts/apple-conform-check.sh" || true)
-if [ -n "$public_tmp_redirections" ]; then
-  printf '%s\n' "$public_tmp_redirections"
-  r_s11c10x="$r_s11c10x host-public-temp-redirection-present"
-fi
-grep -qF 'R-S11c-10x — Apple checker private host scratch authority' "$REPO/HARDENING_STATUS.md" || r_s11c10x="$r_s11c10x hardening-ledger-missing"
-grep -qF 'Apple checker private host scratch authority' "$REPO/requirements.html" || r_s11c10x="$r_s11c10x requirements-disposition-missing"
-if [ -n "$r_s11c10x" ]; then
-  echo "  FAIL R-S11c-10x Apple checker private host scratch authority:$r_s11c10x"
-  rc=1
-else
-  note "ok  R-S11c-10x Apple checker host output is confined to one current-UID mode-0700 workspace"
-fi
 
 target_features(){
   case "$1" in
@@ -259,24 +255,6 @@ apple_sdk_boundary_self_test() {
 apple_sdk_boundary_self_test
 
 # ---- preflight ----
-[ "$BUILD_UID" -ne 0 ] || die "refusing host or container-root execution"
-[ "$BUILD_GID" -ne 0 ] || die "refusing a root primary group"
-[ -f "$DOCKER_BIN" ] && [ ! -L "$DOCKER_BIN" ] && [ -x "$DOCKER_BIN" ] \
-  || die "trusted Docker client is unavailable at $DOCKER_BIN"
-[ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
-  || die "trusted Docker client metadata is invalid"
-[ -S /var/run/docker.sock ] || die "fixed local Docker socket is unavailable"
-case "${DOCKER_HOST:-$APPLE_DOCKER_HOST}" in
-  "$APPLE_DOCKER_HOST") ;;
-  *) die "caller Docker endpoint authority is forbidden" ;;
-esac
-for name in DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
-  [ -z "${!name:-}" ] || die "caller $name authority is forbidden"
-done
-[ -z "${APPLE_TARGET:-}" ] && [ -z "${APPLE_TARGETS:-}" ] \
-  || die "the R-R2 release verdict always runs the exact three-target matrix"
-[ -z "${MACOS_SDK_DIR:-}" ] \
-  || die "caller-selected Apple SDK authority is forbidden"
 [ -f "$REPO/scripts/apple-cc-shim.sh" ] || die "scripts/apple-cc-shim.sh missing"
 [ -f "$REPO/scripts/Dockerfile.apple-check" ] || die "scripts/Dockerfile.apple-check missing"
 [ -f "$REPO/scripts/apple-toolchain-release.py" ] \
@@ -335,12 +313,7 @@ done
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || die "Cargo vendor source map differs from its reviewed pin"
 
-install -d -m 0700 "$APPLE_DOCKER_CONFIG"
-install -m 0600 /dev/null "$APPLE_DOCKER_CONFIG/config.json"
-printf '{}\n' >"$APPLE_DOCKER_CONFIG/config.json"
-verify_apple_docker_authority
-
-IMAGE_ID="$(apple_docker image inspect --format '{{.Id}}' "$IMG")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$IMG")" \
   || die "immutable Apple-check image is not present locally"
 [ "$IMAGE_ID" = "$IMG" ] || die "local Apple-check image identity differs from its pin"
 readonly IMAGE_ID
@@ -376,7 +349,7 @@ APPLE_IMAGE_SPEC=(
   --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID"
   --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
 )
-apple_image_provenance verify-local \
+verifier_vm_image_provenance verify-local \
   --image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}" \
   || die "immutable Apple-check image provenance verification failed"
 
@@ -411,7 +384,7 @@ chmod 0400 "$APPLE_CARGO_CONFIG"
 readonly IMAGE_PREFLIGHT_OUT="$APPLE_CHECK_TMP/image-preflight.out"
 readonly IMAGE_PREFLIGHT_ERR="$APPLE_CHECK_TMP/image-preflight.err"
 set +e
-apple_docker run --rm --pull=never --network=none --read-only \
+verifier_vm_docker run --rm --pull=never --network=none --read-only \
   --user "$BUILD_UID:$BUILD_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
@@ -476,7 +449,7 @@ chmod 0600 "$EXPECTED_IMAGE_PREFLIGHT"
 cmp "$EXPECTED_IMAGE_PREFLIGHT" "$IMAGE_PREFLIGHT_OUT" \
   || die "immutable Apple-check image contents differ from reviewed pins"
 
-APPLE_READ_RUN=(apple_docker run --rm --interactive --pull=never --network=none --read-only
+APPLE_READ_RUN=(verifier_vm_docker run --rm --interactive --pull=never --network=none --read-only
   --user "$BUILD_UID:$BUILD_GID"
   --cap-drop=ALL --security-opt=no-new-privileges
   --pids-limit=64 --memory=512m --memory-swap=512m --cpus=1
@@ -485,7 +458,7 @@ APPLE_READ_RUN=(apple_docker run --rm --interactive --pull=never --network=none 
   --workdir /work
   "$IMAGE_ID")
 
-COMMON_CHECK=(apple_docker run --rm --interactive --pull=never --network=none --read-only
+COMMON_CHECK=(verifier_vm_docker run --rm --interactive --pull=never --network=none --read-only
   --user "$BUILD_UID:$BUILD_GID"
   --cap-drop=ALL --security-opt=no-new-privileges
   --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4
@@ -4913,11 +4886,12 @@ fi
 SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
 [ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
   || die "Apple verification detected a change in the real source worktree"
-FINAL_IMAGE_ID="$(apple_docker image inspect --format '{{.Id}}' "$IMAGE_ID")" \
+FINAL_IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$IMAGE_ID")" \
   || die "immutable Apple-check image disappeared during verification"
 [ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ] \
   || die "immutable Apple-check image identity changed during verification"
-verify_apple_docker_authority
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+  || die "Apple verifier-VM authority changed during verification"
 
 echo
 if [ "$rc" = 0 ]; then

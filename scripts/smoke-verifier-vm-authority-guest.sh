@@ -294,7 +294,8 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh verify-release.sh build-release.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
+for verify_source in verify.sh verify-release.sh build-release.sh apple-conform-check.sh \
+    frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
@@ -336,6 +337,7 @@ done
 # shellcheck source=/dev/null
 source "$VERIFY_REPO/scripts/pins.env"
 readonly RELEASE_PARENT_SCRIPT="$VERIFY_REPO/scripts/build-release.sh"
+readonly APPLE_CHECK_SCRIPT="$VERIFY_REPO/scripts/apple-conform-check.sh"
 [ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
     || fail 'main verifier and guest probe use different entry-preflight paths'
 entry_source_metadata="$(stat -c '%F:%u:%g:%a:%h' -- \
@@ -571,6 +573,60 @@ release_parent_output="$(
     || fail "release-parent verifier-VM entry result differs: $release_parent_output"
 printf '%s\n' "$release_parent_output"
 printf 'VERIFIER_VM_RELEASE_PARENT_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused parent_docker=absent cleanup=descriptor-bound children=vm-only\n'
+
+if /bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-apple-check.out" 2>"$ROOT/root-apple-check.err"; then
+    fail 'VM root passed the Apple-check entry'
+fi
+[ ! -s "$ROOT/root-apple-check.out" ] \
+    || fail 'root Apple-check refusal produced standard output'
+[ "$(<"$ROOT/root-apple-check.err")" = \
+  'apple-conform-check refuses host or container-root execution' ] \
+    || fail 'root Apple-check refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-apple-check.out" 2>"$ROOT/foreign-apple-check.err"; then
+    fail 'foreign numeric principal passed the Apple-check entry'
+fi
+[ ! -s "$ROOT/foreign-apple-check.out" ] \
+    || fail 'foreign Apple-check refusal produced standard output'
+foreign_apple_error="$(<"$ROOT/foreign-apple-check.err")"
+if [ "$foreign_apple_error" != \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-apple-check.err")" -le 4096 ] \
+        || fail 'foreign Apple-check refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign Apple-check diagnostic was %q\n' \
+        "$foreign_apple_error" >&2
+    fail 'foreign Apple-check refusal diagnostic differs'
+fi
+while IFS='|' read -r authority_name authority_value authority_error; do
+    caller_out="$ROOT/caller-$authority_name-apple-check.out"
+    caller_err="$ROOT/caller-$authority_name-apple-check.err"
+    if setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/env "$authority_name=$authority_value" \
+        /bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority \
+        >"$caller_out" 2>"$caller_err"; then
+        fail "caller $authority_name authority passed the Apple-check entry"
+    fi
+    [ ! -s "$caller_out" ] \
+        || fail "caller $authority_name Apple-check refusal produced standard output"
+    [ "$(<"$caller_err")" = "$authority_error" ] \
+        || fail "caller $authority_name Apple-check refusal diagnostic differs"
+done <<'EOF'
+DOCKER_HOST|unix:///tmp/forbidden-docker.sock|FATAL: caller DOCKER_HOST authority is forbidden
+APPLE_TARGET|aarch64-apple-ios|FATAL: caller APPLE_TARGET authority is forbidden
+EOF
+apple_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot Apple-check verifier-VM entry failed'
+expected_apple_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+APPLE_CHECK_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed"
+[ "$apple_entry_output" = "$expected_apple_entry_output" ] \
+    || fail "Apple-check verifier-VM entry result differs: $apple_entry_output"
+printf '%s\n' "$apple_entry_output"
+printf 'VERIFIER_VM_APPLE_CHECK_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused docker=%s prepost=replayed workload=unexecuted\n' \
+    "$EXPECTED_VERSION"
 
 if setpriv --reuid=4001 --regid=4001 --clear-groups \
     /bin/bash "$FRB_SCRIPT" --self-test-vm-authority \

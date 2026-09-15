@@ -2426,7 +2426,12 @@ def validate_scan_contract(scan, verify, apple, release):
         (verify, "verify", 18),
         (apple, "Apple", 4),
     ):
-        require_text(source, "source scripts/verify-scan.sh", f"{label} scanner loading")
+        scanner_load = (
+            'source "$SCRIPT_DIR/verify-scan.sh"'
+            if label == "Apple"
+            else "source scripts/verify-scan.sh"
+        )
+        require_text(source, scanner_load, f"{label} scanner loading")
         require_text(source, "verify_scan_preflight", f"{label} scanner preflight")
         require_text(source, "verify_scan_self_test", f"{label} scanner status self-test")
         require_count(source, "verify_scan_capture", minimum, f"{label} fail-loud scans")
@@ -22318,284 +22323,6 @@ def validate_windows_libvirt_storage_authority_contract(sources):
     )
 
 
-def validate_apple_verifier_authority_contract(sources):
-    focused = sources["apple_verifier_authority_verifier"]
-    apple = sources["apple"]
-    verify = sources["verify"]
-    provenance = sources["offline_image_provenance"]
-    online_fetch = sources["online_fetch"]
-    apple_dockerfile_digest = hashlib.sha256(
-        sources["apple_check_dockerfile"].encode("utf-8")
-    ).hexdigest()
-    require_text(
-        sources["pins"],
-        f'SHA256_APPLE_CHECK_DOCKERFILE="{apple_dockerfile_digest}"',
-        "Apple acquisition-recipe content pin",
-    )
-    for text, label in (
-        ("forbid_container_authority(source: str, label: str)",
-         "Apple focused forbidden-authority enforcement"),
-        ("Apple verifier setup, execution, and postconditions",
-         "Apple focused transaction-order enforcement"),
-        ("MUTATIONS: Tuple[Mutation, ...]",
-         "Apple focused mutation inventory"),
-        ("run_mutations(sources)",
-         "Apple focused mutation dispatch"),
-        ("cross-check mount inventory",
-         "Apple focused mount-cardinality enforcement"),
-        ("exact three-target matrix",
-         "Apple focused target-cardinality enforcement"),
-        ("Apple archive provenance specification",
-         "Apple focused archive-role enforcement"),
-        ("Apple reproducible runtime export",
-         "Apple focused reproducible-export enforcement"),
-        ("Apple exact offline archive path",
-         "Apple focused archive-path enforcement"),
-    ):
-        require_text(focused, text, label)
-    shared_gate = extract_between(
-        verify,
-        "# R-R2/R-A6 Apple gate shape:",
-        "# R-R2/R-A6 release-gate integration:",
-        "shared Apple companion shape gate",
-    )
-    for text, label in (
-        (
-            "readonly_apple_targets=$(awk "
-            "'/^readonly SELECTED_APPLE_TARGETS=\\($/,/^\\)$/' \"$apple_gate\")",
-            "shared Apple exact target-matrix extraction",
-        ),
-        (
-            "expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(\n"
-            "  aarch64-apple-darwin\n"
-            "  x86_64-apple-darwin\n"
-            "  aarch64-apple-ios\n"
-            ")'",
-            "shared Apple exact target-matrix expectation",
-        ),
-        (
-            '[ "$readonly_apple_targets" = "$expected_apple_targets" ] '
-            '|| apple_gate_bad="$apple_gate_bad target-matrix"',
-            "shared Apple exact target-matrix verdict",
-        ),
-        (
-            "grep -qF '[ -z \"${APPLE_TARGET:-}\" ] && "
-            "[ -z \"${APPLE_TARGETS:-}\" ]' \"$apple_gate\" "
-            '|| apple_gate_bad="$apple_gate_bad target-override-not-rejected"',
-            "shared Apple target-override rejection",
-        ),
-        (
-            "grep -qF 'for target in \"${SELECTED_APPLE_TARGETS[@]}\"; do' "
-            '"$apple_gate" || apple_gate_bad="$apple_gate_bad '
-            'selected-target-matrix-unused"',
-            "shared Apple selected-matrix execution",
-        ),
-        (
-            "[ \"$(grep -cF -- '--env SOURCE_DATE_EPOCH="
-            "\"$SOURCE_DATE_EPOCH_PIN\"' \"$apple_gate\")\" -eq 1 ] "
-            '|| apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"',
-            "shared Apple exact reproducibility-epoch transfer",
-        ),
-        (
-            "[ \"$(grep -cF -- '--mount \"type=bind,source=$APPLE_SOURCE,"
-            "target=/work,readonly\"' \"$apple_gate\")\" -eq 2 ] "
-            '|| apple_gate_bad="$apple_gate_bad '
-            'private-source-mounts-not-readonly"',
-            "shared Apple exact private read-only source mounts",
-        ),
-    ):
-        require_text(shared_gate, text, label)
-    require_order(
-        shared_gate,
-        (
-            "readonly_apple_targets=$(awk ",
-            "expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(",
-            '[ "$readonly_apple_targets" = "$expected_apple_targets" ]',
-            "target-override-not-rejected",
-            "selected-target-matrix-unused",
-            "source-date-epoch-not-pinned",
-            "private-source-mounts-not-readonly",
-        ),
-        "shared Apple target and confinement assertion order",
-    )
-    for text, label in (
-        ("DEFAULT_APPLE_TARGETS", "retired Apple default-target compatibility"),
-        (
-            "grep -qF 'APPLE_TARGETS'",
-            "weak Apple target-override token check",
-        ),
-        (
-            '-e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"',
-            "retired short Apple reproducibility-epoch transfer",
-        ),
-        (
-            '-v "$REPO:/work:ro"',
-            "retired real-checkout Apple source bind",
-        ),
-    ):
-        require_absent(shared_gate, text, label)
-    for text, label in (
-        ("readonly DOCKER_BIN=/usr/bin/docker",
-         "Apple fixed Docker client"),
-        ("readonly APPLE_DOCKER_HOST=unix:///var/run/docker.sock",
-         "Apple fixed Docker endpoint"),
-        ('readonly IMG="$APPLE_CHECK_IMAGE_ID"',
-         "Apple immutable image selection"),
-        ("apple_image_provenance verify-local",
-         "Apple immutable image provenance verification"),
-        ('--image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}"',
-         "Apple exact image provenance arguments"),
-        ("apple_docker run --rm --pull=never --network=none --read-only",
-         "Apple preflight confinement"),
-        ("APPLE_READ_RUN=(apple_docker run --rm --interactive --pull=never --network=none --read-only",
-         "Apple metadata-parser confinement"),
-        ("COMMON_CHECK=(apple_docker run --rm --interactive --pull=never --network=none --read-only",
-         "Apple cross-check confinement"),
-        ('--user "$BUILD_UID:$BUILD_GID"',
-         "Apple numeric nonroot identity"),
-        ("--cap-drop=ALL --security-opt=no-new-privileges",
-         "Apple privilege confinement"),
-        ('--mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"',
-         "Apple private read-only source"),
-        ('--mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"',
-         "Apple private read-only vendor"),
-        ("cargo check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
-         "Apple locked offline cross-check"),
-        ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
-         '  --package hbb_common --target "$target"',
-         "Apple locked serialized workspace anchor command"),
-        ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
-         '  --target "$target" --features "$features"',
-         "Apple locked serialized full Cargo command"),
-        ('--package hbb_common --target "$target"',
-         "Apple deterministic workspace anchor"),
-        ('if [ "$anchor_rc" -ne 0 ]',
-         "Apple workspace anchor success requirement"),
-        ('if ! /usr/bin/python3 -I -S "$REPO/scripts/restore-private-directory-modes.py"',
-         "Apple private-workspace directory restoration"),
-        ('--expected-identity "$APPLE_CHECK_TMP_IDENTITY"',
-         "Apple private-workspace cleanup identity"),
-        ('echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2\n'
-         "    status=1",
-         "Apple private-workspace restoration failure status"),
-        ("apple_sdk_boundary_after_successful_workspace_anchor()",
-         "Apple post-anchor SDK-boundary classifier"),
-        ("apple_sdk_boundary_self_test()",
-         "Apple SDK-boundary classifier self-test"),
-        ("\napple_sdk_boundary_self_test\n\n# ---- preflight ----",
-         "Apple SDK-boundary classifier self-test invocation"),
-        ("accepted = boundary_line > 0",
-         "Apple SDK boundary presence"),
-        ("rust_error_line == 0 || rust_error_line > boundary_line",
-         "Apple prior Rust diagnostic refusal"),
-        ('$0 !~ /^[[:space:]]*error: failed to run custom build command for `[^`]+`$/',
-         "Apple exact Cargo custom-build wrapper exception"),
-        ('[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
-         "Apple real-source postcondition"),
-        ('[ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ]',
-         "Apple exact-image postcondition"),
-    ):
-        require_text(apple, text, label)
-    require_text(
-        sources["pins"],
-        'APPLE_CHECK_IMAGE_ID="sha256:',
-        "Apple image content pin",
-    )
-    require_text(
-        sources["pins"],
-        'APPLE_CHECK_IMAGE_MANIFEST_ID="sha256:',
-        "Apple platform manifest content pin",
-    )
-    require_text(
-        sources["pins"],
-        'SHA256_APPLE_CHECK_IMAGE_ARCHIVE="',
-        "Apple offline image archive pin",
-    )
-    for text, label in (
-        ("class AppleCheckSpec:", "Apple archive provenance role"),
-        (
-            "def validate_apple_check_attestation(",
-            "Apple exact SLSA statement validator",
-        ),
-        (
-            "if apple_checks != 33:",
-            "Apple archive adversarial decision count",
-        ),
-        (
-            "networkless-acquisition-apple-check-image.tar.gz",
-            "Apple acquisition-network negative fixture",
-        ),
-        (
-            "root-helper-copy-apple-check-image.tar.gz",
-            "Apple helper-owner negative fixture",
-        ),
-        (
-            "unattested-apple-check-image.tar.gz",
-            "Apple missing-attestation negative fixture",
-        ),
-    ):
-        require_text(provenance, text, label)
-    for text, label in (
-        (
-            "maintenance_build_apple_check_image_candidate() {",
-            "Apple explicit maintenance acquisition",
-        ),
-        (
-            "--output=type=docker,rewrite-timestamp=true",
-            "Apple reproducible runtime manifest export",
-        ),
-        (
-            '        --archive "$ONLINE_DIR/verifier-images/apple-check.docker.tar.gz"',
-            "Apple exact offline archive recovery",
-        ),
-        (
-            "--maintenance-capture-apple-check-image",
-            "Apple explicit archive capture entry point",
-        ),
-        (
-            "--apple-check-image",
-            "Apple archive recovery entry point",
-        ),
-    ):
-        require_text(online_fetch, text, label)
-    require_text(
-        sources["verify"],
-        "/usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test",
-        "Apple conformance focused authority verifier",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11ci</span>',
-        "Apple verifier authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>228</td>",
-        "Apple verifier authority Appendix C row",
-    )
-    require_text(
-        sources["requirements"],
-        "This closes the independently archived and provenance-verified "
-        "Apple checker-image input;",
-        "Apple image-provenance requirement disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
-        "Apple verifier authority hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "`9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
-        "Apple canonical archive ledger evidence",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11e-166 current shared Apple companion-gate authority",
-        "current shared Apple companion-gate hardening ledger",
-    )
-
-
 def validate_online_fetch_container_authority_contract(sources):
     focused = sources["online_fetch_container_authority_verifier"]
     online = sources["online_fetch"]
@@ -30504,7 +30231,6 @@ def validate_sources(sources):
     validate_cleanup_process_domain_path_authority_contract(sources)
     validate_windows_build_domain_authority_contract(sources)
     validate_windows_libvirt_storage_authority_contract(sources)
-    validate_apple_verifier_authority_contract(sources)
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
     validate_online_fetch_libyuv_output_authority_contract(sources)
@@ -34723,9 +34449,6 @@ def main():
             "runit_lifecycle": (repo / "scripts/smoke-runit-lifecycle.sh").read_text(encoding="utf-8"),
             "runit_lifecycle_mode": os.lstat(repo / "scripts/smoke-runit-lifecycle.sh").st_mode,
             "devcheck_dockerfile": (repo / "scripts/Dockerfile.devcheck").read_text(encoding="utf-8"),
-            "apple_check_dockerfile": (
-                repo / "scripts/Dockerfile.apple-check"
-            ).read_text(encoding="utf-8"),
             "android_builder_certification_dockerfile": (
                 repo / "scripts/Dockerfile.android-builder-certify"
             ).read_text(encoding="utf-8"),
@@ -35268,9 +34991,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_libvirt_storage_library": (
                 repo / "scripts/windows-libvirt-storage-pools.sh"
-            ).read_text(encoding="utf-8"),
-            "apple_verifier_authority_verifier": (
-                repo / "scripts/verify-apple-verifier-authority.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_container_authority_verifier": (
                 repo / "scripts/verify-online-fetch-container-authority.py"

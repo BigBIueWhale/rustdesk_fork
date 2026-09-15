@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-c1df1df37ef101ac8e972d21aa0a8f75852a26acf79f6e648c4c4908889281fb  requirements.html
+7a5b102bded57406fe8350217efd081120c9c0ba2485b68ebbfa831c8ddfbb6a  requirements.html
 ```
 
 ## Current Verdict
@@ -63,18 +63,15 @@ authority checks remain. These are completed cleanup slices, not completion of t
 Appendix C and status sections still contain progress/history prose and must be classified and rewritten or deleted
 without losing live security requirements.
 
-R-S11dh now states the timeless outer execution boundary: Docker and any guest administrator authority live only
-inside one authenticated, networkless disposable Linux VM launched by the nonroot host user; direct host-root or
-rootless-host Docker is not an alternate mode. The July fixed-socket defect/fix diary was replaced, duplicate
-Appendix C #261 was deleted outright, and its 88-line historical status receipt was deleted. The main-verifier
-checker and the workspace checker no longer treat a pinned `/var/run/docker.sock`, private client configuration,
-or documentation wording as proof of safe execution; 218 lines of those checks and their mutations were removed,
-while R-S11bg's immutable-image, exact-input, numeric-nonroot container, capability, mount, resource, two-principal
-fixture, and cleanup checks remain. This reduced `requirements.html` by 4,107 bytes before digest reconciliation,
-the focused checker by 5,897 bytes/125 lines, and the workspace checker by 4,151 bytes/89 lines. Current source still
-routes shared launchers to the host rootful daemon, so the new OPEN matrix row is STOP-SHIP and no Docker-backed
-gate may be run on this host until the disposable-VM harness replaces that route. No Docker operation, product
-binary, VM, service, listener, or native target ran in this documentation/checker correction.
+The Apple authority slice restores R-S11ci and Appendix C #228 to timeless VM-only requirements and rewrites
+Appendix C #115/#116 around verifier-VM rather than host scratch. This reduces `requirements.html` from
+2,080,442 to 2,075,526 bytes. The dedicated Apple checker is now a compact architecture invariant, reduced from
+38,440 to 12,354 bytes; its obsolete mutation catalog, document/status oracles, and self-loading checks are gone.
+The Apple gate deletes its self-referential scratch/documentation test while retaining actual private-workspace
+creation and cleanup, reducing it from 394,783 to 392,138 bytes. The workspace verifier's entire duplicate Apple
+verifier-of-verifier function, dispatch, and unused source loads are deleted, reducing it from 1,533,463 to
+1,521,802 bytes. The live R-S11ci status is compressed from a 150-line implementation history to current source,
+current evidence, and explicit open work. Git history retains the deleted narrative and test machinery.
 
 The subsequent FRB entry migration deleted obsolete R-S11de and Appendix C #258 outright instead of preserving
 their unsafe host-root-socket mode as historical normative text. Their still-live inner-container confinement rules
@@ -1583,7 +1580,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`, `build-android.sh`, `build-debian.sh`, `test-android-gradle-cache.sh`, `android-rust-check.sh`, and the shared Windows build/provision/golden helper runtime now admit only that exact authority, use the fixed guest socket/configuration/client with pre/post replay, and have no direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child; the Windows helper entry executes the production small-profile launch and mount validator; the Gradle entry executes both production resource/security profiles; and the Debian builder entry executes its production compiler envelope against the real guest daemon. Real Dart/FRB generation/analysis/tests, exact OSV/RustSec scans, normal Android signing generation/building/Gradle/Rust checking, the certified Debian compiler/toolchain workload, the certified Windows helper archive/kernel/KVM/Windows workloads, and every RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb/signing/result inputs are absent from the smoke. Other shared consumers still target root-equivalent host Docker and must not run here. Exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`, `build-android.sh`, `build-debian.sh`, `test-android-gradle-cache.sh`, `android-rust-check.sh`, `apple-conform-check.sh`, and the shared Windows build/provision/golden helper runtime now admit only that exact authority, use the fixed guest socket/configuration/client with pre/post replay, and have no direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child; the Windows helper entry executes the production small-profile launch and mount validator; the Gradle entry executes both production resource/security profiles; and the Debian builder entry executes its production compiler envelope against the real guest daemon. Real Dart/FRB generation/analysis/tests, exact OSV/RustSec scans, normal Android signing generation/building/Gradle/Rust checking, the Apple source workload, the certified Debian compiler/toolchain workload, the certified Windows helper archive/kernel/KVM/Windows workloads, and every RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb/signing/result inputs are absent from the smoke. The remaining direct host-Docker consumers are the intentionally networked acquisition entry and two Linux Flutter presentation harnesses; they must not run here until separately migrated into an appropriate isolated topology. Exact source/input/output transfer, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
 
 The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
 nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
@@ -1615,7 +1612,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
   Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
   derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves
-  the exact kernel command line and runtime unit masks. Expanded eleven-entry passes complete in about 20–40 seconds and
+  the exact kernel command line and runtime unit masks. Expanded twelve-entry passes complete in about 20–49 seconds and
   pass
   AppArmor/seccomp/resource/namespace, no-bridge/no-forward/no-firewall-mutation, private-channel,
   listener-invariance, complete-bounded-capture, joined-process, and successful-run residue-free cleanup assertions.
@@ -1628,7 +1625,8 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   `build-android.sh --self-test-vm-authority`, the private-fixture-only
   `build-debian.sh --self-test-vm-authority`, the source/online-access-free
   `android-rust-check.sh --self-test-vm-authority`, and the source/online-access-free two-profile
-  `test-android-gradle-cache.sh --self-test-vm-authority` entries. Each performs an actual fixed-client Docker request with
+  `test-android-gradle-cache.sh --self-test-vm-authority`, and source/input-free
+  `apple-conform-check.sh --self-test-vm-authority` entries. Each performs an actual fixed-client Docker request with
   client/daemon pre/post generation replay; the applicable entries reject root and a foreign principal, and the Dart
   verifier proves its nested FRB child. The retained Dart/FRB focused checker runs inside the guest; the Dart-advisory
   checker was reduced from a 958-line cross-subsystem mutation catalog to a compact no-fallback/launch-shape check;
@@ -1650,7 +1648,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   observes their resource/security/read-only/network properties, and proves the guest container inventory is unchanged;
   it does not execute Gradle. The Debian entry executes its exact production compiler envelope, including private source,
   hidden Git, read-only online, security, namespace, and resource controls, while truthfully leaving the compiler workload
-  unexecuted. Complete authority runs finished in 28–40 seconds with host listeners unchanged. It did not execute RustDesk,
+  unexecuted. Complete authority runs finished in 28–49 seconds with host listeners unchanged. It did not execute RustDesk,
   the verifier image, FRB code generation, a Gradle or Rust build, a Debian compiler/toolchain workload, an OSV or RustSec scan, the certified
   Windows helper archive/kernel/KVM/Windows workloads, the complete source/input transaction, an artifact, or an
   output-publication transaction.
@@ -1668,7 +1666,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE, ELEVEN ENTRY PATHS, BOTH REAL ANDROID-GRADLE PROFILES, AND THE REAL WINDOWS-HELPER SMALL PROFILE GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–40 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, Android signing, Android building, the Debian builder, Android Gradle, Android Rust-check, and Windows helper authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. The Android Gradle entry executes both exact production resource/security profiles without the unavailable Gradle workload; the Debian builder entry executes its exact production compiler envelope against private fixtures without the unavailable certified compiler/toolchain workload. The Windows build, provisioner, and golden verifier are source-wired to the one VM-only helper funnel, but the smoke executes only its minimal real `small` profile—not the certified helper archive, kernel derivation, KVM/libguestfs, Windows, or artifact paths. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building/Gradle/Rust checking, the Debian compiler/toolchain workload, RustDesk server/protocol/video payloads, and those Windows workloads remain unexecuted because their certified images and complete source/vendor/Xvfb/signing/result inputs are absent. Move each remaining host-Docker consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, certified-helper, or full-gate evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE, TWELVE ENTRY PATHS, BOTH REAL ANDROID-GRADLE PROFILES, AND THE REAL WINDOWS-HELPER SMALL PROFILE GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–49 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, Android signing, Android building, the Debian builder, Android Gradle, Android Rust-check, Apple source conformance, and Windows helper authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. The Apple receipt explicitly leaves its source workload unexecuted; the Android Gradle entry executes both exact production resource/security profiles without the unavailable Gradle workload; the Debian builder entry executes its exact production compiler envelope against private fixtures without the unavailable certified compiler/toolchain workload. The Windows build, provisioner, and golden verifier are source-wired to the one VM-only helper funnel, but the smoke executes only its minimal real `small` profile—not the certified helper archive, kernel derivation, KVM/libguestfs, Windows, or artifact paths. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building/Gradle/Rust checking, the Apple source transaction, the Debian compiler/toolchain workload, RustDesk server/protocol/video payloads, and those Windows workloads remain unexecuted because their certified images and complete source/vendor/Xvfb/signing/result inputs are absent. Move the remaining acquisition and Linux presentation host-Docker consumers into appropriate isolated topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, certified-helper, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -1878,7 +1876,7 @@ Additional Linux command/provenance closures whose earlier entries were prose ra
 - R-S11c-10u closes the Linux XDO libxdo dynamic-library provenance path.
 - R-S11c-10v — obsolete generated Docker build helper excision.
 - R-S11c-10w — verifier private scratch workspace authority.
-- R-S11c-10x — Apple checker private host scratch authority.
+- R-S11c-10x — Apple checker private verifier-VM scratch authority.
 - R-S11c-10y closes the Linux Debian shipped ELF runtime-library provenance class.
 
 ### Adjacent findings not reopened here
@@ -3766,156 +3764,34 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   certified Windows helper. Exact helper-archive provenance/runtime contents, kernel extraction, KVM/
   libguestfs, golden inspection, Windows provisioning/building, cold artifacts, native behavior,
   independent reproduction, and external review remain open.
-- **R-S11ci/R-S11e-101 — Apple conformance verifier authority — SOURCE AND AUTHENTICATED
-  IMAGE-CLOSURE IMPLEMENTED 2026-07-25; FOCUSED/WORKSPACE MUTATION GATES, ARCHIVE/PROVENANCE
-  VERIFICATION, REPRODUCIBLE RUNTIME MANIFEST, AND COMPLETE THREE-TARGET APPLE SOURCE GATE PASS;
-  NATIVE APPLE AND EXACT COLD RELEASE EVIDENCE PENDING.** Platform: the
-  unprivileged Linux verification host and the Rust 1.81 Apple source-conformance container. Endpoint/action:
-  the R-R2 metadata parser and three-target `cargo check` verdict reached through
-  `scripts/apple-conform-check.sh`. Boundary: caller environment, Docker daemon/image/cache state, live source
-  and offline inputs ↔ the release verdict over retained macOS/iOS source.
+- **R-S11ci/R-S11e-101 — Apple conformance verifier authority — VM-ONLY SOURCE PATH
+  IMPLEMENTED; REAL AUTHORITY ENTRY GREEN; CURRENT APPLE WORKLOAD AND NATIVE APPLE EVIDENCE OPEN.**
+  `scripts/apple-conform-check.sh` now refuses UID or primary GID 0 and authenticates R-S11dh before
+  sourcing repository helpers or admitting product inputs. Caller Docker endpoint/context/configuration/TLS,
+  target-matrix, and SDK-path state is rejected. The only Docker authority is the fixed guest client,
+  principal-scoped Unix socket, root-owned empty configuration, and exact VM-root daemon generation; every
+  image/provenance/container call uses an empty environment and replays that proof before and after. There is
+  no direct host-root, host-rootless, TCP, or compatibility fallback.
 
-  The old gate built `rd-devcheck` and `rd-apple-check` tags on every invocation and then ran three independent
-  container shapes by those mutable names. Metadata and parse helpers received default bridge networking,
-  writable roots, default capabilities and privilege-gain semantics, no resource ceiling, and Docker's default
-  UID 0 because neither recipe declared `USER`. The cross-check mounted the live checkout read-only but reused
-  three persistent named volumes for Cargo registry, Git, and compiled target state. `APPLE_TARGET(S)` could
-  reduce the mandatory R-R2 matrix; `MACOS_SDK_DIR` could select any directory and incidental directory
-  existence changed the verdict. The declared minimal Rust image did not install `rustfmt`, yet a separate
-  parse mode assumed it. This is source-proven build-host, stale-input, and release-verdict authority debt. It
-  is not evidence that a helper published or opened a public listener, container root became host root, Docker
-  escaped, source changed, host RustDesk or any service/firewall/network state changed, or any system was
-  exploited or compromised.
+  The normal path retains one immutable provenance-verified Apple image, the fixed macOS-arm64, macOS-x86_64,
+  and iOS-arm64 matrix, private read-only source/vendor snapshots, one fresh private target, locked/offline
+  serialized Cargo checks, deterministic SDK-boundary classification, nonroot no-pull/network-none/read-only-root
+  containers, exact resource ceilings, and identity-bound private-tree cleanup. The gate no longer calls its
+  guest scratch “host” state or treats self-greps and documentation wording as behavioral evidence. The focused
+  checker is a compact architecture invariant; the duplicate Apple verifier-of-verifier block in
+  `verify-verifier-workspace.py` is deleted.
 
-  The checker now refuses host UID or primary GID 0, requires the fixed root-owned `/usr/bin/docker` and local
-  Unix socket, rejects caller Docker context/TLS/configuration, target, and SDK inputs, and replaces caller
-  client state with a fresh current-UID mode-0700 configuration containing exactly one mode-0600 single-link
-  `{}` file. Its metadata and bytes are reproved around every daemon operation. The gate never builds, pulls,
-  tags, or resolves a mutable name. It addresses only
-  `APPLE_CHECK_IMAGE_ID=sha256:1845e16ca1b255cc41dc57736b50263304937699d5e23e1353b843c00a2ea15f`,
-  verifies the reviewed acquisition-recipe digest, and performs a mount-free preflight over exact Rust/Cargo
-  1.81 versions, Cargo/rustc binary SHA-256 values, package-manifest SHA-256, libsodium policy, the complete
-  installed toolchain-tree description, and the exact installed target inventory. Before the source snapshot
-  can affect a verdict, the shared offline provenance reader independently verifies the local image's exact
-  index, runtime platform manifest, configuration, BuildKit statement, embedded recipe and source graph,
-  build arguments, layer/history epochs, and mountless runtime fingerprint.
+  The current fast no-NIC QEMU run behaviorally refused VM root, UID/GID 4001, caller `DOCKER_HOST`, and caller
+  `APPLE_TARGET`; admitted UID/GID 4000; and completed a real Docker 27.5.1 client/server request over the guest Unix channel with pre/post generation
+  replay. The outer harness authenticated its qcow2, Docker bundle, kernel, and initramfs, observed no host
+  listener change, and joined residue-free teardown in under 50 seconds. Its receipt deliberately says
+  `workload=unexecuted`.
 
-  The image recipe uses the exact independently archived devcheck base and a private context containing only
-  `Dockerfile`, `apple-toolchain-release.py`, and `apple-toolchain-provenance.py`. Exactly one numeric-1000
-  build step has acquisition networking: it fetches the Rust release public key, signed versioned Rust 1.81.0
-  channel manifest, detached signature, and the six manifest-named host/Apple component archives. It verifies
-  the pinned key fingerprint, all three source-object hashes, the signature, the release date and versions,
-  and the six manifest-bound component URLs and SHA-256 values. Installation and final validation are separate
-  `--network=none` steps. The helpers are copied as UID/GID 1000 mode 0555, every project-owned build command
-  and the runtime use numeric UID/GID 1000, and the runtime addresses the installed toolchain binaries
-  directly rather than a rustup proxy. The closed toolchain contains 207 regular files, 26 directories, and
-  844,882,141 content bytes under tree digest
-  `74f49c84298a448e020a5c5251ce59bf7b0cbda9ce75055986f5ecb19523e757`.
-
-  `online/verifier-images/apple-check.docker.tar.gz` is the independently captured local offline input:
-  current-user-owned mode 0400, one link, exactly 1,122,604,778 compressed bytes, SHA-256
-  `9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`, and decompressed Docker-save
-  SHA-256 `703daaa5d68f73925d98beb0df5ee733d10e35b37f2e1fdc89a2ec15f00aa8f7`. The canonical index binds
-  runtime platform manifest
-  `sha256:eb08db4dd16ba120a2fbb2957ea38a319203931de699d3b47c43ae7e9e6274cc`, configuration
-  `sha256:f75a07a3808620ebbc2188b5a4e7fb3d1de64dbeb534a9ec11f48f070067320c`, and one max-mode BuildKit
-  provenance statement. A private three-file rebuild reproduced the exact runtime platform manifest and
-  configuration. Its top-level index and attestation envelope differed, as expected for BuildKit's
-  per-invocation provenance metadata; the verifier therefore pins and validates the canonical envelope while
-  treating exact runtime-manifest equality—not equality of dynamic attestation envelopes—as the
-  reproducibility claim. The explicit `--apple-check-image` recovery path loads and verifies that exact archive;
-  candidate building and canonical capture are maintenance-only actions outside the verdict.
-
-  One mode-0700 transaction snapshots the tracked plus nonignored source into a read-only compiler tree,
-  snapshots and re-verifies the complete pinned `online/cargo-vendor` closure, creates a mode-0400 offline Cargo
-  source map, and owns the sole fresh writable target. The real checkout is never a compiler mount. The verdict
-  always iterates exactly `aarch64-apple-darwin`, `x86_64-apple-darwin`, and `aarch64-apple-ios` with their fixed
-  feature sets. Because no redistributable Apple SDK is a pinned offline input and Apple remains
-  source-conformance-only on Linux, caller/ambient real-SDK modes are deleted; the checked-in compiler shim is
-  the sole release mode. A check must compile cleanly or reach the existing narrowly classified Apple
-  SDK/header boundary only after a workspace package compiles cleanly and with no prior Rust compiler error.
-  Cargo runs with `--jobs 1`. Before each full target graph, a separate equivalently confined locked/offline
-  `--package hbb_common --target <target>` anchor must exit zero in the same private target transaction; failure
-  prevents the full check. Only then may the full check accept its first exact missing-header/framework/library
-  diagnostic. Cargo's exact `error: failed to run custom build command for \`…\`` wrapper may intervene before
-  the underlying boundary; coded Rust errors, uncoded Rust errors, near-match Cargo text, or a missing boundary
-  reject. A behavioral self-test exercises the accepted and rejected classifier shapes before any image
-  operation, while source mutations independently reject removal, retargeting, unlocking, parallelizing, or
-  bypassing the anchor. Native Mac
-  compilation/signing/packaging/runtime remains separate R-B2 evidence. The redundant undeclared-rustfmt path
-  is deleted rather than repaired as a second syntax mode.
-
-  Image preflight, structured metadata parsing, and cross-checking all use `--pull=never`, `--network=none`,
-  read-only root, invoking numeric UID:GID, all capabilities dropped, no-new-privileges, and explicit
-  PID/memory/no-swap/CPU plus `nosuid,nodev` tmpfs ceilings. Metadata sees only the private source snapshot.
-  Cargo sees exactly that source, the read-only private vendor snapshot/config, the private target, and tmpfs;
-  it runs Rust 1.81 with `--locked --offline` and offline environment policy. No persistent named volume,
-  arbitrary SDK, live repository, full `online` tree, Docker socket, device, host namespace, added capability,
-  or port enters a container. Final postconditions reverify the vendor closure, real-source transaction digest,
-  Docker configuration, and image identity. Cleanup then uses the retained scratch device/inode and current
-  UID/GID with `restore-private-directory-modes.py` to regain owner permissions on same-filesystem no-follow
-  directories only before removing the exact tree; cleanup failure changes the verdict to failure.
-
-  Docker's own documentation establishes the semantics behind this closure: the default container user is root
-  unless `USER`/`--user` changes it
-  (https://docs.docker.com/engine/containers/run/#user); `--pull=never` forbids implicit acquisition
-  (https://docs.docker.com/reference/cli/docker/container/run/#set-the-pull-policy---pull);
-  named-volume content persists after a container is removed
-  (https://docs.docker.com/engine/containers/run/#volume-mounts); and `--read-only` plus explicit mounts bounds
-  writable filesystem authority
-  (https://docs.docker.com/reference/cli/docker/container/run/#mount-volume-read-only---read-only).
-  Docker also documents that bind mounts can otherwise affect host files and that read-only mounts remove that
-  write authority (https://docs.docker.com/engine/storage/bind-mounts/), while its security guidance says most
-  containers do not need root and can run with reduced capabilities
-  (https://docs.docker.com/engine/security/).
-
-  `scripts/verify-apple-verifier-authority.py` binds the fixed client/config/image, exact pins and target matrix,
-  private source/vendor/output topology, complete three-launch inventory, confinement and resource flags,
-  locked/offline command, forbidden legacy authority, setup/execution/postcondition order, R-S11ci, Appendix C
-  #228, this ledger, shared-gate wiring, and independent workspace ownership through deliberate mutations.
-  Source commit `328db288188fd0a0e8b9fc62d5eb0099709ac934` established the authority envelope; the
-  fresh-target probe then exposed the parallel log-classification race, and source commit
-  `5dad3a44071a3c5796d7438b346cf02e305ce059`, tree
-  `2a70064cf8a35a6a97b3f14247a397d872122c15`, made the verdict serialized and order-sensitive.
-  Its focused normal/self-test passes and rejects 56 deliberate weakenings, including cleanup identity,
-  directory-mode restoration, the exact successful locked/offline workspace anchor, prior Rust diagnostics,
-  exact Cargo-wrapper classification, and classifier self-test invocation. The independent workspace semantic
-  verifier passes both normal validation and its complete in-memory source-mutation catalog, including separate
-  mutations of the focused rejection logic, actual common launch, Dockerfile content pin, shared wiring,
-  requirement, Appendix row, and ledger. Both ran as UID/GID 1000 in the immutable
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` verifier with no
-  network, read-only root/source, zero capabilities, no-new-privileges, and explicit resource ceilings.
-  Dependency inventory normal/self-test, native-codec normal/negative gates, Bash/Python syntax,
-  synchronized requirements SHA-256
-  `6fcc849fd6e5e423d507ff87cf3f2e1914a195496447e5419b459ef3d3572be4`, and diff checks pass.
-
-  From the final source worktree, one private source/vendor snapshot and one initially empty private target
-  exercised the exact locked/offline cross-check command in the pinned Apple image with UID/GID 1000, no network,
-  read-only root/source/vendor, zero capabilities, no-new-privileges, and the production resource ceilings. The
-  vendor closure was independently verified before and after the matrix. The diagnostic history exposed verifier
-  defects rather than an Apple source defect: Cargo reports the build-script-owning package as
-  `Compiling hbb_common`, reports its exact failed-custom-build wrapper before clang's missing header, and on iOS
-  legitimately schedules `coreaudio-sys` before any incidental workspace status line. The final transaction
-  removes that scheduling dependence: each target first compiles `hbb_common` cleanly through its own locked/offline
-  confined anchor, then runs the full graph. All three targets—`aarch64-apple-darwin`,
-  `x86_64-apple-darwin`, and `aarch64-apple-ios`—then reached the pinned `coreaudio-sys 0.2.15`
-  `AudioUnit/AudioUnit.h` boundary with no prior Rust diagnostic, and the complete gate passed. The EXIT path
-  restored only private-tree directory
-  modes, removed the workspace, and preserved success. No Apple SDK was fabricated, downloaded, mounted, or
-  accepted from the caller, and no header stub was added. This is still source-conformance evidence only:
-  native Apple compilation/signing/artifacts, exact clean-commit cold release evidence, and the full
-  `scripts/verify.sh` verdict remain open and are not inferred from this source-conformance and verifier-image
-  closure. The provenance self-test exercises 33 independent Apple-image decisions—30 adversarial rejections
-  and three positive controls—including source, network, user, helper-ownership, layer/history epoch, subject,
-  context, and missing-attestation substitutions. The
-  focused Apple authority verifier rejects 56 source mutations, the online-fetch container authority verifier
-  rejects 44, and the independent workspace source-mutation catalog passes. The canonical online closure now
-  contains 145,625 files, 42,831 directories, 41 symlinks, 28,289,644,229 content bytes, and root
-  `f3dab9c3b8af08c6693619b53865681dda9b6255cc41ec9fc02ef0f7913307e2`; its only delta from the prior
-  closure is the exact Apple archive. No project build command or validation container ran with UID/GID 0 or
-  an added capability; no operation published a port or passed a Docker socket into a container. The work did
-  not inspect or change host RustDesk, any host service, listeners, firewall/UFW/nftables/iptables, or host
-  network state.
+  The local `online/` closure is absent, including the pinned 1,122,604,778-byte Apple image archive and Cargo
+  vendor tree, so the current complete three-target source transaction was not run. A historical full source
+  pass predates this VM-only entry and is not current-tree evidence. Native macOS/iOS compilation, signing,
+  installation, helper/launchd behavior, runtime, packages, cold release, independent reproduction, and
+  external review remain open.
 - **R-S11cj/R-S11e-102 — online acquisition container execution authority — SOURCE IMPLEMENTED
   2026-07-23; FOCUSED/WORKSPACE MUTATION GATES AND EXACT-IMAGE NON-ROOT PROBES PASS; OUTPUT-PUBLICATION AUTHORITY AND EXACT COLD
   RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the one intentionally

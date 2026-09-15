@@ -238,11 +238,11 @@ def validate_online_fetch(source: str) -> None:
         "fixed Docker client without VCS hints",
     )
 
-    certification_args = shell_function(
-        source, "win_helper_certification_spec_args"
+    candidate_certification_args = shell_function(
+        source, "win_helper_certification_candidate_spec_args"
     )
     require_all(
-        certification_args,
+        candidate_certification_args,
         (
             "--role win-helper",
             '--base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"',
@@ -252,15 +252,31 @@ def validate_online_fetch(source: str) -> None:
             '--bootstrap-image-id "$WIN_HELPER_BOOTSTRAP_IMAGE_ID"',
             '--bootstrap-manifest-id "$WIN_HELPER_BOOTSTRAP_MANIFEST_ID"',
             '--source-date-epoch "$SOURCE_DATE_EPOCH_PIN"',
+        ),
+        "certified Windows helper candidate input specification",
+    )
+    require_absent(
+        candidate_certification_args,
+        ("--expected-id", "--config-id", "--manifest-id"),
+        "candidate-derived Windows helper identities",
+    )
+
+    certification_args = shell_function(
+        source, "win_helper_certification_spec_args"
+    )
+    require_all(
+        certification_args,
+        (
+            "win_helper_certification_candidate_spec_args",
             '--config-id "$WIN_HELPER_CONFIG_ID"',
             '--manifest-id "$WIN_HELPER_MANIFEST_ID"',
         ),
-        "certified Windows helper specification",
+        "reviewed Windows helper specification",
     )
     require_absent(
         certification_args,
         ("--expected-id",),
-        "candidate-derived Windows helper identity",
+        "separately pinned Windows helper image identity",
     )
 
     final_args = shell_function(source, "win_helper_image_spec_args")
@@ -456,6 +472,7 @@ def validate_online_fetch(source: str) -> None:
     require_all(
         certification,
         (
+            "require_win_helper_certification_input_pins",
             "win-helper-bootstrap.docker.tar.gz",
             "win-helper-certified-candidate.docker.tar.gz",
             'local export_name="rd-win-helper-certified:authenticated-v1"',
@@ -480,8 +497,13 @@ def validate_online_fetch(source: str) -> None:
             "WIN_HELPER_DPKG_MANIFEST_SHA256="
             "${SHA256_WIN_HELPER_DPKG_MANIFEST}",
             "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH_PIN}",
+            "win_helper_certification_candidate_spec_args",
             "maintenance-normalize-certified-oci",
-            'candidate_args=(--expected-id "$image_id"',
+            'manifest_id="$(/usr/bin/sed -n',
+            'config_id="$(/usr/bin/sed -n',
+            '--expected-id "$image_id"',
+            '--config-id "$config_id"',
+            '--manifest-id "$manifest_id"',
             "verify-load",
         ),
         "networkless certification transaction",
@@ -527,6 +549,11 @@ def validate_online_fetch(source: str) -> None:
             "image inspect",
             "docker save",
             "type=docker",
+            "require_win_helper_image_pins",
+            "$WIN_HELPER_IMAGE_ID",
+            "$WIN_HELPER_CONFIG_ID",
+            "$WIN_HELPER_MANIFEST_ID",
+            "$SHA256_WIN_HELPER_IMAGE_ARCHIVE",
         ),
         "networkless certification transaction",
     )

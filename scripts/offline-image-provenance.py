@@ -233,9 +233,8 @@ class ArchiveIdentity:
 
 
 @dataclass(frozen=True)
-class CertifiedBuilderSpec:
+class CertifiedBuilderInputSpec:
     role: str
-    image_id: str
     base: str
     dockerfile_sha256: str
     recipe_sha256: str
@@ -243,8 +242,6 @@ class CertifiedBuilderSpec:
     bootstrap_image_id: str
     bootstrap_manifest_id: str
     source_date_epoch: int
-    config_id: str
-    manifest_id: str
 
     @property
     def display_name(self) -> str:
@@ -473,6 +470,44 @@ class CertifiedBuilderSpec:
             f"dockerfile_sha256={self.recipe_sha256}\n"
             f"dpkg_manifest_sha256={self.dpkg_sha256}\n"
         ).encode("ascii")
+
+    @property
+    def input_contract(self) -> CertifiedBuilderInputSpec:
+        return CertifiedBuilderInputSpec(
+            role=self.role,
+            base=self.base,
+            dockerfile_sha256=self.dockerfile_sha256,
+            recipe_sha256=self.recipe_sha256,
+            dpkg_sha256=self.dpkg_sha256,
+            bootstrap_image_id=self.bootstrap_image_id,
+            bootstrap_manifest_id=self.bootstrap_manifest_id,
+            source_date_epoch=self.source_date_epoch,
+        )
+
+    def with_identity(
+        self,
+        identity: ArchiveIdentity,
+    ) -> CertifiedBuilderSpec:
+        return CertifiedBuilderSpec(
+            role=self.role,
+            base=self.base,
+            dockerfile_sha256=self.dockerfile_sha256,
+            recipe_sha256=self.recipe_sha256,
+            dpkg_sha256=self.dpkg_sha256,
+            bootstrap_image_id=self.bootstrap_image_id,
+            bootstrap_manifest_id=self.bootstrap_manifest_id,
+            source_date_epoch=self.source_date_epoch,
+            image_id=identity.image_id,
+            config_id=identity.config_id,
+            manifest_id=identity.manifest_id,
+        )
+
+
+@dataclass(frozen=True)
+class CertifiedBuilderSpec(CertifiedBuilderInputSpec):
+    image_id: str
+    config_id: str
+    manifest_id: str
 
 
 @dataclass(frozen=True)
@@ -818,11 +853,49 @@ def require_image_id(value: str, label: str) -> str:
     return value
 
 
-def spec_from_args(
+def certified_builder_input_from_args(
     args: argparse.Namespace,
-    *,
-    expected_image_id: str | None = None,
-) -> ImageSpec:
+) -> CertifiedBuilderInputSpec:
+    if args.role not in {"android-builder", "deb-builder", "win-helper"}:
+        fail(f"unsupported certified builder role: {args.role}")
+    expected_release = (
+        "18[.]04" if args.role == "deb-builder" else "24[.]04"
+    )
+    if not re.fullmatch(
+        rf"ubuntu:{expected_release}@sha256:[0-9a-f]{{64}}",
+        args.base,
+    ):
+        fail(f"certified {args.role} base identity is malformed")
+    if args.source_date_epoch is None or args.source_date_epoch < 0:
+        fail(f"certified {args.role} source-date epoch is malformed")
+    return CertifiedBuilderInputSpec(
+        role=args.role,
+        base=args.base,
+        dockerfile_sha256=require_sha(
+            args.dockerfile_sha,
+            "certification Dockerfile SHA-256",
+        ),
+        recipe_sha256=require_sha(
+            args.recipe_sha or "",
+            f"{args.role} bootstrap recipe SHA-256",
+        ),
+        dpkg_sha256=require_sha(
+            args.dpkg_sha or "",
+            f"{args.role} package-manifest SHA-256",
+        ),
+        bootstrap_image_id=require_image_id(
+            args.bootstrap_image_id or "",
+            f"{args.role} bootstrap image ID",
+        ),
+        bootstrap_manifest_id=require_image_id(
+            args.bootstrap_manifest_id or "",
+            f"{args.role} bootstrap manifest ID",
+        ),
+        source_date_epoch=args.source_date_epoch,
+    )
+
+
+def spec_from_args(args: argparse.Namespace) -> ImageSpec:
     if args.role == "apple-check":
         if not re.fullmatch(
             r"rd-devcheck@sha256:[0-9a-f]{64}",
@@ -1097,48 +1170,20 @@ def spec_from_args(
             manifest_id=require_image_id(args.manifest_id or "", "devcheck manifest ID"),
         )
     if args.role in {"android-builder", "deb-builder", "win-helper"}:
-        expected_release = (
-            "18[.]04" if args.role == "deb-builder" else "24[.]04"
-        )
-        if not re.fullmatch(
-            rf"ubuntu:{expected_release}@sha256:[0-9a-f]{{64}}",
-            args.base,
-        ):
-            fail(f"certified {args.role} base identity is malformed")
-        if args.source_date_epoch is None or args.source_date_epoch < 0:
-            fail(f"certified {args.role} source-date epoch is malformed")
+        contract = certified_builder_input_from_args(args)
         return CertifiedBuilderSpec(
-            role=args.role,
+            role=contract.role,
+            base=contract.base,
+            dockerfile_sha256=contract.dockerfile_sha256,
+            recipe_sha256=contract.recipe_sha256,
+            dpkg_sha256=contract.dpkg_sha256,
+            bootstrap_image_id=contract.bootstrap_image_id,
+            bootstrap_manifest_id=contract.bootstrap_manifest_id,
+            source_date_epoch=contract.source_date_epoch,
             image_id=require_image_id(
-                (
-                    expected_image_id
-                    if expected_image_id is not None
-                    else args.expected_id
-                ),
+                args.expected_id,
                 "expected image ID",
             ),
-            base=args.base,
-            dockerfile_sha256=require_sha(
-                args.dockerfile_sha,
-                "certification Dockerfile SHA-256",
-            ),
-            recipe_sha256=require_sha(
-                args.recipe_sha or "",
-                f"{args.role} bootstrap recipe SHA-256",
-            ),
-            dpkg_sha256=require_sha(
-                args.dpkg_sha or "",
-                f"{args.role} package-manifest SHA-256",
-            ),
-            bootstrap_image_id=require_image_id(
-                args.bootstrap_image_id or "",
-                f"{args.role} bootstrap image ID",
-            ),
-            bootstrap_manifest_id=require_image_id(
-                args.bootstrap_manifest_id or "",
-                f"{args.role} bootstrap manifest ID",
-            ),
-            source_date_epoch=args.source_date_epoch,
             config_id=require_image_id(
                 args.config_id or "",
                 f"certified {args.role} config ID",
@@ -5241,7 +5286,7 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
 
 def prepare_certified_builder_oci_export(
     scanned: DirectOciExport,
-    contract: CertifiedBuilderSpec,
+    contract: CertifiedBuilderInputSpec,
 ) -> tuple[
     CertifiedBuilderSpec,
     bytes,
@@ -5313,8 +5358,6 @@ def prepare_certified_builder_oci_export(
             "direct certified builder OCI export image identity "
             "is malformed"
         )
-    spec = replace(contract, image_id=image_id)
-
     image_index = parse_json(
         image_index_bytes,
         "direct OCI export image index blob",
@@ -5331,11 +5374,17 @@ def prepare_certified_builder_oci_export(
         and descriptor.get("platform")
         == {"architecture": "amd64", "os": "linux"}
     ] if isinstance(image_descriptors, list) else []
-    if len(runtime_descriptors) != 1 \
-       or runtime_descriptors[0].get("digest") != spec.manifest_id:
+    if len(runtime_descriptors) != 1:
+        fail(
+            "direct certified builder OCI export must name exactly one "
+            "linux/amd64 runtime manifest"
+        )
+    runtime_manifest_id = runtime_descriptors[0].get("digest")
+    if not isinstance(runtime_manifest_id, str) \
+       or not IMAGE_ID.fullmatch(runtime_manifest_id):
         fail(
             "direct certified builder OCI export runtime manifest "
-            "differs from its pin"
+            "identity is malformed"
         )
     image_manifest_name, image_manifest_bytes = descriptor_blob(
         runtime_descriptors[0],
@@ -5353,12 +5402,24 @@ def prepare_certified_builder_oci_export(
         if isinstance(image_manifest, dict)
         else None
     )
-    if not isinstance(config_descriptor, dict) \
-       or config_descriptor.get("digest") != spec.config_id:
+    runtime_config_id = (
+        config_descriptor.get("digest")
+        if isinstance(config_descriptor, dict)
+        else None
+    )
+    if not isinstance(runtime_config_id, str) \
+       or not IMAGE_ID.fullmatch(runtime_config_id):
         fail(
             "direct certified builder OCI export runtime config "
-            "differs from its pin"
+            "identity is malformed"
         )
+    spec = contract.with_identity(
+        ArchiveIdentity(
+            image_id=image_id,
+            manifest_id=runtime_manifest_id,
+            config_id=runtime_config_id,
+        )
+    )
     config_name, _ = descriptor_blob(
         config_descriptor,
         scanned.metadata,
@@ -5464,7 +5525,7 @@ def deterministic_tar_info(
 def canonicalize_certified_builder_oci_export(
     source: Path,
     output: Path,
-    contract: CertifiedBuilderSpec,
+    contract: CertifiedBuilderInputSpec,
 ) -> tuple[CertifiedBuilderSpec, str, int, str, int]:
     validate_private_output_parent(source.parent)
     if output.parent != source.parent:
@@ -9604,10 +9665,7 @@ def self_test() -> None:
             android_export,
             android_spec,
         )
-        android_contract = replace(
-            android_spec,
-            image_id="sha256:" + "0" * 64,
-        )
+        android_contract = android_spec.input_contract
         normalized_android_archive = (
             Path(temporary)
             / "normalized-certified-android-builder.tar.gz"
@@ -9990,7 +10048,7 @@ def self_test() -> None:
         ) = canonicalize_certified_builder_oci_export(
             deb_export,
             normalized_deb_archive,
-            replace(deb_spec, image_id="sha256:" + "0" * 64),
+            deb_spec.input_contract,
         )
         if normalized_deb_spec != deb_spec \
            or deb_export_sha != hashlib.sha256(
@@ -10182,10 +10240,7 @@ def self_test() -> None:
             win_export,
             win_spec,
         )
-        win_contract = replace(
-            win_spec,
-            image_id="sha256:" + "0" * 64,
-        )
+        win_contract = win_spec.input_contract
         normalized_win_archive = (
             Path(temporary) / "normalized-certified-win-helper.tar.gz"
         )
@@ -11343,20 +11398,14 @@ def main() -> int:
             "deb-builder",
             "win-helper",
         } \
-           or args.expected_id is not None:
+           or args.expected_id is not None \
+           or args.config_id is not None \
+           or args.manifest_id is not None:
             fail(
-                "certified OCI normalization derives the builder "
-                "image identity from the exact direct export"
+                "certified OCI normalization derives the builder image, "
+                "config, and manifest identities from the exact direct export"
             )
-        contract = spec_from_args(
-            args,
-            expected_image_id="sha256:" + "0" * 64,
-        )
-        if not isinstance(contract, CertifiedBuilderSpec):
-            fail(
-                "certified OCI normalization requires a certified builder "
-                "contract"
-            )
+        contract = certified_builder_input_from_args(args)
         (
             spec,
             archive_sha,

@@ -235,11 +235,11 @@ def validate_online_fetch(source: str) -> None:
         "fixed Docker client without VCS hints",
     )
 
-    certification_args = shell_function(
-        source, "deb_builder_certification_spec_args"
+    candidate_certification_args = shell_function(
+        source, "deb_builder_certification_candidate_spec_args"
     )
     require_all(
-        certification_args,
+        candidate_certification_args,
         (
             "--role deb-builder",
             '--base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"',
@@ -249,15 +249,31 @@ def validate_online_fetch(source: str) -> None:
             '--bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID"',
             '--bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID"',
             '--source-date-epoch "$SOURCE_DATE_EPOCH_PIN"',
+        ),
+        "certified Debian builder candidate input specification",
+    )
+    require_absent(
+        candidate_certification_args,
+        ("--expected-id", "--config-id", "--manifest-id"),
+        "candidate-derived Debian builder identities",
+    )
+
+    certification_args = shell_function(
+        source, "deb_builder_certification_spec_args"
+    )
+    require_all(
+        certification_args,
+        (
+            "deb_builder_certification_candidate_spec_args",
             '--config-id "$DEB_BUILDER_CONFIG_ID"',
             '--manifest-id "$DEB_BUILDER_MANIFEST_ID"',
         ),
-        "certified Debian builder specification",
+        "reviewed Debian builder specification",
     )
     require_absent(
         certification_args,
         ("--expected-id",),
-        "candidate-derived Debian builder identity",
+        "separately pinned Debian builder image identity",
     )
 
     final_args = shell_function(source, "deb_builder_image_spec_args")
@@ -419,6 +435,7 @@ def validate_online_fetch(source: str) -> None:
     require_all(
         certification,
         (
+            "require_deb_builder_certification_input_pins",
             "deb-builder-bootstrap.docker.tar.gz",
             "deb-builder-certified-candidate.docker.tar.gz",
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
@@ -434,8 +451,13 @@ def validate_online_fetch(source: str) -> None:
             "oci-mediatypes=true,rewrite-timestamp=true",
             "deb-builder-bootstrap=oci-layout://${layout}@"
             "${DEB_BUILDER_BOOTSTRAP_IMAGE_ID}",
+            "deb_builder_certification_candidate_spec_args",
             "maintenance-normalize-certified-oci",
-            "candidate_args=(--expected-id \"$image_id\"",
+            'manifest_id="$(/usr/bin/sed -n',
+            'config_id="$(/usr/bin/sed -n',
+            '--expected-id "$image_id"',
+            '--config-id "$config_id"',
+            '--manifest-id "$manifest_id"',
             "verify-load",
         ),
         "networkless certification transaction",
@@ -481,6 +503,11 @@ def validate_online_fetch(source: str) -> None:
             "image inspect",
             "docker save",
             "type=docker",
+            "require_deb_builder_image_pins",
+            "$DEB_BUILDER_IMAGE_ID",
+            "$DEB_BUILDER_CONFIG_ID",
+            "$DEB_BUILDER_MANIFEST_ID",
+            "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE",
         ),
         "networkless certification transaction",
     )

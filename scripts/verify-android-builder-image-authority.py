@@ -232,28 +232,45 @@ def validate_online_fetch(source: str) -> None:
         "fixed Docker client without VCS hints",
     )
 
-    certification_args = shell_function(
-        source, "android_builder_certification_spec_args"
+    candidate_certification_args = shell_function(
+        source, "android_builder_certification_candidate_spec_args"
     )
     require_all(
-        certification_args,
+        candidate_certification_args,
         (
             "--role android-builder",
+            '--base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"',
             '--dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE"',
             '--recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE"',
             '--dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST"',
             '--bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID"',
             '--bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID"',
             '--source-date-epoch "$SOURCE_DATE_EPOCH_PIN"',
+        ),
+        "certified Android builder candidate input specification",
+    )
+    require_absent(
+        candidate_certification_args,
+        ("--expected-id", "--config-id", "--manifest-id"),
+        "candidate-derived Android builder identities",
+    )
+
+    certification_args = shell_function(
+        source, "android_builder_certification_spec_args"
+    )
+    require_all(
+        certification_args,
+        (
+            "android_builder_certification_candidate_spec_args",
             '--config-id "$ANDROID_BUILDER_CONFIG_ID"',
             '--manifest-id "$ANDROID_BUILDER_MANIFEST_ID"',
         ),
-        "certified Android builder specification",
+        "reviewed Android builder specification",
     )
     require_absent(
         certification_args,
         ("--expected-id",),
-        "candidate-derived Android builder identity",
+        "separately pinned Android builder image identity",
     )
 
     loader = shell_function(source, "verify_or_load_android_builder_image")
@@ -448,6 +465,7 @@ def validate_online_fetch(source: str) -> None:
     require_all(
         certification,
         (
+            "require_android_builder_certification_input_pins",
             "android-builder-bootstrap.docker.tar.gz",
             "android-builder-certified-candidate.docker.tar.gz",
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
@@ -463,7 +481,13 @@ def validate_online_fetch(source: str) -> None:
             "oci-mediatypes=true,rewrite-timestamp=true",
             "android-builder-bootstrap=oci-layout://${layout}@"
             "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}",
+            "android_builder_certification_candidate_spec_args",
             "maintenance-normalize-certified-oci",
+            'manifest_id="$(/usr/bin/sed -n',
+            'config_id="$(/usr/bin/sed -n',
+            '--expected-id "$image_id"',
+            '--config-id "$config_id"',
+            '--manifest-id "$manifest_id"',
             "verify-load",
         ),
         "networkless certification transaction",
@@ -509,6 +533,11 @@ def validate_online_fetch(source: str) -> None:
             "image inspect",
             "docker save",
             "type=docker",
+            "require_android_builder_image_pins",
+            "$ANDROID_BUILDER_IMAGE_ID",
+            "$ANDROID_BUILDER_CONFIG_ID",
+            "$ANDROID_BUILDER_MANIFEST_ID",
+            "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE",
         ),
         "networkless certification transaction",
     )

@@ -1601,7 +1601,7 @@ require_image_pin() {
     [ "$value" != "$SHA_PENDING" ] || die "$name is not established"
 }
 
-deb_builder_certification_spec_args() {
+deb_builder_certification_candidate_spec_args() {
     printf '%s\0' \
         --role deb-builder \
         --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
@@ -1610,7 +1610,12 @@ deb_builder_certification_spec_args() {
         --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
         --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
         --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
-        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN"
+}
+
+deb_builder_certification_spec_args() {
+    deb_builder_certification_candidate_spec_args
+    printf '%s\0' \
         --config-id "$DEB_BUILDER_CONFIG_ID" \
         --manifest-id "$DEB_BUILDER_MANIFEST_ID"
 }
@@ -1647,6 +1652,12 @@ require_deb_builder_bootstrap_pins() {
     for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
+require_deb_builder_certification_input_pins() {
+    require_deb_builder_bootstrap_pins
+    require_image_pin SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE
+    require_image_pin SOURCE_DATE_EPOCH_PIN
+}
+
 require_deb_builder_image_pins() {
     local names=(
         DEB_BUILDER_IMAGE_ID
@@ -1669,7 +1680,7 @@ require_deb_builder_image_pins() {
     for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
-android_builder_certification_spec_args() {
+android_builder_certification_candidate_spec_args() {
     printf '%s\0' \
         --role android-builder \
         --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
@@ -1678,7 +1689,12 @@ android_builder_certification_spec_args() {
         --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
         --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
         --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
-        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN"
+}
+
+android_builder_certification_spec_args() {
+    android_builder_certification_candidate_spec_args
+    printf '%s\0' \
         --config-id "$ANDROID_BUILDER_CONFIG_ID" \
         --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
 }
@@ -1715,6 +1731,12 @@ require_android_builder_bootstrap_pins() {
     for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
+require_android_builder_certification_input_pins() {
+    require_android_builder_bootstrap_pins
+    require_image_pin SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE
+    require_image_pin SOURCE_DATE_EPOCH_PIN
+}
+
 require_android_builder_image_pins() {
     local names=(
         ANDROID_BUILDER_IMAGE_ID
@@ -1737,7 +1759,7 @@ require_android_builder_image_pins() {
     for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
-win_helper_certification_spec_args() {
+win_helper_certification_candidate_spec_args() {
     printf '%s\0' \
         --role win-helper \
         --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
@@ -1746,7 +1768,12 @@ win_helper_certification_spec_args() {
         --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST" \
         --bootstrap-image-id "$WIN_HELPER_BOOTSTRAP_IMAGE_ID" \
         --bootstrap-manifest-id "$WIN_HELPER_BOOTSTRAP_MANIFEST_ID" \
-        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN"
+}
+
+win_helper_certification_spec_args() {
+    win_helper_certification_candidate_spec_args
+    printf '%s\0' \
         --config-id "$WIN_HELPER_CONFIG_ID" \
         --manifest-id "$WIN_HELPER_MANIFEST_ID"
 }
@@ -1781,6 +1808,12 @@ require_win_helper_bootstrap_pins() {
     )
     local name
     for name in "${names[@]}"; do require_image_pin "$name"; done
+}
+
+require_win_helper_certification_input_pins() {
+    require_win_helper_bootstrap_pins
+    require_image_pin SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE
+    require_image_pin SOURCE_DATE_EPOCH_PIN
 }
 
 require_win_helper_image_pins() {
@@ -2513,7 +2546,7 @@ maintenance_build_win_helper_bootstrap_candidate() {
 }
 
 maintenance_build_deb_builder_certified_candidate() {
-    require_deb_builder_image_pins
+    require_deb_builder_certification_input_pins
     local archive="$ONLINE_DIR/build-images/deb-builder-bootstrap.docker.tar.gz"
     local directory="$ONLINE_DIR/build-images"
     local context="$ONLINE_FETCH_TMP/deb-builder-certification-context"
@@ -2521,7 +2554,8 @@ maintenance_build_deb_builder_certified_candidate() {
     local candidate_oci="$ONLINE_FETCH_TMP/deb-builder-certified-candidate.oci.tar"
     local candidate_archive="$directory/deb-builder-certified-candidate.docker.tar.gz"
     local export_name="rd-deb-builder-certified:authenticated-v1"
-    local materialization layout_sha image_id archive_sha archive_size result
+    local materialization layout_sha image_id manifest_id config_id
+    local archive_sha archive_size result
     local lock_fd bootstrap_args=() contract_args=() candidate_args=()
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.deb-builder-certify" \
         | /usr/bin/awk '{print $1}')" \
@@ -2603,7 +2637,8 @@ maintenance_build_deb_builder_certified_candidate() {
         --layout-sha "$SHA256_DEB_BUILDER_BOOTSTRAP_OCI_LAYOUT" \
         >/dev/null \
         || die "Debian builder bootstrap OCI layout changed during the build"
-    mapfile -d '' contract_args < <(deb_builder_certification_spec_args)
+    mapfile -d '' contract_args \
+        < <(deb_builder_certification_candidate_spec_args)
     result="$(
         online_image_provenance maintenance-normalize-certified-oci \
             --input "$candidate_oci" \
@@ -2617,18 +2652,22 @@ maintenance_build_deb_builder_certified_candidate() {
         && [ "$(/usr/bin/grep -c '^bytes=' <<<"$result")" -eq 1 ] \
         || die "certified Debian builder normalization result is malformed"
     image_id="$(/usr/bin/sed -n 's/^image_id=//p' <<<"$result")"
+    manifest_id="$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")"
+    config_id="$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")"
     archive_sha="$(/usr/bin/sed -n 's/^sha256=//p' <<<"$result")"
     archive_size="$(/usr/bin/sed -n 's/^bytes=//p' <<<"$result")"
     [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$manifest_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$config_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
         && [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] \
         && [[ "$archive_size" =~ ^[1-9][0-9]*$ ]] \
         || die "certified Debian builder normalization identities are malformed"
-    [ "$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")" \
-       = "$DEB_BUILDER_MANIFEST_ID" ] \
-        && [ "$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")" \
-           = "$DEB_BUILDER_CONFIG_ID" ] \
-        || die "certified Debian builder runtime identity differs from its pin"
-    candidate_args=(--expected-id "$image_id" "${contract_args[@]}")
+    candidate_args=(
+        --expected-id "$image_id"
+        "${contract_args[@]}"
+        --config-id "$config_id"
+        --manifest-id "$manifest_id"
+    )
     online_image_provenance verify-load \
         --archive "$candidate_archive" \
         --archive-sha "$archive_sha" \
@@ -2643,7 +2682,7 @@ maintenance_build_deb_builder_certified_candidate() {
 }
 
 maintenance_build_android_builder_certified_candidate() {
-    require_android_builder_image_pins
+    require_android_builder_certification_input_pins
     local archive="$ONLINE_DIR/build-images/android-builder-bootstrap.docker.tar.gz"
     local directory="$ONLINE_DIR/build-images"
     local context="$ONLINE_FETCH_TMP/android-builder-certification-context"
@@ -2651,7 +2690,8 @@ maintenance_build_android_builder_certified_candidate() {
     local candidate_oci="$ONLINE_FETCH_TMP/android-builder-certified-candidate.oci.tar"
     local candidate_archive="$directory/android-builder-certified-candidate.docker.tar.gz"
     local export_name="rd-android-builder-certified:authenticated-v1"
-    local materialization layout_sha image_id archive_sha archive_size result
+    local materialization layout_sha image_id manifest_id config_id
+    local archive_sha archive_size result
     local lock_fd bootstrap_args=() contract_args=() candidate_args=()
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.android-builder-certify" \
         | /usr/bin/awk '{print $1}')" \
@@ -2733,7 +2773,8 @@ maintenance_build_android_builder_certified_candidate() {
         --layout-sha "$SHA256_ANDROID_BUILDER_BOOTSTRAP_OCI_LAYOUT" \
         >/dev/null \
         || die "Android builder bootstrap OCI layout changed during the build"
-    mapfile -d '' contract_args < <(android_builder_certification_spec_args)
+    mapfile -d '' contract_args \
+        < <(android_builder_certification_candidate_spec_args)
     result="$(
         online_image_provenance maintenance-normalize-certified-oci \
             --input "$candidate_oci" \
@@ -2747,18 +2788,22 @@ maintenance_build_android_builder_certified_candidate() {
         && [ "$(/usr/bin/grep -c '^bytes=' <<<"$result")" -eq 1 ] \
         || die "certified Android builder normalization result is malformed"
     image_id="$(/usr/bin/sed -n 's/^image_id=//p' <<<"$result")"
+    manifest_id="$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")"
+    config_id="$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")"
     archive_sha="$(/usr/bin/sed -n 's/^sha256=//p' <<<"$result")"
     archive_size="$(/usr/bin/sed -n 's/^bytes=//p' <<<"$result")"
     [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$manifest_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$config_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
         && [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] \
         && [[ "$archive_size" =~ ^[1-9][0-9]*$ ]] \
         || die "certified Android builder normalization identities are malformed"
-    [ "$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")" \
-       = "$ANDROID_BUILDER_MANIFEST_ID" ] \
-        && [ "$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")" \
-           = "$ANDROID_BUILDER_CONFIG_ID" ] \
-        || die "certified Android builder runtime identity differs from its pin"
-    candidate_args=(--expected-id "$image_id" "${contract_args[@]}")
+    candidate_args=(
+        --expected-id "$image_id"
+        "${contract_args[@]}"
+        --config-id "$config_id"
+        --manifest-id "$manifest_id"
+    )
     online_image_provenance verify-load \
         --archive "$candidate_archive" \
         --archive-sha "$archive_sha" \
@@ -2773,7 +2818,7 @@ maintenance_build_android_builder_certified_candidate() {
 }
 
 maintenance_build_win_helper_certified_candidate() {
-    require_win_helper_image_pins
+    require_win_helper_certification_input_pins
     local archive="$ONLINE_DIR/build-images/win-helper-bootstrap.docker.tar.gz"
     local directory="$ONLINE_DIR/build-images"
     local context="$ONLINE_FETCH_TMP/win-helper-certification-context"
@@ -2781,7 +2826,8 @@ maintenance_build_win_helper_certified_candidate() {
     local candidate_oci="$ONLINE_FETCH_TMP/win-helper-certified-candidate.oci.tar"
     local candidate_archive="$directory/win-helper-certified-candidate.docker.tar.gz"
     local export_name="rd-win-helper-certified:authenticated-v1"
-    local materialization layout_sha image_id archive_sha archive_size result
+    local materialization layout_sha image_id manifest_id config_id
+    local archive_sha archive_size result
     local lock_fd bootstrap_args=() contract_args=() candidate_args=()
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.win-helper-certify" \
         | /usr/bin/awk '{print $1}')" \
@@ -2863,7 +2909,8 @@ maintenance_build_win_helper_certified_candidate() {
         --layout-sha "$SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT" \
         >/dev/null \
         || die "Windows helper bootstrap OCI layout changed during the build"
-    mapfile -d '' contract_args < <(win_helper_certification_spec_args)
+    mapfile -d '' contract_args \
+        < <(win_helper_certification_candidate_spec_args)
     result="$(
         online_image_provenance maintenance-normalize-certified-oci \
             --input "$candidate_oci" \
@@ -2877,18 +2924,22 @@ maintenance_build_win_helper_certified_candidate() {
         && [ "$(/usr/bin/grep -c '^bytes=' <<<"$result")" -eq 1 ] \
         || die "certified Windows helper normalization result is malformed"
     image_id="$(/usr/bin/sed -n 's/^image_id=//p' <<<"$result")"
+    manifest_id="$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")"
+    config_id="$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")"
     archive_sha="$(/usr/bin/sed -n 's/^sha256=//p' <<<"$result")"
     archive_size="$(/usr/bin/sed -n 's/^bytes=//p' <<<"$result")"
     [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$manifest_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$config_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
         && [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] \
         && [[ "$archive_size" =~ ^[1-9][0-9]*$ ]] \
         || die "certified Windows helper normalization identities are malformed"
-    [ "$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")" \
-       = "$WIN_HELPER_MANIFEST_ID" ] \
-        && [ "$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")" \
-           = "$WIN_HELPER_CONFIG_ID" ] \
-        || die "certified Windows helper runtime identity differs from its pin"
-    candidate_args=(--expected-id "$image_id" "${contract_args[@]}")
+    candidate_args=(
+        --expected-id "$image_id"
+        "${contract_args[@]}"
+        --config-id "$config_id"
+        --manifest-id "$manifest_id"
+    )
     online_image_provenance verify-load \
         --archive "$candidate_archive" \
         --archive-sha "$archive_sha" \

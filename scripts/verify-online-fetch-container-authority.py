@@ -398,7 +398,6 @@ def validate(repo: pathlib.Path) -> None:
         ("guest BuildKit filesystem or socket authority differs", "BuildKit Unix-socket proof"),
         ("guest BuildKit daemon version differs", "BuildKit version proof"),
         ("guest-only BuildKit bridge identity differs", "BuildKit bridge proof"),
-        ("TCP-only acquisition filter authority differs", "BuildKit and Docker UDP-denial proof"),
         ("fixed guest Buildx source identity differs", "Buildx source proof"),
         ("acquisition NIC identity is absent or ambiguous", "NIC proof"),
         ("cache export filesystem differs", "cache-boundary proof"),

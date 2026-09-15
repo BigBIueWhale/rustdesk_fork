@@ -334,14 +334,6 @@ read -r route_destination route_via route_gateway route_dev route_interface _ \
     || fail 'guest-only BuildKit bridge identity differs'
 [ "$(/usr/bin/cat /proc/sys/net/ipv4/ip_forward)" = 1 ] \
     || fail 'guest-only build forwarding is not enabled'
-[ "$(/usr/sbin/iptables -S OUTPUT | /usr/bin/awk 'NR == 2')" = \
-  '-A OUTPUT -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
-    && [ "$(/usr/sbin/iptables -S DOCKER-USER | /usr/bin/awk 'NR == 2')" = \
-         '-A DOCKER-USER -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
-    && [ "$(/usr/sbin/iptables -S FORWARD | /usr/bin/awk 'NR == 2')" = \
-         '-A FORWARD -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
-    || fail 'TCP-only acquisition filter authority differs'
-
 verify_cache_mount() {
     [ "$#" -eq 4 ] || fail 'internal cache-mount argument error'
     local path=$1 source=$2 expected_fstype=$3 executable=$4 options

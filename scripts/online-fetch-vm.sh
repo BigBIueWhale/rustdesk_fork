@@ -55,6 +55,7 @@ readonly REQUEST MODE
 
 readonly INPUT_ROOT="$REPO_ROOT/.harness-state/verifier-vm"
 readonly RUN_ROOT="$INPUT_ROOT/online-fetch-runs"
+readonly RECEIPT_ROOT="$INPUT_ROOT/online-fetch-receipts"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
 readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
 readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
@@ -70,6 +71,7 @@ readonly CAPTURE_HELPER="$SCRIPT_DIR/bounded-unix-stream-capture.py"
 readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
 readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly SERIAL_LIMIT=16777216
+readonly SUCCESS_RECEIPT_LIMIT=65536
 if [ "$MODE" = authority-smoke ]; then
     readonly VM_TIMEOUT_SECONDS=180
     readonly OVERLAY_SIZE=8G
@@ -99,6 +101,11 @@ CACHE_FD=
 SYSTEMD_FD=
 RESULT_FD=
 RUN_COMPLETE=0
+RECEIPT_ROOT_ID=
+SUCCESS_RECEIPT_TMP=
+SUCCESS_RECEIPT_TMP_ID=
+SUCCESS_RECEIPT_FINAL=
+VM_ELAPSED_SECONDS=
 
 fail() {
     printf 'online-fetch VM: %s\n' "$*" >&2
@@ -240,8 +247,129 @@ remove_owned_large_file() {
     fi
 }
 
+remove_success_receipt_temporary() {
+    if [ -n "$SUCCESS_RECEIPT_TMP" ] \
+       && { [ -e "$SUCCESS_RECEIPT_TMP" ] || [ -L "$SUCCESS_RECEIPT_TMP" ]; }; then
+        [ -f "$SUCCESS_RECEIPT_TMP" ] && [ ! -L "$SUCCESS_RECEIPT_TMP" ] \
+            && [ "$(/usr/bin/stat -c '%d:%i' -- "$SUCCESS_RECEIPT_TMP" 2>/dev/null)" \
+                 = "$SUCCESS_RECEIPT_TMP_ID" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$SUCCESS_RECEIPT_TMP" 2>/dev/null)" \
+                 = "$HOST_UID:$HOST_GID:1" ] \
+            || return 1
+        /usr/bin/rm -- "$SUCCESS_RECEIPT_TMP" || return 1
+    fi
+    SUCCESS_RECEIPT_TMP=
+    SUCCESS_RECEIPT_TMP_ID=
+}
+
+prepare_success_receipt() {
+    [ "$#" -eq 1 ] || return 1
+    local elapsed_seconds=$1 run_name listener_sha listener_bytes
+    local serial_sha serial_bytes capture_sha capture_bytes
+    local stdout_sha stdout_bytes stderr_sha stderr_bytes capture_line
+    local guest_line entry_line runtime_line outer_line
+    run_name=${RUN##*/}
+    [[ "$run_name" =~ ^run\.[A-Za-z0-9]{10}$ ]] || return 1
+    [ -d "$RECEIPT_ROOT" ] && [ ! -L "$RECEIPT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RECEIPT_ROOT")" = "$RECEIPT_ROOT_ID" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RECEIPT_ROOT")" \
+             = "$HOST_UID:$HOST_GID:700" ] \
+        || return 1
+    SUCCESS_RECEIPT_FINAL="$RECEIPT_ROOT/$run_name.receipt"
+    [ ! -e "$SUCCESS_RECEIPT_FINAL" ] && [ ! -L "$SUCCESS_RECEIPT_FINAL" ] \
+        || return 1
+    SUCCESS_RECEIPT_TMP="$(/usr/bin/mktemp "$RECEIPT_ROOT/.receipt.XXXXXXXXXX")" \
+        || return 1
+    SUCCESS_RECEIPT_TMP_ID="$(/usr/bin/stat -c '%d:%i' -- "$SUCCESS_RECEIPT_TMP")" \
+        || return 1
+    listener_sha="$(/usr/bin/sha256sum "$LISTENERS_BEFORE" | /usr/bin/awk '{print $1}')" \
+        || return 1
+    listener_bytes="$(/usr/bin/stat -c '%s' -- "$LISTENERS_BEFORE")" || return 1
+    serial_sha="$(/usr/bin/sha256sum "$SERIAL_LOG" | /usr/bin/awk '{print $1}')" \
+        || return 1
+    serial_bytes="$(/usr/bin/stat -c '%s' -- "$SERIAL_LOG")" || return 1
+    capture_sha="$(/usr/bin/sha256sum "$CAPTURE_RECEIPT" | /usr/bin/awk '{print $1}')" \
+        || return 1
+    capture_bytes="$(/usr/bin/stat -c '%s' -- "$CAPTURE_RECEIPT")" || return 1
+    stdout_sha="$(/usr/bin/sha256sum "$RESULT_EXPORT/transaction.stdout" | /usr/bin/awk '{print $1}')" \
+        || return 1
+    stdout_bytes="$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stdout")" \
+        || return 1
+    stderr_sha="$(/usr/bin/sha256sum "$RESULT_EXPORT/transaction.stderr" | /usr/bin/awk '{print $1}')" \
+        || return 1
+    stderr_bytes="$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stderr")" \
+        || return 1
+    capture_line="bounded-unix-stream-capture: PASS bytes=$serial_bytes"
+    guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
+    entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic"
+    runtime_line=not-applicable
+    if [ "$MODE" = authority-smoke ]; then
+        runtime_line="ONLINE_FETCH_VM_RUNTIME=pass network=qemu-user-only hostfwd=absent udp=denied docker=guest-bridge git=pinned-deb inner_uid=$HOST_UID https=sha256 cache=virtiofs-atomic cleanup=joined"
+    fi
+    outer_line="ONLINE_FETCH_VM_OUTER=pass host_uid=$HOST_UID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=$elapsed_seconds receipt=$SUCCESS_RECEIPT_FINAL"
+    {
+        /usr/bin/printf '%s\n' \
+            'format=rustdesk-online-fetch-success-v1' \
+            "run=$run_name" \
+            "run_identity=$RUN_ID" \
+            "request=$REQUEST" \
+            "mode=$MODE" \
+            "host_uid=$HOST_UID" \
+            "host_gid=$HOST_GID" \
+            "source_commit=$SOURCE_COMMIT" \
+            "source_tree=$SOURCE_TREE" \
+            "source_bundle_sha256=$SOURCE_BUNDLE_SHA256" \
+            "elapsed_seconds=$elapsed_seconds" \
+            "listener_inventory_sha256=$listener_sha" \
+            "listener_inventory_bytes=$listener_bytes" \
+            "serial_sha256=$serial_sha" \
+            "serial_bytes=$serial_bytes" \
+            "capture_receipt_sha256=$capture_sha" \
+            "capture_receipt_bytes=$capture_bytes" \
+            "transaction_stdout_sha256=$stdout_sha" \
+            "transaction_stdout_bytes=$stdout_bytes" \
+            "transaction_stderr_sha256=$stderr_sha" \
+            "transaction_stderr_bytes=$stderr_bytes" \
+            "capture_receipt=$capture_line" \
+            "guest_receipt=$guest_line" \
+            'cloud_init_receipt=ONLINE_FETCH_VM_CLOUD_INIT=pass' \
+            "entry_receipt=$entry_line" \
+            "runtime_receipt=$runtime_line" \
+            "outer_receipt=$outer_line"
+    } >"$SUCCESS_RECEIPT_TMP" || return 1
+    /usr/bin/chmod 0400 -- "$SUCCESS_RECEIPT_TMP" || return 1
+    [ "$(/usr/bin/stat -c '%d:%i' -- "$SUCCESS_RECEIPT_TMP")" \
+      = "$SUCCESS_RECEIPT_TMP_ID" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$SUCCESS_RECEIPT_TMP")" \
+             = "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/stat -c '%s' -- "$SUCCESS_RECEIPT_TMP")" \
+             -le "$SUCCESS_RECEIPT_LIMIT" ]
+}
+
+publish_success_receipt() {
+    [ -n "$SUCCESS_RECEIPT_TMP" ] && [ -n "$SUCCESS_RECEIPT_FINAL" ] \
+        && [ -f "$SUCCESS_RECEIPT_TMP" ] && [ ! -L "$SUCCESS_RECEIPT_TMP" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$SUCCESS_RECEIPT_TMP")" \
+             = "$SUCCESS_RECEIPT_TMP_ID" ] \
+        && [ ! -e "$SUCCESS_RECEIPT_FINAL" ] && [ ! -L "$SUCCESS_RECEIPT_FINAL" ] \
+        || return 1
+    /usr/bin/mv -T --no-clobber -- "$SUCCESS_RECEIPT_TMP" "$SUCCESS_RECEIPT_FINAL" \
+        || return 1
+    [ ! -e "$SUCCESS_RECEIPT_TMP" ] && [ ! -L "$SUCCESS_RECEIPT_TMP" ] \
+        && [ -f "$SUCCESS_RECEIPT_FINAL" ] && [ ! -L "$SUCCESS_RECEIPT_FINAL" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$SUCCESS_RECEIPT_FINAL")" \
+             = "$SUCCESS_RECEIPT_TMP_ID" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$SUCCESS_RECEIPT_FINAL")" \
+             = "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/stat -c '%s' -- "$SUCCESS_RECEIPT_FINAL")" \
+             -le "$SUCCESS_RECEIPT_LIMIT" ] \
+        || return 1
+    SUCCESS_RECEIPT_TMP=
+    SUCCESS_RECEIPT_TMP_ID=
+}
+
 cleanup() {
-    local status=$? cleanup_failed=0 index pid start
+    local status=$? cleanup_failed=0 index pid start publish_ready=0
     trap - EXIT HUP INT TERM
     if [ -n "$VM_OWNER_PID" ]; then
         if is_exact_process "$VM_OWNER_PID" "$VM_OWNER_START" /usr/bin/timeout; then
@@ -284,9 +412,14 @@ cleanup() {
             retire_private_socket_path "$socket" || cleanup_failed=1
         done
         if [ "$RUN_COMPLETE" -eq 1 ] && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; then
-            /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
-                --remove-private-root "$RUN" --expected-identity "$RUN_ID" \
-                || cleanup_failed=1
+            if [ -n "$SUCCESS_RECEIPT_TMP" ] \
+               && [ ! -e "$SUCCESS_RECEIPT_FINAL" ] && [ ! -L "$SUCCESS_RECEIPT_FINAL" ] \
+               && /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
+                    --remove-private-root "$RUN" --expected-identity "$RUN_ID"; then
+                publish_ready=1
+            else
+                cleanup_failed=1
+            fi
         else
             for large in "$RUN/overlay.qcow2" "$RUN/payload.iso" "$RUN/seed.iso" \
                 "$RUN/source.bundle"; do
@@ -296,6 +429,16 @@ cleanup() {
         fi
     elif [ -n "$RUN" ]; then
         cleanup_failed=1
+    fi
+    if [ "$publish_ready" -eq 1 ]; then
+        publish_success_receipt || cleanup_failed=1
+    fi
+    if [ -n "$SUCCESS_RECEIPT_TMP" ]; then
+        remove_success_receipt_temporary || cleanup_failed=1
+    fi
+    if [ "$RUN_COMPLETE" -eq 1 ] && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; then
+        /usr/bin/printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s receipt=%s\n' \
+            "$HOST_UID" "$SOURCE_COMMIT" "$VM_ELAPSED_SECONDS" "$SUCCESS_RECEIPT_FINAL"
     fi
     [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
@@ -309,9 +452,9 @@ trap 'exit 143' TERM
     || fail 'guest authority environment is reserved for the disposable VM'
 [ "$(/usr/bin/uname -s):$(/usr/bin/uname -m)" = Linux:x86_64 ] \
     || fail 'online acquisition VM requires a Linux x86_64 orchestration host'
-for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/comm /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/git \
+for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/git \
     /usr/bin/grep /usr/bin/id /usr/bin/install /usr/bin/mkdir /usr/bin/mktemp \
-    /usr/bin/python3 /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
+    /usr/bin/mv /usr/bin/python3 /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
     /usr/bin/readlink /usr/bin/rm /usr/bin/seq /usr/bin/sha256sum \
     /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort /usr/bin/ss /usr/bin/stat \
     /usr/bin/tail /usr/bin/timeout /usr/bin/uname /usr/bin/xorriso; do
@@ -395,6 +538,15 @@ if [ -e "$RUN_ROOT" ] || [ -L "$RUN_ROOT" ]; then
 else
     /usr/bin/install -d -m 0700 -- "$RUN_ROOT"
 fi
+if [ -e "$RECEIPT_ROOT" ] || [ -L "$RECEIPT_ROOT" ]; then
+    [ -d "$RECEIPT_ROOT" ] && [ ! -L "$RECEIPT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RECEIPT_ROOT")" \
+             = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'online-fetch VM receipt root metadata differs'
+else
+    /usr/bin/install -d -m 0700 -- "$RECEIPT_ROOT"
+fi
+RECEIPT_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$RECEIPT_ROOT")"
 RUN="$(/usr/bin/mktemp -d "$RUN_ROOT/run.XXXXXXXXXX")" \
     || fail 'cannot create the private online-fetch VM run'
 RUN_ID="$(/usr/bin/stat -c '%d:%i' -- "$RUN")"
@@ -566,7 +718,8 @@ start_virtiofsd bounded-result "$RESULT_EXPORT" "$RESULT_EXPORT_ID" \
     "$RESULT_VIRTIOFS_SOCKET" "$RESULT_VIRTIOFSD_LOG"
 capture_listeners >"$LISTENERS_DURING"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-[ ! -s "$NEW_DURING" ] || fail 'virtiofsd created an unexpected host INET listener'
+/usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_DURING" \
+    || fail 'virtiofsd changed the host INET listener inventory'
 
 vm_started_seconds=$SECONDS
 /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
@@ -641,17 +794,17 @@ for _ in $(/usr/bin/seq 1 300); do
 done
 capture_listeners >"$LISTENERS_DURING"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-if [ -s "$NEW_DURING" ]; then
+if ! /usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_DURING"; then
     /usr/bin/ss -H -lntup >"$LISTENERS_DURING_DETAIL" 2>&1 || true
     /usr/bin/cat "$LISTENERS_DURING_DETAIL" >&2
-    fail 'acquisition QEMU created an unexpected host INET listener'
+    fail 'acquisition QEMU changed the host INET listener inventory'
 fi
 
 vm_status=0
 wait "$VM_OWNER_PID" || vm_status=$?
 VM_OWNER_PID=
 VM_OWNER_START=
-vm_elapsed_seconds=$((SECONDS - vm_started_seconds))
+VM_ELAPSED_SECONDS=$((SECONDS - vm_started_seconds))
 capture_status=0
 wait "$CAPTURE_PID" || capture_status=$?
 CAPTURE_PID=
@@ -684,7 +837,8 @@ if [ -r "/proc/$VM_PID/stat" ] \
 fi
 capture_listeners >"$LISTENERS_AFTER"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER"
-[ ! -s "$NEW_AFTER" ] || fail 'acquisition VM left an unexpected host INET listener'
+/usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_AFTER" \
+    || fail 'acquisition VM changed the final host INET listener inventory'
 retire_private_socket_path "$SERIAL_SOCKET" \
     || fail 'serial channel cleanup is ambiguous'
 for socket in "${VIRTIOFS_SOCKETS[@]}"; do
@@ -753,6 +907,6 @@ fi
 if [ -s "$RESULT_EXPORT/transaction.stderr" ]; then
     /usr/bin/cat "$RESULT_EXPORT/transaction.stderr" >&2
 fi
+prepare_success_receipt "$VM_ELAPSED_SECONDS" \
+    || fail 'cannot prepare the bounded online-fetch success receipt'
 RUN_COMPLETE=1
-printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s\n' \
-    "$HOST_UID" "$SOURCE_COMMIT" "$vm_elapsed_seconds"

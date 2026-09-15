@@ -119,12 +119,71 @@ def validate(repo: pathlib.Path) -> None:
         ("listeners=unchanged", "listener-invariance receipt"),
         ("udp=denied", "TCP-only acquisition receipt"),
         ("readonly SERIAL_LIMIT=16777216", "serial-output bound"),
+        ("readonly SUCCESS_RECEIPT_LIMIT=65536", "success-receipt bound"),
+        ('readonly RECEIPT_ROOT="$INPUT_ROOT/online-fetch-receipts"', "private success-receipt root"),
     ):
         require(outer, token, label)
+    if outer.count(
+        '/usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_DURING"'
+    ) != 2:
+        raise AuthorityError("complete live listener-inventory comparison differs")
+    require(
+        outer,
+        '/usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_AFTER"',
+        "complete final listener-inventory comparison",
+    )
     if outer.count("vhost-user-fs-pci") != 3:
         raise AuthorityError("writable virtiofs device inventory differs")
     if outer.count("start_virtiofsd ") != 3:
         raise AuthorityError("Landlocked virtiofsd authority inventory differs")
+
+    receipt_preparation = extract(
+        outer,
+        "prepare_success_receipt() {",
+        "\n}\n\npublish_success_receipt() {",
+        "success-receipt preparation",
+    )
+    receipt_publication = extract(
+        outer,
+        "publish_success_receipt() {",
+        "\n}\n\ncleanup() {",
+        "success-receipt publication",
+    )
+    cleanup = extract(outer, "cleanup() {", "\n}\ntrap cleanup EXIT", "outer cleanup")
+    for token, label in (
+        ("format=rustdesk-online-fetch-success-v1", "receipt format"),
+        ("source_commit=$SOURCE_COMMIT", "receipt source commit"),
+        ("source_tree=$SOURCE_TREE", "receipt source tree"),
+        ("source_bundle_sha256=$SOURCE_BUNDLE_SHA256", "receipt source bundle"),
+        ("listener_inventory_sha256=$listener_sha", "receipt listener digest"),
+        ("serial_sha256=$serial_sha", "receipt serial digest"),
+        ("transaction_stdout_sha256=$stdout_sha", "receipt stdout digest"),
+        ("transaction_stderr_sha256=$stderr_sha", "receipt stderr digest"),
+        ('/usr/bin/chmod 0400 -- "$SUCCESS_RECEIPT_TMP"', "private receipt mode"),
+        ('-le "$SUCCESS_RECEIPT_LIMIT"', "receipt size enforcement"),
+    ):
+        require(receipt_preparation, token, label)
+    for token, label in (
+        ('[ ! -e "$SUCCESS_RECEIPT_FINAL" ]', "no-replace precondition"),
+        (
+            '/usr/bin/mv -T --no-clobber -- "$SUCCESS_RECEIPT_TMP" "$SUCCESS_RECEIPT_FINAL"',
+            "no-clobber receipt publication",
+        ),
+        ('= "$HOST_UID:$HOST_GID:400:1"', "published receipt metadata"),
+        ('-le "$SUCCESS_RECEIPT_LIMIT"', "published receipt size enforcement"),
+    ):
+        require(receipt_publication, token, label)
+    for token, label in (
+        ('--remove-private-root "$RUN" --expected-identity "$RUN_ID"', "exact run-root retirement"),
+        ("publish_success_receipt || cleanup_failed=1", "post-cleanup receipt publication"),
+        ('if [ -n "$SUCCESS_RECEIPT_TMP" ]; then', "failed receipt-temporary retirement"),
+        ("receipt=%s", "durable outer receipt path"),
+    ):
+        require(cleanup, token, label)
+    if cleanup.index('--remove-private-root "$RUN"') > cleanup.index(
+        "publish_success_receipt || cleanup_failed=1"
+    ):
+        raise AuthorityError("success receipt publishes before exact run-root retirement")
     bootstrap_operations = (
         "--maintenance-build-deb-builder-bootstrap-candidate",
         "--maintenance-build-android-builder-bootstrap-candidate",

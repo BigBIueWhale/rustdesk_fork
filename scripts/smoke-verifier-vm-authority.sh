@@ -454,12 +454,16 @@ reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
     "VERIFIER_VM_FRB_ENTRY=pass uid=4000 gid=4000 foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'FRB verifier-VM entry result marker is absent'; }
-mapfile -t frb_source_gate_receipts < <(
-    /usr/bin/grep -Eo 'VERIFIER_VM_FRB_SOURCE_GATE=pass mutations=[1-9][0-9]*' "$SERIAL_LOG"
+/usr/bin/grep -Fq \
+    "VERIFIER_VM_DART_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed frb=chained" \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Dart verifier-VM entry result marker is absent'; }
+mapfile -t dart_frb_source_gate_receipts < <(
+    /usr/bin/grep -Eo 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=[1-9][0-9]*' "$SERIAL_LOG"
 )
-[ "${#frb_source_gate_receipts[@]}" -eq 1 ] \
-    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'FRB verifier-VM source-gate result marker is absent or duplicated'; }
-printf '%s\n' "${frb_source_gate_receipts[0]}"
+[ "${#dart_frb_source_gate_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Dart/FRB verifier-VM source-gate result marker is absent or duplicated'; }
+printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \

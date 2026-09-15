@@ -28,6 +28,7 @@ readonly LOG=$ROOT/dockerd.log
 readonly VERIFY_REPO=/mnt/rustdesk-verifier-inputs/repo
 readonly VERIFY_SCRIPT=$VERIFY_REPO/scripts/verify.sh
 readonly FRB_SCRIPT=$VERIFY_REPO/scripts/frb-codegen.sh
+readonly DART_SCRIPT=$VERIFY_REPO/scripts/dart-verify.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
 
@@ -310,19 +311,57 @@ printf '%s\n' "$frb_entry_output"
 printf 'VERIFIER_VM_FRB_ENTRY=pass uid=4000 gid=4000 foreign=refused docker=%s prepost=replayed\n' \
     "$EXPECTED_VERSION"
 
-frb_source_gate_output="$(
+if /bin/bash "$DART_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-dart-entry.out" 2>"$ROOT/root-dart-entry.err"; then
+    fail 'VM root passed the Dart verifier entry'
+fi
+[ ! -s "$ROOT/root-dart-entry.out" ] \
+    || fail 'root Dart verifier refusal produced standard output'
+[ "$(<"$ROOT/root-dart-entry.err")" = \
+  'dart-verify refuses host or container-root execution' ] \
+    || fail 'root Dart verifier refusal diagnostic differs'
+
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$DART_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-dart-entry.out" 2>"$ROOT/foreign-dart-entry.err"; then
+    fail 'foreign numeric principal passed the Dart verifier-VM entry'
+fi
+[ ! -s "$ROOT/foreign-dart-entry.out" ] \
+    || fail 'foreign Dart verifier-VM refusal produced standard output'
+foreign_dart_error="$(<"$ROOT/foreign-dart-entry.err")"
+if [ "$foreign_dart_error" != \
+    'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-dart-entry.err")" -le 4096 ] \
+        || fail 'foreign Dart verifier-VM refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign Dart diagnostic was %q\n' \
+        "$foreign_dart_error" >&2
+    fail 'foreign Dart verifier-VM refusal diagnostic differs'
+fi
+dart_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$DART_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot Dart verifier-VM entry failed'
+expected_dart_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+DART_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed frb=chained"
+[ "$dart_entry_output" = "$expected_dart_entry_output" ] \
+    || fail "Dart verifier-VM entry result differs: $dart_entry_output"
+printf '%s\n' "$dart_entry_output"
+printf 'VERIFIER_VM_DART_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed frb=chained\n' \
+    "$EXPECTED_VERSION"
+
+dart_frb_source_gate_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /usr/bin/python3 -I -S \
         "$VERIFY_REPO/scripts/verify-dart-verifier-authority.py" \
         --repo "$VERIFY_REPO" --self-test
-)" || fail 'FRB verifier-VM focused source/mutation gate failed'
-if [[ "$frb_source_gate_output" =~ ^verify-dart-verifier-authority:\ ok\ \(([1-9][0-9]*)\ mutations\ rejected\)$ ]]; then
-    frb_source_gate_mutations=${BASH_REMATCH[1]}
+)" || fail 'Dart/FRB verifier-VM focused source/mutation gate failed'
+if [[ "$dart_frb_source_gate_output" =~ ^verify-dart-verifier-authority:\ ok\ \(([1-9][0-9]*)\ mutations\ rejected\)$ ]]; then
+    dart_frb_source_gate_mutations=${BASH_REMATCH[1]}
 else
-    fail "FRB verifier-VM focused source/mutation result differs: $frb_source_gate_output"
+    fail "Dart/FRB verifier-VM focused source/mutation result differs: $dart_frb_source_gate_output"
 fi
-printf '%s\n' "$frb_source_gate_output"
-printf 'VERIFIER_VM_FRB_SOURCE_GATE=pass mutations=%s\n' "$frb_source_gate_mutations"
+printf '%s\n' "$dart_frb_source_gate_output"
+printf 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=%s\n' "$dart_frb_source_gate_mutations"
 
 cp --parents -L /bin/dash "$ROOT/rootfs"
 while IFS= read -r library; do

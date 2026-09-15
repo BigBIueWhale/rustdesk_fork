@@ -33,7 +33,7 @@ def require_all(source: str, tokens: Iterable[str], label: str) -> None:
         require(token in source, f"{label}: missing {token!r}")
 
 
-def docker_run_block(source: str, label: str, launcher: str = "local_docker") -> str:
+def docker_run_block(source: str, label: str, launcher: str = "verifier_vm_docker") -> str:
     launch = f"{launcher} run "
     require(source.count(launch) == 1, f"{label}: expected exactly one fixed-authority Docker launch")
     require("\ndocker run " not in source, f"{label}: retained a PATH-selected Docker launch")
@@ -95,98 +95,91 @@ def validate_docker_block(block: str, label: str, source_mount: str, online_moun
     )
 
 
+def validate_vm_wrappers(
+    source: str, state_token: str, label: str
+) -> tuple[str, str]:
+    docker_start = source.index("verifier_vm_docker() {")
+    provenance_start = source.index("verifier_vm_image_provenance() {")
+    state_start = source.index(state_token, provenance_start)
+    docker_wrapper = source[docker_start:provenance_start]
+    provenance_wrapper = source[provenance_start:state_start]
+    for wrapper, wrapper_label in (
+        (docker_wrapper, f"{label} verifier-VM Docker wrapper"),
+        (provenance_wrapper, f"{label} verifier-VM provenance wrapper"),
+    ):
+        require(
+            wrapper.count(
+                '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1'
+            )
+            == 2,
+            f"{wrapper_label} does not reprove authority exactly before and after its operation",
+        )
+        require_all(
+            wrapper,
+            (
+                "/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent",
+                'DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET"',
+                'DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG"',
+                'return "$status"',
+            ),
+            wrapper_label,
+        )
+    require_all(
+        docker_wrapper,
+        (
+            '"$VERIFIER_VM_DOCKER_CLIENT"',
+            '--host "unix://$VERIFIER_VM_DOCKER_SOCKET"',
+            '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?',
+        ),
+        f"{label} verifier-VM Docker wrapper",
+    )
+    require_all(
+        provenance_wrapper,
+        (
+            '/usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
+            '|| status=$?',
+        ),
+        f"{label} verifier-VM provenance wrapper",
+    )
+    return docker_wrapper, provenance_wrapper
+
+
 def validate_contract(sources: Dict[str, str]) -> None:
     dart = sources["dart"]
     frb = sources["frb"]
-    lib = sources["lib"]
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
     legacy_flutter_verifier = sources["legacy_flutter_verifier"]
 
     require_all(
-        lib,
-        (
-            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
-            "initialize_local_docker_authority() {",
-            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ]',
-            '[ "$(/usr/bin/id -u)" -ne 0 ] || die "$2 refuses host or container-root Docker authority"',
-            '[ "$(/usr/bin/id -g)" -ne 0 ] || die "$2 refuses a root primary group for Docker authority"',
-            "/*/docker-config) ;;",
-            '[ "$(/usr/bin/stat -c \'%u:%g:%a\' -- "$parent" 2>/dev/null)" =',
-            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
-            "0:0:755:1) ;;",
-            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
-            "0:1) ;;",
-            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
-            "DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS",
-            '[ "$(/usr/bin/stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
-            '/usr/bin/install -d -m 0700 -- "$config"',
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-            '[ "$(/usr/bin/stat -c \'%u:%g:%a:%h\' -- "$config/config.json" 2>/dev/null)" =',
-            '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ]',
-            "LOCAL_DOCKER_AUTHORITY_PARENT_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- \"$parent\")\"",
-            "LOCAL_DOCKER_AUTHORITY_CONFIG_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- \"$config\")\"",
-            "LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- \"$config/config.json\")\"",
-            "LOCAL_DOCKER_AUTHORITY_CLIENT_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /usr/bin/docker)\"",
-            "LOCAL_DOCKER_AUTHORITY_SOCKET_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock)\"",
-            "assert_local_docker_authority() {",
-            '/usr/bin/cmp -s -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" <(printf \'{}\\n\')',
-            "local_docker() {",
-            "local_docker_image_provenance() {",
-            "remove_local_docker_authority() {",
-            '/usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@"',
-            'local_docker_image_provenance "${args[@]}"',
-            'echo "$LOCAL_DOCKER_AUTHORITY_LABEL preserving changed private Docker authority"',
-        ),
-        "shared local Docker authority",
-    )
-    initialize_start = lib.index("initialize_local_docker_authority() {")
-    assert_start = lib.index("assert_local_docker_authority() {")
-    initializer = lib[initialize_start:assert_start]
-    require(
-        "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]" in initializer,
-        "Docker authority initializer does not bind the local socket type",
-    )
-    local_docker_start = lib.index("local_docker() {")
-    provenance_start = lib.index("local_docker_image_provenance() {")
-    remove_start = lib.index("remove_local_docker_authority() {")
-    pinned_start = lib.index("require_pinned_builder_image() {")
-    local_docker = lib[local_docker_start:provenance_start]
-    provenance = lib[provenance_start:remove_start]
-    removal = lib[remove_start:pinned_start]
-    for block, label in (
-        (local_docker, "Docker client wrapper"),
-        (provenance, "Docker provenance wrapper"),
-    ):
-        require(block.count("assert_local_docker_authority") == 2, f"{label}: authority must be checked before and after")
-        require("/usr/bin/env -i" in block, f"{label}: client environment is not empty")
-        require("PATH=/usr/bin:/bin" in block, f"{label}: fixed PATH is absent")
-        require("HOME=\"$LOCAL_DOCKER_AUTHORITY_PARENT\"" in block, f"{label}: private HOME is absent")
-        require("DOCKER_HOST=unix:///var/run/docker.sock" in block, f"{label}: fixed local endpoint is absent")
-        require("DOCKER_CONFIG=\"$LOCAL_DOCKER_AUTHORITY_CONFIG\"" in block, f"{label}: private configuration is absent")
-    require("/usr/bin/docker" in local_docker, "Docker client wrapper is not absolute")
-    require("--host unix:///var/run/docker.sock" in local_docker, "Docker client wrapper lacks an explicit local host")
-    require('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"' in local_docker, "Docker client wrapper lacks explicit private config")
-    require("/usr/bin/docker" not in provenance, "provenance wrapper must let the fixed helper select its absolute Docker client")
-    require("assert_local_docker_authority" in removal, "Docker authority removal lacks an identity precondition")
-    require('/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json"' in removal, "Docker config removal is not exact")
-    require('/usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG"' in removal, "Docker config directory removal is not exact")
-    require("rm -rf" not in removal, "Docker authority removal is broad")
-
-    require_all(
         dart,
         (
+            'readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "',
             'readonly BUILD_UID="$(/usr/bin/id -u)"',
             'readonly BUILD_GID="$(/usr/bin/id -g)"',
-            '[ "$BUILD_UID" -ne 0 ] || die "dart-verify refuses host or container-root execution"',
-            '[ "$BUILD_GID" -ne 0 ] || die "dart-verify refuses a root primary group"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            "echo 'dart-verify refuses host or container-root execution'",
+            "echo 'dart-verify refuses a root primary group'",
+            'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh',
+            '"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1',
+            '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
+            'readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm',
+            'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
+            'readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock',
+            'readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config',
+            '[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ]',
+            'verifier_vm_docker() {',
+            'verifier_vm_image_provenance() {',
+            '/usr/bin/bash "$SCRIPT_DIR/frb-codegen.sh" --self-test-vm-authority',
+            'DART_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed frb=chained',
             'IMAGE_ID="$DEB_BUILDER_IMAGE_ID"',
             'WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a\' -- "$WORKSPACE")"',
-            'initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"',
-            'require_pinned_builder_image deb-builder "$IMAGE_ID"',
-            "local_docker run --rm",
+            'verifier_vm_image_provenance verify-local',
+            '--role deb-builder',
+            '--image-ref "$IMAGE_ID"',
+            "verifier_vm_docker run --rm",
             'WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-dart-verify.XXXXXXXXXX)"',
             '[ "$(/usr/bin/stat -c \'%u:%g:%a\' "$WORKSPACE")" = "$BUILD_UID:$BUILD_GID:700" ]',
             'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
@@ -310,16 +303,25 @@ def validate_contract(sources: Dict[str, str]) -> None:
         "window-manager guard-disabled rejection must appear once in execution and once in its source gate",
     )
     require(
-        dart.index('initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"')
-        < dart.index('require_pinned_builder_image deb-builder "$IMAGE_ID"')
-        < dart.index("local_docker run "),
-        "dart verifier does not initialize fixed Docker authority before provenance and launch",
-    )
-    require(
-        '&& ! remove_local_docker_authority; then' in dart,
-        "dart verifier cleanup does not retire exact Docker authority first",
+        dart.index('/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"')
+        < dart.index('source "$SCRIPT_DIR/lib.sh"')
+        < dart.index("verifier_vm_image_provenance verify-local")
+        < dart.index('/usr/bin/bash "$SCRIPT_DIR/frb-codegen.sh" \\\n')
+        < dart.index("verifier_vm_docker run "),
+        "dart verifier does not establish VM authority before provenance, FRB, and launch",
     )
     require("require_cmd docker" not in dart, "dart verifier still accepts a PATH-selected Docker client")
+    validate_vm_wrappers(
+        dart, "\nVERIFY_VM_AUTHORITY_SELF_TEST=", "Dart"
+    )
+    for forbidden in (
+        "initialize_local_docker_authority",
+        "local_docker",
+        "remove_local_docker_authority",
+        "require_pinned_builder_image",
+        "/var/run/docker.sock",
+    ):
+        require(forbidden not in dart, f"dart verifier retained forbidden host authority {forbidden!r}")
     require(
         dart.count('verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"') == 2,
         "dart verifier must verify its private online snapshot before and after use",
@@ -331,7 +333,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
     )
     require(
         dart.index('SOURCE_DIGEST="$(sha256sum "$SOURCE_ARCHIVE"')
-        < dart.index("local_docker run "),
+        < dart.index("verifier_vm_docker run "),
         "dart verifier records source identity after container execution",
     )
     require(
@@ -456,46 +458,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
         < frb.index("verifier_vm_docker run "),
         "FRB generator does not establish VM authority before provenance and launch",
     )
-    docker_wrapper_start = frb.index("verifier_vm_docker() {")
-    provenance_wrapper_start = frb.index("verifier_vm_image_provenance() {")
-    source_state_start = frb.index("\nSOURCE_ROOT=", provenance_wrapper_start)
-    docker_wrapper = frb[docker_wrapper_start:provenance_wrapper_start]
-    provenance_wrapper = frb[provenance_wrapper_start:source_state_start]
-    for wrapper, label in (
-        (docker_wrapper, "FRB verifier-VM Docker wrapper"),
-        (provenance_wrapper, "FRB verifier-VM provenance wrapper"),
-    ):
-        require(
-            wrapper.count('/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1') == 2,
-            f"{label} does not reprove authority exactly before and after its operation",
-        )
-        require_all(
-            wrapper,
-            (
-                "/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent",
-                'DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET"',
-                'DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG"',
-                'return "$status"',
-            ),
-            label,
-        )
-    require_all(
-        docker_wrapper,
-        (
-            '"$VERIFIER_VM_DOCKER_CLIENT"',
-            '--host "unix://$VERIFIER_VM_DOCKER_SOCKET"',
-            '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?',
-        ),
-        "FRB verifier-VM Docker wrapper",
-    )
-    require_all(
-        provenance_wrapper,
-        (
-            '/usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
-            '|| status=$?',
-        ),
-        "FRB verifier-VM provenance wrapper",
-    )
+    validate_vm_wrappers(frb, "\nSOURCE_ROOT=", "FRB")
     require("require_cmd docker" not in frb, "FRB generator still accepts a PATH-selected Docker client")
     for forbidden in (
         "initialize_local_docker_authority",
@@ -565,117 +528,39 @@ def mutate_once(sources: Dict[str, str], mutation: Mutation) -> Dict[str, str]:
 
 
 MUTATIONS = (
-    Mutation(
-        "lib",
-        "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
-        "LOCAL_DOCKER_AUTHORITY_INITIALIZED=1\nLOCAL_DOCKER_AUTHORITY_LABEL=",
-        "ambient local Docker authority state",
-    ),
-    Mutation(
-        "lib",
-        "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
-        "command -v docker >/dev/null",
-        "absolute trusted Docker client",
-    ),
-    Mutation(
-        "lib",
-        "LOCAL_DOCKER_AUTHORITY_CLIENT_ID=\"$(/usr/bin/stat -c",
-        "LOCAL_DOCKER_AUTHORITY_CLIENT_ID=\"$(stat -c",
-        "absolute Docker metadata inspector",
-    ),
-    Mutation(
-        "lib",
-        '[ "$(/usr/bin/stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
-        '[ "$(stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
-        "absolute private-snapshot metadata inspector",
-    ),
-    Mutation(
-        "lib",
-        "0:0:755:1) ;;",
-        "*:*) ;;",
-        "Docker client ownership and mode",
-    ),
-    Mutation(
-        "lib",
-        "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \\\n        || die \"$label fixed local Docker Unix socket is unavailable\"",
-        "[ -e /var/run/docker.sock ] \\\n        || die \"$label fixed local Docker Unix socket is unavailable\"",
-        "local Docker socket type",
-    ),
-    Mutation(
-        "lib",
-        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-        "DOCKER_HOST DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-        "ambient Docker context refusal",
-    ),
-    Mutation(
-        "lib",
-        '/usr/bin/install -d -m 0700 -- "$config"',
-        '/usr/bin/install -d -m 0777 -- "$config"',
-        "private Docker configuration mode",
-    ),
-    Mutation(
-        "lib",
-        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-        "(umask 077 && printf '{}\\n' >\"$config/config.json\")",
-        "private Docker config no-clobber creation",
-    ),
-    Mutation(
-        "lib",
-        '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ]',
-        '"$(/usr/bin/id -u):$(/usr/bin/id -g):666:2" ]',
-        "private Docker config file mode and link count",
-    ),
-    Mutation(
-        "lib",
-        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-        "(umask 077 && set -o noclobber && printf '{\"proxies\":{\"default\":{\"httpProxy\":\"http://127.0.0.1:9\"}}}\\n' >\"$config/config.json\")",
-        "canonical empty Docker configuration",
-    ),
-    Mutation(
-        "lib",
-        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1",
-        "local_docker() {\n    local status=0\n    true # Docker authority precondition disabled",
-        "Docker launch authority precondition",
-    ),
-    Mutation(
-        "lib",
-        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
-        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    env",
-        "Docker launch empty environment",
-    ),
-    Mutation(
-        "lib",
-        "--host unix:///var/run/docker.sock",
-        "--host tcp://127.0.0.1:2375",
-        "explicit local Docker endpoint",
-    ),
-    Mutation(
-        "lib",
-        'local_docker_image_provenance() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i',
-        'local_docker_image_provenance() {\n    local status=0\n    assert_local_docker_authority || return 1\n    env',
-        "image provenance empty environment",
-    ),
-    Mutation(
-        "lib",
-        '/usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@"',
-        'python3 "$LIB_DIR/offline-image-provenance.py" "$@"',
-        "fixed image provenance interpreter",
-    ),
-    Mutation(
-        "lib",
-        'local_docker_image_provenance "${args[@]}" \\\n            || die "pinned $role image provenance verification failed"',
-        'python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}" \\\n            || die "pinned $role image provenance verification failed"',
-        "builder provenance fixed Docker authority",
-    ),
-    Mutation(
-        "lib",
-        "remove_local_docker_authority() {\n    assert_local_docker_authority || {",
-        "remove_local_docker_authority() {\n    true || {",
-        "Docker authority removal identity",
-    ),
     Mutation("dart", 'readonly BUILD_UID="$(/usr/bin/id -u)"', 'readonly BUILD_UID="$(id -u)"', "dart absolute UID source"),
     Mutation("dart", '[ "$BUILD_UID" -ne 0 ]', '[ "$BUILD_UID" -ge 0 ]', "dart uid-root refusal"),
     Mutation("dart", '[ "$BUILD_GID" -ne 0 ]', '[ "$BUILD_GID" -ge 0 ]', "dart gid-root refusal"),
+    Mutation(
+        "dart",
+        '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"\n# shellcheck source=scripts/lib.sh',
+        'true # verifier-VM entry authority disabled\n# shellcheck source=scripts/lib.sh',
+        "Dart verifier-VM entry authority",
+    ),
+    Mutation(
+        "dart",
+        '"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1',
+        '"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:*',
+        "Dart verifier-VM preflight identity",
+    ),
+    Mutation(
+        "dart",
+        'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
+        'readonly VERIFIER_VM_DOCKER_CLIENT=docker',
+        "Dart fixed guest Docker client",
+    ),
+    Mutation(
+        "dart",
+        'readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock',
+        'readonly VERIFIER_VM_DOCKER_SOCKET=/var/run/docker.sock',
+        "Dart fixed guest Docker socket",
+    ),
+    Mutation(
+        "dart",
+        '[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ]',
+        '[ -n "$VERIFIER_VM_MARKER_DOCKER" ]',
+        "Dart guest Docker version pin",
+    ),
     Mutation("dart", 'IMAGE_ID="$DEB_BUILDER_IMAGE_ID"', 'IMAGE_ID=rd-fluttercheck', "mutable Dart image"),
     Mutation(
         "dart",
@@ -685,21 +570,63 @@ MUTATIONS = (
     ),
     Mutation(
         "dart",
-        'initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"',
-        'true # local Docker authority initialization disabled',
-        "Dart fixed Docker authority",
+        'verifier_vm_docker() {\n  local status=0\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1',
+        'verifier_vm_docker() {\n  local status=0\n  true # Docker pre-operation authority replay disabled',
+        "Dart Docker pre-operation authority replay",
     ),
     Mutation(
         "dart",
-        "local_docker run --rm",
+        '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1',
+        '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?\n  true # Docker post-operation authority replay disabled',
+        "Dart Docker post-operation authority replay",
+    ),
+    Mutation(
+        "dart",
+        'verifier_vm_docker() {\n  local status=0\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n  /usr/bin/env -i',
+        'verifier_vm_docker() {\n  local status=0\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n  /usr/bin/env',
+        "Dart Docker empty environment",
+    ),
+    Mutation(
+        "dart",
+        'verifier_vm_image_provenance() {\n  local status=0\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1',
+        'verifier_vm_image_provenance() {\n  local status=0\n  true # provenance pre-operation authority replay disabled',
+        "Dart provenance pre-operation authority replay",
+    ),
+    Mutation(
+        "dart",
+        'verifier_vm_image_provenance() {\n  local status=0\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n  /usr/bin/env -i',
+        'verifier_vm_image_provenance() {\n  local status=0\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n  /usr/bin/env',
+        "Dart provenance empty environment",
+    ),
+    Mutation(
+        "dart",
+        '    || status=$?\n  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n  return "$status"\n}\n\nVERIFY_VM_AUTHORITY_SELF_TEST=',
+        '    || status=$?\n  true # provenance post-operation authority replay disabled\n  return "$status"\n}\n\nVERIFY_VM_AUTHORITY_SELF_TEST=',
+        "Dart provenance post-operation authority replay",
+    ),
+    Mutation(
+        "dart",
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
+        'python3 "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
+        "Dart provenance fixed interpreter",
+    ),
+    Mutation(
+        "dart",
+        'verifier_vm_image_provenance verify-local',
+        'true # image provenance disabled',
+        "Dart image provenance",
+    ),
+    Mutation(
+        "dart",
+        '/usr/bin/bash "$SCRIPT_DIR/frb-codegen.sh" --self-test-vm-authority',
+        'true # nested FRB authority chain disabled',
+        "Dart nested FRB verifier-VM authority",
+    ),
+    Mutation(
+        "dart",
+        "verifier_vm_docker run --rm",
         "docker run --rm",
-        "Dart fixed Docker launcher",
-    ),
-    Mutation(
-        "dart",
-        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
-        'if false; then',
-        "Dart exact Docker authority cleanup",
+        "Dart verifier-VM Docker launcher",
     ),
     Mutation("dart", 'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"\n', "", "online snapshot creation"),
     Mutation(
@@ -1174,7 +1101,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "dart": repo / "scripts/dart-verify.sh",
         "frb": repo / "scripts/frb-codegen.sh",
-        "lib": repo / "scripts/lib.sh",
         "verify": repo / "scripts/verify.sh",
         "requirements": repo / "requirements.html",
         "hardening": repo / "HARDENING_STATUS.md",

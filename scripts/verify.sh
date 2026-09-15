@@ -4827,7 +4827,7 @@ python3 -c 'from pathlib import Path; p = Path("scripts/verify-dart-verifier-aut
 if [ -n "$r_s11bc" ]; then
   echo "  FAIL R-S11bc Dart/FRB verifier container authority:$r_s11bc"; rc=1
 else
-  echo "  ok  R-S11bc/R-S11dh Dart/FRB verification retains immutable pins, private snapshots, non-root bounded networkless containers, and verifier-VM-only FRB Docker authority while leaving the real worktree unchanged"
+  echo "  ok  R-S11bc/R-S11dh Dart/FRB verification retains immutable pins, private snapshots, non-root bounded networkless containers, and verifier-VM-only Dart/FRB Docker authority while leaving the real worktree unchanged"
 fi
 echo "== (3b-iii-c-1) Windows service-owned child tree supervision (R-S11e-19) =="
 r_s11e19=

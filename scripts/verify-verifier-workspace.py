@@ -33022,7 +33022,6 @@ def validate_ipc_lifecycle_checker_contract(sources):
 def validate_dart_verifier_authority_contract(sources):
     dart = sources["dart_verify"]
     frb = sources["frb_codegen"]
-    lib = sources["lib"]
     authority = sources["dart_authority_validator"]
 
     for text, label in (
@@ -33031,19 +33030,34 @@ def validate_dart_verifier_authority_contract(sources):
             "Dart verifier absolute UID source",
         ),
         (
-            '[ "$BUILD_UID" -ne 0 ] || die "dart-verify refuses host or container-root execution"',
+            '[ "$BUILD_UID" -ne 0 ]',
             "Dart verifier UID-root refusal",
         ),
         (
-            '[ "$BUILD_GID" -ne 0 ] || die "dart-verify refuses a root primary group"',
+            '[ "$BUILD_GID" -ne 0 ]',
             "Dart verifier GID-root refusal",
+        ),
+        (
+            'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh',
+            "Dart verifier VM-entry preflight",
+        ),
+        (
+            'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
+            "Dart verifier fixed VM Docker client",
         ),
         ('IMAGE_ID="$DEB_BUILDER_IMAGE_ID"', "Dart verifier immutable image selection"),
         (
-            'initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"',
-            "Dart verifier fixed Docker authority",
+            'verifier_vm_image_provenance verify-local',
+            "Dart verifier VM-routed image provenance",
         ),
-        ('require_pinned_builder_image deb-builder "$IMAGE_ID"', "Dart verifier image provenance"),
+        (
+            '/usr/bin/bash "$SCRIPT_DIR/frb-codegen.sh" --self-test-vm-authority',
+            "Dart verifier nested FRB authority self-test",
+        ),
+        (
+            'verifier_vm_docker run --rm --pull=never --network=none --read-only',
+            "Dart verifier VM-routed container launch",
+        ),
         (
             'WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-dart-verify.XXXXXXXXXX)"',
             "Dart verifier private workspace",
@@ -33110,7 +33124,12 @@ def validate_dart_verifier_authority_contract(sources):
         2,
         "Dart verifier private online pre/post proof",
     )
-    require_exact_count(dart, "local_docker run ", 1, "Dart verifier complete container inventory")
+    require_exact_count(
+        dart,
+        "verifier_vm_docker run ",
+        1,
+        "Dart verifier complete container inventory",
+    )
     require_absent(dart, "\ndocker run ", "Dart verifier PATH-selected Docker launch")
     require_exact_count(dart, "--mount ", 2, "Dart verifier complete mount inventory")
     for text, label in (
@@ -33119,6 +33138,11 @@ def validate_dart_verifier_authority_contract(sources):
         ("rd-fluttercheck", "Dart verifier mutable image tag"),
         ('-v "$PWD:/work:rw"', "Dart verifier real-worktree mount"),
         ("build_runner build --delete-conflicting-outputs", "Dart verifier ignored codegen fallback"),
+        ("initialize_local_docker_authority", "Dart verifier host-Docker initialization"),
+        ("local_docker", "Dart verifier host-Docker wrapper"),
+        ("remove_local_docker_authority", "Dart verifier host-Docker cleanup"),
+        ("require_pinned_builder_image", "Dart verifier host-routed image provenance"),
+        ("/var/run/docker.sock", "Dart verifier host Docker socket"),
     ):
         require_absent(dart, text, label)
 
@@ -33179,71 +33203,17 @@ def validate_dart_verifier_authority_contract(sources):
         require_absent(frb, text, label)
     require_exact_count(frb, "--mount ", 2, "FRB generator complete mount inventory")
 
-    for text, label in (
-        (
-            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
-            "local Docker ambient-state reset",
-        ),
-        (
-            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
-            "local Docker absolute client",
-        ),
-        (
-            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
-            "local Docker socket type",
-        ),
-        (
-            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-            "local Docker ambient-input refusal",
-        ),
-        (
-            '[ "$(/usr/bin/stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
-            "private online snapshot absolute metadata inspector",
-        ),
-        ('/usr/bin/install -d -m 0700 -- "$config"', "local Docker private configuration"),
-        (
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
-            "local Docker no-clobber private config creation",
-        ),
-        (
-            '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ]',
-            "local Docker private config ownership/mode/link count",
-        ),
-        ("local_docker() {", "local Docker direct wrapper"),
-        ("local_docker_image_provenance() {", "local Docker provenance wrapper"),
-        ("remove_local_docker_authority() {", "local Docker exact cleanup"),
-        (
-            "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
-            "local Docker direct-wrapper empty environment",
-        ),
-        (
-            "local_docker_image_provenance() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
-            "local Docker provenance-wrapper empty environment",
-        ),
-        ("DOCKER_HOST=unix:///var/run/docker.sock", "local Docker fixed endpoint"),
-        ("--host unix:///var/run/docker.sock", "local Docker explicit endpoint"),
-        ('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"', "local Docker explicit configuration"),
-        (
-            '/usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@"',
-            "local Docker fixed provenance interpreter",
-        ),
-        (
-            'local_docker_image_provenance "${args[@]}"',
-            "builder provenance fixed Docker routing",
-        ),
-    ):
-        require_text(lib, text, label)
-
     for text in (
         "def validate_contract(sources: Dict[str, str]) -> None:",
         "def validate_docker_block(block: str, label: str, source_mount: str, online_mount: str) -> None:",
+        "def validate_vm_wrappers(",
         'Mutation("dart", \'--network=none\', \'--network=bridge\', "Dart network isolation")',
         'Mutation("frb", \'--pull=never\', \'--pull=missing\', "FRB pull refusal")',
         'Mutation(\n        "verify",',
         'Mutation("requirements", \'<span class="id">R-S11bc</span>\'',
         'Mutation("hardening", "R-S11bc/R-S11e-69"',
-        '"ambient local Docker authority state"',
-        '"Dart fixed Docker launcher"',
+        '"Dart verifier-VM entry authority"',
+        '"Dart verifier-VM Docker launcher"',
         '"FRB verifier-VM Docker launcher"',
         'Mutation("requirements", \'<span class="id">R-S11dh</span>\'',
     ):

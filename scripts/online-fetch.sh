@@ -3,10 +3,11 @@
 #
 # The repository is build-oriented and offline-by-construction. This is the only
 # script permitted to touch the network; it materializes every resource the repo
-# does not embed into ./online/ (git-ignored, NOT vendored — pinning != vendoring,
-# R-R1), each verified against its pinned SHA-256 in scripts/pins.env. Any mismatch
-# aborts fail-closed. The build scripts then run with the network namespace removed
-# (--network=none) and refuse to run if ./online is incomplete or any SHA fails.
+# does not embed into ./online/ or the private verifier-VM input cache (both
+# git-ignored, NOT vendored — pinning != vendoring, R-R1), each verified against
+# its pin in scripts/pins.env. Any mismatch aborts fail-closed. The build scripts
+# then run with the network namespace removed (--network=none) and refuse to run
+# if ./online is incomplete or any SHA fails.
 #
 # This reconciles R-R1's "pinning != vendoring" with the offline build: the bulky
 # pinned world is CACHED, not committed — re-creatable from pins.env and
@@ -24,6 +25,157 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+
+# R-S11dh bootstrap is deliberately dispatched before any Docker client, socket,
+# context, or configuration is inspected. These are inert VM inputs, not a host
+# Docker transaction: exact HTTPS bytes enter current-user-private harness state,
+# and only the networkless disposable guest may execute the Docker bundle.
+acquire_verifier_vm_inputs() {
+    [ "$#" -eq 0 ] || die "--verifier-vm-inputs takes no arguments"
+    local uid gid state_root vm_root transaction transaction_id staging=
+    local image_name image_path docker_name docker_path
+    uid="$(/usr/bin/id -u)"
+    gid="$(/usr/bin/id -g)"
+    [ "$uid" -ne 0 ] || die "verifier-VM input acquisition refuses root"
+    [ "$gid" -ne 0 ] || die "verifier-VM input acquisition refuses a root primary group"
+    for tool in /usr/bin/chmod /usr/bin/curl /usr/bin/env /usr/bin/install /usr/bin/ln /usr/bin/mktemp \
+        /usr/bin/rm /usr/bin/rmdir /usr/bin/sha256sum /usr/bin/sha512sum /usr/bin/stat; do
+        [ -f "$tool" ] && [ ! -L "$tool" ] && [ -x "$tool" ] \
+            || die "verifier-VM acquisition tool is unavailable: $tool"
+        [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$tool")" = "0:0:755:1" ] \
+            || die "verifier-VM acquisition tool metadata changed: $tool"
+    done
+    state_root="$REPO_ROOT/.harness-state"
+    vm_root="$state_root/verifier-vm"
+    if [ -e "$state_root" ] || [ -L "$state_root" ]; then
+        [ -d "$state_root" ] && [ ! -L "$state_root" ] \
+            || die "harness-state root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$state_root")" = "$uid:$gid:700" ] \
+            || die "harness-state root is not current-user/current-group mode 0700"
+    else
+        /usr/bin/install -d -m 0700 -- "$state_root"
+    fi
+    if [ -e "$vm_root" ] || [ -L "$vm_root" ]; then
+        [ -d "$vm_root" ] && [ ! -L "$vm_root" ] \
+            || die "verifier-VM input root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$vm_root")" = "$uid:$gid:700" ] \
+            || die "verifier-VM input root is not current-user/current-group mode 0700"
+    else
+        /usr/bin/install -d -m 0700 -- "$vm_root"
+    fi
+    transaction="$(/usr/bin/mktemp -d "$vm_root/acquire.XXXXXXXXXX")" \
+        || die "cannot create the private verifier-VM acquisition transaction"
+    transaction_id="$(/usr/bin/stat -c '%d:%i' -- "$transaction")"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$transaction")" = "$uid:$gid:700" ] \
+        || die "verifier-VM acquisition transaction has unexpected metadata"
+
+    cleanup_verifier_vm_acquisition() {
+        local status=$?
+        trap - EXIT HUP INT TERM
+        if [ -n "$staging" ] && { [ -e "$staging" ] || [ -L "$staging" ]; }; then
+            if [ -f "$staging" ] && [ ! -L "$staging" ] \
+               && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$staging" 2>/dev/null)" = "$uid:$gid:1" ]; then
+                /usr/bin/rm -f -- "$staging" || status=1
+            else
+                printf '[harness:FATAL] refusing ambiguous verifier-VM staging cleanup: %s\n' \
+                    "$staging" >&2
+                status=1
+            fi
+        fi
+        if [ -d "$transaction" ] && [ ! -L "$transaction" ] \
+           && [ "$(/usr/bin/stat -c '%d:%i' -- "$transaction" 2>/dev/null)" = "$transaction_id" ]; then
+            /usr/bin/rmdir -- "$transaction" || status=1
+        else
+            printf '[harness:FATAL] verifier-VM acquisition transaction identity changed: %s\n' \
+                "$transaction" >&2
+            status=1
+        fi
+        exit "$status"
+    }
+    trap cleanup_verifier_vm_acquisition EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    acquire_verifier_vm_file() {
+        [ "$#" -eq 6 ] || die "internal verifier-VM acquisition argument error"
+        local label=$1 url=$2 destination=$3 expected_size=$4 algorithm=$5 expected_digest=$6
+        local observed_digest metadata
+        case "$expected_size" in 0|*[!0-9]*|'') die "$label size pin is malformed" ;; esac
+        case "$algorithm" in
+            sha256)
+                [[ "$expected_digest" =~ ^[0-9a-f]{64}$ ]] \
+                    || die "$label SHA-256 pin is malformed"
+                ;;
+            sha512)
+                [[ "$expected_digest" =~ ^[0-9a-f]{128}$ ]] \
+                    || die "$label SHA-512 pin is malformed"
+                ;;
+            *) die "$label digest algorithm is unsupported" ;;
+        esac
+        if [ -e "$destination" ] || [ -L "$destination" ]; then
+            [ -f "$destination" ] && [ ! -L "$destination" ] \
+                || die "$label cache path is not one real file"
+            metadata="$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$destination")"
+            [ "$metadata" = "$uid:$gid:400:1:$expected_size" ] \
+                || die "$label cached metadata differs"
+            observed_digest="$("/usr/bin/${algorithm}sum" "$destination")"
+            [ "${observed_digest%% *}" = "$expected_digest" ] \
+                || die "$label cached digest differs"
+            log "$label already cached and authenticated"
+            return 0
+        fi
+        staging="$(/usr/bin/mktemp "$transaction/input.XXXXXXXXXX")" \
+            || die "cannot allocate $label staging file"
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C \
+            /usr/bin/curl --disable --proto '=https' --tlsv1.2 \
+                --fail --silent --show-error --location \
+                --max-time 1800 --speed-time 60 --speed-limit 1024 \
+                --max-filesize "$expected_size" --output "$staging" "$url" \
+            || die "$label download failed"
+        [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$staging")" \
+          = "$uid:$gid:600:1:$expected_size" ] \
+            || die "$label staged metadata differs"
+        observed_digest="$("/usr/bin/${algorithm}sum" "$staging")"
+        [ "${observed_digest%% *}" = "$expected_digest" ] \
+            || die "$label staged digest differs"
+        /usr/bin/chmod 0400 -- "$staging"
+        /usr/bin/ln -- "$staging" "$destination" \
+            || die "$label no-clobber publication failed"
+        /usr/bin/rm -- "$staging"
+        staging=
+        [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$destination")" \
+          = "$uid:$gid:400:1:$expected_size" ] \
+            || die "$label published metadata differs"
+        observed_digest="$("/usr/bin/${algorithm}sum" "$destination")"
+        [ "${observed_digest%% *}" = "$expected_digest" ] \
+            || die "$label published digest differs"
+        log "$label authenticated and published"
+    }
+
+    image_name="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
+    image_path="$vm_root/$image_name"
+    docker_name="docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
+    docker_path="$vm_root/$docker_name"
+    acquire_verifier_vm_file \
+        "Debian verifier-VM base" \
+        "https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$image_name" \
+        "$image_path" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" sha512 \
+        "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+    acquire_verifier_vm_file \
+        "Docker verifier-VM static bundle" \
+        "https://download.docker.com/linux/static/stable/x86_64/$docker_name" \
+        "$docker_path" "$SIZE_VERIFIER_VM_DOCKER_STATIC" sha256 \
+        "$SHA256_VERIFIER_VM_DOCKER_STATIC"
+    log "verifier-VM inputs ready: $vm_root"
+    cleanup_verifier_vm_acquisition
+}
+
+if [ "${1:-}" = "--verifier-vm-inputs" ]; then
+    [ "$#" -eq 1 ] || die "--verifier-vm-inputs takes no arguments"
+    acquire_verifier_vm_inputs
+    exit 0
+fi
 
 readonly DOCKER_BIN=/usr/bin/docker
 readonly GIT_BIN=/usr/bin/git
@@ -5320,7 +5472,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-win-helper-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-win-helper-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images

@@ -76,6 +76,23 @@ routes shared launchers to the host rootful daemon, so the new OPEN matrix row i
 gate may be run on this host until the disposable-VM harness replaces that route. No Docker operation, product
 binary, VM, service, listener, or native target ran in this documentation/checker correction.
 
+The first R-S11dh runtime foundation now exists in `scripts/smoke-verifier-vm-authority.sh`. Its authenticated
+input path caches one dated SHA-512-pinned Debian Bookworm cloud image and one SHA-256-pinned versioned Docker
+static bundle without consulting a Docker client or socket. The smoke launches QEMU as the nonroot host user with
+KVM, `-nic none`, seccomp sandboxing, a pass-private overlay, read-only seed/payload media, current-user-private
+Unix serial/QMP channels, bounded complete serial capture, and before/during/after host-listener comparison. In
+the disposable guest, the rootful daemon has no bridge, IP forwarding, iptables/ip6tables mutation, masquerade,
+userland proxy, external route, or INET listener. A real probe container passed as numeric UID/GID 4000 with no
+pull/network, read-only root, no capabilities, no-new-privileges, Docker's enforced `docker-default` AppArmor
+profile, seccomp filter mode, private PID/IPC/cgroup namespaces, no explicit device/bind/port authority, and
+behaviorally observed PID/memory/no-swap/CPU/core/descriptor/file-size bounds. The VM, daemon, container, bounded
+capture, overlay, media, and sockets were joined or identity-reconciled; the host listener set was unchanged and
+successful pass-private residue was removed. This is only a runtime proof of the outer topology and inner probe:
+the shared launchers still address the forbidden host-root socket, no real verifier image/source/input/output
+transaction has been moved into the VM, the verifier image still needs a fresh independent rebuild, and the
+pristine base currently spends about two minutes waiting for absent networking. Routing every consumer through
+one authenticated bounded VM transaction and producing a reproducible prepared fast base remain STOP-SHIP.
+
 The dependency-advisory documentation now has the same single-owner shape. The dated Appendix D disposition
 ledger, its duplicate technical-debt row, and all dangling links to it were deleted; exact snapshot identities,
 scan dates, package-fix history, current verdicts, and open distribution evidence remain current-state material in
@@ -1503,7 +1520,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The token-aware macOS password/requester validator and Apple native-source checker retain focused coverage; the shared workspace verifier does not duplicate their formatter-sensitive catalogs. The main-verifier checker now covers only R-S11bg's inner-container/image/input/fixture contract and no longer treats a pinned host rootful-Docker endpoint as safe execution authority. The current shared wrapper still targets the host's root-equivalent `/var/run/docker.sock`; it must not be used on this host. R-S11dh's disposable-VM execution harness and a fresh independent verifier-image rebuild remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The main-verifier checker covers only R-S11bg's inner-container/image/input/fixture contract and does not treat a pinned host rootful-Docker endpoint as safe execution authority. The standalone R-S11dh smoke now behaviorally proves a nonroot-host, zero-NIC disposable VM; a guest-only no-bridge/no-firewall-mutation Docker daemon; an AppArmor/seccomp-confined numeric-nonroot bounded probe; Unix-only control; listener invariance; and joined residue-free teardown. It does not yet run the real verifier or replace any shared launcher: those still target root-equivalent `/var/run/docker.sock` and must not be used on this host. Full VM routing, exact bounded source/input/output transfer, a reproducible fast prepared base, and a fresh independent verifier-image rebuild remain open. |
 
 The main verifier has recoverable archive distribution, but still requires a fresh independent rebuild.
 Neither this item nor the overall release is claimed complete.
@@ -1531,6 +1548,11 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   `0a12ed407e63129cac4065f4418911ab71adf3ca`: the installed CLI/LocalSystem service path exercised
   authorization refusal, credential mutation, live replica convergence, service restart, store reload, and
   stop finality for those package bytes. It remains a named single-build result, not current-master R-B2.
+- The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
+  Docker daemon, and confined numeric-nonroot container lifecycle. It passed AppArmor/seccomp/resource/namespace,
+  no-bridge/no-forward/no-firewall-mutation, private-channel, listener-invariance, complete-bounded-capture,
+  joined-process, and residue-free cleanup assertions. It did not execute RustDesk, the verifier image, a build,
+  a scanner, a source tree, an artifact, or an output-publication transaction.
 - No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
   a VM NIC, root/sudo on the host, or a non-loopback host listener.
 
@@ -1545,7 +1567,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP.** Current Docker launchers select the host rootful daemon. A fixed client, socket inode, empty configuration, nonroot CLI process, and strong inner-container flags do not remove that daemon's host-root authority. Replace the direct-host path with the one authenticated disposable-Linux-VM topology required by R-S11dh: nonroot host QEMU orchestration, pinned read-only base plus pass-private overlay, no VM NIC, no host-writable share, guest-only Docker, private Unix control channels, exact input/output identity, listener invariance, joined teardown, and no direct-host or rootless-host fallback. No VM harness or runtime proof exists yet. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH OUTER-SMOKE FOUNDATION GREEN.** The new standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, pass-private overlay, no-VM-NIC, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, joined teardown, and residue-free mechanics. Current Docker launchers nevertheless still select the host rootful daemon and must not run here. Move the actual verifier and then every build/test/scanner/provenance consumer into this one VM topology; admit exact read-only source/offline inputs; validate and publish complete bounded outputs; remove every direct-host/rootless-host fallback; create and authenticate a reproducible prepared base that removes the current roughly two-minute no-network boot wait; and freshly rebuild the verifier image independently. The probe is not product, artifact, scanner, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED

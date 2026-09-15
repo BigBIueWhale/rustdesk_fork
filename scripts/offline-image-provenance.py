@@ -1380,21 +1380,30 @@ def validate_bootstrap_seal_inspects(
     )
     expected_config = dict(discovery_config)
     expected_config["Labels"] = expected_labels
-    if candidate_config != expected_config:
+    # Moby's classic builder rewrites container.Config.Image on each commit.
+    # That field records the operator-supplied source image and is not an OCI
+    # image execution parameter.  Every other Config field remains exact.
+    expected_runtime_config = dict(expected_config)
+    candidate_runtime_config = dict(candidate_config)
+    expected_runtime_config.pop("Image", None)
+    candidate_runtime_config.pop("Image", None)
+    if candidate_runtime_config != expected_runtime_config:
         changed_keys = sorted(
             key
-            for key in set(discovery_config) | set(candidate_config)
-            if candidate_config.get(key) != expected_config.get(key)
+            for key in set(expected_runtime_config)
+            | set(candidate_runtime_config)
+            if candidate_runtime_config.get(key)
+            != expected_runtime_config.get(key)
         )
         details = []
         for key in changed_keys:
             before = json.dumps(
-                expected_config.get(key),
+                expected_runtime_config.get(key),
                 sort_keys=True,
                 separators=(",", ":"),
             )
             after = json.dumps(
-                candidate_config.get(key),
+                candidate_runtime_config.get(key),
                 sort_keys=True,
                 separators=(",", ":"),
             )
@@ -8537,6 +8546,7 @@ def self_test() -> None:
         dockerfile_sha256=discovery_recipe_sha,
     )
     discovery_config = {
+        "Image": "sha256:" + "9" * 64,
         "User": "",
         "Env": ["PATH=/usr/bin", "DEBIAN_FRONTEND=noninteractive"],
         "Cmd": ["/bin/bash"],
@@ -8607,6 +8617,7 @@ def self_test() -> None:
     )
     candidate_payload = json.loads(json.dumps(discovery_payload))
     candidate_payload["Id"] = candidate_spec.image_id
+    candidate_payload["Config"]["Image"] = "sha256:" + "a" * 64
     candidate_payload["Config"]["Labels"][
         LABEL_PREFIX + "dpkg-manifest-sha256"
     ] = dpkg_sha

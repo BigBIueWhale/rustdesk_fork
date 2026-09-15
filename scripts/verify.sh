@@ -276,8 +276,8 @@ fi
 
 echo "== (0d3) authenticated Android builder image distribution authority (R-S11da/R-S11e-119) =="
 r_s11da=
-if ! /usr/bin/python3 -I -S scripts/verify-android-builder-image-authority.py --repo . --self-test; then
-  r_s11da="$r_s11da authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-android-builder-image-authority.py --repo .; then
+  r_s11da="$r_s11da focused-source-invariant-failed"
 fi
 if [ -n "$r_s11da" ]; then
   echo "  FAIL R-S11da Android builder image distribution authority:$r_s11da"

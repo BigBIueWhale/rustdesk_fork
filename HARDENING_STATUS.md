@@ -1633,9 +1633,11 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   the Rust-advisory checker was similarly reduced from a 1,053-line cross-subsystem mutation catalog; the Android
   signing checker was reduced from 718 to 318 lines and its duplicate 362-line workspace meta-check was deleted; the Android
   builder checker was reduced from 2,196 to 376 lines and its duplicate 912-line workspace block was deleted; and the guest
-  runs the separate 31-decision Dart and 20-decision Rust scanner-result behavioral tests. Acquisition and OCI
-  provenance retain their own focused gates.
-  It did not execute RustDesk, the verifier image, FRB code generation or image provenance, a build, an OSV or RustSec scan, the
+  runs the separate 31-decision Dart and 20-decision Rust scanner-result behavioral tests. The Android image-distribution
+  checker is now a compact Android-specific pin/Dockerfile/loader/certification/promotion invariant rather than a
+  cross-document mutation catalog, and its duplicate workspace validator is absent. The same admitted UID/GID-4000 guest
+  executes the generic archive/OCI provenance self-test, including its 39 Android decisions.
+  It did not execute RustDesk, the verifier image, FRB code generation, a build, an OSV or RustSec scan, the
   complete source/input transaction, an artifact, or an output-publication transaction.
 - No evidence above used host RustDesk, Haggai, a host firewall/network change, a published container port,
   a VM NIC, root/sudo on the host, or a non-loopback host listener.
@@ -6297,7 +6299,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   behavior, independently distribute build images, or complete R-V3 external review.
 - **R-S11da/R-S11e-119 — authenticated Android builder image distribution authority —
   SOURCE, DIRECT-OCI DISTRIBUTION, PROVENANCE SELF-TEST, REAL ARCHIVE/RUNTIME,
-  INDEPENDENT REPRODUCTION, FOCUSED/WORKSPACE MUTATION, AND ONLINE-CLOSURE EVIDENCE
+  INDEPENDENT REPRODUCTION, COMPACT SOURCE, ISOLATED EXECUTABLE-FIXTURE, AND ONLINE-CLOSURE EVIDENCE
   RECORDED 2026-07-25; CLEAN EXACT-COMMIT R-B2/R-B10 RELEASE, DEVICE/NATIVE, OTHER
   IMAGE-DISTRIBUTION, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform:
   the unprivileged Linux acquisition/build host, its local Docker/BuildKit engine, and every
@@ -6441,11 +6443,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   by a final positive replay. The added decisions cover successful direct-export normalization,
   wrong raw mode, raw hardlink, wrong exporter name, extra outer referrer, unexpected
   compatibility manifest, occupied normalized output, and byte-identical normalization replay.
-  The focused gate rejects all 55 deliberate source mutations, including replacement of the
-  path/descriptor-bound private publication-directory open with an unbound path open. The
-  independent whole-workspace source-mutation matrix passes with direct-export, canonicalizer,
-  promotion, retired-capture, publication-directory identity, and 39-decision bindings. The
-  final confined proportional rerun also passed the offline provenance self-test; online-fetch
+  The former 1,282-line focused mutation catalog and its duplicate 237-line workspace validator
+  are deleted. Neither executed an archive, canonicalizer, loader, or certification operation;
+  they mutated source and documentation wording and made unrelated verifier structure part of
+  the verdict. A compact Android-specific source invariant now binds the reviewed pins and
+  certification Dockerfile, final-only loader, local-OCI networkless build, verify-before-no-clobber
+  promotion, and absence of the retired self-authorizing/Docker-store paths. The authenticated
+  no-NIC verifier VM runs that compact invariant and the executable provenance self-test as
+  UID/GID 4000; the latter executes the 39 Android archive/direct-OCI decisions, including
+  referrer, metadata, no-clobber, and deterministic-normalization failures. The focused authority
+  pass completed in 25 seconds with unchanged host listeners and joined residue-free cleanup. This is fixture
+  behavior, not a fresh run of the absent 467,499,398-byte archive. Historical real-archive,
+  runtime-fingerprint, and independent runtime-manifest/config reproduction evidence above is
+  unchanged. The final confined proportional rerun also passed online-fetch
   container authority's 44 mutations; Apple image authority's 56; Dart image authority's 85;
   Rust image authority's 95; Bash syntax, Python byte-compilation, HTML parsing, native-codec
   normal/mutation checks, and diff hygiene. Dart/Rust focused gates now bind the centralized

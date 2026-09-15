@@ -33,7 +33,9 @@ readonly SMOKE_SERVER_SCRIPT=$VERIFY_REPO/scripts/smoke-server.sh
 readonly RUST_AUDIT_SCRIPT=$VERIFY_REPO/scripts/audit.sh
 readonly ANDROID_KEYSTORE_SCRIPT=$VERIFY_REPO/scripts/gen-android-keystore.sh
 readonly ANDROID_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-android.sh
+readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-builder-image-authority.py
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
+readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
@@ -111,7 +113,11 @@ for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
-    build-android.sh verify-android-builder-authority.py android-rust-check.sh \
+    build-android.sh verify-android-builder-authority.py \
+    verify-android-builder-image-authority.py \
+    Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
+    Dockerfile.win-helper-certify offline-image-provenance.py \
+    online-fetch.sh android-rust-check.sh \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -557,6 +563,37 @@ android_builder_source_gate_output="$(
     || fail "Android-builder compact source-gate result differs: $android_builder_source_gate_output"
 printf '%s\n' "$android_builder_source_gate_output"
 printf 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass\n'
+
+android_image_source_gate_status=0
+android_image_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$ANDROID_BUILDER_IMAGE_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || android_image_source_gate_status=$?
+[ "${#android_image_source_gate_output}" -le 4096 ] \
+    || fail 'Android builder-image source-gate diagnostic exceeded its bound'
+[ "$android_image_source_gate_status" -eq 0 ] \
+    || fail "Android builder-image compact source gate failed: $android_image_source_gate_output"
+[ "$android_image_source_gate_output" = \
+  'verify-android-builder-image-authority: ok' ] \
+    || fail "Android builder-image source-gate result differs: $android_image_source_gate_output"
+printf '%s\n' "$android_image_source_gate_output"
+printf 'VERIFIER_VM_ANDROID_IMAGE_SOURCE_GATE=pass\n'
+
+offline_image_provenance_status=0
+offline_image_provenance_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" --self-test
+)" || offline_image_provenance_status=$?
+[ "${#offline_image_provenance_output}" -le 4096 ] \
+    || fail 'offline image-provenance diagnostic exceeded its bound'
+[ "$offline_image_provenance_status" -eq 0 ] \
+    || fail "offline image-provenance behavioral self-test failed: $offline_image_provenance_output"
+[ "$offline_image_provenance_output" = \
+  'offline image provenance self-test: PASS' ] \
+    || fail "offline image-provenance result differs: $offline_image_provenance_output"
+printf '%s\n' "$offline_image_provenance_output"
+printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39\n'
 
 if /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-android-rust-entry.out" 2>"$ROOT/root-android-rust-entry.err"; then

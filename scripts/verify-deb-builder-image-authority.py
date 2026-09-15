@@ -584,18 +584,6 @@ def validate_contract(sources: dict[str, str]) -> None:
         "shared verifier wiring",
     )
     require_all(
-        sources["workspace"],
-        (
-            "validate_android_builder_image_authority_contract(sources)\n"
-            "    validate_deb_builder_image_authority_contract(sources)\n"
-            "    validate_win_helper_image_authority_contract(sources)",
-            '"deb_builder_image_authority_verifier": (',
-            'repo / "scripts/verify-deb-builder-image-authority.py"',
-            "Debian builder image authority focused verifier",
-        ),
-        "independent workspace verifier",
-    )
-    require_all(
         sources["requirements"],
         (
             '<span class="id">R-S11db</span>',
@@ -914,16 +902,6 @@ MUTATIONS = (
         "shared verifier wiring",
     ),
     Mutation(
-        "workspace",
-        "validate_android_builder_image_authority_contract(sources)\n"
-        "    validate_deb_builder_image_authority_contract(sources)\n"
-        "    validate_win_helper_image_authority_contract(sources)",
-        "validate_android_builder_image_authority_contract(sources)\n"
-        "    true # Debian builder workspace contract removed\n"
-        "    validate_win_helper_image_authority_contract(sources)",
-        "workspace dispatch",
-    ),
-    Mutation(
         "requirements",
         '<span class="id">R-S11db</span>',
         '<span class="id">R-S11db-disabled</span>',
@@ -953,7 +931,6 @@ def load_sources(repo: pathlib.Path) -> dict[str, str]:
         "lib": "scripts/lib.sh",
         "provenance": "scripts/offline-image-provenance.py",
         "verify": "scripts/verify.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
     }

@@ -186,6 +186,10 @@ def validate_bootstrap_dockerfiles(acquisition: str, seal: str) -> None:
             "dpkg-query -W -f='${binary:Package}\\t${Version}\\n'",
             'DPKG_MANIFEST_SHA256="$(sha256sum ',
             "dpkg_manifest_sha256=%s",
+            "&& chmod 0444 \\\n"
+            "         /usr/local/share/rustdesk-build-provenance/Dockerfile \\\n"
+            "         /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv \\\n"
+            "         /usr/local/share/rustdesk-build-provenance/contract-v1",
             'org.rustdesk.build-input.role="win-helper"',
             'org.rustdesk.build-input.dockerfile-sha256="${DOCKERFILE_SHA256}"',
         ),

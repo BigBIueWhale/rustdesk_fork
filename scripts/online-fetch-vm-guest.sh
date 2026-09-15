@@ -50,6 +50,7 @@ readonly FOREIGN_PREFLIGHT_ROOT=/opt/rustdesk-online-fetch-preflight-probe
 readonly RESULT_ROOT=/run/rustdesk-online-fetch-result
 readonly RESULT_STDOUT=$RESULT_ROOT/transaction.stdout
 readonly RESULT_STDERR=$RESULT_ROOT/transaction.stderr
+readonly ACQUISITION_NOFILE_LIMIT=524544
 readonly EXPECTED_MAC=52:54:00:52:44:01
 readonly EXPECTED_ADDRESS=10.0.2.15/24
 readonly EXPECTED_GATEWAY=10.0.2.2
@@ -482,11 +483,26 @@ fi
 run_online_fetch() {
     local -a command=(/bin/bash "$REPO/scripts/online-fetch.sh")
     [ "$REQUEST" = __full__ ] || command+=("$REQUEST")
-    /usr/bin/setpriv --reuid="$ACQUISITION_UID" --regid="$ACQUISITION_GID" --clear-groups \
-        /usr/bin/env -i PATH=/usr/bin:/bin HOME="$WORK_ROOT" LC_ALL=C \
-        "${INNER_ENV[@]}" \
-        /bin/bash -c 'ulimit -f 32768; exec "$@"' online-fetch "${command[@]}" \
-        >"$RESULT_STDOUT" 2>"$RESULT_STDERR"
+    (
+        if ! ulimit -Sn "$ACQUISITION_NOFILE_LIMIT" 2>/dev/null; then
+            ulimit -Hn "$ACQUISITION_NOFILE_LIMIT"
+            ulimit -Sn "$ACQUISITION_NOFILE_LIMIT"
+        fi
+        ulimit -Hn "$ACQUISITION_NOFILE_LIMIT"
+        [ "$(ulimit -Sn)" = "$ACQUISITION_NOFILE_LIMIT" ] \
+            && [ "$(ulimit -Hn)" = "$ACQUISITION_NOFILE_LIMIT" ] \
+            || fail 'cannot establish the exact acquisition descriptor budget'
+        /usr/bin/setpriv --reuid="$ACQUISITION_UID" --regid="$ACQUISITION_GID" --clear-groups \
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME="$WORK_ROOT" LC_ALL=C \
+            "${INNER_ENV[@]}" \
+            /bin/bash -c '
+                [ "$(ulimit -Sn)" = "$1" ] && [ "$(ulimit -Hn)" = "$1" ] \
+                    || exit 125
+                shift
+                ulimit -f 32768
+                exec "$@"
+            ' online-fetch "$ACQUISITION_NOFILE_LIMIT" "${command[@]}"
+    ) >"$RESULT_STDOUT" 2>"$RESULT_STDERR"
 }
 
 run_authority_smoke() {
@@ -622,5 +638,6 @@ verify_daemon_generation "$daemon_start" \
 /usr/bin/sync -f "$RESULT_ROOT"
 stop_daemon
 RUN_COMPLETE=1
-printf 'ONLINE_FETCH_VM_GUEST=pass uid=%s gid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic result=16MiB cleanup=joined\n' \
-    "$ACQUISITION_UID" "$ACQUISITION_GID" "$EXPECTED_SOURCE_COMMIT"
+printf 'ONLINE_FETCH_VM_GUEST=pass uid=%s gid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=%s result=16MiB cleanup=joined\n' \
+    "$ACQUISITION_UID" "$ACQUISITION_GID" "$EXPECTED_SOURCE_COMMIT" \
+    "$ACQUISITION_NOFILE_LIMIT"

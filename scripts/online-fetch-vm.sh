@@ -701,7 +701,7 @@ for binding in "$CACHE_EXPORT|$CACHE_EXPORT_ID" "$CACHE_EXPORT/inputs|$ONLINE_EX
         || fail "writable export root identity changed: $path"
 done
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic result=16MiB cleanup=joined" \
+    "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined" \
     "$SERIAL_LOG" || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest completion receipt is absent'; }
 /usr/bin/grep -Fq 'ONLINE_FETCH_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion receipt is absent'; }

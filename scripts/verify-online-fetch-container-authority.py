@@ -51,6 +51,9 @@ def validate(repo: pathlib.Path) -> None:
     rename_probe = (
         repo / "scripts/verify-online-fetch-virtiofs-rename.py"
     ).read_text(encoding="utf-8")
+    closure = (repo / "scripts/verify-private-tree-closure.py").read_text(
+        encoding="utf-8"
+    )
 
     dispatch = 'if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then'
     require(online, dispatch, "outer VM dispatch")
@@ -175,12 +178,35 @@ def validate(repo: pathlib.Path) -> None:
         ("543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f", "probe digest"),
         ("online-fetch-vm-cache-transport-v1", "cache-transport observation"),
         ("VIRTIOFS_RENAME_CONTRACT=pass", "flagged-rename runtime receipt"),
+        (
+            "readonly ACQUISITION_NOFILE_LIMIT=524544",
+            "private-workspace closure descriptor budget",
+        ),
+        (
+            'ulimit -Hn "$ACQUISITION_NOFILE_LIMIT"',
+            "exact hard descriptor limit before principal drop",
+        ),
+        (
+            '[ "$(ulimit -Sn)" = "$1" ] && [ "$(ulimit -Hn)" = "$1" ]',
+            "dropped-principal descriptor-limit replay",
+        ),
         ("ulimit -f 32768", "transaction-output bound"),
         ("verify_daemon_generation", "root pre/post daemon-executable binding"),
     ):
         require(guest, token, label)
     if guest.count("/usr/bin/mount -t virtiofs") != 3:
         raise AuthorityError("guest writable virtiofs mount inventory differs")
+    entry_limit = re.search(r"(?m)^TREE_ENTRY_LIMIT = ([0-9]+)$", closure)
+    reserve = re.search(r"(?m)^RETAINED_DESCRIPTOR_RESERVE = ([0-9]+)$", closure)
+    guest_limit = re.search(
+        r"(?m)^readonly ACQUISITION_NOFILE_LIMIT=([0-9]+)$", guest
+    )
+    if entry_limit is None or reserve is None or guest_limit is None:
+        raise AuthorityError("private-workspace descriptor budget is not explicit")
+    if int(guest_limit.group(1)) != int(entry_limit.group(1)) + int(reserve.group(1)):
+        raise AuthorityError(
+            "acquisition descriptor limit differs from the closure authority bound"
+        )
     forbid(guest, "mount -t 9p", "legacy guest 9p mount")
     for token, label in (
         ("--host tcp", "guest Docker TCP endpoint"),

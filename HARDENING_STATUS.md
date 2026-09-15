@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-5d61268b3bd839b546f11f7edc88cd64543a6e5a1059ce3d7f8639a86bc15fb6  requirements.html
+2b194ac2a15b41e8a2ccf6ec1a483f0bd5c0c5e6d27f8781efc5538c26e081af  requirements.html
 ```
 
 ## Current Verdict
@@ -1578,7 +1578,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`, `build-android.sh`, `build-debian.sh`, `test-android-gradle-cache.sh`, `android-rust-check.sh`, `apple-conform-check.sh`, `smoke-flutter-peer-presentation.sh`, and the shared Windows build/provision/golden helper runtime now admit only that exact authority, use the fixed guest socket/configuration/client with pre/post replay, and have no direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child; the Windows helper entry executes the production small-profile launch and mount validator; the Gradle entry executes both production resource/security profiles; and the Debian builder entry executes its production compiler envelope against the real guest daemon. Real Dart/FRB generation/analysis/tests, exact OSV/RustSec scans, normal Android signing generation/building/Gradle/Rust checking, the Apple source workload, the full-peer product workload, the certified Debian compiler/toolchain workload, the certified Windows helper archive/kernel/KVM/Windows workloads, and every other RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb/signing/result inputs are absent from the smoke. The only remaining direct host-Docker consumer is the intentionally networked `online-fetch.sh` acquisition entry; it must not run here until migrated into an appropriate isolated topology. Exact source/input/output transfer for the full-peer transaction, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
+| Verification/build authority | Focused source and model gates remain supplementary. The R-S11dh KVM smoke behaviorally proves a nonroot-host, zero-NIC disposable VM; authenticated descriptor-bound direct boot; early absent-network/SSH masks; guest-only no-bridge/no-firewall-mutation Docker; exact root-authored daemon-generation state; authorized UID/GID-4000 and refused root/foreign-principal entry; an AppArmor/seccomp-confined bounded probe; Unix-only control; listener invariance; a 90-second finality bound; and joined residue-free teardown. `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, `gen-android-keystore.sh`, `build-android.sh`, `build-debian.sh`, `test-android-gradle-cache.sh`, `android-rust-check.sh`, `apple-conform-check.sh`, `smoke-flutter-peer-presentation.sh`, and the shared Windows build/provision/golden helper runtime now admit only that exact authority, use the fixed guest socket/configuration/client with pre/post replay, and have no direct host-Docker fallback. The Dart verifier entry also proves its nested FRB child; the Windows helper entry executes the production small-profile launch and mount validator; the Gradle entry executes both production resource/security profiles; and the Debian builder entry executes its production compiler envelope against the real guest daemon. Real Dart/FRB generation/analysis/tests, exact OSV/RustSec scans, normal Android signing generation/building/Gradle/Rust checking, the Apple source workload, the full-peer product workload, the certified Debian compiler/toolchain workload, the certified Windows helper archive/kernel/KVM/Windows workloads, and every other RustDesk server/protocol/video stage remain unexecuted because their certified images and exact source/vendor/Xvfb/signing/result inputs are absent from the smoke. The `online-fetch.sh` source now dispatches every non-bootstrap operation before Docker inspection into a distinct outbound-only disposable VM with no host forwarding, host Docker, or live-source mount; its compact no-fallback invariant is green, but the focused real-VM acquisition transaction has not yet executed at a clean commit and the full cache/producers remain open. Exact source/input/output transfer for the full-peer transaction, prepared toolchain/image reproduction, and a fresh independent verifier-image rebuild remain open. |
 
 The former devcheck capture path documents a recoverable archive identity but the archive is neither locally present
 nor published by this repository; fresh independent reconstruction and distribution remain open. Neither this item
@@ -1664,7 +1664,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE, THIRTEEN ENTRY PATHS, BOTH REAL ANDROID-GRADLE PROFILES, AND THE REAL WINDOWS-HELPER SMALL PROFILE GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–49 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, Android signing, Android building, the Debian builder, Android Gradle, Android Rust-check, Apple source conformance, Linux full-peer presentation, and Windows helper authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. The Apple and full-peer receipts explicitly leave their source/product workloads unexecuted; the Android Gradle entry executes both exact production resource/security profiles without the unavailable Gradle workload; the Debian builder entry executes its exact production compiler envelope against private fixtures without the unavailable certified compiler/toolchain workload. The Windows build, provisioner, and golden verifier are source-wired to the one VM-only helper funnel, but the smoke executes only its minimal real `small` profile—not the certified helper archive, kernel derivation, KVM/libguestfs, Windows, or artifact paths. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building/Gradle/Rust checking, the Apple source transaction, the full-peer product transaction, the Debian compiler/toolchain workload, RustDesk server/protocol/video payloads, and those Windows workloads remain unexecuted because their certified images and complete source/vendor/Xvfb/signing/result inputs are absent. Move the only remaining direct host-Docker consumer, intentionally networked `online-fetch.sh`, into an appropriate isolated acquisition topology; admit the full peer's exact read-only source/offline inputs and bounded outputs; create the reproducible prepared verifier toolchain/base; and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, certified-helper, or full-gate evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST NO-NIC OUTER-SMOKE, THIRTEEN ENTRY PATHS, BOTH REAL ANDROID-GRADLE PROFILES, AND THE REAL WINDOWS-HELPER SMALL PROFILE GREEN; DISTINCT ONLINE-ACQUISITION VM SOURCE PRESENT BUT RUNTIME PENDING.** The standalone no-NIC smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–49 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, Android signing, Android building, the Debian builder, Android Gradle, Android Rust-check, Apple source conformance, Linux full-peer presentation, and Windows helper authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. The Apple and full-peer receipts explicitly leave their source/product workloads unexecuted; the Android Gradle entry executes both exact production resource/security profiles without the unavailable Gradle workload; the Debian builder entry executes its exact production compiler envelope against private fixtures without the unavailable certified compiler/toolchain workload. The Windows build, provisioner, and golden verifier are source-wired to the one VM-only helper funnel, but the smoke executes only its minimal real `small` profile—not the certified helper archive, kernel derivation, KVM/libguestfs, Windows, or artifact paths. The intentionally networked `online-fetch.sh` now has a separate one-mode source topology: ordinary-user QEMU user networking with no host forwarding/listener, a guest-only Docker bridge/firewall/NAT, an exact Git bundle, and three bounded exports; active inputs and retired transaction records are disjoint siblings within the single cache-state export so descriptor-relative replacement remains same-mount atomic. Its compact source invariant is green, but its actual focused VM/HTTPS/cache-transport run and the complete cache/producers have not yet executed. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building/Gradle/Rust checking, the Apple source transaction, the full-peer product transaction, the Debian compiler/toolchain workload, RustDesk server/protocol/video payloads, and Windows workloads remain unexecuted. Admit the full peer's exact read-only source/offline inputs and bounded outputs; create the reproducible prepared verifier toolchain/base; and freshly rebuild the verifier image independently. Entry source gates are not product, artifact, scanner, certified-helper, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -3790,75 +3790,71 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   pass predates this VM-only entry and is not current-tree evidence. Native macOS/iOS compilation, signing,
   installation, helper/launchd behavior, runtime, packages, cold release, independent reproduction, and
   external review remain open.
-- **R-S11cj/R-S11e-102 — online acquisition container execution authority — SOURCE IMPLEMENTED
-  2026-07-23; FOCUSED/WORKSPACE MUTATION GATES AND EXACT-IMAGE NON-ROOT PROBES PASS; OUTPUT-PUBLICATION AUTHORITY AND EXACT COLD
-  RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the one intentionally
-  networked Docker phase. Endpoint/action: the ten ordinary dependency, tool, SDK, native-library, and cache
-  producers in `scripts/online-fetch.sh`. Boundary: caller Docker/image state and container execution identity
-  ↔ host build inputs, live source/cache binds, and generated offline inputs.
+- **R-S11cj/R-S11e-102 — isolated online-acquisition VM and non-root producer authority — SOURCE
+  IMPLEMENTED; COMPACT NO-FALLBACK SOURCE INVARIANT GREEN; FOCUSED REAL-VM EXECUTION PENDING; FULL
+  CACHE/PRODUCER, COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE OPEN.**
+  Platform/boundary: an ordinary-user Linux orchestration process owns one disposable QEMU VM; VM-local
+  root owns its one outbound NIC, resolver, root-owned read-only Git runtime, one cache virtiofs mount, two
+  narrow systemd/result 9p mounts, and Unix-only Docker daemon;
+  the exact admitted host UID:GID owns each acquisition container and only its typed cache outputs.
 
-  Before this slice, ten independent ordinary `docker run` sites inherited caller client/context/configuration,
-  allowed implicit pulls, ran as image-default UID 0 with writable roots and default capabilities /
-  privilege-gain semantics, and had no PID, memory, swap, CPU, or scratch bounds. Verified builder archives were
-  retagged to mutable compatibility names before use. The Windows Flutter engine and cache packager selected a
-  mutable public Ubuntu tag; the engine performed a live root package installation. WiX restore selected mutable
-  `mcr.microsoft.com/dotnet/sdk:8.0`. No site published or exposed a port, mounted the Docker socket/device, or
-  joined a host network/PID/IPC/UTS namespace. Outbound networking is the purpose of this phase. This is
-  source-proven build-host/cache execution and mutable-image debt, not evidence of a public listener, container
-  escape, host-root acquisition, source or host RustDesk/service/firewall/network mutation, exploitation, or
-  compromise.
+  The prior source tightened inner `docker run` flags but still selected `/usr/bin/docker` and
+  `/var/run/docker.sock` on the DMZ host. That made a root-equivalent host daemon, host bridge, IP
+  forwarding, and firewall mutation part of the acquisition authority. The old 805-line focused checker
+  plus a 182-line workspace duplicate chiefly mutated source strings and even required that host socket;
+  neither could observe which kernel owned the daemon/network or whether QEMU exposed a host listener.
 
-  `scripts/online-fetch.sh` now refuses host UID or primary GID 0, fixes the root-owned `/usr/bin/docker` client
-  and local Unix endpoint, rejects caller Docker context/TLS/configuration, and creates a current-user-private
-  canonical empty Docker configuration whose metadata and bytes are reproved around client operations. One
-  `online_docker_run` funnel supplies `--pull=never`, explicit bridge acquisition networking, read-only root,
-  invoking numeric UID:GID, all capabilities dropped, no-new-privileges, and fixed PID, memory/no-swap, CPU, and
-  executable `nosuid,nodev` tmpfs ceilings. No ordinary call site may add a port, host namespace, socket, device,
-  capability, privileged/root identity, implicit pull, or mutable image.
+  Current `online-fetch.sh` dispatches every non-bootstrap request before any Docker inspection to
+  `online-fetch-vm.sh`. The only host-network bootstrap downloads the pinned Debian qcow2, static Docker
+  archive, exact Debian Git package, and Ubuntu Noble virtiofsd package as authenticated inert bytes. The
+  outer entry refuses root/root-primary-group and dirty or non-master source, bundles the exact Git
+  commit/history, authenticates the base/bundle/packages/direct-boot kernel/initramfs, and launches only fixed
+  ordinary-user KVM/QEMU. Its one fixed IPv4 user-mode NIC has no `hostfwd`, TAP, bridge helper, VNC, or TCP
+  monitor; QEMU is seccomp-sandboxed and the complete host TCP/UDP listener set is compared before, during,
+  and after execution.
 
-  Loading independently pinned builder archives now verifies and retains only their exact content IDs; the
-  compatibility-tag API and tag creation are deleted. Five Debian and five Android producer sites select only
-  `DEB_BUILDER_IMAGE_ID` or `ANDROID_BUILDER_IMAGE_ID` and reverify embedded image provenance before launch.
-  Windows Flutter-engine capture reuses the exact Android builder and its already pinned package set, so the live
-  root `apt-get` path is gone. The deterministic Flutter cache packager reuses the exact Debian builder. Because
-  there is no audited immutable .NET producer pin, missing `online/wix-nuget.tar.gz` now fails closed; an existing
-  six-package closure is accepted only after `SHA256_WIX_NUGET` verification. Explicit maintenance base-digest
-  pulls/candidate builds remain separate operator actions and cannot select an ordinary producer runtime.
+  The guest receives the source bundle and Git package read-only, not the live checkout. The pinned cloud
+  image intentionally contains no Git. VM-local root therefore verifies the package identity and digest,
+  extracts it without installation into a fixed root-owned non-writable runtime, and binds the Git binary by
+  size, SHA-256, version, and fixed exec/template roots before the admitted non-root principal verifies and
+  clones the source bundle. Every such Git invocation admits only the local `file` protocol. No runtime `apt`,
+  mirror selection, or host execution of package bytes exists.
+  The first draft used three
+  retained-descriptor 9p exports and put the canonical `online` cache-state root on one of them. That avoided
+  cross-mount `EXDEV`, but primary Linux 9p source shows that `v9fs_vfs_rename()` rejects every nonzero rename
+  flag with `EINVAL`; it therefore could not implement the publishers' `RENAME_NOREPLACE` or
+  `RENAME_EXCHANGE` contract and was corrected before runtime or release use. The current source privately
+  extracts the SHA-256/SHA-512-authenticated Ubuntu package without installation and runs the pinned binary
+  as the invoking ordinary user. A prebound mode-0600 Unix listener descriptor and the exact cache-state
+  inode are passed to a descriptor-executed backend. Its launcher requires Landlock ABI 8, denies all
+  filesystem access except the exact cache hierarchy and narrowly enumerated dynamic-runtime/proc reads,
+  denies TCP bind/connect, behaviorally proves those denials, sets no-new-privileges, and then requires
+  virtiofsd's kill-action seccomp allowlist. The cache state contains only disjoint `inputs` and `retired`
+  siblings on that one virtiofs mount. Separate descriptor-bound 9p exports grant only the systemd-image root
+  and 16 MiB-bounded result root. No host package is installed and no root, host Docker, INET listener,
+  repository parent, or unrelated host path is granted.
+  VM-local root configures the NIC and starts Docker 27.5.1 on one principal-scoped Unix socket. Its fixed
+  `172.30.0.0/24` bridge, iptables, forwarding, and masquerade exist only in the disposable guest; the
+  default publish address is guest loopback and the userland proxy is disabled. The inner entry replays the
+  exact kernel command line, Debian/kernel/NIC/address/route, daemon PID/start/executable digests, socket
+  metadata, pinned Git binary/runtime, source commit/tree, all three mount identities, the exact cache-child
+  inventory, and the active/retired same-filesystem property before Docker use. A numeric-nonroot guest probe must actually
+  execute cross-parent `RENAME_NOREPLACE`, verify occupied-destination `EEXIST` with both inodes intact, and
+  exchange two nonempty directories with `RENAME_EXCHANGE`; a root-owned immutable receipt binds that result
+  into every inner entry. Root and a foreign principal
+  are explicitly refused. The existing producer funnels retain exact image IDs, numeric non-root identity,
+  no pull or publication, bridge-only acquisition egress, network-none semantic stages, read-only roots,
+  zero capabilities, no-new-privileges, and finite PID/memory/no-swap/CPU/tmpfs bounds.
 
-  Docker's current primary documentation states that bind mounts are writable by default and can change host
-  files, that a read-only bind removes that authority, that ordinary containers have no default resource
-  constraints, and that `--pull=never`, `--read-only`, `--cap-drop`, no-new-privileges, PID/memory/CPU flags, and
-  content digests/IDs are independent controls. It also warns that published ports default to all host
-  interfaces and can bypass UFW, while host networking shares the host namespace. This design intentionally
-  retains bridge egress but supplies no `-p`/`-P`, expose, host namespace, or device/socket authority.
-
-  `scripts/verify-online-fetch-container-authority.py` binds the fixed client/endpoint/private config, root
-  refusal, exact loaded IDs and ten-consumer inventory, sole launch funnel and complete runtime floor, absence of
-  compatibility tags/live package installation/unreviewed WiX execution, shared gate, R-S11cj, Appendix C #229,
-  this ledger, and independent workspace ownership through deliberate mutations. The focused verifier passes and
-  rejects 29 deliberate weakenings. The independent workspace verifier passes normally and its complete in-memory
-  source-mutation catalog rejects mutations of the focused checker, actual launch floor, numeric identity, exact
-  loaded-image verification, shared wiring, requirement, Appendix row, ledger, and current requirements-hash scope.
-
-  Mount-free probes under both exact builder IDs,
-  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776` and
-  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`, passed as
-  UID/GID 1000 with no network, read-only root, zero capabilities, no-new-privileges, and bounded resources:
-  writes to `/root` failed while an executable copied into bounded `/tmp` ran. Dependency inventory normal plus
-  all 103 self-tests, offline-image-provenance self-test, native-codec normal/negative gates, Bash and isolated
-  Python syntax, requirements SHA-256
-  `564e99c0d60e4b65b4112e8e8ffe6ef37cd672f37a9a526d840748e1053ececf`, and `git diff --check`
-  pass in the immutable non-root/networkless verifier image. No online producer or acquisition networking was
-  exercised, so this is runtime-floor compatibility and source/mutation evidence rather than an acquisition-output
-  reproduction.
-
-  This is intentionally not a full acquisition closure. Every producer is now non-root and confined at the
-  container/runtime layer, but the broad writable `online` binds and Gradle's writable live repository remain
-  separate output/publication authority debt. They must be replaced by read-only inputs, private same-filesystem
-  staging, postcondition validation, and checked atomic publication. Host-side download/extraction publication
-  and maintenance candidate-build authority are also independent audit surfaces. No online acquisition,
-  image pull/build/tag, release build, or host RustDesk/service/listener/firewall/network operation was executed
-  while implementing this source slice.
+  `verify-online-fetch-container-authority.py` is now a 255-line no-host-Docker/no-host-listener/source-entry
+  invariant; the independent workspace duplicate and mutation inventory are deleted. This is supplementary
+  evidence only. The focused runtime is designed to boot the real topology, run a non-root bridge container
+  that retrieves the independently pinned 114,565-byte olefile wheel, execute the real virtiofs flagged-rename
+  contract, exercise both cache-state children, the systemd-image export, and the bounded-result export,
+  refuse root/foreign entries, and prove host-listener invariance and joined cleanup. It has not yet executed
+  against a clean committed source in this entry, so none of those runtime claims are green yet. No full
+  cache acquisition, producer workload, image pull/build, product build, or host RustDesk/service/firewall
+  operation is claimed.
 - **R-S11ck/R-S11e-103 — networked Gradle warmer source authority — SOURCE AND CONFINED BEHAVIOR VERIFIED
   2026-07-23; GRADLE OUTPUT-PUBLICATION AUTHORITY CLOSED SEPARATELY BY R-S11cl/R-S11e-104; EXACT
   COLD RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and Android

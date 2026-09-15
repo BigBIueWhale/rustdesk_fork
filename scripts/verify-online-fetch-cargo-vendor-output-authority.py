@@ -133,7 +133,7 @@ def validate(sources: Mapping[str, str]) -> None:
         ("--vendor-sha256", "vendor closure binding"),
         ("--config-sha256", "source-map binding"),
         (
-            '--config-vendor-path "$REPO_ROOT/online/cargo-vendor"',
+            '--config-vendor-path "$ONLINE_DIR/cargo-vendor"',
             "canonical source-map destination binding",
         ),
         ("--config-size", "source-map size binding"),

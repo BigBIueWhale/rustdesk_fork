@@ -4971,7 +4971,7 @@ def validate_faillo_contract(source):
         ('exit "$status"', "wrong-SHA original-status propagation"),
     ):
         require_text(wrong_sha_fixture, text, label)
-    if '${ONLINE_DIR:-$REPO_ROOT/online}/rust-${RV}.tar.xz' in source:
+    if '${ONLINE_DIR:-$ONLINE_STATE_ROOT/inputs}/rust-${RV}.tar.xz' in source:
         raise VerificationError("fail-loud wrong-SHA proof depends on the ignored online cache")
     require_exact_count(
         source,
@@ -22323,184 +22323,6 @@ def validate_windows_libvirt_storage_authority_contract(sources):
     )
 
 
-def validate_online_fetch_container_authority_contract(sources):
-    focused = sources["online_fetch_container_authority_verifier"]
-    online = sources["online_fetch"]
-    for text, label in (
-        ("forbid_container_authority(source: str, label: str)",
-         "online acquisition focused forbidden-authority enforcement"),
-        ("ordinary acquisition launch inventory",
-         "online acquisition focused launch inventory"),
-        ("networked archive acquisition launch funnel",
-         "online acquisition focused archive-launch inventory"),
-        ("MUTATIONS: Tuple[Mutation, ...]",
-         "online acquisition focused mutation inventory"),
-        ("run_mutations(sources)",
-         "online acquisition focused mutation dispatch"),
-        ("exact WiX package acquisition funnel",
-         "online acquisition focused WiX authority"),
-        ("VCS-suppressed Docker client funnel",
-         "online acquisition focused VCS-suppressed client enforcement"),
-        (
-            '"BUILDX_GIT_INFO=false",\n'
-            '            "unverified VCS suppression",',
-            "online acquisition focused VCS suppression enforcement",
-        ),
-    ):
-        require_text(focused, text, label)
-    for text, label in (
-        ("readonly DOCKER_BIN=/usr/bin/docker",
-         "online acquisition fixed Docker client"),
-        ("readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock",
-         "online acquisition fixed Docker endpoint"),
-        ('[ "$ONLINE_FETCH_UID" -ne 0 ]',
-         "online acquisition host-root refusal"),
-        ('[ "$ONLINE_FETCH_GID" -ne 0 ]',
-         "online acquisition root-primary-group refusal"),
-        ('readonly ONLINE_FETCH_DOCKER_CONFIG="$ONLINE_FETCH_TMP/docker-config"',
-         "online acquisition private Docker configuration"),
-        ("online_image_provenance() {",
-         "online acquisition image-provenance funnel"),
-        ("online_docker_without_vcs() {",
-         "online acquisition VCS-suppressed Docker funnel"),
-        ("online_docker_run() {",
-         "online acquisition sole launch funnel"),
-        ("online_docker run --rm --pull=never --network=bridge --read-only",
-         "online acquisition runtime confinement"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "online acquisition numeric nonroot identity"),
-        ("--cap-drop=ALL --security-opt=no-new-privileges",
-         "online acquisition privilege confinement"),
-        ("--pids-limit=2048 --memory=16g --memory-swap=16g --cpus=4",
-         "online acquisition resource ceilings"),
-        ('local builder="$DEB_BUILDER_IMAGE_ID"',
-         "online acquisition exact Debian builder"),
-        ('local builder="$ANDROID_BUILDER_IMAGE_ID"',
-         "online acquisition exact Android builder"),
-        ('--image-ref "$WIN_HELPER_IMAGE_ID"',
-         "online acquisition exact loaded-image verification"),
-        ('require_pinned_builder_image "$role" "$image_id" online_image_provenance',
-         "online acquisition explicit image-provenance executor"),
-        ('stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
-         "online acquisition exact WiX package funnel"),
-    ):
-        require_text(online, text, label)
-    require_absent(
-        online,
-        "mcr.microsoft.com/dotnet/sdk:8.0",
-        "online acquisition mutable WiX producer absence",
-    )
-    no_vcs_docker_funnel = extract_between(
-        online,
-        "online_docker_without_vcs() {",
-        '    return "$status"\n}',
-        "online acquisition VCS-suppressed Docker funnel",
-    )
-    for text, label in (
-        (
-            "env -i \\\n        PATH=/usr/bin:/bin",
-            "online acquisition VCS-suppressed closed environment",
-        ),
-        (
-            "BUILDX_GIT_INFO=false",
-            "online acquisition unverified VCS suppression",
-        ),
-        (
-            '--host "$ONLINE_FETCH_DOCKER_HOST"',
-            "online acquisition VCS-suppressed fixed endpoint",
-        ),
-        (
-            '--config "$ONLINE_FETCH_DOCKER_CONFIG"',
-            "online acquisition VCS-suppressed private configuration",
-        ),
-    ):
-        require_text(no_vcs_docker_funnel, text, label)
-    launch_funnel = extract_between(
-        online,
-        "online_docker_run() {",
-        '        "$@"\n}',
-        "online acquisition launch funnel",
-    )
-    for text, label in (
-        ("online_docker run --rm --pull=never --network=bridge --read-only",
-         "online acquisition funnel confinement"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "online acquisition numeric nonroot identity"),
-        ("--cap-drop=ALL --security-opt=no-new-privileges",
-         "online acquisition funnel privilege confinement"),
-        ("--pids-limit=2048 --memory=16g --memory-swap=16g --cpus=4",
-         "online acquisition funnel resource ceilings"),
-    ):
-        require_text(launch_funnel, text, label)
-    archive_launch_funnel = extract_between(
-        online,
-        "online_docker_run_archive_acquisition() {",
-        '        "$@"\n}',
-        "online fixed-archive acquisition launch funnel",
-    )
-    for text, label in (
-        ("online_docker run --rm --pull=never --network=bridge --read-only",
-         "online fixed-archive funnel confinement"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "online fixed-archive numeric nonroot identity"),
-        ("--cap-drop=ALL --security-opt=no-new-privileges",
-         "online fixed-archive privilege confinement"),
-        ("--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
-         "online fixed-archive resource ceilings"),
-        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-         "online fixed-archive non-executable scratch"),
-    ):
-        require_text(archive_launch_funnel, text, label)
-    pub_semantic = extract_between(
-        online,
-        "online_docker_run_pub_semantic() {",
-        "\n}\n\n# Exact archive acquisition",
-        "Pub-cache networkless semantic funnel",
-    )
-    for text, label in (
-        ("online_docker run --rm --pull=never --network=none --read-only",
-         "Pub-cache semantic runtime confinement"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "Pub-cache semantic numeric nonroot identity"),
-        ("--cap-drop=ALL --security-opt=no-new-privileges",
-         "Pub-cache semantic privilege confinement"),
-        ("--pids-limit=512 --memory=8g --memory-swap=8g --cpus=4",
-         "Pub-cache semantic resource ceilings"),
-    ):
-        require_text(pub_semantic, text, label)
-    pub_resolution = extract_between(
-        online,
-        "verify_pub_cache_resolution() {",
-        "\n}\n\nstage_pub_cache() {",
-        "Pub-cache networkless semantic launch",
-    )
-    require_text(
-        pub_resolution,
-        "online_docker_run_pub_semantic \\",
-        "Pub-cache semantic funnel use",
-    )
-    require_text(
-        sources["verify"],
-        "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
-        "Online acquisition container authority focused verifier",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11cj</span>',
-        "online acquisition container authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>229</td>",
-        "online acquisition container authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11cj/R-S11e-102 — online acquisition container execution authority",
-        "online acquisition container authority hardening ledger",
-    )
-
-
 def validate_online_fetch_gradle_source_authority_contract(sources):
     focused = sources["online_fetch_gradle_source_authority_verifier"]
     online = sources["online_fetch"]
@@ -30233,7 +30055,6 @@ def validate_sources(sources):
     validate_cleanup_process_domain_path_authority_contract(sources)
     validate_windows_build_domain_authority_contract(sources)
     validate_windows_libvirt_storage_authority_contract(sources)
-    validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
     validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_online_fetch_android_sdk_output_authority_contract(sources)
@@ -34530,9 +34351,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_libvirt_storage_library": (
                 repo / "scripts/windows-libvirt-storage-pools.sh"
-            ).read_text(encoding="utf-8"),
-            "online_fetch_container_authority_verifier": (
-                repo / "scripts/verify-online-fetch-container-authority.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_gradle_source_authority_verifier": (
                 repo / "scripts/verify-online-fetch-gradle-source-authority.py"

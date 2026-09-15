@@ -367,16 +367,16 @@ else
   echo "  ok  R-S11ci VM-only Docker authority + authenticated Apple image/provenance + fixed three-target private source transaction"
 fi
 
-echo "== (0h) online acquisition container execution authority (R-S11cj/R-S11e-102) =="
+echo "== (0h) online acquisition VM/container execution authority (R-S11cj/R-S11e-102) =="
 r_s11cj=
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test; then
-  r_s11cj="$r_s11cj authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo .; then
+  r_s11cj="$r_s11cj compact-no-fallback-source-invariant-failed"
 fi
 if [ -n "$r_s11cj" ]; then
-  echo "  FAIL R-S11cj online acquisition container execution authority:$r_s11cj"
+  echo "  FAIL R-S11cj online acquisition VM/container execution authority:$r_s11cj"
   rc=1
 else
-  echo "  ok  R-S11cj every ordinary networked acquisition producer uses a fixed client/private config, exact image, numeric non-root identity, no pull or publication, read-only root, zero capabilities, no-new-privileges, and bounded resources"
+  echo "  ok  R-S11cj host entry has one QEMU user-network boundary with no host forwarding or Docker fallback; guest producers retain exact images, numeric non-root identity, no pull/publication, read-only roots, zero capabilities, no-new-privileges, and bounded resources"
 fi
 
 echo "== (0i) online-fetch Gradle source authority (R-S11ck/R-S11e-103) =="

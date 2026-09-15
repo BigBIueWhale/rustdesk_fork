@@ -3,18 +3,20 @@
 #
 # The repository is build-oriented and offline-by-construction. This is the only
 # script permitted to touch the network; it materializes every resource the repo
-# does not embed into ./online/ or the private verifier-VM input cache (both
+# does not embed into ./online/inputs/ or the private verifier-VM input cache (both
 # git-ignored, NOT vendored — pinning != vendoring, R-R1), each verified against
 # its pin in scripts/pins.env. Any mismatch aborts fail-closed. The build scripts
 # then run with the network namespace removed (--network=none) and refuse to run
-# if ./online is incomplete or any SHA fails.
+# if ./online/inputs is incomplete or any SHA fails.
 #
 # This reconciles R-R1's "pinning != vendoring" with the offline build: the bulky
 # pinned world is CACHED, not committed — re-creatable from pins.env and
 # re-verifiable, never trusted from the network at build time.
 #
-# Run order (R-B10): host-provision.sh -> online-fetch.sh (once, or on a pins.env
-# change) -> build-* (offline) -> cleanup.sh
+# Run order (R-B10): acquire the authenticated VM bootstrap inputs once, then
+# online-fetch.sh launches the sole networked transaction in a disposable
+# ordinary-user QEMU VM. Only that guest owns a NIC and Docker daemon; build-*
+# remains networkless and cleanup.sh retires operator-owned build state.
 #
 # R-B12 requires each first pin be established by an audited, dual-sourced
 # bootstrap (publisher hash/signature cross-checked) and recorded in pins.env
@@ -29,11 +31,12 @@ load_pins
 # R-S11dh bootstrap is deliberately dispatched before any Docker client, socket,
 # context, or configuration is inspected. These are inert VM inputs, not a host
 # Docker transaction: exact HTTPS bytes enter current-user-private harness state,
-# and only the networkless disposable guest may execute the Docker bundle.
+# and only the disposable acquisition guest may execute the package or Docker bytes.
 acquire_verifier_vm_inputs() {
     [ "$#" -eq 0 ] || die "--verifier-vm-inputs takes no arguments"
     local uid gid state_root vm_root transaction transaction_id staging=
-    local image_name image_path docker_name docker_path
+    local image_name image_path docker_name docker_path git_name git_path
+    local virtiofsd_name virtiofsd_path
     uid="$(/usr/bin/id -u)"
     gid="$(/usr/bin/id -g)"
     [ "$uid" -ne 0 ] || die "verifier-VM input acquisition refuses root"
@@ -157,6 +160,10 @@ acquire_verifier_vm_inputs() {
     image_path="$vm_root/$image_name"
     docker_name="docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
     docker_path="$vm_root/$docker_name"
+    git_name="git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
+    git_path="$vm_root/$git_name"
+    virtiofsd_name="virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
+    virtiofsd_path="$vm_root/$virtiofsd_name"
     acquire_verifier_vm_file \
         "Debian verifier-VM base" \
         "https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$image_name" \
@@ -167,6 +174,19 @@ acquire_verifier_vm_inputs() {
         "https://download.docker.com/linux/static/stable/x86_64/$docker_name" \
         "$docker_path" "$SIZE_VERIFIER_VM_DOCKER_STATIC" sha256 \
         "$SHA256_VERIFIER_VM_DOCKER_STATIC"
+    acquire_verifier_vm_file \
+        "Git verifier-VM runtime package" \
+        "https://deb.debian.org/debian/pool/main/g/git/$git_name" \
+        "$git_path" "$SIZE_VERIFIER_VM_GIT_PACKAGE" sha256 \
+        "$SHA256_VERIFIER_VM_GIT_PACKAGE"
+    acquire_verifier_vm_file \
+        "virtiofsd verifier-VM device backend" \
+        "https://archive.ubuntu.com/ubuntu/pool/universe/r/rust-virtiofsd/$virtiofsd_name" \
+        "$virtiofsd_path" "$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE" sha512 \
+        "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/sha256sum "$virtiofsd_path" | /usr/bin/awk '{print $1}')" \
+      = "$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE" ] \
+        || die "virtiofsd verifier-VM device backend SHA-256 differs"
     log "verifier-VM inputs ready: $vm_root"
     cleanup_verifier_vm_acquisition
 }
@@ -177,8 +197,25 @@ if [ "${1:-}" = "--verifier-vm-inputs" ]; then
     exit 0
 fi
 
+# Every non-bootstrap operation crosses one executable acquisition-VM boundary.
+# A caller cannot opt into the inner implementation with an environment flag:
+# the inner entry independently requires the exact direct-boot command line,
+# root-authored daemon generation, source identity, NIC, one atomic virtiofs
+# cache mount, and two narrow 9p mounts before it inspects the guest Docker socket.
+if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then
+    exec "$SCRIPT_DIR/online-fetch-vm.sh" "$@"
+fi
+"$SCRIPT_DIR/verify-online-fetch-vm-entry.sh"
+if [ "${1:-}" = --vm-authority-probe ]; then
+    [ "$#" -eq 1 ] || die "--vm-authority-probe takes no arguments"
+    exit 0
+fi
+
 readonly DOCKER_BIN=/usr/bin/docker
-readonly GIT_BIN=/usr/bin/git
+readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
+readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
+readonly GIT_EXEC_PATH=$GIT_RUNTIME_ROOT/usr/lib/git-core
+readonly GIT_TEMPLATE_DIR=$GIT_RUNTIME_ROOT/usr/share/git-core/templates
 readonly TAR_BIN=/usr/bin/tar
 readonly FLOCK_BIN=/usr/bin/flock
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
@@ -187,19 +224,31 @@ readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
 readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-output.py"
 readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
-readonly RETIRED_ONLINE_INPUT_ROOT="$REPO_ROOT/.harness-state/retired-online-inputs"
+readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
 readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
+[ "$ONLINE_STATE_ROOT" = "$REPO_ROOT/online" ] \
+    && [ "$ONLINE_DIR" = "$ONLINE_STATE_ROOT/inputs" ] \
+    || die "online-fetch cache layout differs from the one supported state-root/inputs model"
 [ "$ONLINE_FETCH_UID" -ne 0 ] || die "online-fetch refuses host or container-root execution"
 [ "$ONLINE_FETCH_GID" -ne 0 ] || die "online-fetch refuses a root primary group"
 [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable: $DOCKER_BIN"
 [ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
     || die "trusted Docker client metadata changed"
 [ -x "$GIT_BIN" ] || die "trusted Git client is unavailable: $GIT_BIN"
-[ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$GIT_BIN")" = "0:0:755:1" ] \
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$GIT_RUNTIME_ROOT")" = "0:0:555" ] \
+    || die "trusted Git runtime root metadata changed"
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$GIT_BIN")" = \
+  "0:0:555:1:$SIZE_VERIFIER_VM_GIT_BINARY" ] \
     || die "trusted Git client metadata changed"
+[ "$(/usr/bin/sha256sum "$GIT_BIN" | /usr/bin/awk '{print $1}')" = \
+  "$SHA256_VERIFIER_VM_GIT_BINARY" ] \
+    || die "trusted Git client bytes changed"
+[ -d "$GIT_EXEC_PATH" ] && [ ! -L "$GIT_EXEC_PATH" ] \
+    && [ -d "$GIT_TEMPLATE_DIR" ] && [ ! -L "$GIT_TEMPLATE_DIR" ] \
+    || die "trusted Git runtime layout changed"
 [ -x "$TAR_BIN" ] || die "trusted tar client is unavailable: $TAR_BIN"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$TAR_BIN")" = "0:0:755:1" ] \
     || die "trusted tar client metadata changed"
@@ -467,7 +516,8 @@ online_image_provenance() {
 }
 
 assert_online_fetch_source_tools() {
-    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$GIT_BIN")" = "0:0:755:1" ] \
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$GIT_BIN")" = \
+      "0:0:555:1:$SIZE_VERIFIER_VM_GIT_BINARY" ] \
         || die "trusted Git client metadata changed"
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$TAR_BIN")" = "0:0:755:1" ] \
         || die "trusted tar client metadata changed"
@@ -484,6 +534,9 @@ online_source_git() {
         GIT_CONFIG_NOSYSTEM=1 \
         GIT_CONFIG_GLOBAL=/dev/null \
         GIT_ATTR_NOSYSTEM=1 \
+        GIT_EXEC_PATH="$GIT_EXEC_PATH" \
+        GIT_TEMPLATE_DIR="$GIT_TEMPLATE_DIR" \
+        GIT_ALLOW_PROTOCOL=file \
         GIT_NO_REPLACE_OBJECTS=1 \
         GIT_OPTIONAL_LOCKS=0 \
         "$GIT_BIN" \
@@ -632,6 +685,17 @@ online_docker_run_archive_acquisition() {
 }
 
 prepare_online_root() {
+    if [ -e "$ONLINE_STATE_ROOT" ] || [ -L "$ONLINE_STATE_ROOT" ]; then
+        [ -d "$ONLINE_STATE_ROOT" ] && [ ! -L "$ONLINE_STATE_ROOT" ] \
+            || die "online cache state root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g' -- "$ONLINE_STATE_ROOT")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" ] \
+            || die "online cache state root is not owned by the acquisition identity"
+        /usr/bin/chmod 0700 "$ONLINE_STATE_ROOT"
+    else
+        /usr/bin/install -d -m 0700 "$ONLINE_STATE_ROOT"
+    fi
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_STATE_ROOT")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "online cache state root is not current-user-private mode 0700"
     if [ -e "$ONLINE_DIR" ] || [ -L "$ONLINE_DIR" ]; then
         [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
             || die "online cache root is not one real directory"
@@ -646,16 +710,10 @@ prepare_online_root() {
 }
 
 prepare_retired_online_input_root() {
-    local retired_state_parent="$REPO_ROOT/.harness-state"
-    if [ -e "$retired_state_parent" ] || [ -L "$retired_state_parent" ]; then
-        [ -d "$retired_state_parent" ] && [ ! -L "$retired_state_parent" ] \
-            || die "harness state root is not one real directory"
-    else
-        /usr/bin/install -d -m 0700 -- "$retired_state_parent"
-    fi
-    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$retired_state_parent")" \
-       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-        || die "harness state root is not acquisition-identity-owned mode 0700"
+    [ -d "$ONLINE_STATE_ROOT" ] && [ ! -L "$ONLINE_STATE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_STATE_ROOT")" \
+             = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "online cache state root is not acquisition-identity-owned mode 0700"
     if [ -e "$RETIRED_ONLINE_INPUT_ROOT" ] || [ -L "$RETIRED_ONLINE_INPUT_ROOT" ]; then
         [ -d "$RETIRED_ONLINE_INPUT_ROOT" ] && [ ! -L "$RETIRED_ONLINE_INPUT_ROOT" ] \
             || die "retired online-input root is not one real directory"
@@ -1066,7 +1124,7 @@ cargo_vendor_output_args() {
         --rust-sha256 "$SHA256_RUST_1_75" \
         --vendor-sha256 "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         --config-sha256 "$SHA256_CARGO_VENDOR_CONFIG" \
-        --config-vendor-path "$REPO_ROOT/online/cargo-vendor" \
+        --config-vendor-path "$ONLINE_DIR/cargo-vendor" \
         --config-size "$SIZE_CARGO_VENDOR_CONFIG" \
         --files "$CARGO_VENDOR_FILES_V1" \
         --directories "$CARGO_VENDOR_DIRECTORIES_V1" \
@@ -3155,7 +3213,7 @@ stage_cargo_installed_tool() {
         die "cannot prepare private $kind Cargo tool staging"
     fi
     output_id="$(/usr/bin/stat -c '%d:%i' -- "$staging/output")"
-    log "installing pinned $package $tool_version into private checked output; ./online is read-only"
+    log "installing pinned $package $tool_version into private checked output; ./online/inputs is read-only"
     online_docker_run \
         --env CARGO_TOOL_PACKAGE="$package" \
         --env CARGO_TOOL_BINARY="$binary" \
@@ -3221,7 +3279,7 @@ stage_cargo_installed_tool() {
     [ "$publication_status" -eq 0 ] || die "networked $kind Cargo tool publication failed"
 }
 
-# ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
+# ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/inputs/frb-tool ──
 # build_one needs flutter_rust_bridge_codegen to (re)generate the bridge; it cannot
 # `cargo install` it offline (its deps are not in the main vendor set), so build it HERE
 # (networked) in the deb-builder image with the pinned rust — exactly as upstream's
@@ -3231,7 +3289,7 @@ build_frb_codegen() {
     stage_cargo_installed_tool frb "$builder"
 }
 
-# ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/pub-cache ──
+# ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/inputs/pub-cache ──
 # Pub receives the canonical cache path but only through one nested private output
 # mount. The complete online input closure and the exact committed source authority
 # remain read-only. Both the app and pinned flutter_tools lockfiles are enforced.
@@ -3454,7 +3512,7 @@ stage_pub_cache() {
     fi
     if [ "$current" -eq 0 ]; then
         prepare_pub_cache_output_staging
-        log "staging both enforced Pub lock closures into one private output; ./online remains read-only"
+        log "staging both enforced Pub lock closures into one private output; ./online/inputs remains read-only"
         online_docker_run \
             --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
             --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
@@ -3546,10 +3604,10 @@ stage_pub_cache() {
 # libyuv fetches from googlesource, whose gitiles
 # `+archive` tarballs are EMPIRICALLY non-reproducible (two fetches differ — even decompressed),
 # so the URL can't be SHA-pinned and R-R1 forbids vendoring. Capture a deterministic
-# `git archive --format=tar | gzip -n` of the pinned commit into ./online + verify its SHA512
+# `git archive --format=tar | gzip -n` of the pinned commit into ./online/inputs + verify its SHA512
 # against pins.env; the libyuv overlay portfile then consumes /online/libyuv-<commit>.tar.gz
 # (file://, SHA512-verified) on the Linux build hosts — both stage_vcpkg_natives + _arm64 mount the
-# SAME file. (The Windows golden VM has no ./online capture, so the portfile falls back to
+# SAME file. (The Windows golden VM has no ./online/inputs capture, so the portfile falls back to
 # vcpkg_from_git.) MUST run before stage_vcpkg_natives[_arm64]. The archive is byte-deterministic
 # given the image's git (this SHA512 was computed in this deb-builder, git 2.17.1 — re-pin if it
 # changes; same class as the SHA256_VCPKG_120DEAC3 GitHub-archive caveat in pins.env).
@@ -4058,7 +4116,7 @@ stage_android_ndk() {
 # vcpkg's arm64-android triplet cross-compiles them with the NDK clang (ANDROID_NDK_HOME) — no
 # host gcc-8 needed (ARM NEON, not x86 AVX2). CLASSIC mode (--overlay-ports + explicit ports),
 # not manifest mode: manifest mode needs the vcpkg tree to be a git checkout (to resolve the
-# builtin-baseline), but ./online stages the pinned TARBALL (no .git) — classic mode over the
+# builtin-baseline), but ./online/inputs stages the pinned TARBALL (no .git) — classic mode over the
 # tarball baseline ports + the overlay is equivalent + git-free.
 stage_vcpkg_natives_arm64() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
@@ -4169,7 +4227,7 @@ stage_vcpkg_natives_arm64() {
 # ndk_arm64.sh runs `cargo ndk ... build` to cross-compile librustdesk.so for android;
 # cargo-ndk is NOT in the main cargo-vendor set, so `cargo install` it HERE (networked) in
 # the android-builder image with the pinned rust — exactly as upstream's android job does
-# (`cargo install cargo-ndk --version <pin> --locked`). A host-target tool → ./online/cargo-ndk-tool.
+# (`cargo install cargo-ndk --version <pin> --locked`). A host-target tool → ./online/inputs/cargo-ndk-tool.
 stage_cargo_ndk() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
     stage_cargo_installed_tool cargo-ndk "$builder"
@@ -4675,7 +4733,7 @@ stage_gradle() {
         return 0
     fi
     prepare_gradle_output_staging "${semantic_args[@]}"
-    log "warming Gradle into one private cache output; the exact SDK and ./online remain read-only"
+    log "warming Gradle into one private cache output; the exact SDK and ./online/inputs remain read-only"
     online_docker_run \
         --env APK_MODE=warm \
         --env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \
@@ -5474,7 +5532,7 @@ main() {
         '') ;;
         *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-win-helper-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
-    log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
+    log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images
     verify_or_load_devcheck_image
     verify_or_load_apple_check_image
@@ -5499,7 +5557,7 @@ main() {
     stage_windows_wix_nuget
     verify_online_pinned_archives
     require_online_complete
-    log "online-fetch complete — ./online equals its pinned closure. Builds run --network=none."
+    log "online-fetch complete — ./online/inputs equals its pinned closure. Builds run --network=none."
 }
 
 main "$@"

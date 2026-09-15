@@ -210,7 +210,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("readonly FLOCK_BIN=/usr/bin/flock", "fixed transaction-lock client"),
         ("pub_cache_output_tool() {", "fixed Pub-cache output helper"),
         ("pub_cache_provenance_args() {", "closed provenance mapper"),
-        ('readonly RETIRED_ONLINE_INPUT_ROOT="$REPO_ROOT/.harness-state/retired-online-inputs"',
+        ('readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"',
          "private retired-record namespace"),
         ("prepare_retired_online_input_root() {", "private retired-record root"),
         ('= "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700"',

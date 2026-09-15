@@ -1,805 +1,287 @@
 #!/usr/bin/env python3
-"""Validate the online acquisition containers' execution authority."""
+"""Guard the one online-acquisition VM boundary and its container floor.
+
+This is deliberately a compact source invariant. The authoritative behavior is
+exercised by ``online-fetch.sh --self-test-vm-authority`` in a real QEMU guest;
+this program only prevents an obvious host-Docker or host-listener fallback from
+being added beside that tested path.
+"""
 
 import argparse
 import pathlib
 import re
-from typing import Dict, NamedTuple, Tuple
 
 
 class AuthorityError(Exception):
     pass
 
 
-class Mutation(NamedTuple):
-    source: str
-    old: str
-    new: str
-    label: str
-
-
 def require(source: str, token: str, label: str) -> None:
     if token not in source:
-        raise AuthorityError("missing {}".format(label))
-
-
-def require_count(source: str, token: str, count: int, label: str) -> None:
-    observed = source.count(token)
-    if observed != count:
-        raise AuthorityError("{} count is {}, expected {}".format(label, observed, count))
+        raise AuthorityError(f"missing {label}")
 
 
 def forbid(source: str, token: str, label: str) -> None:
     if token in source:
-        raise AuthorityError("forbidden {}".format(label))
+        raise AuthorityError(f"forbidden {label}")
 
 
 def extract(source: str, start: str, end: str, label: str) -> str:
     if source.count(start) != 1:
-        raise AuthorityError("{} start cardinality differs".format(label))
+        raise AuthorityError(f"{label} start cardinality differs")
     begin = source.index(start)
     finish = source.find(end, begin + len(start))
     if finish < 0:
-        raise AuthorityError("{} end is missing".format(label))
+        raise AuthorityError(f"{label} end is absent")
     return source[begin : finish + len(end)]
 
 
-def forbid_container_authority(source: str, label: str) -> None:
-    for token, description in (
-        ("--privileged", "privileged mode"),
-        ("--cap-add", "added capability"),
-        ("--network=host", "host network namespace"),
-        ("--network host", "host network namespace"),
-        ("--pid=host", "host PID namespace"),
-        ("--pid host", "host PID namespace"),
-        ("--ipc=host", "host IPC namespace"),
-        ("--ipc host", "host IPC namespace"),
-        ("--uts=host", "host UTS namespace"),
-        ("--uts host", "host UTS namespace"),
-        ("--publish", "published port"),
-        ("--publish-all", "published ports"),
-        ("--expose", "exposed port"),
-        ("--device", "host device"),
-        ("/var/run/docker.sock:/var/run/docker.sock", "Docker socket volume"),
-        ("source=/var/run/docker.sock", "Docker socket mount"),
+def validate(repo: pathlib.Path) -> None:
+    online = (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8")
+    library = (repo / "scripts/lib.sh").read_text(encoding="utf-8")
+    pins = (repo / "scripts/pins.env").read_text(encoding="utf-8")
+    outer = (repo / "scripts/online-fetch-vm.sh").read_text(encoding="utf-8")
+    guest = (repo / "scripts/online-fetch-vm-guest.sh").read_text(encoding="utf-8")
+    preflight = (repo / "scripts/verify-online-fetch-vm-entry.sh").read_text(
+        encoding="utf-8"
+    )
+    launcher = (repo / "scripts/launch-landlocked-virtiofsd.py").read_text(
+        encoding="utf-8"
+    )
+    rename_probe = (
+        repo / "scripts/verify-online-fetch-virtiofs-rename.py"
+    ).read_text(encoding="utf-8")
+
+    dispatch = 'if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then'
+    require(online, dispatch, "outer VM dispatch")
+    require(online, 'exec "$SCRIPT_DIR/online-fetch-vm.sh" "$@"', "sole outer entry")
+    require(
+        online,
+        '"$SCRIPT_DIR/verify-online-fetch-vm-entry.sh"',
+        "inner authority preflight",
+    )
+    if not online.index(dispatch) < online.index("readonly DOCKER_BIN=/usr/bin/docker"):
+        raise AuthorityError("host VM dispatch does not precede Docker authority")
+    if not online.index('if [ "${1:-}" = "--verifier-vm-inputs" ]') < online.index(
+        dispatch
     ):
-        forbid(source, token, "{} {}".format(label, description))
-    if re.search(r"^\s+-(?:p|P)(?:\s|=)", source, re.MULTILINE):
-        raise AuthorityError("forbidden {} short published port".format(label))
+        raise AuthorityError("authenticated VM bootstrap is not isolated before dispatch")
 
-
-def validate(sources: Dict[str, str]) -> None:
-    shell = sources["shell"]
     for token, label in (
-        ("readonly DOCKER_BIN=/usr/bin/docker", "fixed Docker client"),
-        ("readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock",
-         "fixed local Docker endpoint"),
-        ('[ "$ONLINE_FETCH_UID" -ne 0 ]', "host-root refusal"),
-        ('[ "$ONLINE_FETCH_GID" -ne 0 ]', "root-primary-group refusal"),
-        ('[ "$(stat -c \'%u:%g:%a:%h\' -- "$DOCKER_BIN")" = "0:0:755:1" ]',
-         "trusted Docker client metadata"),
-        ("for variable in DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
-         "caller Docker authority rejection"),
-        ("ONLINE_FETCH_TMP=\"$(umask 077 && mktemp -d /tmp/rustdesk-online-fetch.",
-         "private workspace"),
-        ("trap cleanup_online_fetch_tmp EXIT", "private workspace cleanup"),
-        ('readonly ONLINE_FETCH_DOCKER_CONFIG="$ONLINE_FETCH_TMP/docker-config"',
-         "private Docker configuration"),
-        ("printf '{}\\n' >\"$ONLINE_FETCH_DOCKER_CONFIG/config.json\"",
-         "canonical empty Docker configuration"),
-        ('[ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ]',
-         "Docker configuration byte proof"),
-        ("env -i \\\n        PATH=/usr/bin:/bin", "closed Docker client environment"),
-        ('--host "$ONLINE_FETCH_DOCKER_HOST"', "explicit Docker endpoint"),
-        ('--config "$ONLINE_FETCH_DOCKER_CONFIG"', "explicit Docker configuration"),
-        ("online_image_provenance()", "confined image-provenance funnel"),
-        ("require_online_fetch_builder_image()", "verified immutable-image funnel"),
-        ('--image-ref "$WIN_HELPER_IMAGE_ID"',
-         "exact certified Windows-helper verification"),
-        ('stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
-         "exact WiX package acquisition funnel"),
+        ("/var/run/docker.sock", "host Docker socket"),
+        ("DOCKER_HOST", "host Docker environment"),
+        ("docker run", "host Docker execution"),
+        ("docker build", "host Docker build"),
+        ("docker pull", "host Docker pull"),
+        (",hostfwd=", "QEMU host forwarding"),
+        ("-netdev tap", "host TAP network"),
+        ("-nic tap", "host TAP network"),
+        ("-netdev bridge", "host bridge network"),
+        ("-nic bridge", "host bridge network"),
+        ("-virtfs", "legacy 9p export"),
+        ("rustdesk-online-cache", "split active-cache export"),
+        ("rustdesk-retired-cache", "split retired-cache export"),
     ):
-        require(shell, token, label)
-    forbid(
-        shell,
-        "mcr.microsoft.com/dotnet/sdk:8.0",
-        "mutable WiX cache producer",
-    )
-
-    docker_client = extract(
-        shell,
-        "online_docker() {",
-        '    return "$status"\n}',
-        "Docker client funnel",
-    )
-    require(
-        docker_client,
-        "env -i \\\n        PATH=/usr/bin:/bin",
-        "Docker client funnel closed environment",
-    )
-    require(
-        docker_client,
-        '--host "$ONLINE_FETCH_DOCKER_HOST"',
-        "Docker client funnel fixed endpoint",
-    )
-    require(
-        docker_client,
-        '--config "$ONLINE_FETCH_DOCKER_CONFIG"',
-        "Docker client funnel private configuration",
-    )
-
-    no_vcs_docker_client = extract(
-        shell,
-        "online_docker_without_vcs() {",
-        '    return "$status"\n}',
-        "VCS-suppressed Docker client funnel",
-    )
+        forbid(outer, token, label)
     for token, label in (
+        ('[ "$HOST_UID" -ne 0 ]', "host-root refusal"),
+        ('[ "$HOST_GID" -ne 0 ]', "host root-group refusal"),
+        ("bundle create \"$SOURCE_BUNDLE\" refs/heads/master", "source Git bundle"),
+        ("bundle verify \"$SOURCE_BUNDLE\"", "source-bundle verification"),
+        ('"git.deb=$GIT_PACKAGE"', "authenticated Git package payload"),
+        ('retire_private_socket_path "$SERIAL_SOCKET"', "already-absent-safe serial cleanup"),
+        ("-accel kvm", "KVM guest boundary"),
         (
-            "env -i \\\n        PATH=/usr/bin:/bin",
-            "closed environment",
+            "-sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny",
+            "QEMU seccomp sandbox",
         ),
         (
-            "BUILDX_GIT_INFO=false",
-            "unverified VCS suppression",
+            "-netdev user,id=acquisition,ipv4=on,ipv6=off,net=10.0.2.0/24,host=10.0.2.2,dns=10.0.2.3,dhcpstart=10.0.2.15,restrict=off",
+            "explicit unprivileged outbound-only network",
         ),
         (
-            '--host "$ONLINE_FETCH_DOCKER_HOST"',
-            "fixed endpoint",
+            "-device virtio-net-pci,netdev=acquisition,mac=52:54:00:52:44:01",
+            "fixed guest NIC",
         ),
+        ("memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on", "shared VM memory"),
+        ("vhost-user-fs-pci,chardev=cache-state,tag=rustdesk-cache-state,queue-size=1024", "atomic virtiofs cache device"),
+        ("vhost-user-fs-pci,chardev=systemd-cache,tag=rustdesk-systemd-cache,queue-size=1024", "systemd-cache virtiofs device"),
+        ("vhost-user-fs-pci,chardev=result,tag=rustdesk-result,queue-size=1024", "bounded-result virtiofs device"),
+        ('capture_listeners >"$LISTENERS_BEFORE"', "pre-run listener baseline"),
+        ('capture_listeners >"$LISTENERS_DURING"', "live listener observation"),
+        ('capture_listeners >"$LISTENERS_AFTER"', "post-run listener observation"),
+        ("listeners=unchanged", "listener-invariance receipt"),
+        ("udp=denied", "TCP-only acquisition receipt"),
+        ("readonly SERIAL_LIMIT=16777216", "serial-output bound"),
+    ):
+        require(outer, token, label)
+    if outer.count("vhost-user-fs-pci") != 3:
+        raise AuthorityError("writable virtiofs device inventory differs")
+    if outer.count("start_virtiofsd ") != 3:
+        raise AuthorityError("Landlocked virtiofsd authority inventory differs")
+    require(library, 'ONLINE_STATE_ROOT="$REPO_ROOT/online"', "online state root")
+    require(
+        library,
+        'ONLINE_DIR="${ONLINE_DIR:-$ONLINE_STATE_ROOT/inputs}"',
+        "active-cache child layout",
+    )
+    require(
+        online,
+        'readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"',
+        "retired-cache sibling layout",
+    )
+    for token, label in (
+        ('VERIFIER_VM_GIT_PACKAGE_VERSION="1:2.39.5-0+deb12u3"', "Git package version pin"),
+        ('SHA256_VERIFIER_VM_GIT_PACKAGE="637a85ddd6247fab13bdd0592f2f39aff04ce4dbf0655d3ab553ac359a38ce6f"', "Git package pin"),
+        ('SHA256_VERIFIER_VM_GIT_BINARY="2540879925a6881e3877ff7e3330746ba3027b04edf16a3a12dccd1644c4f32d"', "Git binary pin"),
+        ('VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION="1.10.0-1ubuntu0.1"', "virtiofsd package version pin"),
+        ('SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE="8069325e87cd4485fdb4dd2dde0e54dc68345847c92a1f5d9e9916dadd549b07"', "virtiofsd package pin"),
+        ('SHA256_VERIFIER_VM_VIRTIOFSD_BINARY="e256a63975f3ba343d651ce001fdc1f1128a5967612f0f102ab1387727ead140"', "virtiofsd binary pin"),
+    ):
+        require(pins, token, label)
+
+    for token, label in (
+        ('[ "$(/usr/bin/id -u)" = 0 ]', "VM-local root bootstrap"),
+        ('/usr/bin/dpkg-deb --extract "$GIT_PACKAGE" "$GIT_RUNTIME_ROOT"', "Git runtime extraction"),
+        ('readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git', "fixed Git runtime"),
+        ('GIT_ALLOW_PROTOCOL=file', "Git non-file protocol refusal"),
+        ('bundle verify "$SOURCE_BUNDLE"', "guest source-bundle verification"),
+        ("clone --no-hardlinks --no-tags", "source-bundle clone"),
+        ("rustdesk-cache-state", "common cache-state export"),
+        ("mount -t virtiofs", "virtiofs cache mount"),
+        ('"$REPO/online/inputs"', "active-cache child"),
+        ('"$REPO/online/retired"', "retired-cache child"),
+        ("rustdesk-systemd-cache", "narrow systemd-cache export"),
+        ("rustdesk-result", "bounded result export"),
+        ('--host "unix://$SOCKET"', "guest Unix-only Docker endpoint"),
+        ("--bip 172.30.0.1/24", "fixed guest Docker bridge"),
+        ("--ip 127.0.0.1", "guest published-port loopback default"),
+        ("--iptables=true", "guest-only firewall authority"),
+        ("--ip-forward=true", "guest-only forwarding authority"),
+        ("--ip-masq=true", "guest-only egress masquerade"),
+        ("--dns-opt use-vc", "container DNS-over-TCP policy"),
+        ("options use-vc", "guest DNS-over-TCP policy"),
+        ("/usr/sbin/iptables --wait -I OUTPUT 1 -p udp -j REJECT", "guest UDP denial"),
+        ("/usr/sbin/iptables --wait -I DOCKER-USER 1 -p udp -j REJECT", "container UDP denial"),
+        ("--userland-proxy=false", "Docker proxy refusal"),
+        ("VM-local root passed the online-fetch entry preflight", "root negative test"),
+        ("foreign VM principal passed", "foreign-principal negative test"),
+        ("FOREIGN_PREFLIGHT_ROOT", "read-only foreign-principal preflight fixture"),
+        ("--network=bridge --read-only", "real bridge-container probe"),
+        ('--user "$ACQUISITION_UID:$ACQUISITION_GID"', "probe nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges", "probe privilege floor"),
+        ("--pids-limit=64 --memory=256m --memory-swap=256m --cpus=1", "probe bounds"),
+        ("https://files.pythonhosted.org/", "real pinned HTTPS probe"),
+        ("543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f", "probe digest"),
+        ("online-fetch-vm-cache-transport-v1", "cache-transport observation"),
+        ("VIRTIOFS_RENAME_CONTRACT=pass", "flagged-rename runtime receipt"),
+        ("ulimit -f 32768", "transaction-output bound"),
+        ("verify_daemon_generation", "root pre/post daemon-executable binding"),
+    ):
+        require(guest, token, label)
+    if guest.count("/usr/bin/mount -t virtiofs") != 3:
+        raise AuthorityError("guest writable virtiofs mount inventory differs")
+    forbid(guest, "mount -t 9p", "legacy guest 9p mount")
+    for token, label in (
+        ("--host tcp", "guest Docker TCP endpoint"),
+        ("--privileged", "privileged acquisition container"),
+        ("--network=host", "host-network acquisition container"),
+        ("--pid=host", "host-PID acquisition container"),
+        ("--ipc=host", "host-IPC acquisition container"),
+        ("--uts=host", "host-UTS acquisition container"),
+        ("--cap-add", "added acquisition capability"),
+        ("--publish", "published acquisition port"),
+        ("--device", "guest-device grant"),
+    ):
+        forbid(guest, token, label)
+
+    for token, label in (
+        ("online-fetch VM entry refuses root", "inner root refusal"),
+        ("caller is not the exact admitted acquisition principal", "principal binding"),
+        ("kernel command line is not the acquisition-VM authority", "direct-boot proof"),
+        ("guest Docker daemon generation differs", "daemon-generation proof"),
+        ("guest Docker Unix-socket authority differs", "Unix-socket proof"),
+        ("acquisition NIC identity is absent or ambiguous", "NIC proof"),
+        ("cache export filesystem differs", "cache-boundary proof"),
+        ("rustdesk-systemd-cache virtiofs noexec", "systemd-cache virtiofs proof"),
+        ("rustdesk-result virtiofs noexec", "bounded-result virtiofs proof"),
         (
-            '--config "$ONLINE_FETCH_DOCKER_CONFIG"',
-            "private configuration",
+            "active and retired cache roots do not share one atomic-rename filesystem",
+            "same-mount replacement proof",
         ),
+        ("admitted source identity changed", "source replay proof"),
+        ("fixed Git runtime binary identity differs", "Git runtime identity proof"),
     ):
-        require(
-            no_vcs_docker_client,
-            token,
-            "VCS-suppressed Docker client funnel {}".format(label),
+        require(preflight, token, label)
+
+    for token, label in (
+        ("Landlock ABI 8 or newer is required", "mandatory Landlock ABI"),
+        ("HANDLED_NET = NET_BIND_TCP | NET_CONNECT_TCP", "TCP deny-by-default policy"),
+        ('expect_landlock_denial("outside-file read"', "filesystem escape negative probe"),
+        ('expect_landlock_denial("TCP bind"', "TCP bind negative probe"),
+        ('expect_landlock_denial("TCP connect"', "TCP connect negative probe"),
+        ('choices=("cache", "systemd-cache", "bounded-result")', "enumerated filesystem authority"),
+        ('"--sandbox=none"', "explicit rootless backend mode"),
+        ('"--seccomp=kill"', "virtiofsd seccomp floor"),
+        ("os.execve(binary_fd", "descriptor-executed backend"),
+    ):
+        require(launcher, token, label)
+    for token, label in (
+        ("RENAME_NOREPLACE = 1", "no-clobber rename flag"),
+        ("RENAME_EXCHANGE = 2", "exchange rename flag"),
+        ("errno.EEXIST", "occupied-destination verdict"),
+        ("noreplace=cross-parent collision=no-clobber exchange=nonempty", "behavioral rename receipt"),
+    ):
+        require(rename_probe, token, label)
+
+    for function_name, network, pids, memory in (
+        ("online_docker_run", "bridge", "2048", "16g"),
+        ("online_docker_run_offline", "none", "512", "4g"),
+        ("online_docker_run_cargo_semantic", "none", "256", "4g"),
+        ("online_docker_run_pub_semantic", "none", "512", "8g"),
+        ("online_docker_run_archive_acquisition", "bridge", "256", "4g"),
+    ):
+        body = extract(
+            online,
+            f"{function_name}() {{",
+            '        "$@"\n}',
+            function_name,
         )
-
-    run = extract(
-        shell,
-        "online_docker_run() {",
-        '        "$@"\n}',
-        "online acquisition launch funnel",
-    )
-    for token, label in (
-        ("online_docker run --rm", "ephemeral container"),
-        ("--pull=never", "no-pull policy"),
-        ("--network=bridge", "intentional isolated bridge egress"),
-        ("--read-only", "read-only root"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "numeric nonroot identity"),
-        ("--cap-drop=ALL", "complete capability drop"),
-        ("--security-opt=no-new-privileges", "no-new-privileges"),
-        ("--pids-limit=2048", "PID ceiling"),
-        ("--memory=16g", "memory ceiling"),
-        ("--memory-swap=16g", "no-swap expansion"),
-        ("--cpus=4", "CPU ceiling"),
-        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g",
-         "bounded scratch"),
-    ):
-        require(run, token, "launch funnel {}".format(label))
-    forbid_container_authority(run, "launch funnel")
-
-    offline_run = extract(
-        shell,
-        "online_docker_run_offline() {",
-        '        "$@"\n}',
-        "networkless archive launch funnel",
-    )
-    for token, label in (
-        ("online_docker run --rm", "ephemeral container"),
-        ("--pull=never", "no-pull policy"),
-        ("--network=none", "network removal"),
-        ("--read-only", "read-only root"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "numeric nonroot identity"),
-        ("--cap-drop=ALL", "complete capability drop"),
-        ("--security-opt=no-new-privileges", "no-new-privileges"),
-        ("--pids-limit=512", "PID ceiling"),
-        ("--memory=4g", "memory ceiling"),
-        ("--memory-swap=4g", "no-swap expansion"),
-        ("--cpus=2", "CPU ceiling"),
-        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-         "bounded non-executable scratch"),
-    ):
-        require(
-            offline_run,
-            token,
-            "networkless archive launch funnel {}".format(label),
-        )
-    forbid_container_authority(
-        offline_run,
-        "networkless archive launch funnel",
-    )
-
-    cargo_semantic_run = extract(
-        shell,
-        "online_docker_run_cargo_semantic() {",
-        '        "$@"\n}',
-        "networkless Cargo semantic launch funnel",
-    )
-    for token, label in (
-        ("online_docker run --rm", "ephemeral container"),
-        ("--pull=never", "no-pull policy"),
-        ("--network=none", "network removal"),
-        ("--read-only", "read-only root"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "numeric nonroot identity"),
-        ("--cap-drop=ALL", "complete capability drop"),
-        ("--security-opt=no-new-privileges", "no-new-privileges"),
-        ("--pids-limit=256", "PID ceiling"),
-        ("--memory=4g", "memory ceiling"),
-        ("--memory-swap=4g", "no-swap expansion"),
-        ("--cpus=2", "CPU ceiling"),
-        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g",
-         "bounded executable scratch"),
-    ):
-        require(
-            cargo_semantic_run,
-            token,
-            "networkless Cargo semantic launch funnel {}".format(label),
-        )
-    forbid_container_authority(
-        cargo_semantic_run,
-        "networkless Cargo semantic launch funnel",
-    )
-
-    acquisition_run = extract(
-        shell,
-        "online_docker_run_archive_acquisition() {",
-        '        "$@"\n}',
-        "networked archive acquisition launch funnel",
-    )
-    for token, label in (
-        ("online_docker run --rm", "ephemeral container"),
-        ("--pull=never", "no-pull policy"),
-        ("--network=bridge", "isolated acquisition egress"),
-        ("--read-only", "read-only root"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-         "numeric nonroot identity"),
-        ("--cap-drop=ALL", "complete capability drop"),
-        ("--security-opt=no-new-privileges", "no-new-privileges"),
-        ("--pids-limit=256", "PID ceiling"),
-        ("--memory=4g", "memory ceiling"),
-        ("--memory-swap=4g", "no-swap expansion"),
-        ("--cpus=2", "CPU ceiling"),
-        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-         "bounded non-executable scratch"),
-    ):
-        require(
-            acquisition_run,
-            token,
-            "networked archive acquisition launch funnel {}".format(label),
-        )
-    forbid_container_authority(
-        acquisition_run,
-        "networked archive acquisition launch funnel",
-    )
-
-    provenance = extract(
-        shell,
-        "online_image_provenance() {",
-        '    return "$status"\n}',
-        "image-provenance funnel",
-    )
-    require_count(
-        provenance,
-        "assert_online_fetch_docker_authority",
-        2,
-        "image-provenance Docker authority proofs",
-    )
-    require(
-        provenance,
-        '/usr/bin/python3 "$LIB_DIR/offline-image-provenance.py" "$@"',
-        "fixed image-provenance program",
-    )
-    require(
-        provenance,
-        "env -i \\\n        PATH=/usr/bin:/bin \\\n        HOME=\"$ONLINE_FETCH_TMP\" \\\n"
-        "        DOCKER_HOST=\"$ONLINE_FETCH_DOCKER_HOST\" \\\n"
-        "        DOCKER_CONFIG=\"$ONLINE_FETCH_DOCKER_CONFIG\"",
-        "closed image-provenance environment",
-    )
-
-    require_count(shell, "online_docker_run ", 8, "ordinary acquisition launch inventory")
-    require_count(
-        shell,
-        "stage_cargo_installed_tool ",
-        2,
-        "closed Cargo-tool producer invocations",
-    )
-    require(
-        shell,
-        'stage_cargo_installed_tool frb "$builder"',
-        "FRB typed producer invocation",
-    )
-    require(
-        shell,
-        'stage_cargo_installed_tool cargo-ndk "$builder"',
-        "cargo-ndk typed producer invocation",
-    )
-    semantic = extract(
-        shell,
-        "online_docker_run_pub_semantic() {",
-        "\n}\n\n# Exact archive acquisition",
-        "Pub-cache networkless semantic funnel",
-    )
-    for token, label in (
-        ("online_docker run --rm --pull=never --network=none --read-only",
-         "ephemeral no-pull networkless read-only launch"),
-        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "numeric nonroot identity"),
-        ("--cap-drop=ALL --security-opt=no-new-privileges",
-         "privilege confinement"),
-        ("--pids-limit=512 --memory=8g --memory-swap=8g --cpus=4",
-         "resource ceilings"),
-        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=5g",
-         "bounded scratch"),
-    ):
-        require(semantic, token, "Pub-cache semantic {}".format(label))
-    forbid_container_authority(semantic, "Pub-cache semantic funnel")
-    resolution = extract(
-        shell,
-        "verify_pub_cache_resolution() {",
-        "\n}\n\nstage_pub_cache() {",
-        "Pub-cache networkless semantic launch",
-    )
-    require(
-        resolution,
-        "online_docker_run_pub_semantic \\",
-        "Pub-cache semantic funnel use",
-    )
-    forbid_container_authority(resolution, "Pub-cache semantic launch")
-
-    require_count(
-        shell,
-        "online_docker run ",
-        5,
-        "ordinary, archive-expansion, Cargo/Pub semantic, and networked archive Docker primitives",
-    )
-    require_count(
-        shell,
-        "--pull=never",
-        5,
-        "five runtime launch no-pull policies",
-    )
-    require_count(
-        shell,
-        "online_docker buildx build \\\n"
-        "        --network=none --pull=false --no-cache",
-        1,
-        "Dart advisory networkless no-pull candidate build",
-    )
-    require_count(
-        shell,
-        "online_docker buildx build \\\n"
-        "        --network=default --pull=true --no-cache",
-        1,
-        "Rust advisory networked pull-enabled candidate build",
-    )
-    for token, label in (
-        ("--read-only", "root-filesystem policy"),
-        ("--user ", "container identity"),
-        ("--cap-drop=", "capability policy"),
-        ("--security-opt=", "security policy"),
-        ("--pids-limit=", "PID policy"),
-        ("--memory=", "memory policy"),
-        ("--memory-swap=", "swap policy"),
-        ("--cpus=", "CPU policy"),
-        ("--tmpfs ", "scratch policy"),
-    ):
-        require_count(shell, token, 5, "five-launch {}".format(label))
-    require_count(
-        shell,
-        'local builder="$DEB_BUILDER_IMAGE_ID"',
-        5,
-        "exact Debian builder consumers",
-    )
-    require_count(
-        shell,
-        'local builder="$ANDROID_BUILDER_IMAGE_ID"',
-        9,
-        "exact Android builder consumers",
-    )
-    require_count(
-        shell,
-        "require_online_fetch_builder_image ",
-        13,
-        "per-launch-site exact-image verification",
-    )
-
-    for token, label in (
-        ("compatibility_tag", "compatibility-tag API"),
-        ('"$builder" bash', "legacy mutable launch shape"),
-        ("online_docker_run \"$@\"", "external Docker option passthrough"),
-        ("online_docker_run ${", "environment-selected Docker option passthrough"),
-        ("online_docker_run ubuntu:", "public Ubuntu runtime tag"),
-        ("online_docker_run mcr.microsoft.com", "public .NET runtime tag"),
-        ("apt-get update -qq", "live package installation in an ordinary producer"),
-    ):
-        forbid(shell, token, label)
-    if re.search(r"(?m)^\s*docker\s+(?:run|tag)\b", shell):
-        raise AuthorityError("forbidden ambient Docker run/tag primitive")
-    forbid_container_authority(shell, "ordinary online-fetch source")
-
-    require(
-        sources["verify"],
-        "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
-        "shared focused-verifier wiring",
-    )
-    require(sources["requirements"], '<span class="id">R-S11cj</span>', "R-S11cj requirement")
-    require(sources["requirements"], "<tr><td>229</td>", "Appendix C #229 disposition")
-    require(
-        sources["hardening"],
-        "R-S11cj/R-S11e-102 — online acquisition container execution authority",
-        "hardening-ledger disposition",
-    )
-    require(
-        sources["workspace"],
-        '"online_fetch_container_authority_verifier"',
-        "workspace-verifier source ownership",
-    )
-    require(
-        sources["workspace"],
-        "Online acquisition container authority focused verifier",
-        "workspace-verifier semantic binding",
-    )
-
-
-MUTATIONS: Tuple[Mutation, ...] = (
-    Mutation("shell", "readonly DOCKER_BIN=/usr/bin/docker", "DOCKER_BIN=docker",
-             "fixed Docker client"),
-    Mutation("shell", "readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock",
-             "readonly ONLINE_FETCH_DOCKER_HOST=tcp://127.0.0.1:2375",
-             "fixed local Docker endpoint"),
-    Mutation("shell", '"$ONLINE_FETCH_UID" -ne 0', '"$ONLINE_FETCH_UID" -ge 0',
-             "host-root refusal"),
-    Mutation("shell", '"$ONLINE_FETCH_GID" -ne 0', '"$ONLINE_FETCH_GID" -ge 0',
-             "root-primary-group refusal"),
-    Mutation(
-        "shell",
-        "online_docker() {\n    local status=0\n    assert_online_fetch_docker_authority\n"
-        "    env -i \\\n        PATH=/usr/bin:/bin",
-        "online_docker() {\n    local status=0\n    assert_online_fetch_docker_authority\n"
-        "    env \\\n        PATH=\"$PATH\"",
-        "closed Docker environment",
-    ),
-    Mutation(
-        "shell",
-        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$ONLINE_FETCH_DOCKER_HOST"',
-        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$DOCKER_HOST"',
-        "ordinary Docker fixed endpoint use",
-    ),
-    Mutation(
-        "shell",
-        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
-        '        --config "$ONLINE_FETCH_DOCKER_CONFIG"',
-        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
-        '        --config "$HOME/.docker"',
-        "ordinary Docker private configuration use",
-    ),
-    Mutation(
-        "shell",
-        '        BUILDX_GIT_INFO=false \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$ONLINE_FETCH_DOCKER_HOST"',
-        '        BUILDX_GIT_INFO=false \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$DOCKER_HOST"',
-        "VCS-suppressed Docker fixed endpoint use",
-    ),
-    Mutation(
-        "shell",
-        '        BUILDX_GIT_INFO=false \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
-        '        --config "$ONLINE_FETCH_DOCKER_CONFIG"',
-        '        BUILDX_GIT_INFO=false \\\n'
-        '        "$DOCKER_BIN" \\\n'
-        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
-        '        --config "$HOME/.docker"',
-        "VCS-suppressed Docker private configuration use",
-    ),
-    Mutation(
-        "shell",
-        "        BUILDX_GIT_INFO=false \\\n"
-        '        "$DOCKER_BIN"',
-        "        BUILDX_GIT_INFO=true \\\n"
-        '        "$DOCKER_BIN"',
-        "unverified VCS suppression",
-    ),
-    Mutation("shell", '[ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ]',
-             "true", "empty Docker configuration proof"),
-    Mutation(
-        "shell",
-        "online_image_provenance() {\n    local status=0\n    assert_online_fetch_docker_authority",
-        "online_image_provenance() {\n    local status=0\n    true",
-        "image-provenance Docker authority proofs",
-    ),
-    Mutation(
-        "shell",
-        "online_image_provenance() {\n    local status=0\n"
-        "    assert_online_fetch_docker_authority\n    env -i",
-        "online_image_provenance() {\n    local status=0\n"
-        "    assert_online_fetch_docker_authority\n    env",
-        "closed image-provenance environment",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only",
-        "online_docker_run() {\n"
-        "    online_docker run --rm --pull=always --network=bridge --read-only",
-        "no-pull policy",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run() {\n"
-        "    online_docker run --rm --pull=never --network=bridge",
-        "online_docker_run() {\n"
-        "    online_docker run --rm --pull=never --network=host",
-        "isolated acquisition network",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only",
-        "online_docker_run() {\n"
-        "    online_docker run --rm --pull=never --network=bridge "
-        "--hostname=online-fetch",
-        "read-only root",
-    ),
-    Mutation(
-        "shell",
-        'online_docker_run() {\n'
-        '    online_docker run --rm --pull=never --network=bridge --read-only \\\n'
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-        'online_docker_run() {\n'
-        '    online_docker run --rm --pull=never --network=bridge --read-only \\\n'
-        "        --user 0:0",
-        "numeric nonroot identity",
-    ),
-    Mutation(
-        "shell",
-        "--cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=2048",
-        "--cap-drop=NET_RAW --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=2048",
-        "complete capability drop",
-    ),
-    Mutation(
-        "shell",
-        "--cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=2048",
-        "--cap-drop=ALL --security-opt=seccomp=unconfined \\\n"
-        "        --pids-limit=2048",
-        "no-new-privileges",
-    ),
-    Mutation("shell", "--pids-limit=2048", "--pids-limit=-1", "PID ceiling"),
-    Mutation("shell", "--memory=16g", "--memory=0", "memory ceiling"),
-    Mutation("shell", "--memory-swap=16g", "--memory-swap=-1", "swap ceiling"),
-    Mutation(
-        "shell",
-        "--memory-swap=16g --cpus=4",
-        "--memory-swap=16g --cpus=0",
-        "CPU ceiling",
-    ),
-    Mutation("shell", "size=12g", "size=120g", "scratch ceiling"),
-    Mutation(
-        "shell",
-        "online_docker_run_offline() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only",
-        "online_docker_run_offline() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only",
-        "networkless archive network removal",
-    ),
-    Mutation(
-        "shell",
-        "--pids-limit=512 --memory=4g --memory-swap=4g --cpus=2",
-        "--pids-limit=-1 --memory=4g --memory-swap=4g --cpus=2",
-        "networkless archive PID ceiling",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_offline() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
-        "        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-        "online_docker_run_offline() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
-        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
-        "networkless archive non-executable scratch",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_cargo_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only",
-        "online_docker_run_cargo_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only",
-        "Cargo semantic network removal",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_cargo_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-        "online_docker_run_cargo_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
-        "        --user 0:0",
-        "Cargo semantic numeric nonroot identity",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_cargo_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
-        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g",
-        "online_docker_run_cargo_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
-        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=40g",
-        "Cargo semantic scratch ceiling",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_archive_acquisition() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only",
-        "online_docker_run_archive_acquisition() {\n"
-        "    online_docker run --rm --pull=never --network=host --read-only",
-        "networked archive isolated bridge",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_archive_acquisition() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
-        "online_docker_run_archive_acquisition() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=-1 --memory=4g --memory-swap=4g --cpus=2",
-        "networked archive PID ceiling",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_archive_acquisition() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
-        "        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-        "online_docker_run_archive_acquisition() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
-        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
-        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
-        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
-        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
-        "networked archive non-executable scratch",
-    ),
-    Mutation(
-        "shell",
-        "online_docker_run_pub_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=none --read-only",
-        "online_docker_run_pub_semantic() {\n"
-        "    online_docker run --rm --pull=never --network=bridge --read-only",
-        "Pub-cache semantic network removal",
-    ),
-    Mutation(
-        "shell",
-        "online_docker buildx build \\\n"
-        "        --network=none --pull=false --no-cache",
-        "online_docker buildx build \\\n"
-        "        --network=bridge --pull=true --no-cache",
-        "Dart advisory candidate build authority",
-    ),
-    Mutation(
-        "shell",
-        "online_docker buildx build \\\n"
-        "        --network=default --pull=true --no-cache",
-        "online_docker buildx build \\\n"
-        "        --network=none --pull=false --no-cache",
-        "Rust advisory candidate build authority",
-    ),
-    Mutation("shell", 'build_frb_codegen() {\n    local builder="$DEB_BUILDER_IMAGE_ID"',
-             'build_frb_codegen() {\n    local builder="ubuntu:18.04"',
-             "exact Debian image"),
-    Mutation("shell", 'stage_vcpkg_natives_arm64() {\n    local builder="$ANDROID_BUILDER_IMAGE_ID"',
-             'stage_vcpkg_natives_arm64() {\n    local builder="ubuntu:24.04"',
-             "exact Android image"),
-    Mutation("shell", '--image-ref "$WIN_HELPER_IMAGE_ID"',
-             '--image-ref "$WIN_HELPER_BOOTSTRAP_IMAGE_ID"',
-             "exact loaded-image verification"),
-    Mutation(
-        "shell",
-        'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
-        'stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
-        "exact WiX package acquisition funnel",
-    ),
-    Mutation(
-        "verify",
-        "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
-        "true # online-fetch authority gate removed",
-        "shared focused-verifier wiring",
-    ),
-    Mutation("requirements", '<span class="id">R-S11cj</span>',
-             '<span class="id">R-S11cj-disabled</span>', "R-S11cj requirement"),
-    Mutation("requirements", "<tr><td>229</td>", "<tr><td>229-disabled</td>",
-             "Appendix C #229 disposition"),
-    Mutation(
-        "hardening",
-        "R-S11cj/R-S11e-102 — online acquisition container execution authority",
-        "R-S11cj/R-S11e-102 — ambient online acquisition authority",
-        "hardening-ledger disposition",
-    ),
-)
-
-
-def load_sources(repo: pathlib.Path) -> Dict[str, str]:
-    return {
-        "shell": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
-        "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(encoding="utf-8"),
-    }
-
-
-def run_mutations(sources: Dict[str, str]) -> None:
-    for mutation in MUTATIONS:
-        original = sources[mutation.source]
-        count = original.count(mutation.old)
-        if count != 1:
-            raise AuthorityError(
-                "mutation target for {} occurs {} times".format(mutation.label, count)
-            )
-        changed = dict(sources)
-        changed[mutation.source] = original.replace(mutation.old, mutation.new, 1)
-        try:
-            validate(changed)
-        except AuthorityError:
-            continue
-        raise AuthorityError("mutation was accepted: {}".format(mutation.label))
+        for token, label in (
+            ("--rm --pull=never", "ephemeral no-pull execution"),
+            (f"--network={network}", "network profile"),
+            ("--read-only", "read-only root"),
+            ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "numeric nonroot user"),
+            ("--cap-drop=ALL --security-opt=no-new-privileges", "privilege floor"),
+            (f"--pids-limit={pids}", "PID bound"),
+            (f"--memory={memory} --memory-swap={memory}", "memory/no-swap bound"),
+        ):
+            require(body, token, f"{function_name} {label}")
+        for forbidden in (
+            "--privileged",
+            "--network=host",
+            "--cap-add",
+            "--publish",
+            "--device",
+        ):
+            forbid(body, forbidden, f"{function_name} {forbidden}")
+    if re.search(r"(?m)^\s*docker\s+(?:run|build|pull|tag)\b", online):
+        raise AuthorityError("ambient Docker command exists outside the fixed inner funnel")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path("."))
-    parser.add_argument("--self-test", action="store_true")
-    arguments = parser.parse_args()
-    sources = load_sources(arguments.repo.resolve())
-    validate(sources)
-    if arguments.self_test:
-        run_mutations(sources)
-    print(
-        "verify-online-fetch-container-authority: OK"
-        + (" ({} mutations)".format(len(MUTATIONS)) if arguments.self_test else "")
-    )
+    parser.add_argument("--repo", default=".")
+    args = parser.parse_args()
+    repo = pathlib.Path(args.repo).resolve()
+    try:
+        validate(repo)
+    except AuthorityError as exc:
+        print(f"online-fetch VM authority: FAIL: {exc}")
+        return 1
+    print("online-fetch VM authority: PASS")
     return 0
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except (AuthorityError, OSError) as error:
-        print("verify-online-fetch-container-authority: {}".format(error))
-        raise SystemExit(1)
+    raise SystemExit(main())

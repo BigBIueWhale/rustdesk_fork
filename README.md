@@ -47,6 +47,7 @@ GitHub Actions workflow is disabled).
 ### One-time setup
 
 ```sh
+scripts/online-fetch.sh --verifier-vm-inputs # authenticate inert VM/Docker/Git/virtiofsd inputs
 scripts/online-fetch.sh            # fetch + SHA-verify the pinned toolchains/caches into ./online
 scripts/gen-android-keystore.sh    # mint the permanent RSA-4096 APK signing key (default location)
 scripts/provision-windows-vm.sh    # build the throwaway Windows 11 golden VM (needs the ISO below)

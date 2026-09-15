@@ -26,7 +26,8 @@ Every script is held to the same bar as the rest of the spec:
 
 ```
 host-provision.sh   # once  — additive host runtimes only (R-B11)
-online-fetch.sh     # once, or on a pins.env change — the ONLY networked acquisition step (R-B10)
+online-fetch.sh --verifier-vm-inputs # once — authenticate inert VM/bootstrap bytes; no Docker
+online-fetch.sh     # once, or on pins change — outbound-only disposable VM; no host Docker/listener
 smoke-verifier-vm-authority.sh     # ordinary-user, -nic none; all build/container execution is inside
 build-release.sh    # VM-internal transaction; direct host production invocation refuses (full transport open)
 build-debian.sh / build-android.sh # admitted VM workloads only
@@ -57,7 +58,7 @@ best-effort destructive sweep.
 |---|---|---|
 | `pins.env` | Single version manifest (machine-readable §3.2). | **Done** — versions and consumed artifact digests are pinned with R-B12 provenance; any future sentinel fails closed. |
 | `lib.sh` | Shared helpers: source `pins.env`, fail-loud asserts (`die`/`require_cmd`/`assert_version`), SHA-256 verify (rejects the R-B12 sentinel), offline guards, repo-state asserts, and require each builder-image caller to supply its already-authenticated provenance executor. It contains no Docker endpoint, client, configuration, or ambient fallback. | **Done** |
-| `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10): `cargo vendor --locked`, the toolchains/SDKs/vcpkg/FRB, digest-pinned base images. Idempotent; aborts on the R-B12 sentinel. | **Done** |
+| `online-fetch.sh` + `online-fetch-vm.sh` | The one networked acquisition entry → git-ignored `./online/inputs`, every artifact SHA-256-checked (R-B10). The sibling `./online/retired` root shares one rootless Landlock/seccomp-confined virtiofs cache-state mount so the required flagged replacements remain atomic; systemd-image cache and bounded results use two narrow 9p exports. The bootstrap mode authenticates the pinned VM/base, guest Docker, and uninstalled virtiofsd-package bytes. Every other mode refuses root and dirty/non-master source, enters ordinary-user seccomp-sandboxed QEMU with outbound-only user networking and no host forwarding/listener, reconstructs the exact Git bundle, and gives VM-local Docker no other host filesystem authority. The focused mode executes real `RENAME_NOREPLACE`/`RENAME_EXCHANGE` operations and a non-root guest-bridge HTTPS container; it does not substitute for the complete cache transaction. | **VM source implemented; focused runtime and complete cache execution pending** |
 | `build-release.sh` | Non-root release transaction admitted only inside the common no-NIC verifier VM. The parent performs no Docker/image-provenance/container operation; it passes commit-bound content IDs to independently authenticating VM children and uses the retained-descriptor helper directly for its exact current-principal workspace. The executable A/B/publication and hostile-mode cleanup fixtures pass. | **Parent authority done; full VM input/output transport and cold release open** |
 | `apple-conform-check.sh` | Fixed macOS-arm64, macOS-x86_64, and iOS-arm64 source-conformance transaction admitted only as the designated nonroot principal inside the authenticated no-NIC verifier VM. Every immutable-image provenance/launch operation uses the guest-private Unix Docker channel with pre/post daemon-generation replay; there is no host-Docker fallback. The authority-only entry test touches no source/vendor/output input and is not the Apple workload. | **VM authority entry green; current full source transaction and native Apple evidence open** |
 | `host-provision.sh` | Additive, idempotent host runtimes (docker pre-existing; qemu-system-x86 plus session-libvirt client/driver pieces, swtpm, and OVMF for the Win VM). It refuses system libvirt default networking, audits for virbr0/dnsmasq/IP-forwarding, installs only what's absent, and records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
@@ -77,7 +78,7 @@ dedicated step — faithful reproduction, no independent version choices.
 
 ## Pin Provenance (R-B12)
 
-`pins.env` pins every **version**, git SHA-1 commit, and consumed `./online`
+`pins.env` pins every **version**, git SHA-1 commit, and consumed `./online/inputs`
 artifact digest. Each SHA-256/SHA512 entry records its provenance inline: either a
 publisher manifest/signature cross-check plus an independent byte computation, or
 an explicitly documented captured-layout/captured-distfile procedure where the

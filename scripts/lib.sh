@@ -22,7 +22,8 @@ set -euo pipefail
 # Resolve the repo root from this file's location (scripts/ is at repo top).
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$LIB_DIR/.." && pwd)"
-ONLINE_DIR="${ONLINE_DIR:-$REPO_ROOT/online}"
+ONLINE_STATE_ROOT="$REPO_ROOT/online"
+ONLINE_DIR="${ONLINE_DIR:-$ONLINE_STATE_ROOT/inputs}"
 PINS_FILE="$LIB_DIR/pins.env"
 
 # The stable R-B2 Android signing key lives here by DEFAULT (a gitignored secret under .harness-state,
@@ -316,11 +317,11 @@ assert_no_build_host_network_residual() {
     # R-B11/R-B11a forbid only an ip_forward change ATTRIBUTABLE TO THE HARNESS. The harness's sole
     # forwarding lever is libvirt's default NAT network (libvirt sets ip_forward=1 when it starts that
     # network) — detected above as virbr0 / its dnsmasq listeners. A standalone ip_forward=1 with no
-    # virbr0/dnsmasq is NOT harness-attributable: it belongs to the container engine the build itself
-    # runs on (Docker enables IP forwarding for its bridge, and online-fetch.sh needs it), which R-B11
-    # explicitly provisions and the build-*.sh scripts use. Flagging it would make the Windows build
-    # impossible on its own Docker build host. So net.ipv4.ip_forward=1 counts as dirty only alongside
-    # the libvirt default network that makes it harness-attributable.
+    # virbr0/dnsmasq is unrelated host state: all repository container execution, including the
+    # intentionally networked online acquisition, owns its daemon/bridge/forwarding only inside a
+    # disposable VM. Do not inspect or mutate unrelated host forwarding. Therefore
+    # net.ipv4.ip_forward=1 counts as dirty only alongside the libvirt default network that makes it
+    # harness-attributable.
     if [ "$harness_libvirt_net" = "1" ] \
        && [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" = "1" ]; then
         dirty+=("net.ipv4.ip_forward=1 (harness-attributable: libvirt default network present)")

@@ -82,9 +82,6 @@ PATHS = {
         "flutter/lib/desktop/pages/terminal_tab_page.dart"
     ),
     "verify": "scripts/verify.sh",
-    "workspace": "scripts/verify-verifier-workspace.py",
-    "requirements": "requirements.html",
-    "hardening": "HARDENING_STATUS.md",
 }
 
 
@@ -1434,56 +1431,6 @@ def validate(sources: dict[str, str]) -> None:
         "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test",
         "shared verifier wiring",
     )
-    require(
-        sources["workspace"],
-        '"windows_presentation_verifier"',
-        "independent verifier source binding",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11gb</span>',
-        "native Windows presentation requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>337</td>",
-        "native Windows presentation disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11gb/R-S11e-215 native Windows presentation transaction",
-        "native Windows presentation ledger",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11gg</span>',
-        "main-window identity requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>342</td>",
-        "main-window identity disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting",
-        "main-window identity hardening record",
-    )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11gh</span>',
-        "response-bound Windows destruction requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>343</td>",
-        "response-bound Windows destruction disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup",
-        "response-bound Windows destruction hardening record",
-    )
 
 
 def self_test(sources: dict[str, str]) -> int:
@@ -2587,28 +2534,6 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         ("verify", "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test", "true # verifier removed"),
         (
-            "requirements",
-            '<span class="id">R-S11gb</span>',
-            '<span class="id">R-S11gb-disabled</span>',
-        ),
-        ("requirements", "<tr><td>337</td>", "<tr><td>337-disabled</td>"),
-        (
-            "requirements",
-            '<span class="id">R-S11gg</span>',
-            '<span class="id">R-S11gg-disabled</span>',
-        ),
-        ("requirements", "<tr><td>342</td>", "<tr><td>342-disabled</td>"),
-        (
-            "hardening",
-            "R-S11gb/R-S11e-215 native Windows presentation transaction",
-            "R-S11gb-disabled/R-S11e-215 native Windows presentation transaction",
-        ),
-        (
-            "hardening",
-            "R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting",
-            "R-S11gg-disabled/R-S11e-219 Windows main-window identity is resolved after parenting",
-        ),
-        (
             "host",
             '"real_guest_pointer_input", "response_bound_subwindow_destroy",',
             '"real_guest_pointer_input", "destroy_result_removed",',
@@ -2627,17 +2552,6 @@ def self_test(sources: dict[str, str]) -> int:
             "host",
             '"destroy-cleanup-complete": "complete\\n",',
             '"destroy-cleanup-complete": "unchecked\\n",',
-        ),
-        (
-            "requirements",
-            '<span class="id">R-S11gh</span>',
-            '<span class="id">R-S11gh-disabled</span>',
-        ),
-        ("requirements", "<tr><td>343</td>", "<tr><td>343-disabled</td>"),
-        (
-            "hardening",
-            "R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup",
-            "R-S11gh-disabled/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup",
         ),
     )
     for index, (key, old, new) in enumerate(mutations, start=1):

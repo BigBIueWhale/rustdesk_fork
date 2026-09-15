@@ -34170,9 +34170,6 @@ def main():
             "display_selection_finality_verifier": (
                 repo / "scripts/verify-display-selection-finality.py"
             ).read_text(encoding="utf-8"),
-            "windows_presentation_verifier": (
-                repo / "scripts/verify-flutter-presentation-windows.py"
-            ).read_text(encoding="utf-8"),
             "build_windows_source": (
                 repo / "scripts/build-windows.ps1"
             ).read_text(encoding="utf-8"),

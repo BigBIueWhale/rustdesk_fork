@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ad9380999e9f187b003a55a42178d85b42972d52769dff872703d7c16304ac20  requirements.html
+e3dde82cf914a1fa0462873c71ca4e72a3b3d37b720e39d08a822984a786ce28  requirements.html
 ```
 
 ## Current Verdict
@@ -4745,70 +4745,28 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — HISTORICAL NARROW
-  NATIVE PASS; EXACT-CURRENT FULL-PEER/RELEASE EVIDENCE OPEN.** Purpose: prove that the real
-  repository-owned Windows texture plugin, production `PresentationRecovery`, pinned Flutter
-  engine, and production secondary `RustdeskMultiWindow` can present current pixels after actual
-  minimize/restore and focus-loss/pointer-return transitions. This is a presentation-evidence
-  transaction, not another product mode or a substitute for a real RustDesk peer.
+- **R-S11gb/R-S11gg/R-S11gh; R-S11e-215/219/220 — Windows presentation and window
+  lifetime: SOURCE IMPLEMENTED; HISTORICAL NARROW NATIVE EVIDENCE; CURRENT FULL-PEER/RELEASE
+  EVIDENCE OPEN.** The current plugin resolves main-window ID 0 from the valid registrar view's live
+  post-parenting `GA_ROOT`. Secondary close is idempotent and response-bound: the exact HWND,
+  engine, channel, and manager owner survive until Dart cleanup completes; `WM_NCDESTROY` clears
+  the exact `GWLP_USERDATA`; and only the returning private-message turn retires the manager entry.
 
-  Current source and evidence disposition:
+  Commit `fd1d6d8f2d06f42f8c421d08a25f89185db0cf9c` historically passed the narrow
+  production-window presentation transaction: real minimize/restore and focus-loss/pointer-return,
+  two 128-frame queues, 312-ms and 172-ms composed-pixel observations, pointer delivery, typed-zero
+  exit, guest shutdown, and cleanup in an unprivileged zero-interface Windows VM with loopback-only
+  VNC. Commit `7ad3e34f2eed70711a31e7880302b4047524dac3` held the secondary Dart destruction
+  response for 1013 ms, observed a new frame in 139 ms while its production HWND/engine remained
+  live, and then observed cleanup before native/manager retirement. The ignored raw receipts are no
+  longer local, so these are named historical results, not exact-current reruns or release artifacts.
 
-  - R-S11gg corrected the production main-window identity bug exposed by the probe. Plugin
-    registration occurs before runner parenting, so the plugin now retains the exact Flutter view
-    HWND and resolves its valid top-level `GA_ROOT` ancestor at operation time. Main-window close
-    therefore reaches the outer quit-on-close runner instead of a stale unparented child view.
-  - R-S11gh corrected the separate production secondary-window lifetime bug. Ordinary close is
-    response-bound to Dart cleanup; the exact HWND, engine, channel, and manager owner remain live
-    until the owned method result returns, `WM_NCDESTROY` clears the exact `GWLP_USERDATA`
-    owner, and only the later registered-message turn retires the manager entry.
-  - The historical exact-commit transaction at
-    `fd1d6d8f2d06f42f8c421d08a25f89185db0cf9c` passed the narrow R-S11gb contract: a
-    509-file source manifest and offline dependency graph verified; default-adapter and WARP D3D11
-    preflights presented matching desktop pixels; the exact production secondary window completed
-    real minimize/restore and separate-window focus-loss/guest-pointer-return cycles; each cycle
-    queued 128 direct-ABI frames and accepted explicit re-notification; composed pixels appeared
-    312 ms and 172 ms after authorization, within the 2500-ms bound; pointer delivery, texture and
-    probe-resource retirement, typed-zero app exit, pass publication, guest shutdown, and owned
-    domain/process/listener cleanup succeeded.
-  - The later R-S11gh witness at
-    `7ad3e34f2eed70711a31e7880302b4047524dac3` held the Dart destruction response for
-    1013 ms while the exact production HWND/engine remained live and composed a new frame in
-    139 ms, then proved cleanup before native/manager retirement and app exit.
-  - Both named runs used an unprivileged zero-interface Windows VM with no host
-    device/filesystem passthrough and loopback-only VNC; their tracked ledger records no host
-    RustDesk/service/configuration, firewall, route, or network mutation.
-  - The focused source gate binds the presentation harness to the shared private-libvirt
-    transaction lifecycle, its scrubbed client environment, absolute `setsid`/`virt-install`
-    launchers, session URI, zero guest NICs, and loopback-only VNC. This is supplementary static
-    regression protection, not native evidence for current source or release artifacts.
-
-  Evidence retention and limits:
-
-  - The many earlier golden, dependency, graphics-session, process-handle, marker-publication,
-    window-role, and app-exit failures were harness or source-discovery steps. Their chronological
-    transcripts, run UUIDs, scratch paths, mutation counts, and superseded hypotheses are retained
-    by Git history rather than this live current-state ledger.
-  - The ignored raw evidence directories formerly named
-    `.harness-state/windows-presentation-evidence-fd1d6d8f2d06` and
-    `.harness-state/windows-presentation-evidence-7ad3e34f2eed` are not present on this host as
-    of 2026-09-11. The tracked ledger preserves the named results, but their raw local receipts
-    cannot now be independently re-read; a current run must publish fresh bounded evidence.
-  - These passes prove only the narrow native Windows texture/compositor and
-    engine/window-destruction boundaries at their named commits. They do **not** prove current
-    `master`, a packaged release, software-RGBA mode, a real RustDesk
-    capture/encode/transport/decode/control session, the cause or correction of the user's older
-    operational Windows display-only delay, cross-version behavior, Android persistent-service
-    recovery, sustained focus/reconnect/resource soak, cold R-B2/R-B10 equality, independent
-    reproduction, or external review.
-
-  Current release-blocking action: run R-S11gk from the exact release candidate in the disposable
-  zero-interface Windows VM with a real portable controlled peer and real viewer, without
-  reconnecting. Measure continuous and minimized frame freshness, focus-loss/pointer-return,
-  capture-through-compositor timestamps, queue depth/backpressure, input independence, CPU,
-  memory, handles, processes, and exact teardown; preserve fresh source/artifact/VM identities and
-  bounded raw evidence. The narrow historical pass remains useful, but Windows full-peer
-  focus/background performance and release readiness remain **OPEN**.
+  Current verification must additionally exercise R-S11gh's repeated-close and non-success result
+  paths. R-S11gk remains the release-blocking real-peer transaction: exact current artifacts,
+  uninterrupted focus/minimize freshness without reconnect, capture-to-compositor timestamps,
+  queue/resource bounds, cross-version behavior, sustained soak, cold R-B2/R-B10 equality,
+  independent reproduction, and external review remain open. Focused source checks are
+  supplementary and cannot promote either historical transaction to current native evidence.
 
 - **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX, EXACT
   RELEASE-BUNDLE EXECUTION, AND LATER FULL-PEER EVIDENCE RECORDED.** Platform: shipped
@@ -8761,34 +8719,6 @@ presence is supplementary and does not prove exact packaged bytes or native beha
 Debian/Android/Windows R-B2/R-B10 transaction, native Apple/device coverage where applicable, independent
 reproduction, and external review remain governed by their open ledger rows. A regression or contrary runtime result
 reopens the affected claim; the removed historical “do not re-open” instruction carried no authority.
-
-### R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting (2026-08-09)
-
-**Source closed; one historical narrow native transaction passed; current release evidence remains open.**
-The vendored Windows multi-window plugin had cached the Flutter view as window ID 0 before that view was
-parented, so closing ID 0 could destroy only the child and leave the outer quit-on-close window alive. The
-current code retains the registrar view and resolves its live `GA_ROOT` at operation time. After two failed
-diagnostic runs exposed app-exit and PowerShell process-status ownership defects, the exact transaction at
-`fd1d6d8f2d06f42f8c421d08a25f89185db0cf9c` passed both production-secondary texture cycles,
-minimize/restore, real focus loss and pointer return, typed-zero app exit, guest shutdown, and cleanup. Its
-tracked summary reports 312-ms restore and 172-ms focus-return presentation, zero VM NICs, loopback-only VNC,
-and no surviving owned listener/process/domain. The raw ignored evidence directory is no longer present, so
-this is historical tracked evidence rather than a current rerun. It proves only the narrow ID-0/window-exit
-boundary, not a real RustDesk peer, current packaged bytes, Android lifecycle, sustained latency, or release
-readiness.
-
-### R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup (2026-08-10)
-
-**Source closed; one historical narrow native transaction passed; current release evidence remains open.**
-The old Windows close path destroyed the native owner and Flutter engine before the asynchronous Dart
-`onDestroy` cleanup response, and could leave `GWLP_USERDATA` referring to a retired object. The current
-path makes close idempotently pending, owns the method result, posts a private completion message, validates
-the exact live window/ID, clears and verifies user data at `WM_NCDESTROY`, and erases the manager owner only
-after `DestroyWindow` returns. Commit `7ad3e34f2eed70711a31e7880302b4047524dac3` historically passed
-the production-class native witness: the secondary engine/window stayed live for 1013 ms while Dart withheld
-completion, presented the new blue frame in 139 ms, then cleaned up before window/manager retirement and a
-zero app exit. Its raw ignored evidence is no longer local. This does not prove a real peer, current packaged
-artifacts, Android service/task lifecycle, cross-version behavior, or sustained resource/latency behavior.
 
 ### R-S11gk/R-S11e-223 — real Windows full-peer focus/presentation transaction
 

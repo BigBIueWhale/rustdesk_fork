@@ -2865,6 +2865,7 @@ maintenance_build_deb_builder_certified_candidate() {
         online_image_provenance maintenance-normalize-certified-oci \
             --input "$candidate_oci" \
             --output "$candidate_archive" \
+            --bootstrap-layout "$layout" \
             "${contract_args[@]}"
     )" || die "certified Debian builder candidate OCI normalization failed"
     [ "$(/usr/bin/grep -c '^image_id=' <<<"$result")" -eq 1 ] \
@@ -3001,6 +3002,7 @@ maintenance_build_android_builder_certified_candidate() {
         online_image_provenance maintenance-normalize-certified-oci \
             --input "$candidate_oci" \
             --output "$candidate_archive" \
+            --bootstrap-layout "$layout" \
             "${contract_args[@]}"
     )" || die "certified Android builder candidate OCI normalization failed"
     [ "$(/usr/bin/grep -c '^image_id=' <<<"$result")" -eq 1 ] \
@@ -3137,6 +3139,7 @@ maintenance_build_win_helper_certified_candidate() {
         online_image_provenance maintenance-normalize-certified-oci \
             --input "$candidate_oci" \
             --output "$candidate_archive" \
+            --bootstrap-layout "$layout" \
             "${contract_args[@]}"
     )" || die "certified Windows helper candidate OCI normalization failed"
     [ "$(/usr/bin/grep -c '^image_id=' <<<"$result")" -eq 1 ] \

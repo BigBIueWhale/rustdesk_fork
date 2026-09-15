@@ -499,6 +499,7 @@ def validate_online_fetch(source: str) -> None:
             "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH_PIN}",
             "win_helper_certification_candidate_spec_args",
             "maintenance-normalize-certified-oci",
+            '--bootstrap-layout "$layout"',
             'manifest_id="$(/usr/bin/sed -n',
             'config_id="$(/usr/bin/sed -n',
             '--expected-id "$image_id"',

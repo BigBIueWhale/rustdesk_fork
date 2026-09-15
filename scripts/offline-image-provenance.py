@@ -2271,6 +2271,7 @@ def validate_certified_builder_attestation(
     image_manifest_id: object,
     image_layers: list[object],
     spec: CertifiedBuilderSpec,
+    expected_bootstrap_layers: list[dict[str, object]] | None = None,
 ) -> None:
     def contains_vcs_authority(value: object) -> bool:
         if isinstance(value, dict):
@@ -2506,15 +2507,51 @@ def validate_certified_builder_attestation(
             "BuildKit metadata keys differ; expected=['layers', 'source'], "
             f"actual={sorted(buildkit_metadata)!r}"
         )
+    layer_map = buildkit_metadata.get("layers")
+    step0_layers = (
+        layer_map.get("step0:0")
+        if isinstance(layer_map, dict)
+        else None
+    )
+    bootstrap_layers = (
+        step0_layers[0]
+        if isinstance(step0_layers, list) and len(step0_layers) == 1
+        else None
+    )
+    if expected_bootstrap_layers is None:
+        if not isinstance(bootstrap_layers, list) \
+           or len(bootstrap_layers) != spec.bootstrap_layer_count \
+           or any(
+               not isinstance(layer, dict)
+               or set(layer) != {"digest", "mediaType", "size"}
+               or layer.get("mediaType") != (
+                   "application/vnd.oci.image.layer.v1.tar"
+               )
+               or not isinstance(layer.get("digest"), str)
+               or not IMAGE_ID.fullmatch(layer["digest"])
+               or not isinstance(layer.get("size"), int)
+               or layer["size"] <= 0
+               for layer in bootstrap_layers or []
+           ):
+            metadata_fail(
+                "bootstrap layer map is not exactly three uncompressed "
+                "content-addressed descriptors"
+            )
+    elif bootstrap_layers != expected_bootstrap_layers:
+        metadata_fail(
+            "bootstrap layer map differs from the exact pinned material; "
+            f"expected={diagnostic_value(expected_bootstrap_layers)}, "
+            f"actual={diagnostic_value(bootstrap_layers)}"
+        )
     expected_layers = {
-        "step0:0": [attested_layers[: spec.bootstrap_layer_count]],
-        "step1:0": [attested_layers],
+        "step0:0": [bootstrap_layers],
+        "step1:0": [bootstrap_layers + [attested_layers[-1]]],
     }
-    if buildkit_metadata.get("layers") != expected_layers:
+    if layer_map != expected_layers:
         metadata_fail(
             "layer map differs; expected="
             f"{diagnostic_value(expected_layers)}, actual="
-            f"{diagnostic_value(buildkit_metadata.get('layers'))}"
+            f"{diagnostic_value(layer_map)}"
         )
     if not isinstance(source, dict):
         metadata_fail(
@@ -4025,6 +4062,7 @@ def validate_modern_archive(
     *,
     private_archive: bool,
     allow_unreferenced_blobs: bool = False,
+    expected_bootstrap_layers: list[dict[str, object]] | None = None,
 ) -> ArchiveIdentity:
     if "repositories" in files:
         fail("content-addressed Docker archive must not contain legacy repositories metadata")
@@ -4321,6 +4359,7 @@ def validate_modern_archive(
                 actual_digest,
                 layer_descriptors,
                 spec,
+                expected_bootstrap_layers,
             )
         elif isinstance(spec, VerifierSpec):
             validate_verifier_attestation(statement, actual_digest, spec)
@@ -4833,6 +4872,116 @@ def verify_oci_layout(
                 f"{expected_layout_sha}, got {layout_sha}"
             )
         return layout_sha
+    finally:
+        if sha_fd >= 0:
+            os.close(sha_fd)
+        if blobs_fd >= 0:
+            os.close(blobs_fd)
+        os.close(root_fd)
+
+
+def certified_bootstrap_layer_descriptors(
+    layout: Path,
+    contract: CertifiedBuilderInputSpec,
+) -> list[dict[str, object]]:
+    root_fd = open_private_directory(
+        layout,
+        0o700,
+        "certified builder bootstrap OCI layout root",
+    )
+    blobs_fd = -1
+    sha_fd = -1
+    try:
+        if set(os.listdir(root_fd)) != {
+            "blobs",
+            "index.json",
+            "manifest.json",
+            "oci-layout",
+        }:
+            fail(
+                "certified builder bootstrap OCI layout inventory differs"
+            )
+        blobs_fd = open_layout_directory(
+            root_fd,
+            "blobs",
+            0o500,
+            "certified builder bootstrap OCI blobs directory",
+        )
+        if set(os.listdir(blobs_fd)) != {"sha256"}:
+            fail(
+                "certified builder bootstrap OCI blobs inventory differs"
+            )
+        sha_fd = open_layout_directory(
+            blobs_fd,
+            "sha256",
+            0o500,
+            "certified builder bootstrap OCI SHA-256 directory",
+        )
+        manifest_name = contract.bootstrap_manifest_id.removeprefix(
+            "sha256:"
+        )
+        manifest_digest, _, manifest_bytes = read_layout_file(
+            sha_fd,
+            manifest_name,
+            "certified builder bootstrap OCI manifest",
+            retain=True,
+        )
+        if manifest_digest != manifest_name or manifest_bytes is None:
+            fail(
+                "certified builder bootstrap OCI manifest differs from "
+                "its pin"
+            )
+        manifest = parse_json(
+            manifest_bytes,
+            "certified builder bootstrap OCI manifest",
+        )
+        layers = manifest.get("layers") if isinstance(manifest, dict) else None
+        if not isinstance(manifest, dict) \
+           or set(manifest) != {
+               "config",
+               "layers",
+               "mediaType",
+               "schemaVersion",
+           } \
+           or manifest.get("schemaVersion") != 2 \
+           or manifest.get("mediaType") != (
+               "application/vnd.oci.image.manifest.v1+json"
+           ) \
+           or not isinstance(layers, list) \
+           or len(layers) != contract.bootstrap_layer_count:
+            fail(
+                "certified builder bootstrap OCI manifest topology differs"
+            )
+        result: list[dict[str, object]] = []
+        for position, descriptor in enumerate(layers):
+            if not isinstance(descriptor, dict) \
+               or set(descriptor) != {"digest", "mediaType", "size"} \
+               or descriptor.get("mediaType") != (
+                   "application/vnd.oci.image.layer.v1.tar"
+               ) \
+               or not isinstance(descriptor.get("digest"), str) \
+               or not IMAGE_ID.fullmatch(descriptor["digest"]) \
+               or not isinstance(descriptor.get("size"), int) \
+               or descriptor["size"] <= 0:
+                fail(
+                    "certified builder bootstrap OCI layer descriptor "
+                    f"{position} is malformed"
+                )
+            layer_name = descriptor["digest"].removeprefix("sha256:")
+            layer_digest, layer_size, _ = read_layout_file(
+                sha_fd,
+                layer_name,
+                f"certified builder bootstrap OCI layer {position}",
+                retain=False,
+            )
+            if layer_digest != layer_name \
+               or layer_size != descriptor["size"]:
+                fail(
+                    "certified builder bootstrap OCI layer descriptor "
+                    f"{position} differs from its blob"
+                )
+            result.append(dict(descriptor))
+        return result
     finally:
         if sha_fd >= 0:
             os.close(sha_fd)
@@ -5397,6 +5546,7 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
 def prepare_certified_builder_oci_export(
     scanned: DirectOciExport,
     contract: CertifiedBuilderInputSpec,
+    expected_bootstrap_layers: list[dict[str, object]] | None = None,
 ) -> tuple[
     CertifiedBuilderSpec,
     bytes,
@@ -5604,6 +5754,7 @@ def prepare_certified_builder_oci_export(
         canonical_hashes,
         spec,
         private_archive=True,
+        expected_bootstrap_layers=expected_bootstrap_layers,
     )
     if image_index_name not in scanned.blob_names \
        or image_manifest_name not in scanned.blob_names:
@@ -5636,6 +5787,7 @@ def canonicalize_certified_builder_oci_export(
     source: Path,
     output: Path,
     contract: CertifiedBuilderInputSpec,
+    bootstrap_layout: Path | None = None,
 ) -> tuple[CertifiedBuilderSpec, str, int, str, int]:
     validate_private_output_parent(source.parent)
     if output.parent != source.parent:
@@ -5650,8 +5802,17 @@ def canonicalize_certified_builder_oci_export(
         )
 
     scanned = scan_direct_oci_export(source)
+    expected_bootstrap_layers = (
+        certified_bootstrap_layer_descriptors(bootstrap_layout, contract)
+        if bootstrap_layout is not None
+        else None
+    )
     spec, root_index, compatibility_manifest = (
-        prepare_certified_builder_oci_export(scanned, contract)
+        prepare_certified_builder_oci_export(
+            scanned,
+            contract,
+            expected_bootstrap_layers,
+        )
     )
     source_fd = open_archive(source)
     output_fd = -1
@@ -8806,6 +8967,18 @@ def create_certified_builder_fixture_archive(
         }
         for descriptor in layer_descriptors
     ]
+    bootstrap_layer_descriptors = [
+        blob_descriptor(
+            f"fixture bootstrap layer {position}".encode("ascii"),
+            "application/vnd.oci.image.layer.v1.tar",
+        )
+        for position in range(3)
+    ]
+    mapped_bootstrap_layers = (
+        bootstrap_layer_descriptors[:2]
+        if wrong_layer_mapping
+        else bootstrap_layer_descriptors
+    )
     buildkit_metadata: dict[str, object] = {
         "source": {
             "locations": {
@@ -8827,8 +9000,10 @@ def create_certified_builder_fixture_archive(
             "infos": [source_info],
         },
         "layers": {
-            "step0:0": [attested_layers[:2 if wrong_layer_mapping else 3]],
-            "step1:0": [attested_layers],
+            "step0:0": [mapped_bootstrap_layers],
+            "step1:0": [
+                mapped_bootstrap_layers + [attested_layers[-1]]
+            ],
         },
     }
     if add_vcs:
@@ -11457,6 +11632,11 @@ def argument_parser() -> argparse.ArgumentParser:
     add_spec_arguments(normalize, expected_id_required=False)
     normalize.add_argument("--input", type=Path, required=True)
     normalize.add_argument("--output", type=Path, required=True)
+    normalize.add_argument(
+        "--bootstrap-layout",
+        type=Path,
+        required=True,
+    )
     publish = subparsers.add_parser("maintenance-rename-noreplace")
     publish.add_argument("--source", type=Path, required=True)
     publish.add_argument("--destination", type=Path, required=True)
@@ -11519,6 +11699,7 @@ def main() -> int:
             args.input,
             args.output,
             contract,
+            args.bootstrap_layout,
         )
         print(f"image_id={spec.image_id}")
         print(f"manifest_id={spec.manifest_id}")

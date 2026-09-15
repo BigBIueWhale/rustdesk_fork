@@ -453,6 +453,7 @@ def validate_online_fetch(source: str) -> None:
             "${DEB_BUILDER_BOOTSTRAP_MANIFEST_ID}",
             "deb_builder_certification_candidate_spec_args",
             "maintenance-normalize-certified-oci",
+            '--bootstrap-layout "$layout"',
             'manifest_id="$(/usr/bin/sed -n',
             'config_id="$(/usr/bin/sed -n',
             '--expected-id "$image_id"',

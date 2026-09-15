@@ -600,7 +600,7 @@ create_online_fetch_buildx_builder() {
 }
 
 assert_online_fetch_buildx_driver() {
-    local inspect driver endpoint status buildkit_version normalized
+    local inspect driver endpoint status buildkit_version worker_labels label
     local -a names=()
     assert_online_fetch_containerd_image_store
     assert_no_buildx_container_driver
@@ -669,7 +669,19 @@ assert_online_fetch_buildx_driver() {
             }
         ' <<<"$inspect"
     )"
-    normalized="$(/usr/bin/sed 's/^[[:space:]]*//' <<<"$inspect")"
+    worker_labels="$(
+        /usr/bin/awk -F ':' '
+            {
+                key=$1
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                if (key ~ /^org[.]mobyproject[.]buildkit[.]worker[.]/) {
+                    value=substr($0, index($0, ":") + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    print key "=" value
+                }
+            }
+        ' <<<"$inspect"
+    )"
     [ "${#names[@]}" -eq 2 ] \
         && [ "${names[0]}" = "$ONLINE_FETCH_BUILDX_BUILDER" ] \
         && [ "${names[1]}" = "${ONLINE_FETCH_BUILDX_BUILDER}0" ] \
@@ -683,12 +695,12 @@ assert_online_fetch_buildx_driver() {
     [ "$buildkit_version" = "v${VERIFIER_VM_BUILDKIT_VERSION}" ] \
         || die "the exact remote BuildKit version differs: $buildkit_version"
     for label in \
-        'org.mobyproject.buildkit.worker.executor: oci' \
-        'org.mobyproject.buildkit.worker.network: cni' \
-        'org.mobyproject.buildkit.worker.oci.process-mode: sandbox' \
-        'org.mobyproject.buildkit.worker.snapshotter: overlayfs'; do
-        /usr/bin/grep -Fxq "$label" <<<"$normalized" \
-            || die "the exact remote BuildKit worker label is absent: $label"
+        'org.mobyproject.buildkit.worker.executor=oci' \
+        'org.mobyproject.buildkit.worker.network=cni' \
+        'org.mobyproject.buildkit.worker.oci.process-mode=sandbox' \
+        'org.mobyproject.buildkit.worker.snapshotter=overlayfs'; do
+        [ "$(/usr/bin/grep -Fxc "$label" <<<"$worker_labels")" -eq 1 ] \
+            || die "the exact remote BuildKit worker label differs: $label"
     done
     assert_no_buildx_container_driver
 }

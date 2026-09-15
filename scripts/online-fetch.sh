@@ -600,7 +600,7 @@ create_online_fetch_buildx_builder() {
 }
 
 assert_online_fetch_buildx_driver() {
-    local inspect driver endpoint status buildkit normalized
+    local inspect driver endpoint status buildkit_version normalized
     local -a names=()
     assert_online_fetch_containerd_image_store
     assert_no_buildx_container_driver
@@ -656,12 +656,12 @@ assert_online_fetch_buildx_driver() {
             }
         ' <<<"$inspect"
     )"
-    buildkit="$(
+    buildkit_version="$(
         /usr/bin/awk -F ':' '
             {
                 key=$1
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-                if (key == "BuildKit") {
+                if (key == "BuildKit version") {
                     value=substr($0, index($0, ":") + 1)
                     gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
                     print value
@@ -680,8 +680,8 @@ assert_online_fetch_buildx_driver() {
         || die "the exact Buildx builder endpoint differs: $endpoint"
     [ "$status" = running ] \
         || die "the exact Buildx builder is not running: $status"
-    [ "$buildkit" = "v${VERIFIER_VM_BUILDKIT_VERSION}" ] \
-        || die "the exact remote BuildKit version differs: $buildkit"
+    [ "$buildkit_version" = "v${VERIFIER_VM_BUILDKIT_VERSION}" ] \
+        || die "the exact remote BuildKit version differs: $buildkit_version"
     for label in \
         'org.mobyproject.buildkit.worker.executor: oci' \
         'org.mobyproject.buildkit.worker.network: cni' \

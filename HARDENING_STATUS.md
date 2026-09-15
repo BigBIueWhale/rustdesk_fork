@@ -1615,7 +1615,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
   Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
   derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves
-  the exact kernel command line and runtime unit masks. Expanded seven-entry passes complete in about 20 seconds and
+  the exact kernel command line and runtime unit masks. Expanded eight-entry passes complete in about 20–25 seconds and
   pass
   AppArmor/seccomp/resource/namespace, no-bridge/no-forward/no-firewall-mutation, private-channel,
   listener-invariance, complete-bounded-capture, joined-process, and successful-run residue-free cleanup assertions.
@@ -1623,13 +1623,15 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
   diagnostics, which were then explicitly reconciled. It executed the minimal read-only repository subset needed
   for the real `verify.sh --self-test-workspace`, `dart-verify.sh --self-test-vm-authority`,
   `frb-codegen.sh --self-test-vm-authority`, `smoke-server.sh --self-test-vm-authority`, and
-  `dart-audit.sh --self-test-vm-authority`, `audit.sh --self-test-vm-authority`, and the identity-access-free
-  `gen-android-keystore.sh --self-test-vm-authority` entries. Each performs an actual fixed-client Docker request with
+  `dart-audit.sh --self-test-vm-authority`, `audit.sh --self-test-vm-authority`, the identity-access-free
+  `gen-android-keystore.sh --self-test-vm-authority`, and the source/signing/output-access-free
+  `build-android.sh --self-test-vm-authority` entries. Each performs an actual fixed-client Docker request with
   client/daemon pre/post generation replay; the applicable entries reject root and a foreign principal, and the Dart
   verifier proves its nested FRB child. The retained Dart/FRB focused checker runs inside the guest; the Dart-advisory
   checker was reduced from a 958-line cross-subsystem mutation catalog to a compact no-fallback/launch-shape check;
   the Rust-advisory checker was similarly reduced from a 1,053-line cross-subsystem mutation catalog; the Android
-  signing checker was reduced from 718 to 318 lines and its duplicate 362-line workspace meta-check was deleted; and the guest
+  signing checker was reduced from 718 to 318 lines and its duplicate 362-line workspace meta-check was deleted; the Android
+  builder checker was reduced from 2,196 to 376 lines and its duplicate 912-line workspace block was deleted; and the guest
   runs the separate 31-decision Dart and 20-decision Rust scanner-result behavioral tests. Acquisition and OCI
   provenance retain their own focused gates.
   It did not execute RustDesk, the verifier image, FRB code generation or image provenance, a build, an OSV or RustSec scan, the
@@ -1648,7 +1650,7 @@ EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT 
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg still requires a current confined full product/source gate and a fresh independent rebuild of its recoverable verifier image. Deleting the global verifier-of-verifier catalog and the main-authority checker's unrelated product-gate mirror supplied neither product nor native evidence and retires neither obligation. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE AND SEVEN REAL ENTRY PATHS GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–25 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, and identity-access-free Android signing authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. Real Dart/FRB, OSV/RustSec scans, normal signing generation, and RustDesk server/protocol/video payloads remain unexecuted because their certified images and source/vendor/Xvfb/signing-storage inputs are absent from this smoke, while remaining shared Docker launchers still select the host rootful daemon and must not run here. Move each remaining consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, remove every direct-host/rootless-host fallback, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, or full-gate evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP, WITH FAST OUTER-SMOKE AND EIGHT REAL ENTRY PATHS GREEN.** The standalone smoke has behaviorally passed the required nonroot-host QEMU, pinned read-only base/bundle, authenticated descriptor-bound direct boot, pass-private overlay, no-VM-NIC, early absent-network/SSH masks, guest-only Docker, private Unix channel, listener-invariance, confined bounded-container, 90-second finality bound, joined teardown, cancellation, and residue-free mechanics. Complete authority runs remain fast at roughly 12–25 seconds. The actual `verify.sh`, `dart-verify.sh`, `frb-codegen.sh`, `smoke-server.sh`, `dart-audit.sh`, `audit.sh`, identity-access-free Android signing, and source/signing/output-access-free Android builder authority entries now refuse anything except that authority and have no direct host-Docker fallback; applicable root/foreign callers are behaviorally refused and authorized guest callers complete actual Docker client/server requests. Real Dart/FRB, OSV/RustSec scans, normal signing generation, normal Android building, and RustDesk server/protocol/video payloads remain unexecuted because their certified images and complete source/vendor/Xvfb/signing/result inputs are absent from this smoke, while remaining shared Docker launchers still select the host rootful daemon and must not run here. Move each remaining consumer into the sole VM topology, admit exact read-only source/offline inputs, validate/publish bounded outputs, remove every direct-host/rootless-host fallback, create the reproducible prepared verifier toolchain/base, and freshly rebuild the verifier image independently. Entry self-tests and source gates are not product, artifact, scanner, or full-gate evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -2503,9 +2505,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The writable tree is removed before signing, so the second pass starts from a fresh extraction rather than prior
   generated state. Neither the real repository nor final output directory is mounted into a container.
 
-  One common launcher now binds every keytool/build/sign/verify invocation to `/usr/bin/docker`, the existing immutable
-  image ID, `--pull=never`, `--network=none`, a read-only root, the invoking numeric uid/gid, all capabilities dropped,
-  no-new-privileges, explicit PID/memory/CPU limits, and bounded task-specific tmpfs. The compile sees only its private
+  One common launcher now binds every keytool/build/sign/verify invocation to R-S11dj's admitted guest-only Docker
+  authority, the existing immutable image ID, `--pull=never`, `--network=none`, a read-only root, the invoking numeric
+  uid/gid, all capabilities dropped, no-new-privileges, explicit PID/memory/CPU limits, and bounded task-specific tmpfs. The compile sees only its private
   writable source plus the immutable inner script and verified online closure; signing sees only private pass output,
   read-only signing files, exact-commit verifier scripts, and online inputs; verification sees only the APK and those
   read-only checker/input files. There is no port publication, host namespace, Docker socket, privileged/cap-add path,
@@ -2514,12 +2516,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   published hash is checked again. Standalone builds retain their default A/B comparison, while `build-release.sh`
   retains its stronger independent-snapshot A/B authority.
 
-  `scripts/verify-android-builder-authority.py` binds the shell topology, forbidden mounts/flags, comparator semantics,
-  requirement/disposition/ledger, and shared-gate wiring and rejects deliberate weakening mutations. The independent
-  workspace verifier also binds that focused verifier and its policy anchors. This source slice did not itself run
-  the Android builder or exercise Android. The later exact target-local A/B transaction at
-  `29915f0075f4d1464361f218e61dd7d7e7072b85`, recorded under R-S14/R-T4 and R-S11bm/R-S11e-79, validates the
-  current builder path and signed APK; full R-B2/R-B10 release and real-device behavior remain open.
+  `scripts/verify-android-build-source.py --self-test` owns the comparator's behavioral coverage, while the compact
+  `scripts/verify-android-builder-authority.py` binds this source/mount/launch shape and R-S11dj's real VM entry. The
+  duplicate workspace verifier and unrelated mutation/documentation checks were deleted. The historical target-local
+  A/B transaction at `29915f0075f4d1464361f218e61dd7d7e7072b85` validates the then-current inner source/build/signing
+  behavior, but predates the guest-only outer authority and is not current-path evidence. Full VM build transport,
+  current R-B2/R-B10 release, and real-device behavior remain open.
 - **R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority — SOURCE CLOSED/GATED
   2026-07-21; EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.**
   Platform: Android artifact source staging.
@@ -2540,9 +2542,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   binds those complete modes on both roots, all committed directories, and all committed files in addition to its
   existing owner/type/link/stable-read/digest checks. Its self-test rejects noncanonical authority and candidate
   roots, directories, regular files, and executable transitions. The strict Gradle-init ownership/mode policy is
-  unchanged. `scripts/verify-android-builder-authority.py`, the shared R-S11e-76/R-S11e-77 gate, and the independent
-  workspace meta-gate bind both normalization operations, every comparison level, the negative tests, R-S11bk,
-  Appendix C #200, and this ledger row with deliberate mutations. The later exact target-local A/B transaction at
+  unchanged. The comparator self-test binds every comparison level and negative mode case; the compact Android
+  builder gate binds both normalization calls without duplicating that behavioral test or documentation. The later exact target-local A/B transaction at
   `29915f0075f4d1464361f218e61dd7d7e7072b85` crossed this mode authority and produced byte-identical validated
   signed APKs; full R-B2/R-B10 release and device behavior remain open.
 - **R-S11bl/R-S11e-78 — Android bounded scratch lifecycle — SOURCE CLOSED/GATED 2026-07-21;
@@ -2570,10 +2571,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   LLVM retirement, and about 7.05 GB after adding the 4,694,925,312-byte Gradle projection. No larger tmpfs/cgroup,
   host scratch, extra mount, image operation, privilege, capability, network, or persistence fallback was added.
 
-  <code>scripts/verify-android-builder-authority.py</code> binds the exact phase inputs, ordering, retirement
-  postconditions, retained Cargo consumer, unchanged outer limits, R-S11bl, Appendix C #201, and this row, with
-  deliberate mutations for each closure edge. The independent workspace verifier and shared source gate retain
-  their existing enforcement roles. The later exact target-local A/B transaction at
+  The inner Android build and Gradle-focused gates bind the phase order, retirement postconditions, retained Cargo
+  consumer, and scratch bounds; the compact outer builder gate retains the container resource shape without
+  duplicating those consumers. The later exact target-local A/B transaction at
   `29915f0075f4d1464361f218e61dd7d7e7072b85` crossed the unchanged scratch bounds twice and produced
   byte-identical validated signed APKs; the complete R-B2/R-B10 transaction and device behavior remain open.
 - **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CORRECTION AND EXACT
@@ -2619,10 +2619,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   are owned without conflicting injections. The tree remains on the already-authorized 10-GiB tmpfs and is
   discarded with the pass. Competing Android homes and JVM-wide Java options/home overrides are explicitly
   refused; there is still no host mount, writable root, scratch or memory increase, persistence fallback, image
-  operation, privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds the exact
-  single root, competing-input clearing/refusal, freshness, both private constructions/postconditions, ordering
-  before tool consumers, R-S11bm, Appendix C #202, and this row with deliberate mutations; the shared verifier and
-  independent workspace meta-gate retain their enforcement roles.
+  operation, privilege, capability, network, or port. The Android Gradle/cache behavioral gates own the preference
+  path and tool-consumer semantics; the compact outer builder gate deliberately does not mirror them, and the former
+  duplicate workspace/meta and mutation checks are deleted.
 
   Exact target-local artifact evidence: clean pushed commit
   `36ed7a621496ed470cad5347f7598c18858de827` ran the default A/B transaction in the already-present immutable
@@ -7023,132 +7022,76 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   hashed, mounted, inspected, rotated, regenerated, or mutated. No APK/device, current cold release, or native
   app behavior was exercised. No host Docker/root, VM NIC, published port, non-loopback listener, host process
   scan, RustDesk service/configuration, Haggai, firewall, or network-state mutation was used.
-- **R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority —
-  SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
-  APK/DEVICE, COLD RELEASE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
-  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
-  `scripts/build-android.sh` immutable Android-builder provenance plus keytool
-  preflight, APK compilation, signing, and final signed-artifact verification;
-  `scripts/build-release.sh::run_child` release-child environment construction;
-  and `scripts/build-debian.sh::prepare_execution_contract` ownership of the
-  separately open Debian artifact child's private Docker configuration, plus
-  `scripts/smoke-debian-systemd-lifecycle.sh` ownership of the final Debian
-  lifecycle child's private Docker configuration.
-  Boundary: the invoking user and private exact-commit Android build workspace
-  ↔ Docker-client selection, daemon selection, client configuration, read-only
-  permanent signing inputs, build/verdict containers, and APK output authority.
+- **R-S11dj/R-S11e-128 — Android artifact-builder Docker authority —
+  REAL NETWORKLESS KVM ENTRY VERIFIED 2026-09-15; NORMAL VM BUILD TRANSPORT,
+  CURRENT APK, COLD RELEASE, DEVICE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  Platform/boundary: unprivileged Linux release orchestration ↔ the Docker
+  authority that performs Android builder provenance, key inspection,
+  compilation, signing, and signed-artifact verification.
 
-  R-S11bj through R-S11bm already confined exact clean-commit source, the
-  certified immutable builder, private online and pass outputs, numeric non-root
-  no-pull/networkless/read-only-root/capability-free resource-bounded
-  containers, read-only signing inputs, signed-artifact checks, host-side
-  publication verification, and target-local A/B reproducibility. Exact source
-  review nevertheless found a weaker outer Docker boundary. The builder
-  accepted unset or fixed `DOCKER_HOST`, rejected only context/certificate/TLS
-  inputs, created or inherited a private configuration without identity-binding
-  it, invoked `/usr/bin/docker` directly without an empty environment or
-  explicit host/config arguments, and did not bind or reprove the client, local
-  socket, authority parent, configuration objects, or configuration bytes. It
-  also lacked a host UID/GID-zero refusal. The top-level release runner passed
-  its own Docker host/configuration into every child, while recently hardened
-  verifier and advisory children correctly require independent authority and
-  reject those inherited inputs.
+  The former script used a rootful daemon on the orchestration host. Its inner
+  containers were non-root, offline, read-only-root, capability-free, and
+  resource-bounded, but a Docker daemon controller can request arbitrary host
+  bind mounts. That was real build-host/local-privilege-escalation authority,
+  regardless of the inner flags. It is not evidence that this authority was
+  abused, Docker escaped, signing/source/artifact bytes changed, a listener was
+  exposed, or host RustDesk, service, configuration, firewall, or network state
+  changed.
 
-  Docker's official CLI reference documents host, context, configuration,
-  certificate/TLS, API-version, platform, content-trust/server, and
-  custom-header environment inputs; states that `DOCKER_CONTEXT` overrides
-  `DOCKER_HOST`; gives command-line `--config` precedence over the environment;
-  and documents client-configured proxy injection into containers. Docker's
-  official context documentation states that a context carries endpoint and TLS
-  information and can select a different daemon. A fixed client pathname and
-  otherwise-strong inner flags therefore did not completely prove which daemon
-  interpreted compilation/signing/verification or what client configuration
-  augmented those containers. This was real artifact/signing-verdict,
-  daemon/configuration-selection, release-child isolation, and build-host
-  authority debt. It is not evidence that another daemon or malicious
-  configuration was used, the established signing key/password or
-  source/artifact bytes changed, Docker escaped, host root was acquired, a
-  listener or port was exposed, host RustDesk/service/configuration/firewall/
-  network state changed, exploitation occurred, or the host was compromised.
+  `scripts/build-android.sh` now refuses UID or primary GID zero before
+  repository shell/pin sourcing and requires the R-S11dh verifier-VM admission
+  before evaluating source, online, output, keystore, or password defaults.
+  `--self-test-vm-authority` performs one real guest client/server version
+  exchange and exits before provenance, scratch, source, signing, output, or
+  container work. Normal provenance and the four operation shapes use only the
+  fixed guest client, VM-local root daemon's permissioned Unix socket, and
+  root-owned read-only canonical-empty configuration. Their wrappers have an
+  empty environment, explicit endpoint/configuration arguments, and admission
+  replay before and after every operation. There is no host/rootless/TCP/context
+  fallback, host Docker-socket mount, direct host Docker launch, or host-authority
+  cleanup path. Existing exact-source, private-online, read-only-signing,
+  independent-pass, inner-container confinement, APK validation, A==B, and
+  terminal no-clobber publication semantics remain in place.
 
-  The Android builder now fixes `PATH`, captures UID/GID through absolute
-  `/usr/bin/id`, and refuses UID or primary GID zero before resolving or sourcing
-  repository shell/pin state. Every direct or release-child invocation creates
-  an unpredictable current-user/current-group mode-0700 build workspace and
-  initializes the shared local-Docker authority beneath it before image
-  provenance or any launch. The authority binds the exact root-owned
-  non-symlink mode-0755 single-link `/usr/bin/docker`, fixed root-owned
-  non-symlink single-link `/var/run/docker.sock`, private
-  parent/configuration identities, and current-user/current-group mode-0600
-  single-link canonical `{}` `config.json`; it rejects the complete reviewed
-  ambient Docker input set and reproves all identities and bytes around every
-  operation.
+  Authoritative runtime evidence: the unprivileged
+  `scripts/smoke-verifier-vm-authority.sh` completed in 24.63 wall seconds
+  (22 guest seconds) using the pinned Debian bookworm qcow2, direct pinned
+  kernel/initramfs, `-nic none`, Docker 27.5.1, and private Unix-only
+  serial/QMP channels. VM root was refused with the exact early diagnostic;
+  UID/GID 4001 was refused by the guest socket authority; UID/GID 4000 completed
+  the real builder authority entry and live client/server request with pre/post
+  replay. The receipt records `source=untouched signing=untouched
+  output=untouched`. Host listener snapshots were identical, the guest retained
+  only `lo`, Docker created no bridge/forwarding/firewall/listener change, and
+  QEMU/capture/channel/run cleanup joined without residue.
 
-  Immutable builder provenance now uses the shared isolated provenance wrapper.
-  The sole four-operation launch funnel uses the shared empty-environment local
-  wrapper with fixed `PATH`, private `HOME`, fixed local `DOCKER_HOST`, private
-  `DOCKER_CONFIG`, absolute client, and redundant explicit `--host`/`--config`.
-  The active-online snapshot checks also reprove the Docker authority between
-  every high-level operation. Cleanup reproves and removes the exact
-  configuration leaf/directory before recursive workspace cleanup; changed
-  authority is preserved and fails. The top-level release child allowlist no
-  longer contains `DOCKER_HOST` or `DOCKER_CONFIG`, and its existing behavioral
-  fixture now requires both to be absent. The Android child owns the complete
-  fixed authority above. To avoid breaking the separately open Debian artifact
-  build or final systemd-lifecycle verifier, both children now refuse inherited
-  `DOCKER_CONFIG` and select only child-owned canonical empty mode-0600
-  configurations beneath unpredictable private scratch. The artifact child
-  does so before direct/release classification. The lifecycle child does so
-  before either of its two Docker operations and checks the configuration
-  before and after each. This closes parent-configuration reuse without
-  claiming either Debian child's still-open client/socket/complete-ambient-input
-  authority; both broader Docker boundaries remain separate follow-on slices.
-  That sentence records R-S11dj's then-current evidence boundary:
-  R-S11dk/R-S11e-129 subsequently closes the artifact child and
-  R-S11dl/R-S11e-130 subsequently closes the lifecycle child.
+  Verification cleanup is material, not cosmetic. The Android builder checker
+  was reduced from 2,196 lines / 104,147 bytes to 410 lines / 17,297 bytes and
+  now checks only this authority, the four operation shapes, retained source/A-B/
+  publication invariants, and the real VM-harness wiring. Its 115-string
+  cross-subsystem mutation catalog and requirements/status coupling were
+  deleted. The duplicate 912-line workspace verifier-of-verifier block, its
+  dispatch, and its source loading were deleted outright. The same workspace
+  oracle's stale Android half of a combined Debian/Android target validator and
+  fake-host-Docker fixture was also deleted; the Debian-owned half remains. The
+  independent Android-builder image gate remains separate and passes its normal contract and
+  all 54 focused provenance mutations. Shell syntax, isolated Python
+  compilation, the compact Android gate, and HTML parsing are targeted checks
+  for this slice; none substitutes for the runtime result above.
 
-  R-S11dj and Appendix C #263 make the correction normative. The focused Android
-  builder gate now binds root refusal, complete shared authority/provenance/
-  cleanup, release-parent isolation, the unchanged R-S11bj–R-S11bm source,
-  operation, signing, confinement, and publication contracts, the requirement,
-  Appendix row, and this ledger entry. The independent workspace gate and
-  complete source-mutation catalog bind the same caller/parent integration and
-  normative artifacts. The focused Android gate's normal contract and all 115
-  deliberate mutations pass. The focused Debian gate's normal contract and all
-  37 mutations also pass after adding the narrow direct/release child-owned
-  configuration contract. The independent workspace normal contract and
-  complete in-memory repository source-mutation catalog pass.
+  Crucial open boundary: the authority-only VM payload does not contain the
+  certified Android builder image or the complete source/online/signing/output
+  transaction. Consequently, a normal direct or release-child build deliberately
+  fails closed outside the admitted VM, and the release transaction is not yet
+  operational through this new boundary. Implement one unprivileged outer flow
+  that imports the exact OCI image into a disposable no-NIC guest, supplies
+  exact source/online and stable signing inputs with least authority, returns
+  one bounded identity-bound private result, independently validates it, and
+  leaves no signing or VM residue. Then run a fresh exact-commit signed APK A==B
+  build, cold R-B2/R-B10 release, device behavior, independent reproduction, and
+  external review. No APK was built and no established signing file was opened,
+  listed, hashed, mounted, or modified in this slice.
 
-  The complete catalog found and drove correction of two verifier-only
-  weaknesses before its final clean pass. First, a new mutation expected a
-  later Docker-order diagnostic although the independent verifier correctly
-  rejected it under its earlier helper-presence contract; every new mutation
-  now names its actual first rejection. Second, the new generic order helper
-  initially reused the exact comparison token owned by the older Android
-  scratch-order mutation, giving that historical mutation two ambiguous
-  candidates; the helper now uses a lexically distinct equivalent comparison,
-  restoring exactly one effective scratch target. Neither correction changed
-  production authority or accepted a bypass.
-
-  Bash syntax, Python in-memory compilation, requirements HTML parsing,
-  synchronized requirements-hash equality, native-codec normal/self-test, and
-  the independent normal gate pass. Requirements SHA-256 is
-  `845c08e85bad7357c268854d51a1ac0f855b307a29e18b9bbc4aeec6aa3215ca`,
-  synchronized to the hardening and native-codec ledgers.
-
-  Every project gate ran in immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric UID:GID 1000:1000 with no network, a read-only container root and
-  repository, all capabilities dropped, no-new-privileges, no Docker socket,
-  host namespace, device, or published port, and explicit PID, memory/no-swap,
-  CPU, file-descriptor, and scratch ceilings.
-
-  This source slice does not invoke the Android builder, keytool, established
-  signing files, `scripts/verify.sh`, either root fixture, release build, or any
-  networked/published container. No signing identity is listed, opened, hashed,
-  mounted, inspected, rotated, regenerated, or otherwise mutated. APK/device/
-  native behavior, a fresh clean exact-commit R-B2/R-B10 cold release, installed
-  platform behavior, and R-V3 external review remain separately open.
 - **R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority —
   SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
   COLD RELEASE AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
@@ -7354,43 +7297,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   preserved and fails. The previous final success path no longer disables that
   trap or bypasses exact removal.
 
-  R-S11dl and Appendix C #265 make the boundary normative.
-  `scripts/verify-debian-systemd-lifecycle-authority.py` binds production
-  order, complete shared client/socket/configuration/provenance/cleanup
-  authority, immutable devcheck pins/recipe, sole launch and mount cardinality,
-  forbidden old paths, output bounds, shared wiring, requirements, Appendix,
-  ledger, and deliberate mutations. The Android-focused integration gate has
-  been reconciled from its stale pre-R-S11dk artifact/lifecycle config-export
-  assumptions to both children's current independent shared authorities.
-  The independent workspace validator and complete source-mutation catalog bind
-  the lifecycle source, focused verifier, shared gate, R-S11dl, Appendix C
-  #265, and this row.
-
-  A baseline confined run before this slice's edits exposed that stale Android
-  integration contract as
-  `missing Debian child inherited Docker-configuration refusal`; it was not
-  suppressed. The corrected lifecycle-focused normal contract passes and all
-  44 deliberate mutations are rejected. The reconciled Android integration
-  normal contract passes and all 114 mutations are rejected; the unchanged
-  Debian-builder normal contract and all 62 mutations pass as regression
-  evidence. The independent workspace normal contract and complete 2,309-case
-  in-memory repository source-mutation catalog pass.
-
-  Verification itself found and closed two focused-gate weaknesses before the
-  final clean pass. The physical-library-source mutation initially retained
-  the required fixed-path token in a comment, so it was replaced with a real
-  relative-source mutation. The focused validator initially bound the output
-  diagnostics but not the exact 60..256 count, current-owner/current-group/
-  single-link, and 1-GiB predicates; those source predicates are now explicit
-  requirements. The independent catalog also required the ten new lifecycle
-  fixtures to name their deterministic first rejection in the pre-existing
-  systemd or new focused contract. The catalog was restarted from mutation one
-  after each observed correction and completed cleanly. None of these
-  verifier corrections weakened production authority or accepted a bypass.
-
-  Requirements SHA-256 is
-  `01c38bace40d8c56f74b90fb72d660dbe8334aa4cedfcd481c5c856c0a901cb1`,
-  synchronized to the active hardening and native-codec ledgers.
+  R-S11dl and Appendix C #265 make the boundary normative. The focused
+  `scripts/verify-debian-systemd-lifecycle-authority.py` owns the source-order,
+  image, launch, mount, result-bound, and cleanup checks for this lifecycle.
+  The Android builder checker no longer mirrors this unrelated subsystem, and
+  its former workspace verifier-of-verifier coupling is deleted. The last
+  focused source run rejected its 44 deliberate mutations, but that is source
+  evidence only and does not replace the installed lifecycle execution below.
 
   This slice does not invoke the lifecycle orchestrator, Docker staging, KVM,
   a package builder, release transaction, `scripts/verify.sh`, or a root
@@ -7477,27 +7390,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fails with a retained path.
 
   R-S11dm and Appendix C #266 make the fixed client/daemon/configuration correction normative.
-  `scripts/verify-release-parent-docker-authority.py` binds the complete
+  `scripts/verify-release-parent-docker-authority.py` owns the complete
   pre-source root refusal, closed environment, separate authority construction,
   shared client/socket/configuration/provenance implementation, five-launch
   inventory, child separation, no-fallback cleanup,
   exact retirement, old-surface absence, requirements/Appendix/ledger state,
-  and deliberate mutations. The independent workspace verifier and complete
-  source-mutation catalog bind the same boundary.
-
-  Confined source evidence on 2026-07-26 is green: the focused R-S11dm gate
-  rejects all 27 deliberate mutations; the adjacent Debian lifecycle, Debian
-  builder, and Android builder authority gates reject 44, 62, and 114
-  mutations respectively; the independent workspace contract is green; and
-  its complete catalog rejects all 2,323 deliberate source mutations from
-  mutation one. Both native-codec ledger modes, shell/Python syntax, the
-  requirements HTML parse/hash synchronization, and diff hygiene are green.
-  Project gates ran only in the immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric non-root with no network, read-only source and container root, all
-  capabilities dropped, no-new-privileges, no host namespace/device/port/
-  Docker-socket mount, bounded resources, and private empty host-client
-  configuration.
+  and deliberate mutations. The last focused source run rejected all 27 of its
+  mutations. The Android builder gate no longer cross-validates this unrelated
+  release-parent surface; current native/cold evidence remains the authority
+  required below.
 
   R-S11gm/R-S11e-225 later supersedes this row's former allowance for UID-0/capability-bearing writable-bind
   fixtures and mixed-owner cleanup. This row does not claim execution of `scripts/build-release.sh`, any
@@ -7505,95 +7406,38 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   transaction. Exact cold committed R-B2/R-B10 artifacts, installed/native/
   device behavior, and R-V3 external review remain separately open. The
   broader Ralph-loop goal remains active.
-- **R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,
-  resource, and cleanup authority — SOURCE IMPLEMENTED AND CONFINED SOURCE
-  VERIFIED 2026-07-26.** Platform: the unprivileged Linux
-  release-verification host. Endpoint/action:
-  `scripts/test-android-gradle-cache.sh` outer mode and
-  `scripts/android-rust-check.sh`, the two Android children required by
-  `scripts/verify-release.sh`. Boundary: invoking release user and live source/
-  canonical online inputs ↔ Docker client/daemon/configuration, Gradle
-  behavioral verdict, aarch64 Rust target-check verdict, writable generated
-  state, resource consumption, and terminal cleanup authority.
+- **R-S11dn/R-S11e-132 — mandatory Android release-gate source,
+  resource, cleanup, and Docker authority — INNER CONFINEMENT RETAINED;
+  HOST-DOCKER OUTER AUTHORITY SUPERSEDED BY R-S11dh AND OPEN.**
+  Platform/boundary: `scripts/test-android-gradle-cache.sh` outer mode and
+  `scripts/android-rust-check.sh`, required by `scripts/verify-release.sh`,
+  bridge release source/online inputs to Android-builder containers.
 
-  Both children already selected the immutable pinned Android-builder image
-  and launched numeric-nonroot, no-pull, networkless, read-only-root,
-  capability-free, no-new-privileges containers. They nevertheless sourced
-  repository helpers without refusing host UID/GID zero, selected `docker`
-  through `PATH`, let image provenance and direct calls inherit ambient Docker
-  routing/configuration, used short volume binds without descendant-mount
-  control, and supplied no PID/memory/no-swap/CPU/descriptor/file-size/bounded-
-  tmpfs limits. The Rust check additionally mounted the live repository
-  writable at `/src` even though pub resolution, bridge generation, and Cargo
-  output write there. The Gradle fixture lived at a separately recursive
-  public-`/tmp` path.
+  Their source staging and inner operation shapes remain intentionally strict:
+  numeric non-root, immutable image, no pull/network, read-only root, no
+  capabilities or privilege gain, bounded resources, recursively excluded
+  mounts, private Gradle fixtures, and an immutable reference plus disposable
+  writable Rust source candidate with before/after comparison. Neither child
+  writes the live checkout.
 
-  Docker's official CLI reference documents client host/context/configuration/
-  TLS/API/platform/trust/header inputs and their precedence. Docker's Engine
-  security guidance treats rootful-daemon control as powerful host authority
-  and cgroups as denial-of-service containment. Its bind-mount documentation
-  states that binds act on the selected daemon host, are writable by default,
-  and include descendant mounts unless `--mount` controls recursion. The run
-  reference documents explicit pull, read-only-root, resource, tmpfs, and
-  `ulimit` controls. The old path was real release-verdict,
-  daemon/configuration-selection, checkout-write, bind-mount, resource,
-  cleanup, and build-host authority debt. It is not evidence that another
-  daemon/configuration was used, source or online bytes changed, Docker
-  escaped, host root was acquired, a listener or port was exposed, host
-  RustDesk/service/configuration/firewall/network state changed, exploitation
-  occurred, or the host was compromised.
+  Their outer authority is no longer acceptable as closed. Both still
+  initialize `local_docker` against the orchestration host's rootful daemon.
+  R-S11dh's sole-VM policy and the Android builder correction above make that
+  root-equivalent build-host authority an explicit remaining migration; these
+  children must not run on this DMZ host until each has a real admitted-VM
+  entry with root/foreign refusal, guest-only provenance and launches, exact
+  read-only inputs, bounded results, pre/post replay, and joined residue-free
+  execution. Absence of that guest must fail closed without host/rootless/TCP
+  fallback.
 
-  Both bootstraps now close `PATH`, capture numeric UID/GID with absolute
-  `/usr/bin/id`, and reject either zero before sourcing repository helpers.
-  Every direct or release-child invocation creates an unpredictable
-  current-principal mode-0700 identity-bound workspace, initializes its own
-  shared fixed local-Docker authority, and routes immutable Android-builder
-  provenance plus all three launches through the shared empty-environment
-  pre/post-proved wrapper. Every container has explicit no-pull/no-network/
-  read-only-root/numeric-nonroot/capability-free/no-new-privileges semantics,
-  bounded PID/memory/no-swap/CPU/core/descriptor/file-size/tmpfs resources,
-  no host namespace/device/port/Docker-socket authority, and an exact mount
-  inventory with recursive inclusion disabled.
+  The former Android builder super-checker and workspace block that duplicated
+  these scripts, unrelated Debian/release children, documentation, and a large
+  mutation matrix were deleted. Existing narrow `verify.sh` string checks are
+  supplementary source guards, not runtime or daemon-authority evidence.
+  R-S11dn therefore remains open for VM migration and actual Gradle/Rust
+  execution. No Android Rust workload, Gradle workload, APK, release
+  transaction, installed/device behavior, or external review is claimed.
 
-  The Gradle gate exposes only its named read-only projector/init/contract/test
-  files, private read-only mount-crossing fixture, and one read-only pinned
-  Gradle distribution. The Rust gate archives only current tracked or
-  nonignored regular files into an immutable reference plus disposable
-  writable candidate, proves equality with the existing Android source
-  comparator before execution, and mounts only the candidate writable; the
-  authoritative inner script and canonical online closure are read-only. It
-  checks tracked source inputs afterward while admitting generated extras,
-  then reverifies the canonical online closure and stable live-source archive.
-  Neither child exposes a writable live checkout.
-
-  Cleanup first reproves and exactly removes Docker configuration, then uses
-  the descriptor-safe private-tree closer against the recorded workspace
-  identity; changed objects are preserved and fail. R-S11dn and Appendix C
-  #267 make this source boundary normative. The extended
-  `scripts/verify-android-builder-authority.py`, shared gate, independent
-  workspace contract, and complete source-mutation catalog bind it. No Android
-  Rust or Gradle workload is required for those source assertions.
-
-  Confined source verification on 2026-07-26 is green. The focused Android
-  builder/release-gate verifier rejects all 145 deliberate mutations. The
-  adjacent release-parent, Debian systemd-lifecycle, and Debian builder gates
-  reject 27, 44, and 62 mutations respectively. The independent workspace
-  normal contract is green, and its complete catalog rejects all 2,334
-  deliberate source mutations from mutation one. Native-codec normal and
-  negative modes, shell/Python syntax, requirements HTML parsing/hash
-  synchronization, and diff hygiene are green. Every project gate ran only in
-  immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric non-root with no pull or network, read-only root/repository, all
-  capabilities dropped, no-new-privileges, bounded resources, no host
-  namespace/device/port/Docker-socket mount, and a fresh private canonical-
-  empty host Docker-client configuration removed immediately afterward.
-
-  No Android Rust check, Gradle behavioral workload, APK/package/artifact
-  builder, root fixture, KVM guest, release transaction, installed/native/
-  device test, or external review is claimed here. Exact cold committed
-  R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain
-  separately open; the broader Ralph-loop goal remains active.
 - **R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority —
   SOURCE IMPLEMENTED AND CONFINED SOURCE/STRUCTURE/MUTATION VERIFIED
   2026-07-26.**

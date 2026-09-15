@@ -25,10 +25,79 @@ if [ -n "${ONLINE_DIR+x}" ]; then
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+    && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+    || { echo "Android artifact building requires the verifier-VM entry preflight" >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+    "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+    || die "guest Docker authority differs from its repository pin"
+readonly VERIFIER_VM_MARKER_DOCKER
+
+verifier_vm_docker() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        "$VERIFIER_VM_DOCKER_CLIENT" \
+            --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+            --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+verifier_vm_image_provenance() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@" \
+        || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+require_verifier_vm_android_builder() {
+    verifier_vm_image_provenance verify-local \
+        --role android-builder \
+        --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
+        --image-ref "$IMAGE_ID" \
+        --base "ubuntu:24.04@$SHA256_BASEIMAGE_UBUNTU_2404" \
+        --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
+        --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+        --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
+        --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
+        --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --config-id "$ANDROID_BUILDER_CONFIG_ID" \
+        --manifest-id "$ANDROID_BUILDER_MANIFEST_ID" \
+        || die "pinned Android builder image provenance verification failed"
+}
+
+if [ "$#" -eq 1 ] && [ "$1" = --self-test-vm-authority ]; then
+    authority_version="$(verifier_vm_docker version \
+        --format '{{.Client.Version}}|{{.Server.Version}}')" \
+        || die "verifier-VM Docker authority self-test failed"
+    [ "$authority_version" = \
+      "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+        || die "verifier-VM Docker authority version differs: $authority_version"
+    printf 'ANDROID_BUILDER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed source=untouched signing=untouched output=untouched\n' \
+        "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
+    exit 0
+fi
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 OUT_PARENT=""
@@ -83,11 +152,7 @@ fi
 cleanup_owned_workspace() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-        && ! remove_local_docker_authority; then
-        warn "preserving changed private Android builder Docker authority: $OWNED_WORKSPACE"
-        status=1
-    elif [ -n "$OWNED_WORKSPACE" ]; then
+    if [ -n "$OWNED_WORKSPACE" ]; then
         if ! remove_owned_workspace_exact; then
             warn "preserving changed private Android build workspace: $OWNED_WORKSPACE"
             status=1
@@ -204,7 +269,6 @@ prepare_execution_contract() {
         || die "private Android build-workspace identity is unavailable"
     [[ "$OWNED_WORKSPACE_ID" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
         || die "private Android build-workspace identity is malformed"
-    initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -311,7 +375,7 @@ verify_all_build_sources_unchanged() {
 }
 
 android_docker_run() {
-    local_docker run --rm --pull=never --network=none --read-only \
+    verifier_vm_docker run --rm --pull=never --network=none --read-only \
         --user "$BUILD_UID:$BUILD_GID" \
         --cap-drop=ALL --security-opt=no-new-privileges \
         "$@"
@@ -326,7 +390,7 @@ prepare_pass_output() {
 }
 
 resolve_image() {
-    require_pinned_builder_image android-builder "$IMAGE_ID"
+    require_verifier_vm_android_builder
     if [ "$RELEASE_CHILD" -eq 1 ] && [ "$RELEASE_DOCKER_IMAGE_ID" != "$IMAGE_ID" ]; then
         die "release Android image ID does not equal ANDROID_BUILDER_IMAGE_ID"
     fi
@@ -343,8 +407,8 @@ activate_online_snapshot() {
 }
 
 verify_active_online_snapshot() {
-    assert_local_docker_authority \
-        || die "Android builder local Docker authority changed"
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+        || die "Android builder verifier-VM authority changed"
     assert_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 }
 
@@ -421,12 +485,13 @@ preflight() {
 # assert_keystore_properties: R-B2 mandates a SPECIFIC key (RSA 4096-bit, SHA256withRSA, fixed alias).
 # A wrong key silently signs the release, and Android WELDS app identity to the signing key — a wrong
 # key at first release is PERMANENT (rotation = a data-wiping reinstall). So assert the key's
-# PROPERTIES, not just its existence. keytool runs in the build IMAGE (the host may have no JDK); the
+# PROPERTIES, not just its existence. keytool runs in the build image inside the authenticated verifier
+# VM (the orchestration host may have no JDK); the
 # store password is fed on keytool's stdin (never argv/env — both leak via /proc, per the R-B2 note).
 assert_keystore_properties() {
     local info fingerprint
-    assert_local_docker_authority \
-        || die "Android builder local Docker authority changed before keytool preflight"
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+        || die "Android builder verifier-VM authority changed before keytool preflight"
     info="$(android_docker_run \
         --pids-limit=32 --memory=512m --memory-swap=512m --cpus=1 \
         --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
@@ -733,10 +798,8 @@ publish_result() {
     PENDING_RESULT_ID=""
     verify_active_online_snapshot
     verify_all_build_sources_unchanged
-    assert_local_docker_authority \
-        || die "Android builder Docker authority changed before retirement"
-    remove_local_docker_authority \
-        || die "Android builder Docker authority could not retire before publication"
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+        || die "Android builder verifier-VM authority changed before publication"
     prepare_pending_result
     remove_owned_workspace_exact \
         || die "private Android build workspace could not retire before final publication"

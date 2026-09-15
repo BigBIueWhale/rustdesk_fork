@@ -2683,59 +2683,37 @@ def validate_release_finalizer(source):
         require_text(source, text, label)
 
 
-def validate_target_scripts(debian, android, pins):
-    for source, label, mismatch, role, pin in (
-        (debian, "Debian", "double-build SHA mismatch", "deb-builder", "DEB_BUILDER_IMAGE_ID"),
-        (
-            android,
-            "Android",
-            "double-build APK SHA mismatch",
-            "android-builder",
-            "ANDROID_BUILDER_IMAGE_ID",
-        ),
-    ):
-        require_text(source, 'if [ "${DOUBLE_BUILD:-1}" = "1" ]; then', f"{label} default double build")
-        require_text(source, mismatch, f"{label} A/B mismatch rejection")
-        require_text(source, '--user "$BUILD_UID:$BUILD_GID"', f"{label} user-mapped container")
-        require_text(source, "RELEASE_DOCKER_IMAGE_ID", f"{label} content-ID image binding")
-        if label == "Android":
-            require_text(
-                source,
-                'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
-                "Android shared local Docker binding",
-            )
-        else:
-            require_text(
-                source,
-                'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
-                "Debian shared local Docker binding",
-            )
-        require_text(source, f'IMAGE_ID="${{{pin}:-}}"', f"{label} pinned image ID selection")
-        require_text(
-            source,
-            f'require_pinned_builder_image {role} "$IMAGE_ID"',
-            f"{label} builder provenance verification",
-        )
-        require_text(source, "RUSTDESK_RELEASE_ONLINE_SNAPSHOT", f"{label} release snapshot contract")
-        require_text(source, 'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"', f"{label} direct snapshot")
-        require_text(source, 'ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"', f"{label} snapshot-only consumption")
-        expected_snapshot_checks = 6 if label == "Debian" else 4
-        require_count(
-            source,
-            "verify_active_online_snapshot",
-            expected_snapshot_checks,
-            f"{label} consumer snapshot checks",
-        )
-        require_text(source, "current-UID mode-0700 directory", f"{label} snapshot owner/mode proof")
-        if "IMAGE_NAME=" in source or "docker image inspect" in source:
-            raise VerificationError(f"{label} target retains mutable builder tag resolution")
-    require_text(pins, 'ANDROID_SIGNING_CERT_SHA256="1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9"', "Android certificate pin")
-    require_text(android, "assert_private_signing_files", "Android private signing-file proof")
-    require_text(android, "mode 0600", "Android signing-file mode")
-    require_text(android, "mode 0700", "Android signing-parent mode")
-    require_count(android, "ANDROID_SIGNING_CERT_SHA256", 6, "Android certificate identity checks")
-    require_text(android, "apksigner verify -Werr", "final APK signature verification")
-    require_text(android, "--verify-apk", "standalone final APK identity proof")
+def validate_debian_target_script(debian):
+    require_text(debian, 'if [ "${DOUBLE_BUILD:-1}" = "1" ]; then', "Debian default double build")
+    require_text(debian, "double-build SHA mismatch", "Debian A/B mismatch rejection")
+    require_text(debian, '--user "$BUILD_UID:$BUILD_GID"', "Debian user-mapped container")
+    require_text(debian, "RELEASE_DOCKER_IMAGE_ID", "Debian content-ID image binding")
+    require_text(
+        debian,
+        'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+        "Debian shared local Docker binding",
+    )
+    require_text(debian, 'IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"', "Debian pinned image ID selection")
+    require_text(
+        debian,
+        'require_pinned_builder_image deb-builder "$IMAGE_ID"',
+        "Debian builder provenance verification",
+    )
+    require_text(debian, "RUSTDESK_RELEASE_ONLINE_SNAPSHOT", "Debian release snapshot contract")
+    require_text(
+        debian,
+        'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+        "Debian direct snapshot",
+    )
+    require_text(
+        debian,
+        'ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"',
+        "Debian snapshot-only consumption",
+    )
+    require_count(debian, "verify_active_online_snapshot", 6, "Debian consumer snapshot checks")
+    require_text(debian, "current-UID mode-0700 directory", "Debian snapshot owner/mode proof")
+    if "IMAGE_NAME=" in debian or "docker image inspect" in debian:
+        raise VerificationError("Debian target retains mutable builder tag resolution")
 
 
 def validate_debian_result_publication_contract(sources):
@@ -22564,914 +22542,6 @@ def validate_session_stream_generation_contract(sources):
 
 
 
-def validate_android_builder_authority_contract(sources):
-    focused = sources["android_builder_authority_verifier"]
-    comparator = sources["android_build_source_verifier"]
-    for text, label in (
-        ('require_count(build, "if ! android_docker_run", 3', "Android builder four-launch inventory"),
-        ('forbid(build, token, label)', "Android builder forbidden-authority enforcement"),
-        ('require_order(source: str, tokens: Tuple[str, ...]', "Android builder order helper"),
-        ("root refusal, shared authority, launch funnel, and provenance definitions",
-         "Android builder Docker authority order enforcement"),
-        ("shared Docker API/platform/trust-input refusal",
-         "Android builder complete ambient Docker-input enforcement"),
-        ("shared Docker provenance pre/post authority proof",
-         "Android builder provenance authority enforcement"),
-        ("builder provenance shared-authority routing",
-         "Android builder provenance routing enforcement"),
-        ("shared exact Docker cleanup order",
-         "Android builder Docker cleanup enforcement"),
-        ("release-child Docker authority inheritance",
-         "Android builder release-parent isolation mutation"),
-        ("ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
-         "Android builder release-child fixture-cardinality enforcement"),
-        ("final Debian-lifecycle Docker-environment absence fixture",
-         "Android builder final Debian-lifecycle fixture enforcement"),
-        ("Debian lifecycle child fixed Docker authority",
-         "Android builder Debian-lifecycle independent-authority enforcement"),
-        ("Debian lifecycle child isolated image provenance",
-         "Android builder Debian-lifecycle provenance enforcement"),
-        ("Debian lifecycle focused mutation catalog",
-         "Android builder Debian-lifecycle focused-gate delegation"),
-        ('source=$BUILD_SOURCE_ROOT,target=/src"', "Android builder private-source mount contract"),
-        ('source=$pass_output,target=/out"', "Android builder private-output mount contract"),
-        ("Android authority-terminal publication order",
-         "Android builder terminal-publication enforcement"),
-        ("shared publisher final no-clobber commit order",
-         "Android builder shared publisher enforcement"),
-        ("exact private result inventory",
-         "Android builder exact-result enforcement"),
-        ("independent pass source",
-         "Android builder independent-pass enforcement"),
-        ('ordered_tokens = (', "Android builder scratch phase ordering"),
-        ('if positions != tuple(sorted(positions))', "Android builder scratch-order rejection semantics"),
-        ('consumed Rust installer payload survived scratch retirement', "Android Rust-installer retirement postcondition"),
-        ('consumed LLVM payload survived scratch retirement', "Android LLVM retirement postcondition"),
-        ('single deferred Gradle-cache call', "Android late Gradle projection cardinality"),
-        ('Gradle Cargo-metadata consumer', "Android retained Cargo final consumer"),
-        (
-            '(\'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\', "Android tooling shared preferences root")',
-            "Android shared preferences root enforcement",
-        ),
-        (
-            '(\'unset ANDROID_USER_HOME ANDROID_SDK_HOME\', "single Android preference-location injection")',
-            "Android single preference-location enforcement",
-        ),
-        (
-            '(\'install -d -m 0700 "$ANDROID_PREFS_ROOT"\', "private legacy analytics preferences constructor")',
-            "Android legacy preferences private-constructor enforcement",
-        ),
-        (
-            '(\'install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"\', "private current-tools preferences constructor")',
-            "Android current preferences private-constructor enforcement",
-        ),
-        ('Android preferences root was not freshly absent', "Android preferences freshness enforcement"),
-        ('Android preferences root is not private to the build identity', "Android legacy preferences owner/mode enforcement"),
-        ('current Android preferences directory is not private to the build identity', "Android current preferences owner/mode enforcement"),
-        ('forbid(inner, token, label)', "Android broad-home-override refusal enforcement"),
-        (
-            '(rust_gate, "BUILD_UID", "BUILD_GID", "Android Rust release gate")',
-            "Android Rust release-gate focused authority enforcement",
-        ),
-        (
-            '(gradle_gate, "HOST_UID", "HOST_GID", "Android Gradle release gate")',
-            "Android Gradle release-gate focused authority enforcement",
-        ),
-        (
-            '"Android Rust root refusal, fixed Docker authority, provenance, and launch"',
-            "Android Rust release-gate ordering enforcement",
-        ),
-        (
-            '"Android Rust exact mount inventory"',
-            "Android Rust release-gate mount inventory enforcement",
-        ),
-        (
-            '"Android Gradle root refusal, fixed Docker authority, provenance, and launch"',
-            "Android Gradle release-gate ordering enforcement",
-        ),
-        (
-            'require_count(\n'
-            '        gradle_gate,\n'
-            '        "local_docker run ",\n'
-            '        2,\n'
-            '        "Android Gradle fixed-authority launch inventory",\n'
-            '    )',
-            "Android Gradle release-gate focused launch inventory enforcement",
-        ),
-        (
-            '"R-S11dn/R-S11e-132"',
-            "Android release-gate focused normative binding",
-        ),
-        ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
-        ('run_mutations(sources)', "Android builder mutation dispatch"),
-        ('"manifest": read_regular(repo, "Cargo.toml")',
-         "Android builder focused Cargo-manifest input"),
-        ('"lockfile": read_regular(repo, "Cargo.lock")',
-         "Android builder focused Cargo-lock input"),
-        ('"flutter_ffi": read_regular(repo, "src/flutter_ffi.rs")',
-         "Android builder focused Flutter-FFI input"),
-        ('"pub use dart_sys::Dart_Handle;"',
-         "Android builder focused canonical Dart-handle enforcement"),
-        ('"if grep -qF \'[SEVERE]\' \\"$FRB_CODEGEN_LOG\\"; then"',
-         "Android builder focused severe-diagnostic enforcement"),
-        ('"canonical Dart-handle ABI"',
-         "Android builder focused Dart-handle mutation"),
-        ('"severe FRB diagnostic rejection"',
-         "Android builder focused bridge-verdict mutation"),
-    ):
-        require_text(focused, text, label)
-    require_text(
-        sources["root_cargo"],
-        'flutter = ["flutter_rust_bridge", "dart-sys"]',
-        "Android canonical Dart-handle Flutter feature",
-    )
-    require_text(
-        sources["root_cargo"],
-        'dart-sys = { version = "=4.1.5", optional = true }',
-        "Android exact optional dart-sys dependency",
-    )
-    rustdesk_lock = extract_between(
-        sources["cargo_lock"],
-        '[[package]]\nname = "rustdesk"\n',
-        "\n[[package]]",
-        "root RustDesk lock record",
-    )
-    require_text(
-        rustdesk_lock,
-        ' "dart-sys",',
-        "Android root RustDesk dart-sys lock edge",
-    )
-    require_text(
-        sources["cargo_lock"],
-        '[[package]]\nname = "dart-sys"\nversion = "4.1.5"',
-        "Android locked canonical dart-sys package",
-    )
-    require_text(
-        sources["flutter_ffi_source"],
-        "pub use dart_sys::Dart_Handle;",
-        "Android canonical Dart-handle re-export",
-    )
-    require_absent(
-        sources["flutter_ffi_source"],
-        "pub type Dart_Handle",
-        "Android second Dart-handle type declaration",
-    )
-    require_order(
-        sources["android_apk_build"],
-        (
-            'FRB_CODEGEN_LOG="$(mktemp /tmp/rustdesk-frb-codegen.XXXXXXXXXX)"',
-            "flutter_rust_bridge_codegen --rust-input",
-            '2>&1 | tee "$FRB_CODEGEN_LOG"',
-            "if grep -qF '[SEVERE]' \"$FRB_CODEGEN_LOG\"; then",
-            'echo "[FATAL] Flutter-Rust-Bridge generation emitted a severe diagnostic" >&2',
-            'rm -f -- "$FRB_CODEGEN_LOG"\ntrap - EXIT',
-            'if [ "$APK_MODE" = rust-check ]; then',
-        ),
-        "Android bridge generation, severe verdict, and consumer order",
-    )
-    for text, label in (
-        ('getattr(os, "O_NOFOLLOW", 0)', "Android source descriptor no-follow open"),
-        ('before.st_nlink != 1', "Android source hardlink refusal"),
-        ('identity_before != identity_after', "Android source stable-read proof"),
-        ('if not allow_extras:', "Android initial extra-input refusal semantics"),
-        ('reference_digest != candidate_digest', "Android source byte comparison"),
-        ('reference_root_mode != REFERENCE_DIRECTORY_MODE', "Android authority-root exact-mode comparison"),
-        ('candidate_root_mode != CANDIDATE_DIRECTORY_MODE', "Android writable-root exact-mode comparison"),
-        ('reference_mode != REFERENCE_DIRECTORY_MODE', "Android authority-directory exact-mode comparison"),
-        ('candidate_mode != CANDIDATE_DIRECTORY_MODE', "Android writable-directory exact-mode comparison"),
-        ('reference file has noncanonical mode', "Android authority-file exact-mode comparison"),
-        ('candidate_mode != expected_candidate_mode', "Android source exact-mode comparison"),
-        ('self_test()', "Android source comparator self-test"),
-    ):
-        require_text(comparator, text, label)
-    require_text(
-        sources["android"],
-        "local_docker run --rm --pull=never --network=none --read-only",
-        "Android builder common confinement wrapper",
-    )
-    for text, label in (
-        ('readonly BUILD_UID="$(/usr/bin/id -u)"',
-         "Android builder absolute UID source"),
-        ('readonly BUILD_GID="$(/usr/bin/id -g)"',
-         "Android builder absolute GID source"),
-        ('[ "$BUILD_UID" -ne 0 ]', "Android builder UID-root refusal"),
-        ('[ "$BUILD_GID" -ne 0 ]', "Android builder GID-root refusal"),
-        ('source "$SCRIPT_DIR/lib.sh"', "Android builder shared authority source"),
-        (
-            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
-            "Android builder fixed Docker authority initialization",
-        ),
-        ("&& ! remove_local_docker_authority; then",
-         "Android builder exact Docker authority cleanup"),
-        ("preserving changed private Android builder Docker authority",
-         "Android builder changed-authority preservation"),
-        ('assert_local_docker_authority \\\n'
-         '        || die "Android builder local Docker authority changed"',
-         "Android builder active-authority recheck"),
-    ):
-        require_text(sources["android"], text, label)
-    require_exact_count(
-        sources["android"],
-        "local_docker run --rm --pull=never --network=none --read-only",
-        1,
-        "Android builder fixed Docker launch funnel",
-    )
-    for text, label in (
-        ('"$DOCKER_BIN" run', "Android builder obsolete direct Docker launch"),
-        ("readonly DOCKER_BIN=", "Android builder obsolete direct Docker client"),
-        ("assert_private_docker_config", "Android builder obsolete Docker-config helper"),
-        ("export DOCKER_CONFIG=", "Android builder caller-visible Docker configuration"),
-    ):
-        require_absent(sources["android"], text, label)
-    require_order(
-        sources["android"],
-        (
-            'readonly BUILD_UID="$(/usr/bin/id -u)"',
-            'readonly BUILD_GID="$(/usr/bin/id -g)"',
-            '[ "$BUILD_UID" -ne 0 ]',
-            '[ "$BUILD_GID" -ne 0 ]',
-            'source "$SCRIPT_DIR/lib.sh"',
-            "load_pins",
-            'mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX',
-            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
-            "local_docker run --rm --pull=never --network=none --read-only",
-            'require_pinned_builder_image android-builder "$IMAGE_ID"',
-        ),
-        "Android builder root-refusal and Docker-authority definition order",
-    )
-    android_preflight = extract_between(
-        sources["android"],
-        "preflight() {",
-        "\n}\n\n# assert_keystore_properties:",
-        "Android builder preflight",
-    )
-    require_order(
-        android_preflight,
-        (
-            "assert_clean_worktree",
-            "assert_source_date_epoch",
-            "prepare_output_contract",
-            "prepare_execution_contract",
-            "prepare_source_snapshot",
-            "resolve_image",
-            "activate_online_snapshot",
-        ),
-        "Android output preflight before build authority",
-    )
-    android_cleanup = extract_between(
-        sources["android"],
-        "cleanup_owned_workspace() {",
-        "\n}\n\ntrap cleanup_owned_workspace EXIT",
-        "Android builder workspace cleanup",
-    )
-    require_order(
-        android_cleanup,
-        (
-            "remove_local_docker_authority",
-            'elif [ -n "$OWNED_WORKSPACE" ]',
-            "remove_owned_workspace_exact",
-        ),
-        "Android builder Docker-before-workspace cleanup",
-    )
-    android_exact_cleanup = extract_between(
-        sources["android"],
-        "remove_owned_workspace_exact() {",
-        "\n}\n\nrecord_output_parent_identity() {",
-        "Android builder exact workspace cleanup",
-    )
-    require_order(
-        android_exact_cleanup,
-        (
-            '--remove-private-root "$OWNED_WORKSPACE"',
-            '--expected-identity "$OWNED_WORKSPACE_ID"',
-            '[ ! -e "$OWNED_WORKSPACE" ] && [ ! -L "$OWNED_WORKSPACE" ]',
-            'OWNED_WORKSPACE=""',
-            'OWNED_WORKSPACE_ID=""',
-        ),
-        "Android builder exact workspace retirement",
-    )
-    for text, label in (
-        ("prepare_output_contract() {", "Android absent-output contract"),
-        ('OUT_PARENT_ID="$device:$inode"', "Android output-parent identity retention"),
-        ('OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$OWNED_WORKSPACE" 2>/dev/null)"',
-         "Android workspace identity retention"),
-        ("Android output directory must be absent for no-clobber publication",
-         "Android absent final output"),
-        ('BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-$label"',
-         "Android independent pass source"),
-        ("verify_all_build_sources_unchanged() {",
-         "Android final independent-source proof"),
-        ('source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk,readonly',
-         "Android read-only unsigned APK input"),
-        ("validate_private_result() {", "Android private-result validator"),
-        ("assert_exact_private_result_inventory() {",
-         "Android exact-result inventory helper"),
-        ("Android result is not the exact APK/checksum pair",
-         "Android exact private result"),
-        ('[ "${#entries[@]}" -eq 2 ] \\\n'
-         '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
-         "Android exact private inventory predicate"),
-        ('[[ "$checksum_line" =~ ^([0-9a-f]{64})\\ \\ rustdesk-arm64\\.apk$ ]]',
-         "Android canonical checksum grammar"),
-        ('[ "$after_metadata" = "$metadata" ] \\\n'
-         '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
-         "Android private-result metadata stability"),
-        ('PASS_A_APK_ID="$device:$inode"', "Android pass-A identity retention"),
-        ('PASS_A_SHA256="$before_sha256"', "Android pass-A digest retention"),
-        ('PASS_B_SHA256="$before_sha256"', "Android pass-B digest retention"),
-        ('[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
-         "Android private A/B comparison"),
-        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
-         "Android shared result publisher"),
-        ("--artifact-kind android-arm64", "Android closed publication profile"),
-        ('--source-identity "$PASS_A_APK_ID"',
-         "Android publisher source identity"),
-        ('--output-parent-identity "$OUT_PARENT_ID"',
-         "Android publisher parent identity"),
-        ('--pending-identity "$PENDING_RESULT_ID"',
-         "Android publisher pending identity"),
-    ):
-        require_text(sources["android"], text, label)
-    require_exact_count(
-        sources["android"],
-        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
-        2,
-        "Android two-phase shared publisher",
-    )
-    require_exact_count(
-        sources["android"],
-        "--artifact-kind android-arm64",
-        2,
-        "Android two-phase closed publication profile",
-    )
-    require_exact_count(
-        sources["android"],
-        'assert_exact_private_result_inventory "$pass_output" "$pass"',
-        2,
-        "Android pre/post-verification private result inventory proof",
-    )
-    android_publication = extract_between(
-        sources["android"],
-        "publish_result() {",
-        "\n}\n\nmain() {",
-        "Android result publication",
-    )
-    require_order(
-        android_publication,
-        (
-            "verify_active_online_snapshot",
-            "verify_all_build_sources_unchanged",
-            "assert_local_docker_authority",
-            "remove_local_docker_authority",
-            "prepare_pending_result",
-            "remove_owned_workspace_exact",
-            "--commit",
-        ),
-        "Android authority-terminal publication",
-    )
-    android_main = extract_between(
-        sources["android"],
-        "main() {",
-        "\n}\n\nmain",
-        "Android builder main",
-    )
-    require_order(
-        android_main,
-        (
-            'build_apk "$pass_a" pass-a',
-            'sign_apk "$pass_a" "$BUILD_UNSIGNED_APK"',
-            'validate_private_result "$pass_a" pass-a',
-            'build_apk "$pass_b" pass-b',
-            'sign_apk "$pass_b" "$BUILD_UNSIGNED_APK"',
-            'validate_private_result "$pass_b" pass-b',
-            '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
-            "publish_result",
-        ),
-        "Android private A/B before publication",
-    )
-    for text, label in (
-        ('remove_build_source() {', "Android between-pass recursive source deletion"),
-        ('chmod -R u+rwX "$OWNED_WORKSPACE"',
-         "Android recursive workspace permission fallback"),
-        ('rm -rf -- "$OWNED_WORKSPACE"',
-         "Android recursive workspace deletion fallback"),
-        ('mkdir -p "$OUT_DIR"', "Android public pre-verification output"),
-        ('install -m 0400 "$pass_output/rustdesk-arm64.apk" "$OUT_DIR',
-         "Android overwrite-capable public copy"),
-        ('verify_apk_artifact "$OUT_DIR/rustdesk-arm64.apk"',
-         "Android post-publication fallible validation"),
-    ):
-        require_absent(sources["android"], text, label)
-    shared_publication = sources["debian_publication"]
-    for text, label in (
-        ('kind="android-arm64"', "shared Android artifact profile"),
-        ('artifact="rustdesk-arm64.apk"', "shared canonical APK"),
-        ('checksum="rustdesk-arm64.apk.sha256"', "shared canonical APK checksum"),
-        ('pending_prefix=".android-output-pending-"',
-         "shared private Android pending namespace"),
-        ("return tuple(sorted((self.artifact, self.checksum)))",
-         "shared exact two-file inventory"),
-        ("rename_noreplace(output_parent, pending, destination)",
-         "shared final no-clobber rename"),
-        ('verify_result(pending_descriptor, "published build output", contract)',
-         "shared post-publication content proof"),
-        ("published build output changed during final verification",
-         "shared final-edge proof"),
-    ):
-        require_text(shared_publication, text, label)
-    android_rust_gate = sources["android_rust_release_gate"]
-    for text, label in (
-        ('readonly BUILD_UID="$(/usr/bin/id -u)"',
-         "Android Rust release-gate absolute UID capture"),
-        ('[ "$BUILD_UID" -ne 0 ]',
-         "Android Rust release-gate UID-root refusal"),
-        ('initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"',
-         "Android Rust release-gate fixed Docker authority"),
-        ("if ! local_docker run --rm --pull=never --network=none --read-only",
-         "Android Rust release-gate fixed Docker launch"),
-        ("type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled",
-         "Android Rust release-gate private writable source"),
-        ("type=bind,source=$online,target=/online,readonly,bind-recursive=disabled",
-         "Android Rust release-gate read-only online closure"),
-        ('--reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE" --allow-extras',
-         "Android Rust release-gate post-source proof"),
-        ("remove_local_docker_authority",
-         "Android Rust release-gate exact Docker cleanup"),
-    ):
-        require_text(android_rust_gate, text, label)
-    require_order(
-        android_rust_gate,
-        (
-            'readonly BUILD_UID="$(/usr/bin/id -u)"',
-            '[ "$BUILD_UID" -ne 0 ]',
-            'source "$SCRIPT_DIR/lib.sh"',
-            'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"',
-            'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"',
-            "if ! local_docker run --rm --pull=never --network=none --read-only",
-        ),
-        "Android Rust release-gate root-refusal and authority order",
-    )
-    require_exact_count(
-        android_rust_gate,
-        "local_docker run ",
-        1,
-        "Android Rust release-gate launch inventory",
-    )
-    require_absent(
-        android_rust_gate,
-        "require_cmd docker",
-        "Android Rust release-gate PATH Docker authority",
-    )
-
-    android_gradle_gate = sources["android_gradle_release_gate"]
-    for text, label in (
-        ('readonly HOST_UID="$(/usr/bin/id -u)"',
-         "Android Gradle release-gate absolute UID capture"),
-        ('[ "$HOST_UID" -ne 0 ]',
-         "Android Gradle release-gate UID-root refusal"),
-        ('initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"',
-         "Android Gradle release-gate fixed Docker authority"),
-        ('HOST_FIXTURE="$WORKSPACE/fixture"',
-         "Android Gradle release-gate private fixture"),
-        ("if local_docker run --rm --pull=never --network=none --read-only",
-         "Android Gradle release-gate mount-rejection fixed Docker launch"),
-        ("local_docker run --rm --pull=never --network=none --read-only",
-         "Android Gradle release-gate semantics fixed Docker launch"),
-        ("bind-recursive=disabled",
-         "Android Gradle release-gate descendant-mount exclusion"),
-        ("remove_local_docker_authority",
-         "Android Gradle release-gate exact Docker cleanup"),
-    ):
-        require_text(android_gradle_gate, text, label)
-    require_order(
-        android_gradle_gate,
-        (
-            'readonly HOST_UID="$(/usr/bin/id -u)"',
-            '[ "$HOST_UID" -ne 0 ]',
-            'source "$SCRIPT_DIR/lib.sh"',
-            'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"',
-            'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"',
-            "if local_docker run --rm --pull=never --network=none --read-only",
-        ),
-        "Android Gradle release-gate root-refusal and authority order",
-    )
-    require_exact_count(
-        android_gradle_gate,
-        "local_docker run ",
-        2,
-        "Android Gradle release-gate launch inventory",
-    )
-    require_exact_count(
-        android_gradle_gate,
-        "bind-recursive=disabled",
-        9,
-        "Android Gradle release-gate mount inventory",
-    )
-    require_absent(
-        android_gradle_gate,
-        "require_cmd docker",
-        "Android Gradle release-gate PATH Docker authority",
-    )
-    release_child = extract_between(
-        sources["build"],
-        "run_child() {",
-        "\n}\n\nrun_verification() {",
-        "release child environment",
-    )
-    require_absent(
-        release_child,
-        'DOCKER_HOST="$DOCKER_HOST_URI"',
-        "release child inherited Docker endpoint",
-    )
-    require_absent(
-        release_child,
-        'DOCKER_CONFIG="$DOCKER_CONFIG_DIR"',
-        "release child inherited Docker configuration",
-    )
-    require_exact_count(
-        sources["build"],
-        'printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
-        2,
-        "ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
-    )
-    require_text(
-        sources["build"],
-        'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
-        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
-        "ordinary release-target Docker-environment absence fixture",
-    )
-    require_text(
-        sources["build"],
-        'printf \'[ "$#" = 6 ]\\n\'\n'
-        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
-        "final Debian-lifecycle Docker-environment absence fixture",
-    )
-    systemd_smoke = sources["systemd_smoke_host"]
-    for text, label in (
-        (
-            'readonly HOST_UID="$(/usr/bin/id -u)"',
-            "Debian lifecycle child absolute UID capture",
-        ),
-        (
-            'readonly HOST_GID="$(/usr/bin/id -g)"',
-            "Debian lifecycle child absolute GID capture",
-        ),
-        (
-            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
-            "Debian lifecycle child fixed local Docker authority",
-        ),
-        (
-            "local_docker_image_provenance verify-local",
-            "Debian lifecycle child isolated image provenance",
-        ),
-        (
-            "local_docker run --rm --pull=never --network=none --read-only",
-            "Debian lifecycle child fixed local Docker launch",
-        ),
-    ):
-        require_text(systemd_smoke, text, label)
-    require_order(
-        systemd_smoke,
-        (
-            'readonly HOST_UID="$(/usr/bin/id -u)"',
-            'readonly HOST_GID="$(/usr/bin/id -g)"',
-            '[ "$HOST_UID" -ne 0 ]',
-            '[ "$HOST_GID" -ne 0 ]',
-            'source "$SCRIPT_DIR/lib.sh"',
-            'WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")',
-            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
-            "local_docker_image_provenance verify-local",
-            "local_docker run --rm --pull=never --network=none --read-only",
-        ),
-        "Debian lifecycle child independent authority before Docker operations",
-    )
-    require_text(
-        sources["systemd_lifecycle_authority"],
-        "MUTATIONS = (",
-        "Debian lifecycle focused mutation catalog",
-    )
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-android-build-source.py --self-test",
-        "Android source-comparator shared self-test wiring",
-    )
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-android-builder-authority.py --repo . --self-test",
-        "Android builder shared focused-verifier wiring",
-    )
-    require_text(
-        sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builds use independent pass sources, the canonical Dart handle with fail-closed severe bridge diagnostics, private stable result validation, exact cleanup, and terminal no-clobber publication",
-        "Android builder shared bridge/result-publication disposition",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11ga</span>',
-        "Android canonical Dart-handle requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>335</td>",
-        "Android canonical Dart-handle Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics",
-        "Android canonical Dart-handle hardening ledger",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11bj</span>',
-        "Android builder authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11bk</span>',
-        "Android snapshot-mode authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11bl</span>',
-        "Android scratch-lifecycle requirement",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11bm</span>',
-        "Android preferences scratch requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>199</td>",
-        "Android builder authority Appendix C row",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>200</td>",
-        "Android snapshot-mode authority Appendix C row",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>201</td>",
-        "Android scratch-lifecycle Appendix C row",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>202</td>",
-        "Android preferences scratch Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bj/R-S11e-76 — Android APK builder container and source authority",
-        "Android builder authority hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority",
-        "Android snapshot-mode authority hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bl/R-S11e-78 — Android bounded scratch lifecycle",
-        "Android scratch-lifecycle hardening ledger",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
-        "Android preferences scratch hardening ledger",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11dj</span>',
-        "Android artifact-builder Docker authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>263</td>",
-        "Android artifact-builder Docker authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
-        "Android artifact-builder Docker authority hardening ledger",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11dw</span>',
-        "Android result-publication requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>276</td>",
-        "Android result-publication Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dw/R-S11e-141 — Android pass isolation, private result validation,",
-        "Android result-publication hardening ledger",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11dn</span>',
-        "Android release-gate Docker authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>267</td>",
-        "Android release-gate Docker authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,",
-        "Android release-gate Docker authority hardening ledger",
-    )
-    debian_focused = sources["debian_builder_authority_verifier"]
-    for text, label in (
-        (
-            'export PATH=/usr/bin:/bin',
-            "Debian builder closed host command path",
-        ),
-        (
-            'readonly BUILD_UID="$(/usr/bin/id -u)"',
-            "Debian builder absolute UID source",
-        ),
-        (
-            'readonly BUILD_GID="$(/usr/bin/id -g)"',
-            "Debian builder absolute GID source",
-        ),
-        (
-            '[ "$BUILD_UID" -ne 0 ]',
-            "Debian builder UID-root refusal",
-        ),
-        (
-            '[ "$BUILD_GID" -ne 0 ]',
-            "Debian builder GID-root refusal",
-        ),
-        (
-            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
-            "Debian builder direct-or-release private workspace",
-        ),
-        (
-            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
-            "Debian builder fixed local Docker authority",
-        ),
-        (
-            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
-            '        && ! remove_local_docker_authority; then',
-            "Debian builder exact Docker cleanup admission",
-        ),
-        (
-            "preserving changed private Debian builder Docker authority",
-            "Debian builder changed-authority preservation",
-        ),
-        ('prepare_direct_build_source() {', "Debian builder private direct-source constructor"),
-        ('clone --quiet --no-hardlinks --no-checkout --reject-shallow', "Debian builder private clone"),
-        ('release child requires outer independent snapshots and DOUBLE_BUILD=0',
-         "Debian builder release-snapshot ownership"),
-        ('verify_build_source_postcondition "failed Debian $profile build"',
-         "Debian builder failed-build source postcondition"),
-        ('verify_build_source_postcondition "completed Debian $profile build"',
-         "Debian builder completed-build source postcondition"),
-        ('local_docker run --rm --pull=never', "Debian builder fixed-local no-pull launch"),
-        (
-            '-e "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"',
-            "Debian builder explicit reproducibility-epoch transfer",
-        ),
-        (
-            'assert_local_docker_authority \\\n'
-            '        || die "Debian builder local Docker authority changed"',
-            "Debian builder active Docker-authority recheck",
-        ),
-        ('--cap-drop=ALL', "Debian builder capability drop"),
-        ('--security-opt=no-new-privileges', "Debian builder no-new-privileges"),
-        ('/src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m',
-         "Debian builder empty read-only Git-authority shield"),
-        ('target=/online,readonly', "Debian builder read-only online input"),
-    ):
-        require_text(sources["debian"], text, label)
-    require_order(
-        sources["debian"],
-        (
-            'readonly BUILD_UID="$(/usr/bin/id -u)"',
-            'readonly BUILD_GID="$(/usr/bin/id -g)"',
-            '[ "$BUILD_UID" -ne 0 ]',
-            '[ "$BUILD_GID" -ne 0 ]',
-            'source "$SCRIPT_DIR/lib.sh"',
-            "load_pins",
-            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
-            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
-            'if [ -n "${RELEASE_SRC_COMMIT:-}" ]',
-            'require_pinned_builder_image deb-builder "$IMAGE_ID"',
-            "local_docker run --rm --pull=never",
-        ),
-        "Debian builder root-refusal and Docker-authority order",
-    )
-    debian_cleanup = extract_between(
-        sources["debian"],
-        "cleanup_owned_workspace() {",
-        "\n}\n\ntrap cleanup_owned_workspace EXIT",
-        "Debian builder workspace cleanup",
-    )
-    require_order(
-        debian_cleanup,
-        (
-            "remove_local_docker_authority",
-            'elif [ -n "$OWNED_WORKSPACE" ]',
-            "remove_owned_workspace_exact",
-        ),
-        "Debian builder Docker-before-workspace cleanup",
-    )
-    for text, label in (
-        ("readonly DOCKER_BIN", "Debian builder bespoke Docker client"),
-        ('"$DOCKER_BIN" run', "Debian builder bespoke Docker launch"),
-        ("/usr/bin/docker run", "Debian builder direct absolute Docker launch"),
-        ("assert_private_docker_config", "Debian builder bespoke Docker config"),
-        ("export DOCKER_CONFIG", "Debian builder global Docker config"),
-    ):
-        require_absent(sources["debian"], text, label)
-    for text, label in (
-        (
-            "root refusal, shared authority, release classification, provenance, and launch",
-            "Debian builder focused authority order",
-        ),
-        (
-            "shared Docker ambient-input refusal",
-            "Debian builder focused ambient-input enforcement",
-        ),
-        (
-            "shared Docker API/platform/trust-input refusal",
-            "Debian builder focused complete ambient-input enforcement",
-        ),
-        (
-            "shared exact Docker cleanup order",
-            "Debian builder focused exact cleanup enforcement",
-        ),
-        (
-            "explicit reproducibility-epoch transfer through empty environment",
-            "Debian builder focused explicit epoch enforcement",
-        ),
-        ('MUTATIONS: Tuple[Mutation, ...]', "Debian builder mutation inventory"),
-        ('run_mutations(sources)', "Debian builder mutation dispatch"),
-        (
-            'def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:',
-            "Debian builder focused order helper",
-        ),
-        ('forbid(build, token, label)', "Debian builder forbidden-authority enforcement"),
-        ('Debian compile-container authority is incomplete or misordered',
-         "Debian builder container-order enforcement"),
-    ):
-        require_text(debian_focused, text, label)
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-debian-builder-authority.py --repo . --self-test",
-        "Debian builder focused authority verifier",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11cf</span>',
-        "Debian builder authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>225</td>",
-        "Debian builder authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11cf/R-S11e-98 — Debian builder private-source and container authority",
-        "Debian builder authority hardening ledger",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11dk</span>',
-        "Debian builder Docker authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>264</td>",
-        "Debian builder Docker authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority",
-        "Debian builder Docker authority hardening ledger",
-    )
-    require_text(
-        sources["verify"],
-        "R-S11cf/R-S11dk/R-S11dv direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
-        "Debian builder shared Docker-authority disposition",
-    )
-    for text, label in (
-        ("R-S11bm exact corrected-commit evidence", "Android R-S11bm evidence enforcement"),
-        ("Appendix C #202 exact corrected-commit evidence", "Android Appendix C #202 evidence enforcement"),
-        ("R-S11e-79 exact corrected-commit evidence", "Android R-S11e-79 evidence enforcement"),
-        ("R-S11bm remaining release/device obligations", "Android R-S11bm open-obligation enforcement"),
-        ("Appendix C #202 remaining release/device obligations", "Android Appendix C #202 open-obligation enforcement"),
-        ("R-S11e-79 remaining release/device obligations", "Android R-S11e-79 open-obligation enforcement"),
-    ):
-        require_text(focused, text, label)
-
-
 def validate_android_builder_image_authority_contract(sources):
     focused = sources["android_builder_image_authority_verifier"]
     dockerfile = sources["android_builder_certification_dockerfile"]
@@ -33781,7 +32851,7 @@ def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
     validate_release_finalizer(sources["finalizer"])
-    validate_target_scripts(sources["debian"], sources["android"], sources["pins"])
+    validate_debian_target_script(sources["debian"])
     validate_debian_result_publication_contract(sources)
     validate_publisher(sources["publish"])
     validate_fork_version(sources["version"])
@@ -33874,7 +32944,6 @@ def validate_sources(sources):
     validate_viewer_audio_mailbox_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_session_stream_generation_contract(sources)
-    validate_android_builder_authority_contract(sources)
     validate_android_builder_image_authority_contract(sources)
     validate_deb_builder_image_authority_contract(sources)
     validate_win_helper_image_authority_contract(sources)
@@ -37108,25 +36177,20 @@ def run_transaction_fixtures(repo):
 def run_target_contract_fixtures(sources, scratch):
     image_ids = {
         "debian": "sha256:" + "d" * 64,
-        "android": "sha256:" + "a" * 64,
     }
-    roles = {"debian": "deb-builder", "android": "android-builder"}
-    pin_names = {"debian": "DEB_BUILDER_IMAGE_ID", "android": "ANDROID_BUILDER_IMAGE_ID"}
+    roles = {"debian": "deb-builder"}
+    pin_names = {"debian": "DEB_BUILDER_IMAGE_ID"}
     with scratch.directory("target-contract-") as root_authority:
         root = root_authority.canonical_path()
         scripts = root / "scripts"
         tools = root / "bin"
         scripts.mkdir(mode=0o700)
         tools.mkdir(mode=0o700)
-        for target in ("debian", "android"):
+        for target in ("debian",):
             path = scripts / f"build-{target}.sh"
             path.write_text(sources[target], encoding="utf-8")
             path.chmod(0o700)
-        for name, source in (
-            ("android-apk-build.sh", sources["android_apk_build"]),
-            ("verify-android-build-source.py", sources["android_build_source_verifier"]),
-            ("verify-private-tree-closure.py", sources["closure"]),
-        ):
+        for name, source in (("verify-private-tree-closure.py", sources["closure"]),):
             path = scripts / name
             path.write_text(source, encoding="utf-8")
             path.chmod(0o700)
@@ -37135,8 +36199,6 @@ def run_target_contract_fixtures(sources, scratch):
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$LIB_DIR/.." && pwd)"
 ONLINE_DIR="$REPO_ROOT/online"
-DEFAULT_ANDROID_KEYSTORE="$REPO_ROOT/private/key.jks"
-DEFAULT_ANDROID_KEYSTORE_PASS_FILE="$REPO_ROOT/private/pass"
 SHA_PENDING="__PENDING_R_B12__"
 LOCAL_DOCKER_AUTHORITY_INITIALIZED=0
 LOCAL_DOCKER_AUTHORITY_LABEL=""
@@ -37154,23 +36216,13 @@ load_pins() {
     RUST_VERSION=1.75
     FLUTTER_VERSION=3.24.5
     LLVM_VERSION=15.0.6
-    ANDROID_NDK_VERSION=r28c
-    ANDROID_BUILD_TOOLS=34.0.0
-    ANDROID_MIN_SDK=24
     SHA256_RUST_1_75=1
-    SHA256_RUST_STD_ANDROID_1_75=2
     SHA256_FLUTTER_3_24_5=3
     SHA256_LLVM_15_0_6=4
-    SHA256_ANDROID_NDK_R28C=5
-    SHA256_ANDROID_CMDLINE_TOOLS=6
     SHA256_BASEIMAGE_UBUNTU_1804=sha256:7
-    SHA256_BASEIMAGE_UBUNTU_2404=sha256:8
-    ANDROID_SIGNING_CERT_SHA256=9
     DEB_BUILDER_IMAGE_ID="sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-    ANDROID_BUILDER_IMAGE_ID="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     if [ "${FIXTURE_MISSING_IMAGE_PIN:-0}" = 1 ]; then
         DEB_BUILDER_IMAGE_ID=""
-        ANDROID_BUILDER_IMAGE_ID=""
     fi
 }
 require_cmd() { :; }
@@ -37277,7 +36329,6 @@ require_pinned_builder_image() {
     local role="$1" image_id="$2" expected="" pin=""
     case "$role" in
         deb-builder) expected="$DEB_BUILDER_IMAGE_ID"; pin=DEB_BUILDER_IMAGE_ID ;;
-        android-builder) expected="$ANDROID_BUILDER_IMAGE_ID"; pin=ANDROID_BUILDER_IMAGE_ID ;;
         *) die "unexpected builder role: $role" ;;
     esac
     [ -n "$expected" ] || die "pins.env is missing $pin"
@@ -37305,14 +36356,6 @@ import json
 import os
 import sys
 arguments = sys.argv[1:]
-if (
-    any("target=/ks/keystore.jks,readonly" in value for value in arguments)
-    and any("keytool " in value for value in arguments)
-):
-    print("Signature algorithm name: SHA256withRSA")
-    print("Subject Public Key Algorithm: 4096-bit RSA key")
-    print("SHA256: 9")
-    raise SystemExit(0)
 with open(os.environ["FIXTURE_DOCKER_LOG"], "a", encoding="utf-8") as stream:
     stream.write(json.dumps(arguments) + "\\n")
 if os.environ.get("FIXTURE_MUTATE_ONLINE") == "1":
@@ -37400,12 +36443,6 @@ raise SystemExit(17)
         (snapshot_online / "closure").write_text("pinned\n", encoding="ascii")
         (snapshot_online / "closure").chmod(0o400)
         snapshot_online.chmod(0o500)
-        private = root / "private"
-        private.mkdir(mode=0o700)
-        for name, contents in (("key.jks", b"fixture key\n"), ("pass", b"fixture pass\n")):
-            path = private / name
-            path.write_bytes(contents)
-            path.chmod(0o600)
         output = root / "out"
         helper_log = root / "helper.log"
         docker_log = root / "docker.log"
@@ -37473,7 +36510,7 @@ raise SystemExit(17)
         def output_of(result):
             return result.stdout + result.stderr
 
-        for target in ("debian", "android"):
+        for target in ("debian",):
             result = invoke(target)
             if result.returncode == 0:
                 raise VerificationError(f"{target} target fixture unexpectedly completed a platform build")
@@ -37492,7 +36529,6 @@ raise SystemExit(17)
                 raise VerificationError(f"{target} Docker invocation did not use the immutable image ID")
             mutable_images = {
                 "rustdesk-fork-harness-deb-builder",
-                "rustdesk-fork-harness-android-builder",
             }
             if any(argument in mutable_images for argument in docker_arguments):
                 raise VerificationError(f"{target} Docker invocation retained a mutable image tag")
@@ -38665,9 +37701,6 @@ def main():
             "private_directory_mode_restorer": (
                 repo / "scripts/restore-private-directory-modes.py"
             ).read_text(encoding="utf-8"),
-            "android_builder_authority_verifier": (
-                repo / "scripts/verify-android-builder-authority.py"
-            ).read_text(encoding="utf-8"),
             "android_rust_release_gate": (
                 repo / "scripts/android-rust-check.sh"
             ).read_text(encoding="utf-8"),
@@ -38766,9 +37799,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_libyuv_output_helper": (
                 repo / "scripts/online-libyuv-distfile-output.py"
-            ).read_text(encoding="utf-8"),
-            "android_apk_build": (
-                repo / "scripts/android-apk-build.sh"
             ).read_text(encoding="utf-8"),
             "windows_helper_runtime": (
                 repo / "scripts/windows-helper-runtime.sh"
@@ -39013,7 +38043,6 @@ def main():
                     key=lambda path: path.as_posix(),
                 )
             ),
-            "android": (repo / "scripts/build-android.sh").read_text(encoding="utf-8"),
             "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
             "docs": (repo / "docs/VERSIONING.md").read_text(encoding="utf-8"),
             "deployment": (repo / "docs/DEPLOYMENT.md").read_text(encoding="utf-8"),
@@ -39970,10 +38999,6 @@ def validate_workspace_verifier_self_contract(source):
             "target-contract exact cleanup helper source",
         ),
         (
-            '("verify-android-build-source.py", sources["android_build_source_verifier"])',
-            "target-contract exact Android source validator",
-        ),
-        (
             'fixture_git("init", "--quiet", "--initial-branch=fixture", "--object-format=sha1", ".")',
             "target-contract exact Git source initialization",
         ),
@@ -40015,10 +39040,6 @@ def validate_workspace_verifier_self_contract(source):
             "target-contract empty fake-client environment",
         ),
         (
-            'and any("keytool " in value for value in arguments)',
-            "target-contract Android keytool-only fixture preflight",
-        ),
-        (
             'f"type=bind,source={snapshot_online},target=/online,readonly"',
             "target-contract exact release online mount",
         ),
@@ -40036,7 +39057,6 @@ def validate_workspace_verifier_self_contract(source):
         ("output.mkdir(", "precreated target-contract output"),
         ('"DOCKER_HOST": "unix:///var/run/docker.sock",', "ambient target-contract Docker endpoint"),
         ('"DOCKER_CONFIG": str(docker_config),', "caller-owned target-contract Docker configuration"),
-        ('"--verify-apk"', "Android verification-only target-contract shortcut"),
     ):
         if forbidden in target_contract_fixtures:
             raise VerificationError(f"{label} is present")
@@ -40056,15 +39076,6 @@ def validate_workspace_verifier_self_contract(source):
             "remove_local_docker_authority() {",
         ),
         "target-contract fixture-local Docker authority lifecycle",
-    )
-    require_order(
-        target_contract_fixtures,
-        (
-            'any("target=/ks/keystore.jks,readonly" in value for value in arguments)',
-            'and any("keytool " in value for value in arguments)',
-            'with open(os.environ["FIXTURE_DOCKER_LOG"], "a", encoding="utf-8") as stream:',
-        ),
-        "target-contract Android preflight/build-consumer separation",
     )
     require_order(
         target_contract_fixtures,

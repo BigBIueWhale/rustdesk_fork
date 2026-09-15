@@ -24,6 +24,7 @@ readonly RENAME_CONTRACT="$AUTHORITY_ROOT/rename.contract"
 readonly DOCKER_CLIENT=/usr/bin/docker
 readonly DOCKER_SOCKET=/var/run/docker.sock
 readonly DOCKER_DAEMON="$AUTHORITY_ROOT/bin/dockerd"
+readonly DOCKER_DAEMON_CONFIG="$AUTHORITY_ROOT/daemon.json"
 readonly BUILDX_SOURCE="$AUTHORITY_ROOT/docker-buildx"
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
 readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
@@ -121,6 +122,11 @@ done
 [ -f "$DOCKER_DAEMON" ] && [ ! -L "$DOCKER_DAEMON" ] && [ -x "$DOCKER_DAEMON" ] \
     && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DOCKER_DAEMON")" = 0:0:555:1 ] \
     || fail 'fixed guest Docker daemon metadata differs'
+[ -f "$DOCKER_DAEMON_CONFIG" ] && [ ! -L "$DOCKER_DAEMON_CONFIG" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DOCKER_DAEMON_CONFIG")" = 0:0:444:1 ] \
+    && [ "$(/usr/bin/cat "$DOCKER_DAEMON_CONFIG")" = \
+         '{"features":{"containerd-snapshotter":true}}' ] \
+    || fail 'fixed guest Docker daemon configuration differs'
 [ -f "$BUILDX_SOURCE" ] && [ ! -L "$BUILDX_SOURCE" ] && [ -x "$BUILDX_SOURCE" ] \
     && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$BUILDX_SOURCE")" = \
          "0:0:555:1:$SIZE_VERIFIER_VM_BUILDX" ] \
@@ -133,6 +139,11 @@ done
 [ -S "$DOCKER_SOCKET" ] && [ ! -L "$DOCKER_SOCKET" ] \
     && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$DOCKER_SOCKET")" = "0:$EXPECTED_GID:660" ] \
     || fail 'guest Docker Unix-socket authority differs'
+[ "$(/usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent \
+       "$DOCKER_CLIENT" --host "unix://$DOCKER_SOCKET" \
+       info --format '{{json .DriverStatus}}')" = \
+  '[["driver-type","io.containerd.snapshotter.v1"]]' ] \
+    || fail 'guest Docker image-store authority differs'
 [ -r "/proc/$DAEMON_PID/stat" ] \
     && [ "$(/usr/bin/awk '{print $22}' "/proc/$DAEMON_PID/stat")" = "$DAEMON_START" ] \
     || fail 'guest Docker daemon generation differs'
@@ -247,5 +258,5 @@ current_tree="$(
         -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=no
 )" ] || fail 'tracked admitted source is dirty'
 
-printf 'ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=%s gid=%s source=%s network=qemu-user-only udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic\n' \
+printf 'ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=%s gid=%s source=%s network=qemu-user-only udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic\n' \
     "$EXPECTED_UID" "$EXPECTED_GID" "$EXPECTED_COMMIT"

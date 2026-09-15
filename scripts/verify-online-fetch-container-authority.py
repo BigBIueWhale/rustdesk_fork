@@ -253,6 +253,10 @@ def validate(repo: pathlib.Path) -> None:
         ("rustdesk-systemd-cache", "narrow systemd-cache export"),
         ("rustdesk-result", "bounded result export"),
         ('--host "unix://$SOCKET"', "guest Unix-only Docker endpoint"),
+        ('readonly DAEMON_CONFIG=$ROOT/daemon.json', "fixed guest Docker daemon configuration"),
+        ('{"features":{"containerd-snapshotter":true}}', "containerd image-store configuration"),
+        ('--config-file "$DAEMON_CONFIG"', "explicit guest Docker daemon configuration"),
+        ("'[[\"driver-type\",\"io.containerd.snapshotter.v1\"]]'", "containerd image-store runtime proof"),
         ("--bip 172.30.0.1/24", "fixed guest Docker bridge"),
         ("--ip 127.0.0.1", "guest published-port loopback default"),
         ("--iptables=true", "guest-only firewall authority"),
@@ -356,6 +360,7 @@ def validate(repo: pathlib.Path) -> None:
         ("kernel command line is not the acquisition-VM authority", "direct-boot proof"),
         ("guest Docker daemon generation differs", "daemon-generation proof"),
         ("guest Docker Unix-socket authority differs", "Unix-socket proof"),
+        ("guest Docker image-store authority differs", "containerd image-store proof"),
         ("fixed guest Buildx source identity differs", "Buildx source proof"),
         ("acquisition NIC identity is absent or ambiguous", "NIC proof"),
         ("cache export filesystem differs", "cache-boundary proof"),
@@ -461,9 +466,10 @@ def validate(repo: pathlib.Path) -> None:
         ('"github.com/docker/buildx v${VERIFIER_VM_BUILDX_VERSION} ${VERIFIER_VM_BUILDX_COMMIT}"', "exact Buildx version"),
         ("buildx --builder default inspect", "explicit default-builder inspection"),
         ('[ "$driver" = docker ]', "in-daemon Docker driver requirement"),
+        ("assert_online_fetch_containerd_image_store", "containerd image-store admission"),
         ("^buildx_buildkit_", "managed builder-container refusal"),
         ('online_docker_without_vcs buildx --builder default build "$@"', "sole Buildx build funnel"),
-        ("ONLINE_FETCH_BUILDX_AUTHORITY=pass", "Buildx runtime receipt"),
+        ("image_store=containerd", "containerd image-store runtime receipt"),
     ):
         require(online, token, label)
     if online.count("online_buildx_build") != 7:

@@ -40,6 +40,7 @@ readonly DATA=/var/lib/rustdesk-online-fetch-docker
 readonly EXEC=/run/rustdesk-online-fetch-docker
 readonly LOG=$ROOT/dockerd.log
 readonly PIDFILE=$ROOT/dockerd.pid
+readonly DAEMON_CONFIG=$ROOT/daemon.json
 readonly SOCKET=/var/run/docker.sock
 readonly CLIENT=/usr/bin/docker
 readonly BUILDX_SOURCE=$ROOT/docker-buildx
@@ -415,6 +416,13 @@ fi
 
 /usr/bin/install -d -m 0700 -- "$ROOT" "$DATA" "$EXEC"
 /usr/bin/install -d -m 0555 -- "$BIN"
+/usr/bin/printf '%s\n' '{"features":{"containerd-snapshotter":true}}' \
+    >"$DAEMON_CONFIG"
+/usr/bin/chmod 0444 "$DAEMON_CONFIG"
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DAEMON_CONFIG")" = 0:0:444:1 ] \
+    && [ "$(/usr/bin/cat "$DAEMON_CONFIG")" = \
+         '{"features":{"containerd-snapshotter":true}}' ] \
+    || fail 'guest Docker daemon configuration differs'
 archive_inventory="$(/usr/bin/tar -tzf "$DOCKER_ARCHIVE")" \
     || fail 'Docker bundle inventory cannot be read'
 [ "$archive_inventory" = $'docker/\ndocker/runc\ndocker/containerd\ndocker/docker-init\ndocker/dockerd\ndocker/containerd-shim-runc-v2\ndocker/docker-proxy\ndocker/docker\ndocker/ctr' ] \
@@ -445,6 +453,7 @@ fi
 listeners_before="$(/usr/bin/ss -H -lntu | /usr/bin/sort -u)"
 PATH="$BIN:/usr/sbin:/usr/bin:/sbin:/bin" \
     "$BIN/dockerd" \
+        --config-file "$DAEMON_CONFIG" \
         --host "unix://$SOCKET" \
         --pidfile "$PIDFILE" \
         --data-root "$DATA" \
@@ -477,6 +486,9 @@ for _ in $(/usr/bin/seq 1 600); do
     /usr/bin/sleep 0.1
 done
 [ "$ready" -eq 1 ] || fail 'guest-only acquisition Docker daemon did not become ready'
+[ "$(docker_client info --format '{{json .DriverStatus}}')" = \
+  '[["driver-type","io.containerd.snapshotter.v1"]]' ] \
+    || fail 'guest Docker daemon is not using the containerd image store'
 [ "$(/usr/bin/cat "$PIDFILE")" = "$DAEMON_PID" ] \
     || fail 'guest Docker PID file differs'
 /usr/bin/chown "0:$ACQUISITION_GID" "$SOCKET"
@@ -775,6 +787,6 @@ verify_daemon_generation "$daemon_start" \
 /usr/bin/sync -f "$RESULT_ROOT"
 stop_daemon
 RUN_COMPLETE=1
-printf 'ONLINE_FETCH_VM_GUEST=pass uid=%s gid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=%s result=16MiB cleanup=joined\n' \
+printf 'ONLINE_FETCH_VM_GUEST=pass uid=%s gid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic nofile=%s result=16MiB cleanup=joined\n' \
     "$ACQUISITION_UID" "$ACQUISITION_GID" "$EXPECTED_SOURCE_COMMIT" \
     "$ACQUISITION_NOFILE_LIMIT"

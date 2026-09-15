@@ -566,8 +566,17 @@ assert_no_buildx_container_driver() {
     fi
 }
 
+assert_online_fetch_containerd_image_store() {
+    local driver_status
+    driver_status="$(online_docker info --format '{{json .DriverStatus}}')" \
+        || die "cannot inspect the guest Docker image store"
+    [ "$driver_status" = '[["driver-type","io.containerd.snapshotter.v1"]]' ] \
+        || die "the guest Docker daemon is not using the containerd image store: $driver_status"
+}
+
 assert_online_fetch_buildx_driver() {
     local driver
+    assert_online_fetch_containerd_image_store
     assert_no_buildx_container_driver
     driver="$(
         online_docker_without_vcs buildx --builder default inspect \
@@ -589,7 +598,7 @@ online_buildx_build() {
 
 assert_online_fetch_buildx_version
 assert_online_fetch_buildx_driver
-printf 'ONLINE_FETCH_BUILDX_AUTHORITY=pass version=%s commit=%s plugin=private driver=docker builder=default managed_container=absent\n' \
+printf 'ONLINE_FETCH_BUILDX_AUTHORITY=pass version=%s commit=%s plugin=private driver=docker image_store=containerd builder=default managed_container=absent\n' \
     "$VERIFIER_VM_BUILDX_VERSION" "$VERIFIER_VM_BUILDX_COMMIT"
 if [ "$ONLINE_FETCH_VM_AUTHORITY_PROBE" -eq 1 ]; then
     exit 0

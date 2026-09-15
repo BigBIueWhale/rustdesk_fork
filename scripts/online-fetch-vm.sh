@@ -301,9 +301,9 @@ prepare_success_receipt() {
     stderr_bytes="$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stderr")" \
         || return 1
     capture_line="bounded-unix-stream-capture: PASS bytes=$serial_bytes"
-    guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
-    entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic"
-    buildx_line="ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker builder=default managed_container=absent"
+    guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
+    entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic"
+    buildx_line="ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker image_store=containerd builder=default managed_container=absent"
     runtime_line=not-applicable
     if [ "$MODE" = authority-smoke ]; then
         runtime_line="ONLINE_FETCH_VM_RUNTIME=pass network=qemu-user-only hostfwd=absent udp=denied docker=guest-bridge git=pinned-deb inner_uid=$HOST_UID https=sha256 cache=virtiofs-atomic cleanup=joined"
@@ -864,7 +864,7 @@ for binding in "$CACHE_EXPORT|$CACHE_EXPORT_ID" "$CACHE_EXPORT/inputs|$ONLINE_EX
         || fail "writable export root identity changed: $path"
 done
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined" \
+    "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined" \
     "$SERIAL_LOG" || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest completion receipt is absent'; }
 /usr/bin/grep -Fq 'ONLINE_FETCH_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion receipt is absent'; }
@@ -877,11 +877,11 @@ done
     && [ "$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stderr")" -le 16777216 ] \
     || fail 'bounded transaction stderr is absent or ambiguous'
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic" \
+    "ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic" \
     "$RESULT_EXPORT/transaction.stdout" \
     || fail 'online-fetch guest-entry authority receipt is absent'
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker builder=default managed_container=absent" \
+    "ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker image_store=containerd builder=default managed_container=absent" \
     "$RESULT_EXPORT/transaction.stdout" \
     || fail 'online-fetch Buildx authority receipt is absent'
 if [ "$MODE" = authority-smoke ]; then

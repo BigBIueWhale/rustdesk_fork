@@ -8,28 +8,33 @@ fail() {
     exit 1
 }
 
-[ "$#" -eq 21 ] || fail 'guest bootstrap argument count differs'
+[ "$#" -eq 26 ] || fail 'guest bootstrap argument count differs'
 readonly DOCKER_ARCHIVE=$1
 readonly BUILDX_INPUT=$2
-readonly SOURCE_BUNDLE=$3
-readonly GIT_PACKAGE=$4
-readonly EXPECTED_DOCKER_VERSION=$5
-readonly EXPECTED_DOCKER_SIZE=$6
-readonly EXPECTED_DOCKER_SHA256=$7
-readonly EXPECTED_BUILDX_VERSION=$8
-readonly EXPECTED_BUILDX_COMMIT=$9
-readonly EXPECTED_BUILDX_SIZE=${10}
-readonly EXPECTED_BUILDX_SHA256=${11}
-readonly EXPECTED_GIT_PACKAGE_VERSION=${12}
-readonly EXPECTED_GIT_PACKAGE_SIZE=${13}
-readonly EXPECTED_GIT_PACKAGE_SHA256=${14}
-readonly EXPECTED_GIT_BINARY_SIZE=${15}
-readonly EXPECTED_GIT_BINARY_SHA256=${16}
-readonly EXPECTED_KERNEL_RELEASE=${17}
-readonly EXPECTED_ROOT_UUID=${18}
-readonly ACQUISITION_UID=${19}
-readonly ACQUISITION_GID=${20}
-readonly EXPECTED_SOURCE_COMMIT=${21}
+readonly BUILDKIT_ARCHIVE=$3
+readonly SOURCE_BUNDLE=$4
+readonly GIT_PACKAGE=$5
+readonly EXPECTED_DOCKER_VERSION=$6
+readonly EXPECTED_DOCKER_SIZE=$7
+readonly EXPECTED_DOCKER_SHA256=$8
+readonly EXPECTED_BUILDX_VERSION=$9
+readonly EXPECTED_BUILDX_COMMIT=${10}
+readonly EXPECTED_BUILDX_SIZE=${11}
+readonly EXPECTED_BUILDX_SHA256=${12}
+readonly EXPECTED_BUILDKIT_VERSION=${13}
+readonly EXPECTED_BUILDKIT_COMMIT=${14}
+readonly EXPECTED_BUILDKIT_SIZE=${15}
+readonly EXPECTED_BUILDKIT_SHA256=${16}
+readonly EXPECTED_GIT_PACKAGE_VERSION=${17}
+readonly EXPECTED_GIT_PACKAGE_SIZE=${18}
+readonly EXPECTED_GIT_PACKAGE_SHA256=${19}
+readonly EXPECTED_GIT_BINARY_SIZE=${20}
+readonly EXPECTED_GIT_BINARY_SHA256=${21}
+readonly EXPECTED_KERNEL_RELEASE=${22}
+readonly EXPECTED_ROOT_UUID=${23}
+readonly ACQUISITION_UID=${24}
+readonly ACQUISITION_GID=${25}
+readonly EXPECTED_SOURCE_COMMIT=${26}
 readonly EXPECTED_SOURCE_TREE="$(/usr/bin/cat /mnt/rustdesk-online-fetch-inputs/source.tree)"
 readonly EXPECTED_SOURCE_BUNDLE_SHA256="$(/usr/bin/cat /mnt/rustdesk-online-fetch-inputs/source.bundle.sha256)"
 REQUEST="$(/usr/bin/cat /mnt/rustdesk-online-fetch-inputs/request)"
@@ -44,6 +49,16 @@ readonly DAEMON_CONFIG=$ROOT/daemon.json
 readonly SOCKET=/var/run/docker.sock
 readonly CLIENT=/usr/bin/docker
 readonly BUILDX_SOURCE=$ROOT/docker-buildx
+readonly BUILDKIT_ROOT=/opt/rustdesk-online-fetch-buildkit
+readonly BUILDKIT_BIN=$BUILDKIT_ROOT/bin
+readonly BUILDKIT_CNI=$BUILDKIT_ROOT/cni
+readonly BUILDKIT_DATA=/var/lib/rustdesk-online-fetch-buildkit
+readonly BUILDKIT_EXEC=/run/rustdesk-online-fetch-buildkit
+readonly BUILDKIT_SOCKET=$BUILDKIT_EXEC/buildkitd.sock
+readonly BUILDKIT_CONFIG=$BUILDKIT_ROOT/buildkitd.toml
+readonly BUILDKIT_LOG=$BUILDKIT_ROOT/buildkitd.log
+readonly BUILDKIT_PIDFILE=$BUILDKIT_ROOT/buildkitd.pid
+readonly BUILDKIT_EXTRACT=$ROOT/buildkit-extract
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
 readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
 readonly GIT_EXEC_PATH=$GIT_RUNTIME_ROOT/usr/lib/git-core
@@ -66,7 +81,8 @@ readonly EXPECTED_ADDRESS=10.0.2.15/24
 readonly EXPECTED_GATEWAY=10.0.2.2
 readonly EXPECTED_CMDLINE="root=UUID=$EXPECTED_ROOT_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.online_fetch_vm=1 systemd.mask=systemd-networkd-wait-online.service systemd.mask=systemd-timesyncd.service systemd.mask=systemd-resolved.service systemd.mask=apt-daily.service systemd.mask=apt-daily.timer systemd.mask=apt-daily-upgrade.service systemd.mask=apt-daily-upgrade.timer systemd.mask=unattended-upgrades.service systemd.mask=ssh.service systemd.mask=ssh.socket"
 
-DAEMON_PID=
+DOCKER_DAEMON_PID=
+BUILDKIT_PID=
 CONTAINER_ID=
 PROBE_IMAGE_ID=
 RUN_COMPLETE=0
@@ -89,30 +105,59 @@ bounded_result_reader() {
     ) <"$input" >"$output"
 }
 
-verify_daemon_generation() {
+verify_docker_daemon_generation() {
     [ "$#" -eq 1 ] || return 1
     local expected_start=$1
-    [ -n "$DAEMON_PID" ] && [ -r "/proc/$DAEMON_PID/stat" ] \
-        && [ "$(/usr/bin/awk '{print $22}' "/proc/$DAEMON_PID/stat")" = "$expected_start" ] \
-        && [ "$(/usr/bin/readlink -f -- "/proc/$DAEMON_PID/exe")" = "$BIN/dockerd" ] \
-        && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$DAEMON_PID/exe")" = \
+    [ -n "$DOCKER_DAEMON_PID" ] && [ -r "/proc/$DOCKER_DAEMON_PID/stat" ] \
+        && [ "$(/usr/bin/awk '{print $22}' "/proc/$DOCKER_DAEMON_PID/stat")" = "$expected_start" ] \
+        && [ "$(/usr/bin/readlink -f -- "/proc/$DOCKER_DAEMON_PID/exe")" = "$BIN/dockerd" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$DOCKER_DAEMON_PID/exe")" = \
              "$(/usr/bin/stat -c '%d:%i:%s' -- "$BIN/dockerd")" ] \
-        && [ "$(/usr/bin/sha256sum "/proc/$DAEMON_PID/exe" | /usr/bin/awk '{print $1}')" = \
+        && [ "$(/usr/bin/sha256sum "/proc/$DOCKER_DAEMON_PID/exe" | /usr/bin/awk '{print $1}')" = \
              "$(/usr/bin/sha256sum "$BIN/dockerd" | /usr/bin/awk '{print $1}')" ]
 }
 
-stop_daemon() {
+verify_buildkit_daemon_generation() {
+    [ "$#" -eq 1 ] || return 1
+    local expected_start=$1
+    [ -n "$BUILDKIT_PID" ] && [ -r "/proc/$BUILDKIT_PID/stat" ] \
+        && [ "$(/usr/bin/awk '{print $22}' "/proc/$BUILDKIT_PID/stat")" = "$expected_start" ] \
+        && [ "$(/usr/bin/readlink -f -- "/proc/$BUILDKIT_PID/exe")" = "$BUILDKIT_BIN/buildkitd" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$BUILDKIT_PID/exe")" = \
+             "$(/usr/bin/stat -c '%d:%i:%s' -- "$BUILDKIT_BIN/buildkitd")" ] \
+        && [ "$(/usr/bin/sha256sum "/proc/$BUILDKIT_PID/exe" | /usr/bin/awk '{print $1}')" = \
+             "$SHA256_VERIFIER_VM_BUILDKITD" ]
+}
+
+stop_buildkit_daemon() {
     local daemon_status=0
-    [ -n "$DAEMON_PID" ] || fail 'guest Docker daemon identity is absent at shutdown'
-    /usr/bin/kill -TERM "$DAEMON_PID" \
+    [ -n "$BUILDKIT_PID" ] || fail 'guest BuildKit daemon identity is absent at shutdown'
+    /usr/bin/kill -TERM "$BUILDKIT_PID" \
+        || fail 'cannot signal the exact guest BuildKit daemon'
+    wait "$BUILDKIT_PID" || daemon_status=$?
+    [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] \
+        || fail "guest BuildKit daemon shutdown returned $daemon_status"
+    [ ! -r "/proc/$BUILDKIT_PID/stat" ] \
+        || fail 'guest BuildKit daemon remains after joined shutdown'
+    [ ! -S "$BUILDKIT_SOCKET" ] \
+        || fail 'guest BuildKit Unix socket remains after daemon shutdown'
+    [ ! -e /sys/class/net/rdbk0 ] \
+        || fail 'guest BuildKit bridge remains after daemon shutdown'
+    BUILDKIT_PID=
+}
+
+stop_docker_daemon() {
+    local daemon_status=0
+    [ -n "$DOCKER_DAEMON_PID" ] || fail 'guest Docker daemon identity is absent at shutdown'
+    /usr/bin/kill -TERM "$DOCKER_DAEMON_PID" \
         || fail 'cannot signal the exact guest Docker daemon'
-    wait "$DAEMON_PID" || daemon_status=$?
+    wait "$DOCKER_DAEMON_PID" || daemon_status=$?
     [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] \
         || fail "guest Docker daemon shutdown returned $daemon_status"
-    [ ! -r "/proc/$DAEMON_PID/stat" ] \
+    [ ! -r "/proc/$DOCKER_DAEMON_PID/stat" ] \
         || fail 'guest Docker daemon remains after joined shutdown'
     [ ! -S "$SOCKET" ] || fail 'guest Docker Unix socket remains after daemon shutdown'
-    DAEMON_PID=
+    DOCKER_DAEMON_PID=
 }
 
 cleanup() {
@@ -143,16 +188,31 @@ cleanup() {
         docker_client image rm "$PROBE_IMAGE_ID" >/dev/null 2>&1 || status=1
         PROBE_IMAGE_ID=
     fi
-    if [ -n "$DAEMON_PID" ]; then
-        if /usr/bin/kill -0 "$DAEMON_PID" 2>/dev/null; then
-            /usr/bin/kill -TERM "$DAEMON_PID" 2>/dev/null || daemon_status=1
+    if [ -n "$BUILDKIT_PID" ]; then
+        if /usr/bin/kill -0 "$BUILDKIT_PID" 2>/dev/null; then
+            /usr/bin/kill -TERM "$BUILDKIT_PID" 2>/dev/null || daemon_status=1
         fi
-        wait "$DAEMON_PID" 2>/dev/null || daemon_status=$?
+        wait "$BUILDKIT_PID" 2>/dev/null || daemon_status=$?
         [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] || status=1
-        DAEMON_PID=
+        [ ! -S "$BUILDKIT_SOCKET" ] || status=1
+        [ ! -e /sys/class/net/rdbk0 ] || status=1
+        BUILDKIT_PID=
+    fi
+    daemon_status=0
+    if [ -n "$DOCKER_DAEMON_PID" ]; then
+        if /usr/bin/kill -0 "$DOCKER_DAEMON_PID" 2>/dev/null; then
+            /usr/bin/kill -TERM "$DOCKER_DAEMON_PID" 2>/dev/null || daemon_status=1
+        fi
+        wait "$DOCKER_DAEMON_PID" 2>/dev/null || daemon_status=$?
+        [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] || status=1
+        [ ! -S "$SOCKET" ] || status=1
+        DOCKER_DAEMON_PID=
     fi
     if [ "$status" -ne 0 ] && [ -f "$LOG" ]; then
         /usr/bin/tail -n 200 "$LOG" >&2 || true
+    fi
+    if [ "$status" -ne 0 ] && [ -f "$BUILDKIT_LOG" ]; then
+        /usr/bin/tail -n 200 "$BUILDKIT_LOG" >&2 || true
     fi
     /usr/bin/sync || status=1
     exit "$status"
@@ -180,6 +240,13 @@ case "$EXPECTED_DOCKER_SIZE" in 0|*[!0-9]*|'') fail 'Docker size pin is malforme
 case "$EXPECTED_BUILDX_SIZE" in 0|*[!0-9]*|'') fail 'Buildx size pin is malformed' ;; esac
 [[ "$EXPECTED_BUILDX_SHA256" =~ ^[0-9a-f]{64}$ ]] \
     || fail 'Buildx digest pin is malformed'
+[[ "$EXPECTED_BUILDKIT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || fail 'BuildKit version pin is malformed'
+[[ "$EXPECTED_BUILDKIT_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+    || fail 'BuildKit commit pin is malformed'
+case "$EXPECTED_BUILDKIT_SIZE" in 0|*[!0-9]*|'') fail 'BuildKit size pin is malformed' ;; esac
+[[ "$EXPECTED_BUILDKIT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || fail 'BuildKit digest pin is malformed'
 case "$EXPECTED_GIT_PACKAGE_SIZE" in 0|*[!0-9]*|'') fail 'Git package size pin is malformed' ;; esac
 [[ "$EXPECTED_GIT_PACKAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
     || fail 'Git package digest pin is malformed'
@@ -223,6 +290,7 @@ esac
 
 for input in "$DOCKER_ARCHIVE:$EXPECTED_DOCKER_SIZE" \
     "$BUILDX_INPUT:$EXPECTED_BUILDX_SIZE" \
+    "$BUILDKIT_ARCHIVE:$EXPECTED_BUILDKIT_SIZE" \
     "$GIT_PACKAGE:$EXPECTED_GIT_PACKAGE_SIZE" "$SOURCE_BUNDLE:"; do
     path=${input%:*}
     size=${input##*:}
@@ -240,6 +308,8 @@ done
     || fail 'Docker bundle digest differs inside the guest'
 [ "$(/usr/bin/sha256sum "$BUILDX_INPUT" | /usr/bin/awk '{print $1}')" = "$EXPECTED_BUILDX_SHA256" ] \
     || fail 'Buildx binary digest differs inside the guest'
+[ "$(/usr/bin/sha256sum "$BUILDKIT_ARCHIVE" | /usr/bin/awk '{print $1}')" = "$EXPECTED_BUILDKIT_SHA256" ] \
+    || fail 'BuildKit bundle digest differs inside the guest'
 [ "$(/usr/bin/sha256sum "$GIT_PACKAGE" | /usr/bin/awk '{print $1}')" = "$EXPECTED_GIT_PACKAGE_SHA256" ] \
     || fail 'Git package digest differs inside the guest'
 [ "$(/usr/bin/dpkg-deb --field "$GIT_PACKAGE" Package)" = git ] \
@@ -333,6 +403,74 @@ current_tree="$(
 [ "$(/usr/bin/sha256sum "$REPO/scripts/online-fetch-vm-guest.sh" | /usr/bin/awk '{print $1}')" \
   = "$(/usr/bin/sha256sum "${BASH_SOURCE[0]}" | /usr/bin/awk '{print $1}')" ] \
     || fail 'payload guest bootstrap differs from the committed source'
+# shellcheck source=scripts/pins.env
+source "$REPO/scripts/pins.env"
+[ "$VERIFIER_VM_BUILDKIT_VERSION:$VERIFIER_VM_BUILDKIT_COMMIT:$SIZE_VERIFIER_VM_BUILDKIT:$SHA256_VERIFIER_VM_BUILDKIT" = \
+  "$EXPECTED_BUILDKIT_VERSION:$EXPECTED_BUILDKIT_COMMIT:$EXPECTED_BUILDKIT_SIZE:$EXPECTED_BUILDKIT_SHA256" ] \
+    || fail 'committed BuildKit bundle authority differs from the boot request'
+archive_inventory="$(/usr/bin/tar -tzf "$BUILDKIT_ARCHIVE")" \
+    || fail 'BuildKit bundle inventory cannot be read'
+[ "$archive_inventory" = $'bin/\nbin/buildctl\nbin/buildkit-cni-bridge\nbin/buildkit-cni-firewall\nbin/buildkit-cni-host-local\nbin/buildkit-cni-loopback\nbin/buildkit-qemu-aarch64\nbin/buildkit-qemu-arm\nbin/buildkit-qemu-i386\nbin/buildkit-qemu-mips64\nbin/buildkit-qemu-mips64el\nbin/buildkit-qemu-ppc64le\nbin/buildkit-qemu-riscv64\nbin/buildkit-qemu-s390x\nbin/buildkit-runc\nbin/buildkitd' ] \
+    || fail 'BuildKit bundle inventory differs'
+/usr/bin/install -d -m 0700 -- "$BUILDKIT_EXTRACT" "$BUILDKIT_ROOT"
+/usr/bin/install -d -m 0555 -- "$BUILDKIT_BIN" "$BUILDKIT_CNI"
+/usr/bin/tar -xzf "$BUILDKIT_ARCHIVE" --no-same-owner --no-same-permissions \
+    -C "$BUILDKIT_EXTRACT" \
+    bin/buildkitd bin/buildkit-runc bin/buildkit-cni-bridge \
+    bin/buildkit-cni-firewall bin/buildkit-cni-host-local \
+    bin/buildkit-cni-loopback \
+    || fail 'cannot extract the closed BuildKit runtime subset'
+install_buildkit_component() {
+    [ "$#" -eq 4 ] || fail 'internal BuildKit component-install argument count differs'
+    local source=$1 destination=$2 expected_size=$3 expected_sha256=$4
+    [ -f "$source" ] && [ ! -L "$source" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h:%s' -- "$source")" = \
+             "0:0:1:$expected_size" ] \
+        && [ "$(/usr/bin/sha256sum "$source" | /usr/bin/awk '{print $1}')" = \
+             "$expected_sha256" ] \
+        || fail "extracted BuildKit component differs: ${source##*/}"
+    /usr/bin/install -m 0555 -- "$source" "$destination"
+    [ -f "$destination" ] && [ ! -L "$destination" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$destination")" = \
+             "0:0:555:1:$expected_size" ] \
+        && [ "$(/usr/bin/sha256sum "$destination" | /usr/bin/awk '{print $1}')" = \
+             "$expected_sha256" ] \
+        || fail "installed BuildKit component differs: ${destination##*/}"
+}
+install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkitd" \
+    "$BUILDKIT_BIN/buildkitd" "$SIZE_VERIFIER_VM_BUILDKITD" \
+    "$SHA256_VERIFIER_VM_BUILDKITD"
+install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-runc" \
+    "$BUILDKIT_BIN/buildkit-runc" "$SIZE_VERIFIER_VM_BUILDKIT_RUNC" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_RUNC"
+install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-cni-bridge" \
+    "$BUILDKIT_CNI/bridge" "$SIZE_VERIFIER_VM_BUILDKIT_CNI_BRIDGE" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_BRIDGE"
+install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-cni-firewall" \
+    "$BUILDKIT_CNI/firewall" "$SIZE_VERIFIER_VM_BUILDKIT_CNI_FIREWALL" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_FIREWALL"
+install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-cni-host-local" \
+    "$BUILDKIT_CNI/host-local" "$SIZE_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL"
+install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-cni-loopback" \
+    "$BUILDKIT_CNI/loopback" "$SIZE_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK"
+/usr/bin/rm -- "$BUILDKIT_EXTRACT/bin/buildkitd" \
+    "$BUILDKIT_EXTRACT/bin/buildkit-runc" \
+    "$BUILDKIT_EXTRACT/bin/buildkit-cni-bridge" \
+    "$BUILDKIT_EXTRACT/bin/buildkit-cni-firewall" \
+    "$BUILDKIT_EXTRACT/bin/buildkit-cni-host-local" \
+    "$BUILDKIT_EXTRACT/bin/buildkit-cni-loopback"
+/usr/bin/rmdir -- "$BUILDKIT_EXTRACT/bin" "$BUILDKIT_EXTRACT"
+[ "$(/usr/bin/find "$BUILDKIT_BIN" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+  $'buildkit-runc\nbuildkitd' ] \
+    && [ "$(/usr/bin/find "$BUILDKIT_CNI" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+         $'bridge\nfirewall\nhost-local\nloopback' ] \
+    || fail 'installed BuildKit runtime inventory differs'
+[ "$(PATH=/usr/sbin:/usr/bin:/sbin:/bin "$BUILDKIT_BIN/buildkitd" --version)" = \
+  "buildkitd github.com/moby/buildkit v${EXPECTED_BUILDKIT_VERSION} ${EXPECTED_BUILDKIT_COMMIT}" ] \
+    || fail 'installed BuildKit daemon version differs'
+/usr/bin/chmod 0555 -- "$BUILDKIT_BIN" "$BUILDKIT_CNI"
 /usr/bin/install -d -m 0755 -- "$FOREIGN_PREFLIGHT_ROOT/scripts"
 /usr/bin/install -m 0444 -- \
     "$REPO/scripts/verify-online-fetch-vm-entry.sh" \
@@ -414,10 +552,10 @@ fi
 /usr/sbin/sysctl -q -w net.ipv6.conf.all.disable_ipv6=1
 /usr/sbin/sysctl -q -w net.ipv6.conf.default.disable_ipv6=1
 
-/usr/bin/install -d -m 0700 -- "$ROOT" "$DATA" "$EXEC"
+/usr/bin/install -d -m 0700 -- "$ROOT" "$DATA" "$EXEC" "$BUILDKIT_DATA"
 /usr/bin/install -d -m 0555 -- "$BIN"
-/usr/bin/printf '%s\n' '{"features":{"containerd-snapshotter":true}}' \
-    >"$DAEMON_CONFIG"
+/usr/bin/install -d -m 0710 -o 0 -g "$ACQUISITION_GID" -- "$BUILDKIT_EXEC"
+/usr/bin/printf '%s\n' '{"features":{"containerd-snapshotter":true}}' >"$DAEMON_CONFIG"
 /usr/bin/chmod 0444 "$DAEMON_CONFIG"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DAEMON_CONFIG")" = 0:0:444:1 ] \
     && [ "$(/usr/bin/cat "$DAEMON_CONFIG")" = \
@@ -449,6 +587,36 @@ if [ -z "$group_name" ]; then
     /usr/sbin/groupadd --gid "$ACQUISITION_GID" "$group_name" \
         || fail 'cannot create the VM-local acquisition group'
 fi
+/usr/bin/printf '%s\n' \
+    'root = "/var/lib/rustdesk-online-fetch-buildkit"' \
+    'insecure-entitlements = []' \
+    '' \
+    '[grpc]' \
+    '  address = ["unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock"]' \
+    '  uid = 0' \
+    "  gid = $ACQUISITION_GID" \
+    '' \
+    '[worker.oci]' \
+    '  enabled = true' \
+    '  platforms = ["linux/amd64"]' \
+    '  snapshotter = "overlayfs"' \
+    '  rootless = false' \
+    '  noProcessSandbox = false' \
+    '  gc = false' \
+    '  networkMode = "bridge"' \
+    '  cniBinaryPath = "/opt/rustdesk-online-fetch-buildkit/cni"' \
+    '  cniPoolSize = 0' \
+    '  bridgeName = "rdbk0"' \
+    '  bridgeSubnet = "172.31.0.0/24"' \
+    '  binary = "/opt/rustdesk-online-fetch-buildkit/bin/buildkit-runc"' \
+    '  max-parallelism = 4' \
+    '' \
+    '[worker.containerd]' \
+    '  enabled = false' \
+    >"$BUILDKIT_CONFIG"
+/usr/bin/chmod 0444 "$BUILDKIT_CONFIG"
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$BUILDKIT_CONFIG")" = 0:0:444:1 ] \
+    || fail 'guest BuildKit daemon configuration metadata differs'
 
 listeners_before="$(/usr/bin/ss -H -lntu | /usr/bin/sort -u)"
 PATH="$BIN:/usr/sbin:/usr/bin:/sbin:/bin" \
@@ -471,47 +639,90 @@ PATH="$BIN:/usr/sbin:/usr/bin:/sbin:/bin" \
         --group "$group_name" \
         --log-level error \
         >"$LOG" 2>&1 &
-DAEMON_PID=$!
-[[ "$DAEMON_PID" =~ ^[1-9][0-9]*$ ]] || fail 'guest Docker daemon PID is malformed'
+DOCKER_DAEMON_PID=$!
+[[ "$DOCKER_DAEMON_PID" =~ ^[1-9][0-9]*$ ]] || fail 'guest Docker daemon PID is malformed'
 ready=0
 for _ in $(/usr/bin/seq 1 600); do
     if [ -S "$SOCKET" ] \
        && [ "$(docker_client info --format '{{.ServerVersion}}' 2>/dev/null || true)" \
             = "$EXPECTED_DOCKER_VERSION" ] \
-       && /usr/bin/kill -0 "$DAEMON_PID" 2>/dev/null; then
+       && /usr/bin/kill -0 "$DOCKER_DAEMON_PID" 2>/dev/null; then
         ready=1
         break
     fi
-    /usr/bin/kill -0 "$DAEMON_PID" 2>/dev/null || break
+    /usr/bin/kill -0 "$DOCKER_DAEMON_PID" 2>/dev/null || break
     /usr/bin/sleep 0.1
 done
 [ "$ready" -eq 1 ] || fail 'guest-only acquisition Docker daemon did not become ready'
 [ "$(docker_client info --format '{{json .DriverStatus}}')" = \
   '[["driver-type","io.containerd.snapshotter.v1"]]' ] \
-    || fail 'guest Docker daemon is not using the containerd image store'
-[ "$(/usr/bin/cat "$PIDFILE")" = "$DAEMON_PID" ] \
+    || fail 'guest Docker daemon is not using its separate containerd image store'
+[ "$(/usr/bin/cat "$PIDFILE")" = "$DOCKER_DAEMON_PID" ] \
     || fail 'guest Docker PID file differs'
 /usr/bin/chown "0:$ACQUISITION_GID" "$SOCKET"
 /usr/bin/chmod 0660 "$SOCKET"
 /usr/sbin/iptables --wait -I DOCKER-USER 1 -p udp -j REJECT \
     --reject-with icmp-port-unreachable \
     || fail 'cannot deny acquisition-container UDP'
+docker_daemon_start="$(/usr/bin/awk '{print $22}' "/proc/$DOCKER_DAEMON_PID/stat")" \
+    || fail 'cannot read the guest Docker daemon generation'
+[[ "$docker_daemon_start" =~ ^[1-9][0-9]*$ ]] \
+    || fail 'guest Docker daemon start time is malformed'
+verify_docker_daemon_generation "$docker_daemon_start" \
+    || fail 'root could not bind the live guest Docker daemon executable generation'
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    "$BUILDKIT_BIN/buildkitd" --config "$BUILDKIT_CONFIG" \
+    >"$BUILDKIT_LOG" 2>&1 &
+BUILDKIT_PID=$!
+[[ "$BUILDKIT_PID" =~ ^[1-9][0-9]*$ ]] || fail 'guest BuildKit daemon PID is malformed'
+ready=0
+for _ in $(/usr/bin/seq 1 600); do
+    if [ -S "$BUILDKIT_SOCKET" ] \
+       && /usr/bin/kill -0 "$BUILDKIT_PID" 2>/dev/null; then
+        ready=1
+        break
+    fi
+    /usr/bin/kill -0 "$BUILDKIT_PID" 2>/dev/null || break
+    /usr/bin/sleep 0.1
+done
+[ "$ready" -eq 1 ] || fail 'guest-only acquisition BuildKit daemon did not become ready'
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_SOCKET")" = \
+  "0:$ACQUISITION_GID:660" ] \
+    || fail 'guest BuildKit Unix socket authority differs'
+buildkit_start="$(/usr/bin/awk '{print $22}' "/proc/$BUILDKIT_PID/stat")" \
+    || fail 'cannot read the guest BuildKit daemon generation'
+[[ "$buildkit_start" =~ ^[1-9][0-9]*$ ]] \
+    || fail 'guest BuildKit daemon start time is malformed'
+verify_buildkit_daemon_generation "$buildkit_start" \
+    || fail 'root could not bind the live guest BuildKit daemon executable generation'
+/usr/bin/printf '%s\n' "$BUILDKIT_PID" >"$BUILDKIT_PIDFILE"
+/usr/bin/chmod 0444 "$BUILDKIT_PIDFILE"
+/usr/bin/chmod 0400 "$BUILDKIT_LOG"
+/usr/bin/chmod 0555 "$BUILDKIT_ROOT"
+/usr/sbin/iptables --wait -I FORWARD 1 -p udp -j REJECT \
+    --reject-with icmp-port-unreachable \
+    || fail 'cannot deny BuildKit-worker UDP'
 [ "$(/usr/sbin/iptables -S OUTPUT | /usr/bin/awk 'NR == 2')" = \
   '-A OUTPUT -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
     && [ "$(/usr/sbin/iptables -S DOCKER-USER | /usr/bin/awk 'NR == 2')" = \
          '-A DOCKER-USER -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
+    && [ "$(/usr/sbin/iptables -S FORWARD | /usr/bin/awk 'NR == 2')" = \
+         '-A FORWARD -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
     || fail 'TCP-only acquisition filter differs'
-daemon_start="$(/usr/bin/awk '{print $22}' "/proc/$DAEMON_PID/stat")" \
-    || fail 'cannot read the guest Docker daemon generation'
-[[ "$daemon_start" =~ ^[1-9][0-9]*$ ]] \
-    || fail 'guest Docker daemon start time is malformed'
-verify_daemon_generation "$daemon_start" \
-    || fail 'root could not bind the live guest Docker daemon executable generation'
-/usr/bin/printf 'version=1 uid=%s gid=%s commit=%s tree=%s udp=denied daemon_pid=%s daemon_start=%s daemon_sha256=%s client_sha256=%s\n' \
+/usr/bin/printf 'version=2 uid=%s gid=%s commit=%s tree=%s udp=denied docker_pid=%s docker_start=%s docker_daemon_sha256=%s docker_client_sha256=%s buildkit_pid=%s buildkit_start=%s buildkitd_sha256=%s buildkit_runc_sha256=%s buildkit_cni_bridge_sha256=%s buildkit_cni_firewall_sha256=%s buildkit_cni_host_local_sha256=%s buildkit_cni_loopback_sha256=%s buildkit_config_sha256=%s\n' \
     "$ACQUISITION_UID" "$ACQUISITION_GID" "$EXPECTED_SOURCE_COMMIT" \
-    "$EXPECTED_SOURCE_TREE" "$DAEMON_PID" "$daemon_start" \
+    "$EXPECTED_SOURCE_TREE" "$DOCKER_DAEMON_PID" "$docker_daemon_start" \
     "$(/usr/bin/sha256sum "$BIN/dockerd" | /usr/bin/awk '{print $1}')" \
     "$(/usr/bin/sha256sum "$CLIENT" | /usr/bin/awk '{print $1}')" \
+    "$BUILDKIT_PID" "$buildkit_start" \
+    "$SHA256_VERIFIER_VM_BUILDKITD" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_RUNC" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_BRIDGE" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_FIREWALL" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK" \
+    "$(/usr/bin/sha256sum "$BUILDKIT_CONFIG" | /usr/bin/awk '{print $1}')" \
     >"$AUTHORITY_RECORD"
 /usr/bin/chmod 0444 "$AUTHORITY_RECORD" "$PIDFILE" "$RENAME_CONTRACT"
 /usr/bin/chmod 0555 "$ROOT"
@@ -519,11 +730,15 @@ verify_daemon_generation "$daemon_start" \
     && [ "$(/usr/sbin/ip -4 -o address show dev docker0 scope global \
           | /usr/bin/awk '{print $4}')" = 172.30.0.1/24 ] \
     || fail 'guest-only Docker bridge differs'
+[ -d /sys/class/net/rdbk0 ] \
+    && [ "$(/usr/sbin/ip -4 -o address show dev rdbk0 scope global \
+          | /usr/bin/awk '{print $4}')" = 172.31.0.1/24 ] \
+    || fail 'guest-only BuildKit bridge differs'
 [ "$(/usr/bin/cat /proc/sys/net/ipv4/ip_forward)" = 1 ] \
     || fail 'guest-only Docker forwarding is disabled'
 listeners_after="$(/usr/bin/ss -H -lntu | /usr/bin/sort -u)"
 [ "$listeners_after" = "$listeners_before" ] \
-    || fail 'guest Docker daemon created an INET listener'
+    || fail 'guest Docker or BuildKit daemon created an INET listener'
 
 readonly INNER_ENV=(
     RUSTDESK_ONLINE_FETCH_VM_GUEST=1
@@ -772,9 +987,13 @@ fi
   '-A OUTPUT -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
     && [ "$(/usr/sbin/iptables -S DOCKER-USER | /usr/bin/awk 'NR == 2')" = \
          '-A DOCKER-USER -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
+    && [ "$(/usr/sbin/iptables -S FORWARD | /usr/bin/awk 'NR == 2')" = \
+         '-A FORWARD -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
     || fail 'TCP-only acquisition filter changed during the transaction'
-verify_daemon_generation "$daemon_start" \
+verify_docker_daemon_generation "$docker_daemon_start" \
     || fail 'live guest Docker daemon executable generation changed during the transaction'
+verify_buildkit_daemon_generation "$buildkit_start" \
+    || fail 'live guest BuildKit daemon executable generation changed during the transaction'
 [ -z "$(docker_client ps -q)" ] \
     || fail 'online-fetch transaction left a running guest container'
 [ "$(/usr/bin/stat -c '%s' -- "$RESULT_STDOUT")" -le "$RESULT_STREAM_LIMIT" ] \
@@ -785,8 +1004,9 @@ verify_daemon_generation "$daemon_start" \
 /usr/bin/sync -f "$REPO/online/retired"
 /usr/bin/sync -f "$REPO/.harness-state/debian-systemd-smoke"
 /usr/bin/sync -f "$RESULT_ROOT"
-stop_daemon
+stop_buildkit_daemon
+stop_docker_daemon
 RUN_COMPLETE=1
-printf 'ONLINE_FETCH_VM_GUEST=pass uid=%s gid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic nofile=%s result=16MiB cleanup=joined\n' \
+printf 'ONLINE_FETCH_VM_GUEST=pass uid=%s gid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=%s result=16MiB cleanup=joined\n' \
     "$ACQUISITION_UID" "$ACQUISITION_GID" "$EXPECTED_SOURCE_COMMIT" \
     "$ACQUISITION_NOFILE_LIMIT"

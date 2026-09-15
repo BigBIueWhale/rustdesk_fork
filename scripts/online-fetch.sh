@@ -15,8 +15,9 @@
 #
 # Run order (R-B10): acquire the authenticated VM bootstrap inputs once, then
 # online-fetch.sh launches the sole networked transaction in a disposable
-# ordinary-user QEMU VM. Only that guest owns a NIC and Docker daemon; build-*
-# remains networkless and cleanup.sh retires operator-owned build state.
+# ordinary-user QEMU VM. Only that guest owns a NIC and its Docker/BuildKit
+# daemons; build-* remains networkless and cleanup.sh retires operator-owned
+# build state.
 #
 # R-B12 requires each first pin be established by an audited, dual-sourced
 # bootstrap (publisher hash/signature cross-checked) and recorded in pins.env
@@ -246,6 +247,8 @@ readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
 readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
+readonly ONLINE_FETCH_BUILDKIT_ENDPOINT=unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock
+readonly ONLINE_FETCH_BUILDX_BUILDER=rustdesk-online-fetch
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
 readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
 [ "$ONLINE_STATE_ROOT" = "$REPO_ROOT/online" ] \
@@ -579,35 +582,132 @@ assert_online_fetch_containerd_image_store() {
     driver_status="$(online_docker info --format '{{json .DriverStatus}}')" \
         || die "cannot inspect the guest Docker image store"
     [ "$driver_status" = '[["driver-type","io.containerd.snapshotter.v1"]]' ] \
-        || die "the guest Docker daemon is not using the containerd image store: $driver_status"
+        || die "the guest Docker daemon is not using its separate containerd image store: $driver_status"
+}
+
+create_online_fetch_buildx_builder() {
+    local builder
+    assert_online_fetch_containerd_image_store
+    assert_no_buildx_container_driver
+    builder="$(
+        online_docker_without_vcs buildx create \
+            --name "$ONLINE_FETCH_BUILDX_BUILDER" \
+            --driver remote "$ONLINE_FETCH_BUILDKIT_ENDPOINT"
+    )" || die "cannot create the exact remote Buildx builder"
+    [ "$builder" = "$ONLINE_FETCH_BUILDX_BUILDER" ] \
+        || die "remote Buildx builder creation returned an unexpected identity: $builder"
+    assert_no_buildx_container_driver
 }
 
 assert_online_fetch_buildx_driver() {
-    local driver
+    local inspect driver endpoint status buildkit normalized
+    local -a names=()
     assert_online_fetch_containerd_image_store
     assert_no_buildx_container_driver
+    inspect="$(
+        online_docker_without_vcs buildx \
+            --builder "$ONLINE_FETCH_BUILDX_BUILDER" inspect --bootstrap
+    )" || die "cannot inspect and bootstrap the exact remote Buildx builder"
+    mapfile -t names < <(
+        /usr/bin/awk -F ':' '
+            {
+                key=$1
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                if (key == "Name") {
+                    value=substr($0, index($0, ":") + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    print value
+                }
+            }
+        ' <<<"$inspect"
+    )
     driver="$(
-        online_docker_without_vcs buildx --builder default inspect \
-            | /usr/bin/awk -F ':' \
-                '$1 == "Driver" { value=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value); print value }'
-    )" || die "cannot inspect the exact default Buildx builder"
-    [ "$driver" = docker ] \
-        || die "the exact default Buildx builder is not the in-daemon docker driver: $driver"
+        /usr/bin/awk -F ':' '
+            $1 == "Driver" {
+                value=substr($0, index($0, ":") + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                print value
+            }
+        ' <<<"$inspect"
+    )"
+    endpoint="$(
+        /usr/bin/awk -F ':' '
+            {
+                key=$1
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                if (key == "Endpoint") {
+                    value=substr($0, index($0, ":") + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    print value
+                }
+            }
+        ' <<<"$inspect"
+    )"
+    status="$(
+        /usr/bin/awk -F ':' '
+            {
+                key=$1
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                if (key == "Status") {
+                    value=substr($0, index($0, ":") + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    print value
+                }
+            }
+        ' <<<"$inspect"
+    )"
+    buildkit="$(
+        /usr/bin/awk -F ':' '
+            {
+                key=$1
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                if (key == "BuildKit") {
+                    value=substr($0, index($0, ":") + 1)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                    print value
+                }
+            }
+        ' <<<"$inspect"
+    )"
+    normalized="$(/usr/bin/sed 's/^[[:space:]]*//' <<<"$inspect")"
+    [ "${#names[@]}" -eq 2 ] \
+        && [ "${names[0]}" = "$ONLINE_FETCH_BUILDX_BUILDER" ] \
+        && [ "${names[1]}" = "${ONLINE_FETCH_BUILDX_BUILDER}0" ] \
+        || die "remote Buildx builder or node identity differs"
+    [ "$driver" = remote ] \
+        || die "the exact Buildx builder is not using the remote driver: $driver"
+    [ "$endpoint" = "$ONLINE_FETCH_BUILDKIT_ENDPOINT" ] \
+        || die "the exact Buildx builder endpoint differs: $endpoint"
+    [ "$status" = running ] \
+        || die "the exact Buildx builder is not running: $status"
+    [ "$buildkit" = "v${VERIFIER_VM_BUILDKIT_VERSION}" ] \
+        || die "the exact remote BuildKit version differs: $buildkit"
+    for label in \
+        'org.mobyproject.buildkit.worker.executor: oci' \
+        'org.mobyproject.buildkit.worker.network: cni' \
+        'org.mobyproject.buildkit.worker.oci.process-mode: sandbox' \
+        'org.mobyproject.buildkit.worker.snapshotter: overlayfs'; do
+        /usr/bin/grep -Fxq "$label" <<<"$normalized" \
+            || die "the exact remote BuildKit worker label is absent: $label"
+    done
     assert_no_buildx_container_driver
 }
 
 online_buildx_build() {
     local status=0
     assert_online_fetch_buildx_driver
-    online_docker_without_vcs buildx --builder default build "$@" || status=$?
+    online_docker_without_vcs buildx \
+        --builder "$ONLINE_FETCH_BUILDX_BUILDER" build "$@" || status=$?
     assert_online_fetch_buildx_driver
     return "$status"
 }
 
 assert_online_fetch_buildx_version
+create_online_fetch_buildx_builder
 assert_online_fetch_buildx_driver
-printf 'ONLINE_FETCH_BUILDX_AUTHORITY=pass version=%s commit=%s plugin=private driver=docker image_store=containerd builder=default managed_container=absent\n' \
-    "$VERIFIER_VM_BUILDX_VERSION" "$VERIFIER_VM_BUILDX_COMMIT"
+printf 'ONLINE_FETCH_BUILDX_AUTHORITY=pass version=%s commit=%s plugin=private driver=remote buildkit=%s endpoint=guest-unix network=bridge snapshotter=overlayfs process_sandbox=enabled builder=%s managed_container=absent image_store=separate\n' \
+    "$VERIFIER_VM_BUILDX_VERSION" "$VERIFIER_VM_BUILDX_COMMIT" \
+    "$VERIFIER_VM_BUILDKIT_VERSION" "$ONLINE_FETCH_BUILDX_BUILDER"
 if [ "$ONLINE_FETCH_VM_AUTHORITY_PROBE" -eq 1 ]; then
     exit 0
 fi
@@ -3191,14 +3291,18 @@ maintenance_build_apple_check_image_candidate() {
     require_apple_check_image_pins
     verify_or_load_devcheck_image
     local context="$ONLINE_FETCH_TMP/apple-check-build-context"
+    local base_layout="$ONLINE_FETCH_TMP/apple-check-base-oci"
     local candidate_archive="$ONLINE_FETCH_TMP/apple-check-candidate.docker.tar.gz"
     local tag="rd-apple-check:authenticated-v1"
-    local image_id base_identity result
+    local image_id base_identity base_materialization base_layout_sha result
+    local base_args=()
     [ ! -e "$context" ] && [ ! -L "$context" ] \
         || die "private Apple check build context already exists"
+    [ ! -e "$base_layout" ] && [ ! -L "$base_layout" ] \
+        || die "private Apple check base OCI layout already exists"
     [ ! -e "$candidate_archive" ] && [ ! -L "$candidate_archive" ] \
         || die "private Apple check candidate archive already exists"
-    /usr/bin/install -d -m 0700 "$context"
+    /usr/bin/install -d -m 0700 "$context" "$base_layout"
     /usr/bin/install -m 0400 \
         "$SCRIPT_DIR/Dockerfile.apple-check" "$context/Dockerfile"
     /usr/bin/install -m 0400 \
@@ -3234,10 +3338,29 @@ maintenance_build_apple_check_image_candidate() {
     )" || die "the exact Apple check base image is not already present"
     [ "$base_identity" = "$DEV_CHECK_IMAGE_ID|linux|amd64" ] \
         || die "the local Apple check base image differs from its exact Linux/amd64 pin"
+    mapfile -d '' base_args < <(devcheck_image_spec_args)
+    base_materialization="$(
+        online_image_provenance materialize-oci-layout \
+            --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz" \
+            --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+            --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+            --output "$base_layout" \
+            "${base_args[@]}"
+    )" || die "Apple check base OCI materialization failed"
+    base_layout_sha="$(printf '%s\n' "$base_materialization" \
+        | /usr/bin/sed -n 's/^layout_sha256=//p')"
+    [[ "$base_layout_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || die "Apple check base OCI layout identity is malformed"
+    online_image_provenance verify-oci-layout \
+        --layout "$base_layout" --layout-sha "$base_layout_sha" \
+        >/dev/null \
+        || die "Apple check base OCI layout verification failed"
     online_buildx_build \
         --network=default --pull=false --no-cache \
         --platform=linux/amd64 --provenance=mode=max \
         --output=type=docker,rewrite-timestamp=true \
+        --build-context \
+        "rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_ID}" \
         --build-arg "DEV_CHECK_IMAGE_REF=rd-devcheck@${DEV_CHECK_IMAGE_ID}" \
         --build-arg "DEV_CHECK_IMAGE_ID=${DEV_CHECK_IMAGE_ID}" \
         --build-arg "DEV_CHECK_IMAGE_MANIFEST_ID=${DEV_CHECK_IMAGE_MANIFEST_ID}" \
@@ -3252,6 +3375,10 @@ maintenance_build_apple_check_image_candidate() {
         --tag "$tag" \
         --file "$context/Dockerfile" \
         "$context"
+    online_image_provenance verify-oci-layout \
+        --layout "$base_layout" --layout-sha "$base_layout_sha" \
+        >/dev/null \
+        || die "Apple check base OCI layout changed during the build"
     image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
         || die "cannot resolve the Apple check candidate"
     local args=() position

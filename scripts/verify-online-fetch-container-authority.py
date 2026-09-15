@@ -94,9 +94,13 @@ def validate(repo: pathlib.Path) -> None:
         ('readonly BUILDX_BINARY="$INPUT_ROOT/buildx-v${VERIFIER_VM_BUILDX_VERSION}.linux-amd64"', "authenticated Buildx input path"),
         ('"$BUILDX_BINARY:$SIZE_VERIFIER_VM_BUILDX"', "Buildx input metadata admission"),
         ('verify_sha256 "$BUILDX_BINARY" "$SHA256_VERIFIER_VM_BUILDX"', "Buildx input digest admission"),
+        ('readonly BUILDKIT_BUNDLE="$INPUT_ROOT/buildkit-v${VERIFIER_VM_BUILDKIT_VERSION}.linux-amd64.tar.gz"', "authenticated BuildKit input path"),
+        ('"$BUILDKIT_BUNDLE:$SIZE_VERIFIER_VM_BUILDKIT"', "BuildKit input metadata admission"),
+        ('verify_sha256 "$BUILDKIT_BUNDLE" "$SHA256_VERIFIER_VM_BUILDKIT"', "BuildKit input digest admission"),
         ("bundle create \"$SOURCE_BUNDLE\" refs/heads/master", "source Git bundle"),
         ("bundle verify \"$SOURCE_BUNDLE\"", "source-bundle verification"),
         ('"docker-buildx=$BUILDX_BINARY"', "authenticated Buildx payload"),
+        ('"buildkit.tgz=$BUILDKIT_BUNDLE"', "authenticated BuildKit payload"),
         ('"git.deb=$GIT_PACKAGE"', "authenticated Git package payload"),
         ('retire_private_socket_path "$SERIAL_SOCKET"', "already-absent-safe serial cleanup"),
         ("-accel kvm", "KVM guest boundary"),
@@ -155,7 +159,7 @@ def validate(repo: pathlib.Path) -> None:
     )
     cleanup = extract(outer, "cleanup() {", "\n}\ntrap cleanup EXIT", "outer cleanup")
     for token, label in (
-        ("format=rustdesk-online-fetch-success-v1", "receipt format"),
+        ("format=rustdesk-online-fetch-success-v2", "receipt format"),
         ("source_commit=$SOURCE_COMMIT", "receipt source commit"),
         ("source_tree=$SOURCE_TREE", "receipt source tree"),
         ("source_bundle_sha256=$SOURCE_BUNDLE_SHA256", "receipt source bundle"),
@@ -237,6 +241,12 @@ def validate(repo: pathlib.Path) -> None:
         ),
         ('SIZE_VERIFIER_VM_BUILDKIT="81953628"', "BuildKit size pin"),
         ('SHA256_VERIFIER_VM_BUILDKIT="5662f23cfa5e475ff50932dd2b71d2c5812928fad631d1e8c9f8f5592a4c1568"', "BuildKit digest pin"),
+        ('SHA256_VERIFIER_VM_BUILDKITD="5597b69c910a58a7f49df8fde14d76a71f9a4e12f063ce9fe1397412f9a9815d"', "BuildKit daemon pin"),
+        ('SHA256_VERIFIER_VM_BUILDKIT_RUNC="5e045d55319c523080a252890bd3a34818454701c6bc1629e57015e6934dc227"', "BuildKit runtime pin"),
+        ('SHA256_VERIFIER_VM_BUILDKIT_CNI_BRIDGE="52511a6c4adf23020c9dd355ad6c0907960cb3063aea16e08aa8537a4131411a"', "BuildKit CNI bridge pin"),
+        ('SHA256_VERIFIER_VM_BUILDKIT_CNI_FIREWALL="c200b885b2fcef736ec56e30abb93e4bcad0899702b60f2f875b99e1c132b6d8"', "BuildKit CNI firewall pin"),
+        ('SHA256_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL="4468298a67c16763ebe99b9d266b17fcff8ba45152d8c3de54694c8b334750de"', "BuildKit CNI host-local pin"),
+        ('SHA256_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK="534808f5a6671fc529eb143a7e5dcd353639cb24effd78bd9eb312adb857728d"', "BuildKit CNI loopback pin"),
         ('VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION="1.10.0-1ubuntu0.1"', "virtiofsd package version pin"),
         ('SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE="8069325e87cd4485fdb4dd2dde0e54dc68345847c92a1f5d9e9916dadd549b07"', "virtiofsd package pin"),
         ('SHA256_VERIFIER_VM_VIRTIOFSD_BINARY="e256a63975f3ba343d651ce001fdc1f1128a5967612f0f102ab1387727ead140"', "virtiofsd binary pin"),
@@ -246,8 +256,12 @@ def validate(repo: pathlib.Path) -> None:
     for token, label in (
         ('[ "$(/usr/bin/id -u)" = 0 ]', "VM-local root bootstrap"),
         ('"$BUILDX_INPUT:$EXPECTED_BUILDX_SIZE"', "read-only Buildx guest input"),
+        ('"$BUILDKIT_ARCHIVE:$EXPECTED_BUILDKIT_SIZE"', "read-only BuildKit guest input"),
         ('/usr/bin/install -m 0555 -- "$BUILDX_INPUT" "$BUILDX_SOURCE"', "root-owned fixed Buildx source"),
         ('fixed Buildx source identity differs', "fixed Buildx source verification"),
+        ('install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkitd"', "pinned BuildKit daemon installation"),
+        ('install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-runc"', "pinned BuildKit runtime installation"),
+        ('install_buildkit_component "$BUILDKIT_EXTRACT/bin/buildkit-cni-bridge"', "pinned BuildKit CNI installation"),
         ('/usr/bin/dpkg-deb --extract "$GIT_PACKAGE" "$GIT_RUNTIME_ROOT"', "Git runtime extraction"),
         ('readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git', "fixed Git runtime"),
         ('GIT_ALLOW_PROTOCOL=file', "Git non-file protocol refusal"),
@@ -265,6 +279,13 @@ def validate(repo: pathlib.Path) -> None:
         ('--config-file "$DAEMON_CONFIG"', "explicit guest Docker daemon configuration"),
         ("'[[\"driver-type\",\"io.containerd.snapshotter.v1\"]]'", "containerd image-store runtime proof"),
         ("--bip 172.30.0.1/24", "fixed guest Docker bridge"),
+        ('address = ["unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock"]', "fixed BuildKit Unix endpoint"),
+        ('snapshotter = "overlayfs"', "BuildKit overlayfs snapshotter"),
+        ('noProcessSandbox = false', "BuildKit process sandbox"),
+        ('networkMode = "bridge"', "BuildKit CNI bridge network"),
+        ('bridgeName = "rdbk0"', "fixed BuildKit bridge"),
+        ('[worker.containerd]', "explicit BuildKit containerd-worker policy"),
+        ('"$BUILDKIT_BIN/buildkitd" --config "$BUILDKIT_CONFIG"', "fixed BuildKit daemon launch"),
         ("--ip 127.0.0.1", "guest published-port loopback default"),
         ("--iptables=true", "guest-only firewall authority"),
         ("--ip-forward=true", "guest-only forwarding authority"),
@@ -273,6 +294,7 @@ def validate(repo: pathlib.Path) -> None:
         ("options use-vc", "guest DNS-over-TCP policy"),
         ("/usr/sbin/iptables --wait -I OUTPUT 1 -p udp -j REJECT", "guest UDP denial"),
         ("/usr/sbin/iptables --wait -I DOCKER-USER 1 -p udp -j REJECT", "container UDP denial"),
+        ("/usr/sbin/iptables --wait -I FORWARD 1 -p udp -j REJECT", "BuildKit-worker UDP denial"),
         ("--userland-proxy=false", "Docker proxy refusal"),
         ("VM-local root passed the online-fetch entry preflight", "root negative test"),
         ("foreign VM principal passed", "foreign-principal negative test"),
@@ -311,7 +333,10 @@ def validate(repo: pathlib.Path) -> None:
             "local -a interpreters=()\n    verify_bounded_result_reader",
             "real transaction-result overflow smoke",
         ),
-        ("verify_daemon_generation", "root pre/post daemon-executable binding"),
+        ("verify_docker_daemon_generation", "Docker pre/post daemon-executable binding"),
+        ("verify_buildkit_daemon_generation", "BuildKit pre/post daemon-executable binding"),
+        ("stop_buildkit_daemon", "joined BuildKit shutdown"),
+        ("stop_docker_daemon", "joined Docker shutdown"),
     ):
         require(guest, token, label)
     if guest.count("/usr/bin/mount -t virtiofs") != 3:
@@ -368,6 +393,12 @@ def validate(repo: pathlib.Path) -> None:
         ("guest Docker daemon generation differs", "daemon-generation proof"),
         ("guest Docker Unix-socket authority differs", "Unix-socket proof"),
         ("guest Docker image-store authority differs", "containerd image-store proof"),
+        ("guest BuildKit daemon generation differs", "BuildKit generation proof"),
+        ("guest BuildKit filesystem or socket authority differs", "BuildKit Unix-socket proof"),
+        ("guest BuildKit daemon arguments differ", "BuildKit argv proof"),
+        ("guest BuildKit daemon version differs", "BuildKit version proof"),
+        ("guest-only BuildKit bridge identity differs", "BuildKit bridge proof"),
+        ("TCP-only acquisition filter authority differs", "BuildKit and Docker UDP-denial proof"),
         ("fixed guest Buildx source identity differs", "Buildx source proof"),
         ("acquisition NIC identity is absent or ambiguous", "NIC proof"),
         ("cache export filesystem differs", "cache-boundary proof"),
@@ -471,12 +502,22 @@ def validate(repo: pathlib.Path) -> None:
         ('readonly ONLINE_FETCH_BUILDX_PLUGIN="$ONLINE_FETCH_BUILDX_DIR/docker-buildx"', "private Buildx plugin"),
         ('install -m 0500 "$BUILDX_SOURCE" "$ONLINE_FETCH_BUILDX_PLUGIN"', "private Buildx installation"),
         ('"github.com/docker/buildx v${VERIFIER_VM_BUILDX_VERSION} ${VERIFIER_VM_BUILDX_COMMIT}"', "exact Buildx version"),
-        ("buildx --builder default inspect", "explicit default-builder inspection"),
-        ('[ "$driver" = docker ]', "in-daemon Docker driver requirement"),
-        ("assert_online_fetch_containerd_image_store", "containerd image-store admission"),
+        ('readonly ONLINE_FETCH_BUILDKIT_ENDPOINT=unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock', "fixed BuildKit endpoint"),
+        ('readonly ONLINE_FETCH_BUILDX_BUILDER=rustdesk-online-fetch', "fixed Buildx builder identity"),
+        ('--name "$ONLINE_FETCH_BUILDX_BUILDER"', "named Buildx builder creation"),
+        ('--driver remote "$ONLINE_FETCH_BUILDKIT_ENDPOINT"', "remote BuildKit driver binding"),
+        ('--builder "$ONLINE_FETCH_BUILDX_BUILDER" inspect --bootstrap', "remote builder bootstrap inspection"),
+        ('[ "$driver" = remote ]', "remote Buildx driver requirement"),
+        ('[ "$buildkit" = "v${VERIFIER_VM_BUILDKIT_VERSION}" ]', "remote BuildKit version requirement"),
+        ("assert_online_fetch_containerd_image_store", "separate containerd image-store admission"),
+        ('org.mobyproject.buildkit.worker.executor: oci', "OCI worker admission"),
+        ('org.mobyproject.buildkit.worker.network: cni', "CNI network admission"),
+        ('org.mobyproject.buildkit.worker.oci.process-mode: sandbox', "process-sandbox admission"),
+        ('org.mobyproject.buildkit.worker.snapshotter: overlayfs', "overlayfs snapshotter admission"),
         ("^buildx_buildkit_", "managed builder-container refusal"),
-        ('online_docker_without_vcs buildx --builder default build "$@"', "sole Buildx build funnel"),
-        ("image_store=containerd", "containerd image-store runtime receipt"),
+        ('--builder "$ONLINE_FETCH_BUILDX_BUILDER" build "$@"', "sole remote Buildx build funnel"),
+        ("driver=remote buildkit=%s endpoint=guest-unix", "remote BuildKit runtime receipt"),
+        ('"rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_ID}"', "Apple local OCI base context"),
     ):
         require(online, token, label)
     if online.count("online_buildx_build") != 7:
@@ -487,7 +528,11 @@ def validate(repo: pathlib.Path) -> None:
         ("docker-container", "Buildx container-driver fallback"),
     ):
         forbid(online, token, label)
-    admission = "assert_online_fetch_buildx_version\nassert_online_fetch_buildx_driver\n"
+    admission = (
+        "assert_online_fetch_buildx_version\n"
+        "create_online_fetch_buildx_builder\n"
+        "assert_online_fetch_buildx_driver\n"
+    )
     if online.index('if [ "$ONLINE_FETCH_VM_AUTHORITY_PROBE" -eq 1 ]') < online.index(
         admission
     ):

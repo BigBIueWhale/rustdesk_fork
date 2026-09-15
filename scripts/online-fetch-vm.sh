@@ -60,6 +60,7 @@ readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_B
 readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
 readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
 readonly BUILDX_BINARY="$INPUT_ROOT/buildx-v${VERIFIER_VM_BUILDX_VERSION}.linux-amd64"
+readonly BUILDKIT_BUNDLE="$INPUT_ROOT/buildkit-v${VERIFIER_VM_BUILDKIT_VERSION}.linux-amd64.tar.gz"
 readonly GIT_PACKAGE="$INPUT_ROOT/git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
 readonly VIRTIOFSD_PACKAGE="$INPUT_ROOT/virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
 readonly BOOT_ROOT="$INPUT_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
@@ -301,17 +302,17 @@ prepare_success_receipt() {
     stderr_bytes="$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stderr")" \
         || return 1
     capture_line="bounded-unix-stream-capture: PASS bytes=$serial_bytes"
-    guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
-    entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic"
-    buildx_line="ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker image_store=containerd builder=default managed_container=absent"
+    guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
+    entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic"
+    buildx_line="ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=remote buildkit=$VERIFIER_VM_BUILDKIT_VERSION endpoint=guest-unix network=bridge snapshotter=overlayfs process_sandbox=enabled builder=rustdesk-online-fetch managed_container=absent image_store=separate"
     runtime_line=not-applicable
     if [ "$MODE" = authority-smoke ]; then
         runtime_line="ONLINE_FETCH_VM_RUNTIME=pass network=qemu-user-only hostfwd=absent udp=denied docker=guest-bridge git=pinned-deb inner_uid=$HOST_UID https=sha256 cache=virtiofs-atomic cleanup=joined"
     fi
-    outer_line="ONLINE_FETCH_VM_OUTER=pass host_uid=$HOST_UID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=$elapsed_seconds receipt=$SUCCESS_RECEIPT_FINAL"
+    outer_line="ONLINE_FETCH_VM_OUTER=pass host_uid=$HOST_UID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=$elapsed_seconds receipt=$SUCCESS_RECEIPT_FINAL"
     {
         /usr/bin/printf '%s\n' \
-            'format=rustdesk-online-fetch-success-v1' \
+            'format=rustdesk-online-fetch-success-v2' \
             "run=$run_name" \
             "run_identity=$RUN_ID" \
             "request=$REQUEST" \
@@ -440,7 +441,7 @@ cleanup() {
         remove_success_receipt_temporary || cleanup_failed=1
     fi
     if [ "$RUN_COMPLETE" -eq 1 ] && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; then
-        /usr/bin/printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s receipt=%s\n' \
+        /usr/bin/printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=unchanged docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s receipt=%s\n' \
             "$HOST_UID" "$SOURCE_COMMIT" "$VM_ELAPSED_SECONDS" "$SUCCESS_RECEIPT_FINAL"
     fi
     [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
@@ -475,6 +476,7 @@ done
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
     "$BUILDX_BINARY:$SIZE_VERIFIER_VM_BUILDX" \
+    "$BUILDKIT_BUNDLE:$SIZE_VERIFIER_VM_BUILDKIT" \
     "$GIT_PACKAGE:$SIZE_VERIFIER_VM_GIT_PACKAGE" \
     "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
     path=${input%:*}
@@ -487,6 +489,7 @@ done
 verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
 verify_sha256 "$DOCKER_BUNDLE" "$SHA256_VERIFIER_VM_DOCKER_STATIC"
 verify_sha256 "$BUILDX_BINARY" "$SHA256_VERIFIER_VM_BUILDX"
+verify_sha256 "$BUILDKIT_BUNDLE" "$SHA256_VERIFIER_VM_BUILDKIT"
 verify_sha256 "$GIT_PACKAGE" "$SHA256_VERIFIER_VM_GIT_PACKAGE"
 verify_sha256 "$VIRTIOFSD_PACKAGE" "$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
 verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
@@ -654,6 +657,7 @@ verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 base_before="$(/usr/bin/sha512sum "$BASE")"
 docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 buildx_before="$(/usr/bin/sha256sum "$BUILDX_BINARY")"
+buildkit_before="$(/usr/bin/sha256sum "$BUILDKIT_BUNDLE")"
 git_package_before="$(/usr/bin/sha256sum "$GIT_PACKAGE")"
 virtiofsd_package_before="$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")"
 kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
@@ -664,14 +668,15 @@ capture_listeners >"$LISTENERS_BEFORE"
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_ONLINE_FETCH \
     -joliet -rock -graft-points -output "$PAYLOAD" \
     "guest.sh=$GUEST_SCRIPT" "docker.tgz=$DOCKER_BUNDLE" \
-    "docker-buildx=$BUILDX_BINARY" "git.deb=$GIT_PACKAGE" \
+    "docker-buildx=$BUILDX_BINARY" "buildkit.tgz=$BUILDKIT_BUNDLE" \
+    "git.deb=$GIT_PACKAGE" \
     "source.bundle=$SOURCE_BUNDLE" "request=$REQUEST_FILE" \
     "source.tree=$SOURCE_TREE_FILE" \
     "source.bundle.sha256=$SOURCE_BUNDLE_SHA_FILE"
 /usr/bin/chmod 0400 "$PAYLOAD"
 /usr/bin/mkdir "$RUN/seed"
 /usr/bin/chmod 0700 "$RUN/seed"
-guest_invocation="bash /mnt/rustdesk-online-fetch-inputs/guest.sh /mnt/rustdesk-online-fetch-inputs/docker.tgz /mnt/rustdesk-online-fetch-inputs/docker-buildx /mnt/rustdesk-online-fetch-inputs/source.bundle /mnt/rustdesk-online-fetch-inputs/git.deb $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_BUILDX_VERSION $VERIFIER_VM_BUILDX_COMMIT $SIZE_VERIFIER_VM_BUILDX $SHA256_VERIFIER_VM_BUILDX $VERIFIER_VM_GIT_PACKAGE_VERSION $SIZE_VERIFIER_VM_GIT_PACKAGE $SHA256_VERIFIER_VM_GIT_PACKAGE $SIZE_VERIFIER_VM_GIT_BINARY $SHA256_VERIFIER_VM_GIT_BINARY $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID $HOST_UID $HOST_GID $SOURCE_COMMIT"
+guest_invocation="bash /mnt/rustdesk-online-fetch-inputs/guest.sh /mnt/rustdesk-online-fetch-inputs/docker.tgz /mnt/rustdesk-online-fetch-inputs/docker-buildx /mnt/rustdesk-online-fetch-inputs/buildkit.tgz /mnt/rustdesk-online-fetch-inputs/source.bundle /mnt/rustdesk-online-fetch-inputs/git.deb $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_BUILDX_VERSION $VERIFIER_VM_BUILDX_COMMIT $SIZE_VERIFIER_VM_BUILDX $SHA256_VERIFIER_VM_BUILDX $VERIFIER_VM_BUILDKIT_VERSION $VERIFIER_VM_BUILDKIT_COMMIT $SIZE_VERIFIER_VM_BUILDKIT $SHA256_VERIFIER_VM_BUILDKIT $VERIFIER_VM_GIT_PACKAGE_VERSION $SIZE_VERIFIER_VM_GIT_PACKAGE $SHA256_VERIFIER_VM_GIT_PACKAGE $SIZE_VERIFIER_VM_GIT_BINARY $SHA256_VERIFIER_VM_GIT_BINARY $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID $HOST_UID $HOST_GID $SOURCE_COMMIT"
 /usr/bin/printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
@@ -864,7 +869,7 @@ for binding in "$CACHE_EXPORT|$CACHE_EXPORT_ID" "$CACHE_EXPORT/inputs|$ONLINE_EX
         || fail "writable export root identity changed: $path"
 done
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined" \
+    "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined" \
     "$SERIAL_LOG" || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest completion receipt is absent'; }
 /usr/bin/grep -Fq 'ONLINE_FETCH_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion receipt is absent'; }
@@ -877,11 +882,11 @@ done
     && [ "$(/usr/bin/stat -c '%s' -- "$RESULT_EXPORT/transaction.stderr")" -le 16777216 ] \
     || fail 'bounded transaction stderr is absent or ambiguous'
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic" \
+    "ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic" \
     "$RESULT_EXPORT/transaction.stdout" \
     || fail 'online-fetch guest-entry authority receipt is absent'
 /usr/bin/grep -Fq \
-    "ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker image_store=containerd builder=default managed_container=absent" \
+    "ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=remote buildkit=$VERIFIER_VM_BUILDKIT_VERSION endpoint=guest-unix network=bridge snapshotter=overlayfs process_sandbox=enabled builder=rustdesk-online-fetch managed_container=absent image_store=separate" \
     "$RESULT_EXPORT/transaction.stdout" \
     || fail 'online-fetch Buildx authority receipt is absent'
 if [ "$MODE" = authority-smoke ]; then
@@ -901,6 +906,7 @@ fi
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
     && [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \
     && [ "$(/usr/bin/sha256sum "$BUILDX_BINARY")" = "$buildx_before" ] \
+    && [ "$(/usr/bin/sha256sum "$BUILDKIT_BUNDLE")" = "$buildkit_before" ] \
     && [ "$(/usr/bin/sha256sum "$GIT_PACKAGE")" = "$git_package_before" ] \
     && [ "$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")" = "$virtiofsd_package_before" ] \
     && [ "$(/usr/bin/sha256sum "$VIRTIOFSD_BINARY" | /usr/bin/awk '{print $1}')" \

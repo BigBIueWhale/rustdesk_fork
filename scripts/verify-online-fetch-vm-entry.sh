@@ -26,6 +26,17 @@ readonly DOCKER_SOCKET=/var/run/docker.sock
 readonly DOCKER_DAEMON="$AUTHORITY_ROOT/bin/dockerd"
 readonly DOCKER_DAEMON_CONFIG="$AUTHORITY_ROOT/daemon.json"
 readonly BUILDX_SOURCE="$AUTHORITY_ROOT/docker-buildx"
+readonly BUILDKIT_ROOT=/opt/rustdesk-online-fetch-buildkit
+readonly BUILDKIT_BIN="$BUILDKIT_ROOT/bin"
+readonly BUILDKIT_CNI="$BUILDKIT_ROOT/cni"
+readonly BUILDKIT_DATA=/var/lib/rustdesk-online-fetch-buildkit
+readonly BUILDKIT_EXEC=/run/rustdesk-online-fetch-buildkit
+readonly BUILDKIT_SOCKET="$BUILDKIT_EXEC/buildkitd.sock"
+readonly BUILDKIT_CONFIG="$BUILDKIT_ROOT/buildkitd.toml"
+readonly BUILDKIT_LOG="$BUILDKIT_ROOT/buildkitd.log"
+readonly BUILDKIT_PIDFILE="$BUILDKIT_ROOT/buildkitd.pid"
+readonly BUILDKIT_DAEMON="$BUILDKIT_BIN/buildkitd"
+readonly BUILDKIT_RUNC="$BUILDKIT_BIN/buildkit-runc"
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
 readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
 readonly GIT_EXEC_PATH=$GIT_RUNTIME_ROOT/usr/lib/git-core
@@ -76,14 +87,27 @@ source /etc/os-release
     || fail 'fixed Git runtime version differs'
 
 IFS=' ' read -r version_field uid_field gid_field commit_field tree_field udp_field \
-    daemon_pid_field daemon_start_field daemon_sha_field client_sha_field extra \
+    docker_pid_field docker_start_field docker_daemon_sha_field \
+    docker_client_sha_field buildkit_pid_field buildkit_start_field \
+    buildkitd_sha_field buildkit_runc_sha_field buildkit_cni_bridge_sha_field \
+    buildkit_cni_firewall_sha_field buildkit_cni_host_local_sha_field \
+    buildkit_cni_loopback_sha_field buildkit_config_sha_field extra \
     <"$AUTHORITY_RECORD" || fail 'cannot read the VM authority record'
 [ -z "${extra:-}" ] || fail 'VM authority record has extra fields'
-[ "$version_field" = version=1 ] || fail 'VM authority-record version differs'
+[ "$version_field" = version=2 ] || fail 'VM authority-record version differs'
 for field in "$uid_field:uid=" "$gid_field:gid=" "$commit_field:commit=" \
-    "$tree_field:tree=" "$udp_field:udp=" "$daemon_pid_field:daemon_pid=" \
-    "$daemon_start_field:daemon_start=" "$daemon_sha_field:daemon_sha256=" \
-    "$client_sha_field:client_sha256="; do
+    "$tree_field:tree=" "$udp_field:udp=" \
+    "$docker_pid_field:docker_pid=" "$docker_start_field:docker_start=" \
+    "$docker_daemon_sha_field:docker_daemon_sha256=" \
+    "$docker_client_sha_field:docker_client_sha256=" \
+    "$buildkit_pid_field:buildkit_pid=" "$buildkit_start_field:buildkit_start=" \
+    "$buildkitd_sha_field:buildkitd_sha256=" \
+    "$buildkit_runc_sha_field:buildkit_runc_sha256=" \
+    "$buildkit_cni_bridge_sha_field:buildkit_cni_bridge_sha256=" \
+    "$buildkit_cni_firewall_sha_field:buildkit_cni_firewall_sha256=" \
+    "$buildkit_cni_host_local_sha_field:buildkit_cni_host_local_sha256=" \
+    "$buildkit_cni_loopback_sha_field:buildkit_cni_loopback_sha256=" \
+    "$buildkit_config_sha_field:buildkit_config_sha256="; do
     value=${field%%:*}
     prefix=${field#*:}
     case "$value" in "$prefix"*) ;; *) fail 'VM authority record field name differs' ;; esac
@@ -93,22 +117,36 @@ readonly EXPECTED_GID="${gid_field#gid=}"
 readonly EXPECTED_COMMIT="${commit_field#commit=}"
 readonly EXPECTED_TREE="${tree_field#tree=}"
 [ "$udp_field" = udp=denied ] || fail 'VM authority record does not bind TCP-only acquisition'
-readonly DAEMON_PID="${daemon_pid_field#daemon_pid=}"
-readonly DAEMON_START="${daemon_start_field#daemon_start=}"
-readonly EXPECTED_DAEMON_SHA="${daemon_sha_field#daemon_sha256=}"
-readonly EXPECTED_CLIENT_SHA="${client_sha_field#client_sha256=}"
+readonly DOCKER_PID="${docker_pid_field#docker_pid=}"
+readonly DOCKER_START="${docker_start_field#docker_start=}"
+readonly EXPECTED_DOCKER_DAEMON_SHA="${docker_daemon_sha_field#docker_daemon_sha256=}"
+readonly EXPECTED_DOCKER_CLIENT_SHA="${docker_client_sha_field#docker_client_sha256=}"
+readonly BUILDKIT_PID="${buildkit_pid_field#buildkit_pid=}"
+readonly BUILDKIT_START="${buildkit_start_field#buildkit_start=}"
+readonly EXPECTED_BUILDKITD_SHA="${buildkitd_sha_field#buildkitd_sha256=}"
+readonly EXPECTED_BUILDKIT_RUNC_SHA="${buildkit_runc_sha_field#buildkit_runc_sha256=}"
+readonly EXPECTED_BUILDKIT_CNI_BRIDGE_SHA="${buildkit_cni_bridge_sha_field#buildkit_cni_bridge_sha256=}"
+readonly EXPECTED_BUILDKIT_CNI_FIREWALL_SHA="${buildkit_cni_firewall_sha_field#buildkit_cni_firewall_sha256=}"
+readonly EXPECTED_BUILDKIT_CNI_HOST_LOCAL_SHA="${buildkit_cni_host_local_sha_field#buildkit_cni_host_local_sha256=}"
+readonly EXPECTED_BUILDKIT_CNI_LOOPBACK_SHA="${buildkit_cni_loopback_sha_field#buildkit_cni_loopback_sha256=}"
+readonly EXPECTED_BUILDKIT_CONFIG_SHA="${buildkit_config_sha_field#buildkit_config_sha256=}"
 
-for identity in "$EXPECTED_UID" "$EXPECTED_GID" "$DAEMON_PID" "$DAEMON_START"; do
+for identity in "$EXPECTED_UID" "$EXPECTED_GID" "$DOCKER_PID" "$DOCKER_START" \
+    "$BUILDKIT_PID" "$BUILDKIT_START"; do
     [[ "$identity" =~ ^[1-9][0-9]*$ ]] || fail 'VM authority record has a malformed numeric identity'
 done
 [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
     || fail 'VM authority record has a malformed source commit'
 [[ "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]] \
     || fail 'VM authority record has a malformed source tree'
-[[ "$EXPECTED_DAEMON_SHA" =~ ^[0-9a-f]{64}$ ]] \
-    || fail 'VM authority record has a malformed daemon digest'
-[[ "$EXPECTED_CLIENT_SHA" =~ ^[0-9a-f]{64}$ ]] \
-    || fail 'VM authority record has a malformed client digest'
+for digest in "$EXPECTED_DOCKER_DAEMON_SHA" "$EXPECTED_DOCKER_CLIENT_SHA" \
+    "$EXPECTED_BUILDKITD_SHA" "$EXPECTED_BUILDKIT_RUNC_SHA" \
+    "$EXPECTED_BUILDKIT_CNI_BRIDGE_SHA" "$EXPECTED_BUILDKIT_CNI_FIREWALL_SHA" \
+    "$EXPECTED_BUILDKIT_CNI_HOST_LOCAL_SHA" "$EXPECTED_BUILDKIT_CNI_LOOPBACK_SHA" \
+    "$EXPECTED_BUILDKIT_CONFIG_SHA"; do
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'VM authority record has a malformed executable or configuration digest'
+done
 [ "$(/usr/bin/id -u)" = "$EXPECTED_UID" ] \
     && [ "$(/usr/bin/id -g)" = "$EXPECTED_GID" ] \
     || fail 'caller is not the exact admitted acquisition principal'
@@ -133,8 +171,10 @@ done
     && [ "$(/usr/bin/sha256sum "$BUILDX_SOURCE" | /usr/bin/awk '{print $1}')" = \
          "$SHA256_VERIFIER_VM_BUILDX" ] \
     || fail 'fixed guest Buildx source identity differs'
-[ "$(/usr/bin/sha256sum "$DOCKER_CLIENT" | /usr/bin/awk '{print $1}')" = "$EXPECTED_CLIENT_SHA" ] \
-    && [ "$(/usr/bin/sha256sum "$DOCKER_DAEMON" | /usr/bin/awk '{print $1}')" = "$EXPECTED_DAEMON_SHA" ] \
+[ "$(/usr/bin/sha256sum "$DOCKER_CLIENT" | /usr/bin/awk '{print $1}')" = \
+  "$EXPECTED_DOCKER_CLIENT_SHA" ] \
+    && [ "$(/usr/bin/sha256sum "$DOCKER_DAEMON" | /usr/bin/awk '{print $1}')" = \
+         "$EXPECTED_DOCKER_DAEMON_SHA" ] \
     || fail 'guest Docker executable bytes differ from the root-authored authority'
 [ -S "$DOCKER_SOCKET" ] && [ ! -L "$DOCKER_SOCKET" ] \
     && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$DOCKER_SOCKET")" = "0:$EXPECTED_GID:660" ] \
@@ -144,10 +184,15 @@ done
        info --format '{{json .DriverStatus}}')" = \
   '[["driver-type","io.containerd.snapshotter.v1"]]' ] \
     || fail 'guest Docker image-store authority differs'
-[ -r "/proc/$DAEMON_PID/stat" ] \
-    && [ "$(/usr/bin/awk '{print $22}' "/proc/$DAEMON_PID/stat")" = "$DAEMON_START" ] \
+[ -r "/proc/$DOCKER_PID/stat" ] \
+    && [ "$(/usr/bin/awk '{print $22}' "/proc/$DOCKER_PID/stat")" = "$DOCKER_START" ] \
+    && [ "$(/usr/bin/readlink -f -- "/proc/$DOCKER_PID/exe")" = "$DOCKER_DAEMON" ] \
+    && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$DOCKER_PID/exe")" = \
+         "$(/usr/bin/stat -c '%d:%i:%s' -- "$DOCKER_DAEMON")" ] \
+    && [ "$(/usr/bin/sha256sum "/proc/$DOCKER_PID/exe" | /usr/bin/awk '{print $1}')" = \
+         "$EXPECTED_DOCKER_DAEMON_SHA" ] \
     || fail 'guest Docker daemon generation differs'
-[ "$(/usr/bin/awk '/^Uid:/ {print $2":"$3":"$4":"$5}' "/proc/$DAEMON_PID/status")" = 0:0:0:0 ] \
+[ "$(/usr/bin/awk '/^Uid:/ {print $2":"$3":"$4":"$5}' "/proc/$DOCKER_PID/status")" = 0:0:0:0 ] \
     || fail 'guest Docker daemon is not VM-local root'
 server_version="$(
     /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent \
@@ -156,6 +201,125 @@ server_version="$(
 )" || fail 'cannot query the exact guest Docker daemon'
 [ "$server_version" = "$VERIFIER_VM_DOCKER_VERSION" ] \
     || fail 'guest Docker server version differs'
+
+[ "$EXPECTED_BUILDKITD_SHA:$EXPECTED_BUILDKIT_RUNC_SHA:$EXPECTED_BUILDKIT_CNI_BRIDGE_SHA:$EXPECTED_BUILDKIT_CNI_FIREWALL_SHA:$EXPECTED_BUILDKIT_CNI_HOST_LOCAL_SHA:$EXPECTED_BUILDKIT_CNI_LOOPBACK_SHA" = \
+  "$SHA256_VERIFIER_VM_BUILDKITD:$SHA256_VERIFIER_VM_BUILDKIT_RUNC:$SHA256_VERIFIER_VM_BUILDKIT_CNI_BRIDGE:$SHA256_VERIFIER_VM_BUILDKIT_CNI_FIREWALL:$SHA256_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL:$SHA256_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK" ] \
+    || fail 'root-authored BuildKit component authority differs from the committed pins'
+[ -d "$BUILDKIT_ROOT" ] && [ ! -L "$BUILDKIT_ROOT" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_ROOT")" = 0:0:555 ] \
+    && [ "$(/usr/bin/find "$BUILDKIT_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+            | LC_ALL=C /usr/bin/sort)" = \
+         $'bin\nbuildkitd.log\nbuildkitd.pid\nbuildkitd.toml\ncni' ] \
+    || fail 'fixed BuildKit authority root differs'
+[ -d "$BUILDKIT_BIN" ] && [ ! -L "$BUILDKIT_BIN" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_BIN")" = 0:0:555 ] \
+    && [ "$(/usr/bin/find "$BUILDKIT_BIN" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+            | LC_ALL=C /usr/bin/sort)" = $'buildkit-runc\nbuildkitd' ] \
+    || fail 'fixed BuildKit binary inventory differs'
+[ -d "$BUILDKIT_CNI" ] && [ ! -L "$BUILDKIT_CNI" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_CNI")" = 0:0:555 ] \
+    && [ "$(/usr/bin/find "$BUILDKIT_CNI" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+            | LC_ALL=C /usr/bin/sort)" = $'bridge\nfirewall\nhost-local\nloopback' ] \
+    || fail 'fixed BuildKit CNI inventory differs'
+verify_buildkit_component() {
+    [ "$#" -eq 5 ] || fail 'internal BuildKit component-verification argument count differs'
+    local path=$1 expected_size=$2 expected_sha=$3 authority_sha=$4 label=$5
+    [ -f "$path" ] && [ ! -L "$path" ] && [ -x "$path" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+             "0:0:555:1:$expected_size" ] \
+        && [ "$(/usr/bin/sha256sum "$path" | /usr/bin/awk '{print $1}')" = \
+             "$expected_sha" ] \
+        && [ "$expected_sha" = "$authority_sha" ] \
+        || fail "fixed BuildKit $label identity differs"
+}
+verify_buildkit_component "$BUILDKIT_DAEMON" "$SIZE_VERIFIER_VM_BUILDKITD" \
+    "$SHA256_VERIFIER_VM_BUILDKITD" "$EXPECTED_BUILDKITD_SHA" daemon
+verify_buildkit_component "$BUILDKIT_RUNC" "$SIZE_VERIFIER_VM_BUILDKIT_RUNC" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_RUNC" "$EXPECTED_BUILDKIT_RUNC_SHA" runtime
+verify_buildkit_component "$BUILDKIT_CNI/bridge" \
+    "$SIZE_VERIFIER_VM_BUILDKIT_CNI_BRIDGE" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_BRIDGE" \
+    "$EXPECTED_BUILDKIT_CNI_BRIDGE_SHA" 'CNI bridge'
+verify_buildkit_component "$BUILDKIT_CNI/firewall" \
+    "$SIZE_VERIFIER_VM_BUILDKIT_CNI_FIREWALL" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_FIREWALL" \
+    "$EXPECTED_BUILDKIT_CNI_FIREWALL_SHA" 'CNI firewall'
+verify_buildkit_component "$BUILDKIT_CNI/host-local" \
+    "$SIZE_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_HOST_LOCAL" \
+    "$EXPECTED_BUILDKIT_CNI_HOST_LOCAL_SHA" 'CNI host-local'
+verify_buildkit_component "$BUILDKIT_CNI/loopback" \
+    "$SIZE_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK" \
+    "$SHA256_VERIFIER_VM_BUILDKIT_CNI_LOOPBACK" \
+    "$EXPECTED_BUILDKIT_CNI_LOOPBACK_SHA" 'CNI loopback'
+expected_buildkit_config="$(/usr/bin/printf '%s\n' \
+    'root = "/var/lib/rustdesk-online-fetch-buildkit"' \
+    'insecure-entitlements = []' \
+    '' \
+    '[grpc]' \
+    '  address = ["unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock"]' \
+    '  uid = 0' \
+    "  gid = $EXPECTED_GID" \
+    '' \
+    '[worker.oci]' \
+    '  enabled = true' \
+    '  platforms = ["linux/amd64"]' \
+    '  snapshotter = "overlayfs"' \
+    '  rootless = false' \
+    '  noProcessSandbox = false' \
+    '  gc = false' \
+    '  networkMode = "bridge"' \
+    '  cniBinaryPath = "/opt/rustdesk-online-fetch-buildkit/cni"' \
+    '  cniPoolSize = 0' \
+    '  bridgeName = "rdbk0"' \
+    '  bridgeSubnet = "172.31.0.0/24"' \
+    '  binary = "/opt/rustdesk-online-fetch-buildkit/bin/buildkit-runc"' \
+    '  max-parallelism = 4' \
+    '' \
+    '[worker.containerd]' \
+    '  enabled = false')"
+[ -f "$BUILDKIT_CONFIG" ] && [ ! -L "$BUILDKIT_CONFIG" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$BUILDKIT_CONFIG")" = 0:0:444:1 ] \
+    && [ "$(/usr/bin/cat "$BUILDKIT_CONFIG")" = "$expected_buildkit_config" ] \
+    && [ "$(/usr/bin/sha256sum "$BUILDKIT_CONFIG" | /usr/bin/awk '{print $1}')" = \
+         "$EXPECTED_BUILDKIT_CONFIG_SHA" ] \
+    || fail 'fixed guest BuildKit configuration differs'
+[ -f "$BUILDKIT_LOG" ] && [ ! -L "$BUILDKIT_LOG" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$BUILDKIT_LOG")" = 0:0:400:1 ] \
+    && [ -f "$BUILDKIT_PIDFILE" ] && [ ! -L "$BUILDKIT_PIDFILE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$BUILDKIT_PIDFILE")" = 0:0:444:1 ] \
+    && [ "$(/usr/bin/cat "$BUILDKIT_PIDFILE")" = "$BUILDKIT_PID" ] \
+    || fail 'fixed BuildKit log or PID authority differs'
+[ -d "$BUILDKIT_DATA" ] && [ ! -L "$BUILDKIT_DATA" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_DATA")" = 0:0:700 ] \
+    && [ -d "$BUILDKIT_EXEC" ] && [ ! -L "$BUILDKIT_EXEC" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_EXEC")" = \
+         "0:$EXPECTED_GID:710" ] \
+    && [ -S "$BUILDKIT_SOCKET" ] && [ ! -L "$BUILDKIT_SOCKET" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BUILDKIT_SOCKET")" = \
+         "0:$EXPECTED_GID:660" ] \
+    || fail 'guest BuildKit filesystem or socket authority differs'
+[ -r "/proc/$BUILDKIT_PID/stat" ] \
+    && [ "$(/usr/bin/awk '{print $22}' "/proc/$BUILDKIT_PID/stat")" = "$BUILDKIT_START" ] \
+    && [ "$(/usr/bin/readlink -f -- "/proc/$BUILDKIT_PID/exe")" = "$BUILDKIT_DAEMON" ] \
+    && [ "$(/usr/bin/stat -Lc '%d:%i:%s' -- "/proc/$BUILDKIT_PID/exe")" = \
+         "$(/usr/bin/stat -c '%d:%i:%s' -- "$BUILDKIT_DAEMON")" ] \
+    && [ "$(/usr/bin/sha256sum "/proc/$BUILDKIT_PID/exe" | /usr/bin/awk '{print $1}')" = \
+         "$EXPECTED_BUILDKITD_SHA" ] \
+    || fail 'guest BuildKit daemon generation differs'
+[ "$(/usr/bin/awk '/^Uid:/ {print $2":"$3":"$4":"$5}' "/proc/$BUILDKIT_PID/status")" = 0:0:0:0 ] \
+    || fail 'guest BuildKit daemon is not VM-local root'
+mapfile -d '' -t buildkit_argv <"/proc/$BUILDKIT_PID/cmdline" \
+    || fail 'cannot read the guest BuildKit daemon arguments'
+[ "${#buildkit_argv[@]}" -eq 3 ] \
+    && [ "${buildkit_argv[0]}" = "$BUILDKIT_DAEMON" ] \
+    && [ "${buildkit_argv[1]}" = --config ] \
+    && [ "${buildkit_argv[2]}" = "$BUILDKIT_CONFIG" ] \
+    || fail 'guest BuildKit daemon arguments differ'
+[ "$(/usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent \
+       "$BUILDKIT_DAEMON" --version)" = \
+  "buildkitd github.com/moby/buildkit v${VERIFIER_VM_BUILDKIT_VERSION} ${VERIFIER_VM_BUILDKIT_COMMIT}" ] \
+    || fail 'guest BuildKit daemon version differs'
 
 mapfile -t matching_interfaces < <(
     for address in /sys/class/net/*/address; do
@@ -181,8 +345,19 @@ read -r route_destination route_via route_gateway route_dev route_interface _ \
     && [ "$(/usr/sbin/ip -4 -o address show dev docker0 scope global \
           | /usr/bin/awk '{print $4}')" = 172.30.0.1/24 ] \
     || fail 'guest-only Docker bridge identity differs'
+[ -d /sys/class/net/rdbk0 ] \
+    && [ "$(/usr/sbin/ip -4 -o address show dev rdbk0 scope global \
+          | /usr/bin/awk '{print $4}')" = 172.31.0.1/24 ] \
+    || fail 'guest-only BuildKit bridge identity differs'
 [ "$(/usr/bin/cat /proc/sys/net/ipv4/ip_forward)" = 1 ] \
-    || fail 'guest-only Docker forwarding is not enabled'
+    || fail 'guest-only build forwarding is not enabled'
+[ "$(/usr/sbin/iptables -S OUTPUT | /usr/bin/awk 'NR == 2')" = \
+  '-A OUTPUT -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
+    && [ "$(/usr/sbin/iptables -S DOCKER-USER | /usr/bin/awk 'NR == 2')" = \
+         '-A DOCKER-USER -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
+    && [ "$(/usr/sbin/iptables -S FORWARD | /usr/bin/awk 'NR == 2')" = \
+         '-A FORWARD -p udp -j REJECT --reject-with icmp-port-unreachable' ] \
+    || fail 'TCP-only acquisition filter authority differs'
 
 verify_cache_mount() {
     [ "$#" -eq 4 ] || fail 'internal cache-mount argument error'
@@ -258,5 +433,5 @@ current_tree="$(
         -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=no
 )" ] || fail 'tracked admitted source is dirty'
 
-printf 'ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=%s gid=%s source=%s network=qemu-user-only udp=denied docker=guest-unix image_store=containerd git=pinned-deb cache=virtiofs-atomic\n' \
+printf 'ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=%s gid=%s source=%s network=qemu-user-only udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic\n' \
     "$EXPECTED_UID" "$EXPECTED_GID" "$EXPECTED_COMMIT"

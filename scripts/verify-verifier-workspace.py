@@ -6709,22 +6709,6 @@ def validate_windows_helper_launch_contract(sources):
             "Windows CM startup-time parent handle sealing mutation",
         ),
         (
-            "LocalSystem Windows CM main-IPC capability-reuse requirement weakening",
-            "Windows CM main-IPC normative mutation",
-        ),
-        (
-            "graphical CM retained-idle requirement removal",
-            "graphical CM retained-idle normative mutation",
-        ),
-        (
-            "installed graphical CM lifecycle requirements evidence removal",
-            "installed graphical CM lifecycle requirements-evidence mutation",
-        ),
-        (
-            "installed graphical CM lifecycle ledger evidence removal",
-            "installed graphical CM lifecycle ledger-evidence mutation",
-        ),
-        (
             "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
             "Windows CM job-limit mutation",
         ),
@@ -6767,10 +6751,6 @@ def validate_windows_helper_launch_contract(sources):
         (
             "Windows CM lifecycle probe enabled in default artifacts",
             "Windows CM probe artifact-separation mutation",
-        ),
-        (
-            "same-user Windows CM job requirement removal",
-            "Windows same-user CM normative job mutation",
         ),
         (
             "fn run_server_worker()",

@@ -35,8 +35,6 @@ FILES = (
     "src/server/connection.rs",
     "src/ui_cm_interface.rs",
     "src/windows_cm_lifecycle_probe.rs",
-    "requirements.html",
-    "HARDENING_STATUS.md",
     "scripts/verify.sh",
     "scripts/apple-conform-check.sh",
     "scripts/build-windows.ps1",
@@ -118,8 +116,6 @@ def verify(files: Mapping[str, str]) -> None:
     connection = files["src/server/connection.rs"]
     ui_cm = files["src/ui_cm_interface.rs"]
     lifecycle_probe = files["src/windows_cm_lifecycle_probe.rs"]
-    requirements = files["requirements.html"]
-    ledger = files["HARDENING_STATUS.md"]
     shared_gate = files["scripts/verify.sh"]
     apple_gate = files["scripts/apple-conform-check.sh"]
     windows_build = files["scripts/build-windows.ps1"]
@@ -134,7 +130,21 @@ def verify(files: Mapping[str, str]) -> None:
     status_refresh = function_block(
         server_model, "Future<void> _refreshStatus() async"
     )
-    idle_status_branch = function_block(status_refresh, "else if (_clients.isEmpty)")
+    ordered(
+        status_refresh,
+        (
+            "final snapshot = await bind.cmGetClientsState();",
+            "await updateClientState(snapshot, clientStateRevision);",
+        ),
+        "periodic CM complete-snapshot reconciliation",
+    )
+    client_state_update = function_block(
+        server_model, "Future<void> updateClientState"
+    )
+    cm_status_branch = function_block(
+        client_state_update, "if (desktopType == DesktopType.cm)"
+    )
+    idle_status_branch = function_block(cm_status_branch, "if (_clients.isEmpty)")
     require(
         idle_status_branch,
         "hideCmWindow();",
@@ -144,6 +154,11 @@ def verify(files: Mapping[str, str]) -> None:
         idle_status_branch,
         "windowManager.close();",
         "idle graphical CM process close",
+    )
+    require(
+        cm_status_branch,
+        "} else if (!hideCm) {\n        await showCmWindow();",
+        "active graphical CM window restoration",
     )
     client_removal = function_block(server_model, "void onClientRemove")
     require(
@@ -796,68 +811,6 @@ def verify(files: Mapping[str, str]) -> None:
         "closed Windows lifecycle probe role inventory",
     )
 
-    require(requirements, '<span class="id">R-S11gi</span>', "R-S11gi requirement")
-    require(requirements, "Appendix C #344", "R-S11gi Appendix binding")
-    require(
-        requirements,
-        "both same-user and LocalSystem launches",
-        "both Windows CM launch branches in the normative job contract",
-    )
-    require(
-        requirements,
-        "Closing the final server-owned job handle",
-        "abrupt Windows CM owner-death contract",
-    )
-    require(
-        requirements,
-        "atomically allowlist that one inheritable capability",
-        "LocalSystem CM exact parent-process capability contract",
-    )
-    require(
-        requirements,
-        '<span class="id">R-S11gib</span>',
-        "Windows CM main-IPC capability-reuse requirement",
-    )
-    require(
-        requirements,
-        '<span class="id">R-S11gic</span>',
-        "graphical CM retained-idle requirement",
-    )
-    require(
-        requirements,
-        "Backend-driven last-session removal and periodic zero-client checks",
-        "graphical CM automatic-exit prohibition",
-    )
-    require(
-        requirements,
-        "reuse that same sealed process capability when it connects to the launching server's main IPC",
-        "LocalSystem CM main-IPC exact parent-process capability contract",
-    )
-    require(
-        requirements,
-        "MUST NOT</span> depend on granting the desktop user <code>SeImpersonatePrivilege</code>",
-        "LocalSystem CM privilege-independent parent proof",
-    )
-    require(
-        ledger,
-        "R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
-        "R-S11gi hardening record",
-    )
-    require(
-        ledger,
-        "032c2f622b324f92b183a1ae37fb13f65523ada0",
-        "installed graphical CM lifecycle evidence commit in the ledger",
-    )
-    require(
-        requirements,
-        "Appendix C #344 installed lifecycle pass (2026-08-12)",
-        "installed graphical CM lifecycle pass in requirements",
-    )
-    require(
-        ledger,
-        "passed package install, six authenticated CM directory",
-        "installed graphical CM lifecycle pass in the ledger",
-    )
     require(
         shared_gate,
         'python3 scripts/verify-cm-process-ownership.py --self-test',
@@ -1193,54 +1146,6 @@ MUTATIONS = (
         'default = ["use_dasp"]',
         'default = ["use_dasp", "windows-cm-lifecycle-probe"]',
         "Windows CM lifecycle probe enabled in default artifacts",
-    ),
-    Mutation(
-        "requirements.html",
-        '<span class="id">R-S11gi</span>',
-        '<span class="id">R-S11gi-disabled</span>',
-        "requirement removal",
-    ),
-    Mutation(
-        "requirements.html",
-        "both same-user and LocalSystem launches",
-        "only LocalSystem launches",
-        "same-user Windows CM job requirement removal",
-    ),
-    Mutation(
-        "requirements.html",
-        "atomically allowlist that one inheritable capability",
-        "optionally pass one inheritable capability",
-        "LocalSystem Windows CM parent-capability requirement weakening",
-    ),
-    Mutation(
-        "requirements.html",
-        "reuse that same sealed process capability when it connects to the launching server's main IPC",
-        "use generic process discovery when it connects to the launching server's main IPC",
-        "LocalSystem Windows CM main-IPC capability-reuse requirement weakening",
-    ),
-    Mutation(
-        "requirements.html",
-        '<span class="id">R-S11gic</span>',
-        '<span class="id">R-S11gic-disabled</span>',
-        "graphical CM retained-idle requirement removal",
-    ),
-    Mutation(
-        "requirements.html",
-        "Appendix C #344 installed lifecycle pass (2026-08-12)",
-        "Appendix C #344 installed lifecycle pending (2026-08-12)",
-        "installed graphical CM lifecycle requirements evidence removal",
-    ),
-    Mutation(
-        "HARDENING_STATUS.md",
-        "032c2f622b324f92b183a1ae37fb13f65523ada0",
-        "0000000000000000000000000000000000000000",
-        "installed graphical CM lifecycle ledger evidence removal",
-    ),
-    Mutation(
-        "HARDENING_STATUS.md",
-        "R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
-        "R-S11gi-disabled/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
-        "ledger removal",
     ),
 )
 

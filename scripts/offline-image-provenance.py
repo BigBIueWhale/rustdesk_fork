@@ -2439,45 +2439,102 @@ def validate_certified_builder_attestation(
             ]
         },
     }
-    if not isinstance(metadata, dict) \
-       or set(metadata) != {
-           "buildFinishedOn",
-           "buildInvocationID",
-           "buildStartedOn",
-           "completeness",
-           "https://mobyproject.org/buildkit@v1#metadata",
-           "reproducible",
-       } \
-       or any(
-           not isinstance(metadata.get(name), str) or not metadata.get(name)
-           for name in (
-               "buildFinishedOn",
-               "buildInvocationID",
-               "buildStartedOn",
-           )
-       ) \
-       or metadata.get("completeness") != {
-           "parameters": True,
-           "environment": True,
-           "materials": False,
-       } \
-       or metadata.get("reproducible") is not False \
-       or not isinstance(buildkit_metadata, dict) \
-       or set(buildkit_metadata) != {"layers", "source"} \
-       or buildkit_metadata.get("layers") != {
-           "step0:0": [
-               attested_layers[: spec.bootstrap_layer_count]
-           ],
-           "step1:0": [attested_layers],
-       } \
-       or not isinstance(source, dict) \
-       or set(source) != {"infos", "locations"} \
-       or source.get("locations") != expected_locations \
-       or not isinstance(infos, list) \
-       or len(infos) != 1:
+    def metadata_fail(detail: str) -> None:
         fail(
             f"Docker archive certified {spec.display_name} provenance runtime "
-            "metadata differs"
+            f"metadata differs: {detail}"
+        )
+
+    def diagnostic_value(value: object) -> str:
+        rendered = canonical_json(value).decode("utf-8")
+        if len(rendered) > 4096:
+            return rendered[:4096] + "...<truncated>"
+        return rendered
+
+    if not isinstance(metadata, dict):
+        metadata_fail(f"metadata is {type(metadata).__name__}, not an object")
+    expected_metadata_keys = {
+        "buildFinishedOn",
+        "buildInvocationID",
+        "buildStartedOn",
+        "completeness",
+        "https://mobyproject.org/buildkit@v1#metadata",
+        "reproducible",
+    }
+    if set(metadata) != expected_metadata_keys:
+        metadata_fail(
+            "top-level keys differ; expected="
+            f"{sorted(expected_metadata_keys)!r}, actual={sorted(metadata)!r}"
+        )
+    invalid_dynamic_fields = [
+        name
+        for name in (
+            "buildFinishedOn",
+            "buildInvocationID",
+            "buildStartedOn",
+        )
+        if not isinstance(metadata.get(name), str) or not metadata.get(name)
+    ]
+    if invalid_dynamic_fields:
+        metadata_fail(
+            "empty or non-string dynamic fields: "
+            f"{invalid_dynamic_fields!r}"
+        )
+    expected_completeness = {
+        "parameters": True,
+        "environment": True,
+        "materials": False,
+    }
+    if metadata.get("completeness") != expected_completeness:
+        metadata_fail(
+            "completeness differs; expected="
+            f"{diagnostic_value(expected_completeness)}, actual="
+            f"{diagnostic_value(metadata.get('completeness'))}"
+        )
+    if metadata.get("reproducible") is not False:
+        metadata_fail(
+            "reproducible differs; expected=false, actual="
+            f"{diagnostic_value(metadata.get('reproducible'))}"
+        )
+    if not isinstance(buildkit_metadata, dict):
+        metadata_fail(
+            "BuildKit metadata is "
+            f"{type(buildkit_metadata).__name__}, not an object"
+        )
+    if set(buildkit_metadata) != {"layers", "source"}:
+        metadata_fail(
+            "BuildKit metadata keys differ; expected=['layers', 'source'], "
+            f"actual={sorted(buildkit_metadata)!r}"
+        )
+    expected_layers = {
+        "step0:0": [attested_layers[: spec.bootstrap_layer_count]],
+        "step1:0": [attested_layers],
+    }
+    if buildkit_metadata.get("layers") != expected_layers:
+        metadata_fail(
+            "layer map differs; expected="
+            f"{diagnostic_value(expected_layers)}, actual="
+            f"{diagnostic_value(buildkit_metadata.get('layers'))}"
+        )
+    if not isinstance(source, dict):
+        metadata_fail(
+            f"source is {type(source).__name__}, not an object"
+        )
+    if set(source) != {"infos", "locations"}:
+        metadata_fail(
+            "source keys differ; expected=['infos', 'locations'], "
+            f"actual={sorted(source)!r}"
+        )
+    if source.get("locations") != expected_locations:
+        metadata_fail(
+            "source locations differ; expected="
+            f"{diagnostic_value(expected_locations)}, actual="
+            f"{diagnostic_value(source.get('locations'))}"
+        )
+    if not isinstance(infos, list) or len(infos) != 1:
+        metadata_fail(
+            "source infos cardinality differs; expected=1, actual="
+            f"{len(infos) if isinstance(infos, list) else type(infos).__name__}"
         )
 
     source_info = infos[0]

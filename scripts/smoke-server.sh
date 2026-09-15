@@ -4,10 +4,12 @@
 #
 # verify.sh proves the code COMPILES + the KATs pass; it cannot prove the binary BUILDS-and-LINKS,
 # nor the runtime startup/listen/shutdown behaviour. This builds the full server binary in the
-# pinned-toolchain container and exercises it headless over the docker LOOPBACK — what the spec's
+# pinned-toolchain container and exercises it headless over the guest-container loopback — what the spec's
 # R-B4 ("assume nothing builds until watched") and R-A8 (runtime exercise) call for.
 #
-# It binds 127.0.0.1 — never 0.0.0.0 — in a network-none `--rm` container with no published ports.
+# The invoking nonroot host user can reach this harness only through the authenticated, zero-NIC
+# verifier VM. Inside that disposable guest, every product/tool container remains network-none.
+# The tested server binds 127.0.0.1 — never 0.0.0.0 — with no published ports.
 # The production binary has no runtime bind-address switch; this harness uses an LD_PRELOAD bind
 # shim that rewrites only the public test bind (0.0.0.0:21118 -> 127.0.0.1:21118).
 #
@@ -47,6 +49,7 @@
 # Usage:  scripts/smoke-server.sh [--portable-rootless]
 #         scripts/smoke-server.sh --with-root-containers
 #         scripts/smoke-server.sh --video-pipeline
+#         scripts/smoke-server.sh --self-test-vm-authority
 #         SMOKE_DECAY=1 scripts/smoke-server.sh [--portable-rootless]
 #
 # The default is the portable rootless path. The installed-service, root-owned password fixture,
@@ -54,33 +57,13 @@
 # unless --with-root-containers is explicit.
 set -euo pipefail
 umask 077
-cd "$(dirname "$0")/.."
-case "$#" in
-  0)
-    SMOKE_MODE=portable-rootless
-    ;;
-  1)
-    case "$1" in
-      --portable-rootless) SMOKE_MODE=portable-rootless ;;
-      --with-root-containers) SMOKE_MODE=with-root-containers ;;
-      --video-pipeline) SMOKE_MODE=video-pipeline-rootless ;;
-      *)
-        echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers|--video-pipeline]" >&2
-        exit 2
-        ;;
-    esac
-    ;;
-  *)
-    echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers|--video-pipeline]" >&2
-    exit 2
-    ;;
-esac
-readonly SMOKE_MODE
-readonly DOCKER_BIN=/usr/bin/docker
-readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock
-readonly SMOKE_REPO_ROOT="$PWD"
-readonly BUILD_UID="$(id -u)"
-readonly BUILD_GID="$(id -g)"
+export PATH=/usr/bin:/bin
+export LC_ALL=C
+
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly SMOKE_REPO_ROOT="$(cd "$SCRIPT_DIR/.." && /usr/bin/pwd -P)"
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
 [ "$BUILD_UID" -ne 0 ] || {
   echo "smoke: refuses host or container-root execution" >&2
   exit 1
@@ -89,37 +72,23 @@ readonly BUILD_GID="$(id -g)"
   echo "smoke: refuses a root primary group" >&2
   exit 1
 }
-[ -f "$DOCKER_BIN" ] && [ ! -L "$DOCKER_BIN" ] && [ -x "$DOCKER_BIN" ] || {
-  echo "smoke: trusted Docker client is unavailable at $DOCKER_BIN" >&2
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+  && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] || {
+  echo "smoke: verifier-VM entry preflight is absent or ambiguous" >&2
   exit 1
 }
-[ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN" 2>/dev/null)" = "0:0:755:1" ] || {
-  echo "smoke: trusted Docker client must be a root-owned mode-0755 single-link file" >&2
-  exit 1
-}
-[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] || {
-  echo "smoke: the fixed local Docker Unix socket is unavailable" >&2
-  exit 1
-}
-readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock)"
-case "$SMOKE_DOCKER_SOCKET_ID" in
-  *:*:0:*:*:1) ;;
-  *) echo "smoke: the fixed local Docker Unix socket is not root-owned and single-link" >&2; exit 1 ;;
-esac
-for variable in \
-  DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS \
-  DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST \
-  DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS; do
-  [ -z "${!variable+x}" ] || {
-    echo "smoke: $variable must not influence the Docker client" >&2
-    exit 1
-  }
-done
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
+
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly DOCKER_BIN=/usr/bin/docker
+readonly SMOKE_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly SMOKE_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
 
 read_smoke_pin() {
   local name=$1 line value= count=0
   case "$name" in
-    DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG) ;;
+    DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG|VERIFIER_VM_DOCKER_VERSION) ;;
     *) echo "smoke: unsupported pin name $name" >&2; return 1 ;;
   esac
   while IFS= read -r line || [ -n "$line" ]; do
@@ -132,13 +101,86 @@ read_smoke_pin() {
         return 1
       fi
     fi
-  done < scripts/pins.env
+  done < "$SCRIPT_DIR/pins.env"
   [ "$count" -eq 1 ] && [ -n "$value" ] || {
     echo "smoke: $name must occur exactly once in scripts/pins.env" >&2
     return 1
   }
   printf '%s\n' "$value"
 }
+
+SMOKE_VM_DOCKER_VERSION=$(read_smoke_pin VERIFIER_VM_DOCKER_VERSION)
+[[ "$SMOKE_VM_DOCKER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { echo "smoke: verifier-VM Docker version pin is malformed" >&2; exit 1; }
+SMOKE_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+  "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$SMOKE_VM_MARKER_DOCKER" = "docker=$SMOKE_VM_DOCKER_VERSION" ] || {
+  echo "smoke: guest Docker authority differs from its repository pin" >&2
+  exit 1
+}
+readonly SMOKE_VM_DOCKER_VERSION SMOKE_VM_MARKER_DOCKER
+readonly SMOKE_DOCKER_COMMAND=(
+  /usr/bin/env -i
+  PATH=/usr/bin:/bin
+  LC_ALL=C
+  HOME=/nonexistent
+  DOCKER_HOST="unix://$SMOKE_DOCKER_SOCKET"
+  DOCKER_CONFIG="$SMOKE_DOCKER_CONFIG"
+  "$DOCKER_BIN"
+  --host "unix://$SMOKE_DOCKER_SOCKET"
+  --config "$SMOKE_DOCKER_CONFIG"
+)
+
+smoke_vm_authority() {
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null
+}
+
+smoke_vm_docker() {
+  local status=0
+  smoke_vm_authority || return 1
+  "${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?
+  smoke_vm_authority || return 1
+  return "$status"
+}
+
+cd "$SMOKE_REPO_ROOT"
+case "$#" in
+  0)
+    SMOKE_MODE=portable-rootless
+    ;;
+  1)
+    case "$1" in
+      --portable-rootless) SMOKE_MODE=portable-rootless ;;
+      --with-root-containers) SMOKE_MODE=with-root-containers ;;
+      --video-pipeline) SMOKE_MODE=video-pipeline-rootless ;;
+      --self-test-vm-authority) SMOKE_MODE=vm-authority-self-test ;;
+      *)
+        echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers|--video-pipeline|--self-test-vm-authority]" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers|--video-pipeline|--self-test-vm-authority]" >&2
+    exit 2
+    ;;
+esac
+readonly SMOKE_MODE
+
+if [ "$SMOKE_MODE" = vm-authority-self-test ]; then
+  authority_version="$(smoke_vm_docker version \
+    --format '{{.Client.Version}}|{{.Server.Version}}')" || {
+    echo "smoke: verifier-VM Docker authority self-test failed" >&2
+    exit 1
+  }
+  [ "$authority_version" = "$SMOKE_VM_DOCKER_VERSION|$SMOKE_VM_DOCKER_VERSION" ] || {
+    echo "smoke: verifier-VM Docker authority version differs: $authority_version" >&2
+    exit 1
+  }
+  printf 'SMOKE_SERVER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed\n' \
+    "$BUILD_UID" "$BUILD_GID" "$SMOKE_VM_DOCKER_VERSION"
+  exit 0
+fi
 
 EXPECTED_IMAGE_ID=$(read_smoke_pin DEV_CHECK_IMAGE_ID)
 SMOKE_RUST_VERSION=$(read_smoke_pin RUST_VERSION)
@@ -264,6 +306,13 @@ esac
   echo "smoke: canonical online input root is unavailable" >&2
   exit 1
 }
+readonly SMOKE_XVFB_INPUT_ROOT=$SMOKE_ONLINE_ROOT/xvfb-debs
+if [ "$SMOKE_MODE" = video-pipeline-rootless ]; then
+  [ -d "$SMOKE_XVFB_INPUT_ROOT" ] && [ ! -L "$SMOKE_XVFB_INPUT_ROOT" ] || {
+    echo "smoke: authenticated offline Xvfb package closure is unavailable" >&2
+    exit 1
+  }
+fi
 [ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || {
   echo "smoke: exact-commit runtime evidence requires a clean tracked and nonignored source tree" >&2
   exit 1
@@ -277,17 +326,14 @@ readonly SMOKE_SOURCE_COMMIT SMOKE_ONLINE_ROOT
 
 SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)
 readonly SMOKE_ROOT
-readonly SMOKE_DOCKER_CONFIG="$SMOKE_ROOT/docker-config"
 readonly SMOKE_BUILD_TARGET="$SMOKE_ROOT/target"
 readonly SMOKE_SOURCE_ARCHIVE="$SMOKE_ROOT/source.tar"
 readonly SMOKE_SOURCE="$SMOKE_ROOT/source"
 readonly SMOKE_XVFB_DEBS="$SMOKE_ROOT/xvfb-debs"
 readonly SMOKE_XVFB_ROOT="$SMOKE_ROOT/xvfb-root"
 install -d -m 0700 \
-  "$SMOKE_DOCKER_CONFIG" "$SMOKE_BUILD_TARGET" "$SMOKE_SOURCE" \
+  "$SMOKE_BUILD_TARGET" "$SMOKE_SOURCE" \
   "$SMOKE_XVFB_DEBS" "$SMOKE_XVFB_ROOT"
-printf '{}\n' >"$SMOKE_DOCKER_CONFIG/config.json"
-chmod 0600 "$SMOKE_DOCKER_CONFIG/config.json"
 git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT" >"$SMOKE_SOURCE_ARCHIVE"
 [ -s "$SMOKE_SOURCE_ARCHIVE" ] && [ ! -L "$SMOKE_SOURCE_ARCHIVE" ] || {
   echo "smoke: exact source archive is missing or invalid" >&2
@@ -304,33 +350,15 @@ readonly SMOKE_SOURCE_TREE_SHA256="$(smoke_source_tree_digest)"
   exit 1
 }
 readonly SMOKE_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT")"
-readonly SMOKE_DOCKER_CONFIG_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG")"
-readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG/config.json")"
 readonly SMOKE_BUILD_TARGET_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET")"
 readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_SOURCE_ARCHIVE")"
 readonly SMOKE_SOURCE_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_SOURCE")"
 readonly SMOKE_XVFB_DEBS_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_DEBS")"
 readonly SMOKE_XVFB_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_ROOT")"
-readonly SMOKE_DOCKER_COMMAND=(
-  /usr/bin/env -i
-  PATH=/usr/bin:/bin
-  HOME="$SMOKE_ROOT"
-  DOCKER_HOST="$SMOKE_DOCKER_HOST"
-  DOCKER_CONFIG="$SMOKE_DOCKER_CONFIG"
-  "$DOCKER_BIN"
-  --host "$SMOKE_DOCKER_HOST"
-  --config "$SMOKE_DOCKER_CONFIG"
-)
-
 smoke_docker_authority() {
+  smoke_vm_authority || return 1
   [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT" 2>/dev/null)" = "$SMOKE_ROOT_ID" ] \
     || { echo "smoke: private authority root identity changed" >&2; return 1; }
-  [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG" 2>/dev/null)" = "$SMOKE_DOCKER_CONFIG_ID" ] \
-    || { echo "smoke: private Docker configuration identity changed" >&2; return 1; }
-  [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG/config.json" 2>/dev/null)" = "$SMOKE_DOCKER_CONFIG_FILE_ID" ] \
-    || { echo "smoke: private Docker config.json identity changed" >&2; return 1; }
-  cmp -s -- "$SMOKE_DOCKER_CONFIG/config.json" <(printf '{}\n') \
-    || { echo "smoke: private Docker config.json bytes changed" >&2; return 1; }
   [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET" 2>/dev/null)" = "$SMOKE_BUILD_TARGET_ID" ] \
     || { echo "smoke: private build-target authority changed" >&2; return 1; }
   [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_SOURCE_ARCHIVE" 2>/dev/null)" = "$SMOKE_SOURCE_ARCHIVE_ID" ] \
@@ -341,9 +369,6 @@ smoke_docker_authority() {
     || { echo "smoke: private Xvfb package authority changed" >&2; return 1; }
   [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_ROOT" 2>/dev/null)" = "$SMOKE_XVFB_ROOT_ID" ] \
     || { echo "smoke: private Xvfb tool authority changed" >&2; return 1; }
-  [ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \
-    && [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock 2>/dev/null)" = "$SMOKE_DOCKER_SOCKET_ID" ] \
-    || { echo "smoke: fixed local Docker Unix socket identity changed" >&2; return 1; }
 }
 
 smoke_docker() {
@@ -377,8 +402,6 @@ remove_smoke_authority_root() {
   chmod -R u+rwX "$SMOKE_SOURCE" || return 125
   rm -rf -- "$SMOKE_SOURCE" || return 125
   rm -- "$SMOKE_SOURCE_ARCHIVE" || return 125
-  rm -- "$SMOKE_DOCKER_CONFIG/config.json" || return 125
-  rmdir -- "$SMOKE_DOCKER_CONFIG" || return 125
   if [ -e "$SMOKE_ROOT/sibling-docker.log" ] || [ -L "$SMOKE_ROOT/sibling-docker.log" ]; then
     [ "$(stat -c '%u:%g:%a:%h' -- "$SMOKE_ROOT/sibling-docker.log" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:600:1" ] \
       || { echo "smoke: preserving changed sibling transcript" >&2; return 125; }
@@ -459,7 +482,7 @@ PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"
   -w /work "$IMAGE_ID")
-XVFB_PREPARE_RUN=(smoke_docker run --rm --network bridge --pull=never --read-only
+XVFB_PREPARE_RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --user "$BUILD_UID:$BUILD_GID"
   --cap-drop ALL
   --security-opt no-new-privileges
@@ -469,6 +492,7 @@ XVFB_PREPARE_RUN=(smoke_docker run --rm --network bridge --pull=never --read-onl
   --cpus 1
   --tmpfs /tmp:rw,nosuid,nodev,noexec,mode=1777,size=32m
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
+  --mount "type=bind,source=$SMOKE_XVFB_INPUT_ROOT,target=/xvfb-inputs,readonly"
   --mount "type=bind,source=$SMOKE_XVFB_DEBS,target=/xvfb-debs"
   --mount "type=bind,source=$SMOKE_XVFB_ROOT,target=/xvfb-root"
   -w /work "$IMAGE_ID")
@@ -690,16 +714,16 @@ record_stage_status R-B4-build
 verify_smoke_source_snapshot || exit 1
 
 if [ "$SMOKE_MODE" = video-pipeline-rootless ]; then
-  echo "== (0b) acquire the exact non-root Xvfb test closure in an isolated producer container =="
+  echo "== (0b) verify and extract the exact offline Xvfb test closure in a networkless container =="
   run_stage xvfb_prepare_out "${XVFB_PREPARE_RUN[@]}" \
     bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh
   printf '%s\n' "$xvfb_prepare_out"
   record_stage_status Xvfb-test-infrastructure
   [ "$STAGE_STATUS" -eq 0 ] || exit 1
   [ "$(grep -c '^XVFB_PACKAGE_OK ' <<<"$xvfb_prepare_out")" -eq 5 ] \
-    || { echo '  FAIL video pipeline: the exact five-package Xvfb closure was not acquired'; exit 1; }
-  grep -q '^XVFB_ACQUISITION_NETWORK_SURFACE=tcp-listen:0 udp:0$' <<<"$xvfb_prepare_out" \
-    || { echo '  FAIL video pipeline: the acquisition container retained a listener or UDP socket'; exit 1; }
+    || { echo '  FAIL video pipeline: the exact five-package offline Xvfb closure was not prepared'; exit 1; }
+  grep -q '^XVFB_OFFLINE_INPUT_SURFACE=tcp-listen:0 udp:0$' <<<"$xvfb_prepare_out" \
+    || { echo '  FAIL video pipeline: the offline preparation container retained a listener or UDP socket'; exit 1; }
   grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=5 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' <<<"$xvfb_prepare_out" \
     || { echo '  FAIL video pipeline: the extracted Xvfb closure did not match its file manifest'; exit 1; }
   verify_smoke_source_snapshot || exit 1

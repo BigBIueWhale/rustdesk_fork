@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
-# Acquire and extract the exact Xvfb test-infrastructure closure as an ordinary uid.
+# Verify and extract the exact offline Xvfb test-infrastructure closure as an ordinary uid.
 set -euo pipefail
 umask 077
+export PATH=/usr/bin:/bin
+export LC_ALL=C
 
 readonly MANIFEST=/work/scripts/smoke-xvfb-packages.tsv
 readonly FILE_MANIFEST=/work/scripts/smoke-xvfb-files.tsv
+readonly INPUT_ROOT=/xvfb-inputs
 readonly DEB_ROOT=/xvfb-debs
 readonly TOOL_ROOT=/xvfb-root
 readonly EXPECTED_PACKAGES=5
 
 fail() {
-  echo "Xvfb acquisition: $*" >&2
+  echo "Xvfb offline preparation: $*" >&2
   exit 1
 }
 
 [ "$(id -u)" -ne 0 ] || fail 'refuses root execution'
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
+[ -d "$INPUT_ROOT" ] && [ ! -L "$INPUT_ROOT" ] \
+  || fail 'offline input root is unavailable or ambiguous'
+input_mount_options="$(findmnt -n -o OPTIONS --target "$INPUT_ROOT")" \
+  || fail 'offline input mount cannot be resolved'
+case ",$input_mount_options," in
+  *,ro,*) ;;
+  *) fail 'offline input mount is writable' ;;
+esac
 for directory in "$DEB_ROOT" "$TOOL_ROOT"; do
   [ -d "$directory" ] && [ ! -L "$directory" ] || fail "invalid output directory: $directory"
   [ "$(stat -c %u:%g:%a -- "$directory")" = "$(id -u):$(id -g):700" ] \
@@ -43,18 +54,28 @@ while IFS=$'\t' read -r name size digest url extra || [ -n "${name:-}" ]; do
   esac
   seen[$name]=1
   package_count=$((package_count + 1))
+  input="$INPUT_ROOT/$name.deb"
+  [ -f "$input" ] && [ ! -L "$input" ] \
+    || fail "offline package is unavailable or ambiguous: $name"
+  input_metadata="$(stat -c %u:%g:%a:%h:%s -- "$input")"
+  case "$input_metadata" in
+    "$(id -u):$(id -g):400:1:$size"|*:*:444:1:"$size") ;;
+    *) fail "offline package authority metadata differs: $name" ;;
+  esac
+  [ "$(sha256sum "$input" | awk '{print $1}')" = "$digest" ] \
+    || fail "offline package digest differs from its manifest: $name"
   output="$DEB_ROOT/$name.deb"
-  /usr/bin/curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-    --connect-timeout 15 --max-time 90 --output "$output" "$url"
-  [ -f "$output" ] && [ ! -L "$output" ] || fail "download is not a regular file: $name"
+  /usr/bin/cp --reflink=never -- "$input" "$output"
+  chmod 0600 "$output"
+  [ -f "$output" ] && [ ! -L "$output" ] || fail "private package copy is not a regular file: $name"
   [ "$(stat -c %u:%g:%a:%h:%s -- "$output")" = "$(id -u):$(id -g):600:1:$size" ] \
-    || fail "download metadata or size differs from its manifest: $name"
+    || fail "private package-copy metadata or size differs from its manifest: $name"
   [ "$(sha256sum "$output" | awk '{print $1}')" = "$digest" ] \
-    || fail "download digest differs from its manifest: $name"
+    || fail "private package-copy digest differs from its manifest: $name"
   [ "$(dpkg-deb --field "$output" Package)" = "$name" ] \
-    || fail "downloaded package identity differs from its manifest: $name"
+    || fail "package identity differs from its manifest: $name"
   [ "$(dpkg-deb --field "$output" Architecture)" = amd64 ] \
-    || fail "downloaded package architecture is not amd64: $name"
+    || fail "package architecture is not amd64: $name"
   dpkg-deb --extract "$output" "$TOOL_ROOT"
   printf 'XVFB_PACKAGE_OK name=%s size=%s sha256=%s\n' "$name" "$size" "$digest"
 done < "$MANIFEST"
@@ -99,9 +120,9 @@ tcp_listeners=$(awk 'FNR > 1 && $4 == "0A" { count++ } END { print count + 0 }' 
 udp_sockets=$(awk 'FNR > 1 { count++ } END { print count + 0 }' /proc/net/udp)
 [ ! -r /proc/net/udp6 ] \
   || udp_sockets=$((udp_sockets + $(awk 'FNR > 1 { count++ } END { print count + 0 }' /proc/net/udp6)))
-[ "$tcp_listeners" -eq 0 ] || fail 'acquisition container opened a TCP listener'
-[ "$udp_sockets" -eq 0 ] || fail 'acquisition container retained a UDP socket'
-printf 'XVFB_ACQUISITION_NETWORK_SURFACE=tcp-listen:%s udp:%s\n' "$tcp_listeners" "$udp_sockets"
+[ "$tcp_listeners" -eq 0 ] || fail 'offline preparation container opened a TCP listener'
+[ "$udp_sockets" -eq 0 ] || fail 'offline preparation container retained a UDP socket'
+printf 'XVFB_OFFLINE_INPUT_SURFACE=tcp-listen:%s udp:%s\n' "$tcp_listeners" "$udp_sockets"
 printf 'XVFB_TOOL_CLOSURE_OK packages=%s xvfb_sha256=%s xkbcomp_sha256=%s\n' \
   "$package_count" \
   "$(sha256sum "$TOOL_ROOT/usr/bin/Xvfb" | awk '{print $1}')" \

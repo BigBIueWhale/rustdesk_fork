@@ -4370,17 +4370,18 @@ def validate_smoke_contract(
     )
     for text, label in (
         ('readonly DOCKER_BIN=/usr/bin/docker', "fixed root-owned Docker client"),
-        ('readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock', "fixed local Docker endpoint"),
-        ('readonly BUILD_UID="$(id -u)"', "numeric invoking build UID"),
+        ('readonly SMOKE_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock', "fixed guest Docker endpoint"),
+        ('readonly BUILD_UID="$(/usr/bin/id -u)"', "numeric invoking build UID"),
         ('smoke: refuses host or container-root execution', "host-root refusal"),
-        ('readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c', "fixed socket identity"),
-        ('DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG', "ambient Docker authority refusal"),
+        ('readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh', "verifier-VM entry preflight"),
+        ('SMOKE_VM_DOCKER_VERSION=$(read_smoke_pin VERIFIER_VM_DOCKER_VERSION)', "guest Docker version pin"),
         ('SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)', "private smoke authority root"),
-        ('readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c', "private Docker config identity"),
         ('readonly SMOKE_BUILD_TARGET_ID="$(stat -c', "private build-target identity"),
         ('readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c', "private exact source-archive identity"),
         ('readonly SMOKE_SOURCE_ID="$(stat -c', "private exact source-snapshot identity"),
         ('readonly SMOKE_DOCKER_COMMAND=(', "empty-environment Docker command"),
+        ('smoke_vm_authority()', "guest authority replay"),
+        ('smoke_vm_docker()', "entry self-test Docker funnel"),
         ('smoke_docker_authority()', "Docker authority pre/post proof"),
         ('smoke_docker()', "single Docker invocation funnel"),
         ("trap 'exit 129' HUP", "host guard hangup cleanup"),
@@ -15311,12 +15312,19 @@ def validate_smoke_container_authority_contract(sources):
     require_order(
         smoke,
         (
-            "readonly DOCKER_BIN=/usr/bin/docker",
-            "readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock",
-            'readonly BUILD_UID="$(id -u)"',
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
             "smoke: refuses host or container-root execution",
-            'readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c',
+            "readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh",
+            '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
+            "readonly DOCKER_BIN=/usr/bin/docker",
+            "readonly SMOKE_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock",
             "read_smoke_pin()",
+            "SMOKE_VM_DOCKER_VERSION=$(read_smoke_pin VERIFIER_VM_DOCKER_VERSION)",
+            "readonly SMOKE_DOCKER_COMMAND=(",
+            "smoke_vm_authority()",
+            "smoke_vm_docker()",
+            "--self-test-vm-authority) SMOKE_MODE=vm-authority-self-test",
+            "SMOKE_SERVER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed",
             "EXPECTED_IMAGE_ID=$(read_smoke_pin DEV_CHECK_IMAGE_ID)",
             "SMOKE_RUST_VERSION=$(read_smoke_pin RUST_VERSION)",
             "SMOKE_VENDOR_CLOSURE_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CLOSURE_V1)",
@@ -15327,7 +15335,6 @@ def validate_smoke_container_authority_contract(sources):
             "SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)",
             'git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT"',
             'readonly SMOKE_SOURCE_TREE_SHA256="$(smoke_source_tree_digest)"',
-            "readonly SMOKE_DOCKER_COMMAND=(",
             "smoke_docker_authority()",
             "smoke_docker()",
             "IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' \"$EXPECTED_IMAGE_ID\") || {",
@@ -15374,16 +15381,20 @@ def validate_smoke_container_authority_contract(sources):
     pid_reuse = extract_between(
         smoke, "PID_REUSE_RUN=(", "\nXVFB_PREPARE_RUN=(", "smoke PID-reuse container"
     )
+    xvfb_prepare = extract_between(
+        smoke, "XVFB_PREPARE_RUN=(", "\nVIDEO_RUN=(", "smoke Xvfb preparation container"
+    )
+    video = extract_between(smoke, "VIDEO_RUN=(", "\nPORT_HEX=", "smoke video container")
     sibling = extract_through(
         smoke,
         'docker_out=$(smoke_docker run -d --name "$SIBLING_NAME"',
         "2>&1)",
         "smoke sibling container",
     )
-    container_blocks = (build, runtime, root_runtime, lifecycle, pid_reuse, sibling)
+    container_blocks = (build, runtime, root_runtime, lifecycle, pid_reuse, xvfb_prepare, video, sibling)
     for block, label in zip(
         container_blocks,
-        ("build", "portable runtime", "explicit-root runtime", "lifecycle", "PID-reuse", "sibling"),
+        ("build", "portable runtime", "explicit-root runtime", "lifecycle", "PID-reuse", "Xvfb preparation", "video", "sibling"),
     ):
         require_text(block, "--network none", f"smoke {label} network isolation")
         require_text(block, "--pull=never", f"smoke {label} implicit-pull refusal")
@@ -15420,6 +15431,11 @@ def validate_smoke_container_authority_contract(sources):
     require_absent(build, "/usr/local/cargo/git", "image-global Cargo Git authority")
     require_absent(runtime, "/usr/local/cargo/", "smoke runtime dependency-cache authority")
     require_absent(runtime, "target=/online", "smoke runtime offline-build-input authority")
+    require_text(
+        xvfb_prepare,
+        'source=$SMOKE_XVFB_INPUT_ROOT,target=/xvfb-inputs,readonly',
+        "Xvfb read-only offline input",
+    )
     for token, label in (
         ('--user "$BUILD_UID:$BUILD_GID"', "numeric non-root portable runtime identity"),
         ("--cap-drop ALL", "portable runtime capability removal"),
@@ -15503,24 +15519,18 @@ def validate_smoke_container_authority_contract(sources):
         raise VerificationError("smoke short-form published ports authority: forbidden contract remains present")
 
     for token, label in (
-        ("[ -f \"$DOCKER_BIN\" ] && [ ! -L \"$DOCKER_BIN\" ]", "fixed client regular-file proof"),
-        ("0:0:755:1", "fixed client owner/mode/link proof"),
-        ("[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]", "fixed socket type proof"),
-        ("SMOKE_DOCKER_SOCKET_ID", "fixed socket identity proof"),
-        ("DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG", "ambient Docker endpoint/config refusal"),
-        ("DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS", "ambient Docker TLS refusal"),
-        ("DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST", "ambient Docker API/platform/trust refusal"),
-        ("DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS", "ambient Docker trust/header refusal"),
+        ("[ -f \"$VERIFIER_VM_ENTRY_PREFLIGHT\" ] && [ ! -L \"$VERIFIER_VM_ENTRY_PREFLIGHT\" ]", "entry-preflight regular-file proof"),
+        ("755:1", "entry-preflight mode/link proof"),
+        ('/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"', "initial and replayed guest-authority proof"),
+        ("SMOKE_VM_DOCKER_VERSION=$(read_smoke_pin VERIFIER_VM_DOCKER_VERSION)", "repository Docker-version pin"),
+        ('SMOKE_VM_MARKER_DOCKER="$(/usr/bin/awk', "guest authority marker read"),
         ("/usr/bin/env -i", "empty Docker client environment"),
-        ('--host "$SMOKE_DOCKER_HOST"', "explicit fixed Docker endpoint"),
+        ("HOME=/nonexistent", "nonexistent Docker client home"),
+        ('--host "unix://$SMOKE_DOCKER_SOCKET"', "explicit fixed guest Docker endpoint"),
         ('--config "$SMOKE_DOCKER_CONFIG"', "explicit private Docker configuration"),
-        ("printf '{}\\n' >\"$SMOKE_DOCKER_CONFIG/config.json\"", "canonical empty Docker configuration"),
-        ('readonly SMOKE_DOCKER_CONFIG_ID="$(stat -c', "private Docker directory identity"),
-        ('readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c', "private Docker config identity"),
         ('readonly SMOKE_BUILD_TARGET_ID="$(stat -c', "private build-target identity"),
         ('readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c', "exact source-archive identity"),
         ('readonly SMOKE_SOURCE_ID="$(stat -c', "exact source-snapshot identity"),
-        ('= "$SMOKE_DOCKER_CONFIG_FILE_ID" ]', "Docker config identity recheck"),
         ('= "$SMOKE_BUILD_TARGET_ID" ]', "build-target identity recheck"),
         ('= "$SMOKE_SOURCE_ARCHIVE_ID" ]', "source-archive identity recheck"),
         ('= "$SMOKE_SOURCE_ID" ]', "source-snapshot identity recheck"),
@@ -15529,6 +15539,7 @@ def validate_smoke_container_authority_contract(sources):
         ("smoke_docker_authority || return 1", "Docker authority precondition"),
         ('"${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?', "single fixed Docker client invocation"),
         ("preserving changed Docker/build authority", "identity-safe cleanup refusal"),
+        ("SMOKE_SERVER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed", "behavioral entry receipt"),
     ):
         require_text(smoke, token, label)
     require_exact_count(
@@ -15548,11 +15559,13 @@ def validate_smoke_container_authority_contract(sources):
         require_absent(smoke, token, "top-level host process inspection authority")
     if re.search(r"(?m)(?:^|[=( ])docker (?:run|image|inspect|logs|wait|rm)(?:[ )]|$)", smoke):
         raise VerificationError("smoke bypasses the fixed Docker-client authority funnel")
+    require_absent(smoke, "/var/run/docker.sock", "direct host Docker socket")
+    require_absent(smoke, "--network bridge", "guest Docker bridge network")
 
     for token, label in (
         ('case "$name" in', "closed smoke pin reader"),
-        ("DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG", "complete smoke pin allowlist"),
-        ('done < scripts/pins.env', "data-only smoke pin input"),
+        ("DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG|VERIFIER_VM_DOCKER_VERSION", "complete smoke pin allowlist"),
+        ('done < "$SCRIPT_DIR/pins.env"', "data-only smoke pin input"),
         ('^${name}=\\"([A-Za-z0-9._:-]+)\\"', "canonical quoted smoke pin grammar"),
         ('readonly SMOKE_RUSTUP_TOOLCHAIN="${SMOKE_RUST_VERSION}.0-x86_64-unknown-linux-gnu"', "exact shipped Rust toolchain derivation"),
     ):
@@ -15638,16 +15651,16 @@ def validate_smoke_container_authority_contract(sources):
         ("<code>--pull=never</code>", "implicit image-pull refusal requirement"),
         ("<code>--network none</code>", "network-none requirement"),
         ("<code>--locked --offline</code>", "locked offline Cargo requirement"),
-        ("MUST NOT</span> mount persistent registry or Git caches", "mutable build-cache prohibition"),
-        ("full vendor-tree provenance root", "sealed vendor provenance requirement"),
-        ("rechecked after Cargo", "build-input postcondition requirement"),
-        ("MUST NOT</span> publish ports", "port-publication prohibition"),
-        ("build and ordinary portable-runtime containers", "portable runtime non-root requirement"),
+        ("no persistent Cargo registry/Git cache", "mutable build-cache prohibition"),
+        ("complete vendor-tree provenance root", "sealed vendor provenance requirement"),
+        ("verified before and after compilation", "build-input postcondition requirement"),
+        ("No launch may publish ports", "port-publication prohibition"),
+        ("build and ordinary portable runtime", "portable runtime non-root requirement"),
         ("all capabilities dropped", "portable runtime capability requirement"),
         ("explicit PID/memory/no-swap/CPU ceilings", "portable runtime resource requirement"),
         ("--portable-rootless", "portable rootless selection requirement"),
         ("--with-root-containers", "explicit root-container selection requirement"),
-        ("rootless terminal verdict", "truthful rootless verdict requirement"),
+        ("terminal verdict names omitted evidence", "truthful rootless verdict requirement"),
     ):
         require_text(requirement, token, label)
     require_text(requirements, "<tr><td>172</td>", "smoke container authority Appendix C row")
@@ -15660,14 +15673,14 @@ def validate_smoke_container_authority_contract(sources):
         requirements, "R-S11dd", "smoke host/build authority requirement"
     )
     for token, label in (
-        ("exact root-owned non-symlink <code>/usr/bin/docker</code>", "fixed Docker client requirement"),
-        ("authority-root and build-target identities", "private object identity requirement"),
-        ("No top-level smoke operation", "host-process inspection prohibition"),
+        ("R-S11dh verifier-VM entry", "verifier-VM entry requirement"),
+        ("pre/post guest-authority proof", "guest Docker authority replay requirement"),
+        ("No smoke operation", "host-process inspection prohibition"),
         ("invoking numeric non-root UID/GID", "non-root compile-container requirement"),
         ("fresh current-user-private target bind writable", "private target requirement"),
         ("private read-only exact-commit source snapshot", "exact source-snapshot requirement"),
         ("Every runtime/lifecycle/sibling container", "read-only runtime target requirement"),
-        ("R-S11e-122 ledger entry", "hardening-ledger requirement"),
+        ("guest-container loopback", "guest-contained runtime requirement"),
     ):
         require_text(authority_requirement, token, label)
     require_text(requirements, "<tr><td>257</td>", "smoke host/build authority Appendix C row")

@@ -270,14 +270,15 @@ def validate(sources):
         fail("video runtime publishes a port")
     prepare_run = scoped(smoke, "XVFB_PREPARE_RUN=(", "VIDEO_RUN=(", "Xvfb producer authority")
     for needle in (
-        "--network bridge",
+        "--network none",
         "--read-only",
         "--user \"$BUILD_UID:$BUILD_GID\"",
         "--cap-drop ALL",
         "--security-opt no-new-privileges",
+        "source=$SMOKE_XVFB_INPUT_ROOT,target=/xvfb-inputs,readonly",
     ):
         require(prepare_run, needle, "bounded producer authority {}".format(needle))
-    for forbidden in ("--privileged", "--network host", "--cap-add", "--device", "--publish"):
+    for forbidden in ("--privileged", "--network host", "--network bridge", "--cap-add", "--device", "--publish"):
         if forbidden in prepare_run:
             fail("Xvfb producer contains forbidden authority: {}".format(forbidden))
     for needle in (
@@ -294,19 +295,23 @@ def validate(sources):
 
     for needle, label in (
         ("[ \"$(id -u)\" -ne 0 ]", "producer root refusal"),
-        ("--proto '=https' --tlsv1.2", "HTTPS-only acquisition"),
-        ("--connect-timeout 15 --max-time 90", "bounded acquisition"),
+        ("readonly INPUT_ROOT=/xvfb-inputs", "fixed offline input root"),
+        ("offline input mount is writable", "read-only offline input mount proof"),
+        ("offline package authority metadata differs", "offline input metadata proof"),
+        ("sha256sum \"$input\"", "offline input digest verification"),
+        ("/usr/bin/cp --reflink=never -- \"$input\" \"$output\"", "private package copy"),
         ("sha256sum \"$output\"", "package digest verification"),
         ("dpkg-deb --field \"$output\" Package", "package identity verification"),
         ("dpkg-deb --field \"$output\" Architecture", "architecture verification"),
-        ("XVFB_ACQUISITION_NETWORK_SURFACE=tcp-listen:%s udp:%s", "producer socket proof"),
+        ("XVFB_OFFLINE_INPUT_SURFACE=tcp-listen:%s udp:%s", "producer socket proof"),
         ("[ \"$tcp_listeners\" -eq 0 ]", "producer TCP-listener refusal"),
         ("[ \"$udp_sockets\" -eq 0 ]", "producer UDP refusal"),
         ("file manifest cardinality is $file_count, expected 5", "file manifest cardinality"),
     ):
         require(prepare, needle, label)
-    if "sudo" in prepare or "apt-get install" in prepare:
-        fail("Xvfb producer attempts privileged installation")
+    for forbidden in ("sudo", "apt-get install", "/usr/bin/curl", "wget "):
+        if forbidden in prepare:
+            fail("Xvfb producer retains forbidden install or network acquisition: {}".format(forbidden))
 
     package_rows = parse_manifest(packages, 4, "package manifest")
     expected_packages = {
@@ -429,6 +434,7 @@ def self_test(sources):
         ("stage", '"$READY" --stop "$STALLED_PID" "$STALLED_START"\n    wait', "true\n    wait"),
         ("stage", "TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect", "TWO_VIEWER_CAPTURE_ISOLATION=disabled"),
         ("smoke", "VIDEO_RUN=(smoke_docker run --rm --network none", "VIDEO_RUN=(smoke_docker run --rm --network host"),
+        ("smoke", "XVFB_PREPARE_RUN=(smoke_docker run --rm --network none", "XVFB_PREPARE_RUN=(smoke_docker run --rm --network bridge"),
         ("smoke", "VIDEO_RUN=(smoke_docker run --rm --network none --pull=never --read-only", "VIDEO_RUN=(smoke_docker run --rm --network none --pull=never"),
         ("smoke", "--pids-limit=1024", "--pids-limit=4096"),
         ("smoke", "--memory=4g", "--memory=8g"),
@@ -437,6 +443,7 @@ def self_test(sources):
         ("smoke", "--tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec", "--tmpfs /tmp/x11:rw,nosuid,nodev,noexec"),
         ("smoke", "TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect", "TWO_VIEWER_CAPTURE_ISOLATION=disabled"),
         ("prepare", "[ \"$(id -u)\" -ne 0 ]", "[ \"$(id -u)\" -ge 0 ]"),
+        ("prepare", "sha256sum \"$input\"", "true # offline input digest removed"),
         ("prepare", "[ \"$tcp_listeners\" -eq 0 ]", "[ \"$tcp_listeners\" -ge 0 ]"),
         ("packages", "7f98f5ddc39593249330fa2612949b629", "0f98f5ddc39593249330fa2612949b629"),
         ("files", "c50687113cd5232844b8fa3a49276a48", "050687113cd5232844b8fa3a49276a48"),

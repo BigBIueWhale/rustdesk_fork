@@ -7472,7 +7472,7 @@ if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener D
   echo "  ok  R-S11e-63 every production Windows IPC listener uses explicit local SDDL and unknown postfixes fail closed"; fi
 
 # (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122: the runtime
-# smoke harness fixes its local Docker authority, has no host-process
+# smoke harness admits only the verifier-VM Docker authority, has no host-process
 # scanner, builds numeric-nonroot into a private target from an exact clean
 # commit snapshot and a pinned sealed vendor closure, and preserves the exact-image/
 # network-none policy.
@@ -7482,33 +7482,37 @@ smoke_build_run=$(awk '/^BUILD_RUN=\(/{inside=1} /^RUN=\(/{if (inside) exit} ins
 smoke_runtime_run=$(awk '/^RUN=\(/{inside=1} /^ROOT_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_root_run=$(awk '/^ROOT_RUN=\(/{inside=1} /^LIFECYCLE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_lifecycle_run=$(awk '/^LIFECYCLE_RUN=\(/{inside=1} /^PID_REUSE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_pid_reuse_run=$(awk '/^PID_REUSE_RUN=\(/{inside=1} /^PORT_HEX=/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_pid_reuse_run=$(awk '/^PID_REUSE_RUN=\(/{inside=1} /^XVFB_PREPARE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_xvfb_run=$(awk '/^XVFB_PREPARE_RUN=\(/{inside=1} /^VIDEO_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_video_run=$(awk '/^VIDEO_RUN=\(/{inside=1} /^PORT_HEX=/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_sibling_run=$(awk '/docker_out=\$\(smoke_docker run -d --name "\$SIBLING_NAME"/{inside=1} inside{print} inside && /2>&1\)/{exit}' scripts/smoke-server.sh)
 smoke_default_mode=$(awk '/^case "\$#" in$/{inside=1} /^  1\)$/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 grep -qF 'readonly DOCKER_BIN=/usr/bin/docker' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-docker-client-missing"
-grep -qF 'readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 fixed-local-docker-endpoint-missing"
+grep -qF 'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 verifier-vm-entry-preflight-missing"
+grep -qF 'readonly SMOKE_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 fixed-guest-docker-endpoint-missing"
+grep -qF 'readonly SMOKE_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 fixed-guest-docker-config-missing"
 grep -qF 'smoke: refuses host or container-root execution' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 root-refusal-missing"
-grep -qF '[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 local-socket-object-proof-missing"
-grep -qF 'readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 local-socket-identity-missing"
-grep -qF 'DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 ambient-docker-authority-refusal-missing"
+grep -qF '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 verifier-vm-entry-execution-missing"
+grep -qF 'SMOKE_VM_DOCKER_VERSION=$(read_smoke_pin VERIFIER_VM_DOCKER_VERSION)' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 guest-docker-version-pin-missing"
 grep -qF 'readonly SMOKE_DOCKER_COMMAND=(' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 empty-environment-docker-command-missing"
+grep -qF 'HOME=/nonexistent' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 empty-home-docker-command-missing"
 grep -qF 'smoke_docker_authority()' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 docker-authority-pre-post-proof-missing"
-grep -qF 'readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 docker-config-file-identity-missing"
 grep -qF 'readonly SMOKE_BUILD_TARGET_ID="$(stat -c' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 private-build-target-identity-missing"
-grep -qF '= "$SMOKE_DOCKER_CONFIG_FILE_ID" ]' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 docker-config-file-identity-recheck-missing"
 grep -qF '= "$SMOKE_BUILD_TARGET_ID" ]' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 private-build-target-identity-recheck-missing"
 grep -qF 'smoke_docker()' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-docker-funnel-missing"
+grep -qF 'SMOKE_SERVER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 guest-authority-runtime-self-test-missing"
 grep -qF 'read_smoke_pin()' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-pin-reader-missing"
 for smoke_pin in DEV_CHECK_IMAGE_ID RUST_VERSION SHA256_CARGO_VENDOR_CLOSURE_V1 SHA256_CARGO_VENDOR_CONFIG; do
   grep -qF "$(printf 'read_smoke_pin %s' "$smoke_pin")" scripts/smoke-server.sh \
@@ -7519,7 +7523,7 @@ grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$EXPEC
 grep -qF 'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 exact-image-id-comparison-missing"
 grep -qF 'readonly IMAGE_ID' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-image-id-missing"
-for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
+for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_xvfb_run" "$smoke_video_run" "$smoke_sibling_run"; do
   grep -qF -- '--network none' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 network-none-missing"
   grep -qF -- '--pull=never' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 implicit-pull-refusal-missing"
   grep -qF '"$IMAGE_ID"' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 immutable-image-use-missing"
@@ -7606,9 +7610,15 @@ $smoke_runtime_run
 $smoke_root_run
 $smoke_lifecycle_run
 $smoke_pid_reuse_run
+$smoke_xvfb_run
+$smoke_video_run
 $smoke_sibling_run"
 if grep -Eq -- '(^|[[:space:]])-p([=[:space:]]|$)|(^|[[:space:]])-P([[:space:]\\]|$)|--publish|--network([=[:space:]]+)host|--pid=host|--privileged|/var/run/docker[.]sock' <<<"$smoke_launch_surface"; then
   r_s11e64="$r_s11e64 host-or-publication-authority-present"
+fi
+if grep -qF -- '--network bridge' scripts/smoke-server.sh \
+  || grep -qF -- '/var/run/docker.sock' scripts/smoke-server.sh; then
+  r_s11e64="$r_s11e64 direct-host-or-bridge-docker-authority-present"
 fi
 if grep -Eq 'HOST_GUARD|historical-selector|smoke-process-guard[.]py (record|monitor|request-stop|wait-ready)' scripts/smoke-server.sh; then
   r_s11e64="$r_s11e64 host-process-inspection-authority-present"
@@ -7658,7 +7668,7 @@ grep -qF 'R-S11e-64 — smoke container image, network, and dependency authority
 grep -qF 'R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write' HARDENING_STATUS.md \
   || r_s11e64="$r_s11e64 host-build-hardening-ledger-missing"
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
-  echo "  ok  R-S11e-64/R-S11e-122 smoke defaults portable stages to numeric non-root confinement, requires explicit root-container selection for privileged fixtures, and uses one fixed local Docker authority, no host process scan, one non-root private-target build from the sealed vendor closure, exact image ID, network none, and no publication"; fi
+  echo "  ok  R-S11e-64/R-S11e-122 smoke defaults portable stages to numeric non-root confinement, requires explicit root-container selection for privileged fixtures, admits only the authenticated verifier-VM Docker authority, has no host process scan, and keeps every build/runtime/tool container exact-image, no-pull, network-none, and unpublished"; fi
 
 # (3b-iii-d9co) R-S11ay/R-S11e-65: every token-switched child launch
 # must receive a successfully created environment for the exact selected

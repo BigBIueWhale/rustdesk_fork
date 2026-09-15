@@ -12,6 +12,7 @@ readonly HOST_UID="$(/usr/bin/id -u)"
 readonly HOST_GID="$(/usr/bin/id -g)"
 readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
 readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1"
+readonly XVFB_INPUTS="$ONLINE_DIR/xvfb-debs"
 WORKSPACE=
 WORKSPACE_ID=
 BUILD_WORK=
@@ -83,6 +84,8 @@ done
   && [ "$(stat -c '%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = \
     "$HOST_UID:$HOST_GID:500" ] \
   || die 'canonical current-lock evidence Pub cache is unavailable or has changed metadata'
+[ -d "$XVFB_INPUTS" ] && [ ! -L "$XVFB_INPUTS" ] \
+  || die 'authenticated offline Xvfb package closure is missing or ambiguous'
 readonly EVIDENCE_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")"
 
 WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
@@ -281,14 +284,15 @@ run_input_check() {
 echo '== independently verify every persistent input consumed by the build =='
 run_input_check "$WORKSPACE/input-pre.cid"
 
-echo '== acquire the exact five-package Xvfb closure in one non-root producer =='
+echo '== verify and extract the exact offline Xvfb closure in one networkless non-root container =='
 run_owned_container "$WORKSPACE/xvfb.cid" \
-  --pull=never --network=bridge --read-only \
+  --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/work,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$XVFB_INPUTS,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_DEBS,target=/xvfb-debs,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_ID" \

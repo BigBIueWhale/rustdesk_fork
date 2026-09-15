@@ -1,8 +1,9 @@
 # name<TAB>size<TAB>sha256<TAB>exact official Debian package URL
 #
 # Test-infrastructure input only: these packages provide a non-root Xvfb to the opt-in video
-# pipeline smoke. They are fetched by a disposable, unprivileged acquisition container and are
-# never installed into the host, the pinned development image, or a release artifact.
+# pipeline smoke. An authenticated offline input medium must stage them under online/xvfb-debs;
+# every smoke verifies and extracts them in a network-none container. They are never installed into
+# the host, the pinned development image, or a release artifact.
 xvfb	3153788	7f98f5ddc39593249330fa2612949b6298618b945becb2d9d7b598e7ca789ea0	https://deb.debian.org/debian/pool/main/x/xorg-server/xvfb_21.1.7-3+deb12u12_amd64.deb
 libxfont2	131728	96ca8e9e1d913dd9855f46f1f09d0e0aec964b70d428da9f032250fc7a400419	https://security.debian.org/debian-security/pool/updates/main/libx/libxfont/libxfont2_2.0.6-1+deb12u1_amd64.deb
 libfontenc1	24328	1d0aa6ea16a34a8de1ea170360c4cb699f3239aeddb292df2d2c4eb6e835de4b	https://deb.debian.org/debian/pool/main/libf/libfontenc/libfontenc1_1.1.4-1_amd64.deb

@@ -24,6 +24,7 @@ readonly VERIFY_SCRIPT="$SCRIPT_DIR/verify.sh"
 readonly VERIFY_SCAN_SOURCE="$SCRIPT_DIR/verify-scan.sh"
 readonly FRB_CODEGEN_SOURCE="$SCRIPT_DIR/frb-codegen.sh"
 readonly DART_VERIFY_SOURCE="$SCRIPT_DIR/dart-verify.sh"
+readonly SMOKE_SERVER_SOURCE="$SCRIPT_DIR/smoke-server.sh"
 readonly DART_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-dart-verifier-authority.py"
 readonly REQUIREMENTS_SOURCE="$REPO_ROOT/requirements.html"
 readonly HARDENING_SOURCE="$REPO_ROOT/HARDENING_STATUS.md"
@@ -222,7 +223,7 @@ if data.get("virtual-size") != 3 * 1024 * 1024 * 1024:
     raise SystemExit("verifier-VM base virtual size differs")
 PY
 for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" \
-    "$DART_VERIFY_SOURCE" "$DART_AUTHORITY_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" \
+    "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$DART_AUTHORITY_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" \
     "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" \
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
@@ -231,6 +232,7 @@ done
 [ -x "$GUEST_SCRIPT" ] && [ -x "$ENTRY_PREFLIGHT" ] && [ -x "$VERIFY_SCRIPT" ] \
     && [ -x "$FRB_CODEGEN_SOURCE" ] \
     && [ -x "$DART_VERIFY_SOURCE" ] \
+    && [ -x "$SMOKE_SERVER_SOURCE" ] \
     && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
 [ -x "$BOOT_DERIVER" ] || fail 'verifier-VM boot deriver must be executable'
@@ -277,7 +279,7 @@ docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$DART_AUTHORITY_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$DART_AUTHORITY_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
 capture_listeners >"$LISTENERS_BEFORE"
 /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" 6G
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
@@ -289,6 +291,7 @@ capture_listeners >"$LISTENERS_BEFORE"
     "repo/scripts/verify.sh=$VERIFY_SCRIPT" \
     "repo/scripts/frb-codegen.sh=$FRB_CODEGEN_SOURCE" \
     "repo/scripts/dart-verify.sh=$DART_VERIFY_SOURCE" \
+    "repo/scripts/smoke-server.sh=$SMOKE_SERVER_SOURCE" \
     "repo/scripts/verify-dart-verifier-authority.py=$DART_AUTHORITY_CHECKER" \
     "repo/scripts/verify-vm-entry-preflight.sh=$ENTRY_PREFLIGHT" \
     "repo/scripts/verify-scan.sh=$VERIFY_SCAN_SOURCE" \
@@ -458,6 +461,12 @@ reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
     "VERIFIER_VM_DART_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed frb=chained" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Dart verifier-VM entry result marker is absent'; }
+/usr/bin/grep -Fq \
+    "VERIFIER_VM_SMOKE_SERVER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed" \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'server-smoke verifier-VM entry result marker is absent'; }
+printf 'VERIFIER_VM_SMOKE_SERVER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed\n' \
+    "$VERIFIER_VM_DOCKER_VERSION"
 mapfile -t dart_frb_source_gate_receipts < <(
     /usr/bin/grep -Eo 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=[1-9][0-9]*' "$SERIAL_LOG"
 )
@@ -478,7 +487,7 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$DART_AUTHORITY_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$DART_AUTHORITY_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 
 RUN_COMPLETE=1

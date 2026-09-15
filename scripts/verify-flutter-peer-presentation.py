@@ -85,10 +85,15 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "exact-source build and separate-peer transaction",
     )
-    if host.count("--network=bridge") != 1:
-        raise VerificationError("the exact Xvfb producer must be the sole bridge-network container")
-    if host.count("--network=none") != 5:
+    if host.count("--network=bridge") != 0:
+        raise VerificationError("the Xvfb preparation path retains a bridge network")
+    if host.count("--network=none") != 6:
         raise VerificationError("the input checks/build/runtime network-none count changed")
+    require(
+        host,
+        "source=$XVFB_INPUTS,target=/xvfb-inputs,readonly,bind-recursive=disabled",
+        "read-only offline Xvfb package input",
+    )
     if host.count('run_input_check "$WORKSPACE/input-') != 2:
         raise VerificationError("persistent inputs need pre- and post-transaction checks")
     require(host, "dbus-run-session --", "private viewer accessibility session")

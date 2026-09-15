@@ -76,10 +76,13 @@ done
 
 readonly FLUTTER_ARCHIVE="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
 readonly PUB_CACHE_ARCHIVE="$ONLINE_DIR/flutter-pub-cache.tar.gz"
+readonly XVFB_INPUTS="$ONLINE_DIR/xvfb-debs"
 [ -f "$FLUTTER_ARCHIVE" ] && [ ! -L "$FLUTTER_ARCHIVE" ] \
   || die 'pinned Flutter archive is missing or not regular'
 [ -f "$PUB_CACHE_ARCHIVE" ] && [ ! -L "$PUB_CACHE_ARCHIVE" ] \
   || die 'pinned Flutter pub-cache archive is missing or not regular'
+[ -d "$XVFB_INPUTS" ] && [ ! -L "$XVFB_INPUTS" ] \
+  || die 'authenticated offline Xvfb package closure is missing or ambiguous'
 [ "$(stat -c %s "$FLUTTER_ARCHIVE")" = "$SIZE_FLUTTER_3_24_5" ] \
   || die 'pinned Flutter archive size differs'
 [ "$(sha256sum "$FLUTTER_ARCHIVE" | awk '{print $1}')" = \
@@ -135,14 +138,15 @@ run_owned_container() {
   return "$run_status"
 }
 
-echo '== acquire the exact five-package Xvfb closure in a non-root producer =='
+echo '== verify and extract the exact offline Xvfb closure in a networkless non-root container =='
 run_owned_container "$WORKSPACE/xvfb.cid" \
-  --pull=never --network=bridge --read-only \
+  --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/work,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$XVFB_INPUTS,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_DEBS,target=/xvfb-debs,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_ID" \

@@ -464,6 +464,28 @@ class CertifiedBuilderInputSpec:
             "Labels": self.labels,
         }
 
+    @property
+    def runtime_inspect_config(self) -> dict[str, object]:
+        return {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "1000:1000",
+            "AttachStdin": False,
+            "AttachStdout": False,
+            "AttachStderr": False,
+            "Tty": False,
+            "OpenStdin": False,
+            "StdinOnce": False,
+            "Env": self.runtime_environment,
+            "Cmd": ["/bin/bash"],
+            "Image": "",
+            "Volumes": None,
+            "WorkingDir": "",
+            "Entrypoint": None,
+            "OnBuild": None,
+            "Labels": self.labels,
+        }
+
     def bootstrap_contract_bytes(self) -> bytes:
         return (
             f"contract={CONTRACT}\n"
@@ -1323,8 +1345,10 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
                 f"certified {spec.display_name} platform must be exactly "
                 "linux/amd64"
             )
-        if config != spec.runtime_config:
-            expected = canonical_json(spec.runtime_config).decode("utf-8")
+        if config != spec.runtime_inspect_config:
+            expected = canonical_json(
+                spec.runtime_inspect_config
+            ).decode("utf-8")
             actual = canonical_json(config).decode("utf-8")
             fail(
                 f"certified {spec.display_name} runtime config differs from "
@@ -9806,7 +9830,7 @@ def self_test() -> None:
             "Id": android_spec.image_id,
             "Os": "linux",
             "Architecture": "amd64",
-            "Config": android_spec.runtime_config,
+            "Config": android_spec.runtime_inspect_config,
         }
         validate_inspect(
             android_payload,
@@ -9901,7 +9925,7 @@ def self_test() -> None:
                 {
                     **android_payload,
                     "Config": {
-                        **android_spec.runtime_config,
+                        **android_spec.runtime_inspect_config,
                         "User": "0:0",
                     },
                 },
@@ -10233,7 +10257,7 @@ def self_test() -> None:
             "Id": deb_spec.image_id,
             "Os": "linux",
             "Architecture": "amd64",
-            "Config": deb_spec.runtime_config,
+            "Config": deb_spec.runtime_inspect_config,
         }
         validate_inspect(deb_payload, deb_spec.image_id, deb_spec)
         if deb_spec.display_name != "Debian builder" \
@@ -10398,7 +10422,7 @@ def self_test() -> None:
             "Id": win_spec.image_id,
             "Os": "linux",
             "Architecture": "amd64",
-            "Config": win_spec.runtime_config,
+            "Config": win_spec.runtime_inspect_config,
         }
         validate_inspect(
             win_payload,
@@ -10503,7 +10527,7 @@ def self_test() -> None:
                 {
                     **win_payload,
                     "Config": {
-                        **win_spec.runtime_config,
+                        **win_spec.runtime_inspect_config,
                         "User": "0:0",
                     },
                 },

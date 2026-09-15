@@ -33128,20 +33128,29 @@ def validate_dart_verifier_authority_contract(sources):
             "FRB generator absolute UID source",
         ),
         (
-            '[ "$BUILD_UID" -ne 0 ] || die "FRB code generation refuses host or container-root execution"',
+            "echo 'FRB code generation refuses host or container-root execution'",
             "FRB generator UID-root refusal",
         ),
+        ('[ "$BUILD_UID" -ne 0 ]', "FRB generator UID-root condition"),
         (
-            '[ "$BUILD_GID" -ne 0 ] || die "FRB code generation refuses a root primary group"',
+            "echo 'FRB code generation refuses a root primary group'",
             "FRB generator GID-root refusal",
         ),
-        ('require_pinned_builder_image deb-builder "$IMAGE_ID"', "FRB generator image provenance"),
+        ('[ "$BUILD_GID" -ne 0 ]', "FRB generator GID-root condition"),
         (
-            'initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"',
-            "FRB generator fixed Docker authority",
+            'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh',
+            "FRB generator verifier-VM preflight",
         ),
         (
-            'local_docker run --rm --pull=never --network=none --read-only --user "$BUILD_UID:$BUILD_GID"',
+            'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
+            "FRB generator fixed VM Docker client",
+        ),
+        (
+            'verifier_vm_image_provenance verify-local',
+            "FRB generator image provenance",
+        ),
+        (
+            'verifier_vm_docker run --rm --pull=never --network=none --read-only --user "$BUILD_UID:$BUILD_GID"',
             "FRB generator pull refusal and isolation",
         ),
         ('--cap-drop=ALL --security-opt=no-new-privileges', "FRB generator privilege floor"),
@@ -33159,8 +33168,15 @@ def validate_dart_verifier_authority_contract(sources):
         ),
     ):
         require_text(frb, text, label)
-    require_exact_count(frb, "local_docker run ", 1, "FRB generator complete container inventory")
+    require_exact_count(frb, "verifier_vm_docker run ", 1, "FRB generator complete container inventory")
     require_absent(frb, "\ndocker run ", "FRB generator PATH-selected Docker launch")
+    for text, label in (
+        ("initialize_local_docker_authority", "FRB generator host-Docker initialization"),
+        ("local_docker", "FRB generator host-Docker wrapper"),
+        ("remove_local_docker_authority", "FRB generator host-Docker cleanup"),
+        ("/var/run/docker.sock", "FRB generator host Docker socket"),
+    ):
+        require_absent(frb, text, label)
     require_exact_count(frb, "--mount ", 2, "FRB generator complete mount inventory")
 
     for text, label in (
@@ -33228,9 +33244,8 @@ def validate_dart_verifier_authority_contract(sources):
         'Mutation("hardening", "R-S11bc/R-S11e-69"',
         '"ambient local Docker authority state"',
         '"Dart fixed Docker launcher"',
-        '"FRB fixed Docker launcher"',
-        'Mutation("requirements", \'<span class="id">R-S11de</span>\'',
-        'Mutation("hardening", "R-S11de/R-S11e-123"',
+        '"FRB verifier-VM Docker launcher"',
+        'Mutation("requirements", \'<span class="id">R-S11dh</span>\'',
     ):
         require_text(authority, text, "Dart authority validator mutation coverage")
     require_text(
@@ -33256,31 +33271,20 @@ def validate_dart_verifier_authority_contract(sources):
         "Dart verifier authority hardening ledger",
     )
     docker_requirement = extract_html_requirement(
-        sources["requirements"], "R-S11de", "Dart/FRB Docker authority requirement"
+        sources["requirements"], "R-S11dh", "verifier-VM execution-authority requirement"
     )
     for text in (
-        "fixed local Docker client, daemon, and private configuration authority",
-        "exact non-symlink, root-owned, group-root, mode-0755, single-link",
-        "DOCKER_CONTEXT",
-        "otherwise empty environment",
-        "preserve the private workspace and fail",
-        "R-S11e-123 ledger",
+        "Verification execution has no host-root authority",
+        "MUST NOT",
+        "/var/run/docker.sock",
+        "-nic none",
+        "no direct-host-Docker or rootless-host-Docker fallback",
     ):
-        require_text(docker_requirement, text, "Dart/FRB Docker authority requirement")
-    require_text(
-        sources["requirements"],
-        "<tr><td>258</td>",
-        "Dart/FRB Docker authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11de/R-S11e-123 — Dart/FRB Docker client, daemon, and configuration authority",
-        "Dart/FRB Docker authority hardening ledger",
-    )
+        require_text(docker_requirement, text, "verifier-VM execution-authority requirement")
     require_text(
         sources["verify"],
-        "Dart/FRB verifier and fixed local Docker authority (R-S11bc/R-S11de/R-S11e-69/R-S11e-123)",
-        "Dart/FRB Docker authority shared-gate wiring",
+        "Dart/FRB verifier confinement and verifier-VM authority (R-S11bc/R-S11dh/R-S11e-69)",
+        "Dart/FRB confinement and verifier-VM shared-gate wiring",
     )
 
 
@@ -33314,6 +33318,7 @@ def validate_main_verifier_authority_contract(sources):
         ('[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group"', "main verifier GID-root refusal"),
         ('readonly VERIFIER_VM_ENTRY_PREFLIGHT=scripts/verify-vm-entry-preflight.sh', "main verifier VM entry preflight"),
         ('"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1', "main verifier VM entry-preflight metadata"),
+        ('readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker', "main verifier fixed VM Docker client"),
         ('readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock', "main verifier guest-only Docker socket"),
         ('verifier_vm_docker() {', "main verifier guest-only Docker launcher"),
         ('IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier fixed initial image inspection"),

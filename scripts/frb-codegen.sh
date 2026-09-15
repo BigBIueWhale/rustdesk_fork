@@ -1,18 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH=/usr/bin:/bin
+export LC_ALL=C
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
+[ "$BUILD_UID" -ne 0 ] \
+    || { echo 'FRB code generation refuses host or container-root execution' >&2; exit 1; }
+[ "$BUILD_GID" -ne 0 ] \
+    || { echo 'FRB code generation refuses a root primary group' >&2; exit 1; }
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+    && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+    || { echo 'FRB code generation verifier-VM entry preflight is absent or ambiguous' >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
-readonly BUILD_UID="$(/usr/bin/id -u)"
-readonly BUILD_GID="$(/usr/bin/id -g)"
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+    "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+    || die 'FRB code generation guest Docker authority differs from its repository pin'
+readonly VERIFIER_VM_MARKER_DOCKER
+
+verifier_vm_docker() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        "$VERIFIER_VM_DOCKER_CLIENT" \
+            --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+            --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+verifier_vm_image_provenance() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@" \
+        || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
 SOURCE_ROOT=""
 OUTPUT_ROOT=""
 FRB_ONLINE_ROOT=""
 WORK_ROOT=""
 WORK_ROOT_ID=""
+VERIFY_VM_AUTHORITY_SELF_TEST=0
 GENERATED_BRIDGES=(
     src/bridge_generated.rs
     src/bridge_generated.io.rs
@@ -22,6 +69,7 @@ GENERATED_BRIDGES=(
 
 usage() {
     printf 'usage: %s --source-root DIR --online-root READ_ONLY_DIR --output-root ABSENT_DIR\n' "${0##*/}" >&2
+    printf '       %s --self-test-vm-authority\n' "${0##*/}" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -41,6 +89,12 @@ while [ "$#" -gt 0 ]; do
             FRB_ONLINE_ROOT="$2"
             shift 2
             ;;
+        --self-test-vm-authority)
+            [ "$VERIFY_VM_AUTHORITY_SELF_TEST" -eq 0 ] \
+                || die 'duplicate FRB verifier-VM authority self-test argument'
+            VERIFY_VM_AUTHORITY_SELF_TEST=1
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -51,6 +105,20 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+if [ "$VERIFY_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
+    [ -z "$SOURCE_ROOT" ] && [ -z "$FRB_ONLINE_ROOT" ] && [ -z "$OUTPUT_ROOT" ] \
+        || die 'FRB verifier-VM authority self-test cannot be combined with code-generation inputs'
+    authority_version="$(verifier_vm_docker version \
+        --format '{{.Client.Version}}|{{.Server.Version}}')" \
+        || die 'FRB verifier-VM Docker authority self-test failed'
+    [ "$authority_version" = \
+      "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+        || die "FRB verifier-VM Docker authority version differs: $authority_version"
+    printf 'FRB_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed\n' \
+        "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
+    exit 0
+fi
 
 [ -n "$SOURCE_ROOT" ] && [ -n "$FRB_ONLINE_ROOT" ] && [ -n "$OUTPUT_ROOT" ] \
     || { usage; exit 2; }
@@ -71,11 +139,7 @@ cleanup() {
     local status=$?
     trap - EXIT HUP INT TERM
     if [ -n "$WORK_ROOT" ]; then
-        if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-            && ! remove_local_docker_authority; then
-            echo "frb-codegen: preserving changed private Docker authority: $WORK_ROOT" >&2
-            status=125
-        elif [ -z "$WORK_ROOT_ID" ] || [ ! -d "$WORK_ROOT" ] || [ -L "$WORK_ROOT" ] \
+        if [ -z "$WORK_ROOT_ID" ] || [ ! -d "$WORK_ROOT" ] || [ -L "$WORK_ROOT" ] \
             || [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$WORK_ROOT" 2>/dev/null)" != "$WORK_ROOT_ID" ]; then
             echo "frb-codegen: preserving changed private workspace: $WORK_ROOT" >&2
             status=125
@@ -97,8 +161,6 @@ trap 'signal_exit 130' INT
 trap 'signal_exit 143' TERM
 
 require_cmd git python3 realpath
-[ "$BUILD_UID" -ne 0 ] || die "FRB code generation refuses host or container-root execution"
-[ "$BUILD_GID" -ne 0 ] || die "FRB code generation refuses a root primary group"
 SOURCE_ROOT="$(realpath -e -- "$SOURCE_ROOT")"
 ONLINE_DIR="$(realpath -e -- "$FRB_ONLINE_ROOT")"
 export ONLINE_DIR
@@ -215,8 +277,20 @@ WORK_ROOT="$(umask 077 && mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"
     && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$WORK_ROOT")" = "$BUILD_UID:$BUILD_GID:700" ] \
     || die "FRB private workspace identity or mode is invalid"
 WORK_ROOT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$WORK_ROOT")"
-initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"
-require_pinned_builder_image deb-builder "$IMAGE_ID"
+verifier_vm_image_provenance verify-local \
+    --role deb-builder \
+    --expected-id "$DEB_BUILDER_IMAGE_ID" \
+    --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+    --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+    --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
+    --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+    --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+    --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+    --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+    --config-id "$DEB_BUILDER_CONFIG_ID" \
+    --manifest-id "$DEB_BUILDER_MANIFEST_ID" \
+    --image-ref "$IMAGE_ID" \
+    || die 'FRB pinned Debian-builder image provenance verification failed'
 
 WORK_SOURCE="$WORK_ROOT/source"
 PUBLISH_ROOT="$WORK_ROOT/publish"
@@ -237,7 +311,7 @@ for relative in "${GENERATED_BRIDGES[@]}"; do
 done
 
 log "generating FRB outputs from private source snapshot with image $IMAGE_ID"
-local_docker run --rm --pull=never --network=none --read-only --user "$BUILD_UID:$BUILD_GID" \
+verifier_vm_docker run --rm --pull=never --network=none --read-only --user "$BUILD_UID:$BUILD_GID" \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
     --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
@@ -310,8 +384,6 @@ mv -T --no-clobber -- "$PUBLISH_ROOT" "$OUTPUT_ROOT"
 [ ! -e "$PUBLISH_ROOT" ] && [ ! -L "$PUBLISH_ROOT" ] \
     || die "FRB output root appeared during atomic publication"
 rm -rf -- "$WORK_SOURCE"
-remove_local_docker_authority \
-    || die "FRB private Docker authority could not be removed safely"
 rmdir "$WORK_ROOT"
 WORK_ROOT=""
 WORK_ROOT_ID=""

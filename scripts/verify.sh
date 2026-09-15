@@ -67,7 +67,7 @@ readonly VERIFIER_VM_ENTRY_PREFLIGHT=scripts/verify-vm-entry-preflight.sh
 source scripts/lib.sh
 load_pins
 readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
-readonly VERIFIER_VM_DOCKER_CLIENT=/var/tmp/rustdesk-verifier-authority/bin/docker
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
 readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
 readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
 VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
@@ -4814,11 +4814,11 @@ if [ -n "$r_s11bb" ]; then
 else
   echo "  ok  R-S11bb shared/Apple/Linux password-IPC gates cover prepared endpoints and retained runners"
 fi
-# R-S11bc/R-S11de/R-S11e-69/R-S11e-123: Dart/FRB analysis may mutate only a disposable
+# R-S11bc/R-S11dh/R-S11e-69: Dart/FRB analysis may mutate only a disposable
 # invoking-user-owned snapshot. The real repository and private offline inputs
 # remain immutable evidence; both containers have one bounded, networkless,
-# non-root authority shape and one fixed local Docker client/daemon/configuration.
-echo "== (3b-iii-c-0a) Dart/FRB verifier and fixed local Docker authority (R-S11bc/R-S11de/R-S11e-69/R-S11e-123) =="
+# non-root authority shape, and FRB Docker operations require verifier-VM authority.
+echo "== (3b-iii-c-0a) Dart/FRB verifier confinement and verifier-VM authority (R-S11bc/R-S11dh/R-S11e-69) =="
 r_s11bc=""
 python3 scripts/verify-dart-verifier-authority.py --repo . --self-test \
   || r_s11bc="$r_s11bc semantic-or-mutation-contract-invalid"
@@ -4827,7 +4827,7 @@ python3 -c 'from pathlib import Path; p = Path("scripts/verify-dart-verifier-aut
 if [ -n "$r_s11bc" ]; then
   echo "  FAIL R-S11bc Dart/FRB verifier container authority:$r_s11bc"; rc=1
 else
-  echo "  ok  R-S11bc/R-S11de Dart/FRB verification uses one fixed local Docker authority, immutable pins, private snapshots, non-root bounded networkless containers, and leaves the real worktree unchanged"
+  echo "  ok  R-S11bc/R-S11dh Dart/FRB verification retains immutable pins, private snapshots, non-root bounded networkless containers, and verifier-VM-only FRB Docker authority while leaving the real worktree unchanged"
 fi
 echo "== (3b-iii-c-1) Windows service-owned child tree supervision (R-S11e-19) =="
 r_s11e19=

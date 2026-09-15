@@ -10,7 +10,7 @@ readonly AUTHORITY_ROOT=/run/rustdesk-verifier-vm
 readonly MARKER=$AUTHORITY_ROOT/authority
 readonly STATE_ROOT=/var/tmp/rustdesk-verifier-authority
 readonly BIN=$STATE_ROOT/bin
-readonly CLIENT=$BIN/docker
+readonly CLIENT=/usr/bin/docker
 readonly DAEMON=$BIN/dockerd
 readonly SOCKET=$AUTHORITY_ROOT/docker.sock
 readonly PIDFILE=$AUTHORITY_ROOT/docker.pid
@@ -89,19 +89,26 @@ daemon_pid="$(<"$PIDFILE")" || fail 'VM Docker PID record cannot be read'
 mapfile -t identity_lines <"$DAEMON_IDENTITY" \
     || fail 'VM Docker generation record cannot be read'
 [ "${#identity_lines[@]}" -eq 1 ] || fail 'VM Docker generation record line count differs'
-IFS=' ' read -r identity_pid identity_start identity_sha identity_extra \
+IFS=' ' read -r identity_pid identity_start identity_daemon_sha \
+    identity_client_sha identity_extra \
     <<<"${identity_lines[0]}"
 [ "$identity_pid" = "pid=$daemon_pid" ] || fail 'VM Docker generation PID differs'
 [[ "$identity_start" =~ ^start=[1-9][0-9]*$ ]] \
     || fail 'VM Docker generation start time is malformed'
-[[ "$identity_sha" =~ ^sha256=[0-9a-f]{64}$ ]] \
-    || fail 'VM Docker generation digest is malformed'
+[[ "$identity_daemon_sha" =~ ^daemon_sha256=[0-9a-f]{64}$ ]] \
+    || fail 'VM Docker daemon-generation digest is malformed'
+[[ "$identity_client_sha" =~ ^client_sha256=[0-9a-f]{64}$ ]] \
+    || fail 'VM Docker client-generation digest is malformed'
 [ -z "${identity_extra:-}" ] || fail 'VM Docker generation record has trailing fields'
 live_start="$(/usr/bin/awk '{ print $22 }' "/proc/$daemon_pid/stat" 2>/dev/null)" \
     || fail 'VM Docker live generation cannot be read'
 [ "$identity_start" = "start=$live_start" ] || fail 'VM Docker live generation changed'
-[ "$identity_sha" = "sha256=$(/usr/bin/sha256sum "$DAEMON" | /usr/bin/awk '{ print $1 }')" ] \
+[ "$identity_daemon_sha" = \
+  "daemon_sha256=$(/usr/bin/sha256sum "$DAEMON" | /usr/bin/awk '{ print $1 }')" ] \
     || fail 'VM Docker daemon bytes differ from the generation record'
+[ "$identity_client_sha" = \
+  "client_sha256=$(/usr/bin/sha256sum "$CLIENT" | /usr/bin/awk '{ print $1 }')" ] \
+    || fail 'VM Docker client bytes differ from the generation record'
 daemon_status="$(/usr/bin/awk '/^(Uid|Gid):/ { print $1, $2, $3, $4, $5 }' "/proc/$daemon_pid/status")" \
     || fail 'VM Docker process credentials cannot be read'
 [ "$daemon_status" = $'Uid: 0 0 0 0\nGid: 0 0 0 0' ] \
@@ -170,6 +177,12 @@ final_daemon_status="$(/usr/bin/awk '/^(Uid|Gid):/ { print $1, $2, $3, $4, $5 }'
     || fail 'VM Docker final process credentials cannot be read'
 [ "$final_daemon_status" = "$daemon_status" ] \
     || fail 'VM Docker process credentials changed during preflight'
+[ "$identity_daemon_sha" = \
+  "daemon_sha256=$(/usr/bin/sha256sum "$DAEMON" | /usr/bin/awk '{ print $1 }')" ] \
+    || fail 'VM Docker daemon bytes changed during preflight'
+[ "$identity_client_sha" = \
+  "client_sha256=$(/usr/bin/sha256sum "$CLIENT" | /usr/bin/awk '{ print $1 }')" ] \
+    || fail 'VM Docker client bytes changed during preflight'
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$SOCKET")" = "0:$GID_NOW:660:1" ] \
     || fail 'VM Docker channel changed during preflight'
 

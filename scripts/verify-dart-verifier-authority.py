@@ -33,10 +33,11 @@ def require_all(source: str, tokens: Iterable[str], label: str) -> None:
         require(token in source, f"{label}: missing {token!r}")
 
 
-def docker_run_block(source: str, label: str) -> str:
-    require(source.count("local_docker run ") == 1, f"{label}: expected exactly one fixed-authority Docker launch")
+def docker_run_block(source: str, label: str, launcher: str = "local_docker") -> str:
+    launch = f"{launcher} run "
+    require(source.count(launch) == 1, f"{label}: expected exactly one fixed-authority Docker launch")
     require("\ndocker run " not in source, f"{label}: retained a PATH-selected Docker launch")
-    start = source.index("local_docker run ")
+    start = source.index(launch)
     match = re.search(r"\n\s+bash -euo pipefail -c '\n", source[start:])
     require(match is not None, f"{label}: Docker launch has no exact fail-closed shell boundary")
     return source[start : start + match.end()]
@@ -424,33 +425,86 @@ def validate_contract(sources: Dict[str, str]) -> None:
     require_all(
         frb,
         (
+            'readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "',
             'readonly BUILD_UID="$(/usr/bin/id -u)"',
             'readonly BUILD_GID="$(/usr/bin/id -g)"',
-            '[ "$BUILD_UID" -ne 0 ] || die "FRB code generation refuses host or container-root execution"',
-            '[ "$BUILD_GID" -ne 0 ] || die "FRB code generation refuses a root primary group"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            "echo 'FRB code generation refuses host or container-root execution'",
+            "echo 'FRB code generation refuses a root primary group'",
+            'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh',
+            '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
+            'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
+            'readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock',
+            'verifier_vm_docker() {',
+            'verifier_vm_image_provenance() {',
             '[[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
             '[ "$IMAGE_ID" = "${DEB_BUILDER_IMAGE_ID:-}" ]',
             'WORK_ROOT="$(umask 077 && mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"',
             'WORK_ROOT_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a\' -- "$WORK_ROOT")"',
-            'initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"',
-            'require_pinned_builder_image deb-builder "$IMAGE_ID"',
-            "local_docker run --rm",
-            'remove_local_docker_authority \\\n    || die "FRB private Docker authority could not be removed safely"',
+            'verifier_vm_image_provenance verify-local',
+            '--role deb-builder',
+            '--image-ref "$IMAGE_ID"',
+            "verifier_vm_docker run --rm",
         ),
         "FRB generator authority",
     )
     require(
-        frb.index('initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"')
-        < frb.index('require_pinned_builder_image deb-builder "$IMAGE_ID"')
-        < frb.index("local_docker run "),
-        "FRB generator does not initialize fixed Docker authority before provenance and launch",
+        frb.index('/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"')
+        < frb.index('source "$SCRIPT_DIR/lib.sh"')
+        < frb.index("verifier_vm_image_provenance verify-local")
+        < frb.index("verifier_vm_docker run "),
+        "FRB generator does not establish VM authority before provenance and launch",
     )
-    require(
-        '&& ! remove_local_docker_authority; then' in frb,
-        "FRB cleanup does not retire exact Docker authority first",
+    docker_wrapper_start = frb.index("verifier_vm_docker() {")
+    provenance_wrapper_start = frb.index("verifier_vm_image_provenance() {")
+    source_state_start = frb.index("\nSOURCE_ROOT=", provenance_wrapper_start)
+    docker_wrapper = frb[docker_wrapper_start:provenance_wrapper_start]
+    provenance_wrapper = frb[provenance_wrapper_start:source_state_start]
+    for wrapper, label in (
+        (docker_wrapper, "FRB verifier-VM Docker wrapper"),
+        (provenance_wrapper, "FRB verifier-VM provenance wrapper"),
+    ):
+        require(
+            wrapper.count('/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1') == 2,
+            f"{label} does not reprove authority exactly before and after its operation",
+        )
+        require_all(
+            wrapper,
+            (
+                "/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent",
+                'DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET"',
+                'DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG"',
+                'return "$status"',
+            ),
+            label,
+        )
+    require_all(
+        docker_wrapper,
+        (
+            '"$VERIFIER_VM_DOCKER_CLIENT"',
+            '--host "unix://$VERIFIER_VM_DOCKER_SOCKET"',
+            '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?',
+        ),
+        "FRB verifier-VM Docker wrapper",
+    )
+    require_all(
+        provenance_wrapper,
+        (
+            '/usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
+            '|| status=$?',
+        ),
+        "FRB verifier-VM provenance wrapper",
     )
     require("require_cmd docker" not in frb, "FRB generator still accepts a PATH-selected Docker client")
-    frb_block = docker_run_block(frb, "FRB generator container")
+    for forbidden in (
+        "initialize_local_docker_authority",
+        "local_docker",
+        "remove_local_docker_authority",
+        "/var/run/docker.sock",
+    ):
+        require(forbidden not in frb, f"FRB generator retained forbidden host authority {forbidden!r}")
+    frb_block = docker_run_block(frb, "FRB generator container", "verifier_vm_docker")
     validate_docker_block(
         frb_block,
         "FRB generator container",
@@ -496,16 +550,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
         "hardening ledger is missing the consolidated Flutter/Rust verifier closure",
     )
     require(
-        '<span class="id">R-S11de</span>' in requirements,
-        "requirements are missing R-S11de",
-    )
-    require(
-        "<tr><td>258</td>" in requirements,
-        "requirements are missing Appendix C #258",
-    )
-    require(
-        "R-S11de/R-S11e-123" in hardening,
-        "hardening ledger is missing the Dart/FRB Docker authority correction",
+        '<span class="id">R-S11dh</span>' in requirements,
+        "requirements are missing the verifier-VM execution-authority rule",
     )
 
 
@@ -1032,25 +1078,49 @@ MUTATIONS = (
     Mutation("frb", '[ "$BUILD_GID" -ne 0 ]', '[ "$BUILD_GID" -ge 0 ]', "FRB gid-root refusal"),
     Mutation(
         "frb",
-        'initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"',
-        'true # local Docker authority initialization disabled',
-        "FRB fixed Docker authority",
+        '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"\n# shellcheck source=scripts/lib.sh',
+        'true # verifier-VM entry authority disabled\n# shellcheck source=scripts/lib.sh',
+        "FRB verifier-VM entry authority",
     ),
     Mutation(
         "frb",
-        "local_docker run --rm",
+        'verifier_vm_docker() {\n    local status=0\n    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1',
+        'verifier_vm_docker() {\n    local status=0\n    true # Docker pre-operation authority replay disabled',
+        "FRB Docker pre-operation authority replay",
+    ),
+    Mutation(
+        "frb",
+        '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?\n    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1',
+        '--config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?\n    true # Docker post-operation authority replay disabled',
+        "FRB Docker post-operation authority replay",
+    ),
+    Mutation(
+        "frb",
+        'verifier_vm_docker() {\n    local status=0\n    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n    /usr/bin/env -i',
+        'verifier_vm_docker() {\n    local status=0\n    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1\n    /usr/bin/env',
+        "FRB Docker empty environment",
+    ),
+    Mutation(
+        "frb",
+        'verifier_vm_image_provenance() {\n    local status=0\n    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1',
+        'verifier_vm_image_provenance() {\n    local status=0\n    true # provenance pre-operation authority replay disabled',
+        "FRB provenance pre-operation authority replay",
+    ),
+    Mutation(
+        "frb",
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
+        'python3 "$SCRIPT_DIR/offline-image-provenance.py" "$@"',
+        "FRB provenance fixed interpreter",
+    ),
+    Mutation(
+        "frb",
+        "verifier_vm_docker run --rm",
         "docker run --rm",
-        "FRB fixed Docker launcher",
+        "FRB verifier-VM Docker launcher",
     ),
     Mutation(
         "frb",
-        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n            && ! remove_local_docker_authority; then',
-        'if false; then',
-        "FRB exact Docker authority cleanup",
-    ),
-    Mutation(
-        "frb",
-        'require_pinned_builder_image deb-builder "$IMAGE_ID"',
+        'verifier_vm_image_provenance verify-local',
         'true # image provenance disabled',
         "FRB image provenance",
     ),
@@ -1096,9 +1166,7 @@ MUTATIONS = (
     Mutation("requirements", '<span class="id">R-S11bd</span>', '<span class="id">R-S11bd-broken</span>', "consolidation requirement"),
     Mutation("requirements", "<tr><td>181</td>", "<tr><td>181-broken</td>", "consolidation disposition"),
     Mutation("hardening", "R-S11bd/R-S11e-70", "R-S11bd/R-S11e-XX", "consolidation ledger"),
-    Mutation("requirements", '<span class="id">R-S11de</span>', '<span class="id">R-S11de-broken</span>', "Docker authority requirement"),
-    Mutation("requirements", "<tr><td>258</td>", "<tr><td>258-broken</td>", "Docker authority disposition"),
-    Mutation("hardening", "R-S11de/R-S11e-123", "R-S11de/R-S11e-XXX", "Docker authority ledger"),
+    Mutation("requirements", '<span class="id">R-S11dh</span>', '<span class="id">R-S11dh-broken</span>', "verifier-VM authority requirement"),
 )
 
 

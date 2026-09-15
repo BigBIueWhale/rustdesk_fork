@@ -113,6 +113,7 @@ def validate_contract(sources):
             'readonly VERIFIER_VM_ENTRY_PREFLIGHT=scripts/verify-vm-entry-preflight.sh',
             '"$(/usr/bin/stat -c \'%a:%h\' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1',
             '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
+            'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
             'readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock',
             'verifier_vm_docker() {',
             '[[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',

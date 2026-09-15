@@ -17,6 +17,7 @@ readonly CONFIG_ROOT=$AUTHORITY_ROOT/docker-config
 readonly CONFIG=$CONFIG_ROOT/config.json
 readonly ROOT=/var/tmp/rustdesk-verifier-authority
 readonly BIN=$ROOT/bin
+readonly CLIENT=/usr/bin/docker
 readonly DAEMON_PATH=$BIN:/usr/sbin:/usr/bin:/sbin:/bin
 readonly DATA=$ROOT/data
 readonly EXEC=$ROOT/exec
@@ -26,6 +27,7 @@ readonly DAEMON_IDENTITY=$AUTHORITY_ROOT/docker.identity
 readonly LOG=$ROOT/dockerd.log
 readonly VERIFY_REPO=/mnt/rustdesk-verifier-inputs/repo
 readonly VERIFY_SCRIPT=$VERIFY_REPO/scripts/verify.sh
+readonly FRB_SCRIPT=$VERIFY_REPO/scripts/frb-codegen.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
 
@@ -46,8 +48,8 @@ network_inventory() {
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
-    if [ -n "$CONTAINER_ID" ] && [ -x "$BIN/docker" ]; then
-        "$BIN/docker" --host "unix://$SOCK" rm -f "$CONTAINER_ID" >/dev/null 2>&1 \
+    if [ -n "$CONTAINER_ID" ] && [ -x "$CLIENT" ]; then
+        "$CLIENT" --host "unix://$SOCK" rm -f "$CONTAINER_ID" >/dev/null 2>&1 \
             || status=1
         CONTAINER_ID=
     fi
@@ -98,11 +100,16 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh verify-vm-entry-preflight.sh verify-scan.sh \
+for verify_source in verify.sh frb-codegen.sh dart-verify.sh \
+    verify-dart-verifier-authority.py verify-vm-entry-preflight.sh verify-scan.sh \
     verify-private-tree-closure.py lib.sh pins.env; do
     verify_path="$VERIFY_REPO/scripts/$verify_source"
     [ -f "$verify_path" ] && [ ! -L "$verify_path" ] \
         || fail "main verifier entry source is absent or ambiguous: $verify_source"
+done
+for repository_source in requirements.html HARDENING_STATUS.md; do
+    [ -f "$VERIFY_REPO/$repository_source" ] && [ ! -L "$VERIFY_REPO/$repository_source" ] \
+        || fail "FRB source-gate input is absent or ambiguous: $repository_source"
 done
 [ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
     || fail 'main verifier and guest probe use different entry-preflight paths'
@@ -158,13 +165,18 @@ tar -xzf "$DOCKER_ARCHIVE" --strip-components=1 --no-same-owner --no-same-permis
     -C "$BIN" \
     docker/runc docker/containerd docker/docker-init docker/dockerd \
     docker/containerd-shim-runc-v2 docker/docker-proxy docker/docker docker/ctr
-chmod 0555 "$BIN" "$BIN"/*
-[ "$(find "$BIN" -mindepth 1 -maxdepth 1 -type f -perm 0555 | wc -l)" -eq 8 ] \
+[ ! -e "$CLIENT" ] && [ ! -L "$CLIENT" ] \
+    || fail 'pinned cloud base unexpectedly supplies a Docker client'
+mv -- "$BIN/docker" "$CLIENT"
+chmod 0555 "$BIN" "$BIN"/* "$CLIENT"
+[ "$(find "$BIN" -mindepth 1 -maxdepth 1 -type f -perm 0555 | wc -l)" -eq 7 ] \
     || fail 'extracted Docker binary inventory differs'
 [ -z "$(find "$BIN" -mindepth 1 -maxdepth 1 ! -type f -print -quit)" ] \
     || fail 'extracted Docker bundle contains a non-regular entry'
+[ "$(stat -c '%u:%g:%a:%h' -- "$CLIENT")" = 0:0:555:1 ] \
+    || fail 'fixed VM Docker client metadata differs'
 
-docker_version="$($BIN/docker --version)"
+docker_version="$("$CLIENT" --version)"
 dockerd_version="$($BIN/dockerd --version)"
 case "$docker_version" in "Docker version $EXPECTED_VERSION,"*) ;; *) fail "Docker client version differs: $docker_version" ;; esac
 case "$dockerd_version" in "Docker version $EXPECTED_VERSION,"*) ;; *) fail "Docker daemon version differs: $dockerd_version" ;; esac
@@ -200,7 +212,7 @@ for _ in $(seq 1 300); do
     server_version=
     if [ -S "$SOCK" ]; then
         server_version="$(
-            "$BIN/docker" --host "unix://$SOCK" info --format '{{.ServerVersion}}' \
+            "$CLIENT" --host "unix://$SOCK" info --format '{{.ServerVersion}}' \
                 2>/dev/null
         )" || server_version=
     fi
@@ -224,8 +236,10 @@ chmod 0444 "$PIDFILE"
 daemon_start="$(awk '{ print $22 }' "/proc/$DAEMON_PID/stat")" \
     || fail 'Docker daemon start time cannot be read'
 [[ "$daemon_start" =~ ^[1-9][0-9]*$ ]] || fail 'Docker daemon start time is malformed'
-printf 'pid=%s start=%s sha256=%s\n' \
-    "$DAEMON_PID" "$daemon_start" "$(sha256sum "$BIN/dockerd" | awk '{ print $1 }')" \
+printf 'pid=%s start=%s daemon_sha256=%s client_sha256=%s\n' \
+    "$DAEMON_PID" "$daemon_start" \
+    "$(sha256sum "$BIN/dockerd" | awk '{ print $1 }')" \
+    "$(sha256sum "$CLIENT" | awk '{ print $1 }')" \
     >"$DAEMON_IDENTITY"
 chmod 0444 "$DAEMON_IDENTITY"
 [ ! -e /sys/class/net/docker0 ] || fail 'Docker created a guest bridge despite --bridge=none'
@@ -268,6 +282,48 @@ verify workspace self-test: OK"
 printf '%s\n' "$main_entry_output"
 printf 'VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 foreign=refused nofile=524544 workspace_cleanup=joined\n'
 
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$FRB_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-frb-entry.out" 2>"$ROOT/foreign-frb-entry.err"; then
+    fail 'foreign numeric principal passed the FRB verifier-VM entry'
+fi
+[ ! -s "$ROOT/foreign-frb-entry.out" ] \
+    || fail 'foreign FRB verifier-VM refusal produced standard output'
+foreign_frb_error="$(<"$ROOT/foreign-frb-entry.err")"
+if [ "$foreign_frb_error" != \
+    'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-frb-entry.err")" -le 4096 ] \
+        || fail 'foreign FRB verifier-VM refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign FRB diagnostic was %q\n' \
+        "$foreign_frb_error" >&2
+    fail 'foreign FRB verifier-VM refusal diagnostic differs'
+fi
+frb_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$FRB_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot FRB verifier-VM entry failed'
+expected_frb_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+FRB_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed"
+[ "$frb_entry_output" = "$expected_frb_entry_output" ] \
+    || fail "FRB verifier-VM entry result differs: $frb_entry_output"
+printf '%s\n' "$frb_entry_output"
+printf 'VERIFIER_VM_FRB_ENTRY=pass uid=4000 gid=4000 foreign=refused docker=%s prepost=replayed\n' \
+    "$EXPECTED_VERSION"
+
+frb_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S \
+        "$VERIFY_REPO/scripts/verify-dart-verifier-authority.py" \
+        --repo "$VERIFY_REPO" --self-test
+)" || fail 'FRB verifier-VM focused source/mutation gate failed'
+if [[ "$frb_source_gate_output" =~ ^verify-dart-verifier-authority:\ ok\ \(([1-9][0-9]*)\ mutations\ rejected\)$ ]]; then
+    frb_source_gate_mutations=${BASH_REMATCH[1]}
+else
+    fail "FRB verifier-VM focused source/mutation result differs: $frb_source_gate_output"
+fi
+printf '%s\n' "$frb_source_gate_output"
+printf 'VERIFIER_VM_FRB_SOURCE_GATE=pass mutations=%s\n' "$frb_source_gate_mutations"
+
 cp --parents -L /bin/dash "$ROOT/rootfs"
 while IFS= read -r library; do
     [ -f "$library" ] || fail "shell dependency is absent: $library"
@@ -284,7 +340,7 @@ find "$ROOT/rootfs" -type f -exec chmod 0555 {} +
 [ "$(stat -c '%u:%g:%a' -- "$ROOT/rootfs")" = 0:0:555 ] \
     || fail 'probe root filesystem root metadata differs'
 tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
-    | "$BIN/docker" --host "unix://$SOCK" import \
+    | "$CLIENT" --host "unix://$SOCK" import \
         --change 'USER 4000:4000' \
         --change 'ENTRYPOINT ["/bin/dash"]' \
         - "$IMAGE" >"$ROOT/image-id"
@@ -292,7 +348,7 @@ tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
     || fail 'probe image ID is malformed'
 
 CONTAINER_ID="$(
-    "$BIN/docker" --host "unix://$SOCK" create \
+    "$CLIENT" --host "unix://$SOCK" create \
         --name "$CONTAINER" \
         --pull=never \
         --network=none \
@@ -349,25 +405,25 @@ CONTAINER_ID="$(
         '
 )"
 [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'probe container ID is malformed'
-inspect="$($BIN/docker --host "unix://$SOCK" inspect --format \
+inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
     '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
     "$CONTAINER_ID")"
 [ "$inspect" = 'none|true|4000:4000|67108864|67108864|500000000|16|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
     || fail "probe container authority differs: $inspect"
-namespace_inspect="$($BIN/docker --host "unix://$SOCK" inspect --format \
+namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
     '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.Binds}}|{{json .HostConfig.PortBindings}}' \
     "$CONTAINER_ID")"
 [ "$namespace_inspect" = 'false||private||private|[]|null|{}' ] \
     || fail "probe container namespace/device/port authority differs: $namespace_inspect"
-container_output="$($BIN/docker --host "unix://$SOCK" start --attach "$CONTAINER_ID")" \
+container_output="$("$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID")" \
     || fail 'probe container execution failed'
 [ "$container_output" = 'VERIFIER_INNER_CONTAINER=pass uid=4000 network=none root=readonly caps=none nnp=on seccomp=filter apparmor=docker-default' ] \
     || fail "probe container result differs: $container_output"
-[ "$($BIN/docker --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+[ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
     || fail 'probe container did not exit cleanly'
-"$BIN/docker" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+"$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
 CONTAINER_ID=
-"$BIN/docker" --host "unix://$SOCK" image rm "$IMAGE" >/dev/null
+"$CLIENT" --host "unix://$SOCK" image rm "$IMAGE" >/dev/null
 
 kill -TERM "$DAEMON_PID"
 daemon_status=0

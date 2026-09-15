@@ -384,14 +384,14 @@ r_s11ck=
 if ! /usr/bin/python3 -I -S scripts/restore-private-directory-modes.py --self-test; then
   r_s11ck="$r_s11ck directory-normalizer-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-source-authority.py --repo . --self-test; then
-  r_s11ck="$r_s11ck authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-source-authority.py --repo .; then
+  r_s11ck="$r_s11ck source-topology-invariant-failed"
 fi
 if [ -n "$r_s11ck" ]; then
   echo "  FAIL R-S11ck online-fetch Gradle source authority:$r_s11ck"
   rc=1
 else
-  echo "  ok  R-S11ck the networked Gradle warmer uses one clean exact-commit private writable source, a separate read-only inner-program authority, before/after input proofs, and no live-repository mount"
+  echo "  ok  R-S11ck source topology uses the authenticated VM Git closure, one exact-commit private writable source, a separate read-only inner-program authority, failure-preserving input proofs, and no live-repository mount; real VM/Gradle execution is a separate release obligation"
 fi
 
 echo "== (0j-sdk) exact Android SDK output authority (R-S11cr/R-S11e-110) =="

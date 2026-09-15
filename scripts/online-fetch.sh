@@ -596,8 +596,21 @@ $dirt" >&2
 }
 
 verify_clean_live_checkout_state() {
-    local phase="$1" grafts replacements status=0
+    local phase="$1" attributes grafts replacements status=0
     verify_gradle_live_checkout_state "$phase" || status=$?
+    if attributes="$(online_source_git rev-parse --git-path info/attributes)"; then
+        case "$attributes" in
+            /*) ;;
+            *) attributes="$REPO_ROOT/$attributes" ;;
+        esac
+        if [ -e "$attributes" ] || [ -L "$attributes" ]; then
+            echo "[FATAL] $phase: repository-local Git attributes are forbidden" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] $phase: cannot resolve repository-local Git attributes" >&2
+        status=1
+    fi
     if grafts="$(online_source_git rev-parse --git-path info/grafts)"; then
         case "$grafts" in
             /*) ;;
@@ -4421,7 +4434,7 @@ prepare_gradle_source() {
             || die "cannot re-resolve the exact Gradle-warm source tree"
         [ "$current" = "$GRADLE_SOURCE_TREE" ] \
             || die "the live source tree changed before exact-source reuse"
-        verify_gradle_live_checkout_state "before exact-source reuse" \
+        verify_clean_live_checkout_state "before exact-source reuse" \
             || die "exact-source reuse requires one clean canonical committed source tree"
         [ "$(/usr/bin/sha256sum "$GRADLE_SOURCE_ARCHIVE" | /usr/bin/awk '{print $1}')" \
            = "$GRADLE_SOURCE_ARCHIVE_SHA256" ] \
@@ -4454,7 +4467,7 @@ prepare_gradle_source() {
         || die "Gradle-warm source commit ID is malformed"
     [[ "$GRADLE_SOURCE_TREE" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]] \
         || die "Gradle-warm source tree ID is malformed"
-    verify_gradle_live_checkout_state "before Gradle warming" \
+    verify_clean_live_checkout_state "before Gradle warming" \
         || die "Gradle warming requires one clean canonical committed source tree"
     invalid_tree_entry="$(
         online_source_git ls-tree -rz --full-tree "$GRADLE_SOURCE_COMMIT" \
@@ -4544,7 +4557,7 @@ verify_gradle_source_unchanged() {
         echo "[FATAL] cannot re-resolve the Gradle-warm source tree" >&2
         status=1
     fi
-    if ! verify_gradle_live_checkout_state "after Gradle warming"; then
+    if ! verify_clean_live_checkout_state "after Gradle warming"; then
         status=1
     fi
     if [ -e "$after_archive" ] || [ -L "$after_archive" ]; then

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e3dde82cf914a1fa0462873c71ca4e72a3b3d37b720e39d08a822984a786ce28  requirements.html
+62466418be55e66e5cb7c92a3dd199d935ddec05e21d03121a5742d2f44eef7b  requirements.html
 ```
 
 ## Current Verdict
@@ -3828,90 +3828,34 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   output semantics, product builds, cold R-B2/R-B10 artifacts, independent reproduction, and external review
   remain open. No host RustDesk/service/configuration, Haggai environment, host Docker, firewall, route,
   interface, or sysctl was used or changed.
-- **R-S11ck/R-S11e-103 — networked Gradle warmer source authority — SOURCE AND CONFINED BEHAVIOR VERIFIED
-  2026-07-23; GRADLE OUTPUT-PUBLICATION AUTHORITY CLOSED SEPARATELY BY R-S11cl/R-S11e-104; EXACT
-  COLD RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and Android
-  cache-warming container. Endpoint/action: `scripts/online-fetch.sh::stage_gradle` invoking
-  `scripts/android-apk-build.sh` in `APK_MODE=warm`. Boundary: live repository and invoking-user filesystem
-  authority ↔ dependency-controlled Gradle/Dart code executing with acquisition networking.
+- **R-S11ck/R-S11e-103 — networked Gradle warmer source authority — SOURCE TOPOLOGY
+  CORRECTED; ACQUISITION-VM AUTHORITY/TRANSPORT EVIDENCE RETAINED; EXACT-CURRENT GRADLE
+  SOURCE-LIFECYCLE, REAL PRODUCER, AND COLD-RELEASE EVIDENCE OPEN.** The sole supported entry crosses
+  R-S11cj's authenticated acquisition VM. Inside that guest, one root-owned digest-pinned Git runtime
+  closure admits a clean exact commit and rejects sparse/index/tracked divergence, nonignored untracked
+  inputs, repository-local archive attributes, grafts, replacement refs, nonregular committed entries,
+  and archive-transforming attributes. Ignored live residue cannot enter because the transaction archives
+  the admitted commit into separate read-only authority and writable build trees.
 
-  Before this slice, the Gradle producer bind-mounted `$REPO_ROOT` at `/src` without `readonly`. The shared
-  Android build flow deliberately removes and regenerates ignored `flutter/build`, JNI, Cargo target,
-  `.dart_tool`, plugin metadata, and generated bridge outputs; it also performs the Gradle/Dart build whose
-  dependencies are the subject of acquisition. R-S11cj removed image-default root and constrained the container,
-  but numeric non-root execution still carried the invoking user's write authority over every live checkout path.
-  Read-only inspection found current ignored `flutter/build` and JNI trees owned by UID/GID 0, consistent with
-  residue possible under the former image-default-root producer. Those host files were not changed or removed.
-  The exact committed tree contains no symlink, submodule, or special entry. This is source-proven
-  source-integrity/build-host authority and historical root-owned output residue, not evidence that dependency
-  code changed a committed source, escaped the container, acquired host root, exposed a listener, changed host
-  RustDesk/service/firewall/network state, exploited the host, or compromised the machine.
+  `stage_gradle` mounts only the private writable tree at `/src`, mounts and executes the Android program
+  read-only from the authority tree, compares every committed input before and after the producer, accumulates
+  live commit/tree/repository-metadata/rearchive failures, blocks publication on source failure, and retires
+  the exact principal-, mount-, and inode-bound writable tree. The Gradle producer has no operator/guest
+  working-repository mount or copy path.
 
-  `online-fetch.sh` now fixes `/usr/bin/git` and `/usr/bin/tar`, uses absolute host tools for this source
-  lifecycle without replacing the caller's script-wide tool path, and routes source Git operations through one
-  fixed `/usr/bin/env -i` funnel with private HOME, no system/global config or attributes, no hooks, no filesystem
-  monitor or replacement objects, and optional repository locks disabled. Gradle warming requires one canonical
-  clean checkout: sparse checkout and assume-unchanged/skip-worktree/noncanonical index flags are rejected;
-  worktree-to-index and index-to-HEAD diffs run without external diff or submodule elision; and status includes
-  every untracked file. It captures exact HEAD commit and tree IDs, rejects every committed entry except regular
-  and executable files, rejects committed `export-ignore` or `export-subst` attributes that could omit or rewrite
-  archive inputs, and archives only that commit under the existing current-user-private online-fetch workspace.
+  The focused checker is a compact source-topology invariant only. Its former cross-document/self-mutation
+  catalog and the workspace verifier's duplicate implementation are absent; the independent comparator and
+  directory-restoration filesystem fixtures remain in the confined shared gate. Neither those fixtures nor
+  source inspection proves the real acquisition transaction. The retained VM result at
+  `c8817457dde6e874fbbe380f37022d4b77b40c4d` proves root/foreign refusal, pinned Git installation,
+  bounded outbound-only container authority, atomic cache transport, unchanged host listeners, and joined
+  cleanup, but its probe did not call `prepare_gradle_source`, `stage_gradle`, or Gradle.
 
-  The commit archive is extracted twice with canonical modes: one read-only source authority and one distinct
-  writable build copy. The networked container mounts only the private writable copy at `/src`; the Android inner
-  build program is separately mounted read-only from the authority copy and executed at `/authority`, so generated
-  output remains possible without granting access to the live checkout or making the authority program writable.
-  The established descriptor-stable Android source comparator checks every committed file's bytes, type, link
-  count, owner, and canonical mode before launch and after completion while allowing generated extras only after
-  execution. Container failure is captured rather than immediately exiting so these postconditions still run.
-  The host accumulates the committed-input, live HEAD/tree/clean-state, and byte-identical commit-archive verdicts
-  rather than short-circuiting after the first ordinary mismatch. It then retires the exact writable copy even
-  after producer or postcondition failure. A narrowly scoped restorer acquires the root component-by-component
-  through no-follow `O_PATH` descriptors, rejects a root or child mount/filesystem crossing before changing it,
-  verifies exact identity and owner, and restores bounded owner traversal only on directories. It never chmods a
-  regular or hardlinked file or a symlink and rejects special objects. The established descriptor-stable remover
-  then proves same-mount inode closure, rejects any external hardlink, and consumes the private tree. No online
-  producer retains a live repository mount or copy path.
-
-  The design follows Git's primary documentation: `git archive` creates an archive from the named tree/commit,
-  and porcelain-v1 status is the stable script-facing worktree format. Docker's primary documentation states that
-  bind mounts are read-write by default and their changes are reflected on the host; the Engine security guide
-  emphasizes that Docker bind mounts grant the container authority over the selected host path. A read-only live
-  mount would remove writes but would not satisfy a build flow that legitimately generates source-adjacent output,
-  so the correct local abstraction is a private writable exact-source copy plus an independent read-only authority.
-
-  `scripts/verify-online-fetch-gradle-source-authority.py` binds the closed Git funnel, clean exact-commit
-  capture, regular-file and archive-attribute inventory, canonical dual snapshots, pre/post comparator, private
-  source and read-only program mounts, accumulating failure-preserving postconditions, descriptor-bound
-  directory-only restoration, inode-closed retirement, shared gate, R-S11ck, Appendix C #230, this ledger, and
-  independent workspace ownership. It passes normally and rejects all 34 deliberate weakenings. The directory
-  restorer's behavioral self-test covers nested mode-000 directories, hardlinked-file mode preservation,
-  symlink preservation, parent-symlink and pre-chmod mount rejection, and special-file rejection.
-
-  A disposable tiny Git repository exercised the actual production functions under the production descriptor
-  limit. A normal generated-output tree containing a nested mode-000 directory passed postconditions and was
-  retired. Simultaneous committed-input tampering and live-worktree dirt produced both independent failures and
-  still retired the candidate. A dirty preflight tree, a masked index, sparse checkout, an archive-transforming
-  attribute, and a committed symlink each failed before launch. The independent workspace verifier passes
-  normally and its complete in-memory
-  source-mutation catalog passes against the final source. The existing online-container authority verifier still
-  rejects all 29 mutations; dependency inventory normal/self-test passes; offline image
-  provenance, Android source-comparator, native-codec normal/negative, Bash/Python syntax, synchronized
-  requirements SHA-256
-  `faece7b69d8f1fdf3c246319d4af6e2fa5832ca357eb6965a0eb294e37243c72`, and diff-hygiene gates pass.
-  Executable verification used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as UID/GID 1000, with no
-  network or pull, read-only root/source, all capabilities dropped, no-new-privileges, bounded resources, no
-  Docker socket, no port, and no host namespace. The full shared verifier and a real networked Gradle acquisition
-  were not run; the former includes out-of-scope privileged/runtime fixtures and the latter would exercise the
-  still-open output-publication authority.
-
-  This slice deliberately did not classify or publish cache output. R-S11cl/R-S11e-104 immediately following
-  closes that separate boundary with read-only inputs, narrowly writable private output staging, semantic
-  postconditions, and recoverable checked publication. Other online producers and host-side
-  downloads/extractions, maintenance image creation, exact cold R-B2 release, and external R-V3 review also remain
-  open. No online acquisition, networked producer, image pull/build/tag, release build, or host
-  RustDesk/service/listener/firewall/network operation was executed while implementing this source slice.
+  STOP-SHIP evidence still required: execute the exact-current candidate through the isolated acquisition VM
+  with the real Gradle producer; cover first construction and retained reuse, normal generated extras,
+  producer failure, committed-input tampering, forbidden Git metadata, publication refusal, and exact cleanup;
+  then retain artifact/source identities, listener invariance, resource bounds, cold R-B2/R-B10 equality,
+  independent reproduction, and external review. R-S11cl owns the distinct cache/SDK output transaction.
 - **R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority — SOURCE IMPLEMENTED
   2026-07-23; CONFINED TRANSACTION/FIXTURE EVIDENCE RECORDED; OTHER ONLINE PRODUCERS AND EXACT COLD
   RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and Android

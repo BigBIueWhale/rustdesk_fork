@@ -22248,246 +22248,6 @@ def validate_windows_libvirt_storage_authority_contract(sources):
     )
 
 
-def validate_online_fetch_gradle_source_authority_contract(sources):
-    focused = sources["online_fetch_gradle_source_authority_verifier"]
-    online = sources["online_fetch"]
-    comparator = sources["android_build_source_verifier"]
-    normalizer = sources["private_directory_mode_restorer"]
-    for text, label in (
-        ("canonical clean-checkout proof",
-         "Gradle-source focused canonical-checkout enforcement"),
-        ("post-build exact-input comparison",
-         "Gradle-source focused postcondition enforcement"),
-        ("retained-authority reuse branch",
-         "Gradle-source focused retained-authority enforcement"),
-        ("Gradle source lifecycle",
-         "Gradle-source focused lifecycle ordering"),
-        ("MUTATIONS: Tuple[Mutation, ...]",
-         "Gradle-source focused mutation inventory"),
-        ("run_mutations(sources)",
-         "Gradle-source focused mutation dispatch"),
-    ):
-        require_text(focused, text, label)
-    for text, label in (
-        ("readonly GIT_BIN=/usr/bin/git",
-         "Gradle-source fixed Git client"),
-        ("readonly TAR_BIN=/usr/bin/tar",
-         "Gradle-source fixed tar client"),
-        ("online_source_git() {",
-         "Gradle-source closed Git funnel"),
-        ("/usr/bin/env -i",
-         "Gradle-source fixed closed-environment launcher"),
-        ("GIT_CONFIG_NOSYSTEM=1",
-         "Gradle-source system Git config exclusion"),
-        ("GIT_CONFIG_GLOBAL=/dev/null",
-         "Gradle-source global Git config exclusion"),
-        ("GIT_ATTR_NOSYSTEM=1",
-         "Gradle-source system attribute exclusion"),
-        ("GIT_NO_REPLACE_OBJECTS=1",
-         "Gradle-source replacement-object exclusion"),
-        ("GIT_OPTIONAL_LOCKS=0",
-         "Gradle-source optional repository-write exclusion"),
-        ("-c core.hooksPath=/dev/null",
-         "Gradle-source hook exclusion"),
-        ("-c core.attributesFile=/dev/null",
-         "Gradle-source ambient attribute exclusion"),
-        ("-c core.fsmonitor=false",
-         "Gradle-source filesystem-monitor exclusion"),
-        ("prepare_gradle_source() {",
-         "Gradle-source private constructor"),
-        ("verify_gradle_live_checkout_state() {",
-         "Gradle-source canonical checkout verifier"),
-        ("config --local --no-includes --bool core.sparseCheckout",
-         "Gradle-source sparse-checkout rejection"),
-        ("online_source_git ls-files -v",
-         "Gradle-source index-flag inventory"),
-        ('substr($0,1,1) != "H"',
-         "Gradle-source canonical index flags"),
-        ("diff --no-ext-diff --quiet --ignore-submodules=none --",
-         "Gradle-source worktree-to-index proof"),
-        ("diff --cached --no-ext-diff --quiet --ignore-submodules=none --",
-         "Gradle-source index-to-HEAD proof"),
-        ("status --porcelain=v1 --untracked-files=all",
-         "Gradle-source all-untracked status"),
-        ("ls-tree -rz --full-tree",
-         "Gradle-source exact tree inventory"),
-        ('mode not in (b"100644", b"100755")',
-         "Gradle-source regular/executable inventory"),
-        ("grep -q -E 'export-(ignore|subst)'",
-         "Gradle-source archive-transforming attribute rejection"),
-        ('GRADLE_SOURCE_AUTHORITY="$ONLINE_FETCH_TMP/gradle-source-authority"',
-         "Gradle-source read-only authority"),
-        ('GRADLE_SOURCE_BUILD="$ONLINE_FETCH_TMP/gradle-source-build"',
-         "Gradle-source writable copy"),
-        ('/usr/bin/chmod -R a=rX "$GRADLE_SOURCE_AUTHORITY"',
-         "Gradle-source authority modes"),
-        ('/usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"',
-         "Gradle-source writable-copy modes"),
-        ('if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then',
-         "Gradle-source retained-authority reuse branch"),
-        ('verify_gradle_live_checkout_state "before exact-source reuse"',
-         "Gradle retained-authority clean-checkout reproof"),
-        ('[ "$current" = "$GRADLE_SOURCE_COMMIT" ]',
-         "Gradle-source retained-authority commit reproof"),
-        ("recreated writable source does not match its exact commit authority",
-         "Gradle-source recreated-copy comparison"),
-        ("verify_gradle_source_unchanged() {",
-         "Gradle-source postcondition"),
-        ("retire_gradle_source_build() {",
-         "Gradle-source safe retirement"),
-        ('[ "$(/usr/bin/stat -c \'%d:%i\' -- "$GRADLE_SOURCE_BUILD")" = '
-         '"$GRADLE_SOURCE_BUILD_ID" ]',
-         "Gradle-source retirement identity reproof"),
-        ('"$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py"',
-         "Gradle-source read-only directory normalizer"),
-    ):
-        require_text(online, text, label)
-    stage = extract_between(
-        online,
-        "stage_gradle() {",
-        "\n}\n\n# ── The windows flutter ENGINE",
-        "Gradle warmer source authority",
-    )
-    postcondition = extract_between(
-        online,
-        "verify_gradle_source_unchanged() {",
-        "\n}\n\nretire_gradle_source_build() {",
-        "Gradle warmer source postcondition",
-    )
-    for text, label in (
-        ('local after_archive="$ONLINE_FETCH_TMP/gradle-source-after.tar" '
-         "current status=0",
-         "Gradle accumulating source verdict"),
-        ("if ! /usr/bin/python3 -I -S",
-         "Gradle non-short-circuit source comparison"),
-        ('[ "$current" != "$GRADLE_SOURCE_COMMIT" ]',
-         "Gradle live commit mismatch rejection"),
-        ('[ "$current" != "$GRADLE_SOURCE_TREE" ]',
-         "Gradle live tree mismatch rejection"),
-        ('verify_gradle_live_checkout_state "after Gradle warming"',
-         "Gradle live canonical-checkout reproof"),
-        ('return "$status"',
-         "Gradle complete accumulated source verdict"),
-    ):
-        require_text(postcondition, text, label)
-    for text, label in (
-        ('source=$GRADLE_SOURCE_BUILD,target=/src"',
-         "Gradle private writable source mount"),
-        ('source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,'
-         'target=/authority/android-apk-build.sh,readonly',
-         "Gradle read-only inner program"),
-        ("/bin/bash --noprofile --norc /authority/android-apk-build.sh",
-         "Gradle authority-program execution"),
-        ("|| status=$?",
-         "Gradle failure-preserving status"),
-        ("(verify_gradle_source_unchanged) || source_status=$?",
-         "Gradle failure-preserving source postcondition"),
-    ):
-        require_text(stage, text, label)
-    require_order(
-        stage,
-        (
-            "prepare_gradle_source",
-            "online_docker_run",
-            "|| status=$?",
-            "(verify_gradle_source_unchanged) || source_status=$?",
-            "retire_gradle_source_build\n    restore_gradle_output_traversal",
-            '[ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"',
-            '[ "$status" -eq 0 ] || die "networked Gradle warming failed"',
-        ),
-        "Gradle private-source lifecycle",
-    )
-    require_absent(
-        online,
-        'source=$REPO_ROOT,target=/src"',
-        "online acquisition live-repository mount",
-    )
-    require_absent(
-        online,
-        "/src/scripts/android-apk-build.sh",
-        "Gradle writable inner-program execution",
-    )
-    require_absent(
-        online,
-        "export PATH=/usr/bin:/bin",
-        "online acquisition script-wide command-path override",
-    )
-    require_exact_count(
-        online,
-        "verify-android-build-source.py",
-        3,
-        "Gradle initial/recreated/post exact-source comparisons",
-    )
-    for text, label in (
-        ("before.st_nlink != 1",
-         "Gradle source hardlink refusal"),
-        ("identity_before != identity_after",
-         "Gradle source stable-read proof"),
-        ("reference_digest != candidate_digest",
-         "Gradle source exact-byte proof"),
-        ("candidate_mode != expected_candidate_mode",
-         "Gradle source exact-mode proof"),
-        ('expect_failure(reference, candidate, "hardlink substitution")',
-         "Gradle source hardlink negative test"),
-    ):
-        require_text(comparator, text, label)
-    for text, label in (
-        ("os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC",
-         "Gradle directory-restorer no-follow path descriptors"),
-        ("def open_root_path(path):",
-         "Gradle directory-restorer component-wise root acquisition"),
-        ('os.chmod("/proc/self/fd/{}".format(descriptor), mode)',
-         "Gradle directory-restorer descriptor-bound mode restoration"),
-        ('dir_fd=path_descriptor',
-         "Gradle directory-restorer descriptor-relative read traversal"),
-        ("metadata = os.stat(name, dir_fd=descriptor, follow_symlinks=False)",
-         "Gradle directory-restorer no-follow metadata"),
-        ("descriptor_mount_id(child) != expected_mount",
-         "Gradle directory-restorer mount binding"),
-        ("descriptor_mount_id(path_descriptor)\n"
-         "            != descriptor_mount_id(parent_descriptor)",
-         "Gradle directory-restorer root-parent mount binding"),
-        ("metadata.st_uid != owner or metadata.st_gid != group",
-         "Gradle directory-restorer principal binding"),
-        ("private-tree directory restoration found a special file",
-         "Gradle directory-restorer special-file rejection"),
-        ('if stat.S_IMODE(os.stat(external).st_mode) != 0o640:',
-         "Gradle directory-restorer hardlink-mode self-test"),
-        ('raise RestoreError("self-test changed a cross-mount directory mode")',
-         "Gradle directory-restorer pre-chmod mount self-test"),
-        ('raise RestoreError("self-test changed a symlink-parent directory mode")',
-         "Gradle directory-restorer component-symlink self-test"),
-    ):
-        require_text(normalizer, text, label)
-    require_text(
-        sources["verify"],
-        "/usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-source-authority.py --repo . --self-test",
-        "Online-fetch Gradle source authority focused verifier",
-    )
-    require_text(
-        sources["verify"],
-        "/usr/bin/python3 -I -S scripts/restore-private-directory-modes.py --self-test",
-        "Online-fetch Gradle directory-normalizer self-test",
-    )
-    require_text(
-        sources["requirements"],
-        '<span class="id">R-S11ck</span>',
-        "online-fetch Gradle source authority requirement",
-    )
-    require_text(
-        sources["requirements"],
-        "<tr><td>230</td>",
-        "online-fetch Gradle source authority Appendix C row",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11ck/R-S11e-103 — networked Gradle warmer source authority",
-        "online-fetch Gradle source authority hardening ledger",
-    )
-
-
-
-
 def validate_online_fetch_libyuv_output_authority_contract(sources):
     focused = sources["online_fetch_libyuv_output_authority_verifier"]
     helper = sources["online_libyuv_output_helper"]
@@ -29980,7 +29740,6 @@ def validate_sources(sources):
     validate_cleanup_process_domain_path_authority_contract(sources)
     validate_windows_build_domain_authority_contract(sources)
     validate_windows_libvirt_storage_authority_contract(sources)
-    validate_online_fetch_gradle_source_authority_contract(sources)
     validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_online_fetch_android_sdk_output_authority_contract(sources)
     validate_wix_nuget_authority_contract(sources)
@@ -34253,12 +34012,6 @@ def main():
             "android_controlled_input_owner_test": (
                 repo / "scripts/android-controlled-input-owner-test.kt"
             ).read_text(encoding="utf-8"),
-            "android_build_source_verifier": (
-                repo / "scripts/verify-android-build-source.py"
-            ).read_text(encoding="utf-8"),
-            "private_directory_mode_restorer": (
-                repo / "scripts/restore-private-directory-modes.py"
-            ).read_text(encoding="utf-8"),
             "android_rust_release_gate": (
                 repo / "scripts/android-rust-check.sh"
             ).read_text(encoding="utf-8"),
@@ -34273,9 +34026,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_libvirt_storage_library": (
                 repo / "scripts/windows-libvirt-storage-pools.sh"
-            ).read_text(encoding="utf-8"),
-            "online_fetch_gradle_source_authority_verifier": (
-                repo / "scripts/verify-online-fetch-gradle-source-authority.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_android_sdk_output_authority_verifier": (
                 repo

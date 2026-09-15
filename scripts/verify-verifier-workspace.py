@@ -36759,9 +36759,6 @@ def main():
             "android_rust_release_gate": (
                 repo / "scripts/android-rust-check.sh"
             ).read_text(encoding="utf-8"),
-            "android_gradle_release_gate": (
-                repo / "scripts/test-android-gradle-cache.sh"
-            ).read_text(encoding="utf-8"),
             "windows_harness_verifier": (
                 repo / "scripts/verify-windows-harness.py"
             ).read_text(encoding="utf-8"),

@@ -33,6 +33,8 @@ readonly SMOKE_SERVER_SCRIPT=$VERIFY_REPO/scripts/smoke-server.sh
 readonly RUST_AUDIT_SCRIPT=$VERIFY_REPO/scripts/audit.sh
 readonly ANDROID_KEYSTORE_SCRIPT=$VERIFY_REPO/scripts/gen-android-keystore.sh
 readonly ANDROID_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-android.sh
+readonly ANDROID_GRADLE_SCRIPT=$VERIFY_REPO/scripts/test-android-gradle-cache.sh
+readonly ANDROID_GRADLE_CHECKER=$VERIFY_REPO/scripts/verify-android-gradle-authority.py
 readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-builder-image-authority.py
 readonly DEB_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-deb-builder-image-authority.py
 readonly WIN_HELPER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-win-helper-image-authority.py
@@ -113,11 +115,12 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
+for verify_source in verify.sh verify-release.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
     build-android.sh verify-android-builder-authority.py \
+    test-android-gradle-cache.sh verify-android-gradle-authority.py \
     verify-android-builder-image-authority.py \
     verify-deb-builder-image-authority.py \
     verify-win-helper-image-authority.py verify-windows-helper-authority.py \
@@ -573,6 +576,16 @@ android_builder_source_gate_output="$(
 printf '%s\n' "$android_builder_source_gate_output"
 printf 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass\n'
 
+android_gradle_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$ANDROID_GRADLE_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || fail 'Android Gradle compact source gate failed'
+[ "$android_gradle_source_gate_output" = 'verify-android-gradle-authority: ok' ] \
+    || fail "Android Gradle compact source-gate result differs: $android_gradle_source_gate_output"
+printf '%s\n' "$android_gradle_source_gate_output"
+printf 'VERIFIER_VM_ANDROID_GRADLE_SOURCE_GATE=pass\n'
+
 android_image_source_gate_status=0
 android_image_source_gate_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -780,6 +793,37 @@ tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
         - "$IMAGE" >"$ROOT/image-id"
 [[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || fail 'probe image ID is malformed'
+
+if /bin/bash "$ANDROID_GRADLE_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
+    >"$ROOT/root-android-gradle-entry.out" 2>"$ROOT/root-android-gradle-entry.err"; then
+    fail 'VM root passed the Android Gradle verifier entry'
+fi
+[ ! -s "$ROOT/root-android-gradle-entry.out" ] \
+    || fail 'root Android Gradle refusal produced standard output'
+[ "$(<"$ROOT/root-android-gradle-entry.err")" = \
+  'Android Gradle release gate refuses host or container-root execution' ] \
+    || fail 'root Android Gradle refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$ANDROID_GRADLE_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
+    >"$ROOT/foreign-android-gradle-entry.out" 2>"$ROOT/foreign-android-gradle-entry.err"; then
+    fail 'foreign principal passed the Android Gradle verifier entry'
+fi
+[ ! -s "$ROOT/foreign-android-gradle-entry.out" ] \
+    || fail 'foreign Android Gradle refusal produced standard output'
+[ "$(<"$ROOT/foreign-android-gradle-entry.err")" = \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+    || fail 'foreign Android Gradle refusal diagnostic differs'
+android_gradle_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ANDROID_GRADLE_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
+)" || fail 'authorized Android Gradle verifier entry failed'
+expected_android_gradle_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+ANDROID_GRADLE_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION profiles=mount-rejection,semantics runtime=real source=untouched online=untouched gradle=unexecuted cleanup=joined"
+[ "$android_gradle_entry_output" = "$expected_android_gradle_entry_output" ] \
+    || fail "Android Gradle verifier entry result differs: $android_gradle_entry_output"
+printf '%s\n' "$android_gradle_entry_output"
+printf 'VERIFIER_VM_ANDROID_GRADLE_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profiles=mount-rejection,semantics runtime=real source=untouched online=untouched gradle=unexecuted cleanup=joined\n' \
+    "$EXPECTED_VERSION"
 
 if /bin/bash "$WINDOWS_HELPER_RUNTIME_TEST" "$(<"$ROOT/image-id")" \
     >"$ROOT/root-windows-helper.out" 2>"$ROOT/root-windows-helper.err"; then

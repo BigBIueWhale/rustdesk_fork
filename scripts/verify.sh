@@ -16744,6 +16744,9 @@ for file in scripts/android-gradle-cache.py scripts/android-gradle-offline.init.
   git ls-files --error-unmatch "$file" >/dev/null 2>&1 \
     || android_gradle_bad="$android_gradle_bad untracked:${file##*/}"
 done
+if ! python3 scripts/verify-android-gradle-authority.py --repo .; then
+  android_gradle_bad="$android_gradle_bad verifier-vm-authority"
+fi
 grep -qF 'android-gradle-cache.py materialize' scripts/android-apk-build.sh \
   || android_gradle_bad="$android_gradle_bad no-private-projection"
 grep -qF -- '--init-script /src/scripts/android-gradle-offline.init.gradle' scripts/android-apk-build.sh \
@@ -16774,8 +16777,6 @@ if grep -qF '$REPO_ROOT:/src:ro' scripts/test-android-gradle-cache.sh; then
 fi
 grep -qF 'accepted a same-filesystem descendant bind mount' scripts/test-android-gradle-cache.sh \
   || android_gradle_bad="$android_gradle_bad no-same-device-mount-crossing-fixture"
-grep -qF 'R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,' HARDENING_STATUS.md \
-  || android_gradle_bad="$android_gradle_bad missing-release-gate-authority-ledger"
 if grep -RInF 'org.gradle.offline' scripts/android-apk-build.sh scripts/build-android.sh scripts/online-fetch.sh \
     >"$VERIFY_TMP/rd_verify_ignored_gradle_property"; then
   android_gradle_bad="$android_gradle_bad ignored-org.gradle.offline-property"
@@ -16786,7 +16787,7 @@ fi
 if [ -n "$android_gradle_bad" ]; then
   echo "  FAIL R-B9/R-B10: Android Gradle cache/offline authority regressed:$android_gradle_bad"; rc=1
 else
-  echo "  ok  R-B9/R-B10 Android build: immutable Gradle seed -> fresh owner-only projection; generated Flutter/JNI outputs reset before each pass; tracked init authority sets the real offline start parameter; pinned-image behavioral and online-snapshot mutation suites are release gates"
+  echo "  ok  R-B9/R-B10/R-S11dn Android Gradle gate uses only the admitted verifier VM and its two confined production profiles; immutable projection, tracked offline authority, generated-output reset, and mandatory release wiring remain intact"
 fi
 
 echo "== (6c-a3) Android Rust target check is a mandatory pinned offline release gate (R-B9/R-B10/R-S11dn) =="

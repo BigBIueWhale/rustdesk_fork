@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2b194ac2a15b41e8a2ccf6ec1a483f0bd5c0c5e6d27f8781efc5538c26e081af  requirements.html
+aae787845cdf79583ddb63356a1b6471b467a8f1fbe18b89dc0d6c2e72159916  requirements.html
 ```
 
 ## Current Verdict
@@ -8805,18 +8805,17 @@ narrow compositor transactions above, and Linux peer evidence cannot substitute 
 display-only delay after Windows focus loss while control remains responsive, reconnect recovery,
 cross-version behavior, soak, and current release artifacts all remain open.
 
-### R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle (2026-08-12)
+### R-S11gl/R-S11e-224 — bounded Windows harness storage lifecycle
 
-**Source closed; current VM execution evidence remains open.** The former harness copied a roughly 35-GiB
-golden and often a large online snapshot into every failed run, retaining more than one terabyte across failed
-attempts. That obsolete data and the detailed cleanup chronology are intentionally removed from the live
-ledger; Git history is the audit archive. The current harness uses one nonroot build lease, a sealed canonical
-golden as a zero-copy backing edge, one build-scoped snapshot transaction, admission based on fixed allowance
-plus a 32-GiB emergency reserve, and identity-bound cleanup on every conclusive outcome. Failure evidence is
-allowlisted and bounded to 16 MiB per file and 64 MiB total; bulk disks, overlays, media, artifacts, and
-snapshots cannot be retained as diagnostics. Inconclusive identity/process/domain/helper cleanup preserves
-state and blocks another run rather than guessing. Current read-only inventory finds no `.harness-state`,
-lease, owned domain, or retained run to reconcile.
+**Source implemented; current native VM execution remains open.** The current harness uses one nonroot build
+lease, a sealed canonical golden as a zero-copy backing edge, one build-scoped snapshot transaction, admission
+based on fixed allowance plus a 32-GiB emergency reserve, and identity-bound cleanup on every conclusive
+outcome. Failure evidence is allowlisted and bounded to 16 MiB per file and 64 MiB total; bulk disks, overlays,
+media, artifacts, and snapshots cannot be retained as diagnostics. Inconclusive identity, process, domain, or
+helper cleanup preserves state and blocks another run rather than guessing. The repository-local state has no
+Windows golden or complete Windows input closure, so no exact-current real builder transaction ran for this
+source. Success, failure, timeout, signal, substitution, cleanup-failure, and residue behavior around the native
+Windows VM therefore remain mandatory runtime evidence; source and focused non-VM fixtures do not close it.
 
 ### R-S11gm/R-S11e-225 release-parent workspace principal closure (2026-09-15)
 

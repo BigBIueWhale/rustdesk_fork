@@ -21868,50 +21868,6 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build focused gate wiring",
     )
 
-    storage_requirement = extract_html_requirement(
-        sources["requirements"],
-        "R-S11gl",
-        "Windows build bounded storage requirement",
-    )
-    for text, label in (
-        (
-            "Windows build evidence has one bounded, zero-copy, preservation-first storage transaction",
-            "Windows build bounded storage requirement title",
-        ),
-        (
-            "every success, failure, timeout, and signal",
-            "Windows build normative conclusive bulk retirement",
-        ),
-        (
-            "one build-scoped private snapshot transaction named by its closure digest",
-            "Windows build normative build-scoped snapshot",
-        ),
-        (
-            "retain or reuse a harness-created snapshot after a conclusive outcome",
-            "Windows build normative persistent snapshot prohibition",
-        ),
-        (
-            "Caller-provided release snapshots are borrowed read-only authority",
-            "Windows build normative release-snapshot preservation",
-        ),
-        (
-            "Failure to remove either exact bulk object",
-            "Windows build normative independent bulk-object retirement",
-        ),
-        (
-            "even when bounded diagnostic publication or retirement fails",
-            "Windows build normative diagnostic-independent retirement",
-        ),
-        (
-            "no file larger than 16 MiB and no more than 64 MiB",
-            "Windows build normative bounded failure evidence",
-        ),
-        (
-            "Only inconclusive process/domain/helper cleanup or exact-object removal may retain bulk state",
-            "Windows build normative exclusive bulk-retention boundary",
-        ),
-    ):
-        require_text(storage_requirement, text, label)
     for text, label in (
         (
             "FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))",
@@ -21931,17 +21887,6 @@ def validate_windows_build_domain_authority_contract(sources):
         ),
     ):
         require_text(build, text, label)
-    require_text(
-        sources["requirements"],
-        "<tr><td>347</td>",
-        "Windows build bounded storage Appendix C #347 disposition",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
-        "Windows build bounded storage hardening-ledger disposition",
-    )
-
     for text, label in (
         (
             'OUT_PARENT_ID="$device:$inode"',

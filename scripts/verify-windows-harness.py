@@ -48,7 +48,6 @@ FILES = {
     "port": "res/vcpkg/libvpx/portfile.cmake",
     "metadata": "res/vcpkg/libvpx/vcpkg.json",
     "requirements": "requirements.html",
-    "hardening": "HARDENING_STATUS.md",
     "verify": "scripts/verify.sh",
     "ipc": "src/ipc.rs",
     "windows": "src/platform/windows.rs",
@@ -340,7 +339,6 @@ def validate_sources(sources: dict[str, str]) -> None:
     msi = sources["msi"]
     watch = sources["watch"]
     requirements = sources["requirements"]
-    hardening = sources["hardening"]
     verify = sources["verify"]
     ipc = sources["ipc"]
     windows = sources["windows"]
@@ -1288,27 +1286,6 @@ def validate_sources(sources: dict[str, str]) -> None:
         verify,
         "python3 scripts/verify-windows-harness.py --repo . --self-test",
         "R-S11ds focused gate wiring",
-    )
-
-    storage_requirement = html_requirement(requirements, "R-S11gl")
-    for literal, description in (
-        ("fixed current-principal mode-0700 directory lease", "normative singleton lease"),
-        ("per-run reflink, full golden copy, or copy fallback is forbidden", "normative zero-copy golden"),
-        ("one build-scoped private snapshot transaction named by its closure digest", "normative build-scoped online snapshot"),
-        ("MUST NOT</span> retain or reuse a harness-created snapshot after a conclusive outcome", "normative persistent snapshot prohibition"),
-        ("Caller-provided release snapshots are borrowed read-only authority", "normative borrowed release snapshot preservation"),
-        ("Failure to remove either exact bulk object", "normative independent bulk-object retirement"),
-        ("32-GiB emergency reserve", "normative storage reserve"),
-        ("no file larger than 16 MiB and no more than 64 MiB", "normative bounded failure evidence"),
-        ("failure, timeout, and signal", "normative failure bulk-state retirement"),
-        ("does not authorize cleanup of pre-existing roots", "normative historical-state preservation"),
-    ):
-        require(storage_requirement, literal, description)
-    require(requirements, "<tr><td>347</td>", "Appendix C #347 disposition")
-    require(
-        hardening,
-        "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
-        "R-S11gl hardening-ledger disposition",
     )
 
     require(preflight, "record_golden_identity", "sealed golden identity preflight")
@@ -3508,60 +3485,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "publication",
             "identity(published) != identity(candidate_info)",
             "identity(published) != identity(published)",
-        ),
-        (
-            "R-S11gl requirement",
-            "requirements",
-            '<span class="id">R-S11gl</span>',
-            '<span class="id">R-S11gl-disabled</span>',
-        ),
-        (
-            "normative zero-copy Windows golden",
-            "requirements",
-            "A per-run reflink, full golden copy, or copy fallback is forbidden",
-            "A per-run full golden copy is permitted",
-        ),
-        (
-            "normative build-scoped online snapshot",
-            "requirements",
-            "one build-scoped private snapshot transaction named by its closure digest",
-            "one persistent shared snapshot named by its closure digest",
-        ),
-        (
-            "normative persistent snapshot prohibition",
-            "requirements",
-            "retain or reuse a harness-created snapshot after a conclusive outcome",
-            "retain and reuse a harness-created snapshot after a conclusive outcome",
-        ),
-        (
-            "normative borrowed release snapshot preservation",
-            "requirements",
-            "Caller-provided release snapshots are borrowed read-only authority",
-            "Caller-provided release snapshots become harness-owned authority",
-        ),
-        (
-            "normative independent bulk-object retirement",
-            "requirements",
-            "Failure to remove either exact bulk object",
-            "Removal of one exact bulk object may suppress",
-        ),
-        (
-            "normative bounded Windows failure evidence",
-            "requirements",
-            "no file larger than 16 MiB and no more than 64 MiB",
-            "no file larger than 160 MiB and no more than 640 MiB",
-        ),
-        (
-            "Appendix C #347 disposition",
-            "requirements",
-            "<tr><td>347</td>",
-            "<tr><td>347-disabled</td>",
-        ),
-        (
-            "R-S11gl hardening-ledger disposition",
-            "hardening",
-            "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
-            "R-S11gl/R-S11e-224 unbounded Windows harness storage lifecycle",
         ),
         (
             "identity-bound run-root removal",

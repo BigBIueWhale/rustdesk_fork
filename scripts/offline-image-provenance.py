@@ -1324,9 +1324,12 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
                 "linux/amd64"
             )
         if config != spec.runtime_config:
+            expected = canonical_json(spec.runtime_config).decode("utf-8")
+            actual = canonical_json(config).decode("utf-8")
             fail(
                 f"certified {spec.display_name} runtime config differs from "
-                "the reviewed contract"
+                f"the reviewed contract: expected={expected[:4096]}, "
+                f"actual={actual[:4096]}"
             )
         return
     if isinstance(spec, AppleCheckSpec):

@@ -297,6 +297,57 @@ def validate_online_fetch(source: str) -> None:
         "bootstrap-only acquisition",
     )
 
+    bootstrap_acquisition = shell_function(
+        source,
+        "maintenance_build_win_helper_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_acquisition,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "win-helper-bootstrap-candidate.docker.tar.gz",
+            'online_docker pull "ubuntu:24.04@',
+            "build_windows_helper_bootstrap_image",
+            "capture_builder_bootstrap_candidate",
+        ),
+        "persistent bootstrap-candidate acquisition",
+    )
+    require_order(
+        bootstrap_acquisition,
+        (
+            "online_docker pull",
+            "build_windows_helper_bootstrap_image",
+            "capture_builder_bootstrap_candidate",
+        ),
+        "bootstrap build/capture order",
+    )
+    require_absent(
+        bootstrap_acquisition,
+        (
+            "win-helper-bootstrap.docker.tar.gz",
+            "maintenance-rename-noreplace",
+        ),
+        "non-authoritative bootstrap acquisition",
+    )
+    bootstrap_capture = shell_function(
+        source,
+        "capture_builder_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_capture,
+        (
+            "maintenance-capture-bootstrap-candidate",
+            "--layout-output",
+            "image_id",
+            "manifest_id",
+            "config_id",
+            "layout_sha256",
+            "BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
+            "BOOTSTRAP_OCI_LAYOUT",
+        ),
+        "private bootstrap-candidate capture",
+    )
+
     certification = shell_function(
         source, "maintenance_build_win_helper_certified_candidate"
     )
@@ -406,22 +457,43 @@ def validate_online_fetch(source: str) -> None:
         "exact-pin promotion",
     )
 
-    capture = shell_function(
-        source, "maintenance_capture_win_helper_bootstrap_image"
+    bootstrap_promotion = shell_function(
+        source,
+        "maintenance_promote_win_helper_bootstrap_candidate",
     )
     require_all(
-        capture,
+        bootstrap_promotion,
         (
-            "win-helper-bootstrap.docker.tar.gz",
+            "require_win_helper_bootstrap_pins",
             "win_helper_bootstrap_spec_args",
-            "maintenance-capture",
+            "win-helper-bootstrap-candidate.docker.tar.gz",
+            "win-helper-bootstrap.docker.tar.gz",
+            "SHA256_WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE",
+            "WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
+            "SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT",
+            "promote_builder_bootstrap_candidate",
         ),
-        "bootstrap-only capture",
+        "pin-reviewed bootstrap promotion",
+    )
+    promotion_helper = shell_function(
+        source,
+        "promote_builder_bootstrap_candidate",
+    )
+    require_order(
+        promotion_helper,
+        (
+            "verify-archive",
+            "materialize-oci-layout",
+            'observed_layout_sha" = "$expected_layout_sha',
+            "maintenance-rename-noreplace",
+            "verify-archive",
+        ),
+        "bootstrap verify/promote order",
     )
     require_absent(
-        capture,
-        ("win-helper.docker.tar.gz", "win_helper_image_spec_args"),
-        "bootstrap-only capture",
+        promotion_helper,
+        ("maintenance-capture", "docker save", "docker tag", "verify-load"),
+        "bootstrap promotion",
     )
     require_absent(
         source,
@@ -431,6 +503,9 @@ def validate_online_fetch(source: str) -> None:
             "capture_windows_helper_image() {",
             "maintenance_capture_windows_helper_image() {",
             "--maintenance-capture-windows-helper-image)",
+            "maintenance_capture_win_helper_bootstrap_image() {",
+            "--maintenance-build-image-candidates)",
+            "--maintenance-capture-win-helper-bootstrap-image)",
         ),
         "retired self-authorizing or Docker-store path",
     )

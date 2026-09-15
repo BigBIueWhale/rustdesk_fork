@@ -260,6 +260,57 @@ def validate_online_fetch(source: str) -> None:
         "bootstrap-only acquisition",
     )
 
+    bootstrap_acquisition = shell_function(
+        source,
+        "maintenance_build_deb_builder_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_acquisition,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "deb-builder-bootstrap-candidate.docker.tar.gz",
+            'online_docker pull "ubuntu:18.04@',
+            "build_deb_builder_bootstrap_image",
+            "capture_builder_bootstrap_candidate",
+        ),
+        "persistent bootstrap-candidate acquisition",
+    )
+    require_order(
+        bootstrap_acquisition,
+        (
+            "online_docker pull",
+            "build_deb_builder_bootstrap_image",
+            "capture_builder_bootstrap_candidate",
+        ),
+        "bootstrap build/capture order",
+    )
+    require_absent(
+        bootstrap_acquisition,
+        (
+            "deb-builder-bootstrap.docker.tar.gz",
+            "maintenance-rename-noreplace",
+        ),
+        "non-authoritative bootstrap acquisition",
+    )
+    bootstrap_capture = shell_function(
+        source,
+        "capture_builder_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_capture,
+        (
+            "maintenance-capture-bootstrap-candidate",
+            "--layout-output",
+            "image_id",
+            "manifest_id",
+            "config_id",
+            "layout_sha256",
+            "BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
+            "BOOTSTRAP_OCI_LAYOUT",
+        ),
+        "private bootstrap-candidate capture",
+    )
+
     certification = shell_function(
         source, "maintenance_build_deb_builder_certified_candidate"
     )
@@ -359,22 +410,43 @@ def validate_online_fetch(source: str) -> None:
         "exact-pin promotion",
     )
 
-    capture = shell_function(
-        source, "maintenance_capture_deb_builder_bootstrap_image"
+    bootstrap_promotion = shell_function(
+        source,
+        "maintenance_promote_deb_builder_bootstrap_candidate",
     )
     require_all(
-        capture,
+        bootstrap_promotion,
         (
-            "deb-builder-bootstrap.docker.tar.gz",
+            "require_deb_builder_bootstrap_pins",
             "deb_builder_bootstrap_spec_args",
-            "maintenance-capture",
+            "deb-builder-bootstrap-candidate.docker.tar.gz",
+            "deb-builder-bootstrap.docker.tar.gz",
+            "SHA256_DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE",
+            "DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
+            "SHA256_DEB_BUILDER_BOOTSTRAP_OCI_LAYOUT",
+            "promote_builder_bootstrap_candidate",
         ),
-        "bootstrap-only capture",
+        "pin-reviewed bootstrap promotion",
+    )
+    promotion_helper = shell_function(
+        source,
+        "promote_builder_bootstrap_candidate",
+    )
+    require_order(
+        promotion_helper,
+        (
+            "verify-archive",
+            "materialize-oci-layout",
+            'observed_layout_sha" = "$expected_layout_sha',
+            "maintenance-rename-noreplace",
+            "verify-archive",
+        ),
+        "bootstrap verify/promote order",
     )
     require_absent(
-        capture,
-        ("deb-builder.docker.tar.gz", "deb_builder_image_spec_args"),
-        "bootstrap-only capture",
+        promotion_helper,
+        ("maintenance-capture", "docker save", "docker tag", "verify-load"),
+        "bootstrap promotion",
     )
     require_absent(
         source,
@@ -384,6 +456,9 @@ def validate_online_fetch(source: str) -> None:
             "maintenance_capture_builder_images() {",
             "capture_builder_image() {",
             "--maintenance-capture-builder-images)",
+            "maintenance_capture_deb_builder_bootstrap_image() {",
+            "--maintenance-build-image-candidates)",
+            "--maintenance-capture-deb-builder-bootstrap-image)",
         ),
         "retired self-authorizing or Docker-store path",
     )

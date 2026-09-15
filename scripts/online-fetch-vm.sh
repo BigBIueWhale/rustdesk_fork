@@ -24,7 +24,12 @@ case "$#:${1:-}" in
         REQUEST=__authority_smoke__
         ;;
     1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|\
-    1:--maintenance-build-image-candidates|\
+    1:--maintenance-build-deb-builder-bootstrap-candidate|\
+    1:--maintenance-build-android-builder-bootstrap-candidate|\
+    1:--maintenance-build-win-helper-bootstrap-candidate|\
+    1:--maintenance-promote-deb-builder-bootstrap-candidate|\
+    1:--maintenance-promote-android-builder-bootstrap-candidate|\
+    1:--maintenance-promote-win-helper-bootstrap-candidate|\
     1:--maintenance-build-deb-builder-certified-candidate|\
     1:--maintenance-promote-deb-builder-certified-candidate|\
     1:--maintenance-build-android-builder-certified-candidate|\
@@ -34,9 +39,6 @@ case "$#:${1:-}" in
     1:--maintenance-build-apple-check-image-candidate|\
     1:--maintenance-build-dart-audit-image-candidate|\
     1:--maintenance-build-rust-audit-image-candidate|\
-    1:--maintenance-capture-deb-builder-bootstrap-image|\
-    1:--maintenance-capture-android-builder-bootstrap-image|\
-    1:--maintenance-capture-win-helper-bootstrap-image|\
     1:--maintenance-capture-devcheck-image|1:--maintenance-capture-apple-check-image|\
     1:--maintenance-capture-dart-audit-image|1:--maintenance-capture-rust-audit-image|\
     1:--devcheck-image|1:--apple-check-image|1:--dart-audit-image|1:--rust-audit-image|\
@@ -45,7 +47,7 @@ case "$#:${1:-}" in
         REQUEST=$1
         ;;
     *)
-        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-win-helper-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
+        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
         exit 2
         ;;
 esac

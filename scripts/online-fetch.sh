@@ -1631,6 +1631,22 @@ deb_builder_bootstrap_spec_args() {
         --manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID"
 }
 
+require_deb_builder_bootstrap_pins() {
+    local names=(
+        SHA256_BASEIMAGE_UBUNTU_1804
+        SHA256_DEB_BUILDER_DOCKERFILE
+        SHA256_DEB_BUILDER_DPKG_MANIFEST
+        DEB_BUILDER_BOOTSTRAP_IMAGE_ID
+        DEB_BUILDER_BOOTSTRAP_CONFIG_ID
+        DEB_BUILDER_BOOTSTRAP_MANIFEST_ID
+        DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE
+        SHA256_DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE
+        SHA256_DEB_BUILDER_BOOTSTRAP_OCI_LAYOUT
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+}
+
 require_deb_builder_image_pins() {
     local names=(
         DEB_BUILDER_IMAGE_ID
@@ -1683,6 +1699,22 @@ android_builder_bootstrap_spec_args() {
         --manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID"
 }
 
+require_android_builder_bootstrap_pins() {
+    local names=(
+        SHA256_BASEIMAGE_UBUNTU_2404
+        SHA256_ANDROID_BUILDER_DOCKERFILE
+        SHA256_ANDROID_BUILDER_DPKG_MANIFEST
+        ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID
+        ANDROID_BUILDER_BOOTSTRAP_CONFIG_ID
+        ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID
+        ANDROID_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE
+        SHA256_ANDROID_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE
+        SHA256_ANDROID_BUILDER_BOOTSTRAP_OCI_LAYOUT
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+}
+
 require_android_builder_image_pins() {
     local names=(
         ANDROID_BUILDER_IMAGE_ID
@@ -1733,6 +1765,22 @@ win_helper_bootstrap_spec_args() {
         --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST" \
         --config-id "$WIN_HELPER_BOOTSTRAP_CONFIG_ID" \
         --manifest-id "$WIN_HELPER_BOOTSTRAP_MANIFEST_ID"
+}
+
+require_win_helper_bootstrap_pins() {
+    local names=(
+        SHA256_BASEIMAGE_UBUNTU_2404
+        SHA256_WIN_HELPER_DOCKERFILE
+        SHA256_WIN_HELPER_DPKG_MANIFEST
+        WIN_HELPER_BOOTSTRAP_IMAGE_ID
+        WIN_HELPER_BOOTSTRAP_CONFIG_ID
+        WIN_HELPER_BOOTSTRAP_MANIFEST_ID
+        WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE
+        SHA256_WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE
+        SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
 require_win_helper_image_pins() {
@@ -2189,11 +2237,76 @@ maintenance_capture_rust_audit_image() {
     printf '%s\n' "$result"
 }
 
-# Explicit maintenance candidate builds. Audit/helper captures and certified
-# builder archives remain their respective release authorities.
-# Explicit networked bootstrap acquisition only. This image is not release
-# authority; maintenance_build_deb_builder_certified_candidate authenticates
-# an exact captured bootstrap through a separate networkless nonroot build.
+# Networked bootstrap acquisition produces a private, non-authoritative
+# candidate archive before its disposable Docker store disappears. Promotion
+# to the exact bootstrap name is a separate pin-reviewed operation, and the
+# promoted bootstrap still requires the networkless nonroot certification
+# transaction before it can become release authority.
+BUILT_BOOTSTRAP_IMAGE_ID=
+
+builder_bootstrap_candidate_spec_args() {
+    [ "$#" -eq 5 ] || die "internal bootstrap candidate specification error"
+    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5"
+    printf '%s\0' \
+        --role "${role}-bootstrap-candidate" \
+        --expected-id "$image_id" \
+        --base "$base" \
+        --dockerfile-sha "$dockerfile_sha" \
+        --dpkg-sha "$dpkg_sha"
+}
+
+capture_builder_bootstrap_candidate() {
+    [ "$#" -eq 8 ] || die "internal bootstrap candidate capture error"
+    local display="$1" prefix="$2" filename="$3" role="$4"
+    local image_id="$5" base="$6" dockerfile_sha="$7" dpkg_sha="$8"
+    local directory="$ONLINE_DIR/build-images"
+    local output="$directory/$filename"
+    local layout="$ONLINE_FETCH_TMP/${filename%.docker.tar.gz}.oci"
+    local result archive_sha archive_size manifest_id config_id
+    local layout_sha captured_image captured_path args=()
+    [ ! -e "$output" ] && [ ! -L "$output" ] \
+        || die "$display bootstrap candidate archive already exists"
+    [ ! -e "$layout" ] && [ ! -L "$layout" ] \
+        || die "$display bootstrap candidate OCI workspace already exists"
+    mapfile -d '' args < <(
+        builder_bootstrap_candidate_spec_args \
+            "$role" "$image_id" "$base" "$dockerfile_sha" "$dpkg_sha"
+    )
+    /usr/bin/install -d -m 0700 "$layout"
+    result="$(
+        online_image_provenance maintenance-capture-bootstrap-candidate \
+            --output "$output" \
+            --layout-output "$layout" \
+            "${args[@]}"
+    )" || die "$display bootstrap candidate archive capture failed"
+    local field
+    for field in image_id manifest_id config_id layout_sha256 archive sha256 bytes; do
+        [ "$(/usr/bin/grep -c "^${field}=" <<<"$result")" -eq 1 ] \
+            || die "$display bootstrap candidate capture result is malformed"
+    done
+    captured_image="$(/usr/bin/sed -n 's/^image_id=//p' <<<"$result")"
+    manifest_id="$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")"
+    config_id="$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")"
+    captured_path="$(/usr/bin/sed -n 's/^archive=//p' <<<"$result")"
+    archive_sha="$(/usr/bin/sed -n 's/^sha256=//p' <<<"$result")"
+    archive_size="$(/usr/bin/sed -n 's/^bytes=//p' <<<"$result")"
+    layout_sha="$(/usr/bin/sed -n 's/^layout_sha256=//p' <<<"$result")"
+    [ "$captured_image" = "$image_id" ] && [ "$captured_path" = "$output" ] \
+        && [[ "$manifest_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$config_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] \
+        && [[ "$archive_size" =~ ^[1-9][0-9]*$ ]] \
+        && [[ "$layout_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || die "$display bootstrap candidate capture identities are malformed"
+    printf '%s_BOOTSTRAP_IMAGE_ID="%s"\n' "$prefix" "$captured_image"
+    printf '%s_BOOTSTRAP_CONFIG_ID="%s"\n' "$prefix" "$config_id"
+    printf '%s_BOOTSTRAP_MANIFEST_ID="%s"\n' "$prefix" "$manifest_id"
+    printf '%s_BOOTSTRAP_IMAGE_ARCHIVE_SIZE="%s"\n' "$prefix" "$archive_size"
+    printf 'SHA256_%s_BOOTSTRAP_IMAGE_ARCHIVE="%s"\n' "$prefix" "$archive_sha"
+    printf 'SHA256_%s_BOOTSTRAP_OCI_LAYOUT="%s"\n' "$prefix" "$layout_sha"
+    printf 'candidate=%s\n' "$output"
+}
+
 build_deb_builder_bootstrap_image() {
     require_image_pin SHA256_DEB_BUILDER_DOCKERFILE
     require_image_pin SHA256_DEB_BUILDER_DPKG_MANIFEST
@@ -2204,11 +2317,14 @@ build_deb_builder_bootstrap_image() {
         --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
     local image_id
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the Debian builder bootstrap candidate"
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Debian builder bootstrap candidate identity is malformed"
     online_image_provenance verify-local --image-ref "$tag" \
         --role deb-builder-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
         --dockerfile-sha "$SHA256_DEB_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST"
-    printf 'DEB_BUILDER_BOOTSTRAP_IMAGE_ID="%s"\n' "$image_id"
+    BUILT_BOOTSTRAP_IMAGE_ID="$image_id"
 }
 
 # Explicit networked bootstrap acquisition only. This image is not release
@@ -2224,11 +2340,14 @@ build_android_builder_bootstrap_image() {
         --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.android-builder" "$LIB_DIR"
     local image_id
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the Android builder bootstrap candidate"
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Android builder bootstrap candidate identity is malformed"
     online_image_provenance verify-local --image-ref "$tag" \
         --role android-builder-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --dockerfile-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST"
-    printf 'ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID="%s"\n' "$image_id"
+    BUILT_BOOTSTRAP_IMAGE_ID="$image_id"
 }
 
 # ── The Windows VM helper bootstrap: genisoimage + libguestfs + MSI tooling ──
@@ -2248,20 +2367,104 @@ build_windows_helper_bootstrap_image() {
         --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.win-helper" "$LIB_DIR"
     local image_id
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the Windows helper bootstrap candidate"
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Windows helper bootstrap candidate identity is malformed"
     online_image_provenance verify-local --image-ref "$tag" \
         --role win-helper-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST"
-    printf 'WIN_HELPER_BOOTSTRAP_IMAGE_ID="%s"\n' "$image_id"
+    BUILT_BOOTSTRAP_IMAGE_ID="$image_id"
 }
 
-maintenance_build_image_candidates() {
+maintenance_build_deb_builder_bootstrap_candidate() {
     require_cmd python3
+    local directory="$ONLINE_DIR/build-images" lock_fd result
+    /usr/bin/install -d -m 0700 "$directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "builder image archive root must be current-user-owned mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the builder image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another builder image archive transaction owns the archive root"
+    [ ! -e "$directory/deb-builder-bootstrap-candidate.docker.tar.gz" ] \
+        && [ ! -L "$directory/deb-builder-bootstrap-candidate.docker.tar.gz" ] \
+        || die "Debian builder bootstrap candidate archive already exists"
     online_docker pull "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
-    online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
+    BUILT_BOOTSTRAP_IMAGE_ID=
     build_deb_builder_bootstrap_image
+    result="$(capture_builder_bootstrap_candidate \
+        "Debian builder" DEB_BUILDER \
+        deb-builder-bootstrap-candidate.docker.tar.gz \
+        deb-builder "$BUILT_BOOTSTRAP_IMAGE_ID" \
+        "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        "$SHA256_DEB_BUILDER_DOCKERFILE" \
+        "$SHA256_DEB_BUILDER_DPKG_MANIFEST")"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the builder image archive lock"
+    exec {lock_fd}<&-
+    printf '%s\n' "$result"
+}
+
+maintenance_build_android_builder_bootstrap_candidate() {
+    require_cmd python3
+    local directory="$ONLINE_DIR/build-images" lock_fd result
+    /usr/bin/install -d -m 0700 "$directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "builder image archive root must be current-user-owned mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the builder image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another builder image archive transaction owns the archive root"
+    [ ! -e "$directory/android-builder-bootstrap-candidate.docker.tar.gz" ] \
+        && [ ! -L "$directory/android-builder-bootstrap-candidate.docker.tar.gz" ] \
+        || die "Android builder bootstrap candidate archive already exists"
+    online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
+    BUILT_BOOTSTRAP_IMAGE_ID=
     build_android_builder_bootstrap_image
+    result="$(capture_builder_bootstrap_candidate \
+        "Android builder" ANDROID_BUILDER \
+        android-builder-bootstrap-candidate.docker.tar.gz \
+        android-builder "$BUILT_BOOTSTRAP_IMAGE_ID" \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+        "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST")"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the builder image archive lock"
+    exec {lock_fd}<&-
+    printf '%s\n' "$result"
+}
+
+maintenance_build_win_helper_bootstrap_candidate() {
+    require_cmd python3
+    local directory="$ONLINE_DIR/build-images" lock_fd result
+    /usr/bin/install -d -m 0700 "$directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "builder image archive root must be current-user-owned mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the builder image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another builder image archive transaction owns the archive root"
+    [ ! -e "$directory/win-helper-bootstrap-candidate.docker.tar.gz" ] \
+        && [ ! -L "$directory/win-helper-bootstrap-candidate.docker.tar.gz" ] \
+        || die "Windows helper bootstrap candidate archive already exists"
+    online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
+    BUILT_BOOTSTRAP_IMAGE_ID=
     build_windows_helper_bootstrap_image
+    result="$(capture_builder_bootstrap_candidate \
+        "Windows helper" WIN_HELPER \
+        win-helper-bootstrap-candidate.docker.tar.gz \
+        win-helper "$BUILT_BOOTSTRAP_IMAGE_ID" \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        "$SHA256_WIN_HELPER_DOCKERFILE" \
+        "$SHA256_WIN_HELPER_DPKG_MANIFEST")"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the builder image archive lock"
+    exec {lock_fd}<&-
+    printf '%s\n' "$result"
 }
 
 maintenance_build_deb_builder_certified_candidate() {
@@ -3038,64 +3241,109 @@ maintenance_build_rust_audit_image_candidate() {
     printf 'RUST_AUDIT_IMAGE_ID="%s"\n' "$image_id"
 }
 
-maintenance_capture_deb_builder_bootstrap_image() {
-    require_deb_builder_image_pins
+promote_builder_bootstrap_candidate() {
+    [ "$#" -ge 7 ] || die "internal bootstrap candidate promotion error"
+    local display="$1" candidate_name="$2" final_name="$3"
+    local archive_sha="$4" archive_size="$5" expected_layout_sha="$6"
+    shift 6
     local directory="$ONLINE_DIR/build-images"
-    local output="$directory/deb-builder-bootstrap.docker.tar.gz"
-    local args=() result
-    /usr/bin/install -d -m 0700 "$directory"
-    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
-       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+    local candidate="$directory/$candidate_name"
+    local final="$directory/$final_name"
+    local layout="$ONLINE_FETCH_TMP/${candidate_name%.docker.tar.gz}-promotion.oci"
+    local materialization observed_layout_sha lock_fd
+    local args=("$@")
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
         || die "builder image archive root must be current-user-owned mode 0700"
-    [ ! -e "$output" ] && [ ! -L "$output" ] \
-        || die "Debian builder bootstrap archive already exists"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the builder image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another builder image archive transaction owns the archive root"
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "$display bootstrap candidate archive is absent or unsafe"
+    [ ! -e "$final" ] && [ ! -L "$final" ] \
+        || die "$display final bootstrap archive already exists"
+    [ ! -e "$layout" ] && [ ! -L "$layout" ] \
+        || die "$display bootstrap promotion OCI workspace already exists"
+    online_image_provenance verify-archive \
+        --archive "$candidate" \
+        --archive-sha "$archive_sha" \
+        --archive-size "$archive_size" \
+        "${args[@]}" \
+        || die "$display bootstrap candidate differs from the reviewed pins"
+    /usr/bin/install -d -m 0700 "$layout"
+    materialization="$(
+        online_image_provenance materialize-oci-layout \
+            --archive "$candidate" \
+            --archive-sha "$archive_sha" \
+            --archive-size "$archive_size" \
+            --output "$layout" \
+            "${args[@]}"
+    )" || die "$display bootstrap candidate layout verification failed"
+    [ "$(/usr/bin/grep -c '^layout_sha256=' <<<"$materialization")" -eq 1 ] \
+        || die "$display bootstrap candidate layout result is malformed"
+    observed_layout_sha="$(
+        /usr/bin/sed -n 's/^layout_sha256=//p' <<<"$materialization"
+    )"
+    [ "$observed_layout_sha" = "$expected_layout_sha" ] \
+        || die "$display bootstrap candidate layout differs from the reviewed pin"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$candidate" \
+        --destination "$final" \
+        || die "$display bootstrap candidate promotion failed"
+    online_image_provenance verify-archive \
+        --archive "$final" \
+        --archive-sha "$archive_sha" \
+        --archive-size "$archive_size" \
+        "${args[@]}" \
+        || die "$display promoted bootstrap archive verification failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the builder image archive lock"
+    exec {lock_fd}<&-
+    printf 'promoted=%s\n' "$final"
+}
+
+maintenance_promote_deb_builder_bootstrap_candidate() {
+    require_deb_builder_bootstrap_pins
+    local args=()
     mapfile -d '' args < <(deb_builder_bootstrap_spec_args)
-    result="$(
-        online_image_provenance maintenance-capture \
-            --output "$output" \
-            "${args[@]}"
-    )" || die "Debian builder bootstrap archive capture failed"
-    printf '%s\n' "$result"
+    promote_builder_bootstrap_candidate \
+        "Debian builder" \
+        deb-builder-bootstrap-candidate.docker.tar.gz \
+        deb-builder-bootstrap.docker.tar.gz \
+        "$SHA256_DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE" \
+        "$DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE" \
+        "$SHA256_DEB_BUILDER_BOOTSTRAP_OCI_LAYOUT" \
+        "${args[@]}"
 }
 
-maintenance_capture_android_builder_bootstrap_image() {
-    require_android_builder_image_pins
-    local directory="$ONLINE_DIR/build-images"
-    local output="$directory/android-builder-bootstrap.docker.tar.gz"
-    local args=() result
-    /usr/bin/install -d -m 0700 "$directory"
-    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
-       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-        || die "builder image archive root must be current-user-owned mode 0700"
-    [ ! -e "$output" ] && [ ! -L "$output" ] \
-        || die "Android builder bootstrap archive already exists"
+maintenance_promote_android_builder_bootstrap_candidate() {
+    require_android_builder_bootstrap_pins
+    local args=()
     mapfile -d '' args < <(android_builder_bootstrap_spec_args)
-    result="$(
-        online_image_provenance maintenance-capture \
-            --output "$output" \
-            "${args[@]}"
-    )" || die "Android builder bootstrap archive capture failed"
-    printf '%s\n' "$result"
+    promote_builder_bootstrap_candidate \
+        "Android builder" \
+        android-builder-bootstrap-candidate.docker.tar.gz \
+        android-builder-bootstrap.docker.tar.gz \
+        "$SHA256_ANDROID_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE" \
+        "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE" \
+        "$SHA256_ANDROID_BUILDER_BOOTSTRAP_OCI_LAYOUT" \
+        "${args[@]}"
 }
 
-maintenance_capture_win_helper_bootstrap_image() {
-    require_win_helper_image_pins
-    local directory="$ONLINE_DIR/build-images"
-    local output="$directory/win-helper-bootstrap.docker.tar.gz"
-    local args=() result
-    /usr/bin/install -d -m 0700 "$directory"
-    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
-       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-        || die "builder image archive root must be current-user-owned mode 0700"
-    [ ! -e "$output" ] && [ ! -L "$output" ] \
-        || die "Windows helper bootstrap archive already exists"
+maintenance_promote_win_helper_bootstrap_candidate() {
+    require_win_helper_bootstrap_pins
+    local args=()
     mapfile -d '' args < <(win_helper_bootstrap_spec_args)
-    result="$(
-        online_image_provenance maintenance-capture \
-            --output "$output" \
-            "${args[@]}"
-    )" || die "Windows helper bootstrap archive capture failed"
-    printf '%s\n' "$result"
+    promote_builder_bootstrap_candidate \
+        "Windows helper" \
+        win-helper-bootstrap-candidate.docker.tar.gz \
+        win-helper-bootstrap.docker.tar.gz \
+        "$SHA256_WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE" \
+        "$WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE" \
+        "$SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT" \
+        "${args[@]}"
 }
 
 require_online_fetch_builder_image() {
@@ -5397,9 +5645,40 @@ main() {
             stage_windows_wix_nuget
             return 0
             ;;
-        --maintenance-build-image-candidates)
-            [ "$#" -eq 1 ] || die "--maintenance-build-image-candidates takes no arguments"
-            maintenance_build_image_candidates
+        --maintenance-build-deb-builder-bootstrap-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-build-deb-builder-bootstrap-candidate takes no arguments"
+            maintenance_build_deb_builder_bootstrap_candidate
+            return 0
+            ;;
+        --maintenance-build-android-builder-bootstrap-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-build-android-builder-bootstrap-candidate takes no arguments"
+            maintenance_build_android_builder_bootstrap_candidate
+            return 0
+            ;;
+        --maintenance-build-win-helper-bootstrap-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-build-win-helper-bootstrap-candidate takes no arguments"
+            maintenance_build_win_helper_bootstrap_candidate
+            return 0
+            ;;
+        --maintenance-promote-deb-builder-bootstrap-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-promote-deb-builder-bootstrap-candidate takes no arguments"
+            maintenance_promote_deb_builder_bootstrap_candidate
+            return 0
+            ;;
+        --maintenance-promote-android-builder-bootstrap-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-promote-android-builder-bootstrap-candidate takes no arguments"
+            maintenance_promote_android_builder_bootstrap_candidate
+            return 0
+            ;;
+        --maintenance-promote-win-helper-bootstrap-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-promote-win-helper-bootstrap-candidate takes no arguments"
+            maintenance_promote_win_helper_bootstrap_candidate
             return 0
             ;;
         --maintenance-build-deb-builder-certified-candidate)
@@ -5456,24 +5735,6 @@ main() {
         --dart-audit-inputs)
             [ "$#" -eq 1 ] || die "--dart-audit-inputs takes no arguments"
             stage_dart_audit_inputs
-            return 0
-            ;;
-        --maintenance-capture-win-helper-bootstrap-image)
-            [ "$#" -eq 1 ] \
-                || die "--maintenance-capture-win-helper-bootstrap-image takes no arguments"
-            maintenance_capture_win_helper_bootstrap_image
-            return 0
-            ;;
-        --maintenance-capture-deb-builder-bootstrap-image)
-            [ "$#" -eq 1 ] \
-                || die "--maintenance-capture-deb-builder-bootstrap-image takes no arguments"
-            maintenance_capture_deb_builder_bootstrap_image
-            return 0
-            ;;
-        --maintenance-capture-android-builder-bootstrap-image)
-            [ "$#" -eq 1 ] \
-                || die "--maintenance-capture-android-builder-bootstrap-image takes no arguments"
-            maintenance_capture_android_builder_bootstrap_image
             return 0
             ;;
         --maintenance-capture-devcheck-image)
@@ -5543,7 +5804,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-win-helper-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

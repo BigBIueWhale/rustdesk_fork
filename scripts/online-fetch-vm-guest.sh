@@ -151,7 +151,12 @@ for identity in "$ACQUISITION_UID" "$ACQUISITION_GID"; do
 done
 case "$REQUEST" in
     __full__|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|\
-    --maintenance-build-image-candidates|\
+    --maintenance-build-deb-builder-bootstrap-candidate|\
+    --maintenance-build-android-builder-bootstrap-candidate|\
+    --maintenance-build-win-helper-bootstrap-candidate|\
+    --maintenance-promote-deb-builder-bootstrap-candidate|\
+    --maintenance-promote-android-builder-bootstrap-candidate|\
+    --maintenance-promote-win-helper-bootstrap-candidate|\
     --maintenance-build-deb-builder-certified-candidate|\
     --maintenance-promote-deb-builder-certified-candidate|\
     --maintenance-build-android-builder-certified-candidate|\
@@ -161,9 +166,6 @@ case "$REQUEST" in
     --maintenance-build-apple-check-image-candidate|\
     --maintenance-build-dart-audit-image-candidate|\
     --maintenance-build-rust-audit-image-candidate|\
-    --maintenance-capture-deb-builder-bootstrap-image|\
-    --maintenance-capture-android-builder-bootstrap-image|\
-    --maintenance-capture-win-helper-bootstrap-image|\
     --maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|\
     --maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|\
     --devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|\

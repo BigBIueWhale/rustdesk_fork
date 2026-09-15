@@ -199,6 +199,13 @@ class Spec:
 
 
 @dataclass(frozen=True)
+class ArchiveIdentity:
+    image_id: str
+    manifest_id: str
+    config_id: str
+
+
+@dataclass(frozen=True)
 class CertifiedBuilderSpec:
     role: str
     image_id: str
@@ -3601,7 +3608,7 @@ def validate_modern_archive(
     member_sizes: dict[str, int],
     member_hashes: dict[str, str],
     spec: ImageSpec,
-) -> None:
+) -> ArchiveIdentity:
     if "repositories" in files:
         fail("content-addressed Docker archive must not contain legacy repositories metadata")
     layout = parse_json(metadata.get("oci-layout"), "oci-layout")
@@ -3873,6 +3880,16 @@ def validate_modern_archive(
         fail("Docker archive contains an unreferenced non-blob file")
     if not directories.issubset({"blobs", "blobs/sha256"}):
         fail("Docker archive contains an unreferenced directory")
+    manifest_id = image_descriptor.get("digest")
+    config_id = config_descriptor.get("digest")
+    if not isinstance(manifest_id, str) or not IMAGE_ID.fullmatch(manifest_id) \
+       or not isinstance(config_id, str) or not IMAGE_ID.fullmatch(config_id):
+        fail("Docker archive runtime identity is malformed")
+    return ArchiveIdentity(
+        image_id=spec.image_id,
+        manifest_id=manifest_id,
+        config_id=config_id,
+    )
 
 
 def validate_legacy_archive(
@@ -3913,7 +3930,10 @@ def validate_legacy_archive(
     validate_config(parse_json(metadata.get(expected_config), "image config"), layers, spec)
 
 
-def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
+def validate_archive_stream(
+    stream: BinaryIO,
+    spec: ImageSpec,
+) -> ArchiveIdentity | None:
     seen: set[str] = set()
     folded: set[str] = set()
     files: set[str] = set()
@@ -3974,9 +3994,18 @@ def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
     if modern_markers:
         if modern_markers != {"index.json", "oci-layout"}:
             fail("Docker archive has an incomplete content-addressed layout")
-        validate_modern_archive(item, files, directories, metadata, member_sizes, member_hashes, spec)
+        return validate_modern_archive(
+            item,
+            files,
+            directories,
+            metadata,
+            member_sizes,
+            member_hashes,
+            spec,
+        )
     else:
         validate_legacy_archive(item, files, directories, metadata, member_hashes, spec)
+        return None
 
 
 def hash_open_file(stream: BinaryIO) -> str:
@@ -4001,12 +4030,15 @@ def verify_archive_fd(
     expected_archive_sha: str,
     spec: ImageSpec,
     expected_archive_size: int | None = None,
-) -> os.stat_result:
+    *,
+    require_private: bool = False,
+) -> tuple[os.stat_result, ArchiveIdentity | None]:
     expected_archive_sha = require_sha(expected_archive_sha, "image archive SHA-256")
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         fail("image archive must be one non-hardlinked regular file")
-    if requires_private_archive(spec):
+    private_archive = requires_private_archive(spec) or require_private
+    if private_archive:
         if before.st_uid != os.getuid() or before.st_gid != os.getgid():
             fail(f"{spec.role} image archive must be owned by the invoking identity")
         if stat.S_IMODE(before.st_mode) != 0o400:
@@ -4027,13 +4059,15 @@ def verify_archive_fd(
     os.lseek(fd, 0, os.SEEK_SET)
     hashing = HashingReader(os.fdopen(os.dup(fd), "rb"))
     try:
-        validate_archive_stream(hashing, spec)
+        identity = validate_archive_stream(hashing, spec)
     finally:
         hashing.stream.close()
     if hashing.digest.hexdigest() != expected_archive_sha:
         fail("image archive changed between byte verification and structure verification")
     stable_file(before, os.fstat(fd), archive_path)
-    return before
+    if require_private and identity is None:
+        fail("bootstrap candidate capture requires a content-addressed OCI archive")
+    return before, identity
 
 
 def open_archive(archive_path: Path) -> int:
@@ -4051,10 +4085,20 @@ def verify_archive(
     expected_archive_sha: str,
     spec: ImageSpec,
     expected_archive_size: int | None = None,
-) -> None:
+    *,
+    require_private: bool = False,
+) -> ArchiveIdentity | None:
     fd = open_archive(archive_path)
     try:
-        verify_archive_fd(fd, archive_path, expected_archive_sha, spec, expected_archive_size)
+        _, identity = verify_archive_fd(
+            fd,
+            archive_path,
+            expected_archive_sha,
+            spec,
+            expected_archive_size,
+            require_private=require_private,
+        )
+        return identity
     finally:
         os.close(fd)
 
@@ -4311,7 +4355,7 @@ def materialize_oci_layout(
     blobs_fd = -1
     sha_fd = -1
     try:
-        before = verify_archive_fd(
+        before, _ = verify_archive_fd(
             fd,
             archive_path,
             expected_archive_sha,
@@ -4494,7 +4538,7 @@ def load_archive(
 ) -> None:
     fd = open_archive(archive_path)
     try:
-        before = verify_archive_fd(
+        before, _ = verify_archive_fd(
             fd,
             archive_path,
             expected_archive_sha,
@@ -5286,11 +5330,18 @@ def canonicalize_certified_builder_oci_export(
         os.close(source_fd)
 
 
-def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
+def capture(
+    output: Path,
+    spec: ImageSpec,
+    *,
+    require_private: bool = False,
+    layout_output: Path | None = None,
+) -> tuple[str, int, ArchiveIdentity | None, str | None]:
     verify_local(spec.image_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
-    if requires_private_archive(spec):
+    private_archive = requires_private_archive(spec) or require_private
+    if private_archive:
         validate_private_output_parent(output.parent)
         if isinstance(spec, Spec):
             result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
@@ -5319,6 +5370,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         fail(f"stale image archive capture temporary exists: {temporary}")
     digest = hashlib.sha256()
     count = 0
+    layout_sha: str | None = None
     process = subprocess.Popen([DOCKER, "save", save_ref], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         if process.stdout is None:
@@ -5345,10 +5397,29 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         stderr = process.stderr.read() if process.stderr is not None else b""
         if process.wait() != 0:
             fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
-        if requires_private_archive(spec):
+        if private_archive:
             temporary.chmod(0o400)
             archive_sha = digest.hexdigest()
-            verify_archive(temporary, archive_sha, spec, count)
+            verify_archive(
+                temporary,
+                archive_sha,
+                spec,
+                count,
+                require_private=require_private,
+            )
+            if layout_output is not None:
+                if not require_private or not isinstance(spec, Spec):
+                    fail(
+                        "pre-publication OCI materialization is restricted "
+                        "to a private bootstrap candidate capture"
+                    )
+                layout_sha = materialize_oci_layout(
+                    temporary,
+                    archive_sha,
+                    count,
+                    spec,
+                    layout_output,
+                )
             rename_noreplace(temporary, output)
         else:
             os.replace(temporary, output)
@@ -5362,15 +5433,16 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
             pass
         raise
     archive_sha = digest.hexdigest()
-    verify_archive(
+    identity = verify_archive(
         output,
         archive_sha,
         spec,
         count
-        if requires_private_archive(spec)
+        if private_archive
         else None,
+        require_private=require_private,
     )
-    return archive_sha, count
+    return archive_sha, count, identity, layout_sha
 
 
 def create_fixture_archive(path: Path, spec: Spec) -> str:
@@ -8260,6 +8332,18 @@ def self_test() -> None:
         )
         expect_failure(lambda: verify_archive(archive, archive_sha, wrong_tag), "wrong archive image tag")
         expect_failure(lambda: verify_archive(archive, "f" * 64, fixture_spec), "wrong archive pin")
+        archive.chmod(0o400)
+        expect_failure(
+            lambda: verify_archive(
+                archive,
+                archive_sha,
+                fixture_spec,
+                archive.stat().st_size,
+                require_private=True,
+            ),
+            "legacy bootstrap candidate archive",
+        )
+        archive.chmod(0o600)
         with archive.open("ab") as stream:
             stream.write(b"mutation")
         expect_failure(lambda: verify_archive(archive, archive_sha, fixture_spec), "mutated archive")
@@ -8275,6 +8359,54 @@ def self_test() -> None:
         )
         modern_sha = hashlib.sha256(modern_archive.read_bytes()).hexdigest()
         verify_archive(modern_archive, modern_sha, modern_spec)
+        modern_archive.chmod(0o400)
+        expect_failure(
+            lambda: verify_archive(
+                modern_archive,
+                modern_sha,
+                modern_spec,
+                modern_archive.stat().st_size + 1,
+                require_private=True,
+            ),
+            "bootstrap candidate wrong exact size",
+        )
+        modern_archive.chmod(0o600)
+        expect_failure(
+            lambda: verify_archive(
+                modern_archive,
+                modern_sha,
+                modern_spec,
+                modern_archive.stat().st_size,
+                require_private=True,
+            ),
+            "bootstrap candidate writable mode",
+        )
+        modern_archive.chmod(0o400)
+        modern_link = Path(temporary) / "modern-image-hardlink.tar.gz"
+        os.link(modern_archive, modern_link)
+        expect_failure(
+            lambda: verify_archive(
+                modern_archive,
+                modern_sha,
+                modern_spec,
+                modern_archive.stat().st_size,
+                require_private=True,
+            ),
+            "bootstrap candidate hard link",
+        )
+        modern_link.unlink()
+        modern_identity = verify_archive(
+            modern_archive,
+            modern_sha,
+            modern_spec,
+            modern_archive.stat().st_size,
+            require_private=True,
+        )
+        if modern_identity is None \
+           or modern_identity.image_id != modern_id \
+           or not IMAGE_ID.fullmatch(modern_identity.manifest_id) \
+           or not IMAGE_ID.fullmatch(modern_identity.config_id):
+            fail("bootstrap candidate archive identity extraction failed")
 
         android_archive = (
             Path(temporary) / "certified-android-builder-image.tar.gz"
@@ -10124,6 +10256,16 @@ def argument_parser() -> argparse.ArgumentParser:
     capture_parser = subparsers.add_parser("maintenance-capture")
     add_spec_arguments(capture_parser)
     capture_parser.add_argument("--output", type=Path, required=True)
+    bootstrap_capture = subparsers.add_parser(
+        "maintenance-capture-bootstrap-candidate"
+    )
+    add_spec_arguments(bootstrap_capture)
+    bootstrap_capture.add_argument("--output", type=Path, required=True)
+    bootstrap_capture.add_argument(
+        "--layout-output",
+        type=Path,
+        required=True,
+    )
     estimate = subparsers.add_parser("maintenance-estimate")
     add_spec_arguments(estimate)
     return parser
@@ -10205,8 +10347,49 @@ def main() -> int:
             args.output,
         )
         print(f"layout_sha256={layout_sha}")
-    elif args.command == "maintenance-capture":
-        archive_sha, size = capture(args.output, spec)
+    elif args.command in {
+        "maintenance-capture",
+        "maintenance-capture-bootstrap-candidate",
+    }:
+        is_bootstrap_candidate = args.role in {
+            "android-builder-bootstrap-candidate",
+            "deb-builder-bootstrap-candidate",
+            "win-helper-bootstrap-candidate",
+        }
+        if args.command == "maintenance-capture" and is_bootstrap_candidate:
+            fail(
+                "bootstrap candidates require their dedicated private "
+                "capture operation"
+            )
+        if args.command == "maintenance-capture-bootstrap-candidate" \
+           and not is_bootstrap_candidate:
+            fail(
+                "bootstrap candidate capture accepts only an explicit "
+                "builder-bootstrap-candidate role"
+            )
+        archive_sha, size, identity, layout_sha = capture(
+            args.output,
+            spec,
+            require_private=(
+                args.command
+                == "maintenance-capture-bootstrap-candidate"
+            ),
+            layout_output=(
+                args.layout_output
+                if args.command
+                == "maintenance-capture-bootstrap-candidate"
+                else None
+            ),
+        )
+        if args.command == "maintenance-capture-bootstrap-candidate" \
+           and identity is None:
+            fail("bootstrap candidate archive identity is unavailable")
+        if identity is not None:
+            print(f"image_id={identity.image_id}")
+            print(f"manifest_id={identity.manifest_id}")
+            print(f"config_id={identity.config_id}")
+        if layout_sha is not None:
+            print(f"layout_sha256={layout_sha}")
         print(f"archive={args.output}")
         print(f"sha256={archive_sha}")
         print(f"bytes={size}")

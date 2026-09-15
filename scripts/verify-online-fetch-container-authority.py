@@ -122,6 +122,25 @@ def validate(repo: pathlib.Path) -> None:
         raise AuthorityError("writable virtiofs device inventory differs")
     if outer.count("start_virtiofsd ") != 3:
         raise AuthorityError("Landlocked virtiofsd authority inventory differs")
+    bootstrap_operations = (
+        "--maintenance-build-deb-builder-bootstrap-candidate",
+        "--maintenance-build-android-builder-bootstrap-candidate",
+        "--maintenance-build-win-helper-bootstrap-candidate",
+        "--maintenance-promote-deb-builder-bootstrap-candidate",
+        "--maintenance-promote-android-builder-bootstrap-candidate",
+        "--maintenance-promote-win-helper-bootstrap-candidate",
+    )
+    for operation in bootstrap_operations:
+        require(outer, f"1:{operation}", f"outer {operation} admission")
+        require(guest, operation, f"guest {operation} admission")
+    for retired in (
+        "--maintenance-build-image-candidates",
+        "--maintenance-capture-deb-builder-bootstrap-image",
+        "--maintenance-capture-android-builder-bootstrap-image",
+        "--maintenance-capture-win-helper-bootstrap-image",
+    ):
+        forbid(outer, retired, f"retired outer operation {retired}")
+        forbid(guest, retired, f"retired guest operation {retired}")
     require(library, 'ONLINE_STATE_ROOT="$REPO_ROOT/online"', "online state root")
     require(
         library,

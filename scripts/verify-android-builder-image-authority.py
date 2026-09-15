@@ -247,6 +247,102 @@ def validate_online_fetch(source: str) -> None:
         "bootstrap-only acquisition",
     )
 
+    bootstrap_acquisition = shell_function(
+        source,
+        "maintenance_build_android_builder_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_acquisition,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "android-builder-bootstrap-candidate.docker.tar.gz",
+            'online_docker pull "ubuntu:24.04@',
+            "build_android_builder_bootstrap_image",
+            "capture_builder_bootstrap_candidate",
+        ),
+        "persistent bootstrap-candidate acquisition",
+    )
+    require_order(
+        bootstrap_acquisition,
+        (
+            "online_docker pull",
+            "build_android_builder_bootstrap_image",
+            "capture_builder_bootstrap_candidate",
+        ),
+        "bootstrap build/capture order",
+    )
+    require_absent(
+        bootstrap_acquisition,
+        (
+            "android-builder-bootstrap.docker.tar.gz",
+            "maintenance-rename-noreplace",
+        ),
+        "non-authoritative bootstrap acquisition",
+    )
+
+    bootstrap_capture = shell_function(
+        source,
+        "capture_builder_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_capture,
+        (
+            "maintenance-capture-bootstrap-candidate",
+            "--layout-output",
+            "image_id",
+            "manifest_id",
+            "config_id",
+            "layout_sha256",
+            "BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
+            "BOOTSTRAP_OCI_LAYOUT",
+        ),
+        "private bootstrap-candidate capture",
+    )
+    require_absent(
+        bootstrap_capture,
+        ("maintenance-rename-noreplace",),
+        "bootstrap candidate capture",
+    )
+
+    bootstrap_promotion = shell_function(
+        source,
+        "maintenance_promote_android_builder_bootstrap_candidate",
+    )
+    require_all(
+        bootstrap_promotion,
+        (
+            "require_android_builder_bootstrap_pins",
+            "android_builder_bootstrap_spec_args",
+            "android-builder-bootstrap-candidate.docker.tar.gz",
+            "android-builder-bootstrap.docker.tar.gz",
+            "SHA256_ANDROID_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE",
+            "ANDROID_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE",
+            "SHA256_ANDROID_BUILDER_BOOTSTRAP_OCI_LAYOUT",
+            "promote_builder_bootstrap_candidate",
+        ),
+        "pin-reviewed bootstrap promotion",
+    )
+    promotion_helper = shell_function(
+        source,
+        "promote_builder_bootstrap_candidate",
+    )
+    require_order(
+        promotion_helper,
+        (
+            "verify-archive",
+            "materialize-oci-layout",
+            'observed_layout_sha" = "$expected_layout_sha',
+            "maintenance-rename-noreplace",
+            "verify-archive",
+        ),
+        "bootstrap verify/promote order",
+    )
+    require_absent(
+        promotion_helper,
+        ("maintenance-capture", "docker save", "docker tag", "verify-load"),
+        "bootstrap promotion",
+    )
+
     certification = shell_function(
         source, "maintenance_build_android_builder_certified_candidate"
     )
@@ -350,6 +446,9 @@ def validate_online_fetch(source: str) -> None:
             "build_android_builder_image() {",
             "capture_android_builder_image() {",
             "maintenance_capture_android_builder_image() {",
+            "maintenance_capture_android_builder_bootstrap_image() {",
+            "--maintenance-build-image-candidates)",
+            "--maintenance-capture-android-builder-bootstrap-image)",
         ),
         "retired self-authorizing or Docker-store path",
     )

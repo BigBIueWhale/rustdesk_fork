@@ -2310,23 +2310,19 @@ def validate_certified_builder_attestation(
         )
     predicate = statement.get("predicate")
     if not isinstance(predicate, dict) \
-       or set(predicate) != {"buildDefinition", "runDetails"}:
-        fail(
-            f"Docker archive certified {spec.display_name} predicate differs"
-        )
-    definition = predicate.get("buildDefinition")
-    if not isinstance(definition, dict) \
-       or set(definition) != {
+       or set(predicate) != {
+           "builder",
+           "buildConfig",
            "buildType",
-           "resolvedDependencies",
-           "externalParameters",
-           "internalParameters",
+           "invocation",
+           "materials",
+           "metadata",
        } \
-       or definition.get("buildType") != (
-           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
-           "slsa-definitions.md"
+       or predicate.get("builder") != {"id": ""} \
+       or predicate.get("buildType") != (
+           "https://mobyproject.org/buildkit@v1"
        ) \
-       or definition.get("resolvedDependencies") != [
+       or predicate.get("materials") != [
            {
                "uri": (
                    f"pkg:oci/{spec.bootstrap_context_name}?"
@@ -2341,13 +2337,21 @@ def validate_certified_builder_attestation(
            }
        ]:
         fail(
-            f"Docker archive certified {spec.display_name} provenance does not "
-            "bind the exact bootstrap material"
+            f"Docker archive certified {spec.display_name} provenance does "
+            "not bind the exact v0.2 builder and bootstrap material"
         )
 
-    external = definition.get("externalParameters")
-    request = external.get("request") if isinstance(external, dict) else None
-    arguments = request.get("args") if isinstance(request, dict) else None
+    invocation = predicate.get("invocation")
+    parameters = (
+        invocation.get("parameters")
+        if isinstance(invocation, dict)
+        else None
+    )
+    arguments = (
+        parameters.get("args")
+        if isinstance(parameters, dict)
+        else None
+    )
     context_key = "context:" + spec.bootstrap_context_name
     context_argument = (
         arguments.get(context_key)
@@ -2381,31 +2385,24 @@ def validate_certified_builder_attestation(
         "frontend.caps": "moby.buildkit.frontend.contexts+forward",
         "no-cache": "",
     }
-    expected_request = {
+    expected_parameters = {
         "frontend": "dockerfile.v0",
         "args": expected_args,
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile"},
-            "request": {"args": expected_args},
-        },
-        "compatibilityVersion": 30,
     }
-    if external != {
-        "configSource": {"path": "Dockerfile"},
-        "request": expected_request,
+    if invocation != {
+        "configSource": {"entryPoint": "Dockerfile"},
+        "parameters": expected_parameters,
+        "environment": {"platform": "linux/amd64"},
     }:
         fail(
             f"Docker archive certified {spec.display_name} provenance does not "
             "bind the reviewed private recipe"
         )
 
-    run_details = predicate.get("runDetails")
-    metadata = (
-        run_details.get("metadata") if isinstance(run_details, dict) else None
-    )
+    metadata = predicate.get("metadata")
     buildkit_metadata = (
-        metadata.get("buildkit_metadata")
+        metadata.get("https://mobyproject.org/buildkit@v1#metadata")
         if isinstance(metadata, dict)
         else None
     )
@@ -2441,25 +2438,29 @@ def validate_certified_builder_attestation(
             ]
         },
     }
-    if not isinstance(run_details, dict) \
-       or set(run_details) != {"builder", "metadata"} \
-       or run_details.get("builder") != {"id": ""} \
-       or not isinstance(metadata, dict) \
+    if not isinstance(metadata, dict) \
        or set(metadata) != {
-           "buildkit_completeness",
-           "buildkit_metadata",
-           "finishedOn",
-           "invocationId",
-           "startedOn",
+           "buildFinishedOn",
+           "buildInvocationID",
+           "buildStartedOn",
+           "completeness",
+           "https://mobyproject.org/buildkit@v1#metadata",
+           "reproducible",
        } \
        or any(
            not isinstance(metadata.get(name), str) or not metadata.get(name)
-           for name in ("finishedOn", "invocationId", "startedOn")
+           for name in (
+               "buildFinishedOn",
+               "buildInvocationID",
+               "buildStartedOn",
+           )
        ) \
-       or metadata.get("buildkit_completeness") != {
-           "request": True,
-           "resolvedDependencies": False,
+       or metadata.get("completeness") != {
+           "parameters": True,
+           "environment": True,
+           "materials": False,
        } \
+       or metadata.get("reproducible") is not False \
        or not isinstance(buildkit_metadata, dict) \
        or set(buildkit_metadata) != {"layers", "source"} \
        or buildkit_metadata.get("layers") != {
@@ -2554,10 +2555,7 @@ def validate_certified_builder_attestation(
             "one networkless execution"
         )
 
-    internal = definition.get("internalParameters")
-    build_config = (
-        internal.get("buildConfig") if isinstance(internal, dict) else None
-    )
+    build_config = predicate.get("buildConfig")
     digest_mapping = (
         build_config.get("digestMapping")
         if isinstance(build_config, dict)
@@ -2568,15 +2566,7 @@ def validate_certified_builder_attestation(
         if isinstance(build_config, dict)
         else None
     )
-    if not isinstance(internal, dict) \
-       or set(internal) != {
-           "buildConfig",
-           "builderPlatform",
-           "dockerfileVersion",
-       } \
-       or internal.get("builderPlatform") != "linux/amd64" \
-       or internal.get("dockerfileVersion") != "1.25.0" \
-       or not isinstance(build_config, dict) \
+    if not isinstance(build_config, dict) \
        or set(build_config) != {"digestMapping", "llbDefinition"} \
        or not isinstance(digest_mapping, dict) \
        or len(digest_mapping) != 3 \
@@ -4225,20 +4215,48 @@ def validate_modern_archive(
             attestation_layers[0], metadata, member_sizes, member_hashes, "attestation statement"
         )
         attestation_layer = attestation_layers[0]
+        predicate_type = (
+            "https://slsa.dev/provenance/v0.2"
+            if isinstance(spec, CertifiedBuilderSpec)
+            else "https://slsa.dev/provenance/v1"
+        )
+        statement_type = (
+            "https://in-toto.io/Statement/v0.1"
+            if isinstance(spec, CertifiedBuilderSpec)
+            else "https://in-toto.io/Statement/v1"
+        )
         if not isinstance(attestation_layer, dict) \
            or attestation_layer.get("mediaType") != "application/vnd.in-toto+json" \
            or attestation_layer.get("annotations") != {
-               "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+               "in-toto.io/predicate-type": predicate_type
            }:
-            fail("Docker archive attestation statement media type or predicate annotation is unsupported")
+            fail(
+                "Docker archive attestation statement descriptor differs: "
+                "expected mediaType='application/vnd.in-toto+json' "
+                f"annotations={{'in-toto.io/predicate-type': "
+                f"{predicate_type!r}}}, got mediaType="
+                f"{attestation_layer.get('mediaType')!r} annotations="
+                f"{attestation_layer.get('annotations')!r}"
+                if isinstance(attestation_layer, dict)
+                else "Docker archive attestation statement is not an object"
+            )
         expected_blobs.add(attestation_layer_name)
         statement = parse_json(statement_bytes, "attestation statement blob")
         subjects = statement.get("subject") if isinstance(statement, dict) else None
-        if not isinstance(statement, dict) or statement.get("_type") != "https://in-toto.io/Statement/v1" \
-           or statement.get("predicateType") != "https://slsa.dev/provenance/v1" \
+        if not isinstance(statement, dict) or statement.get("_type") != statement_type \
+           or statement.get("predicateType") != predicate_type \
            or not isinstance(subjects, list) \
            or not any(isinstance(subject, dict) and subject.get("digest") == {"sha256": str(actual_digest).removeprefix("sha256:")} for subject in subjects):
-            fail("Docker archive provenance attestation does not name the image manifest")
+            fail(
+                "Docker archive provenance attestation does not name the "
+                f"image manifest: expected type={statement_type!r} "
+                f"predicateType={predicate_type!r} digest="
+                f"{str(actual_digest).removeprefix('sha256:')!r}, got "
+                f"type={statement.get('_type')!r} predicateType="
+                f"{statement.get('predicateType')!r} subjects={subjects!r}"
+                if isinstance(statement, dict)
+                else "Docker archive provenance statement is not an object"
+            )
         if isinstance(spec, CertifiedBuilderSpec):
             validate_certified_builder_attestation(
                 statement,
@@ -8767,8 +8785,8 @@ def create_certified_builder_fixture_archive(
     )
     statement = encoded(
         {
-            "_type": "https://in-toto.io/Statement/v1",
-            "predicateType": "https://slsa.dev/provenance/v1",
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v0.2",
             "subject": [
                 {
                     "name": (
@@ -8786,60 +8804,49 @@ def create_certified_builder_fixture_archive(
                 }
             ],
             "predicate": {
-                "buildDefinition": {
-                    "buildType": (
-                        "https://github.com/moby/buildkit/blob/master/"
-                        "docs/attestations/slsa-definitions.md"
-                    ),
-                    "resolvedDependencies": [
-                        {
-                            "uri": (
-                                f"pkg:oci/{context_name}?"
-                                f"digest={material_id}"
-                                "&platform=linux%2Famd64"
-                            ),
-                            "digest": {
-                                "sha256": material_id.removeprefix("sha256:")
-                            },
-                        }
-                    ],
-                    "externalParameters": {
-                        "configSource": {"path": "Dockerfile"},
-                        "request": {
-                            "frontend": "dockerfile.v0",
-                            "args": expected_args,
-                            "locals": [
-                                {"name": "context"},
-                                {"name": "dockerfile"},
-                            ],
-                            "root": {
-                                "configSource": {"path": "Dockerfile"},
-                                "request": {"args": expected_args},
-                            },
-                            "compatibilityVersion": 30,
+                "builder": {"id": ""},
+                "buildType": "https://mobyproject.org/buildkit@v1",
+                "materials": [
+                    {
+                        "uri": (
+                            f"pkg:oci/{context_name}?"
+                            f"digest={material_id}"
+                            "&platform=linux%2Famd64"
+                        ),
+                        "digest": {
+                            "sha256": material_id.removeprefix("sha256:")
                         },
                     },
-                    "internalParameters": {
-                        "buildConfig": {
-                            "digestMapping": digest_mapping,
-                            "llbDefinition": llb,
-                        },
-                        "builderPlatform": "linux/amd64",
-                        "dockerfileVersion": "1.25.0",
+                ],
+                "invocation": {
+                    "configSource": {"entryPoint": "Dockerfile"},
+                    "parameters": {
+                        "frontend": "dockerfile.v0",
+                        "args": expected_args,
+                        "locals": [
+                            {"name": "context"},
+                            {"name": "dockerfile"},
+                        ],
                     },
+                    "environment": {"platform": "linux/amd64"},
                 },
-                "runDetails": {
-                    "builder": {"id": ""},
-                    "metadata": {
-                        "invocationId": "fixture",
-                        "startedOn": "2026-07-25T00:00:00Z",
-                        "finishedOn": "2026-07-25T00:00:01Z",
-                        "buildkit_metadata": buildkit_metadata,
-                        "buildkit_completeness": {
-                            "request": True,
-                            "resolvedDependencies": False,
-                        },
+                "buildConfig": {
+                    "digestMapping": digest_mapping,
+                    "llbDefinition": llb,
+                },
+                "metadata": {
+                    "buildInvocationID": "fixture",
+                    "buildStartedOn": "2026-07-25T00:00:00Z",
+                    "buildFinishedOn": "2026-07-25T00:00:01Z",
+                    "completeness": {
+                        "parameters": True,
+                        "environment": True,
+                        "materials": False,
                     },
+                    "reproducible": False,
+                    "https://mobyproject.org/buildkit@v1#metadata": (
+                        buildkit_metadata
+                    ),
                 },
             },
         }
@@ -8848,7 +8855,7 @@ def create_certified_builder_fixture_archive(
         statement,
         "application/vnd.in-toto+json",
         annotations={
-            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v0.2"
         },
     )
     attestation_config = encoded(

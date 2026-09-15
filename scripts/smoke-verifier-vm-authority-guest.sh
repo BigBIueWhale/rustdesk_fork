@@ -35,6 +35,7 @@ readonly ANDROID_KEYSTORE_SCRIPT=$VERIFY_REPO/scripts/gen-android-keystore.sh
 readonly ANDROID_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-android.sh
 readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-builder-image-authority.py
 readonly DEB_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-deb-builder-image-authority.py
+readonly WIN_HELPER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-win-helper-image-authority.py
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
@@ -117,6 +118,8 @@ for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     build-android.sh verify-android-builder-authority.py \
     verify-android-builder-image-authority.py \
     verify-deb-builder-image-authority.py \
+    verify-win-helper-image-authority.py windows-helper-runtime.sh \
+    build-windows-vm.sh provision-windows-vm.sh verify-windows-golden.sh \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
     online-fetch.sh android-rust-check.sh \
@@ -598,6 +601,22 @@ deb_image_source_gate_output="$(
 printf '%s\n' "$deb_image_source_gate_output"
 printf 'VERIFIER_VM_DEB_IMAGE_SOURCE_GATE=pass\n'
 
+win_helper_image_source_gate_status=0
+win_helper_image_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$WIN_HELPER_IMAGE_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || win_helper_image_source_gate_status=$?
+[ "${#win_helper_image_source_gate_output}" -le 4096 ] \
+    || fail 'Windows helper-image source-gate diagnostic exceeded its bound'
+[ "$win_helper_image_source_gate_status" -eq 0 ] \
+    || fail "Windows helper-image compact source gate failed: $win_helper_image_source_gate_output"
+[ "$win_helper_image_source_gate_output" = \
+  'verify-win-helper-image-authority: ok' ] \
+    || fail "Windows helper-image source-gate result differs: $win_helper_image_source_gate_output"
+printf '%s\n' "$win_helper_image_source_gate_output"
+printf 'VERIFIER_VM_WIN_HELPER_IMAGE_SOURCE_GATE=pass\n'
+
 offline_image_provenance_status=0
 offline_image_provenance_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -611,7 +630,7 @@ offline_image_provenance_output="$(
   'offline image provenance self-test: PASS' ] \
     || fail "offline image-provenance result differs: $offline_image_provenance_output"
 printf '%s\n' "$offline_image_provenance_output"
-printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39 debian_decisions=8\n'
+printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39 debian_decisions=8 windows_decisions=21\n'
 
 if /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-android-rust-entry.out" 2>"$ROOT/root-android-rust-entry.err"; then

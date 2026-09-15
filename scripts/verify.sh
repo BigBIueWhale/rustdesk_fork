@@ -264,8 +264,8 @@ fi
 
 echo "== (0d2) authenticated Windows helper image distribution authority (R-S11dc/R-S11e-121) =="
 r_s11dc=
-if ! /usr/bin/python3 -I -S scripts/verify-win-helper-image-authority.py --repo . --self-test; then
-  r_s11dc="$r_s11dc authority-or-mutation-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/verify-win-helper-image-authority.py --repo .; then
+  r_s11dc="$r_s11dc compact-source-gate-failed"
 fi
 if [ -n "$r_s11dc" ]; then
   echo "  FAIL R-S11dc Windows helper image distribution authority:$r_s11dc"

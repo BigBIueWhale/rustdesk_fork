@@ -6613,172 +6613,62 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed Debian lifecycle, other maintenance images, native/device behavior, independent
   reproduction, and external review remain open.
 - **R-S11dc/R-S11e-121 — authenticated Windows helper image distribution authority —
-  SOURCE, DIRECT-OCI DISTRIBUTION, REAL ARCHIVE/RUNTIME, AND FOCUSED/WORKSPACE MUTATION
-  EVIDENCE RECORDED 2026-07-25; CLEAN EXACT-COMMIT R-B2/R-B10 RELEASE, WINDOWS GUEST
-  ARTIFACT/LIFECYCLE, DEVICE/NATIVE, OTHER MAINTENANCE-IMAGE DISTRIBUTION, AND
-  EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
-  acquisition/build host, its local Docker/BuildKit engine, and every offline Windows release
-  helper consumer. Endpoint/action: Windows-helper maintenance acquisition, direct
-  certification, canonicalization, exact-pin promotion, ordinary `load_builder_images`,
-  `windows_helper_runtime_resolve`, and `require_pinned_builder_image win-helper`. Boundary:
-  a historical network/root package-installing helper build with incomplete source metadata ↔
-  the exact independently archived helper executable authority admitted to Windows release
-  construction and inspection.
+  SOURCE TOPOLOGY IMPLEMENTED; HISTORICAL EXACT-ARCHIVE/LOADED-RUNTIME EVIDENCE RETAINED;
+  CURRENT CERTIFICATION, COLD RELEASE, WINDOWS GUEST LIFECYCLE, INDEPENDENT REPRODUCTION,
+  AND EXTERNAL REVIEW REMAIN OPEN.** Platform/boundary: the unprivileged acquisition host,
+  local Docker/BuildKit certification transaction, and every offline Windows-release helper
+  consumer must admit one authenticated final helper without treating a mutable image tag,
+  network response, or self-asserted historical capture as authority.
 
-  Before this slice, `online/build-images/win-helper.docker.tar.gz` was a 982,288,329-byte
-  archive at SHA-256
-  `d1a13e3eb4de02a325bd9c08636e7a1f0eebc417bc38fade178b5f3627639ab5`.
-  Its image/index ID was
-  `sha256:aa9abae2debc838591649fb0b7b94f9f2f24e7848c699cd70e1103a690db21ce`,
-  runtime manifest
-  `sha256:736a425f6420889bd03a8abb0c2e6faae4765cc34d80af30be9b1480fe9f458e`,
-  and config
-  `sha256:9a66ffdc89b43eb424fc8632ad33048ce7a123d0001f2bb5d2d3a283bf4cccd4`.
-  The embedded reviewed helper recipe SHA-256
-  `b3b878c453c038a4d566bada84a2820031c57d2c9140ed18371451596b4ef75a`
-  and live/stored package-manifest SHA-256
-  `ac1a8dbaf2702bd3d0dfa312635f46384e6c8d5f6b54cf1f8bc7d624620b8adb`
-  are internally coherent. Its only mode-min BuildKit provenance nevertheless supplied
-  local-worktree VCS revision `ef8b8226…`; the Windows-helper Dockerfile committed at that
-  revision hashes to
-  `afab9207128393ba9ed18003db5997b6765c67e54c3ad725e8002add010cc9c5`,
-  not the embedded recipe. Docker's primary SLSA-definition documentation says local-context
-  VCS values are client-supplied metadata hints that BuildKit does not verify. The mismatch
-  made the old attestation insufficient build/source authority. It is not evidence that the
-  exact archive or package set changed, Docker escaped, host root was acquired, a listener or
-  public port was exposed, host RustDesk/service/configuration/firewall/network state changed,
-  exploitation occurred, or the host was compromised.
+  The historical 982,288,329-byte helper archive at SHA-256
+  `d1a13e3eb4de02a325bd9c08636e7a1f0eebc417bc38fade178b5f3627639ab5`
+  is bootstrap-only because its mode-min provenance names local-worktree revision
+  `ef8b8226…`, whose committed recipe differs from the embedded reviewed recipe. Its exact
+  image/config/manifest, recipe/package contract, and materialized OCI-layout identity remain
+  pinned as binary input; the mismatch is provenance debt, not evidence of changed packages,
+  Docker escape, host compromise, root acquisition, a listener, or any RustDesk/network/firewall
+  mutation.
 
-  The historical object is now bootstrap-only
-  `win-helper-bootstrap.docker.tar.gz`, current-user-owned, single-link, and mode 0400. Its
-  exact archive identity, index/config/manifest, recipe/package contract, and complete
-  materialized OCI-layout SHA-256
-  `5ca0ead07997fe6b4981a9d7bf30c37b32a949566d4931ef7847cf97a0dea0a5`
-  are separately pinned. The bootstrap parser accepts only
-  `win-helper-bootstrap[-candidate]`; it cannot interpret that image as the certified final
-  role. The common bounded materializer stably no-follow reads and twice hashes the archive,
-  creates each member descriptor-relatively through no-follow exclusive creation, validates
-  content-addressed blobs, synchronizes and seals the layout, and proves the independent
-  complete-layout identity around certification.
+  Final authority is one networkless UID/GID-1000 certification from that descriptor-verified
+  local OCI layout. The exact `Dockerfile.win-helper-certify` proves the embedded recipe,
+  live/stored package inventory, helper tools, `olefile`, and role contract without acquiring
+  or repairing anything. BuildKit receives no registry/tag context, pull, cache, secret, SSH
+  agent, privileged entitlement, load, tag, save, or push authority and directly exports one
+  private mode-max OCI result. The bounded shared canonicalizer produces the deterministic
+  null-tag mode-0400 archive and promotion verifies every final pin before descriptor-relative
+  `RENAME_NOREPLACE`.
 
-  `scripts/Dockerfile.win-helper-certify` is the sole 52-line certification recipe at
-  SHA-256
-  `f6e9b53451990284a9e81a32c7ae64b17b079182d7aa3f17a6d5d348351b896d`.
-  It names only `FROM win-helper-bootstrap`, sets `USER 1000:1000`, and has one
-  `RUN --network=none`. That operation proves live UID/GID, the embedded original helper
-  recipe, live and stored package manifests, exact `win-helper` contract, every required
-  helper executable, and importability of `olefile`. It installs, fetches, copies, and repairs
-  nothing. The maintenance build fixes an empty private Docker configuration/client endpoint,
-  clears client Git metadata with `BUILDX_GIT_INFO=false`, supplies only
-  `oci-layout://<private-layout>@<exact-index-id>`, and invokes BuildKit for Linux/amd64 with
-  no network, pull, cache, secret, SSH agent, privileged entitlement, registry context, load,
-  tag, or push. Mode-max provenance, `SOURCE_DATE_EPOCH=1700000000`, OCI media types, gzip
-  layer compression, and timestamp rewriting are explicit.
-
-  BuildKit writes only the fixed private direct OCI export
-  `rd-win-helper-certified:authenticated-v1`; it never loads or tags that result. The common
-  raw-export scanner bounds members and expanded content; exact-checks inventory, ordering,
-  headers, ownership, modes, timestamps, hash-named blobs, reachability, and the sole outer
-  descriptor; and rejects links/specials/PAX, nonzero trailing data, extra
-  descriptors/referrers, unexpected compatibility metadata, missing reachable objects, and
-  unreferenced objects. The canonicalizer derives the candidate index from that descriptor,
-  exact-matches the pinned runtime manifest/config and reachable graph, strips exporter
-  annotations, synthesizes `RepoTags: null`, and streams deterministic gzip/USTAR bytes
-  through no-follow exclusive creation. It reproves the raw source, seals the result mode
-  0400, and applies the semantic verdict before same-directory descriptor-relative
-  no-clobber publication.
-
-  The final certified archive is current-user-owned, single-link mode 0400, exactly
+  The final archive pins remain image
+  `sha256:bfc0d46a9c3806e2ac44ab66337f42ee7c46ff0b5f3fd35c5a6768883d19791e`,
+  manifest
+  `sha256:60d5edd1a08a831815d0727563943219cc3d950b18bd9f1a6a21f569f94c14c6`,
+  config
+  `sha256:03fc4ba441cda2ce0feabd51bef78ef081a2a3927252273237f8a93f401215e7`,
   982,289,690 bytes, and SHA-256
   `468f99ec23c4f3bc45599ee98c01163249f4d611f2f5545b45373455c3a5e795`.
-  Its image/index ID is
-  `sha256:bfc0d46a9c3806e2ac44ab66337f42ee7c46ff0b5f3fd35c5a6768883d19791e`,
-  runtime manifest
-  `sha256:60d5edd1a08a831815d0727563943219cc3d950b18bd9f1a6a21f569f94c14c6`,
-  and config
-  `sha256:03fc4ba441cda2ce0feabd51bef78ef081a2a3927252273237f8a93f401215e7`.
-  It has the exact three inherited layers plus one certification layer, 20 normalized history
-  entries, numeric-nonroot runtime config, exact labels, no tag/outer annotation or
-  unreachable member, and one in-toto provenance statement. The generalized validator
-  recursively rejects every VCS-shaped field and exact-matches the subject; sole bootstrap
-  material; request and five build arguments; embedded 52-line certification Dockerfile and
-  25-line source map; complete three-operation LLB; local OCI store/session; sole
-  UID/GID-1000 execution with BuildKit network mode 2 and only the root mount; layer mapping;
-  platform; metadata; and request-completeness state.
+  Ordinary loading, all three Windows helper consumers, and kernel derivation select only that
+  final archive; the runtime repeats full archive verification before and after derivation and
+  requires the exact loaded fingerprint. Networked acquisition and capture are bootstrap-only,
+  and generic/tag/save/final-capture fallbacks are absent.
 
-  The reviewed candidate was canonicalized directly into its fixed non-authoritative name,
-  independently verified against every final pin, and renamed as the same inode through
-  descriptor-relative `RENAME_NOREPLACE` into the absent final. Loading that archive yielded
-  the exact content ID above. A mount-free confined run used no pull/network, read-only root,
-  UID/GID 1000, all capabilities dropped, no-new-privileges, PID/memory/CPU ceilings, and a
-  bounded non-executable tmpfs, then rechecked live identity, embedded recipe/package
-  contract, the helper tools, and `olefile`. The ordinary loader now accepts only the final
-  archive and repeats the semantic plus loaded-runtime verdict. The Windows runtime performs
-  that complete archive verdict both before and after kernel derivation and then requires the
-  certified local-image fingerprint. Neither the bootstrap nor candidate can enter either
-  ordinary path. Networked acquisition emits only `win-helper-bootstrap-candidate`; the only
-  capture operation is bootstrap-only; the generic load/capture and overwrite-capable final
-  capture surfaces are absent. A separate device-free consumer replay parsed the certified
-  four-layer final archive and derived the exact 15,042,952-byte
-  `vmlinuz-6.8.0-134-generic` at pinned SHA-256
-  `72526aac4c8c3f63d30fe0741f0c3b1923e700585750cb135815d5c2f831b691`,
-  current UID/GID 1000, one link, and mode 0400.
+  Verification is split by observable property. The shared executable provenance suite owns a
+  distinct 21-decision Windows-helper archive/inspect/attestation/direct-OCI branch: it validates
+  the exact role contract and rejects identity, recipe, package, epoch, root, network, VCS,
+  source, exporter-name, and layer-map drift. The compact Windows-specific source gate owns only
+  pins, Dockerfile and shell transaction shape, final-only runtime selection, downstream
+  consumers, and retired-fallback absence; the former 49-mutation catalog, documentation checks,
+  provenance implementation scan, and reciprocal whole-workspace validator are deleted. Both
+  gates execute as UID/GID 4000 in the sole no-NIC verifier VM, which uses private Unix
+  management channels and proves host-listener invariance and joined residue-free cleanup.
 
-  One first diagnostic certification invocation supplied an obsolete package-manifest digest
-  and failed at the networkless certification assertion before emitting any archive. The
-  immutable bootstrap and repository pin both supplied the correct
-  `ac1a8dba…` value; rerunning with that exact pin succeeded without weakening the recipe.
-  One attempted cross-directory no-clobber rename of an already canonicalized diagnostic
-  candidate was refused by the publication helper because publication must remain within one
-  directory; it changed neither pathname. The final path was produced by canonicalizing
-  directly into the candidate directory and then applying the allowed same-directory
-  no-clobber promotion.
-
-  The self-excluding complete ignored online tree was regenerated through the canonical
-  maintenance writer and independently reverified at
-  `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`:
-  145,629 files, 42,831 directories, 41 symlinks, 30,669,039,776 content bytes,
-  16 hardlink groups, and 9 case collisions. Both real Windows-helper archives independently
-  passed their mount-free semantic validators after publication; exact stat/hash replay
-  confirmed current UID/GID 1000 ownership, one link, mode 0400, and the pinned sizes and
-  hashes, while the promoted Windows-helper candidate name was absent. The complete dedicated
-  certification scratch tree was restored to its bounded private-directory modes and retired
-  through the identity-bound no-follow cleanup helper.
-
-  The generalized archive/provenance behavioral suite, the new Windows-helper image gate's
-  49 mutations, the existing Windows helper runtime/KVM gate's tightened 43 mutations,
-  Android image gate's 55, Debian image gate's 39, online-container gate's 44, Rust image
-  gate's 95, Dart image gate's 85, Apple image gate's 56, Cargo-vendor gate's 23, the
-  independent workspace normal contract, and its complete in-memory source-mutation matrix
-  pass. The workspace matrix itself found three verifier-only masking/classification defects
-  while this slice was being validated: Android/Debian candidate extractions crossed into
-  later builder functions, the Windows runtime workspace check required presence instead of
-  exactly two structural archive calls, and two intended rejections used labels different
-  from their mutation inventory. The slices are now function-exact, the runtime cardinality is
-  exactly two, and the semantic labels agree. These were test-authority defects; no production
-  image/runtime mutation was accepted. The workspace executable fixture suite was not invoked
-  against the host user-systemd bus: the isolated container has no such bus, and no host
-  runtime socket was mounted. The complete source-mutation mode is the binding independent
-  source gate for this slice.
-
-  All project Bash/Python execution and verification for this slice ran in the immutable
-  unprivileged devcheck container with no network, read-only root/repository except the exact
-  private output path being created, no capabilities, no-new-privileges, no Docker socket or
-  published port, and explicit resource ceilings. Direct host Docker/BuildKit orchestration
-  was used only to create/load the reviewed project image. The certification Dockerfile's only
-  execution was UID/GID 1000 and networkless; its input was the local descriptor-verified OCI
-  layout. No root command or root container, privileged flag, added capability, host
-  namespace/device, Docker socket passed into a container, published port, release build, or
-  host RustDesk process/service/configuration/listener/firewall/network inspection or mutation
-  occurred. The generalized provenance behavioral suite now contains a distinct 21-check
-  Windows-helper branch; the focused authority gate and independent workspace gate bind the
-  recipe, pins, build graph, final-only loader, bootstrap-only capture, runtime pre/post
-  structural verification, requirement, Appendix C #256, and this ledger.
-
-  This slice does not execute the full cold exact-commit R-B2/R-B10 release, build or inspect a
-  Windows guest artifact, test install/upgrade/uninstall lifecycle in Windows, prove
-  Android/device/native installed-platform behavior, authenticate other maintenance images,
-  or complete R-V3 external review.
+  Historical evidence records successful semantic validation, exact loaded-runtime fingerprint,
+  and device-free derivation of the pinned 15,042,952-byte
+  `vmlinuz-6.8.0-134-generic` at SHA-256
+  `72526aac4c8c3f63d30fe0741f0c3b1923e700585750cb135815d5c2f831b691`.
+  The generated executable fixture is not either 982 MB archive, a real BuildKit certification,
+  a current loaded container, or a Windows artifact. Current clean exact-commit R-B2/R-B10
+  output, certification reproduction, Windows guest build/install/upgrade/uninstall and native
+  behavior, other maintenance images, independent reproduction, and R-V3 review remain open.
 - **R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write
   authority — SOURCE MIGRATED TO THE SOLE VERIFIER VM; REAL VM ENTRY/DOCKER REQUEST, ROOT/FOREIGN
   REFUSAL, LISTENER INVARIANCE, AND JOINED CLEANUP GREEN 2026-09-15; FULL PRODUCT SMOKE, EXACT R-B2

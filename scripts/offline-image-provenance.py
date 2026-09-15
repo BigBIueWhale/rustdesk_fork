@@ -4102,7 +4102,11 @@ def validate_modern_archive(
                or descriptor.get("annotations") != expected_annotations:
                 fail(
                     "Docker archive Apple check layer timestamp-rewrite "
-                    "annotations differ"
+                    f"annotations differ at layer {position}: expected "
+                    f"keys={sorted(expected_keys)!r} annotations="
+                    f"{expected_annotations!r}, got keys="
+                    f"{sorted(descriptor)!r} annotations="
+                    f"{descriptor.get('annotations')!r}"
                 )
         elif isinstance(spec, CertifiedBuilderSpec):
             expected_annotations = (
@@ -4121,7 +4125,11 @@ def validate_modern_archive(
                or descriptor.get("annotations") != expected_annotations:
                 fail(
                     f"Docker archive certified {spec.display_name} layer "
-                    "timestamp-rewrite annotations differ"
+                    f"timestamp-rewrite annotations differ at layer "
+                    f"{position}: expected keys={sorted(expected_keys)!r} "
+                    f"annotations={expected_annotations!r}, got keys="
+                    f"{sorted(descriptor)!r} annotations="
+                    f"{descriptor.get('annotations')!r}"
                 )
         name, _ = descriptor_blob(
             descriptor,

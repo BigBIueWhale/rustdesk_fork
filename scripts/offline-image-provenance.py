@@ -2366,7 +2366,8 @@ def validate_certified_builder_attestation(
     if context_match is None:
         fail(
             f"Docker archive certified {spec.display_name} provenance has an "
-            "unbound bootstrap OCI-layout context"
+            "unbound bootstrap OCI-layout context: "
+            f"{context_argument!r}"
         )
     oci_store = context_match.group(1)
     prefix = spec.argument_prefix

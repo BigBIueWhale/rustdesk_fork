@@ -6607,7 +6607,7 @@ def capture(
             verify_archive(
                 temporary,
                 archive_sha,
-                spec,
+                archive_spec,
                 count,
                 require_private=require_private,
             )
@@ -9675,6 +9675,8 @@ def expect_failure(operation: Callable[[], object], label: str) -> None:
 
 
 def self_test() -> None:
+    global DOCKER
+
     bounded_output = io.BytesIO()
     bounded_writer = BoundedDigestingWriter(
         bounded_output,
@@ -9819,11 +9821,12 @@ def self_test() -> None:
         ),
         "bootstrap seal unrelated configuration mutation",
     )
+    fixture_dockerfile = b"FROM scratch\n"
     base_spec = Spec(
         role="deb-builder",
         image_id="sha256:" + "0" * 64,
         base="ubuntu:18.04@sha256:" + "1" * 64,
-        dockerfile_sha256="2" * 64,
+        dockerfile_sha256=hashlib.sha256(fixture_dockerfile).hexdigest(),
         dpkg_sha256=dpkg_sha,
     )
     payload = {"Id": base_spec.image_id, "Config": {"Labels": base_spec.labels}}
@@ -10094,6 +10097,107 @@ def self_test() -> None:
             if "blobs/sha256/" + raw_target_id.removeprefix("sha256:") \
                in normalized_members:
                 fail("normalized bootstrap archive retained acquisition index")
+
+        capture_inspect = Path(temporary) / "capture-inspect.json"
+        capture_inspect.write_bytes(
+            canonical_json(
+                [
+                    {
+                        "Id": raw_target_id,
+                        "Config": {"Labels": raw_bootstrap_spec.labels},
+                    }
+                ]
+            )
+        )
+        capture_provenance = Path(temporary) / "capture-provenance"
+        capture_provenance.write_bytes(
+            raw_bootstrap_spec.contract_bytes()
+            + b"\0"
+            + manifest
+            + b"\0"
+            + manifest
+            + b"\0"
+            + fixture_dockerfile
+        )
+        provenance_command = (
+            "set -eu; "
+            "p=/usr/local/share/rustdesk-build-provenance; "
+            "cat \"$p/contract-v1\"; printf '\\0'; "
+            "cat \"$p/dpkg-manifest.tsv\"; printf '\\0'; "
+            "dpkg-query -W -f='${binary:Package}\\t${Version}\\n' "
+            "| LC_ALL=C sort; printf '\\0'; "
+            "cat \"$p/Dockerfile\""
+        )
+        expected_provenance_run = [
+            "run",
+            "--rm",
+            "--pull=never",
+            "--network=none",
+            "--read-only",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=64",
+            "--memory=512m",
+            "--memory-swap=512m",
+            "--cpus=1",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m",
+            "--entrypoint",
+            "/bin/sh",
+            raw_target_id,
+            "-c",
+            provenance_command,
+        ]
+        fake_docker = Path(temporary) / "docker"
+        fake_docker.write_text(
+            "#!/usr/bin/python3\n"
+            "import gzip\n"
+            "import shutil\n"
+            "import sys\n"
+            f"image_id = {raw_target_id!r}\n"
+            f"inspect_path = {str(capture_inspect)!r}\n"
+            f"archive_path = {str(docker_save_source)!r}\n"
+            f"provenance_path = {str(capture_provenance)!r}\n"
+            f"provenance_run = {expected_provenance_run!r}\n"
+            "if sys.argv[1:] == ['image', 'inspect', image_id]:\n"
+            "    with open(inspect_path, 'rb') as source:\n"
+            "        shutil.copyfileobj(source, sys.stdout.buffer)\n"
+            "elif sys.argv[1:] == provenance_run:\n"
+            "    with open(provenance_path, 'rb') as source:\n"
+            "        shutil.copyfileobj(source, sys.stdout.buffer)\n"
+            "elif sys.argv[1:] == ['save', image_id]:\n"
+            "    with gzip.open(archive_path, 'rb') as source:\n"
+            "        shutil.copyfileobj(source, sys.stdout.buffer)\n"
+            "else:\n"
+            "    raise SystemExit(64)\n",
+            encoding="utf-8",
+        )
+        fake_docker.chmod(0o500)
+        captured_bootstrap = Path(temporary) / "captured-bootstrap.tar.gz"
+        original_docker = DOCKER
+        try:
+            DOCKER = str(fake_docker)
+            (
+                captured_bootstrap_sha,
+                captured_bootstrap_size,
+                captured_bootstrap_identity,
+                captured_layout_sha,
+            ) = capture(
+                captured_bootstrap,
+                raw_bootstrap_spec,
+                require_private=True,
+            )
+        finally:
+            DOCKER = original_docker
+        if captured_layout_sha is not None \
+           or captured_bootstrap_identity != modern_identity \
+           or captured_bootstrap_sha != hashlib.sha256(
+               captured_bootstrap.read_bytes()
+           ).hexdigest() \
+           or captured_bootstrap_size != captured_bootstrap.stat().st_size:
+            fail("bootstrap capture canonical identity handoff differs")
 
         wrong_discard_source = (
             Path(temporary) / "wrong-discard-docker-save.tar.gz"

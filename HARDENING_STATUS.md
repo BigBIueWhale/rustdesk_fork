@@ -1589,6 +1589,17 @@ This corrects the former circular source transaction for Android, Debian, and th
 Android candidate build, pin review, promotion, and loaded runtime verdict are now complete; equivalent certified
 Debian and Windows-helper renewal remains open.
 
+Bootstrap acquisition keeps its transient containerd target-index identity only through validation of the raw
+Docker save. Normalization derives the canonical runtime-config image identity and runtime-manifest identity; every
+subsequent private-archive verification, OCI-layout materialization, publication, and final verification uses that
+canonical specification. The focused no-NIC verifier VM executes the complete inspect/provenance-read/save/
+normalize/verify/publish capture handoff against a realistic containerd-private fixture. Its 2026-09-16 run passed
+as numeric UID/GID 4000 in 53 seconds with unchanged host listeners and joined cleanup. The harness now carries and
+authenticates all four production/bootstrap Dockerfiles consumed by its three compact builder-image gates instead
+of invoking those gates with an incomplete read-only repository subset. This is executable fixture and harness-
+authority evidence, not a successful real Debian or Windows-helper bootstrap capture, certified-builder renewal,
+product build, native target result, cold artifact, independent reproduction, external review, or release result.
+
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
 with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded

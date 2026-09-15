@@ -311,6 +311,8 @@ for verify_source in verify.sh verify-release.sh build-release.sh apple-conform-
     test-windows-helper-vm-runtime.sh windows-helper-runtime.sh \
     windows-helper-extract-kernel.py windows-golden-inspect.sh \
     build-windows-vm.sh provision-windows-vm.sh verify-windows-golden.sh \
+    Dockerfile.android-builder Dockerfile.deb-builder \
+    Dockerfile.win-helper Dockerfile.builder-bootstrap-seal \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
     online-fetch.sh android-rust-check.sh \

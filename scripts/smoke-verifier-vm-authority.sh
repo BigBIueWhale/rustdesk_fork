@@ -3,18 +3,53 @@ set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin
 
+readonly HOST_UID="$(/usr/bin/id -u)"
+readonly HOST_GID="$(/usr/bin/id -g)"
+[ "$HOST_UID" -ne 0 ] \
+    || { echo 'verifier-VM authority smoke: host or container-root execution is forbidden' >&2; exit 1; }
+[ "$HOST_GID" -ne 0 ] \
+    || { echo 'verifier-VM authority smoke: a root primary group is forbidden' >&2; exit 1; }
 readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
-readonly HOST_UID="$(/usr/bin/id -u)"
-readonly HOST_GID="$(/usr/bin/id -g)"
-readonly STATE_ROOT="$REPO_ROOT/.harness-state/verifier-vm"
+MODE=authority-smoke
+LIFECYCLE_ARTIFACT=
+LIFECYCLE_ARTIFACT_SHA256=
+LIFECYCLE_COMMIT=
+DEV_CHECK_ARCHIVE=
+case "$#:${1:-}" in
+    0:)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
+        ;;
+    9:--debian-systemd-lifecycle)
+        [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
+            && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
+            || { echo 'invalid Debian systemd lifecycle argument order' >&2; exit 2; }
+        MODE=debian-systemd-lifecycle
+        LIFECYCLE_ARTIFACT=$3
+        LIFECYCLE_ARTIFACT_SHA256=$5
+        LIFECYCLE_COMMIT=$7
+        DEV_CHECK_ARCHIVE=$9
+        [ -n "${VERIFIER_VM_INPUT_ROOT:-}" ] \
+            && [ -n "${VERIFIER_VM_RUN_ROOT:-}" ] \
+            || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
+        ;;
+    *)
+        printf 'usage: %s [--debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac
+readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT DEV_CHECK_ARCHIVE
+readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
+readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
-readonly BASE="$STATE_ROOT/$IMAGE_NAME"
-readonly DOCKER_BUNDLE="$STATE_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
-readonly BOOT_ROOT="$STATE_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
+readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
+readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
+readonly BOOT_ROOT="$INPUT_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
 readonly KERNEL="$BOOT_ROOT/vmlinuz"
 readonly INITRD="$BOOT_ROOT/initrd.img"
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
@@ -40,6 +75,12 @@ readonly ANDROID_BUILDER_IMAGE_CHECKER="$SCRIPT_DIR/verify-android-builder-image
 readonly DEB_BUILDER_IMAGE_CHECKER="$SCRIPT_DIR/verify-deb-builder-image-authority.py"
 readonly DEBIAN_BUILDER_SOURCE="$SCRIPT_DIR/build-debian.sh"
 readonly DEBIAN_BUILDER_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-debian-builder-authority.py"
+readonly SYSTEMD_RUNTIME_LIBS_SOURCE="$SCRIPT_DIR/stage-debian-systemd-runtime-libs.sh"
+readonly SYSTEMD_LIFECYCLE_GUEST_SOURCE="$SCRIPT_DIR/smoke-debian-systemd-lifecycle-guest.sh"
+readonly SYSTEMD_LOGINCTL_SOURCE="$SCRIPT_DIR/smoke-debian-systemd-loginctl.sh"
+readonly DEBIAN_PACKAGE_AUTHORITY_SOURCE="$SCRIPT_DIR/verify-debian-package-authority.py"
+readonly SYSTEMD_UNIT_SOURCE="$REPO_ROOT/res/rustdesk.service"
+readonly DEV_CHECK_DOCKERFILE_SOURCE="$SCRIPT_DIR/Dockerfile.devcheck"
 readonly WIN_HELPER_IMAGE_CHECKER="$SCRIPT_DIR/verify-win-helper-image-authority.py"
 readonly WINDOWS_HELPER_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-windows-helper-authority.py"
 readonly WINDOWS_HELPER_RUNTIME_TEST="$SCRIPT_DIR/test-windows-helper-vm-runtime.sh"
@@ -67,7 +108,13 @@ readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
 readonly LIB_SOURCE="$SCRIPT_DIR/lib.sh"
 readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly SERIAL_LIMIT=8388608
-readonly VM_TIMEOUT_SECONDS=90
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    readonly VM_TIMEOUT_SECONDS=480
+    readonly OVERLAY_SIZE=8G
+else
+    readonly VM_TIMEOUT_SECONDS=90
+    readonly OVERLAY_SIZE=6G
+fi
 
 RUN=
 RUN_ID=
@@ -84,6 +131,14 @@ RUN_COMPLETE=0
 fail() {
     printf 'verifier-VM authority smoke: %s\n' "$*" >&2
     exit 1
+}
+
+git_closed() {
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0 \
+        GIT_NO_REPLACE_OBJECTS=1 \
+        /usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null "$@"
 }
 
 process_start_time() {
@@ -131,6 +186,14 @@ terminate_exact_vm_process() {
 
 capture_listeners() {
     /usr/bin/ss -H -lntu | LC_ALL=C /usr/bin/sort -u
+}
+
+require_exact_fixed_receipt() {
+    local expected=$1 label=$2
+    local -a receipts=()
+    mapfile -t receipts < <(/usr/bin/grep -Fo -- "$expected" "$SERIAL_LOG" || true)
+    [ "${#receipts[@]}" -eq 1 ] && [ "${receipts[0]}" = "$expected" ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail "$label is absent or duplicated"; }
 }
 
 reconcile_socket() {
@@ -203,12 +266,10 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-[ "$HOST_UID" -ne 0 ] || fail 'host or container-root execution is forbidden'
-[ "$HOST_GID" -ne 0 ] || fail 'a root primary group is forbidden'
 [ "$(/usr/bin/uname -s):$(/usr/bin/uname -m)" = Linux:x86_64 ] \
     || fail 'verifier VM requires a Linux x86_64 orchestration host'
 for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/find \
-    /usr/bin/grep /usr/bin/id /usr/bin/mkdir /usr/bin/mktemp /usr/bin/python3 \
+    /usr/bin/dpkg-deb /usr/bin/git /usr/bin/grep /usr/bin/id /usr/bin/mkdir /usr/bin/mktemp /usr/bin/python3 \
     /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
     /usr/bin/seq /usr/bin/sha256sum /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort \
     /usr/bin/ss /usr/bin/stat /usr/bin/tail /usr/bin/timeout /usr/bin/uname \
@@ -222,10 +283,17 @@ for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/find
 done
 [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] \
     || fail '/dev/kvm is unavailable to the invoking non-root user'
-[ -d "$STATE_ROOT" ] && [ ! -L "$STATE_ROOT" ] \
+[ -d "$INPUT_ROOT" ] && [ ! -L "$INPUT_ROOT" ] \
     || fail 'verifier-VM inputs are absent; run scripts/online-fetch.sh --verifier-vm-inputs'
-[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
-    || fail 'verifier-VM state root is not current-user/current-group mode 0700'
+for private_root in "$INPUT_ROOT" "$RUN_ROOT"; do
+    [ -d "$private_root" ] && [ ! -L "$private_root" ] \
+        || fail "verifier-VM private root is absent or ambiguous: $private_root"
+    [ "$(/usr/bin/readlink -f -- "$private_root" 2>/dev/null)" = "$private_root" ] \
+        || fail "verifier-VM private root is not absolute and canonical: $private_root"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$private_root")" = \
+      "$HOST_UID:$HOST_GID:700" ] \
+        || fail "verifier-VM private root is not current-user/current-group mode 0700: $private_root"
+done
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC"; do
     path=${input%:*}
@@ -262,6 +330,9 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" \
     "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" \
     "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" \
+    "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" \
+    "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" \
+    "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" \
     "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" \
     "$WINDOWS_HELPER_RUNTIME_TEST" \
     "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
@@ -288,13 +359,16 @@ done
     && [ -x "$ANDROID_BUILDER_SOURCE" ] \
     && [ -x "$ANDROID_GRADLE_SOURCE" ] \
     && [ -x "$DEBIAN_BUILDER_SOURCE" ] \
+    && [ -x "$SYSTEMD_RUNTIME_LIBS_SOURCE" ] \
+    && [ -x "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" ] \
+    && [ -x "$SYSTEMD_LOGINCTL_SOURCE" ] \
     && [ -x "$ANDROID_RUST_SOURCE" ] \
     && [ -x "$DART_AUDIT_SOURCE" ] \
     && [ -x "$WINDOWS_HELPER_RUNTIME_TEST" ] \
     && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
 [ -x "$BOOT_DERIVER" ] || fail 'verifier-VM boot deriver must be executable'
-"$BOOT_DERIVER"
+VERIFIER_VM_INPUT_ROOT="$INPUT_ROOT" "$BOOT_DERIVER"
 [ -d "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
     || fail 'direct-boot cache is absent or ambiguous'
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BOOT_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
@@ -313,7 +387,70 @@ done
 verify_sha256 "$KERNEL" "$SHA256_VERIFIER_VM_KERNEL"
 verify_sha256 "$INITRD" "$SHA256_VERIFIER_VM_INITRD"
 
-RUN="$(/usr/bin/mktemp -d "$STATE_ROOT/run.XXXXXXXXXX")" \
+LIFECYCLE_ARTIFACT_ID=
+DEV_CHECK_ARCHIVE_ID=
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    case "$LIFECYCLE_ARTIFACT:$DEV_CHECK_ARCHIVE" in
+        /*:/*) ;;
+        *) fail 'lifecycle artifact and devcheck archive paths must be absolute' ;;
+    esac
+    for lifecycle_input in "$LIFECYCLE_ARTIFACT" "$DEV_CHECK_ARCHIVE"; do
+        [ -f "$lifecycle_input" ] && [ ! -L "$lifecycle_input" ] \
+            || fail "lifecycle input is absent or ambiguous: $lifecycle_input"
+        [ "$(/usr/bin/readlink -f -- "$lifecycle_input" 2>/dev/null)" = \
+          "$lifecycle_input" ] \
+            || fail "lifecycle input path is not canonical: $lifecycle_input"
+    done
+    [[ "$LIFECYCLE_ARTIFACT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'lifecycle artifact SHA-256 is malformed'
+    [[ "$LIFECYCLE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'lifecycle source commit is malformed'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        || fail 'lifecycle artifact is not current-user/current-group mode 0400 with one link'
+    [ "$(/usr/bin/sha256sum "$LIFECYCLE_ARTIFACT" | /usr/bin/awk '{ print $1 }')" = \
+      "$LIFECYCLE_ARTIFACT_SHA256" ] \
+        || fail 'lifecycle artifact digest differs'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$DEV_CHECK_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'devcheck archive metadata differs'
+    verify_sha256 "$DEV_CHECK_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+    [ "$(/usr/bin/dpkg-deb -f "$LIFECYCLE_ARTIFACT" Package 2>/dev/null)" = rustdesk ] \
+        || fail 'lifecycle artifact package identity differs'
+    [ "$(/usr/bin/dpkg-deb -f "$LIFECYCLE_ARTIFACT" Architecture 2>/dev/null)" = amd64 ] \
+        || fail 'lifecycle artifact architecture differs'
+    current_commit="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+        || fail 'cannot resolve lifecycle source commit'
+    [ "$current_commit" = "$LIFECYCLE_COMMIT" ] \
+        || fail 'lifecycle source does not equal the artifact commit'
+    if git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+        fail 'lifecycle source must be one detached release snapshot'
+    fi
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all 2>/dev/null)" ] \
+        || fail 'lifecycle source snapshot is dirty'
+    [ -z "$(git_closed -C "$REPO_ROOT" clean -nffdx 2>/dev/null)" ] \
+        || fail 'lifecycle source snapshot retains generated state'
+    [ "$(/usr/bin/sha256sum "$DEV_CHECK_DOCKERFILE_SOURCE" | /usr/bin/awk '{ print $1 }')" = \
+      "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+        || fail 'current devcheck Dockerfile differs from its reviewed pin'
+    historical_devcheck_sha="$(
+        git_closed -C "$REPO_ROOT" cat-file blob \
+            "$DEV_CHECK_SOURCE_COMMIT:scripts/Dockerfile.devcheck" \
+            | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }'
+    )" || fail 'cannot read the devcheck Dockerfile from its provenance commit'
+    [ "$historical_devcheck_sha" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+        || fail 'devcheck provenance commit has different Dockerfile bytes'
+    git_closed -C "$REPO_ROOT" merge-base --is-ancestor \
+        "$DEV_CHECK_SOURCE_COMMIT" "$LIFECYCLE_COMMIT" \
+        || fail 'devcheck provenance commit is not an ancestor of lifecycle source'
+    /usr/bin/python3 -I -S "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" \
+        --repo "$REPO_ROOT" --deb "$LIFECYCLE_ARTIFACT" \
+        || fail 'lifecycle artifact failed independent package verification'
+    LIFECYCLE_ARTIFACT_ID="$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")"
+    DEV_CHECK_ARCHIVE_ID="$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$DEV_CHECK_ARCHIVE")"
+fi
+
+RUN="$(/usr/bin/mktemp -d "$RUN_ROOT/run.XXXXXXXXXX")" \
     || fail 'cannot create the private verifier-VM run'
 RUN_ID="$(/usr/bin/stat -c '%d:%i' -- "$RUN")"
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN")" = "$HOST_UID:$HOST_GID:700" ] \
@@ -337,14 +474,23 @@ docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
 capture_listeners >"$LISTENERS_BEFORE"
-/usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" 6G
+/usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
 
+payload_identity=()
+lifecycle_payload_grafts=()
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "devcheck.docker.tar.gz=$DEV_CHECK_ARCHIVE"
+        "artifact/rustdesk-x86_64.deb=$LIFECYCLE_ARTIFACT"
+    )
+fi
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
-    -joliet -rock -graft-points -output "$PAYLOAD" \
+    -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
     "guest.sh=$GUEST_SCRIPT" \
     "repo/scripts/verify.sh=$VERIFY_SCRIPT" \
     "repo/scripts/verify-release.sh=$VERIFY_RELEASE_SOURCE" \
@@ -365,6 +511,10 @@ capture_listeners >"$LISTENERS_BEFORE"
     "repo/scripts/verify-deb-builder-image-authority.py=$DEB_BUILDER_IMAGE_CHECKER" \
     "repo/scripts/build-debian.sh=$DEBIAN_BUILDER_SOURCE" \
     "repo/scripts/verify-debian-builder-authority.py=$DEBIAN_BUILDER_AUTHORITY_CHECKER" \
+    "repo/scripts/stage-debian-systemd-runtime-libs.sh=$SYSTEMD_RUNTIME_LIBS_SOURCE" \
+    "repo/scripts/smoke-debian-systemd-lifecycle-guest.sh=$SYSTEMD_LIFECYCLE_GUEST_SOURCE" \
+    "repo/scripts/smoke-debian-systemd-loginctl.sh=$SYSTEMD_LOGINCTL_SOURCE" \
+    "repo/scripts/verify-debian-package-authority.py=$DEBIAN_PACKAGE_AUTHORITY_SOURCE" \
     "repo/scripts/verify-win-helper-image-authority.py=$WIN_HELPER_IMAGE_CHECKER" \
     "repo/scripts/verify-windows-helper-authority.py=$WINDOWS_HELPER_AUTHORITY_CHECKER" \
     "repo/scripts/test-windows-helper-vm-runtime.sh=$WINDOWS_HELPER_RUNTIME_TEST" \
@@ -392,13 +542,20 @@ capture_listeners >"$LISTENERS_BEFORE"
     "repo/scripts/lib.sh=$LIB_SOURCE" "repo/scripts/pins.env=$PIN_SOURCE" \
     "repo/requirements.html=$REQUIREMENTS_SOURCE" \
     "repo/HARDENING_STATUS.md=$HARDENING_SOURCE" \
-    "docker.tgz=$DOCKER_BUNDLE"
+    "repo/res/rustdesk.service=$SYSTEMD_UNIT_SOURCE" \
+    "repo/scripts/Dockerfile.devcheck=$DEV_CHECK_DOCKERFILE_SOURCE" \
+    "docker.tgz=$DOCKER_BUNDLE" \
+    "${lifecycle_payload_grafts[@]}"
 /usr/bin/chmod 0400 "$PAYLOAD"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$PAYLOAD")" = \
   "$HOST_UID:$HOST_GID:400:1" ] \
     || fail 'read-only payload media metadata differs'
 /usr/bin/mkdir "$RUN/seed"
 /usr/bin/chmod 0700 "$RUN/seed"
+guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
+fi
 printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
@@ -417,7 +574,7 @@ printf '%s\n' \
     'trap finish EXIT' \
     'mkdir -p /mnt/rustdesk-verifier-inputs' \
     'mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec /mnt/rustdesk-verifier-inputs' \
-    "bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
+    "$guest_invocation" \
     >"$RUN/seed/user-data"
 printf '%s\n' \
     'instance-id: rustdesk-verifier-authority-v1' \
@@ -534,6 +691,33 @@ capture_listeners >"$LISTENERS_AFTER"
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    /usr/bin/grep -Eq \
+        '^.*SYSTEMD_NORMAL_RESTART=pass prior_generation=[0-9a-f-]{36} generation=[0-9a-f-]{36}' \
+        "$SERIAL_LOG" \
+        || { tail -n 240 "$SERIAL_LOG" >&2; fail 'normal systemd restart marker is absent'; }
+    /usr/bin/grep -Eq \
+        '^.*SYSTEMD_STOP_START=pass generation=[0-9a-f-]{36}' \
+        "$SERIAL_LOG" \
+        || { tail -n 240 "$SERIAL_LOG" >&2; fail 'systemd stop/start marker is absent'; }
+    /usr/bin/grep -Eq \
+        '^.*SYSTEMD_CRASH_RESTART=pass prior_generation=[0-9a-f-]{36} generation=[0-9a-f-]{36} nrestarts=[1-9][0-9]*' \
+        "$SERIAL_LOG" \
+        || { tail -n 240 "$SERIAL_LOG" >&2; fail 'systemd crash/restart marker is absent'; }
+    /usr/bin/grep -Eq \
+        '^.*DEBIAN_SYSTEMD_INSTALLED_LIFECYCLE=pass os=debian-12 systemd=252 seat_uid=4001 portable_uid=4000 crash_generation=[0-9a-f-]{36}' \
+        "$SERIAL_LOG" \
+        || { tail -n 240 "$SERIAL_LOG" >&2; fail 'installed Debian lifecycle marker is absent'; }
+    require_exact_fixed_receipt \
+        "DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$LIFECYCLE_ARTIFACT_SHA256 commit=$LIFECYCLE_COMMIT" \
+        'exact release-artifact lifecycle marker'
+    require_exact_fixed_receipt \
+        "VERIFIER_VM_DEBIAN_SYSTEMD_LIFECYCLE=pass artifact_sha256=$LIFECYCLE_ARTIFACT_SHA256 commit=$LIFECYCLE_COMMIT staging_uid=4000 root=refused foreign=refused docker=retired network=none cleanup=joined" \
+        'verifier-VM installed-lifecycle marker'
+    require_exact_fixed_receipt \
+        "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact" \
+        'lifecycle guest authority marker'
+else
 /usr/bin/grep -Fq \
     "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default" \
     "$SERIAL_LOG" \
@@ -617,6 +801,12 @@ printf 'VERIFIER_VM_DEBIAN_BUILDER_SOURCE_GATE=pass\n'
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Debian builder verifier-VM runtime marker is absent'; }
 printf 'VERIFIER_VM_DEBIAN_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined\n' \
     "$VERIFIER_VM_DOCKER_VERSION"
+/usr/bin/grep -Fq \
+    "VERIFIER_VM_SYSTEMD_LIBS_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION profile=debian-systemd-runtime-libs runtime=real input=private-fixture-only workload=unexecuted cleanup=joined" \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'systemd runtime-library verifier-VM marker is absent'; }
+printf 'VERIFIER_VM_SYSTEMD_LIBS_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profile=debian-systemd-runtime-libs runtime=real input=private-fixture-only workload=unexecuted cleanup=joined\n' \
+    "$VERIFIER_VM_DOCKER_VERSION"
 /usr/bin/grep -Fq 'VERIFIER_VM_WIN_HELPER_IMAGE_SOURCE_GATE=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Windows helper image compact source-gate marker is absent'; }
 printf 'VERIFIER_VM_WIN_HELPER_IMAGE_SOURCE_GATE=pass\n'
@@ -656,6 +846,10 @@ mapfile -t dart_frb_source_gate_receipts < <(
 printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
+fi
+[ "$MODE" != debian-systemd-lifecycle ] || /usr/bin/grep -Fq \
+    'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'lifecycle cloud-init completion marker is absent'; }
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
     || fail 'read-only Debian base changed'
 [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \
@@ -668,9 +862,26 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    [ "$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = \
+      "$LIFECYCLE_ARTIFACT_ID" ] \
+        || fail 'lifecycle artifact identity changed during execution'
+    [ "$(/usr/bin/sha256sum "$LIFECYCLE_ARTIFACT" | /usr/bin/awk '{ print $1 }')" = \
+      "$LIFECYCLE_ARTIFACT_SHA256" ] \
+        || fail 'lifecycle artifact bytes changed during execution'
+    [ "$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$DEV_CHECK_ARCHIVE")" = \
+      "$DEV_CHECK_ARCHIVE_ID" ] \
+        || fail 'devcheck archive identity changed during execution'
+    verify_sha256 "$DEV_CHECK_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+fi
 
 RUN_COMPLETE=1
-printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
-    "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
+if [ "$MODE" = authority-smoke ]; then
+    printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
+else
+    printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
+fi

@@ -9849,16 +9849,16 @@ grep -qF 'R-S11c-27l — installed Debian SysV lifecycle' HARDENING_STATUS.md ||
 if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
   echo "  ok  R-S11c-27l Debian SysV package lifecycle selects one init backend, stops one PID/executable/name/UID-bound supervisor, and behavior-tests portable noninterference"; fi
 
-echo "== (3b-iii-h2m1) Debian systemd-lifecycle fixed Docker authority (R-S11dl/R-S11e-130) =="
+echo "== (3b-iii-h2m1) Debian systemd lifecycle has one VM-only staging authority (R-S11dl/R-S11e-130) =="
 r_s11dl=
-if ! python3 scripts/verify-debian-systemd-lifecycle-authority.py --repo . --self-test; then
-  r_s11dl="$r_s11dl authority-or-mutation-self-test-failed"
+if ! python3 -I -S scripts/verify-debian-systemd-lifecycle-authority.py --repo .; then
+  r_s11dl="$r_s11dl focused-authority-gate-failed"
 fi
 if [ -n "$r_s11dl" ]; then
-  echo "  FAIL R-S11dl Debian systemd-lifecycle Docker authority:$r_s11dl"
+  echo "  FAIL R-S11dl Debian systemd lifecycle VM authority:$r_s11dl"
   rc=1
 else
-  echo "  ok  R-S11e-130 Debian systemd-lifecycle dependency staging uses exact devcheck provenance and one independent fixed local Docker authority, narrow mounts, bounded non-root execution, and exact authority cleanup"
+  echo "  ok  R-S11e-130 installed-Debian lifecycle dependency staging exists only inside the common no-NIC verifier VM; VM-root Docker admits one bounded numeric-nonroot profile and is joined before installed RustDesk starts"
 fi
 
 echo "== (3b-iii-h2m2) release-parent fixed Docker authority (R-S11dm/R-S11e-131) =="
@@ -9875,72 +9875,46 @@ fi
 
 echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="
 r_s11c27m=
-systemd_host=scripts/smoke-debian-systemd-lifecycle.sh
+systemd_host=scripts/smoke-verifier-vm-authority.sh
+systemd_vm_guest=scripts/smoke-verifier-vm-authority-guest.sh
+systemd_stage=scripts/stage-debian-systemd-runtime-libs.sh
 systemd_guest=scripts/smoke-debian-systemd-lifecycle-guest.sh
 systemd_loginctl=scripts/smoke-debian-systemd-loginctl.sh
-bash -n "$systemd_host" "$systemd_guest" "$systemd_loginctl" scripts/online-fetch.sh \
+bash -n "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl" \
   || r_s11c27m="$r_s11c27m smoke-shell-syntax-invalid"
 dash -n "$systemd_loginctl" || r_s11c27m="$r_s11c27m loginctl-shell-syntax-invalid"
-for executable in "$systemd_host" "$systemd_guest" "$systemd_loginctl"; do
+for executable in "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl"; do
   [ "$(stat -c %a "$executable")" = 755 ] \
     || r_s11c27m="$r_s11c27m ${executable##*/}:not-executable"
 done
-grep -qF 'DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD="20260712-2537"' scripts/pins.env \
-  || r_s11c27m="$r_s11c27m dated-image-build-pin-missing"
-grep -qF 'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="346882048"' scripts/pins.env \
-  || r_s11c27m="$r_s11c27m image-size-pin-missing"
-grep -qF 'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999"' scripts/pins.env \
-  || r_s11c27m="$r_s11c27m acquisition-image-hash-pin-missing"
-grep -qF 'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"' scripts/pins.env \
-  || r_s11c27m="$r_s11c27m publisher-image-hash-pin-missing"
 for token in \
-  'fetch_debian_systemd_smoke_image()' \
-  'readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(' \
-  'cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$SYSTEMD_SMOKE_IMAGE_NAME' \
-  'cloud.debian.org,laotzu.ftp.acc.umu.se' \
-  '[ -d "$harness_state" ] && [ ! -L "$harness_state" ]' \
-  '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700"' \
-  'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image' \
-  'verify_sha512 "$dest" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"' \
-  '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1"' \
-  '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:444:1"' \
-  '--debian-systemd-smoke-image)'; do
-  grep -qF -- "$token" scripts/online-fetch.sh \
-    || r_s11c27m="$r_s11c27m online-fetch:${token%% *}"
-done
-if grep -qF -- 'dest.part' scripts/online-fetch.sh \
-   || grep -qF -- 'curl -fsSL --proto '\''=https'\'' --tlsv1.2' scripts/online-fetch.sh; then
-  r_s11c27m="$r_s11c27m host-systemd-image-downloader-regressed"
-fi
-for token in \
-  '[ "$HOST_UID" -ne 0 ]' \
-  '[ "$HOST_GID" -ne 0 ]' \
-  '[ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]' \
-  'IMAGE_METADATA="$(stat -c '\''%u:%g:%a:%h'\'' "$IMAGE")"' \
-  '"$HOST_UID:$HOST_GID:400:1"' \
-  '"$HOST_UID:$HOST_GID:444:1"' \
-  'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"' \
-  'qemu-img check -q "$IMAGE"' \
-  'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"' \
-  'local_docker_image_provenance verify-local' \
-  'local_docker run --rm --pull=never --network=none --read-only' \
-  '--pids-limit=64 --memory=1g --memory-swap=1g --cpus=1' \
-  '--cap-drop=ALL --security-opt=no-new-privileges' \
-  '--user "$HOST_UID:$HOST_GID"' \
-  'source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled' \
-  'source=$LIBS,target=/out,bind-recursive=disabled' \
+  '--debian-systemd-lifecycle' \
+  'VERIFIER_VM_INPUT_ROOT' \
+  'VERIFIER_VM_RUN_ROOT' \
+  'verify-debian-package-authority.py' \
+  'payload_identity=(-uid 4000 -gid 4000)' \
   '-nic none' \
   'media=cdrom,readonly=on' \
-  'SOURCE_HASH_AFTER=$(sha256sum' \
-  'DEBIAN_SYSTEMD_VM_ISOLATION=pass network=none accel=kvm source=ro base=sha512'; do
+  'VERIFIER_VM_DEBIAN_SYSTEMD_LIFECYCLE=pass' \
+  'channels=unix listeners=unchanged'; do
   grep -qF -- "$token" "$systemd_host" \
     || r_s11c27m="$r_s11c27m host:${token%% *}"
 done
-if grep -Eq -- '--privileged|--pid[= ]host|--network[= ]host|--publish|--cap-add|/var/run/docker.sock|-nic[[:space:]]+(user|tap|bridge)|hostfwd|guestfwd|-virtfs|-fsdev|sudo[[:space:]]' "$systemd_host"; then
+if grep -Eq -- '--privileged|--pid[= ]host|--network[= ]host|--publish|--cap-add|/var/run/docker.sock|-nic[[:space:]]+(user|tap|bridge)|hostfwd|guestfwd|-virtfs|-fsdev|sudo[[:space:]]' "$systemd_host" "$systemd_vm_guest" "$systemd_stage"; then
   r_s11c27m="$r_s11c27m host-authority-or-connectivity-regressed"
 fi
 [ "$(grep -cF -- '-nic none' "$systemd_host")" = 1 ] \
   || r_s11c27m="$r_s11c27m qemu-network-disable-not-singular"
+for token in \
+  'setpriv --reuid=4000 --regid=4000 --clear-groups' \
+  'setpriv --reuid=4001 --regid=4001 --clear-groups' \
+  'stop_docker_authority' \
+  'mount -o remount,bind,ro,nodev,nosuid,noexec "$libraries"' \
+  '/bin/bash "$SYSTEMD_LIFECYCLE_SCRIPT" --release-deb' \
+  'docker=retired network=none cleanup=joined'; do
+  grep -qF -- "$token" "$systemd_vm_guest" \
+    || r_s11c27m="$r_s11c27m vm-guest:${token%% *}"
+done
 for token in \
   '[ "$(id -u)" = 0 ]' \
   '[ "$(cat /proc/1/comm)" = systemd ]' \
@@ -9986,27 +9960,21 @@ for token in \
   grep -qF -- "$token" "$systemd_loginctl" \
     || r_s11c27m="$r_s11c27m loginctl:${token%% *}"
 done
-grep -qF 'smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference' scripts/verify-release.sh \
-  || r_s11c27m="$r_s11c27m release-gate-missing"
 grep -qF 'R-S11c-27m — installed Debian systemd lifecycle' HARDENING_STATUS.md \
   || r_s11c27m="$r_s11c27m hardening-ledger-missing"
 if [ -n "$r_s11c27m" ]; then echo "  FAIL R-S11c-27m installed Debian systemd lifecycle:$r_s11c27m"; rc=1; else
-  echo "  ok  R-S11c-27m pinned networkless KVM runs exact installed package/unit lifecycle, proves non-root child/cgroup identity across normal stop/restart and supervisor crash recovery, and preserves a separate portable unit"; fi
+  echo "  ok  R-S11c-27m the common no-NIC VM retires its exact Docker daemon before the exact installed package/unit lifecycle, then proves non-root child/cgroup identity, stop/restart/crash recovery, and portable sibling noninterference"; fi
 
 echo "== (3b-iii-h2n1) final Debian artifact is hash/commit-bound into the installed lifecycle before publication (R-S11c-27s) =="
 r_s11c27s=
 build_release=scripts/build-release.sh
 for token in \
-  "stat -c '%u:%g:%a:%h' -- \"\$RELEASE_DEB\"" \
-  'sha256sum "$RELEASE_DEB"' \
-  'release-artifact lifecycle source must be a detached release snapshot' \
-  'python3 scripts/verify-debian-package-authority.py --repo "$PWD" --deb "$RELEASE_DEB"' \
-  'dpkg-deb -x "$RELEASE_DEB" "$EXTRACTED"' \
-  'BINARY=$EXTRACTED/usr/share/rustdesk/rustdesk' \
-  'source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled' \
-  'payload_grafts+=("artifact/rustdesk-x86_64.deb=$RELEASE_DEB")' \
-  'DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$EXPECTED_DEB_SHA256 commit=$EXPECTED_COMMIT' \
-  'release .deb identity changed across the VM lifecycle'; do
+  'verify-debian-package-authority.py' \
+  '"devcheck.docker.tar.gz=$DEV_CHECK_ARCHIVE"' \
+  '"artifact/rustdesk-x86_64.deb=$LIFECYCLE_ARTIFACT"' \
+  'lifecycle source must be one detached release snapshot' \
+  'lifecycle artifact identity changed during execution' \
+  'devcheck archive identity changed during execution'; do
   grep -qF -- "$token" "$systemd_host" \
     || r_s11c27s="$r_s11c27s host:${token%% *}"
 done
@@ -10021,28 +9989,23 @@ for token in \
     || r_s11c27s="$r_s11c27s guest:${token%% *}"
 done
 for token in \
-  'SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"' \
-  'SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE"' \
+  'HOST_VERIFIER_VM_INPUT_ROOT=' \
+  'VERIFIER_VM_RUN_ROOT=' \
   'artifact="$SET_A/rustdesk-x86_64.deb"' \
   'sha256sum "$SET_B/rustdesk-x86_64.deb"' \
   'run_snapshot_consumer "final Debian artifact lifecycle"' \
-  '"$SOURCE_A/scripts/smoke-debian-systemd-lifecycle.sh"' \
+  '"$SOURCE_A/scripts/smoke-verifier-vm-authority.sh"' \
+  '--debian-systemd-lifecycle' \
   '--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"' \
+  '--devcheck-archive "$devcheck_archive"' \
   'release self-test did not execute the final Debian artifact lifecycle exactly once'; do
   grep -qF -- "$token" "$build_release" \
     || r_s11c27s="$r_s11c27s release:${token%% *}"
 done
-for token in \
-  'SYSTEMD_GATE_IMAGE=${SYSTEMD_SMOKE_IMAGE:-}' \
-  'SYSTEMD_GATE_STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-}' \
-  'systemd image and state overrides must be supplied together' \
-  'unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR' \
-  '[ "$s" = smoke-debian-systemd-lifecycle.sh ]' \
-  'SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE"' \
-  'SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_GATE_STATE_DIR"'; do
-  grep -qF -- "$token" scripts/verify-release.sh \
-    || r_s11c27s="$r_s11c27s source-gate:${token%% *}"
-done
+if grep -qF 'smoke-debian-systemd-lifecycle.sh' scripts/verify-release.sh "$build_release" \
+   || grep -qF 'SYSTEMD_SMOKE_STATE_DIR=' scripts/verify-release.sh "$build_release"; then
+  r_s11c27s="$r_s11c27s obsolete-source-gate-or-state-authority-remains"
+fi
 if ! python3 - "$build_release" <<'PY'
 import sys
 from pathlib import Path
@@ -15772,7 +15735,6 @@ grep -qF '"android-rust-check.sh|pinned offline aarch64 Android Rust check"' "$r
 grep -qF '"smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
 grep -qF 'elif [ "$s" = smoke-server.sh ]; then' "$release_gate" || release_gate_bad="$release_gate_bad missing-explicit-full-smoke-dispatch"
 grep -qF 'bash "scripts/$s" --with-root-containers' "$release_gate" || release_gate_bad="$release_gate_bad missing-explicit-full-smoke-mode"
-grep -qF '"smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference"' "$release_gate" || release_gate_bad="$release_gate_bad missing-installed-systemd-smoke"
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
@@ -15791,7 +15753,6 @@ expected = [
     "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics",
     "android-rust-check.sh|pinned offline aarch64 Android Rust check",
     "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session",
-    "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference",
     "dart-verify.sh|flutter analyze lib/ (zero errors)",
     "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin",
     "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks",
@@ -15812,10 +15773,10 @@ for line in lines[start + 1:end]:
         raise SystemExit("malformed release GATES entry: {!r}".format(line))
     observed.append(match.group(1))
 if observed != expected:
-    raise SystemExit("release GATES array is not the exact ordered thirteen-gate contract")
+    raise SystemExit("release GATES array is not the exact ordered twelve-gate contract")
 PY
 then
-  release_gate_bad="$release_gate_bad non-exact-thirteen-gate-bundle"
+  release_gate_bad="$release_gate_bad non-exact-twelve-gate-bundle"
 fi
 grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
 grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"

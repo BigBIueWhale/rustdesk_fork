@@ -11,7 +11,7 @@ load_pins
 
 readonly UID_NOW="$(/usr/bin/id -u)"
 readonly GID_NOW="$(/usr/bin/id -g)"
-readonly STATE_ROOT="$REPO_ROOT/.harness-state/verifier-vm"
+readonly STATE_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
 readonly BASE="$STATE_ROOT/$IMAGE_NAME"
 readonly BOOT_ROOT="$STATE_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
@@ -135,6 +135,8 @@ sources_before="$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURC
 
 [ -d "$STATE_ROOT" ] && [ ! -L "$STATE_ROOT" ] \
     || fail 'verifier-VM state root is absent or ambiguous'
+[ "$(/usr/bin/readlink -f -- "$STATE_ROOT" 2>/dev/null)" = "$STATE_ROOT" ] \
+    || fail 'verifier-VM state root is not absolute and canonical'
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$STATE_ROOT")" = "$UID_NOW:$GID_NOW:700" ] \
     || fail 'verifier-VM state root is not current-user/current-group mode 0700'
 [ -f "$BASE" ] && [ ! -L "$BASE" ] \

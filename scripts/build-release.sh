@@ -129,8 +129,8 @@ ONLINE_SNAPSHOT_PARENT=""
 HOST_KEYSTORE=""
 HOST_KEYSTORE_PASS_FILE=""
 HOST_GOLDEN=""
-HOST_SYSTEMD_SMOKE_IMAGE=""
-SYSTEMD_SMOKE_STATE_DIR=""
+HOST_VERIFIER_VM_INPUT_ROOT=""
+VERIFIER_VM_RUN_ROOT=""
 DEBIAN_IMAGE_ID=""
 ANDROID_IMAGE_ID=""
 WINDOWS_IMAGE_ID=""
@@ -373,10 +373,10 @@ create_workspace() {
         initialize_local_docker_authority \
             "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"
     fi
-    SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"
-    install -d -m 0700 "$SYSTEMD_SMOKE_STATE_DIR"
-    [ "$(stat -c '%u:%a' "$SYSTEMD_SMOKE_STATE_DIR")" = "$(id -u):700" ] \
-        || die "release systemd smoke scratch is not current-UID mode 0700"
+    VERIFIER_VM_RUN_ROOT="$WORKSPACE/verifier-vm-runs"
+    install -d -m 0700 "$VERIFIER_VM_RUN_ROOT"
+    [ "$(stat -c '%u:%a' "$VERIFIER_VM_RUN_ROOT")" = "$(id -u):700" ] \
+        || die "release verifier-VM scratch is not current-UID mode 0700"
     acquire_private_tree_closure_execution \
         || die "cannot acquire the committed private-tree helper authority"
 }
@@ -754,8 +754,15 @@ release_preflight() {
         || die "Android keystore password must be a non-symlink regular file"
     assert_private_signing_files
     HOST_GOLDEN="$(canonical_file "$REPO_ROOT/.harness-state/win11-golden.qcow2")"
-    HOST_SYSTEMD_SMOKE_IMAGE="$(canonical_file \
-        "$REPO_ROOT/.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2")"
+    HOST_VERIFIER_VM_INPUT_ROOT="$(readlink -f -- \
+        "$REPO_ROOT/.harness-state/verifier-vm" 2>/dev/null)" \
+        || die "release verifier-VM input root is absent"
+    [ "$HOST_VERIFIER_VM_INPUT_ROOT" = "$REPO_ROOT/.harness-state/verifier-vm" ] \
+        && [ -d "$HOST_VERIFIER_VM_INPUT_ROOT" ] \
+        && [ ! -L "$HOST_VERIFIER_VM_INPUT_ROOT" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$HOST_VERIFIER_VM_INPUT_ROOT")" = \
+             "$(id -u):$(id -g):700" ] \
+        || die "release verifier-VM input root is not private and canonical"
     local_docker version >/dev/null || die "local Docker daemon is unavailable"
     DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
     ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
@@ -879,8 +886,6 @@ run_verification() {
         run_child ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online" \
         SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" ALLOW_DIRTY_TREE=0 \
         RELEASE_SRC_COMMIT="$PINNED_HEAD" \
-        SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE" \
-        SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_SMOKE_STATE_DIR" \
         /usr/bin/bash --noprofile --norc "$source/scripts/verify-release.sh" \
         || die "$label: complete release verification failed"
     reset_snapshot_build_state "$source" "$label after verification"
@@ -1002,6 +1007,7 @@ compare_snapshots() {
 
 run_final_debian_artifact_lifecycle() {
     local artifact="$SET_A/rustdesk-x86_64.deb" artifact_hash metadata
+    local devcheck_archive="$ONLINE_SNAPSHOT_PARENT/online/verifier-images/devcheck.docker.tar.gz"
     local -a fixture_env=()
     assert_exact_set "$SET_A" 0
     assert_exact_set "$SET_B" 0
@@ -1026,10 +1032,12 @@ run_final_debian_artifact_lifecycle() {
     fi
     run_snapshot_consumer "final Debian artifact lifecycle" \
         run_child "${fixture_env[@]}" \
-        SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE" \
-        SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_SMOKE_STATE_DIR" \
-        /usr/bin/bash --noprofile --norc "$SOURCE_A/scripts/smoke-debian-systemd-lifecycle.sh" \
+        VERIFIER_VM_INPUT_ROOT="$HOST_VERIFIER_VM_INPUT_ROOT" \
+        VERIFIER_VM_RUN_ROOT="$VERIFIER_VM_RUN_ROOT" \
+        /usr/bin/bash --noprofile --norc "$SOURCE_A/scripts/smoke-verifier-vm-authority.sh" \
+        --debian-systemd-lifecycle \
         --release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD" \
+        --devcheck-archive "$devcheck_archive" \
         || die "final Debian artifact lifecycle verification failed"
     [ "$(stat -c '%u:%g:%a:%h' -- "$artifact" 2>/dev/null)" = "$metadata" ] \
         || die "final Debian artifact metadata changed during lifecycle verification"
@@ -1173,20 +1181,21 @@ write_fixture_debian_artifact_lifecycle() {
     local source="$1"
     {
         printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-        printf '[ "$#" = 6 ]\n'
+        printf '[ "$#" = 9 ]\n'
         printf '[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\n'
-        printf '[ "$1" = --release-deb ] && [ "$3" = --sha256 ] && [ "$5" = --commit ]\n'
-        printf 'artifact=$2; expected_hash=$4; expected_commit=$6\n'
+        printf '[ "$1" = --debian-systemd-lifecycle ] && [ "$2" = --release-deb ] && [ "$4" = --sha256 ] && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ]\n'
+        printf 'artifact=$3; expected_hash=$5; expected_commit=$7; archive=$9\n'
         printf '[ "$expected_commit" = "${RELEASE_FIXTURE_COMMIT:?}" ]\n'
         printf '[ -f "$artifact" ] && [ ! -L "$artifact" ] && [ -s "$artifact" ]\n'
         printf '[ "$(stat -c '\''%%u:%%g:%%a:%%h'\'' -- "$artifact")" = "$(id -u):$(id -g):400:1" ]\n'
         printf '[ "$(sha256sum "$artifact" | awk '\''{print $1}'\'')" = "$expected_hash" ]\n'
-        printf '[ -f "${SYSTEMD_SMOKE_IMAGE:?}" ] && [ ! -L "$SYSTEMD_SMOKE_IMAGE" ]\n'
-        printf '[ -d "${SYSTEMD_SMOKE_STATE_DIR:?}" ] && [ ! -L "$SYSTEMD_SMOKE_STATE_DIR" ]\n'
-        printf '[ "$(stat -c '\''%%u:%%a'\'' "$SYSTEMD_SMOKE_STATE_DIR")" = "$(id -u):700" ]\n'
+        printf '[ -f "$archive" ] && [ ! -L "$archive" ] && [ -s "$archive" ]\n'
+        printf '[ -d "${VERIFIER_VM_INPUT_ROOT:?}" ] && [ ! -L "$VERIFIER_VM_INPUT_ROOT" ]\n'
+        printf '[ -d "${VERIFIER_VM_RUN_ROOT:?}" ] && [ ! -L "$VERIFIER_VM_RUN_ROOT" ]\n'
+        printf '[ "$(stat -c '\''%%u:%%a'\'' "$VERIFIER_VM_RUN_ROOT")" = "$(id -u):700" ]\n'
         printf 'printf "debian-artifact-lifecycle|%%s|%%s|%%s\\n" "$artifact" "$expected_hash" "$expected_commit" >> "${RELEASE_FIXTURE_LOG:?}"\n'
-    } > "$source/scripts/smoke-debian-systemd-lifecycle.sh"
-    chmod 0700 "$source/scripts/smoke-debian-systemd-lifecycle.sh"
+    } > "$source/scripts/smoke-verifier-vm-authority.sh"
+    chmod 0700 "$source/scripts/smoke-verifier-vm-authority.sh"
 }
 
 run_reset_self_test() {
@@ -1880,8 +1889,13 @@ run_self_test() {
         || die "release self-test cannot record snapshot A identity"
     SOURCE_B_ID="$(stat -c '%d:%i' -- "$SOURCE_B")" \
         || die "release self-test cannot record snapshot B identity"
+    install -d -m 0700 "$ONLINE_SNAPSHOT_PARENT/online/verifier-images"
     printf 'fixture-online-input\n' > "$ONLINE_SNAPSHOT_PARENT/online/fixture-input"
-    chmod 0400 "$ONLINE_SNAPSHOT_PARENT/online/fixture-input"
+    printf 'fixture-devcheck-archive\n' \
+        > "$ONLINE_SNAPSHOT_PARENT/online/verifier-images/devcheck.docker.tar.gz"
+    chmod 0400 "$ONLINE_SNAPSHOT_PARENT/online/fixture-input" \
+        "$ONLINE_SNAPSHOT_PARENT/online/verifier-images/devcheck.docker.tar.gz"
+    chmod 0500 "$ONLINE_SNAPSHOT_PARENT/online/verifier-images"
     chmod 0500 "$ONLINE_SNAPSHOT_PARENT/online"
     FIXTURE_ONLINE_DIGEST="$(sha256sum "$ONLINE_SNAPSHOT_PARENT/online/fixture-input" | awk '{print $1}')"
     assert_release_online_snapshot "fixture setup"
@@ -1891,9 +1905,8 @@ run_self_test() {
     cp -a "$SOURCE_A/scripts/." "$SOURCE_B/scripts/"
     write_fixture_debian_artifact_lifecycle "$SOURCE_A"
     write_fixture_debian_artifact_lifecycle "$SOURCE_B"
-    HOST_SYSTEMD_SMOKE_IMAGE="$WORKSPACE/fixture-systemd-smoke.qcow2"
-    printf 'fixture systemd image\n' > "$HOST_SYSTEMD_SMOKE_IMAGE"
-    chmod 0400 "$HOST_SYSTEMD_SMOKE_IMAGE"
+    HOST_VERIFIER_VM_INPUT_ROOT="$WORKSPACE/fixture-verifier-vm-inputs"
+    install -d -m 0700 "$HOST_VERIFIER_VM_INPUT_ROOT"
     export POISON_MARKER=present BASH_ENV=/does/not/exist GIT_CONFIG=/does/not/exist DOCKER_CONTEXT=hostile
     build_snapshot A "$SOURCE_A" "$OUTPUT_A" "$SET_A"
     build_snapshot B "$SOURCE_B" "$OUTPUT_B" "$SET_B"

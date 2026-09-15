@@ -2,8 +2,18 @@
 set -euo pipefail
 umask 077
 
-[ "$#" -eq 7 ] \
-    || { echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID' >&2; exit 2; }
+case "$#:${8:-}" in
+    7:)
+        MODE=authority-smoke
+        ;;
+    12:--debian-systemd-lifecycle)
+        MODE=debian-systemd-lifecycle
+        ;;
+    *)
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        exit 2
+        ;;
+esac
 readonly DOCKER_ARCHIVE=$1
 readonly ENTRY_PREFLIGHT=$2
 readonly EXPECTED_VERSION=$3
@@ -11,6 +21,11 @@ readonly EXPECTED_SIZE=$4
 readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
+readonly MODE
+readonly DEV_CHECK_ARCHIVE=${9:-}
+readonly LIFECYCLE_ARTIFACT=${10:-}
+readonly LIFECYCLE_ARTIFACT_SHA256=${11:-}
+readonly LIFECYCLE_COMMIT=${12:-}
 readonly AUTHORITY_ROOT=/run/rustdesk-verifier-vm
 readonly MARKER=$AUTHORITY_ROOT/authority
 readonly CONFIG_ROOT=$AUTHORITY_ROOT/docker-config
@@ -39,6 +54,8 @@ readonly ANDROID_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-android-build
 readonly DEB_BUILDER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-deb-builder-image-authority.py
 readonly DEBIAN_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-debian.sh
 readonly DEBIAN_BUILDER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-debian-builder-authority.py
+readonly SYSTEMD_RUNTIME_LIBS_SCRIPT=$VERIFY_REPO/scripts/stage-debian-systemd-runtime-libs.sh
+readonly SYSTEMD_LIFECYCLE_SCRIPT=$VERIFY_REPO/scripts/smoke-debian-systemd-lifecycle-guest.sh
 readonly WIN_HELPER_IMAGE_CHECKER=$VERIFY_REPO/scripts/verify-win-helper-image-authority.py
 readonly WINDOWS_HELPER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-windows-helper-authority.py
 readonly WINDOWS_HELPER_RUNTIME_TEST=$VERIFY_REPO/scripts/test-windows-helper-vm-runtime.sh
@@ -50,6 +67,7 @@ readonly CONTAINER=rustdesk-verifier-authority-probe
 
 DAEMON_PID=
 CONTAINER_ID=
+LIFECYCLE_LIBS_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -62,9 +80,168 @@ network_inventory() {
         | LC_ALL=C sort -u
 }
 
+stop_docker_authority() {
+    local daemon_status=0
+    [ -n "$DAEMON_PID" ] || fail 'Docker daemon identity is absent at shutdown'
+    kill -TERM "$DAEMON_PID" || fail 'cannot signal the exact guest Docker daemon'
+    wait "$DAEMON_PID" || daemon_status=$?
+    [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] \
+        || fail "Docker daemon shutdown returned $daemon_status"
+    DAEMON_PID=
+    [ ! -S "$SOCK" ] || fail 'Docker Unix socket remains after joined daemon shutdown'
+    network_inventory >"$ROOT.network-after"
+    cmp -s "$ROOT.network-before" "$ROOT.network-after" \
+        || fail 'guest network state changed across Docker execution'
+    [ ! -e /sys/class/net/docker0 ] || fail 'Docker bridge remains after shutdown'
+}
+
+run_debian_systemd_lifecycle() {
+    local lifecycle_root=/var/tmp/rustdesk-systemd-lifecycle
+    local extracted=$lifecycle_root/artifact-root
+    local libraries=$lifecycle_root/runtime-libs
+    local binary=$extracted/usr/share/rustdesk/rustdesk
+    local archive_before artifact_before load_output stage_output stage_count stage_bytes
+    local -a stage_receipt=()
+    local lifecycle_network_before lifecycle_network_after
+
+    [[ "$LIFECYCLE_ARTIFACT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'lifecycle artifact SHA-256 is malformed'
+    [[ "$LIFECYCLE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'lifecycle source commit is malformed'
+    [ -f "$DEV_CHECK_ARCHIVE" ] && [ ! -L "$DEV_CHECK_ARCHIVE" ] \
+        || fail 'devcheck archive is absent from read-only payload media'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$DEV_CHECK_ARCHIVE")" = \
+      "4000:4000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'devcheck archive payload metadata differs'
+    [ "$(sha256sum "$DEV_CHECK_ARCHIVE" | awk '{ print $1 }')" = \
+      "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'devcheck archive payload digest differs'
+    [ -f "$LIFECYCLE_ARTIFACT" ] && [ ! -L "$LIFECYCLE_ARTIFACT" ] \
+        || fail 'lifecycle artifact is absent from read-only payload media'
+    [ "$(stat -c '%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = 4000:4000:400:1 ] \
+        || fail 'lifecycle artifact payload metadata differs'
+    [ "$(sha256sum "$LIFECYCLE_ARTIFACT" | awk '{ print $1 }')" = \
+      "$LIFECYCLE_ARTIFACT_SHA256" ] \
+        || fail 'lifecycle artifact payload digest differs'
+    archive_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DEV_CHECK_ARCHIVE"):$(sha256sum "$DEV_CHECK_ARCHIVE")"
+    artifact_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$LIFECYCLE_ARTIFACT"):$(sha256sum "$LIFECYCLE_ARTIFACT")"
+
+    load_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                --archive "$DEV_CHECK_ARCHIVE" \
+                --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+                --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" \
+                --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+                --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                --source-commit "$DEV_CHECK_SOURCE_COMMIT" \
+                --source-repository "$DEV_CHECK_SOURCE_REPOSITORY" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+                --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'devcheck archive verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail "devcheck archive verification/load receipt differs: $load_output"
+
+    mkdir -p "$extracted"
+    chmod 0711 "$lifecycle_root" "$extracted"
+    dpkg-deb -x "$LIFECYCLE_ARTIFACT" "$extracted" \
+        || fail 'cannot extract the exact lifecycle artifact inside the guest'
+    [ -f "$binary" ] && [ ! -L "$binary" ] && [ -x "$binary" ] \
+        || fail 'extracted lifecycle executable is absent or ambiguous'
+    chown 0:0 "$binary"
+    chmod 0555 "$binary"
+    [ "$(stat -c '%u:%g:%a:%h' -- "$binary")" = 0:0:555:1 ] \
+        || fail 'extracted lifecycle executable metadata differs'
+    mkdir "$libraries"
+    chown 4000:4000 "$libraries"
+    chmod 0700 "$libraries"
+
+    if /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$libraries" \
+        >"$lifecycle_root/root-stage.out" 2>"$lifecycle_root/root-stage.err"; then
+        fail 'VM root passed runtime-library staging entry'
+    fi
+    [ ! -s "$lifecycle_root/root-stage.out" ] \
+        || fail 'root runtime-library refusal produced standard output'
+    [ "$(<"$lifecycle_root/root-stage.err")" = \
+      'Debian systemd runtime-library staging refuses root execution' ] \
+        || fail 'root runtime-library refusal diagnostic differs'
+    if setpriv --reuid=4001 --regid=4001 --clear-groups \
+        /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$libraries" \
+        >"$lifecycle_root/foreign-stage.out" 2>"$lifecycle_root/foreign-stage.err"; then
+        fail 'foreign principal passed runtime-library staging entry'
+    fi
+    [ ! -s "$lifecycle_root/foreign-stage.out" ] \
+        || fail 'foreign runtime-library refusal produced standard output'
+    [ "$(<"$lifecycle_root/foreign-stage.err")" = \
+      'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+        || fail 'foreign runtime-library refusal diagnostic differs'
+    stage_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$libraries"
+    )" || fail 'authorized runtime-library staging failed'
+    mapfile -t stage_receipt <<<"$stage_output"
+    [ "${#stage_receipt[@]}" -eq 2 ] \
+        && [ "${stage_receipt[0]}" = \
+          "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" ] \
+        || fail "runtime-library staging authority receipt differs: $stage_output"
+    if [[ "${stage_receipt[1]}" =~ ^DEBIAN_SYSTEMD_RUNTIME_LIBS=pass\ image=$DEV_CHECK_IMAGE_ID\ libraries=([0-9]+)\ bytes=([0-9]+)\ input=readonly\ output=private$ ]]; then
+        stage_count=${BASH_REMATCH[1]}
+        stage_bytes=${BASH_REMATCH[2]}
+    else
+        fail "runtime-library staging result receipt differs: $stage_output"
+    fi
+    [ "$stage_count" -ge 60 ] && [ "$stage_count" -le 256 ] \
+        && [ "$stage_bytes" -gt 0 ] && [ "$stage_bytes" -le 1073741824 ] \
+        || fail 'runtime-library staging receipt bounds differ'
+
+    chown 0:0 "$libraries" "$libraries"/*
+    chmod 0444 "$libraries"/*
+    chmod 0555 "$libraries"
+    [ -z "$(find "$libraries" -mindepth 1 -maxdepth 1 \
+        \( ! -type f -o ! -uid 0 -o ! -gid 0 -o ! -perm 0444 -o -links +1 \) -print -quit)" ] \
+        || fail 'sealed runtime-library inventory differs'
+
+    stop_docker_authority
+    network_inventory >"$lifecycle_root.network-before"
+    lifecycle_network_before="$(sha256sum "$lifecycle_root.network-before")"
+    mount --bind "$libraries" "$libraries"
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$libraries"
+    LIFECYCLE_LIBS_MOUNTED=1
+    /bin/bash "$SYSTEMD_LIFECYCLE_SCRIPT" --release-deb \
+        "$VERIFY_REPO" "$libraries" "$LIFECYCLE_ARTIFACT" \
+        "$LIFECYCLE_ARTIFACT_SHA256" "$LIFECYCLE_COMMIT" \
+        || fail 'installed Debian artifact lifecycle failed'
+    umount "$libraries" || fail 'cannot retire the read-only runtime-library mount'
+    LIFECYCLE_LIBS_MOUNTED=0
+    network_inventory >"$lifecycle_root.network-after"
+    lifecycle_network_after="$(sha256sum "$lifecycle_root.network-after")"
+    [ "$lifecycle_network_after" = "$lifecycle_network_before" ] \
+        || fail 'installed lifecycle left guest network state behind'
+    [ "$archive_before" = \
+      "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DEV_CHECK_ARCHIVE"):$(sha256sum "$DEV_CHECK_ARCHIVE")" ] \
+        || fail 'devcheck archive changed across the installed lifecycle'
+    [ "$artifact_before" = \
+      "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$LIFECYCLE_ARTIFACT"):$(sha256sum "$LIFECYCLE_ARTIFACT")" ] \
+        || fail 'release artifact changed across the installed lifecycle'
+    printf 'VERIFIER_VM_DEBIAN_SYSTEMD_LIFECYCLE=pass artifact_sha256=%s commit=%s staging_uid=4000 root=refused foreign=refused docker=retired network=none cleanup=joined\n' \
+        "$LIFECYCLE_ARTIFACT_SHA256" "$LIFECYCLE_COMMIT"
+}
+
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
+    if [ "$LIFECYCLE_LIBS_MOUNTED" -eq 1 ]; then
+        umount /var/tmp/rustdesk-systemd-lifecycle/runtime-libs 2>/dev/null \
+            || status=1
+        LIFECYCLE_LIBS_MOUNTED=0
+    fi
     if [ -n "$CONTAINER_ID" ] && [ -x "$CLIENT" ]; then
         "$CLIENT" --host "unix://$SOCK" rm -f "$CONTAINER_ID" >/dev/null 2>&1 \
             || status=1
@@ -126,6 +303,9 @@ for verify_source in verify.sh verify-release.sh frb-codegen.sh dart-verify.sh s
     verify-android-builder-image-authority.py \
     verify-deb-builder-image-authority.py build-debian.sh \
     verify-debian-builder-authority.py \
+    stage-debian-systemd-runtime-libs.sh \
+    smoke-debian-systemd-lifecycle-guest.sh \
+    smoke-debian-systemd-loginctl.sh \
     verify-win-helper-image-authority.py verify-windows-helper-authority.py \
     test-windows-helper-vm-runtime.sh windows-helper-runtime.sh \
     windows-helper-extract-kernel.py windows-golden-inspect.sh \
@@ -146,6 +326,15 @@ for repository_source in requirements.html HARDENING_STATUS.md; do
     [ -f "$VERIFY_REPO/$repository_source" ] && [ ! -L "$VERIFY_REPO/$repository_source" ] \
         || fail "FRB source-gate input is absent or ambiguous: $repository_source"
 done
+[ -f "$VERIFY_REPO/res/rustdesk.service" ] \
+    && [ ! -L "$VERIFY_REPO/res/rustdesk.service" ] \
+    || fail 'installed-systemd production unit source is absent or ambiguous'
+[ "$(/usr/bin/stat -c '%a:%h' -- "$SYSTEMD_RUNTIME_LIBS_SCRIPT")" = 755:1 ] \
+    && [ "$(/usr/bin/stat -c '%a:%h' -- "$SYSTEMD_LIFECYCLE_SCRIPT")" = 755:1 ] \
+    && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFY_REPO/scripts/smoke-debian-systemd-loginctl.sh")" = 755:1 ] \
+    || fail 'installed-systemd lifecycle script metadata differs'
+# shellcheck source=/dev/null
+source "$VERIFY_REPO/scripts/pins.env"
 [ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
     || fail 'main verifier and guest probe use different entry-preflight paths'
 entry_source_metadata="$(stat -c '%F:%u:%g:%a:%h' -- \
@@ -285,6 +474,13 @@ chmod 0444 "$DAEMON_IDENTITY"
 network_inventory >"$ROOT.network-during"
 cmp -s "$ROOT.network-before" "$ROOT.network-during" \
     || fail 'guest Docker created an INET listener'
+
+if [ "$MODE" = debian-systemd-lifecycle ]; then
+    run_debian_systemd_lifecycle
+    printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
+        "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
 
 if setpriv --reuid=4001 --regid=4001 --clear-groups \
     /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
@@ -838,6 +1034,38 @@ printf '%s\n' "$debian_builder_entry_output"
 printf 'VERIFIER_VM_DEBIAN_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined\n' \
     "$EXPECTED_VERSION"
 
+if /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
+    >"$ROOT/root-systemd-libs-entry.out" 2>"$ROOT/root-systemd-libs-entry.err"; then
+    fail 'VM root passed the systemd runtime-library verifier entry'
+fi
+[ ! -s "$ROOT/root-systemd-libs-entry.out" ] \
+    || fail 'root systemd runtime-library refusal produced standard output'
+[ "$(<"$ROOT/root-systemd-libs-entry.err")" = \
+  'Debian systemd runtime-library staging refuses root execution' ] \
+    || fail 'root systemd runtime-library refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
+    >"$ROOT/foreign-systemd-libs-entry.out" 2>"$ROOT/foreign-systemd-libs-entry.err"; then
+    fail 'foreign principal passed the systemd runtime-library verifier entry'
+fi
+[ ! -s "$ROOT/foreign-systemd-libs-entry.out" ] \
+    || fail 'foreign systemd runtime-library refusal produced standard output'
+[ "$(<"$ROOT/foreign-systemd-libs-entry.err")" = \
+  'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+    || fail 'foreign systemd runtime-library refusal diagnostic differs'
+systemd_libs_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" \
+            --self-test-vm-authority "$(<"$ROOT/image-id")"
+)" || fail 'authorized systemd runtime-library verifier entry failed'
+expected_systemd_libs_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION profile=debian-systemd-runtime-libs runtime=real input=private-fixture-only workload=unexecuted cleanup=joined"
+[ "$systemd_libs_entry_output" = "$expected_systemd_libs_entry_output" ] \
+    || fail "systemd runtime-library verifier entry result differs: $systemd_libs_entry_output"
+printf '%s\n' "$systemd_libs_entry_output"
+printf 'VERIFIER_VM_SYSTEMD_LIBS_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profile=debian-systemd-runtime-libs runtime=real input=private-fixture-only workload=unexecuted cleanup=joined\n' \
+    "$EXPECTED_VERSION"
+
 if /bin/bash "$ANDROID_GRADLE_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/root-android-gradle-entry.out" 2>"$ROOT/root-android-gradle-entry.err"; then
     fail 'VM root passed the Android Gradle verifier entry'
@@ -975,17 +1203,7 @@ container_output="$("$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_I
 CONTAINER_ID=
 "$CLIENT" --host "unix://$SOCK" image rm "$IMAGE" >/dev/null
 
-kill -TERM "$DAEMON_PID"
-daemon_status=0
-wait "$DAEMON_PID" || daemon_status=$?
-[ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] \
-    || fail "Docker daemon shutdown returned $daemon_status"
-DAEMON_PID=
-[ ! -S "$SOCK" ] || fail 'Docker Unix socket remains after joined daemon shutdown'
-network_inventory >"$ROOT.network-after"
-cmp -s "$ROOT.network-before" "$ROOT.network-after" \
-    || fail 'guest network state changed across Docker execution'
-[ ! -e /sys/class/net/docker0 ] || fail 'Docker bridge remains after shutdown'
+stop_docker_authority
 
 printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default\n' \
     "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"

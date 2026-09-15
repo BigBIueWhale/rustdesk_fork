@@ -9,8 +9,8 @@
 # silently-failing gate fails the release instead of hiding.
 #
 # It does NOT run the R-B2 artifact builds (build-{debian,android,windows}*.sh) — those are the
-# separate reproducible-build step. This is the SOURCE-verification gate (slow: ~45-60 min total,
-# each sub-gate is a fresh docker image/run; it binds only 127.0.0.1).
+# separate reproducible-build step. The final installed-Debian artifact lifecycle is deliberately
+# later, after independent A==B comparison, inside the common no-NIC verifier VM.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -27,18 +27,6 @@ case "${1:-}" in
   *) echo "usage: scripts/verify-release.sh [--preflight]" >&2; exit 2 ;;
 esac
 
-# A release snapshot has no ignored .harness-state cache. The outer release
-# transaction may supply the independently pinned cloud image and private VM
-# scratch, but that authority belongs only to the systemd gate; do not leak the
-# two paths into unrelated source, audit, Android, or smoke consumers.
-SYSTEMD_GATE_IMAGE=${SYSTEMD_SMOKE_IMAGE:-}
-SYSTEMD_GATE_STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-}
-if { [ -n "$SYSTEMD_GATE_IMAGE" ] && [ -z "$SYSTEMD_GATE_STATE_DIR" ]; } \
-    || { [ -z "$SYSTEMD_GATE_IMAGE" ] && [ -n "$SYSTEMD_GATE_STATE_DIR" ]; }; then
-  echo "verify-release: systemd image and state overrides must be supplied together" >&2
-  exit 2
-fi
-unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR
 [ "$PREFLIGHT" -eq 0 ] || exit 0
 
 # gate-script | one-line description
@@ -49,7 +37,6 @@ GATES=(
   "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics"
   "android-rust-check.sh|pinned offline aarch64 Android Rust check"
   "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
-  "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
   "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"
@@ -69,12 +56,6 @@ for entry in "${GATES[@]}"; do
     gate_status=$?
   elif [ "$s" = smoke-server.sh ]; then
     bash "scripts/$s" --with-root-containers
-    gate_status=$?
-  elif [ "$s" = smoke-debian-systemd-lifecycle.sh ] \
-      && [ -n "$SYSTEMD_GATE_IMAGE" ]; then
-    SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE" \
-    SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_GATE_STATE_DIR" \
-      bash "scripts/$s"
     gate_status=$?
   else
     bash "scripts/$s"

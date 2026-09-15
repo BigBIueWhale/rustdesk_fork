@@ -19,7 +19,7 @@ FILES = {
     "pins": Path("scripts/pins.env"),
     "vcpkg_manifest": Path("res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"),
     "windows_tools": Path("res/vcpkg/libvpx/windows-tools.sha512"),
-    "systemd_smoke": Path("scripts/smoke-debian-systemd-lifecycle.sh"),
+    "systemd_smoke": Path("scripts/smoke-verifier-vm-authority.sh"),
     "verify": Path("scripts/verify.sh"),
     "requirements": Path("requirements.html"),
     "ledger": Path("HARDENING_STATUS.md"),
@@ -631,12 +631,16 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         (
             'readonly HOST_UID="$(/usr/bin/id -u)"',
             'readonly HOST_GID="$(/usr/bin/id -g)"',
-            'IMAGE_METADATA="$(stat -c \'%u:%g:%a:%h\' "$IMAGE")"',
-            '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
-            'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
-            'qemu-img check -q "$IMAGE"',
+            '"$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            '"$HOST_UID:$HOST_GID:400:1:$size"',
+            'verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            '/usr/bin/qemu-img check -q "$BASE"',
         ),
         "systemd image independent consumer",
+    )
+    require(
+        systemd_smoke.count('"$HOST_UID:$HOST_GID:400:1:$size"') == 2,
+        "systemd image consumer metadata profile count changed",
     )
 
     require_all(
@@ -979,13 +983,13 @@ MUTATIONS = (
     ),
     Mutation(
         "systemd_smoke",
-        '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
-        '"$HOST_UID:$HOST_GID:600:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
+        '"$HOST_UID:$HOST_GID:400:1:$size"',
+        '"$HOST_UID:$HOST_GID:600:1:$size"',
         "systemd image downstream metadata profiles",
     ),
     Mutation(
         "systemd_smoke",
-        'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+        'verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
         "true # publisher digest bypassed",
         "systemd image downstream SHA-512 proof",
     ),

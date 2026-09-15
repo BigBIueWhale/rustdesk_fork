@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-dc0b5068b8e73d7e769fc625e27c1e32fc878e333b0a4585840226d64fb24be1  requirements.html
+85477df86b8d275a20bd361ccefb62859f3e859eedcf1dfeb5e95cb34f3b6ec8  requirements.html
 ```
 
 ## Current Verdict
@@ -2356,7 +2356,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   - **R-S11c-27m — installed Debian systemd lifecycle — SOURCE/PACKAGE IMPLEMENTED; HISTORICAL NATIVE VM.**
     A networkless Debian VM once exercised installed restart, stop/start, supervisor crash,
     non-root child identity, cgroup ownership, portable survival, removal, and purge; it does not
-    prove current `master` or the final artifact.
+    prove current `master` or the final artifact. The lifecycle now exists only as a release-only
+    scenario of the common no-NIC verifier VM; its exact numeric-nonroot library-staging profile
+    has current real-VM evidence, but the installed package transaction does not.
   - **R-S11c-27n — cross-container executable identity — HISTORICAL RUNTIME.** Distinct
     mount/PID namespaces using identical path and bytes remained distinct executable identities.
   - **R-S11c-27o — actual kernel numeric-PID reuse — HISTORICAL RUNTIME.** A private PID namespace
@@ -2373,8 +2375,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     recovery, but requires current exact-artifact VM reproduction.
   - **R-S11c-27s — final Debian artifact lifecycle gate — SOURCE/RELEASE-TRANSACTION IMPLEMENTED;
     EXECUTION OPEN.** The gate binds the cold A==B pass-A `.deb`, commit, package identity,
-    installed systemd lifecycle, post-run artifact identity, and pre-publication order. No current
-    final `.deb` has passed it.
+    authenticated devcheck archive, installed systemd lifecycle, post-run input identities, and
+    pre-publication order through the common no-NIC verifier VM after its Docker daemon is joined.
+    No current final `.deb` has passed it.
   - **R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership — SOURCE IMPLEMENTED/GATED;
     NATIVE OPEN.** Owner loss is selectable throughout bootstrap and post-bootstrap work has
     bounded terminal-first completion. Current native/package/device lifecycle execution remains
@@ -6973,111 +6976,84 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release transaction, or installed service ran. Exact workload transport,
   cold A==B R-B2/R-B10 artifacts, installed/native behavior, independent
   reproduction, and R-V3 external review remain open.
-- **R-S11dl/R-S11e-130 — Debian systemd-lifecycle Docker client, daemon,
-  configuration, image, and mount authority — SOURCE AND CONFINED
-  SEMANTIC/MUTATION GATES VERIFIED 2026-07-26; EXACT COLD ARTIFACT,
-  INSTALLED/NATIVE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
-  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
-  `scripts/smoke-debian-systemd-lifecycle.sh` immutable devcheck provenance
-  plus its sole runtime-library staging operation before the networkless Debian
-  KVM lifecycle. Boundary: the invoking user and private VM scratch ↔ Docker
-  client/daemon/configuration, dependency-image identity, selected RustDesk
-  executable, staged library output, and cleanup authority.
+- **R-S11dl/R-S11e-130 — installed Debian systemd lifecycle is VM-only;
+  REAL STAGING PROFILE VERIFIED 2026-09-15; CURRENT FINAL ARTIFACT LIFECYCLE,
+  COLD RELEASE, NATIVE/DEVICE, REPRODUCTION, AND EXTERNAL REVIEW REMAIN OPEN.**
+  Platform/boundary: unprivileged release host → common disposable Debian
+  verifier VM with no NIC and private Unix-only channels → VM-root Docker used
+  only for exact offline image verification and library staging → real systemd
+  PID 1 after Docker has terminated.
 
-  R-S11c-27m and R-S11c-27s already gave the orchestrator a publisher-hashed
-  standalone Debian cloud image, unprivileged `/dev/kvm`, CoW overlay,
-  read-only ISO payload, `-nic none`, source/artifact identity checks, and the
-  installed source/final-artifact guest lifecycle. Its dependency container
-  already used the host numeric identity, no network, a read-only image root,
-  all capabilities dropped, no-new-privileges, and a 64-process limit. R-S11dj
-  later removed release-parent Docker configuration inheritance.
+  The separate 459-line
+  `scripts/smoke-debian-systemd-lifecycle.sh` host orchestrator is deleted.
+  It no longer connects to host Docker, selects a lifecycle image/tag, stages
+  dependencies on the host daemon, maintains separate VM state, or builds a
+  synthetic source-mode package. The only installed lifecycle entry is
+  `scripts/smoke-verifier-vm-authority.sh --debian-systemd-lifecycle`.
+  `scripts/verify-release.sh` does not pretend this final-artifact operation is
+  a source gate; `scripts/build-release.sh` invokes it after A==B and before
+  manifest construction/publication.
 
-  Exact source review nevertheless proved a weaker outer boundary. The script
-  changed into and sourced the repository before refusing only UID zero, never
-  refused primary GID zero, rejected only inherited `DOCKER_CONFIG`, accepted
-  mutable `SYSTEMD_SMOKE_DEV_IMAGE`, PATH-selected Docker, created/exported
-  bespoke process-global configuration, directly inspected/launched a mutable
-  image reference, and did not exactly retire authority before recursive
-  cleanup. The launch lacked no-pull, memory/no-swap/CPU,
-  descriptor/file-size, and bounded-tmpfs controls. Docker's short `-v` syntax
-  exposed the complete repository and, in release mode, the complete extracted
-  package tree although the stage consumes only one executable and produces
-  one library directory.
+  The common host harness requires distinct canonical current-principal
+  mode-0700 immutable-input and run roots. It verifies the pinned base,
+  direct-boot kernel/initramfs, Docker bundle, exact mode-0400 devcheck archive,
+  exact mode-0400 final `.deb`, artifact hash/package/architecture, detached
+  clean source commit, current and provenance-commit devcheck recipe bytes,
+  provenance ancestry, and independent package authority. Package and archive
+  enter read-only ISO media owned as numeric UID/GID 4000. QEMU has exactly
+  `-nic none`, read-only media, bounded overlay/time/result output, private
+  Unix serial/QMP, and host-listener snapshots before/during/after; all inputs
+  are identity/hash checked after execution.
 
-  Docker's official CLI reference documents host, context, configuration,
-  certificate/TLS, API-version, platform, content-trust/server, and
-  custom-header inputs, context and explicit-config precedence, and
-  configuration-driven proxy injection. Its bind-mount documentation states
-  that binds are direct host-filesystem authority, writable by default, that
-  `-v` creates absent sources while `--mount` rejects them, and that recursive
-  bind inclusion is separately controlled. Its run reference documents
-  `--pull=never`, read-only root, resource bounds, capability removal,
-  no-new-privileges, and tmpfs controls. The old path therefore left real
-  lifecycle-verdict, daemon/config/image-selection, bind-mount, cleanup, and
-  build-host authority debt. It is not evidence that another daemon/image or
-  malicious configuration was used, source/artifact bytes changed, Docker
-  escaped, host root was acquired, a port/listener was exposed, host RustDesk/
-  service/configuration/firewall/network state changed, exploitation occurred,
-  or the host was compromised.
+  In the guest, root owns one fixed Docker 27.5.1 daemon on a guest-private Unix
+  socket and authenticates the exact devcheck archive. The new
+  `scripts/stage-debian-systemd-runtime-libs.sh` refuses UID or primary GID
+  zero before repository loading, refuses foreign UID/GID 4001 through the
+  common preflight, and admits only UID/GID 4000. Its sole production launch
+  uses the immutable image ID, `--pull=never`, no network, a read-only root,
+  explicit entrypoint, zero capabilities, no-new-privileges, seccomp filtering,
+  `docker-default` AppArmor, private cgroup/IPC namespaces, 64 PIDs, 1 GiB
+  memory with no added swap, one CPU, zero core, 4096 descriptors, 256 MiB file
+  size, and 32 MiB private no-exec scratch. Docker receives exactly one
+  root-owned RustDesk executable read-only and one empty private output
+  directory writable, both nonrecursive. The flat library output is
+  collision-checked and bounded to 60..256 nonempty single-link files and
+  1 GiB.
 
-  The orchestrator now fixes `PATH`, captures UID/GID through absolute
-  `/usr/bin/id`, and refuses UID or primary GID zero before resolving or
-  sourcing repository shell/pins. It requires canonical current-user-owned
-  private smoke state, creates unpredictable current-user/current-group
-  mode-0700 VM scratch, and initializes the shared
-  `debian-systemd-lifecycle` local-Docker authority there. The shared authority
-  binds the exact root-owned non-symlink mode-0755 single-link
-  `/usr/bin/docker`, fixed root-owned non-symlink single-link
-  `/var/run/docker.sock`, authority-parent/configuration identities, and
-  current-user/current-group mode-0600 single-link canonical-empty
-  `config.json`; rejects the complete reviewed ambient Docker input set; and
-  reproves each identity plus the configuration bytes around every operation.
+  The guest seals the staged library set, then signals and joins the exact
+  Docker daemon and proves its socket/bridge/network effects absent before
+  installing or starting RustDesk. It remounts the libraries
+  read-only/nodev/nosuid/noexec and dispatches only the exact release
+  `.deb` lifecycle. That real-systemd transaction retains the existing
+  production-unit/package verification, direct non-root service-child
+  cgroup/identity/capability/no-new-privileges/argv/environment/executable
+  proofs, normal restart, stop/start, KILL recovery, portable-sibling survival,
+  removal, purge, and cleanup requirements.
 
-  The mutable dev-image input and tag are deleted. The current
-  `Dockerfile.devcheck` and its provenance-commit blob must equal the reviewed
-  recipe hash, and the provenance commit must be an ancestor of lifecycle
-  source. The shared isolated provenance wrapper verifies the exact immutable
-  devcheck base/image/config/manifest identities, dpkg/Cargo/rustc
-  fingerprints, source commit, and source repository through the same fixed
-  authority.
+  Current behavioral evidence is deliberately narrow and exact. On 2026-09-15
+  the ordinary common harness booted the SHA-512-pinned Debian base with direct
+  authenticated boot assets and `-nic none`; started the VM-root Docker
+  daemon; refused root and foreign staging entries; and ran the real production
+  staging launch function against a private minimal executable fixture. The
+  container observed PID 1, UID/GID 4000, zero capabilities,
+  no-new-privileges, seccomp mode 2, `docker-default`, exact cgroup resource
+  limits, loopback only, read-only root/input, sole private writable output,
+  and unchanged input/container inventory. Docker, QEMU, Unix channels,
+  overlay, and private fixtures joined cleanly; host listeners were unchanged.
+  The complete common authority run finished in **46 seconds** and emitted:
+  `VERIFIER_VM_SYSTEMD_LIBS_ENTRY=pass ... runtime=real
+  input=private-fixture-only workload=unexecuted cleanup=joined`.
 
-  The sole staging launch now uses `local_docker`, hence an otherwise empty
-  client environment, fixed local endpoint/private configuration, absolute
-  client, redundant explicit host/config arguments, and pre/post proof. It
-  uses the immutable content ID with `--pull=never`, no network, read-only root,
-  numeric host UID/GID, all capabilities dropped, no-new-privileges, and
-  explicit PID, 1-GiB/no-swap, one-CPU, descriptor, 256-MiB-per-file, and
-  32-MiB non-executable-tmpfs ceilings. Docker sees exactly the selected source
-  or extracted-package RustDesk executable at one read-only fixed file and the
-  private runtime-library directory writable, both with recursive bind
-  inclusion disabled. Whole-repository and whole-extracted-artifact mounts are
-  deleted. The result must remain a private current-owner directory containing
-  60..256 nonempty top-level regular current-owner/current-group single-link
-  files totaling at most 1 GiB before it is sealed into the immutable payload.
+  That receipt is not an installed RustDesk claim. The 822,395,974-byte exact
+  devcheck archive and a current final A==B `.deb` were not locally available
+  for this slice, so the new final-artifact scenario was not executed.
+  Installed current-`master` behavior therefore remains open, as do cold
+  R-B2/R-B10 outputs, the other Linux supervisors, cross-version/native/device
+  performance and soak, independent reproduction, and R-V3 review. The former
+  916-line/44-mutation lifecycle checker was replaced with a compact
+  architectural invariant, and the duplicate workspace-verifier block was
+  compressed to the current VM topology; neither is counted as runtime evidence.
 
-  Cleanup now reproves/removes only the exact Docker configuration
-  leaf/directory before recursive workspace removal; a changed authority is
-  preserved and fails. The previous final success path no longer disables that
-  trap or bypasses exact removal.
-
-  R-S11dl and Appendix C #265 make the boundary normative. The focused
-  `scripts/verify-debian-systemd-lifecycle-authority.py` owns the source-order,
-  image, launch, mount, result-bound, and cleanup checks for this lifecycle.
-  The Android builder checker no longer mirrors this unrelated subsystem, and
-  its former workspace verifier-of-verifier coupling is deleted. The last
-  focused source run rejected its 44 deliberate mutations, but that is source
-  evidence only and does not replace the installed lifecycle execution below.
-
-  This slice does not invoke the lifecycle orchestrator, Docker staging, KVM,
-  a package builder, release transaction, `scripts/verify.sh`, or a root
-  fixture. One preliminary read-only host Docker version query reported
-  client/server 29.6.0 and API 1.55; it did not inspect an image, start/modify a
-  container, or change Docker/RustDesk/service/network state and was not used as
-  project evidence. All project code/gate execution is confined to a
-  socketless, networkless, non-root, read-only-source verifier container. Exact
-  cold committed R-B2/R-B10 artifact lifecycle execution, installed/native/
-  device behavior, and R-V3 external review remain separately open. The
-  broader Ralph-loop goal remains active.
 - **R-S11dm/R-S11e-131 — release-parent Docker client, daemon,
   configuration, writable-bind principal, and cleanup authority — SOURCE VERIFIED
   2026-07-26; EXACT COLD RELEASE/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.**

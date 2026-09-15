@@ -444,7 +444,7 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE"',
             '--archive-size "$DEB_BUILDER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE"',
             "SHA256_DEB_BUILDER_BOOTSTRAP_OCI_LAYOUT",
-            "online_docker_without_vcs buildx build",
+            "online_buildx_build",
             "--network=none --pull=false --no-cache",
             "--platform=linux/amd64 --provenance=mode=max",
             "type=oci,name=${export_name},dest=${candidate_oci},tar=true",
@@ -473,7 +473,7 @@ def validate_online_fetch(source: str) -> None:
         (
             "materialize-oci-layout",
             "verify-oci-layout",
-            "online_docker_without_vcs buildx build",
+            "online_buildx_build",
             "verify-oci-layout",
             "maintenance-normalize-certified-oci",
             "verify-load",

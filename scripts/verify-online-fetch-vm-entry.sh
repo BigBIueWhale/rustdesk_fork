@@ -24,6 +24,7 @@ readonly RENAME_CONTRACT="$AUTHORITY_ROOT/rename.contract"
 readonly DOCKER_CLIENT=/usr/bin/docker
 readonly DOCKER_SOCKET=/var/run/docker.sock
 readonly DOCKER_DAEMON="$AUTHORITY_ROOT/bin/dockerd"
+readonly BUILDX_SOURCE="$AUTHORITY_ROOT/docker-buildx"
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
 readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
 readonly GIT_EXEC_PATH=$GIT_RUNTIME_ROOT/usr/lib/git-core
@@ -120,6 +121,12 @@ done
 [ -f "$DOCKER_DAEMON" ] && [ ! -L "$DOCKER_DAEMON" ] && [ -x "$DOCKER_DAEMON" ] \
     && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DOCKER_DAEMON")" = 0:0:555:1 ] \
     || fail 'fixed guest Docker daemon metadata differs'
+[ -f "$BUILDX_SOURCE" ] && [ ! -L "$BUILDX_SOURCE" ] && [ -x "$BUILDX_SOURCE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$BUILDX_SOURCE")" = \
+         "0:0:555:1:$SIZE_VERIFIER_VM_BUILDX" ] \
+    && [ "$(/usr/bin/sha256sum "$BUILDX_SOURCE" | /usr/bin/awk '{print $1}')" = \
+         "$SHA256_VERIFIER_VM_BUILDX" ] \
+    || fail 'fixed guest Buildx source identity differs'
 [ "$(/usr/bin/sha256sum "$DOCKER_CLIENT" | /usr/bin/awk '{print $1}')" = "$EXPECTED_CLIENT_SHA" ] \
     && [ "$(/usr/bin/sha256sum "$DOCKER_DAEMON" | /usr/bin/awk '{print $1}')" = "$EXPECTED_DAEMON_SHA" ] \
     || fail 'guest Docker executable bytes differ from the root-authored authority'

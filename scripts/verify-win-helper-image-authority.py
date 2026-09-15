@@ -482,7 +482,7 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE"',
             '--archive-size "$WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE"',
             "SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT",
-            "online_docker_without_vcs buildx build",
+            "online_buildx_build",
             "--network=none --pull=false --no-cache",
             "--platform=linux/amd64 --provenance=mode=max",
             "type=oci,name=${export_name},dest=${candidate_oci},tar=true",
@@ -519,7 +519,7 @@ def validate_online_fetch(source: str) -> None:
         (
             "materialize-oci-layout",
             "online_image_provenance verify-oci-layout",
-            "online_docker_without_vcs buildx build",
+            "online_buildx_build",
             "online_image_provenance verify-oci-layout",
             "maintenance-normalize-certified-oci",
             "online_image_provenance verify-load",

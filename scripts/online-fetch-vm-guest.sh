@@ -8,23 +8,28 @@ fail() {
     exit 1
 }
 
-[ "$#" -eq 16 ] || fail 'guest bootstrap argument count differs'
+[ "$#" -eq 21 ] || fail 'guest bootstrap argument count differs'
 readonly DOCKER_ARCHIVE=$1
-readonly SOURCE_BUNDLE=$2
-readonly GIT_PACKAGE=$3
-readonly EXPECTED_DOCKER_VERSION=$4
-readonly EXPECTED_DOCKER_SIZE=$5
-readonly EXPECTED_DOCKER_SHA256=$6
-readonly EXPECTED_GIT_PACKAGE_VERSION=$7
-readonly EXPECTED_GIT_PACKAGE_SIZE=$8
-readonly EXPECTED_GIT_PACKAGE_SHA256=$9
-readonly EXPECTED_GIT_BINARY_SIZE=${10}
-readonly EXPECTED_GIT_BINARY_SHA256=${11}
-readonly EXPECTED_KERNEL_RELEASE=${12}
-readonly EXPECTED_ROOT_UUID=${13}
-readonly ACQUISITION_UID=${14}
-readonly ACQUISITION_GID=${15}
-readonly EXPECTED_SOURCE_COMMIT=${16}
+readonly BUILDX_INPUT=$2
+readonly SOURCE_BUNDLE=$3
+readonly GIT_PACKAGE=$4
+readonly EXPECTED_DOCKER_VERSION=$5
+readonly EXPECTED_DOCKER_SIZE=$6
+readonly EXPECTED_DOCKER_SHA256=$7
+readonly EXPECTED_BUILDX_VERSION=$8
+readonly EXPECTED_BUILDX_COMMIT=$9
+readonly EXPECTED_BUILDX_SIZE=${10}
+readonly EXPECTED_BUILDX_SHA256=${11}
+readonly EXPECTED_GIT_PACKAGE_VERSION=${12}
+readonly EXPECTED_GIT_PACKAGE_SIZE=${13}
+readonly EXPECTED_GIT_PACKAGE_SHA256=${14}
+readonly EXPECTED_GIT_BINARY_SIZE=${15}
+readonly EXPECTED_GIT_BINARY_SHA256=${16}
+readonly EXPECTED_KERNEL_RELEASE=${17}
+readonly EXPECTED_ROOT_UUID=${18}
+readonly ACQUISITION_UID=${19}
+readonly ACQUISITION_GID=${20}
+readonly EXPECTED_SOURCE_COMMIT=${21}
 readonly EXPECTED_SOURCE_TREE="$(/usr/bin/cat /mnt/rustdesk-online-fetch-inputs/source.tree)"
 readonly EXPECTED_SOURCE_BUNDLE_SHA256="$(/usr/bin/cat /mnt/rustdesk-online-fetch-inputs/source.bundle.sha256)"
 REQUEST="$(/usr/bin/cat /mnt/rustdesk-online-fetch-inputs/request)"
@@ -37,6 +42,7 @@ readonly LOG=$ROOT/dockerd.log
 readonly PIDFILE=$ROOT/dockerd.pid
 readonly SOCKET=/var/run/docker.sock
 readonly CLIENT=/usr/bin/docker
+readonly BUILDX_SOURCE=$ROOT/docker-buildx
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
 readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
 readonly GIT_EXEC_PATH=$GIT_RUNTIME_ROOT/usr/lib/git-core
@@ -166,6 +172,13 @@ trap 'exit 143' TERM
 case "$EXPECTED_DOCKER_SIZE" in 0|*[!0-9]*|'') fail 'Docker size pin is malformed' ;; esac
 [[ "$EXPECTED_DOCKER_SHA256" =~ ^[0-9a-f]{64}$ ]] \
     || fail 'Docker digest pin is malformed'
+[[ "$EXPECTED_BUILDX_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || fail 'Buildx version pin is malformed'
+[[ "$EXPECTED_BUILDX_COMMIT" =~ ^[0-9a-f]{7,40}$ ]] \
+    || fail 'Buildx commit pin is malformed'
+case "$EXPECTED_BUILDX_SIZE" in 0|*[!0-9]*|'') fail 'Buildx size pin is malformed' ;; esac
+[[ "$EXPECTED_BUILDX_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || fail 'Buildx digest pin is malformed'
 case "$EXPECTED_GIT_PACKAGE_SIZE" in 0|*[!0-9]*|'') fail 'Git package size pin is malformed' ;; esac
 [[ "$EXPECTED_GIT_PACKAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
     || fail 'Git package digest pin is malformed'
@@ -208,6 +221,7 @@ case "$REQUEST" in
 esac
 
 for input in "$DOCKER_ARCHIVE:$EXPECTED_DOCKER_SIZE" \
+    "$BUILDX_INPUT:$EXPECTED_BUILDX_SIZE" \
     "$GIT_PACKAGE:$EXPECTED_GIT_PACKAGE_SIZE" "$SOURCE_BUNDLE:"; do
     path=${input%:*}
     size=${input##*:}
@@ -223,6 +237,8 @@ for input in "$DOCKER_ARCHIVE:$EXPECTED_DOCKER_SIZE" \
 done
 [ "$(/usr/bin/sha256sum "$DOCKER_ARCHIVE" | /usr/bin/awk '{print $1}')" = "$EXPECTED_DOCKER_SHA256" ] \
     || fail 'Docker bundle digest differs inside the guest'
+[ "$(/usr/bin/sha256sum "$BUILDX_INPUT" | /usr/bin/awk '{print $1}')" = "$EXPECTED_BUILDX_SHA256" ] \
+    || fail 'Buildx binary digest differs inside the guest'
 [ "$(/usr/bin/sha256sum "$GIT_PACKAGE" | /usr/bin/awk '{print $1}')" = "$EXPECTED_GIT_PACKAGE_SHA256" ] \
     || fail 'Git package digest differs inside the guest'
 [ "$(/usr/bin/dpkg-deb --field "$GIT_PACKAGE" Package)" = git ] \
@@ -233,6 +249,15 @@ done
     || fail 'source-bundle digest differs inside the guest'
 
 /usr/bin/install -d -m 0700 -- "$ROOT"
+[ ! -e "$BUILDX_SOURCE" ] && [ ! -L "$BUILDX_SOURCE" ] \
+    || fail 'fixed Buildx source path is occupied'
+/usr/bin/install -m 0555 -- "$BUILDX_INPUT" "$BUILDX_SOURCE"
+[ -f "$BUILDX_SOURCE" ] && [ ! -L "$BUILDX_SOURCE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$BUILDX_SOURCE")" = \
+         "0:0:555:1:$EXPECTED_BUILDX_SIZE" ] \
+    && [ "$(/usr/bin/sha256sum "$BUILDX_SOURCE" | /usr/bin/awk '{print $1}')" = \
+         "$EXPECTED_BUILDX_SHA256" ] \
+    || fail 'fixed Buildx source identity differs'
 /usr/bin/install -d -m 0700 -- "$GIT_RUNTIME_ROOT"
 /usr/bin/dpkg-deb --extract "$GIT_PACKAGE" "$GIT_RUNTIME_ROOT" \
     || fail 'cannot extract the authenticated Git runtime'

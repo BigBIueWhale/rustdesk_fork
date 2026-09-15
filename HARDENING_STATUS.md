@@ -1587,6 +1587,19 @@ candidate against those exact values; only the separate no-clobber promotion acc
 This corrects the former circular source transaction for Android, Debian, and the Windows helper. The first actual
 networkless certified-builder candidate run and its independent review remain open.
 
+The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
+`b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
+with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded
+evidence shows byte-identical before/during/after host-listener inventories, empty new-listener sets, joined VM
+processes, and no candidate. The authenticated Docker 27.5.1 static bundle contains the engine and CLI but no
+Buildx CLI plugin, even though every candidate builder invoked `docker buildx build`; this was a real executable-
+infrastructure defect hidden by source-only gates. The corrected source separately pins Docker's matching Buildx
+0.20.0 linux/amd64 release by exact version, commit, size, and publisher SHA-256; carries it as inert read-only/noexec
+VM input; revalidates a fixed root-owned guest source and a private admitted-user plugin copy; and funnels every
+build through the default in-daemon `docker` driver while refusing a Buildx-managed builder container. This
+correction is not yet runtime evidence: authenticated input acquisition, the focused real-VM plugin/driver probe,
+and a repeated certified Android transaction remain open.
+
 Current source at `a81ffdf79afa87a75dfc5d692a33752bf305599b` requires byte-identical complete
 before/during/after listener inventories and, only after joined cleanup and exact run-root retirement, no-clobber
 publishes one private 64 KiB-bounded source/result-digest receipt. Real `run.iANlepal0v` exercised that topology in

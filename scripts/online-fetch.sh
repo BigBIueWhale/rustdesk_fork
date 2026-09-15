@@ -35,7 +35,8 @@ load_pins
 acquire_verifier_vm_inputs() {
     [ "$#" -eq 0 ] || die "--verifier-vm-inputs takes no arguments"
     local uid gid state_root vm_root transaction transaction_id staging=
-    local image_name image_path docker_name docker_path git_name git_path
+    local image_name image_path docker_name docker_path buildx_name buildx_path
+    local git_name git_path
     local virtiofsd_name virtiofsd_path
     uid="$(/usr/bin/id -u)"
     gid="$(/usr/bin/id -g)"
@@ -160,6 +161,8 @@ acquire_verifier_vm_inputs() {
     image_path="$vm_root/$image_name"
     docker_name="docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
     docker_path="$vm_root/$docker_name"
+    buildx_name="buildx-v${VERIFIER_VM_BUILDX_VERSION}.linux-amd64"
+    buildx_path="$vm_root/$buildx_name"
     git_name="git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
     git_path="$vm_root/$git_name"
     virtiofsd_name="virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
@@ -174,6 +177,11 @@ acquire_verifier_vm_inputs() {
         "https://download.docker.com/linux/static/stable/x86_64/$docker_name" \
         "$docker_path" "$SIZE_VERIFIER_VM_DOCKER_STATIC" sha256 \
         "$SHA256_VERIFIER_VM_DOCKER_STATIC"
+    acquire_verifier_vm_file \
+        "Buildx verifier-VM CLI plugin" \
+        "https://github.com/docker/buildx/releases/download/v${VERIFIER_VM_BUILDX_VERSION}/$buildx_name" \
+        "$buildx_path" "$SIZE_VERIFIER_VM_BUILDX" sha256 \
+        "$SHA256_VERIFIER_VM_BUILDX"
     acquire_verifier_vm_file \
         "Git verifier-VM runtime package" \
         "https://deb.debian.org/debian/pool/main/g/git/$git_name" \
@@ -206,12 +214,15 @@ if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then
     exec "$SCRIPT_DIR/online-fetch-vm.sh" "$@"
 fi
 "$SCRIPT_DIR/verify-online-fetch-vm-entry.sh"
+ONLINE_FETCH_VM_AUTHORITY_PROBE=0
 if [ "${1:-}" = --vm-authority-probe ]; then
     [ "$#" -eq 1 ] || die "--vm-authority-probe takes no arguments"
-    exit 0
+    ONLINE_FETCH_VM_AUTHORITY_PROBE=1
 fi
+readonly ONLINE_FETCH_VM_AUTHORITY_PROBE
 
 readonly DOCKER_BIN=/usr/bin/docker
+readonly BUILDX_SOURCE=/opt/rustdesk-online-fetch-vm/docker-buildx
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-online-fetch-git
 readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git
 readonly GIT_EXEC_PATH=$GIT_RUNTIME_ROOT/usr/lib/git-core
@@ -237,6 +248,13 @@ readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
 [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable: $DOCKER_BIN"
 [ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
     || die "trusted Docker client metadata changed"
+[ -f "$BUILDX_SOURCE" ] && [ ! -L "$BUILDX_SOURCE" ] && [ -x "$BUILDX_SOURCE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$BUILDX_SOURCE")" = \
+         "0:0:555:1:$SIZE_VERIFIER_VM_BUILDX" ] \
+    || die "trusted Buildx source metadata changed"
+[ "$(/usr/bin/sha256sum "$BUILDX_SOURCE" | /usr/bin/awk '{print $1}')" = \
+  "$SHA256_VERIFIER_VM_BUILDX" ] \
+    || die "trusted Buildx source bytes changed"
 [ -x "$GIT_BIN" ] || die "trusted Git client is unavailable: $GIT_BIN"
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$GIT_RUNTIME_ROOT")" = "0:0:555" ] \
     || die "trusted Git runtime root metadata changed"
@@ -444,7 +462,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 readonly ONLINE_FETCH_DOCKER_CONFIG="$ONLINE_FETCH_TMP/docker-config"
-install -d -m 0700 "$ONLINE_FETCH_DOCKER_CONFIG"
+readonly ONLINE_FETCH_BUILDX_DIR="$ONLINE_FETCH_DOCKER_CONFIG/cli-plugins"
+readonly ONLINE_FETCH_BUILDX_PLUGIN="$ONLINE_FETCH_BUILDX_DIR/docker-buildx"
+install -d -m 0700 "$ONLINE_FETCH_DOCKER_CONFIG" "$ONLINE_FETCH_BUILDX_DIR"
+install -m 0500 "$BUILDX_SOURCE" "$ONLINE_FETCH_BUILDX_PLUGIN"
 printf '{}\n' >"$ONLINE_FETCH_DOCKER_CONFIG/config.json"
 chmod 0600 "$ONLINE_FETCH_DOCKER_CONFIG/config.json"
 export DOCKER_HOST="$ONLINE_FETCH_DOCKER_HOST"
@@ -467,6 +488,20 @@ assert_online_fetch_docker_authority() {
         || die "private Docker configuration file metadata changed"
     [ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ] \
         || die "private Docker configuration bytes changed"
+    [ -d "$ONLINE_FETCH_BUILDX_DIR" ] && [ ! -L "$ONLINE_FETCH_BUILDX_DIR" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$ONLINE_FETCH_BUILDX_DIR")" = \
+             "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private Buildx plugin directory changed"
+    [ -f "$ONLINE_FETCH_BUILDX_PLUGIN" ] && [ ! -L "$ONLINE_FETCH_BUILDX_PLUGIN" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$ONLINE_FETCH_BUILDX_PLUGIN")" = \
+             "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:500:1:$SIZE_VERIFIER_VM_BUILDX" ] \
+        || die "private Buildx plugin metadata changed"
+    [ "$(/usr/bin/sha256sum "$ONLINE_FETCH_BUILDX_PLUGIN" | /usr/bin/awk '{print $1}')" = \
+      "$SHA256_VERIFIER_VM_BUILDX" ] \
+        || die "private Buildx plugin bytes changed"
+    [ "$(/usr/bin/find "$ONLINE_FETCH_BUILDX_DIR" -mindepth 1 -maxdepth 1 \
+          -printf '%f\n')" = docker-buildx ] \
+        || die "private Docker CLI plugin inventory changed"
 }
 
 online_docker() {
@@ -501,6 +536,64 @@ online_docker_without_vcs() {
     assert_online_fetch_docker_authority
     return "$status"
 }
+
+assert_online_fetch_buildx_version() {
+    local version
+    assert_online_fetch_docker_authority
+    version="$(
+        env -i \
+            PATH=/usr/bin:/bin \
+            HOME="$ONLINE_FETCH_TMP" \
+            DOCKER_HOST="$ONLINE_FETCH_DOCKER_HOST" \
+            DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \
+            "$DOCKER_BIN" \
+            --host "$ONLINE_FETCH_DOCKER_HOST" \
+            --config "$ONLINE_FETCH_DOCKER_CONFIG" \
+            buildx version
+    )" || die "cannot execute the exact private Buildx plugin"
+    [ "$version" = \
+      "github.com/docker/buildx v${VERIFIER_VM_BUILDX_VERSION} ${VERIFIER_VM_BUILDX_COMMIT}" ] \
+        || die "private Buildx plugin version differs: $version"
+    assert_online_fetch_docker_authority
+}
+
+assert_no_buildx_container_driver() {
+    local names
+    names="$(online_docker ps -a --format '{{.Names}}')" \
+        || die "cannot inspect the guest container inventory"
+    if /usr/bin/grep -Eq '^buildx_buildkit_' <<<"$names"; then
+        die "a Buildx-managed builder container exists"
+    fi
+}
+
+assert_online_fetch_buildx_driver() {
+    local driver
+    assert_no_buildx_container_driver
+    driver="$(
+        online_docker_without_vcs buildx --builder default inspect \
+            | /usr/bin/awk -F ':' \
+                '$1 == "Driver" { value=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value); print value }'
+    )" || die "cannot inspect the exact default Buildx builder"
+    [ "$driver" = docker ] \
+        || die "the exact default Buildx builder is not the in-daemon docker driver: $driver"
+    assert_no_buildx_container_driver
+}
+
+online_buildx_build() {
+    local status=0
+    assert_online_fetch_buildx_driver
+    online_docker_without_vcs buildx --builder default build "$@" || status=$?
+    assert_online_fetch_buildx_driver
+    return "$status"
+}
+
+assert_online_fetch_buildx_version
+assert_online_fetch_buildx_driver
+printf 'ONLINE_FETCH_BUILDX_AUTHORITY=pass version=%s commit=%s plugin=private driver=docker builder=default managed_container=absent\n' \
+    "$VERIFIER_VM_BUILDX_VERSION" "$VERIFIER_VM_BUILDX_COMMIT"
+if [ "$ONLINE_FETCH_VM_AUTHORITY_PROBE" -eq 1 ]; then
+    exit 0
+fi
 
 online_image_provenance() {
     local status=0
@@ -2615,7 +2708,7 @@ maintenance_build_deb_builder_certified_candidate() {
         || die "Debian builder bootstrap OCI layout verification failed"
     (
         umask 077
-        online_docker_without_vcs buildx build \
+        online_buildx_build \
             --network=none --pull=false --no-cache \
             --platform=linux/amd64 --provenance=mode=max \
             --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
@@ -2751,7 +2844,7 @@ maintenance_build_android_builder_certified_candidate() {
         || die "Android builder bootstrap OCI layout verification failed"
     (
         umask 077
-        online_docker_without_vcs buildx build \
+        online_buildx_build \
             --network=none --pull=false --no-cache \
             --platform=linux/amd64 --provenance=mode=max \
             --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
@@ -2887,7 +2980,7 @@ maintenance_build_win_helper_certified_candidate() {
         || die "Windows helper bootstrap OCI layout verification failed"
     (
         umask 077
-        online_docker_without_vcs buildx build \
+        online_buildx_build \
             --network=none --pull=false --no-cache \
             --platform=linux/amd64 --provenance=mode=max \
             --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
@@ -3124,7 +3217,7 @@ maintenance_build_apple_check_image_candidate() {
     )" || die "the exact Apple check base image is not already present"
     [ "$base_identity" = "$DEV_CHECK_IMAGE_ID|linux|amd64" ] \
         || die "the local Apple check base image differs from its exact Linux/amd64 pin"
-    online_docker buildx build \
+    online_buildx_build \
         --network=default --pull=false --no-cache \
         --platform=linux/amd64 --provenance=mode=max \
         --output=type=docker,rewrite-timestamp=true \
@@ -3217,7 +3310,7 @@ maintenance_build_dart_audit_image_candidate() {
     )" || die "the exact Dart advisory base image is not already present"
     [ "$base_identity" = "${SHA256_BASEIMAGE_UBUNTU_1804}|linux|amd64" ] \
         || die "the local Dart advisory base image differs from its exact Linux/amd64 pin"
-    online_docker buildx build \
+    online_buildx_build \
         --network=none --pull=false --no-cache \
         --platform=linux/amd64 --provenance=mode=max --load \
         --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
@@ -3289,7 +3382,7 @@ maintenance_build_rust_audit_image_candidate() {
     [ "$(/usr/bin/sha256sum "$context/Dockerfile.audit" | /usr/bin/awk '{print $1}')" \
        = "$SHA256_RUST_AUDIT_DOCKERFILE" ] \
         || die "private Rust advisory Dockerfile bytes differ"
-    online_docker buildx build \
+    online_buildx_build \
         --network=default --pull=true --no-cache \
         --platform=linux/amd64 --provenance=mode=max --load \
         --build-arg "RUST_AUDIT_RUST_VERSION=${RUST_AUDIT_RUST_VERSION}" \

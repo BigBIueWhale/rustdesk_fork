@@ -76,9 +76,6 @@ def validate(repo: pathlib.Path) -> None:
     for token, label in (
         ("/var/run/docker.sock", "host Docker socket"),
         ("DOCKER_HOST", "host Docker environment"),
-        ("docker run", "host Docker execution"),
-        ("docker build", "host Docker build"),
-        ("docker pull", "host Docker pull"),
         (",hostfwd=", "QEMU host forwarding"),
         ("-netdev tap", "host TAP network"),
         ("-nic tap", "host TAP network"),
@@ -89,11 +86,17 @@ def validate(repo: pathlib.Path) -> None:
         ("rustdesk-retired-cache", "split retired-cache export"),
     ):
         forbid(outer, token, label)
+    if re.search(r"(?m)^\s*(?:/usr/bin/)?docker\s+(?:run|build|pull)\b", outer):
+        raise AuthorityError("host Docker command exists in the outer VM orchestrator")
     for token, label in (
         ('[ "$HOST_UID" -ne 0 ]', "host-root refusal"),
         ('[ "$HOST_GID" -ne 0 ]', "host root-group refusal"),
+        ('readonly BUILDX_BINARY="$INPUT_ROOT/buildx-v${VERIFIER_VM_BUILDX_VERSION}.linux-amd64"', "authenticated Buildx input path"),
+        ('"$BUILDX_BINARY:$SIZE_VERIFIER_VM_BUILDX"', "Buildx input metadata admission"),
+        ('verify_sha256 "$BUILDX_BINARY" "$SHA256_VERIFIER_VM_BUILDX"', "Buildx input digest admission"),
         ("bundle create \"$SOURCE_BUNDLE\" refs/heads/master", "source Git bundle"),
         ("bundle verify \"$SOURCE_BUNDLE\"", "source-bundle verification"),
+        ('"docker-buildx=$BUILDX_BINARY"', "authenticated Buildx payload"),
         ('"git.deb=$GIT_PACKAGE"', "authenticated Git package payload"),
         ('retire_private_socket_path "$SERIAL_SOCKET"', "already-absent-safe serial cleanup"),
         ("-accel kvm", "KVM guest boundary"),
@@ -121,6 +124,7 @@ def validate(repo: pathlib.Path) -> None:
         ("readonly SERIAL_LIMIT=16777216", "serial-output bound"),
         ("readonly SUCCESS_RECEIPT_LIMIT=65536", "success-receipt bound"),
         ('readonly RECEIPT_ROOT="$INPUT_ROOT/online-fetch-receipts"', "private success-receipt root"),
+        ("online-fetch Buildx authority receipt is absent", "required Buildx result receipt"),
     ):
         require(outer, token, label)
     if outer.count(
@@ -159,6 +163,7 @@ def validate(repo: pathlib.Path) -> None:
         ("serial_sha256=$serial_sha", "receipt serial digest"),
         ("transaction_stdout_sha256=$stdout_sha", "receipt stdout digest"),
         ("transaction_stderr_sha256=$stderr_sha", "receipt stderr digest"),
+        ("buildx_receipt=$buildx_line", "receipt Buildx authority"),
         ('/usr/bin/chmod 0400 -- "$SUCCESS_RECEIPT_TMP"', "private receipt mode"),
         ('-le "$SUCCESS_RECEIPT_LIMIT"', "receipt size enforcement"),
     ):
@@ -218,6 +223,10 @@ def validate(repo: pathlib.Path) -> None:
         ('VERIFIER_VM_GIT_PACKAGE_VERSION="1:2.39.5-0+deb12u3"', "Git package version pin"),
         ('SHA256_VERIFIER_VM_GIT_PACKAGE="637a85ddd6247fab13bdd0592f2f39aff04ce4dbf0655d3ab553ac359a38ce6f"', "Git package pin"),
         ('SHA256_VERIFIER_VM_GIT_BINARY="2540879925a6881e3877ff7e3330746ba3027b04edf16a3a12dccd1644c4f32d"', "Git binary pin"),
+        ('VERIFIER_VM_BUILDX_VERSION="0.20.0"', "Buildx version pin"),
+        ('VERIFIER_VM_BUILDX_COMMIT="8e30c46"', "Buildx commit pin"),
+        ('SIZE_VERIFIER_VM_BUILDX="65241240"', "Buildx size pin"),
+        ('SHA256_VERIFIER_VM_BUILDX="8b21d3ce1011c4c072d64d4a7311c591cf1c2eb6b35bfdfe28f8e0b76e51621b"', "Buildx digest pin"),
         ('VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION="1.10.0-1ubuntu0.1"', "virtiofsd package version pin"),
         ('SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE="8069325e87cd4485fdb4dd2dde0e54dc68345847c92a1f5d9e9916dadd549b07"', "virtiofsd package pin"),
         ('SHA256_VERIFIER_VM_VIRTIOFSD_BINARY="e256a63975f3ba343d651ce001fdc1f1128a5967612f0f102ab1387727ead140"', "virtiofsd binary pin"),
@@ -226,6 +235,9 @@ def validate(repo: pathlib.Path) -> None:
 
     for token, label in (
         ('[ "$(/usr/bin/id -u)" = 0 ]', "VM-local root bootstrap"),
+        ('"$BUILDX_INPUT:$EXPECTED_BUILDX_SIZE"', "read-only Buildx guest input"),
+        ('/usr/bin/install -m 0555 -- "$BUILDX_INPUT" "$BUILDX_SOURCE"', "root-owned fixed Buildx source"),
+        ('fixed Buildx source identity differs', "fixed Buildx source verification"),
         ('/usr/bin/dpkg-deb --extract "$GIT_PACKAGE" "$GIT_RUNTIME_ROOT"', "Git runtime extraction"),
         ('readonly GIT_BIN=$GIT_RUNTIME_ROOT/usr/bin/git', "fixed Git runtime"),
         ('GIT_ALLOW_PROTOCOL=file', "Git non-file protocol refusal"),
@@ -341,6 +353,7 @@ def validate(repo: pathlib.Path) -> None:
         ("kernel command line is not the acquisition-VM authority", "direct-boot proof"),
         ("guest Docker daemon generation differs", "daemon-generation proof"),
         ("guest Docker Unix-socket authority differs", "Unix-socket proof"),
+        ("fixed guest Buildx source identity differs", "Buildx source proof"),
         ("acquisition NIC identity is absent or ambiguous", "NIC proof"),
         ("cache export filesystem differs", "cache-boundary proof"),
         ("rustdesk-systemd-cache virtiofs noexec", "systemd-cache virtiofs proof"),
@@ -437,6 +450,32 @@ def validate(repo: pathlib.Path) -> None:
         "cannot create fixed bootstrap capture tag",
         "bootstrap candidate compatibility tag",
     )
+
+    for token, label in (
+        ('readonly BUILDX_SOURCE=/opt/rustdesk-online-fetch-vm/docker-buildx', "fixed Buildx source"),
+        ('readonly ONLINE_FETCH_BUILDX_PLUGIN="$ONLINE_FETCH_BUILDX_DIR/docker-buildx"', "private Buildx plugin"),
+        ('install -m 0500 "$BUILDX_SOURCE" "$ONLINE_FETCH_BUILDX_PLUGIN"', "private Buildx installation"),
+        ('"github.com/docker/buildx v${VERIFIER_VM_BUILDX_VERSION} ${VERIFIER_VM_BUILDX_COMMIT}"', "exact Buildx version"),
+        ("buildx --builder default inspect", "explicit default-builder inspection"),
+        ('[ "$driver" = docker ]', "in-daemon Docker driver requirement"),
+        ("^buildx_buildkit_", "managed builder-container refusal"),
+        ('online_docker_without_vcs buildx --builder default build "$@"', "sole Buildx build funnel"),
+        ("ONLINE_FETCH_BUILDX_AUTHORITY=pass", "Buildx runtime receipt"),
+    ):
+        require(online, token, label)
+    if online.count("online_buildx_build") != 7:
+        raise AuthorityError("Buildx build-call inventory differs")
+    for token, label in (
+        ("online_docker buildx build", "unbound Buildx build"),
+        ("online_docker_without_vcs buildx build", "unbound VCS-free Buildx build"),
+        ("docker-container", "Buildx container-driver fallback"),
+    ):
+        forbid(online, token, label)
+    admission = "assert_online_fetch_buildx_version\nassert_online_fetch_buildx_driver\n"
+    if online.index('if [ "$ONLINE_FETCH_VM_AUTHORITY_PROBE" -eq 1 ]') < online.index(
+        admission
+    ):
+        raise AuthorityError("VM authority probe exits before Buildx runtime admission")
 
     for function_name, network, pids, memory in (
         ("online_docker_run", "bridge", "2048", "16g"),

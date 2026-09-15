@@ -59,6 +59,7 @@ readonly RECEIPT_ROOT="$INPUT_ROOT/online-fetch-receipts"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
 readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
 readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
+readonly BUILDX_BINARY="$INPUT_ROOT/buildx-v${VERIFIER_VM_BUILDX_VERSION}.linux-amd64"
 readonly GIT_PACKAGE="$INPUT_ROOT/git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
 readonly VIRTIOFSD_PACKAGE="$INPUT_ROOT/virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
 readonly BOOT_ROOT="$INPUT_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
@@ -267,7 +268,7 @@ prepare_success_receipt() {
     local elapsed_seconds=$1 run_name listener_sha listener_bytes
     local serial_sha serial_bytes capture_sha capture_bytes
     local stdout_sha stdout_bytes stderr_sha stderr_bytes capture_line
-    local guest_line entry_line runtime_line outer_line
+    local guest_line entry_line buildx_line runtime_line outer_line
     run_name=${RUN##*/}
     [[ "$run_name" =~ ^run\.[A-Za-z0-9]{10}$ ]] || return 1
     [ -d "$RECEIPT_ROOT" ] && [ ! -L "$RECEIPT_ROOT" ] \
@@ -302,6 +303,7 @@ prepare_success_receipt() {
     capture_line="bounded-unix-stream-capture: PASS bytes=$serial_bytes"
     guest_line="ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined"
     entry_line="ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic"
+    buildx_line="ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker builder=default managed_container=absent"
     runtime_line=not-applicable
     if [ "$MODE" = authority-smoke ]; then
         runtime_line="ONLINE_FETCH_VM_RUNTIME=pass network=qemu-user-only hostfwd=absent udp=denied docker=guest-bridge git=pinned-deb inner_uid=$HOST_UID https=sha256 cache=virtiofs-atomic cleanup=joined"
@@ -334,6 +336,7 @@ prepare_success_receipt() {
             "guest_receipt=$guest_line" \
             'cloud_init_receipt=ONLINE_FETCH_VM_CLOUD_INIT=pass' \
             "entry_receipt=$entry_line" \
+            "buildx_receipt=$buildx_line" \
             "runtime_receipt=$runtime_line" \
             "outer_receipt=$outer_line"
     } >"$SUCCESS_RECEIPT_TMP" || return 1
@@ -471,6 +474,7 @@ done
     || fail 'authenticated VM inputs are absent; run scripts/online-fetch.sh --verifier-vm-inputs'
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
+    "$BUILDX_BINARY:$SIZE_VERIFIER_VM_BUILDX" \
     "$GIT_PACKAGE:$SIZE_VERIFIER_VM_GIT_PACKAGE" \
     "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
     path=${input%:*}
@@ -482,6 +486,7 @@ for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
 done
 verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
 verify_sha256 "$DOCKER_BUNDLE" "$SHA256_VERIFIER_VM_DOCKER_STATIC"
+verify_sha256 "$BUILDX_BINARY" "$SHA256_VERIFIER_VM_BUILDX"
 verify_sha256 "$GIT_PACKAGE" "$SHA256_VERIFIER_VM_GIT_PACKAGE"
 verify_sha256 "$VIRTIOFSD_PACKAGE" "$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
 verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
@@ -648,6 +653,7 @@ verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 
 base_before="$(/usr/bin/sha512sum "$BASE")"
 docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
+buildx_before="$(/usr/bin/sha256sum "$BUILDX_BINARY")"
 git_package_before="$(/usr/bin/sha256sum "$GIT_PACKAGE")"
 virtiofsd_package_before="$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")"
 kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
@@ -657,14 +663,15 @@ capture_listeners >"$LISTENERS_BEFORE"
 
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_ONLINE_FETCH \
     -joliet -rock -graft-points -output "$PAYLOAD" \
-    "guest.sh=$GUEST_SCRIPT" "docker.tgz=$DOCKER_BUNDLE" "git.deb=$GIT_PACKAGE" \
+    "guest.sh=$GUEST_SCRIPT" "docker.tgz=$DOCKER_BUNDLE" \
+    "docker-buildx=$BUILDX_BINARY" "git.deb=$GIT_PACKAGE" \
     "source.bundle=$SOURCE_BUNDLE" "request=$REQUEST_FILE" \
     "source.tree=$SOURCE_TREE_FILE" \
     "source.bundle.sha256=$SOURCE_BUNDLE_SHA_FILE"
 /usr/bin/chmod 0400 "$PAYLOAD"
 /usr/bin/mkdir "$RUN/seed"
 /usr/bin/chmod 0700 "$RUN/seed"
-guest_invocation="bash /mnt/rustdesk-online-fetch-inputs/guest.sh /mnt/rustdesk-online-fetch-inputs/docker.tgz /mnt/rustdesk-online-fetch-inputs/source.bundle /mnt/rustdesk-online-fetch-inputs/git.deb $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_GIT_PACKAGE_VERSION $SIZE_VERIFIER_VM_GIT_PACKAGE $SHA256_VERIFIER_VM_GIT_PACKAGE $SIZE_VERIFIER_VM_GIT_BINARY $SHA256_VERIFIER_VM_GIT_BINARY $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID $HOST_UID $HOST_GID $SOURCE_COMMIT"
+guest_invocation="bash /mnt/rustdesk-online-fetch-inputs/guest.sh /mnt/rustdesk-online-fetch-inputs/docker.tgz /mnt/rustdesk-online-fetch-inputs/docker-buildx /mnt/rustdesk-online-fetch-inputs/source.bundle /mnt/rustdesk-online-fetch-inputs/git.deb $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_BUILDX_VERSION $VERIFIER_VM_BUILDX_COMMIT $SIZE_VERIFIER_VM_BUILDX $SHA256_VERIFIER_VM_BUILDX $VERIFIER_VM_GIT_PACKAGE_VERSION $SIZE_VERIFIER_VM_GIT_PACKAGE $SHA256_VERIFIER_VM_GIT_PACKAGE $SIZE_VERIFIER_VM_GIT_BINARY $SHA256_VERIFIER_VM_GIT_BINARY $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID $HOST_UID $HOST_GID $SOURCE_COMMIT"
 /usr/bin/printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
@@ -873,6 +880,10 @@ done
     "ONLINE_FETCH_VM_ENTRY_AUTHORITY=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only udp=denied docker=guest-unix git=pinned-deb cache=virtiofs-atomic" \
     "$RESULT_EXPORT/transaction.stdout" \
     || fail 'online-fetch guest-entry authority receipt is absent'
+/usr/bin/grep -Fq \
+    "ONLINE_FETCH_BUILDX_AUTHORITY=pass version=$VERIFIER_VM_BUILDX_VERSION commit=$VERIFIER_VM_BUILDX_COMMIT plugin=private driver=docker builder=default managed_container=absent" \
+    "$RESULT_EXPORT/transaction.stdout" \
+    || fail 'online-fetch Buildx authority receipt is absent'
 if [ "$MODE" = authority-smoke ]; then
     /usr/bin/grep -Fq \
         "ONLINE_FETCH_VM_RUNTIME=pass network=qemu-user-only hostfwd=absent udp=denied docker=guest-bridge git=pinned-deb inner_uid=$HOST_UID https=sha256 cache=virtiofs-atomic cleanup=joined" \
@@ -889,6 +900,7 @@ if [ "$MODE" = authority-smoke ]; then
 fi
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
     && [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \
+    && [ "$(/usr/bin/sha256sum "$BUILDX_BINARY")" = "$buildx_before" ] \
     && [ "$(/usr/bin/sha256sum "$GIT_PACKAGE")" = "$git_package_before" ] \
     && [ "$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")" = "$virtiofsd_package_before" ] \
     && [ "$(/usr/bin/sha256sum "$VIRTIOFSD_BINARY" | /usr/bin/awk '{print $1}')" \

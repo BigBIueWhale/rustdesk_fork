@@ -16797,10 +16797,15 @@ grep -qF 'android-rust-check.sh|pinned offline aarch64 Android Rust check' scrip
   || android_rust_gate_bad="$android_rust_gate_bad absent-from-release"
 grep -qF 'require_online_complete' scripts/android-rust-check.sh \
   || android_rust_gate_bad="$android_rust_gate_bad unauthenticated-online-closure"
-grep -qF 'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"' scripts/android-rust-check.sh \
-  || android_rust_gate_bad="$android_rust_gate_bad unpinned-builder"
-for contract in 'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"' \
-  'local_docker run --rm --pull=never --network=none --read-only' \
+grep -qF 'require_verifier_vm_android_builder' scripts/android-rust-check.sh \
+  || android_rust_gate_bad="$android_rust_gate_bad unpinned-guest-builder"
+for contract in 'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh' \
+  '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"' \
+  'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker' \
+  'readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock' \
+  'readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config' \
+  '/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent' \
+  'verifier_vm_docker run --rm --pull=never --network=none --read-only' \
   '--user "$BUILD_UID:$BUILD_GID"' '--cap-drop=ALL' '--security-opt=no-new-privileges' \
   '--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4' \
   '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g' \
@@ -16810,6 +16815,13 @@ for contract in 'initialize_local_docker_authority "$WORKSPACE/docker-config" "a
   grep -qF -- "$contract" scripts/android-rust-check.sh \
     || android_rust_gate_bad="$android_rust_gate_bad missing:$contract"
 done
+for forbidden in local_docker initialize_local_docker_authority remove_local_docker_authority \
+  require_pinned_builder_image /var/run/docker.sock 'docker pull' 'docker build' \
+  --privileged --cap-add --network=host --pid=host --ipc=host --publish; do
+  if grep -qF -- "$forbidden" scripts/android-rust-check.sh; then
+    android_rust_gate_bad="$android_rust_gate_bad forbidden:$forbidden"
+  fi
+done
 grep -qF 'cargo ndk --platform 21 --target aarch64-linux-android' scripts/android-apk-build.sh \
   || android_rust_gate_bad="$android_rust_gate_bad wrong-target"
 grep -qF 'check --locked --release --features flutter --lib' scripts/android-apk-build.sh \
@@ -16817,7 +16829,7 @@ grep -qF 'check --locked --release --features flutter --lib' scripts/android-apk
 if [ -n "$android_rust_gate_bad" ]; then
   echo "  FAIL R-B9/R-B10: Android Rust release compile gate regressed:$android_rust_gate_bad"; rc=1
 else
-  echo "  ok  R-B9/R-B10/R-S11dn release verification uses independent fixed Docker authority and disposable source, generates the real bridge, and target-checks the pinned aarch64 Android Rust library offline"
+  echo "  ok  R-B9/R-B10/R-S11dn Android Rust gate is admitted only by the no-NIC verifier VM, uses its guest-only Docker authority and disposable source, and retains the real offline bridge-generation/aarch64 target-check workload; actual workload execution remains separate runtime evidence"
 fi
 
 # (6c-i) R-B10 the offline-build network CANARY (MUST — "proven, not trusted"): the spec mandates a

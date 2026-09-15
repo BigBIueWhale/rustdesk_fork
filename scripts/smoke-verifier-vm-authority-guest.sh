@@ -33,6 +33,7 @@ readonly SMOKE_SERVER_SCRIPT=$VERIFY_REPO/scripts/smoke-server.sh
 readonly RUST_AUDIT_SCRIPT=$VERIFY_REPO/scripts/audit.sh
 readonly ANDROID_KEYSTORE_SCRIPT=$VERIFY_REPO/scripts/gen-android-keystore.sh
 readonly ANDROID_BUILDER_SCRIPT=$VERIFY_REPO/scripts/build-android.sh
+readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
@@ -110,7 +111,7 @@ for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
-    build-android.sh verify-android-builder-authority.py \
+    build-android.sh verify-android-builder-authority.py android-rust-check.sh \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -556,6 +557,44 @@ android_builder_source_gate_output="$(
     || fail "Android-builder compact source-gate result differs: $android_builder_source_gate_output"
 printf '%s\n' "$android_builder_source_gate_output"
 printf 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass\n'
+
+if /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-android-rust-entry.out" 2>"$ROOT/root-android-rust-entry.err"; then
+    fail 'VM root passed the Android-Rust verifier entry'
+fi
+[ ! -s "$ROOT/root-android-rust-entry.out" ] \
+    || fail 'root Android-Rust refusal produced standard output'
+[ "$(<"$ROOT/root-android-rust-entry.err")" = \
+  'Android Rust release check refuses host or container-root execution' ] \
+    || fail 'root Android-Rust refusal diagnostic differs'
+
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-android-rust-entry.out" 2>"$ROOT/foreign-android-rust-entry.err"; then
+    fail 'foreign numeric principal passed the Android-Rust verifier-VM entry'
+fi
+[ ! -s "$ROOT/foreign-android-rust-entry.out" ] \
+    || fail 'foreign Android-Rust verifier-VM refusal produced standard output'
+foreign_android_rust_error="$(<"$ROOT/foreign-android-rust-entry.err")"
+if [ "$foreign_android_rust_error" != \
+    'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-android-rust-entry.err")" -le 4096 ] \
+        || fail 'foreign Android-Rust refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign Android-Rust diagnostic was %q\n' \
+        "$foreign_android_rust_error" >&2
+    fail 'foreign Android-Rust refusal diagnostic differs'
+fi
+android_rust_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot Android-Rust verifier-VM entry failed'
+expected_android_rust_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+ANDROID_RUST_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed source=untouched online=untouched workload=unexecuted"
+[ "$android_rust_entry_output" = "$expected_android_rust_entry_output" ] \
+    || fail "Android-Rust verifier-VM entry result differs: $android_rust_entry_output"
+printf '%s\n' "$android_rust_entry_output"
+printf 'VERIFIER_VM_ANDROID_RUST_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed source=untouched online=untouched workload=unexecuted\n' \
+    "$EXPECTED_VERSION"
 
 if /bin/bash "$DART_AUDIT_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-dart-audit-entry.out" 2>"$ROOT/root-dart-audit-entry.err"; then

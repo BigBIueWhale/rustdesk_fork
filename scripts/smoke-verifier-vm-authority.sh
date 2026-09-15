@@ -33,6 +33,7 @@ readonly ANDROID_KEYSTORE_INNER="$SCRIPT_DIR/android-keystore-generate.sh"
 readonly ANDROID_KEYSTORE_CHECKER="$SCRIPT_DIR/verify-android-keystore-authority.py"
 readonly ANDROID_BUILDER_SOURCE="$SCRIPT_DIR/build-android.sh"
 readonly ANDROID_BUILDER_CHECKER="$SCRIPT_DIR/verify-android-builder-authority.py"
+readonly ANDROID_RUST_SOURCE="$SCRIPT_DIR/android-rust-check.sh"
 readonly DART_AUDIT_SOURCE="$SCRIPT_DIR/dart-audit.sh"
 readonly DART_AUDIT_RESULT_SOURCE="$SCRIPT_DIR/dart-audit-result.py"
 readonly DART_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-dart-verifier-authority.py"
@@ -236,7 +237,7 @@ PY
 for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" \
     "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" \
     "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" \
-    "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" \
+    "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_RUST_SOURCE" \
     "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" \
     "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" \
     "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" \
@@ -252,6 +253,7 @@ done
     && [ -x "$RUST_AUDIT_SOURCE" ] \
     && [ -x "$ANDROID_KEYSTORE_SOURCE" ] \
     && [ -x "$ANDROID_BUILDER_SOURCE" ] \
+    && [ -x "$ANDROID_RUST_SOURCE" ] \
     && [ -x "$DART_AUDIT_SOURCE" ] \
     && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
@@ -299,7 +301,7 @@ docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_RUST_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
 capture_listeners >"$LISTENERS_BEFORE"
 /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" 6G
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
@@ -320,6 +322,7 @@ capture_listeners >"$LISTENERS_BEFORE"
     "repo/scripts/verify-android-keystore-authority.py=$ANDROID_KEYSTORE_CHECKER" \
     "repo/scripts/build-android.sh=$ANDROID_BUILDER_SOURCE" \
     "repo/scripts/verify-android-builder-authority.py=$ANDROID_BUILDER_CHECKER" \
+    "repo/scripts/android-rust-check.sh=$ANDROID_RUST_SOURCE" \
     "repo/scripts/dart-audit.sh=$DART_AUDIT_SOURCE" \
     "repo/scripts/dart-audit-result.py=$DART_AUDIT_RESULT_SOURCE" \
     "repo/scripts/verify-dart-verifier-authority.py=$DART_AUTHORITY_CHECKER" \
@@ -542,6 +545,12 @@ printf 'VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused fo
 /usr/bin/grep -Fq 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Android-builder compact source-gate marker is absent'; }
 printf 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass\n'
+/usr/bin/grep -Fq \
+    "VERIFIER_VM_ANDROID_RUST_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed source=untouched online=untouched workload=unexecuted" \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Android-Rust verifier-VM entry marker is absent'; }
+printf 'VERIFIER_VM_ANDROID_RUST_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed source=untouched online=untouched workload=unexecuted\n' \
+    "$VERIFIER_VM_DOCKER_VERSION"
 mapfile -t dart_frb_source_gate_receipts < <(
     /usr/bin/grep -Eo 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=[1-9][0-9]*' "$SERIAL_LOG"
 )
@@ -562,7 +571,7 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_RUST_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 
 RUN_COMPLETE=1

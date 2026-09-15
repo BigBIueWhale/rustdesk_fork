@@ -321,7 +321,9 @@ class CertifiedBuilderInputSpec:
 
     @property
     def history_count(self) -> int:
-        if self.role in {"android-builder", "win-helper"}:
+        if self.role == "android-builder":
+            return 21
+        if self.role == "win-helper":
             return 20
         if self.role == "deb-builder":
             return 21
@@ -2083,16 +2085,40 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
             )
         history = config_json.get("history")
         expected_created = "2023-11-14T22:13:20Z"
-        if not isinstance(history, list) \
-           or len(history) != spec.history_count \
-           or any(not isinstance(item, dict) for item in history) \
-           or any(
-               item.get("created") != expected_created
-               for item in history[-8:]
-           ):
+        if not isinstance(history, list):
             fail(
-                f"Docker archive certified {spec.display_name} history differs "
-                "from the reviewed certification topology"
+                f"Docker archive certified {spec.display_name} history is "
+                "not a list"
+            )
+        if len(history) != spec.history_count:
+            fail(
+                f"Docker archive certified {spec.display_name} history has "
+                f"{len(history)} entries, expected {spec.history_count}"
+            )
+        malformed_history = [
+            str(position)
+            for position, item in enumerate(history)
+            if not isinstance(item, dict)
+        ]
+        if malformed_history:
+            fail(
+                f"Docker archive certified {spec.display_name} history has "
+                "non-object entries at positions "
+                + ", ".join(malformed_history)
+            )
+        wrong_created = [
+            f"{position}={item.get('created')!r}"
+            for position, item in enumerate(
+                history[-8:],
+                start=len(history) - 8,
+            )
+            if item.get("created") != expected_created
+        ]
+        if wrong_created:
+            fail(
+                f"Docker archive certified {spec.display_name} final history "
+                f"epochs differ from {expected_created}: "
+                + ", ".join(wrong_created)
             )
         return
     if isinstance(spec, AppleCheckSpec):
@@ -9544,6 +9570,8 @@ def self_test() -> None:
             android_spec.image_id,
             android_spec,
         )
+        if android_spec.history_count != 21:
+            fail("certified Android builder history topology differs")
         android_checks = 2
 
         def android_failure(

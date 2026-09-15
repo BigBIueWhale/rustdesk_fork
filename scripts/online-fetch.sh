@@ -2615,9 +2615,14 @@ build_builder_bootstrap_image() {
     [ "$observed_discovery_id" = "$discovery_id" ] \
         && [[ "$dpkg_sha" =~ ^[0-9a-f]{64}$ ]] \
         || die "$display bootstrap discovery identities are malformed"
+    observed_discovery_id="$(
+        online_docker image inspect --format '{{.Id}}' "$discovery_tag"
+    )" || die "cannot re-resolve the $display bootstrap discovery image"
+    [ "$observed_discovery_id" = "$discovery_id" ] \
+        || die "$display bootstrap discovery handle changed before sealing"
     online_docker build \
         --network=none --pull=false --no-cache --platform=linux/amd64 \
-        --build-arg "BOOTSTRAP_IMAGE=${discovery_id}" \
+        --build-arg "BOOTSTRAP_IMAGE_HANDLE=${discovery_tag}" \
         --build-arg "DPKG_MANIFEST_SHA256=${dpkg_sha}" \
         -t "$candidate_tag" - <"$seal_dockerfile"
     candidate_id="$(

@@ -209,9 +209,8 @@ def validate_bootstrap_dockerfiles(acquisition: str, seal: str) -> None:
     require(
         instructions
         == (
-            "ARG BOOTSTRAP_IMAGE=sha256:"
-            + "0" * 64,
-            "FROM ${BOOTSTRAP_IMAGE}",
+            "ARG BOOTSTRAP_IMAGE_HANDLE",
+            "FROM ${BOOTSTRAP_IMAGE_HANDLE}",
             "ARG DPKG_MANIFEST_SHA256",
             'LABEL org.rustdesk.build-input.dpkg-manifest-sha256="${DPKG_MANIFEST_SHA256}"',
         ),
@@ -323,8 +322,10 @@ def validate_online_fetch(source: str) -> None:
             "maintenance-inspect-bootstrap-discovery",
             '--role "${role}-bootstrap-candidate"',
             'dpkg_sha="$(/usr/bin/sed -n',
+            'online_docker image inspect --format \'{{.Id}}\' "$discovery_tag"',
+            '[ "$observed_discovery_id" = "$discovery_id" ]',
             "--network=none --pull=false --no-cache --platform=linux/amd64",
-            '--build-arg "BOOTSTRAP_IMAGE=${discovery_id}"',
+            '--build-arg "BOOTSTRAP_IMAGE_HANDLE=${discovery_tag}"',
             '--build-arg "DPKG_MANIFEST_SHA256=${dpkg_sha}"',
             '-t "$candidate_tag" - <"$seal_dockerfile"',
             "maintenance-verify-bootstrap-seal",
@@ -356,6 +357,7 @@ def validate_online_fetch(source: str) -> None:
             "--privileged",
             "--network=host",
             "--pull=true",
+            '--build-arg "BOOTSTRAP_IMAGE=${discovery_id}"',
             "\nRUN ",
             "\nCOPY ",
             "\nADD ",

@@ -715,8 +715,7 @@ def validate_contract(sources: dict[str, str]) -> None:
             "validate_android_builder_authority_contract(sources)\n"
             "    validate_android_builder_image_authority_contract(sources)\n"
             "    validate_deb_builder_image_authority_contract(sources)\n"
-            "    validate_win_helper_image_authority_contract(sources)\n"
-            "    validate_android_keystore_authority_contract(sources)",
+            "    validate_win_helper_image_authority_contract(sources)",
             '"android_builder_image_authority_verifier": (',
             'repo / "scripts/verify-android-builder-image-authority.py"',
             "Android builder image authority focused verifier",
@@ -1219,13 +1218,11 @@ MUTATIONS = (
         "validate_android_builder_authority_contract(sources)\n"
         "    validate_android_builder_image_authority_contract(sources)\n"
         "    validate_deb_builder_image_authority_contract(sources)\n"
-        "    validate_win_helper_image_authority_contract(sources)\n"
-        "    validate_android_keystore_authority_contract(sources)",
+        "    validate_win_helper_image_authority_contract(sources)",
         "validate_android_builder_authority_contract(sources)\n"
         "    true # Android builder image workspace contract removed\n"
         "    validate_deb_builder_image_authority_contract(sources)\n"
-        "    validate_win_helper_image_authority_contract(sources)\n"
-        "    validate_android_keystore_authority_contract(sources)",
+        "    validate_win_helper_image_authority_contract(sources)",
         "independent workspace dispatch",
     ),
     Mutation(

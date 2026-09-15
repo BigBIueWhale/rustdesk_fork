@@ -31,6 +31,7 @@ readonly FRB_SCRIPT=$VERIFY_REPO/scripts/frb-codegen.sh
 readonly DART_SCRIPT=$VERIFY_REPO/scripts/dart-verify.sh
 readonly SMOKE_SERVER_SCRIPT=$VERIFY_REPO/scripts/smoke-server.sh
 readonly RUST_AUDIT_SCRIPT=$VERIFY_REPO/scripts/audit.sh
+readonly ANDROID_KEYSTORE_SCRIPT=$VERIFY_REPO/scripts/gen-android-keystore.sh
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
@@ -106,8 +107,11 @@ done
     || fail 'verifier-entry preflight is not one regular payload file'
 for verify_source in verify.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
+    gen-android-keystore.sh android-keystore-generate.sh \
+    verify-android-keystore-authority.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
+    smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
     verify-vm-entry-preflight.sh verify-scan.sh \
     verify-private-tree-closure.py lib.sh pins.env; do
     verify_path="$VERIFY_REPO/scripts/$verify_source"
@@ -452,6 +456,55 @@ rust_audit_result_gate_output="$(
     || fail "Rust-audit policy/result result differs: $rust_audit_result_gate_output"
 printf '%s\n' "$rust_audit_result_gate_output"
 printf 'VERIFIER_VM_RUST_AUDIT_RESULT_GATE=pass decisions=20\n'
+
+if /bin/bash "$ANDROID_KEYSTORE_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/root-android-keystore-entry.out" 2>"$ROOT/root-android-keystore-entry.err"; then
+    fail 'VM root passed the Android-keystore verifier entry'
+fi
+[ ! -s "$ROOT/root-android-keystore-entry.out" ] \
+    || fail 'root Android-keystore refusal produced standard output'
+[ "$(<"$ROOT/root-android-keystore-entry.err")" = \
+  'Android signing identity generation refuses host or container-root execution' ] \
+    || fail 'root Android-keystore refusal diagnostic differs'
+
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$ANDROID_KEYSTORE_SCRIPT" --self-test-vm-authority \
+    >"$ROOT/foreign-android-keystore-entry.out" 2>"$ROOT/foreign-android-keystore-entry.err"; then
+    fail 'foreign numeric principal passed the Android-keystore verifier-VM entry'
+fi
+[ ! -s "$ROOT/foreign-android-keystore-entry.out" ] \
+    || fail 'foreign Android-keystore verifier-VM refusal produced standard output'
+foreign_android_keystore_error="$(<"$ROOT/foreign-android-keystore-entry.err")"
+if [ "$foreign_android_keystore_error" != \
+    'verifier-VM entry preflight: VM Docker channel metadata differs' ]; then
+    [ "$(stat -c '%s' "$ROOT/foreign-android-keystore-entry.err")" -le 4096 ] \
+        || fail 'foreign Android-keystore refusal diagnostic exceeded its bound'
+    printf 'verifier-VM guest: foreign Android-keystore diagnostic was %q\n' \
+        "$foreign_android_keystore_error" >&2
+    fail 'foreign Android-keystore refusal diagnostic differs'
+fi
+android_keystore_entry_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ANDROID_KEYSTORE_SCRIPT" --self-test-vm-authority
+)" || fail 'numeric-nonroot Android-keystore verifier-VM entry failed'
+expected_android_keystore_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+ANDROID_KEYSTORE_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed identity=untouched"
+[ "$android_keystore_entry_output" = "$expected_android_keystore_entry_output" ] \
+    || fail "Android-keystore verifier-VM entry result differs: $android_keystore_entry_output"
+printf '%s\n' "$android_keystore_entry_output"
+printf 'VERIFIER_VM_ANDROID_KEYSTORE_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed identity=untouched\n' \
+    "$EXPECTED_VERSION"
+
+android_keystore_source_gate_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S \
+        "$VERIFY_REPO/scripts/verify-android-keystore-authority.py" \
+        --repo "$VERIFY_REPO"
+)" || fail 'Android-keystore compact source gate failed'
+[ "$android_keystore_source_gate_output" = 'verify-android-keystore-authority: ok' ] \
+    || fail "Android-keystore compact source-gate result differs: $android_keystore_source_gate_output"
+printf '%s\n' "$android_keystore_source_gate_output"
+printf 'VERIFIER_VM_ANDROID_KEYSTORE_SOURCE_GATE=pass\n'
 
 if /bin/bash "$DART_AUDIT_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-dart-audit-entry.out" 2>"$ROOT/root-dart-audit-entry.err"; then

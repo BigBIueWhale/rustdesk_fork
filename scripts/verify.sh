@@ -288,14 +288,14 @@ fi
 
 echo "== (0e) Android signing-identity generation and Docker authority (R-S11cg/R-S11di) =="
 r_s11cg=
-if ! python3 scripts/verify-android-keystore-authority.py --repo . --self-test; then
+if ! python3 scripts/verify-android-keystore-authority.py --repo .; then
   r_s11cg="$r_s11cg authority-or-mutation-self-test-failed"
 fi
 if [ -n "$r_s11cg" ]; then
   echo "  FAIL R-S11cg/R-S11di Android signing-identity authority:$r_s11cg"
   rc=1
 else
-  echo "  ok  R-S11cg/R-S11di one-time Android identity generation has fixed local Docker authority, fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution, file-only secrets, and durable no-clobber publication"
+  echo "  ok  R-S11cg/R-S11di one-time Android identity generation is verifier-VM-only with no host-Docker fallback, fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution, file-only secrets, and durable no-clobber publication"
 fi
 
 echo "== (0f) Windows helper container/KVM/local-Docker authority (R-S11ch/R-S11do/R-S11e-100/R-S11e-133) =="

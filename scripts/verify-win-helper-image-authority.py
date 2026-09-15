@@ -690,8 +690,7 @@ def validate_contract(sources: dict[str, str]) -> None:
         sources["workspace"],
         (
             "validate_deb_builder_image_authority_contract(sources)\n"
-            "    validate_win_helper_image_authority_contract(sources)\n"
-            "    validate_android_keystore_authority_contract(sources)",
+            "    validate_win_helper_image_authority_contract(sources)",
             '"win_helper_image_authority_verifier": (',
             'repo / "scripts/verify-win-helper-image-authority.py"',
             "Windows helper image authority focused verifier",
@@ -1048,11 +1047,9 @@ MUTATIONS = (
     Mutation(
         "workspace",
         "validate_deb_builder_image_authority_contract(sources)\n"
-        "    validate_win_helper_image_authority_contract(sources)\n"
-        "    validate_android_keystore_authority_contract(sources)",
+        "    validate_win_helper_image_authority_contract(sources)",
         "validate_deb_builder_image_authority_contract(sources)\n"
-        "    true # Windows helper workspace contract removed\n"
-        "    validate_android_keystore_authority_contract(sources)",
+        "    true # Windows helper workspace contract removed",
         "workspace dispatch",
     ),
     Mutation(

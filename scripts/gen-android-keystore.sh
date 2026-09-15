@@ -4,9 +4,11 @@
 # Android welds app identity to the first signing key. This tool therefore refuses root execution,
 # mutable image names, alias overrides, existing output, public destination directories, and broad
 # host mounts. Random-password generation, key generation, and independent key inspection all run
-# in the already-present immutable Android builder with no network or ambient container authority.
+# in the already-present immutable Android builder inside the authenticated, no-NIC verifier VM.
+# There is no direct-host Docker fallback.
 #
 # Usage: scripts/gen-android-keystore.sh [OUT_JKS PASS_FILE]
+#        scripts/gen-android-keystore.sh --self-test-vm-authority
 # With no arguments, the protected default paths from scripts/lib.sh are used. OUT_JKS and
 # PASS_FILE must be distinct canonical absolute paths in the same current-UID mode-0700 directory;
 # that directory and its parent are created mode 0700 when absent. The alias is always
@@ -22,7 +24,12 @@ readonly BUILD_GID="$(/usr/bin/id -g)"
 [ "$BUILD_GID" -ne 0 ] \
     || { echo "Android signing identity generation refuses a root primary group" >&2; exit 1; }
 
-SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
+[ -f "$VERIFIER_VM_ENTRY_PREFLIGHT" ] && [ ! -L "$VERIFIER_VM_ENTRY_PREFLIGHT" ] \
+    && [ "$(/usr/bin/stat -c '%a:%h' -- "$VERIFIER_VM_ENTRY_PREFLIGHT")" = 755:1 ] \
+    || { echo "Android signing identity generation requires the verifier-VM entry preflight" >&2; exit 1; }
+/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
@@ -30,8 +37,72 @@ load_pins
 readonly INNER_SOURCE="$SCRIPT_DIR/android-keystore-generate.sh"
 readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"
 readonly KEY_ALIAS=rustdesk-fork
+readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
+readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
+readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
+readonly VERIFIER_VM_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
+VERIFIER_VM_MARKER_DOCKER="$(/usr/bin/awk '{ print $2 }' \
+    "$VERIFIER_VM_AUTHORITY_ROOT/authority")"
+[ "$VERIFIER_VM_MARKER_DOCKER" = "docker=$VERIFIER_VM_DOCKER_VERSION" ] \
+    || die "guest Docker authority differs from its repository pin"
+readonly VERIFIER_VM_MARKER_DOCKER
+
+verifier_vm_docker() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        "$VERIFIER_VM_DOCKER_CLIENT" \
+            --host "unix://$VERIFIER_VM_DOCKER_SOCKET" \
+            --config "$VERIFIER_VM_DOCKER_CONFIG" "$@" || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+verifier_vm_image_provenance() {
+    local status=0
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$VERIFIER_VM_DOCKER_SOCKET" \
+        DOCKER_CONFIG="$VERIFIER_VM_DOCKER_CONFIG" \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/offline-image-provenance.py" "$@" \
+        || status=$?
+    /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+require_verifier_vm_android_builder() {
+    verifier_vm_image_provenance verify-local \
+        --role android-builder \
+        --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
+        --image-ref "$IMAGE_ID" \
+        --base "ubuntu:24.04@$SHA256_BASEIMAGE_UBUNTU_2404" \
+        --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
+        --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+        --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
+        --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
+        --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --config-id "$ANDROID_BUILDER_CONFIG_ID" \
+        --manifest-id "$ANDROID_BUILDER_MANIFEST_ID" \
+        || die "pinned Android builder image provenance verification failed"
+}
 
 case "$#" in
+    1)
+        [ "$1" = --self-test-vm-authority ] \
+            || die "unknown argument: $1"
+        authority_version="$(verifier_vm_docker version \
+            --format '{{.Client.Version}}|{{.Server.Version}}')" \
+            || die "verifier-VM Docker authority self-test failed"
+        [ "$authority_version" = \
+          "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+            || die "verifier-VM Docker authority version differs: $authority_version"
+        printf 'ANDROID_KEYSTORE_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed identity=untouched\n' \
+            "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
+        exit 0
+        ;;
     0)
         OUT_JKS="$DEFAULT_ANDROID_KEYSTORE"
         PASS_FILE="$DEFAULT_ANDROID_KEYSTORE_PASS_FILE"
@@ -41,12 +112,18 @@ case "$#" in
         PASS_FILE="$2"
         ;;
     *)
-        die "usage: gen-android-keystore.sh [OUT_JKS PASS_FILE] (the alias is fixed to rustdesk-fork)"
+        die "usage: gen-android-keystore.sh [OUT_JKS PASS_FILE] | --self-test-vm-authority (the alias is fixed to rustdesk-fork)"
         ;;
 esac
+readonly OUT_JKS PASS_FILE
 
 [ -f "$INNER_SOURCE" ] && [ ! -L "$INNER_SOURCE" ] \
     || die "Android keystore inner program must be a non-symlink regular file"
+[ -x /usr/bin/python3 ] \
+    || die "trusted Python interpreter is unavailable at /usr/bin/python3"
+[ -f "$SCRIPT_DIR/offline-image-provenance.py" ] \
+    && [ ! -L "$SCRIPT_DIR/offline-image-provenance.py" ] \
+    || die "Android builder provenance program must be a non-symlink regular file"
 case "${ANDROID_KEY_ALIAS:-$KEY_ALIAS}" in
     "$KEY_ALIAS") ;;
     *) die "ANDROID_KEY_ALIAS is fixed to $KEY_ALIAS" ;;
@@ -124,11 +201,7 @@ chmod 0700 "$STAGE_ROOT"
 cleanup_stage() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
-        && ! remove_local_docker_authority; then
-        warn "preserving changed private Android keystore Docker authority: $STAGE_ROOT"
-        status=1
-    elif [ -d "$STAGE_ROOT" ]; then
+    if [ -d "$STAGE_ROOT" ]; then
         if ! chmod -R u+rwX "$STAGE_ROOT" 2>/dev/null \
             || ! rm -rf -- "$STAGE_ROOT"; then
             status=1
@@ -148,12 +221,11 @@ install -d -m 0700 \
 install -m 0400 -- "$INNER_SOURCE" "$STAGE_ROOT/authority/android-keystore-generate.sh"
 cmp -s -- "$INNER_SOURCE" "$STAGE_ROOT/authority/android-keystore-generate.sh" \
     || die "private Android keystore inner-program snapshot differs from its source"
-initialize_local_docker_authority "$STAGE_ROOT/docker-config" "android-keystore"
 
-require_pinned_builder_image android-builder "$IMAGE_ID"
+require_verifier_vm_android_builder
 
 android_keystore_docker_run() {
-    local_docker run --rm --pull=never --network=none --read-only \
+    verifier_vm_docker run --rm --pull=never --network=none --read-only \
         --user "$BUILD_UID:$BUILD_GID" \
         --cap-drop=ALL --security-opt=no-new-privileges \
         "$@"

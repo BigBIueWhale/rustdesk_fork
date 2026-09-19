@@ -1668,6 +1668,20 @@ inventories, and joined cleanup in 49 seconds; successful run `run.RibxnHS0zM` r
 promotion, networkless certification/review/promotion, current Windows guest lifecycle, cold artifacts, independent
 reproduction, external review, and release remain open.
 
+Pin-bound Windows-helper bootstrap promotion `run.vZHLkognm2` at exact clean pushed commit
+`e6a2f2d65efbccf816b70e8b54aecb94b3b1bc13` completed in 43 seconds. It fully reverified the fixed candidate,
+published it only through the descriptor-relative no-clobber operation, reloaded/reverified the stable final, and
+retired both candidate and successful run root. Its current-user-owned, mode-0400, one-link, 2,374-byte receipt has
+SHA-256 `0c505420d84fdf32623d0f12e5dbe6039ef585037b1a11431eebd1001fd7f3a8` and binds the exact source commit/tree/
+bundle, authenticated VM inputs, pinned Buildx/BuildKit, no host forwarding, denied UDP, guest-only Docker/BuildKit,
+unchanged 660-byte host-listener inventory at SHA-256
+`43dc8365132ee189293c51f0b701abc1d2f2720b4472429c76a6b90e90935f76`, empty transaction stderr, and joined
+cleanup. The final `online/inputs/build-images/win-helper-bootstrap.docker.tar.gz` is current-user-owned, mode 0400,
+one link, 995,301,648 bytes, and independently rehashes to
+`541abfbed8600324a89d7e77acb7b1782682dab52ca97f039abd4622347a2e69`; the candidate name and exact VM generation
+are absent. Networkless certification/review/promotion, current Windows guest lifecycle, cold artifacts, independent
+reproduction, external review, and release remain open.
+
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
 with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded

@@ -1649,6 +1649,25 @@ candidate, no-clobber renamed the same inode, retired the candidate, and loaded/
 seconds with the same network/listener/cleanup invariants. Current compiler/product workloads, native/installed
 targets, cold artifacts, independent reproduction, external review, and release remain open.
 
+Real Windows-helper bootstrap acquisition `run.XeYst7vfs2` at clean pushed commit
+`d623fbdf8efee809eaeb02e0abfb8bf92f4ae1fe` completed in 256 seconds. Its receipt binds outbound-only QEMU user
+networking with no host forwarding, denied UDP, guest-only Docker/BuildKit, unchanged host listeners, and joined
+cleanup; the successful run root is absent. Independent read-only review confirmed the current 1,998-byte recipe
+byte-for-byte, a strictly sorted/unique 379-row package manifest, the exact embedded contract, all five direct-OCI
+content addresses, the three-layer/diff-ID mapping, 13-entry bootstrap history, mode-0444 provenance files, and the
+candidate's current-user mode-0400 one-link identity. The reviewed bootstrap pins are image/config
+`sha256:d87ce47b24a9c71a9053d163043c0e64d70a80c342b2c6a7e4c9824f1ce40c13`, manifest
+`sha256:40c34d0ec4ce22ead7c57f194fe98b0c4e8b6b397d5c5252ba6a63319a643320`, archive SHA-256
+`541abfbed8600324a89d7e77acb7b1782682dab52ca97f039abd4622347a2e69` at 995,301,648 bytes, OCI-layout
+SHA-256 `2383c9c3405e937568b62a5eee85237d0874d28c45bf41e671b5dd69bb257644`, recipe SHA-256
+`734784bbf0f0a135b055816ce56edd33aaf12e79c35b4c70b2a1be96a7a90932`, and package-manifest SHA-256
+`d7978a6763b6e2b0b5dc920a754ab077bc9d6b07b2c6a149f34d62c1cf30c384`. Certified Windows-helper pins remain
+untouched. A disposable ordinary-user no-NIC authority VM then passed the complete provenance suite, compact
+builder-image gates, real guest-only Docker authority probes, root/foreign refusals, identical host-listener
+inventories, and joined cleanup in 49 seconds; successful run `run.RibxnHS0zM` retired. Pin-bound bootstrap
+promotion, networkless certification/review/promotion, current Windows guest lifecycle, cold artifacts, independent
+reproduction, external review, and release remain open.
+
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
 with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded

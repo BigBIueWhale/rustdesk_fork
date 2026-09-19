@@ -1629,6 +1629,24 @@ left no VM process. A successful renewed certified Debian candidate, deliberate 
 promotion, compiler/product workloads, native/installed targets, cold artifacts, independent reproduction,
 external review, and release remain open.
 
+At corrected, clean pushed commit `705ac67f08fcc77966b18d6ff5713c6b7b982d01`, real
+`run.w9S8gnkc6K` completed the networkless UID/GID-1000 Debian certification, bounded direct-OCI normalization,
+semantic archive validation, guest-only load, and confined runtime fingerprint in 100 seconds. Its compact receipt
+binds the exact source/tree, no host forwarding, denied UDP, guest-only Docker/BuildKit, unchanged host listeners,
+and joined cleanup; its successful run root is absent. The mode-0400 one-link candidate is 463,321,996 bytes at
+SHA-256 `a1426f726639c5d7b62ea5bf6515b514e99ebde95feccf468e7c081f1080b0e5`, image/index
+`sha256:48596720e13492e8a511b35ad88932f23f19dd9271b9eb3da3c12c016698dabb`, runtime manifest
+`sha256:b7eab9b6c0fedadd213116e58f99826648bdb27c58e1bda6c9cc321b862cea5e`, and config
+`sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`. Independent read-only review rehashed
+all ten content-addressed blobs, matched all four compressed layers to the config's uncompressed diff IDs, proved
+the 14-plus-eight history topology, numeric-nonroot runtime and exact labels, and found one VCS-free attestation
+binding the reviewed bootstrap, five arguments, networkless sole execution/root mount, and byte-identical
+certification Dockerfile. These reviewed final pins now replace only the five historical certified-artifact pins
+and their normative/focused consumers. The no-NIC authority VM passed the resulting compact Debian/adjacent image
+gates, realistic provenance suite, guest-only Docker probes, listener invariance, and joined cleanup in 50 seconds.
+Pin-bound no-clobber promotion, final-name revalidation, current compiler/product workloads, native/installed
+targets, cold artifacts, independent reproduction, external review, and release remain open.
+
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
 with `unknown flag: --network` before any certification build or candidate publication. Its retained bounded

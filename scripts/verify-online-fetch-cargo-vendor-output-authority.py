@@ -106,7 +106,7 @@ def validate(sources: Mapping[str, str]) -> None:
             "6bf166ddcad545aa26aa2d12a186454d7697133b52b7fbbd271ce3ee1ecfedc6"
         ),
         "DEB_BUILDER_IMAGE_ID": (
-            "sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2"
+            "sha256:48596720e13492e8a511b35ad88932f23f19dd9271b9eb3da3c12c016698dabb"
         ),
     }
     for name, expected in expected_pins.items():

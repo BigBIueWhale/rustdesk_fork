@@ -1563,7 +1563,7 @@ vendor_cargo() {
         --mount "type=bind,source=$candidate,target=/outputs/vendor" \
         --mount "type=bind,source=$staging/raw-config.toml,target=/outputs/raw-config.toml" \
         --workdir /source \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home /tmp/cargo-target
             tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
@@ -1600,7 +1600,7 @@ vendor_cargo() {
             --mount "type=bind,source=$candidate,target=/vendor,readonly,bind-recursive=disabled" \
             --mount "type=bind,source=$staging/cargo-vendor-config.toml,target=/inputs/config.toml,readonly" \
             --workdir /source \
-            "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
                 umask 077
                 mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home /tmp/cargo-target
                 tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
@@ -1811,7 +1811,7 @@ stage_archive_bundle() {
             --env "RUSTDESK_RUST_TEST_SHA256=$SHA256_RUST_1_75" \
             --env "RUSTDESK_RUST_TEST_VERSION=$RUST_VERSION" \
             --mount "type=bind,source=$staging/output,target=/outputs" \
-            "$builder" \
+            "$(online_fetch_builder_runtime_ref "$builder")" \
             /bin/bash --noprofile --norc -euo pipefail -c '
                 umask 077
                 output="/outputs/rust-${RUSTDESK_RUST_TEST_VERSION}.tar.xz"
@@ -1830,7 +1830,7 @@ stage_archive_bundle() {
             --mount "type=bind,source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly" \
             --mount "type=bind,source=$staging/state.json,target=/state.json,readonly" \
             --mount "type=bind,source=$staging/output,target=/outputs" \
-            "$builder" \
+            "$(online_fetch_builder_runtime_ref "$builder")" \
             /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire \
                 --state /state.json --output /outputs \
                 --builder-id "$builder" --helper-sha256 "$helper_sha256" \
@@ -1882,7 +1882,7 @@ validate_dart_audit_inputs() {
         --mount "type=bind,source=$SCRIPT_DIR/dart-audit-image-input.py,target=/authority/dart-audit-image-input.py,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$ONLINE_DIR/dart-audit-inputs/osv-scanner,target=/inputs/osv-scanner,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$ONLINE_DIR/dart-audit-inputs/Pub-all.zip,target=/inputs/Pub-all.zip,readonly,bind-recursive=disabled" \
-        "$builder" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
         /usr/bin/python3 -I -S /authority/dart-audit-image-input.py \
         --scanner /inputs/osv-scanner \
         --scanner-size "$OSV_SCANNER_SIZE" \
@@ -2165,12 +2165,14 @@ verify_or_load_deb_builder_image() {
     local args=()
     mapfile -d '' args < <(deb_builder_image_spec_args)
     online_image_provenance verify-load \
+        --certified-index-runtime \
         --archive "$ONLINE_DIR/build-images/deb-builder.docker.tar.gz" \
         --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
         --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --image-ref "$DEB_BUILDER_CONFIG_ID" \
+        --certified-index-runtime \
+        --image-ref "$DEB_BUILDER_IMAGE_ID" \
         "${args[@]}"
 }
 
@@ -2179,12 +2181,14 @@ verify_or_load_android_builder_image() {
     local args=()
     mapfile -d '' args < <(android_builder_image_spec_args)
     online_image_provenance verify-load \
+        --certified-index-runtime \
         --archive "$ONLINE_DIR/build-images/android-builder.docker.tar.gz" \
         --archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
         --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --image-ref "$ANDROID_BUILDER_CONFIG_ID" \
+        --certified-index-runtime \
+        --image-ref "$ANDROID_BUILDER_IMAGE_ID" \
         "${args[@]}"
 }
 
@@ -2193,12 +2197,14 @@ verify_or_load_win_helper_image() {
     local args=()
     mapfile -d '' args < <(win_helper_image_spec_args)
     online_image_provenance verify-load \
+        --certified-index-runtime \
         --archive "$ONLINE_DIR/build-images/win-helper.docker.tar.gz" \
         --archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
         --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --image-ref "$WIN_HELPER_CONFIG_ID" \
+        --certified-index-runtime \
+        --image-ref "$WIN_HELPER_IMAGE_ID" \
         "${args[@]}"
 }
 
@@ -3801,10 +3807,36 @@ maintenance_promote_win_helper_bootstrap_candidate() {
         "${args[@]}"
 }
 
+online_fetch_builder_runtime_ref() {
+    [ "$#" -eq 1 ] || die "online builder runtime selection requires one config ID"
+    case "$1" in
+        "$DEB_BUILDER_CONFIG_ID") printf '%s\n' "$DEB_BUILDER_IMAGE_ID" ;;
+        "$ANDROID_BUILDER_CONFIG_ID") printf '%s\n' "$ANDROID_BUILDER_IMAGE_ID" ;;
+        "$WIN_HELPER_CONFIG_ID") printf '%s\n' "$WIN_HELPER_IMAGE_ID" ;;
+        *) die "online builder config ID is outside the closed certified set" ;;
+    esac
+}
+
 require_online_fetch_builder_image() {
-    local role="$1" image_id="$2"
+    local role="$1" config_id="$2" runtime_ref
+    local args=()
+    case "$role:$config_id" in
+        "deb-builder:$DEB_BUILDER_CONFIG_ID")
+            mapfile -d '' args < <(deb_builder_image_spec_args)
+            ;;
+        "android-builder:$ANDROID_BUILDER_CONFIG_ID")
+            mapfile -d '' args < <(android_builder_image_spec_args)
+            ;;
+        "win-helper:$WIN_HELPER_CONFIG_ID")
+            mapfile -d '' args < <(win_helper_image_spec_args)
+            ;;
+        *) die "online builder role/config pair is outside the closed certified set" ;;
+    esac
+    runtime_ref="$(online_fetch_builder_runtime_ref "$config_id")"
     assert_online_fetch_docker_authority
-    require_pinned_builder_image "$role" "$image_id" online_image_provenance
+    online_image_provenance verify-local \
+        --certified-index-runtime --image-ref "$runtime_ref" \
+        "${args[@]}" >/dev/null
     assert_online_fetch_docker_authority
 }
 
@@ -3938,7 +3970,7 @@ stage_cargo_installed_tool() {
         --env RUST_VERSION="$RUST_VERSION" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$staging/output,target=/outputs/tool" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             toolchain="/tmp/toolchain"
             archive="/online/rust-${RUST_VERSION}.tar.xz"
             installer="$toolchain/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu/install.sh"
@@ -4130,7 +4162,7 @@ verify_pub_cache_resolution() {
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/authority,readonly,bind-recursive=disabled" \
         --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
         --workdir /tmp \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
         mkdir /tmp/toolchain /tmp/home /tmp/project
         tar -C /tmp/toolchain -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
@@ -4235,7 +4267,7 @@ stage_pub_cache() {
             --mount "type=bind,source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache" \
             --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
             --workdir /tmp \
-            "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             mkdir /tmp/toolchain /tmp/home /tmp/project
             tar -C /tmp/toolchain -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
@@ -4469,7 +4501,7 @@ stage_vcpkg_distfiles() {
         --env LIBYUV_COMMIT="$LIBYUV_COMMIT" \
         --env SHA512_LIBYUV="$SHA512_LIBYUV" \
         --mount "type=bind,source=$staging/output,target=/outputs/libyuv.tar.gz" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             export HOME=/tmp/home
             export GIT_CONFIG_NOSYSTEM=1
             export GIT_CONFIG_GLOBAL=/dev/null
@@ -4637,7 +4669,7 @@ stage_vcpkg_natives() {
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
         --env VCPKG_NATIVE_OUTPUT_KEY="$(vcpkg_native_output_key x64-linux "$builder")" \
         --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             export HOME=/tmp/home; mkdir -p "$HOME"
             VR=/tmp/vcpkg; mkdir -p "$VR"
             tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
@@ -4790,7 +4822,7 @@ stage_android_ndk() {
         --mount "type=bind,source=$archive,target=/inputs/android-ndk.zip,readonly" \
         --mount "type=bind,source=$SCRIPT_DIR/online-android-ndk-output.py,target=/authority/online-android-ndk-output.py,readonly" \
         --mount "type=bind,source=$staging/output,target=/outputs/android-ndk" \
-        "$builder" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
         /usr/bin/python3 -I -S \
         /authority/online-android-ndk-output.py extract \
         --archive /inputs/android-ndk.zip \
@@ -4894,7 +4926,7 @@ stage_vcpkg_natives_arm64() {
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
         --env VCPKG_NATIVE_OUTPUT_KEY="$(vcpkg_native_output_key arm64-android "$builder")" \
         --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             export HOME=/tmp/home; mkdir -p "$HOME"
             export ANDROID_NDK_HOME=/online/android-ndk
             VR=/tmp/vcpkg; mkdir -p "$VR"
@@ -5078,7 +5110,7 @@ stage_android_sdk() {
         --mount "type=bind,source=$SCRIPT_DIR/online-android-sdk-output.py,target=/authority/online-android-sdk-output.py,readonly" \
         --mount "type=bind,source=$staging/downloads,target=/outputs/downloads" \
         --mount "type=bind,source=$staging/output,target=/outputs/sdk" \
-        "$builder" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
         /usr/bin/python3 -I -S \
         /authority/online-android-sdk-output.py acquire \
         --cmdline-archive /inputs/android-cmdline-tools.zip \
@@ -5458,7 +5490,7 @@ stage_gradle() {
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home" \
         --workdir /src \
-        "$builder" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
         || status=$?
     (verify_gradle_source_unchanged) || source_status=$?
     retire_gradle_source_build
@@ -5630,7 +5662,7 @@ stage_windows_engine() {
         --env SIZE_FLUTTER_WIN_ENGINE="$SIZE_FLUTTER_WIN_ENGINE" \
         --mount "type=bind,source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$staging/output,target=/outputs/engine.tar.gz" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             /usr/bin/mkdir -p /tmp/toolchain /tmp/home
             /usr/bin/tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
@@ -5712,7 +5744,7 @@ if written != limit:
         online_docker_run_offline \
             --mount "type=bind,source=$WINDOWS_ENGINE_OUTPUT_HELPER,target=/authority/online-windows-engine-output.py,readonly,bind-recursive=disabled" \
             --mount "type=bind,source=$staging/output,target=/inputs/engine.tar.gz,readonly,bind-recursive=disabled" \
-            "$builder" /usr/bin/python3 -I -S \
+            "$(online_fetch_builder_runtime_ref "$builder")" /usr/bin/python3 -I -S \
                 /authority/online-windows-engine-output.py verify-archive \
                 --archive /inputs/engine.tar.gz \
                 --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
@@ -5842,7 +5874,7 @@ verify_flutter_pub_cache_archive_resolution() {
         --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --env "RUSTDESK_FLUTTER_PUB_CACHE_SHA256=$SHA256_FLUTTER_PUB_CACHE" \
         --env "RUSTDESK_FLUTTER_PUB_CACHE_SIZE=$SIZE_FLUTTER_PUB_CACHE" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
         /usr/bin/mkdir /tmp/toolchain /tmp/pub-cache /tmp/home
         /usr/bin/cp /inputs/pub-cache.tar.gz /tmp/pub-cache.tar.gz
@@ -5972,7 +6004,7 @@ stage_flutter_pub_cache() {
         --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --env "RUSTDESK_FLUTTER_PUB_CACHE_SHA256=$SHA256_FLUTTER_PUB_CACHE" \
         --env "RUSTDESK_FLUTTER_PUB_CACHE_SIZE=$SIZE_FLUTTER_PUB_CACHE" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
         export LC_ALL=C
         lock=/tmp/flutter-tools.pubspec.lock
         /usr/bin/tar -xOf /inputs/flutter.tar.xz \

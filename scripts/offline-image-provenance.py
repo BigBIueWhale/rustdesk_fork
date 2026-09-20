@@ -871,6 +871,21 @@ def runtime_image_id(spec: ImageSpec) -> str:
     return spec.image_id
 
 
+def selected_runtime_image_id(
+    spec: ImageSpec,
+    certified_index_runtime: bool = False,
+) -> str:
+    """Select one exact daemon-store identity for runtime inspection/use."""
+    if certified_index_runtime:
+        if not isinstance(spec, CertifiedBuilderSpec):
+            fail(
+                "OCI-index runtime selection is restricted to certified "
+                "builder images"
+            )
+        return spec.image_id
+    return runtime_image_id(spec)
+
+
 def fail(message: str) -> None:
     raise ProvenanceError(message)
 
@@ -1343,8 +1358,16 @@ def inspect_image(image_ref: str) -> dict[str, object]:
     return payload[0]
 
 
-def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec) -> None:
-    expected_runtime_id = runtime_image_id(spec)
+def validate_inspect(
+    payload: dict[str, object],
+    image_ref: str,
+    spec: ImageSpec,
+    certified_index_runtime: bool = False,
+) -> None:
+    expected_runtime_id = selected_runtime_image_id(
+        spec,
+        certified_index_runtime,
+    )
     if isinstance(spec, CertifiedBuilderSpec) and image_ref != expected_runtime_id:
         fail(
             f"image reference must be the immutable runtime ID "
@@ -1666,10 +1689,19 @@ def verify_bootstrap_seal(
     verify_local(candidate_ref, candidate_spec)
 
 
-def verify_local(image_ref: str, spec: ImageSpec) -> None:
+def verify_local(
+    image_ref: str,
+    spec: ImageSpec,
+    certified_index_runtime: bool = False,
+) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
-    validate_inspect(inspect_image(image_ref), image_ref, spec)
+    validate_inspect(
+        inspect_image(image_ref),
+        image_ref,
+        spec,
+        certified_index_runtime,
+    )
     if isinstance(spec, CertifiedBuilderSpec):
         tools = " ".join(spec.runtime_tools)
         modules = " ".join(spec.runtime_python_modules)
@@ -5255,6 +5287,7 @@ def load_archive(
     expected_archive_sha: str,
     spec: ImageSpec,
     expected_archive_size: int | None = None,
+    certified_index_runtime: bool = False,
 ) -> None:
     fd = open_archive(archive_path)
     try:
@@ -5305,7 +5338,8 @@ def load_archive(
         stable_file(before, os.fstat(fd), archive_path)
     finally:
         os.close(fd)
-    verify_local(runtime_image_id(spec), spec)
+    runtime_id = selected_runtime_image_id(spec, certified_index_runtime)
+    verify_local(runtime_id, spec, certified_index_runtime)
 
 
 def rename_noreplace(source: Path, destination: Path) -> None:
@@ -10771,6 +10805,12 @@ def self_test() -> None:
             "Config": deb_spec.runtime_inspect_config,
         }
         validate_inspect(deb_payload, deb_spec.config_id, deb_spec)
+        validate_inspect(
+            {**deb_payload, "Id": deb_spec.image_id},
+            deb_spec.image_id,
+            deb_spec,
+            certified_index_runtime=True,
+        )
         if deb_spec.display_name != "Debian builder" \
            or deb_spec.argument_prefix != "DEB_BUILDER" \
            or deb_spec.bootstrap_context_name != "deb-builder-bootstrap" \
@@ -10813,7 +10853,7 @@ def self_test() -> None:
                "ubuntu"
            ):
             fail("certified Debian builder role contract differs")
-        deb_checks = 3
+        deb_checks = 4
 
         def deb_failure(
             operation: Callable[[], object],
@@ -10916,7 +10956,7 @@ def self_test() -> None:
         )
         verify_archive(deb_archive, deb_sha, deb_spec, deb_size)
         deb_checks += 1
-        if deb_checks != 9:
+        if deb_checks != 10:
             fail(
                 "certified Debian builder image self-test count differs: "
                 f"{deb_checks}"
@@ -12153,6 +12193,7 @@ def argument_parser() -> argparse.ArgumentParser:
     local = subparsers.add_parser("verify-local")
     add_spec_arguments(local)
     local.add_argument("--image-ref")
+    local.add_argument("--certified-index-runtime", action="store_true")
     discovery = subparsers.add_parser(
         "maintenance-inspect-bootstrap-discovery"
     )
@@ -12168,6 +12209,7 @@ def argument_parser() -> argparse.ArgumentParser:
     load.add_argument("--archive", type=Path, required=True)
     load.add_argument("--archive-sha", required=True)
     load.add_argument("--archive-size", type=int)
+    load.add_argument("--certified-index-runtime", action="store_true")
     verify = subparsers.add_parser("verify-archive")
     add_spec_arguments(verify)
     verify.add_argument("--archive", type=Path, required=True)
@@ -12295,10 +12337,24 @@ def main() -> int:
         return 0
     spec = spec_from_args(args)
     if args.command == "verify-local":
-        verify_local(args.image_ref or runtime_image_id(spec), spec)
+        runtime_id = selected_runtime_image_id(
+            spec,
+            args.certified_index_runtime,
+        )
+        verify_local(
+            args.image_ref or runtime_id,
+            spec,
+            args.certified_index_runtime,
+        )
         print(f"verified {spec.role} {spec.image_id}")
     elif args.command == "verify-load":
-        load_archive(args.archive, args.archive_sha, spec, args.archive_size)
+        load_archive(
+            args.archive,
+            args.archive_sha,
+            spec,
+            args.archive_size,
+            args.certified_index_runtime,
+        )
         print(f"loaded and verified {spec.role} {spec.image_id}")
     elif args.command == "verify-archive":
         verify_archive(args.archive, args.archive_sha, spec, args.archive_size)

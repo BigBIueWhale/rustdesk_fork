@@ -15,7 +15,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Sequence
 
@@ -52,6 +52,10 @@ FORBIDDEN_MODE_BITS = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
 
 class VendorOutputError(RuntimeError):
     pass
+
+
+class ContractMismatch(VendorOutputError):
+    """A structurally valid retained transaction belongs to an older contract."""
 
 
 @dataclass(frozen=True)
@@ -723,9 +727,12 @@ def load_state(
             != identity(staging_metadata)
             or decode_identity(latest["state_identity"], "state journal")
             != state_identity
-            or contract_from_record(latest) != contract
         ):
             fail("Cargo vendor state does not match the requested authority")
+        if contract_from_record(latest) != contract:
+            raise ContractMismatch(
+                "Cargo vendor state belongs to a superseded authority"
+            )
         return (
             online_fd,
             online_metadata,
@@ -1562,6 +1569,8 @@ def recover(
     except FileNotFoundError:
         validate_unprepared_staging(online, staging, uid, gid)
         return "discardable"
+    except ContractMismatch:
+        return "stale"
     else:
         os.close(staging_fd)
         os.close(online_fd)
@@ -1705,6 +1714,9 @@ def self_test() -> None:
         )
         prepare(online, staging, uid, gid, placeholder)
         contract = write_fixture_output(staging, online)
+        stale_contract = replace(contract, source_commit="8" * 40)
+        if recover(online, staging, uid, gid, stale_contract) != "stale":
+            fail("self-test did not classify a superseded transaction as stale")
         # The real shell knows the contract before preparation. Rewrite this fixture's
         # freshly prepared journal only by restarting with a clean transaction.
         remove_transaction(staging)

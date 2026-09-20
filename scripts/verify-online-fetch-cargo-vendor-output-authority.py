@@ -341,6 +341,10 @@ def validate(sources: Mapping[str, str]) -> None:
         ('STATE_NAME = "state.jsonl"', "append-only state journal"),
         ('TREE_SUFFIX = ".tree"', "same-parent sealed candidate"),
         (
+            "class ContractMismatch(VendorOutputError):",
+            "distinct superseded-contract classification",
+        ),
+        (
             "if uid == 0 or gid == 0 or (os.geteuid(), os.getegid()) != (uid, gid):",
             "non-root exact identity",
         ),
@@ -389,6 +393,14 @@ def validate(sources: Mapping[str, str]) -> None:
         (
             'if latest["phase"] in ("prepared", "verified")',
             "unauthorized recovery discard",
+        ),
+        (
+            'except ContractMismatch:\n        return "stale"',
+            "safe superseded-transaction retirement",
+        ),
+        (
+            'recover(online, staging, uid, gid, stale_contract) != "stale"',
+            "superseded-transaction runtime fixture",
         ),
         ("publish(online, staging, uid, gid, contract)", "authorized recovery"),
         (

@@ -246,7 +246,7 @@ remove_owned_large_file() {
         [ -f "$path" ] && [ ! -L "$path" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$path" 2>/dev/null)" = "$HOST_UID:$HOST_GID:1" ] \
             || return 1
-        /usr/bin/rm -- "$path"
+        /usr/bin/rm --force -- "$path"
     fi
 }
 
@@ -259,7 +259,7 @@ remove_success_receipt_temporary() {
             && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$SUCCESS_RECEIPT_TMP" 2>/dev/null)" \
                  = "$HOST_UID:$HOST_GID:1" ] \
             || return 1
-        /usr/bin/rm -- "$SUCCESS_RECEIPT_TMP" || return 1
+        /usr/bin/rm --force -- "$SUCCESS_RECEIPT_TMP" || return 1
     fi
     SUCCESS_RECEIPT_TMP=
     SUCCESS_RECEIPT_TMP_ID=

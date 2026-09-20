@@ -323,6 +323,7 @@ def main() -> int:
         "--sandbox=none",
         "--seccomp=kill",
         "--cache=never",
+        "--xattr",
         "--inode-file-handles=never",
         "--thread-pool-size=0",
         "--rlimit-nofile=4096",

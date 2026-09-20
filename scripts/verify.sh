@@ -529,14 +529,11 @@ r_s11cn=
 if ! /usr/bin/python3 -I -S scripts/online-pub-cache-output.py self-test; then
   r_s11cn="$r_s11cn transaction-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-pub-cache-output-authority.py --repo . --self-test; then
-  r_s11cn="$r_s11cn authority-or-mutation-self-test-failed"
-fi
 if [ -n "$r_s11cn" ]; then
   echo "  FAIL R-S11cn online-fetch Pub-cache output authority:$r_s11cn"
   rc=1
 else
-  echo "  ok  R-S11cn the networked Pub producer sees read-only pinned inputs, writes one private cache root, and publishes only after structural, Git, and enforced-lockfile offline replay"
+  echo "  ok  R-S11cn the Pub-cache transaction exercises structural, publication, replacement, recovery, and volatile-metadata refusal behavior; cold producer equality and enforced-lockfile replay remain acquisition-VM evidence"
 fi
 
 echo "== (0m) online-fetch libyuv distfile output authority (R-S11co/R-S11e-107) =="

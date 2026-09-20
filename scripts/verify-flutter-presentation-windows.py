@@ -205,7 +205,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         pins,
-        'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
+        'SHA256_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
         "dedicated Windows presentation Pub-cache authority pin",
     )
     require(
@@ -1498,8 +1498,8 @@ def self_test(sources: dict[str, str]) -> int:
         ("host", "assert_clean_worktree", "true # worktree check removed"),
         (
             "pins",
-            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
-            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1="0000000000000000000000000000000000000000000000000000000000000000"',
+            'SHA256_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
+            'SHA256_PUB_CACHE_CLOSURE_V1="0000000000000000000000000000000000000000000000000000000000000000"',
         ),
         (
             "pins",

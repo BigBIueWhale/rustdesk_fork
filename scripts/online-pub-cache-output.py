@@ -527,11 +527,8 @@ def validate_shape(
             fail(f"Pub cache {label} is missing or not one real directory")
 
     metadata_cache = hosted / ".cache"
-    if not metadata_cache.is_dir() or metadata_cache.is_symlink():
-        fail("Pub cache lacks the pinned-host metadata cache needed by Windows staging")
-    for advisory in ("archive-advisories.json", "http-advisories.json"):
-        if not (metadata_cache / advisory).is_file() or (metadata_cache / advisory).is_symlink():
-            fail(f"Pub cache lacks required advisory metadata: {advisory}")
+    if metadata_cache.exists() or metadata_cache.is_symlink():
+        fail("Pub cache contains volatile hosted-response metadata")
 
     package_names = set()
     with os.scandir(hosted) as iterator:
@@ -887,17 +884,48 @@ def verify_staged(
     state = load_state(online, staging, uid, gid)
     require_matching_provenance(state, provenance)
     output = staging / "output"
+    return verify_private_output(
+        output,
+        uid,
+        gid,
+        normalize=normalize,
+        expected_identity=decode_identity(
+            state.get("output_identity"),
+            "Pub-cache output",
+        ),
+    )
+
+
+def verify_private_output(
+    output: Path,
+    uid: int,
+    gid: int,
+    *,
+    normalize: bool,
+    expected_identity: tuple[int, int] | None = None,
+) -> TreeSummary:
     summary = inspect_tree(
         output,
         owners={(uid, gid)},
         normalize=normalize,
         published=False,
-        expected_identity=decode_identity(state.get("output_identity"), "Pub-cache output"),
+        expected_identity=expected_identity,
     )
     if stat.S_IMODE(os.lstat(output).st_mode) != 0o700:
         fail("staged Pub-cache candidate root is not mode 0700")
     validate_shape(output, strict_output=True)
     return summary
+
+
+def verify_reproduction(cache: Path, uid: int, gid: int) -> TreeSummary:
+    metadata = os.lstat(cache)
+    return verify_private_output(
+        cache,
+        uid,
+        gid,
+        normalize=True,
+        expected_identity=identity(metadata),
+    )
 
 
 def check_complete(online: Path, uid: int, gid: int) -> TreeSummary:
@@ -1807,11 +1835,9 @@ def make_fake_cache(
     hashes = root / "hosted-hashes" / "pub.dev"
     git = root / "git"
     cache = git / "cache"
-    (hosted / ".cache").mkdir(parents=True)
+    hosted.mkdir(parents=True)
     hashes.mkdir(parents=True)
     cache.mkdir(parents=True)
-    (hosted / ".cache" / "archive-advisories.json").write_text("{}\n", encoding="ascii")
-    (hosted / ".cache" / "http-advisories.json").write_text("{}\n", encoding="ascii")
     package = hosted / "example-1.0.0"
     package.mkdir()
     (package / "pubspec.yaml").write_text(
@@ -2204,6 +2230,26 @@ def self_test() -> None:
             fail("self-test complete Pub cache changed its verified digest")
         remove_stage(staging)
 
+        staging = make_stage(online)
+        prepare(online, staging, uid, gid, provenance)
+        make_fake_cache(staging / "output")
+        (staging / "output" / "hosted" / "pub.dev" / ".cache").mkdir()
+        try:
+            verify_staged(online, staging, uid, gid, provenance, normalize=True)
+        except PubCacheError:
+            pass
+        else:
+            fail("self-test accepted volatile hosted-response metadata")
+        remove_stage(staging)
+
+        reproduction = Path(temporary) / "reproduction"
+        reproduction.mkdir(mode=0o700)
+        make_fake_cache(reproduction)
+        reproduced = verify_reproduction(reproduction, uid, gid)
+        if reproduced.digest != summary.digest:
+            fail("self-test reproduction digest differs from staged output")
+        remove_stage(reproduction)
+
         published = online / "pub-cache"
         os.rename(published, online / "saved")
         staging = make_stage(online)
@@ -2552,6 +2598,10 @@ def argument_parser() -> argparse.ArgumentParser:
     common_arguments(archive_parser)
     complete_parser = commands.add_parser("check-complete")
     common_arguments(complete_parser, staging=False)
+    reproduction_parser = commands.add_parser("verify-reproduction")
+    reproduction_parser.add_argument("--cache", type=Path, required=True)
+    reproduction_parser.add_argument("--uid", type=int, required=True)
+    reproduction_parser.add_argument("--gid", type=int, required=True)
     commands.add_parser("self-test")
     return parser
 
@@ -2628,6 +2678,9 @@ def main() -> int:
             )
         elif arguments.command == "check-complete":
             summary = check_complete(arguments.online, arguments.uid, arguments.gid)
+            print(f"sha256={summary.digest}")
+        elif arguments.command == "verify-reproduction":
+            summary = verify_reproduction(arguments.cache, arguments.uid, arguments.gid)
             print(f"sha256={summary.digest}")
         else:
             fail("unknown command")

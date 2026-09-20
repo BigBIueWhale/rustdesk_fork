@@ -1300,7 +1300,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         'focused Rust-test cloud-init completion marker'
 else
     require_exact_fixed_receipt \
-        "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=12 tests=102 flutter=$FLUTTER_VERSION pub_cache=$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined" \
+        "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=12 tests=102 flutter=$FLUTTER_VERSION pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined" \
         'focused Flutter model-test receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \

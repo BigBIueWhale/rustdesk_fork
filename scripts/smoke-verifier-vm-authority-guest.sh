@@ -628,7 +628,7 @@ run_flutter_model_tests() {
                 check-complete --online "$inputs" --uid 1000 --gid 1000
     )" || fail 'sealed Pub-cache closure validation failed'
     [ "$pub_receipt" = \
-      "sha256=$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1" ] \
+      "sha256=$SHA256_PUB_CACHE_CLOSURE_V1" ] \
         || fail "sealed Pub-cache closure receipt differs: $pub_receipt"
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
       "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
@@ -803,7 +803,7 @@ run_flutter_model_tests() {
     printf '%s\n' "$result_line"
     printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=102 flutter=3.24.5 pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-        "$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1" \
+        "$SHA256_PUB_CACHE_CLOSURE_V1" \
         "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
 }
 

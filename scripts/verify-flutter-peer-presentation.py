@@ -175,7 +175,7 @@ def validate(sources: dict[str, str]) -> None:
     require(host, 'readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"', "canonical Pub-cache input")
     require(
         host,
-        'readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1"',
+        'readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_PUB_CACHE_CLOSURE_V1"',
         "canonical Pub-cache digest",
     )
     require(host, '"$HOST_UID:$HOST_GID:500"', "sealed canonical Pub-cache metadata")
@@ -326,7 +326,7 @@ def validate(sources: dict[str, str]) -> None:
         "exact consumed-input validation",
     )
     for pin_name, pin_value in (
-        ("SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1", "fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"),
+        ("SHA256_PUB_CACHE_CLOSURE_V1", "fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"),
         ("SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1", "9564b164d4c6d4a9b3d7540a1655505009af34a9e610eadaf076e4807f63cf2c"),
         ("SHA256_FLUTTER_PEER_FRB_CODEGEN", "24508d54dcad4f6b5c5b70395d24437a563d64fc2c24a17ca7e25f24ddb418fa"),
         ("SIZE_FLUTTER_PEER_FRB_CODEGEN", "17211448"),

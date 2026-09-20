@@ -4230,10 +4230,48 @@ verify_pub_cache_resolution() {
     '
 }
 
+produce_pub_cache_candidate() {
+    local output="$1" builder="$DEB_BUILDER_CONFIG_ID"
+    [ -d "$output" ] && [ ! -L "$output" ] \
+        || die "Pub-cache producer output is not one real directory"
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/online/pub-cache" \
+        --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
+        --workdir /tmp \
+        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
+        umask 077
+        mkdir /tmp/toolchain /tmp/home /tmp/project
+        tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
+        cp -a /project-source/. /tmp/project/
+        chmod -R u+rwX /tmp/project
+        export HOME=/tmp/home PUB_CACHE=/online/pub-cache CI=true
+        export PUB_HOSTED_URL=https://pub.dev
+        export FLUTTER_SUPPRESS_ANALYTICS=true
+        export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0
+        export PATH=/tmp/toolchain/flutter/bin:/tmp/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+        project_lock="$(sha256sum /project-source/pubspec.lock | awk "{print \$1}")"
+        tools_lock="$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
+        (cd /tmp/toolchain/flutter/packages/flutter_tools \
+            && dart pub get --enforce-lockfile)
+        [ "$tools_lock" = "$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+        (cd /tmp/project && flutter pub get --enforce-lockfile)
+        [ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]
+        rm -rf -- \
+            "$PUB_CACHE/_temp" \
+            "$PUB_CACHE/log" \
+            "$PUB_CACHE/README.md" \
+            "$PUB_CACHE/hosted/pub.dev/.cache"
+    '
+}
+
 stage_pub_cache() {
     local builder="$DEB_BUILDER_CONFIG_ID"
-    local status=0 source_status=0 input_status=0 output_status=0 semantic_status=0 publication_status=0
-    local lock_fd receipt="" digest="" current=0 replace_existing=0
+    local status=0 reproduction_status=0 source_status=0 input_status=0 output_status=0
+    local reproduction_output_status=0 semantic_status=0 reproduction_semantic_status=0
+    local pin_status=0 publication_status=0
+    local lock_fd receipt="" digest="" reproduction_receipt="" reproduction_digest=""
+    local reproduction="" current=0 replace_existing=0
     require_online_fetch_builder_image deb-builder "$builder"
     assert_online_fetch_source_tools
     exec {lock_fd}<"$ONLINE_DIR" \
@@ -4250,42 +4288,30 @@ stage_pub_cache() {
             pub_cache_output_tool check-complete \
                 --online "$ONLINE_DIR" \
                 --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
-        )" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"
+        )" \
+           && [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
+           && [ "${BASH_REMATCH[1]}" = "$SHA256_PUB_CACHE_CLOSURE_V1" ] \
+           && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"
         then
             current=1
         else
             replace_existing=1
-            log "existing Pub cache is stale or semantically incomplete; preparing one verified replacement"
+            log "existing Pub cache is stale, unpinned, or semantically incomplete; preparing one verified replacement"
         fi
     fi
     if [ "$current" -eq 0 ]; then
         prepare_pub_cache_output_staging
         log "staging both enforced Pub lock closures into one private output; ./online/inputs remains read-only"
-        online_docker_run \
-            --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
-            --mount "type=bind,source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache" \
-            --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
-            --workdir /tmp \
-            "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
-            umask 077
-            mkdir /tmp/toolchain /tmp/home /tmp/project
-            tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
-            cp -a /project-source/. /tmp/project/
-            chmod -R u+rwX /tmp/project
-            export HOME=/tmp/home PUB_CACHE=/online/pub-cache CI=true
-            export PUB_HOSTED_URL=https://pub.dev
-            export FLUTTER_SUPPRESS_ANALYTICS=true
-            export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0
-            export PATH=/tmp/toolchain/flutter/bin:/tmp/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
-            project_lock="$(sha256sum /project-source/pubspec.lock | awk "{print \$1}")"
-            tools_lock="$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
-            (cd /tmp/toolchain/flutter/packages/flutter_tools \
-                && dart pub get --enforce-lockfile)
-            [ "$tools_lock" = "$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
-            (cd /tmp/project && flutter pub get --enforce-lockfile)
-            [ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]
-            rm -rf -- "$PUB_CACHE/_temp" "$PUB_CACHE/log" "$PUB_CACHE/README.md"
-        ' || status=$?
+        produce_pub_cache_candidate "$PUB_CACHE_OUTPUT_STAGING/output" || status=$?
+        if [ "$status" -eq 0 ]; then
+            reproduction="$ONLINE_FETCH_TMP/pub-cache-reproduction"
+            [ ! -e "$reproduction" ] && [ ! -L "$reproduction" ] \
+                || die "private Pub-cache reproduction root already exists"
+            /usr/bin/install -d -m 0700 "$reproduction" \
+                || die "cannot create private Pub-cache reproduction root"
+            log "independently reproducing the cold Pub closure before publication"
+            produce_pub_cache_candidate "$reproduction" || reproduction_status=$?
+        fi
     fi
     (verify_gradle_source_unchanged) || source_status=$?
     retire_gradle_source_build
@@ -4304,14 +4330,52 @@ stage_pub_cache() {
         else
             output_status=1
         fi
+        if [ "$status" -eq 0 ] && [ "$reproduction_status" -eq 0 ] \
+           && [ "$source_status" -eq 0 ] && [ "$input_status" -eq 0 ] \
+           && [ "$output_status" -eq 0 ]; then
+            reproduction_receipt="$(
+                pub_cache_output_tool verify-reproduction \
+                    --cache "$reproduction" \
+                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+            )" || reproduction_output_status=$?
+            if [[ "$reproduction_receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then
+                reproduction_digest="${BASH_REMATCH[1]}"
+            else
+                reproduction_output_status=1
+            fi
+            if [ "$reproduction_output_status" -eq 0 ] \
+               && [ "$reproduction_digest" != "$digest" ]; then
+                log "independent Pub-cache reproductions differ: first=$digest second=$reproduction_digest"
+                reproduction_output_status=1
+            fi
+        fi
         if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
            && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
             verify_pub_cache_resolution "$PUB_CACHE_OUTPUT_STAGING/output" \
                 || semantic_status=$?
         fi
+        if [ "$status" -eq 0 ] && [ "$reproduction_status" -eq 0 ] \
+           && [ "$source_status" -eq 0 ] && [ "$input_status" -eq 0 ] \
+           && [ "$output_status" -eq 0 ] && [ "$reproduction_output_status" -eq 0 ] \
+           && [ "$semantic_status" -eq 0 ]; then
+            verify_pub_cache_resolution "$reproduction" \
+                || reproduction_semantic_status=$?
+        fi
+        if [ "$status" -eq 0 ] && [ "$reproduction_status" -eq 0 ] \
+           && [ "$source_status" -eq 0 ] && [ "$input_status" -eq 0 ] \
+           && [ "$output_status" -eq 0 ] && [ "$reproduction_output_status" -eq 0 ] \
+           && [ "$semantic_status" -eq 0 ] && [ "$reproduction_semantic_status" -eq 0 ] \
+           && [ "$digest" != "$SHA256_PUB_CACHE_CLOSURE_V1" ]; then
+            log "reproduced Pub-cache closure differs from its committed pin: sha256=$digest"
+            pin_status=1
+        fi
         if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
            && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ] \
-           && [ "$semantic_status" -eq 0 ]; then
+           && [ "$reproduction_status" -eq 0 ] \
+           && [ "$reproduction_output_status" -eq 0 ] \
+           && [ "$semantic_status" -eq 0 ] \
+           && [ "$reproduction_semantic_status" -eq 0 ] \
+           && [ "$pin_status" -eq 0 ]; then
             if [ "$replace_existing" -eq 1 ]; then
                 prepare_retired_online_input_root
                 pub_cache_output_tool replace \
@@ -4340,9 +4404,14 @@ stage_pub_cache() {
     [ "$input_status" -eq 0 ] || die "networked Pub-cache Flutter-input postcondition failed"
     [ "$output_status" -eq 0 ] || die "networked Pub-cache output postcondition failed"
     [ "$status" -eq 0 ] || die "networked Pub-cache producer failed"
+    [ "$reproduction_status" -eq 0 ] || die "independent Pub-cache producer failed"
+    [ "$reproduction_output_status" -eq 0 ] || die "independent Pub-cache output differs"
     [ "$semantic_status" -eq 0 ] || die "networkless Pub-cache semantic replay failed"
+    [ "$reproduction_semantic_status" -eq 0 ] \
+        || die "independent networkless Pub-cache semantic replay failed"
+    [ "$pin_status" -eq 0 ] || die "reproduced Pub-cache closure is not the committed closure"
     [ "$publication_status" -eq 0 ] || die "networked Pub-cache output publication failed"
-    log "Pub cache is structurally closed and both enforced lockfiles resolve offline"
+    log "Pub cache is cold-reproduced, structurally closed, pin-bound, and both enforced lockfiles resolve offline"
 }
 
 # ── vcpkg overlay distfiles (R-B12(a)) ─────────────────────────────────────────

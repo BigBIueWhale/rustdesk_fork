@@ -93,15 +93,15 @@ def validate(sources: Mapping[str, str]) -> None:
             "07ab1dc7151619b6a1b212ee888332a6aba7386b3a890b610b043125e6658028"
         ),
         "SHA256_CARGO_VENDOR_CLOSURE_V1": (
-            "fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"
+            "b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6"
         ),
         "SHA256_CARGO_VENDOR_CONFIG": (
             "a83d604b007513c6aecfa4a34a0f0cc6c0cdde9218417a7a2e01dd194645620c"
         ),
         "SIZE_CARGO_VENDOR_CONFIG": "4361",
-        "CARGO_VENDOR_FILES_V1": "50926",
-        "CARGO_VENDOR_DIRECTORIES_V1": "12144",
-        "CARGO_VENDOR_CONTENT_BYTES_V1": "2299420401",
+        "CARGO_VENDOR_FILES_V1": "50850",
+        "CARGO_VENDOR_DIRECTORIES_V1": "12125",
+        "CARGO_VENDOR_CONTENT_BYTES_V1": "2298909689",
         "SHA256_RUST_1_75": (
             "6bf166ddcad545aa26aa2d12a186454d7697133b52b7fbbd271ce3ee1ecfedc6"
         ),
@@ -586,8 +586,8 @@ def mutations() -> Sequence[Mutation]:
         ),
         Mutation(
             "pins",
-            'CARGO_VENDOR_FILES_V1="50926"',
-            'CARGO_VENDOR_FILES_V1="50925"',
+            'CARGO_VENDOR_FILES_V1="50850"',
+            'CARGO_VENDOR_FILES_V1="50849"',
             "file-count drift",
         ),
         Mutation(

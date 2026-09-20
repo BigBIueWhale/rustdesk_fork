@@ -928,6 +928,80 @@ def verify_reproduction(cache: Path, uid: int, gid: int) -> TreeSummary:
     )
 
 
+def reproduction_entries(
+    root: Path,
+) -> tuple[dict[str, tuple[str, int, str]], set[tuple[str, ...]]]:
+    entries: dict[str, tuple[str, int, str]] = {}
+    hardlinks: dict[tuple[int, int], list[str]] = {}
+
+    def descend(directory: Path, relative: str) -> None:
+        metadata = os.lstat(directory)
+        entries[relative or "."] = (
+            "directory",
+            stat.S_IMODE(metadata.st_mode),
+            "",
+        )
+        with os.scandir(directory) as iterator:
+            children = sorted(iterator, key=lambda entry: os.fsencode(entry.name))
+        for entry in children:
+            child_relative = entry.name if not relative else f"{relative}/{entry.name}"
+            child = directory / entry.name
+            child_metadata = entry.stat(follow_symlinks=False)
+            mode = stat.S_IMODE(child_metadata.st_mode)
+            if stat.S_ISDIR(child_metadata.st_mode):
+                descend(child, child_relative)
+            elif stat.S_ISREG(child_metadata.st_mode):
+                descriptor = os.open(
+                    child,
+                    os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                )
+                try:
+                    digest = hashlib.sha256()
+                    while True:
+                        block = os.read(descriptor, BLOCK_SIZE)
+                        if not block:
+                            break
+                        digest.update(block)
+                finally:
+                    os.close(descriptor)
+                entries[child_relative] = ("file", mode, digest.hexdigest())
+                hardlinks.setdefault(identity(child_metadata), []).append(
+                    child_relative
+                )
+            elif stat.S_ISLNK(child_metadata.st_mode):
+                entries[child_relative] = ("symlink", mode, os.readlink(child))
+            else:
+                fail(f"reproduction comparison found a special entry: {child_relative}")
+
+    descend(root, "")
+    groups = {
+        tuple(sorted(paths))
+        for paths in hardlinks.values()
+        if len(paths) > 1
+    }
+    return entries, groups
+
+
+def compare_reproductions(first: Path, second: Path, uid: int, gid: int) -> None:
+    first_summary = verify_reproduction(first, uid, gid)
+    second_summary = verify_reproduction(second, uid, gid)
+    if first_summary.digest == second_summary.digest:
+        return
+    first_entries, first_hardlinks = reproduction_entries(first)
+    second_entries, second_hardlinks = reproduction_entries(second)
+    for relative in sorted(set(first_entries) | set(second_entries), key=os.fsencode):
+        first_entry = first_entries.get(relative)
+        second_entry = second_entries.get(relative)
+        if first_entry != second_entry:
+            fail(
+                "cold Pub-cache candidates first differ at "
+                f"{relative!r}: first={first_entry!r} second={second_entry!r}"
+            )
+    if first_hardlinks != second_hardlinks:
+        fail("cold Pub-cache candidates differ only in hardlink topology")
+    fail("cold Pub-cache candidate digests differ without a classifiable entry")
+
+
 def check_complete(online: Path, uid: int, gid: int) -> TreeSummary:
     validate_root(online, "online root", {(uid, gid)})
     output = online / "pub-cache"
@@ -2602,6 +2676,11 @@ def argument_parser() -> argparse.ArgumentParser:
     reproduction_parser.add_argument("--cache", type=Path, required=True)
     reproduction_parser.add_argument("--uid", type=int, required=True)
     reproduction_parser.add_argument("--gid", type=int, required=True)
+    comparison_parser = commands.add_parser("compare-reproductions")
+    comparison_parser.add_argument("--first-cache", type=Path, required=True)
+    comparison_parser.add_argument("--second-cache", type=Path, required=True)
+    comparison_parser.add_argument("--uid", type=int, required=True)
+    comparison_parser.add_argument("--gid", type=int, required=True)
     commands.add_parser("self-test")
     return parser
 
@@ -2682,6 +2761,13 @@ def main() -> int:
         elif arguments.command == "verify-reproduction":
             summary = verify_reproduction(arguments.cache, arguments.uid, arguments.gid)
             print(f"sha256={summary.digest}")
+        elif arguments.command == "compare-reproductions":
+            compare_reproductions(
+                arguments.first_cache,
+                arguments.second_cache,
+                arguments.uid,
+                arguments.gid,
+            )
         else:
             fail("unknown command")
     except (OSError, PubCacheError) as error:

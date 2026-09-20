@@ -4262,6 +4262,23 @@ produce_pub_cache_candidate() {
             "$PUB_CACHE/log" \
             "$PUB_CACHE/README.md" \
             "$PUB_CACHE/hosted/pub.dev/.cache"
+        while IFS= read -r -d "" checkout; do
+            rm -rf -- "$checkout/.git/logs"
+            rm -f -- \
+                "$checkout/.git/FETCH_HEAD" \
+                "$checkout/.git/ORIG_HEAD" \
+                "$checkout/.git/COMMIT_EDITMSG" \
+                "$checkout/.git/index" \
+                "$checkout/.git/index.lock"
+            /usr/bin/git -c safe.directory="$checkout" -c index.version=2 \
+                -C "$checkout" read-tree HEAD
+        done < <(find "$PUB_CACHE/git" -mindepth 1 -maxdepth 1 -type d \
+            ! -name cache -print0 | LC_ALL=C sort -z)
+        while IFS= read -r -d "" bare; do
+            rm -rf -- "$bare/logs"
+            rm -f -- "$bare/FETCH_HEAD" "$bare/ORIG_HEAD"
+        done < <(find "$PUB_CACHE/git/cache" -mindepth 1 -maxdepth 1 -type d \
+            -print0 | LC_ALL=C sort -z)
     '
 }
 
@@ -4345,6 +4362,13 @@ stage_pub_cache() {
             fi
             if [ "$reproduction_output_status" -eq 0 ] \
                && [ "$reproduction_digest" != "$digest" ]; then
+                if ! pub_cache_output_tool compare-reproductions \
+                    --first-cache "$PUB_CACHE_OUTPUT_STAGING/output" \
+                    --second-cache "$reproduction" \
+                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+                then
+                    : # The bounded diagnostic is emitted by the trusted helper.
+                fi
                 log "independent Pub-cache reproductions differ: first=$digest second=$reproduction_digest"
                 reproduction_output_status=1
             fi

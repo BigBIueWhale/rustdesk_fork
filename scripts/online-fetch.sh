@@ -1869,9 +1869,10 @@ stage_rust_test_inputs() {
 }
 
 stage_flutter_test_inputs() {
-    verify_or_load_deb_builder_image
+    verify_or_load_android_builder_image
     stage_archive_bundle flutter-test "$ONLINE_DIR" .rustdesk-flutter-test-archive \
-        "pinned Flutter test toolchain archive" "$DEB_BUILDER_CONFIG_ID" deb-builder
+        "pinned Flutter test toolchain archive" "$ANDROID_BUILDER_CONFIG_ID" android-builder
+    verify_or_load_deb_builder_image
     stage_pub_cache
 }
 

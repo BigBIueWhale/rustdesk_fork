@@ -105,7 +105,7 @@ def validate(repo: Path) -> None:
         "Android NDK lifecycle",
     )
     for token, label in (
-        ('local builder="$ANDROID_BUILDER_IMAGE_ID"', "immutable builder"),
+        ('local builder="$ANDROID_BUILDER_CONFIG_ID"', "immutable runtime builder"),
         ('verify_sha256 "$archive" "$SHA256_ANDROID_NDK_R28C"', "archive precheck"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive lock"),
         ('recover_android_ndk_output_staging "$builder"', "reserved-state recovery"),

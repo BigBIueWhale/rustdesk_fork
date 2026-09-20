@@ -104,7 +104,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("retire_libyuv_distfile_staging() {", "private staging retirement"),
         ("recover_libyuv_distfile_staging() {", "reserved-state recovery"),
         ("stage_vcpkg_distfiles() {", "libyuv producer lifecycle"),
-        ('local builder="$DEB_BUILDER_IMAGE_ID"', "immutable Debian builder"),
+        ('local builder="$DEB_BUILDER_CONFIG_ID"', "immutable Debian runtime builder"),
         ("require_online_fetch_builder_image deb-builder \"$builder\"",
          "loaded image verification"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
@@ -150,7 +150,7 @@ def validate(sources: Dict[str, str]) -> None:
         2,
         "fixed shallow/full Git origin",
     )
-    require(lifecycle, 'local builder="$DEB_BUILDER_IMAGE_ID"',
+    require(lifecycle, 'local builder="$DEB_BUILDER_CONFIG_ID"',
             "libyuv immutable Debian builder")
     for token, label in (
         ("target=/online", "online input mount"),
@@ -291,7 +291,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "shell",
         "stage_vcpkg_distfiles() {\n"
         "    stage_libvpx_distfiles\n"
-        '    local builder="$DEB_BUILDER_IMAGE_ID"',
+        '    local builder="$DEB_BUILDER_CONFIG_ID"',
         "stage_vcpkg_distfiles() {\n"
         "    stage_libvpx_distfiles\n"
         '    local builder="ubuntu:latest"',

@@ -281,7 +281,7 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE"',
             '--archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE"',
             "verify-local",
-            '--image-ref "$ANDROID_BUILDER_IMAGE_ID"',
+            '--image-ref "$ANDROID_BUILDER_CONFIG_ID"',
         ),
         "ordinary release loader",
     )

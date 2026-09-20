@@ -10353,6 +10353,14 @@ def self_test() -> None:
             android_checks += 1
 
         android_failure(
+            lambda: validate_inspect(
+                android_payload,
+                android_spec.image_id,
+                android_spec,
+            ),
+            "certified Android builder index used as runtime reference",
+        )
+        android_failure(
             lambda: verify_archive(
                 android_archive,
                 "f" * 64,
@@ -10739,7 +10747,7 @@ def self_test() -> None:
             android_size,
         )
         android_checks += 1
-        if android_checks != 39:
+        if android_checks != 40:
             fail(
                 "certified Android builder image self-test count differs: "
                 f"{android_checks}"
@@ -10815,6 +10823,14 @@ def self_test() -> None:
             expect_failure(operation, label)
             deb_checks += 1
 
+        deb_failure(
+            lambda: validate_inspect(
+                deb_payload,
+                deb_spec.image_id,
+                deb_spec,
+            ),
+            "certified Debian builder index used as runtime reference",
+        )
         deb_failure(
             lambda: verify_archive(
                 deb_archive,
@@ -10900,7 +10916,7 @@ def self_test() -> None:
         )
         verify_archive(deb_archive, deb_sha, deb_spec, deb_size)
         deb_checks += 1
-        if deb_checks != 8:
+        if deb_checks != 9:
             fail(
                 "certified Debian builder image self-test count differs: "
                 f"{deb_checks}"
@@ -10974,6 +10990,14 @@ def self_test() -> None:
             expect_failure(operation, label)
             win_checks += 1
 
+        win_failure(
+            lambda: validate_inspect(
+                win_payload,
+                win_spec.image_id,
+                win_spec,
+            ),
+            "certified Windows helper index used as runtime reference",
+        )
         for label, mutation in (
             (
                 "image identity",
@@ -11160,7 +11184,7 @@ def self_test() -> None:
             win_size,
         )
         win_checks += 1
-        if win_checks != 21:
+        if win_checks != 22:
             fail(
                 "certified Windows helper image self-test count differs: "
                 f"{win_checks}"

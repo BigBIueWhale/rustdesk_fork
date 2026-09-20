@@ -231,7 +231,7 @@ def validate(sources: dict[str, str]) -> None:
         '[ "$receipt_ends" -eq 1 ] && [ "$source_mounts" -eq 1 ]',
         "exact runtime mount cardinality",
     )
-    require(host, 'require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "exact builder image")
+    require(host, 'require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"', "exact runtime builder image")
     require(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"', "exact verifier image")
     if host.count('source=$ONLINE_DIR,target=/online,readonly') != 1:
         raise VerificationError("only the persistent-input verifier may mount the complete online root")

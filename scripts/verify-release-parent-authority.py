@@ -119,9 +119,9 @@ def validate(repo: Path) -> None:
     require_order(
         preflight,
         (
-            'DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"',
-            'ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"',
-            'WINDOWS_IMAGE_ID="${WIN_HELPER_IMAGE_ID:-}"',
+            'DEBIAN_IMAGE_ID="${DEB_BUILDER_CONFIG_ID:-}"',
+            'ANDROID_IMAGE_ID="${ANDROID_BUILDER_CONFIG_ID:-}"',
+            'WINDOWS_IMAGE_ID="${WIN_HELPER_CONFIG_ID:-}"',
             "assert_release_builder_image_ids",
             "verify_private_tree_cleanup_preflight",
         ),

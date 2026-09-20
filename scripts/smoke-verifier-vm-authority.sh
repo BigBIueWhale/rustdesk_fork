@@ -1144,10 +1144,10 @@ printf 'VERIFIER_VM_ANDROID_GRADLE_SOURCE_GATE=pass\n'
 printf 'VERIFIER_VM_ANDROID_GRADLE_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profiles=mount-rejection,semantics runtime=real source=untouched online=untouched gradle=unexecuted cleanup=joined\n' \
     "$VERIFIER_VM_DOCKER_VERSION"
 /usr/bin/grep -Fq \
-    'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39 debian_decisions=8 windows_decisions=21' \
+    'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=40 debian_decisions=9 windows_decisions=22' \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'offline image-provenance behavior marker is absent'; }
-printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39 debian_decisions=8 windows_decisions=21\n'
+printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=40 debian_decisions=9 windows_decisions=22\n'
 /usr/bin/grep -Fq \
     "VERIFIER_VM_ANDROID_RUST_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed source=untouched online=untouched workload=unexecuted" \
     "$SERIAL_LOG" \

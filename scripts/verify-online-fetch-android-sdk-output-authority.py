@@ -157,7 +157,7 @@ def validate(sources: Dict[str, str]) -> None:
         "Android SDK transaction",
     )
     for token, label in (
-        ('local builder="$ANDROID_BUILDER_IMAGE_ID"', "immutable builder"),
+        ('local builder="$ANDROID_BUILDER_CONFIG_ID"', "immutable runtime builder"),
         ("require_online_fetch_builder_image android-builder", "image verification"),
         ("verify_sha256 \"$cmdline_archive\"", "command-line-tools input check"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),

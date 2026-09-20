@@ -141,7 +141,7 @@ def validate_gate(gate: str) -> None:
         ("verifier_vm_image_provenance verify-local", "VM-only provenance call"),
         ("--role android-builder", "closed image role"),
         ('--expected-id "$ANDROID_BUILDER_IMAGE_ID"', "expected image ID"),
-        ('--image-ref "$ANDROID_BUILDER_IMAGE_ID"', "immutable image reference"),
+        ('--image-ref "$ANDROID_BUILDER_CONFIG_ID"', "immutable runtime image reference"),
         ("--bootstrap-image-id", "bootstrap image identity"),
         ("--bootstrap-manifest-id", "bootstrap manifest identity"),
         ("--source-date-epoch", "reproducible epoch"),

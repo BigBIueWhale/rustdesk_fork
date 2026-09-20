@@ -84,8 +84,8 @@ def validate(repo: Path) -> None:
         "Cargo-tool output lifecycle",
     )
     for token, label in (
-        ('"frb:$DEB_BUILDER_IMAGE_ID")', "FRB immutable image"),
-        ('"cargo-ndk:$ANDROID_BUILDER_IMAGE_ID")', "cargo-ndk immutable image"),
+        ('"frb:$DEB_BUILDER_CONFIG_ID")', "FRB immutable runtime image"),
+        ('"cargo-ndk:$ANDROID_BUILDER_CONFIG_ID")', "cargo-ndk immutable runtime image"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),
         ('"$ONLINE_DIR/.rustdesk-cargo-tool-$kind.XXXXXXXXXX"', "private staging"),
         ('source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled', "read-only inputs"),

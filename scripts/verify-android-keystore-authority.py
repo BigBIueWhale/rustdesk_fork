@@ -76,7 +76,7 @@ def validate(repo: pathlib.Path) -> None:
         ("refuses a root primary group", "GID-root refusal"),
         ("verify-vm-entry-preflight.sh", "verifier-VM admission source"),
         ("'%a:%h'", "entry-preflight metadata check"),
-        ('readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"', "immutable image ID"),
+        ('readonly IMAGE_ID="$ANDROID_BUILDER_CONFIG_ID"', "immutable runtime image ID"),
         ("readonly KEY_ALIAS=rustdesk-fork", "fixed signing alias"),
         ("readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm", "fixed VM authority root"),
         ("readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker", "fixed guest client"),

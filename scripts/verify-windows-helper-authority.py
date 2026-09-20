@@ -104,7 +104,7 @@ def validate_runtime(source: str) -> None:
             "runtime-root cleanup identity",
         ),
         (
-            'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \\'
+            'require_pinned_builder_image win-helper "$WIN_HELPER_CONFIG_ID" \\'
             '\n        windows_helper_image_provenance',
             "VM-routed helper image provenance",
         ),
@@ -324,7 +324,7 @@ def validate_callers(sources: dict[str, str]) -> None:
     build = sources["build"]
     require(
         build,
-        'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \\'
+        'require_pinned_builder_image deb-builder "$DEB_BUILDER_CONFIG_ID" \\'
         '\n        windows_helper_image_provenance',
         "VM-routed Debian builder provenance",
     )

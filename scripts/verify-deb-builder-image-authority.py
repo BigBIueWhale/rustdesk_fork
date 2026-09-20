@@ -295,7 +295,7 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"',
             '--archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE"',
             "verify-local",
-            '--image-ref "$DEB_BUILDER_IMAGE_ID"',
+            '--image-ref "$DEB_BUILDER_CONFIG_ID"',
         ),
         "ordinary release loader",
     )

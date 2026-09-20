@@ -187,13 +187,13 @@ def validate(repo: Path) -> None:
     validate_lifecycle(
         x64,
         kind="x64-linux",
-        builder='local builder="$DEB_BUILDER_IMAGE_ID"',
+        builder='local builder="$DEB_BUILDER_CONFIG_ID"',
         libraries="for archive in libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do",
     )
     validate_lifecycle(
         arm64,
         kind="arm64-android",
-        builder='local builder="$ANDROID_BUILDER_IMAGE_ID"',
+        builder='local builder="$ANDROID_BUILDER_CONFIG_ID"',
         libraries=(
             "for archive in libjpeg.a liboboe.a libopus.a libturbojpeg.a "
             "libvpx.a libyuv.a; do"

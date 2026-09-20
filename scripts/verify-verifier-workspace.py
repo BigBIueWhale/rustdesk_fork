@@ -1894,7 +1894,11 @@ def validate_debian_target_script(debian):
     require_text(debian, "double-build SHA mismatch", "Debian A/B mismatch rejection")
     require_text(debian, '--user "$BUILD_UID:$BUILD_GID"', "Debian user-mapped container")
     require_text(debian, "RELEASE_DOCKER_IMAGE_ID", "Debian content-ID image binding")
-    require_text(debian, 'IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"', "Debian pinned image ID selection")
+    require_text(
+        debian,
+        'IMAGE_ID="${DEB_BUILDER_CONFIG_ID:-}"',
+        "Debian pinned runtime image ID selection",
+    )
     require_text(
         debian,
         'require_pinned_builder_image deb-builder "$IMAGE_ID" verifier_vm_image_provenance',
@@ -28394,7 +28398,7 @@ def validate_dart_verifier_authority_contract(sources):
             'readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker',
             "Dart verifier fixed VM Docker client",
         ),
-        ('IMAGE_ID="$DEB_BUILDER_IMAGE_ID"', "Dart verifier immutable image selection"),
+        ('IMAGE_ID="$DEB_BUILDER_CONFIG_ID"', "Dart verifier immutable runtime image selection"),
         (
             'verifier_vm_image_provenance verify-local',
             "Dart verifier VM-routed image provenance",

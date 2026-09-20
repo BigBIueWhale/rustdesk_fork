@@ -1276,7 +1276,7 @@ offline_image_provenance_output="$(
   'offline image provenance self-test: PASS' ] \
     || fail "offline image-provenance result differs: $offline_image_provenance_output"
 printf '%s\n' "$offline_image_provenance_output"
-printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=39 debian_decisions=8 windows_decisions=21\n'
+printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=40 debian_decisions=9 windows_decisions=22\n'
 
 if /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-android-rust-entry.out" 2>"$ROOT/root-android-rust-entry.err"; then

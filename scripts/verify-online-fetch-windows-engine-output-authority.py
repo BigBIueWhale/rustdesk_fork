@@ -155,7 +155,7 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(shell, token, label)
     for token, label in (
-        ('local builder="$ANDROID_BUILDER_IMAGE_ID"', "immutable producer"),
+        ('local builder="$ANDROID_BUILDER_CONFIG_ID"', "immutable runtime producer"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),
         ('"$ONLINE_DIR/.rustdesk-windows-engine.XXXXXXXXXX"',
          "unpredictable same-filesystem staging"),

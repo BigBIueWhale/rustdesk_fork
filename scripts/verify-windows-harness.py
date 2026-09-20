@@ -1488,12 +1488,12 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(offline, f'"{fixture}"', f"offline behavioral fixture {fixture}")
     require(
         runtime,
-        'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+        'require_pinned_builder_image win-helper "$WIN_HELPER_CONFIG_ID"',
         "pinned Windows helper image",
     )
     require(
         host,
-        'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \\\n'
+        'require_pinned_builder_image deb-builder "$DEB_BUILDER_CONFIG_ID" \\\n'
         "        windows_helper_image_provenance",
         "VM-routed Debian builder image provenance",
     )
@@ -3790,7 +3790,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "image provenance",
             "runtime",
-            'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+            'require_pinned_builder_image win-helper "$WIN_HELPER_CONFIG_ID"',
             "freeze_image win-helper",
         ),
         (

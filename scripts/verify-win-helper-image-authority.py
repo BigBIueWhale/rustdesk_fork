@@ -322,7 +322,7 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"',
             '--archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE"',
             "online_image_provenance verify-local",
-            '--image-ref "$WIN_HELPER_IMAGE_ID"',
+            '--image-ref "$WIN_HELPER_CONFIG_ID"',
         ),
         "ordinary release loader",
     )
@@ -716,7 +716,7 @@ def validate_runtime(source: str) -> None:
     require_all(
         resolver,
         (
-            'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+            'require_pinned_builder_image win-helper "$WIN_HELPER_CONFIG_ID"',
             "confined Windows helper kernel derivation failed",
             "Windows helper image archive changed during kernel derivation",
         ),

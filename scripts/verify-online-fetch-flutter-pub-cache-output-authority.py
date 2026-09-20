@@ -169,7 +169,7 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(shell, token, label)
     for token, label in (
-        ('local builder="$ANDROID_BUILDER_IMAGE_ID"', "reproducible builder"),
+        ('local builder="$ANDROID_BUILDER_CONFIG_ID"', "reproducible runtime builder"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),
         (
             '"$ONLINE_DIR/.rustdesk-flutter-pub-cache.XXXXXXXXXX"',
@@ -240,7 +240,7 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(semantic_replay, token, label)
     for token, label in (
-        ('local builder="$DEB_BUILDER_IMAGE_ID"', "non-reproducible Debian builder"),
+        ('local builder="$DEB_BUILDER_CONFIG_ID"', "non-reproducible Debian runtime builder"),
         ("target=/online", "broad online mount"),
         ("source=$ONLINE_DIR,target=/online", "online-root authority"),
         ("> /online/flutter-pub-cache.tar.gz", "direct final write"),
@@ -514,9 +514,9 @@ def mutations() -> Tuple[Mutation, ...]:
         Mutation(
             "shell",
             'stage_flutter_pub_cache() {\n'
-            '    local builder="$ANDROID_BUILDER_IMAGE_ID"',
+            '    local builder="$ANDROID_BUILDER_CONFIG_ID"',
             'stage_flutter_pub_cache() {\n'
-            '    local builder="$DEB_BUILDER_IMAGE_ID"',
+            '    local builder="$DEB_BUILDER_CONFIG_ID"',
             "reproducible builder",
         ),
         Mutation(

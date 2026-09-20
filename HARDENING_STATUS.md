@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ee58685a3f1baa5d5767625b0891caf3380efdaf0d7e3b8c733a7177fbe14710  requirements.html
+d5246ba1fe495603e8142845cd5c704044c33f3d00dfa4281c7cb3c45a6bdcdc  requirements.html
 ```
 
 ## Current Verdict
@@ -68,7 +68,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Appendix C #185–202 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in R-D7a/R-T4/R-S11eq, R-S11bj–R-S11bm, and the closed-excision, build-authority, and current-release sections of this ledger. |
+| Appendix C #185–203 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in R-D7a/R-T4/R-S11eq, R-S11bj–R-S11bm, and the closed-excision, build-authority, media-lifetime, and current-release sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`, and the current snapshot/verdict provenance and distribution gaps remain in the R-R3 status entry below. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but the complete canonical input closure, stable Android signing material, a current APK/AAB, installation, lifecycle, peer, presentation, and device evidence are absent or open. |
@@ -414,23 +414,19 @@ and voice-capture workers, closes their channels/signals, and transfers their ex
 completion pool before awaiting them and marking the round disconnected. Explicit route close and test cleanup
 retain their exact completion sinks. The incoming `MainService`, controlled listener, projection grant, and capture
 resources are deliberately unchanged.
-Follow-up correction (2026-07-21), **shared controlled-audio and hard-drop completion ownership**: the broader
-worker audit found one exception to that closure. `start_audio_thread()` still returned only its channel sender and
-discarded the controlled-side voice decoder's `JoinHandle`; accepted format and sender were separate connection
-fields; call close retained both; audio disable merely dropped them; and `OwnedMediaThread::Drop` plus the
-then-current `VoiceCallThread::Drop` joined inline. The sender-only and compatibility-named constructors are
-deleted; R-S11eh later removes that outgoing voice thread after closing its downstream unbounded queue.
-`start_audio_thread()` is now the sole owning constructor. A controlled connection owns accepted format plus exact
-decoder as one `ControlledAudioThread`, refuses overlapping call requests, clears voice authority first, and
-closes/awaits that owner on call close, audio disable, format-start failure, and connection close. Normal viewer
-and controlled teardown transfer handles to a bounded four-thread completion pool before awaiting; cancellation
-after transfer cannot orphan them, while hard `Drop` closes admission and uses a nonblocking handoff to the same
-pool. Accepted calls establish Drop-visible global-input ownership before their first await, and close disables
-that global input before clearing the flag, so cancellation cannot strand it. Exhaustion or completion-authority
-loss aborts instead of detaching. Moving `Connection.closed = true` until after its synchronous CM notification
-also preserves the existing Drop fallback if cancellation lands during a
-worker wait. This controlled-side defect is shared across platforms and could overlap peer-audio native state; it
-is adjacent to, but not claimed as the cause of, the Android outgoing-viewer screen-control report.
+**Shared controlled-audio and hard-drop completion ownership — SOURCE IMPLEMENTED; CURRENT NATIVE
+LIFECYCLE EVIDENCE OPEN.** `start_audio_thread()` returns the sole `OwnedMediaThread`, which owns mailbox admission
+and the exact decoder worker. The controlled connection combines accepted format and decoder in one
+`ControlledAudioThread`, refuses overlap, clears voice authority, and closes/awaits that exact owner on call close,
+audio disable, format-start failure, and connection close. Graceful viewer and controlled teardown transfer joins
+to the fixed bounded completion pool before awaiting; hard `Drop` closes admission and hands off without blocking.
+Voice-input ownership is installed before the first suspension and disabled before release. Completion-capacity or
+authority loss aborts rather than detaching. The stale source-slicing recognizer and its documentation-prose
+oracles are deleted; compact checks retain only the owning constructor, combined lifetime, completion authority,
+graceful sink, and forbidden detached-constructor boundaries. The focused Rust regressions are authored but have
+not been rebuilt from current source in the presently incomplete offline closure. This shared source disposition
+is not an Android device reproduction or a causation claim for the reported display-only symptom; exact
+native/package lifecycle, resource, reconnect, and device evidence remains open.
 Follow-up correction (2026-07-22), **shared outgoing-viewer reconnect round ownership**: the retained exact-worker
 join still inherited one earlier state-machine error: `Session::reconnect()` discarded an explicit retry whenever
 the current worker was `Connecting`. That let a stuck connection start retain the peer/type worker slot while the

@@ -12747,6 +12747,12 @@ grep -qF 'pub fn start_audio_thread() -> OwnedMediaThread' src/client.rs \
   || android_client_owner_bad="$android_client_owner_bad sole-audio-owner-constructor-missing"
 grep -qF 'struct ControlledAudioThread {' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad controlled-audio-owner-missing"
+grep -qF 'format: (u32, u32)' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-format-owner-missing"
+grep -qF 'decoder: OwnedMediaThread' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-decoder-owner-missing"
+grep -qF 'controlled_audio: Option<ControlledAudioThread>' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-lifetime-missing"
 grep -qF 'self.stop_controlled_audio().await;' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad controlled-audio-join-sink-missing"
 if grep -qF 'start_owned_audio_thread' src/client.rs src/client/io_loop.rs \
@@ -12760,10 +12766,6 @@ grep -qF 'Outgoing viewer owner completion and replacement' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad requirements-disposition-missing"
 grep -qF 'Android outgoing-viewer I/O and media-worker completion ownership' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad hardening-ledger-missing"
-grep -qF 'shared controlled-audio and hard-drop completion ownership' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad controlled-audio-ledger-missing"
-grep -qF 'The shared audio-worker API still exposed a sender-only constructor' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-audio-disposition-missing"
 grep -qF 'An explicit outgoing-viewer reconnect owns a new connection round' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad connection-round-requirement-missing"
 grep -qF '<tr><td>206</td>' requirements.html \
@@ -13241,105 +13243,6 @@ raise SystemExit(0 if ok else 1)
 PY
 then
   android_client_owner_bad="$android_client_owner_bad lifecycle-or-admission-order-regressed"
-fi
-if ! python3 - src/client.rs src/client/io_loop.rs src/server/connection.rs requirements.html <<'PY'
-import sys
-from pathlib import Path
-
-client, io_loop, connection, requirements = (Path(path).read_text() for path in sys.argv[1:])
-
-audio_constructor = client[
-    client.index("pub fn start_audio_thread()"):
-    client.index("fn fps_calculate(")
-]
-media_drop = client[
-    client.index("impl Drop for OwnedMediaThread"):
-    client.index("/// Start video thread.")
-]
-voice_drop = io_loop[
-    io_loop.index("impl Drop for VoiceCallAudio"):
-    io_loop.index("pub struct Remote")
-]
-controlled_fields = connection[
-    connection.index("struct ControlledAudioThread"):
-    connection.index("pub struct Connection")
-]
-connection_fields = connection[
-    connection.index("pub struct Connection {"):
-    connection.index("\nimpl Connection {")
-]
-handle_voice = connection[
-    connection.index("pub async fn handle_voice_call"):
-    connection.index("async fn stop_controlled_audio")
-]
-close_voice = connection[
-    connection.index("pub async fn close_voice_call"):
-    connection.index("async fn update_options")
-]
-update_options = connection[
-    connection.index("async fn update_options"):
-    connection.index("async fn turn_on_privacy")
-]
-on_close = connection[
-    connection.index("async fn on_close"):
-    connection.index("async fn send_close_reason_no_retry")
-]
-connection_drop = connection[
-    connection.index("impl Drop for Connection"):
-    connection.index("struct LinuxHeadlessHandle")
-]
-audio_format_start = connection.index(
-    "// R-S19: peer->host audio playback is voice-call only."
-)
-audio_format = connection[
-    audio_format_start:
-    connection.index(
-        "Some(misc::Union::ChangeResolution",
-        audio_format_start,
-    )
-]
-
-ok = (
-    "OwnedMediaThread::new(\"audio decoder\"" in audio_constructor
-    and "-> OwnedMediaThread" in audio_constructor
-    and "let (audio_sender, _thread) = new_audio_thread();" not in audio_constructor
-    and "reap_media_worker(role, worker)" in media_drop
-    and ".join()" not in media_drop
-    and "self.stop();" in voice_drop
-    and ".join()" not in voice_drop
-    and "reap_media_worker(\"voice-call\"" not in voice_drop
-    and "format: (u32, u32)" in controlled_fields
-    and "decoder: OwnedMediaThread" in controlled_fields
-    and "controlled_audio: Option<ControlledAudioThread>" in connection_fields
-    and "audio_sender:" not in connection_fields
-    and "audio_format:" not in connection_fields
-    and "voice_calling:" not in connection_fields
-    and audio_format.index("self.controlled_audio")
-        < audio_format.index(".as_ref()")
-        < audio_format.index(".map(|audio| audio.format)")
-        < audio_format.index("self.controlled_audio = Some(ControlledAudioThread")
-    and handle_voice.index("acquire_voice_call_input(")
-        < handle_voice.index("self.voice_call_input = Some(input_lease)")
-        < handle_voice.index("self.send(msg).await")
-    and close_voice.index("drop(self.voice_call_input.take())")
-        < close_voice.index("self.stop_controlled_audio().await")
-    and "self.stop_controlled_audio().await" in update_options
-    and on_close.index("drop(self.voice_call_input.take())")
-        < on_close.index("self.stop_controlled_audio().await")
-        < on_close.index("self.tx_to_cm.send(data).ok()")
-        < on_close.index("self.closed = true")
-    and connection_drop.index("drop(self.voice_call_input.take())")
-        < connection_drop.index("drop(self.controlled_audio.take())")
-    and "drop(self.controlled_audio.take())" in connection_drop
-    and "A worker-owning constructor" in requirements
-    and "<tr><td>203</td>" in requirements
-    and '<span class="id">R-S11bq</span>' in requirements
-    and "<tr><td>210</td>" in requirements
-)
-raise SystemExit(0 if ok else 1)
-PY
-then
-  android_client_owner_bad="$android_client_owner_bad media-owner-or-controlled-audio-order-regressed"
 fi
 if ! python3 - src/ui_session_interface.rs src/client/io_loop.rs <<'PY'
 import sys

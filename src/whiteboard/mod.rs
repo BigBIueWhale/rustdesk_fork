@@ -1,6 +1,7 @@
 use serde_derive::{Deserialize, Serialize};
 
 mod client;
+mod event_lifecycle;
 mod server;
 
 #[cfg(target_os = "linux")]

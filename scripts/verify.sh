@@ -11186,6 +11186,14 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never -- --test-threads=1
+"${RUN[@]}" /bin/bash --noprofile --norc -euo pipefail -c '
+  lifecycle_test="$CARGO_TARGET_DIR/r_s11hn_whiteboard_event_lifecycle"
+  [ ! -e "$lifecycle_test" ] && [ ! -L "$lifecycle_test" ]
+  rustc --edition=2021 --crate-name whiteboard_event_lifecycle --test \
+    src/whiteboard/event_lifecycle.rs -o "$lifecycle_test"
+  "$lifecycle_test" --test-threads=1
+  rm -- "$lifecycle_test"
+'
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11hp_ --color never

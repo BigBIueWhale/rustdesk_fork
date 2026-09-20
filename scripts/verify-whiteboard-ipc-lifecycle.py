@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Verify lossless whiteboard IPC/event-loop lifecycle ownership."""
 
-from __future__ import annotations
-
 import argparse
 import ast
 import hashlib
@@ -53,6 +51,8 @@ def extract_braced_item(source: str, signature: str, label: str) -> str:
 
 def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
+        "lifecycle": "src/whiteboard/event_lifecycle.rs",
+        "module": "src/whiteboard/mod.rs",
         "server": "src/whiteboard/server.rs",
         "linux": "src/whiteboard/linux.rs",
         "windows": "src/whiteboard/windows.rs",
@@ -69,8 +69,9 @@ def load_sources(repo: Path) -> Dict[str, str]:
 
 
 def validate(sources: Dict[str, str]) -> None:
+    lifecycle_source = sources["lifecycle"]
     server = sources["server"]
-    platforms = server + sources["linux"] + sources["windows"] + sources["macos"]
+    platforms = lifecycle_source + server + sources["linux"] + sources["windows"] + sources["macos"]
     for needle, label in (
         ("unbounded_channel", "unbounded whiteboard lifecycle channel"),
         ("UnboundedReceiver", "unbounded whiteboard lifecycle receiver"),
@@ -80,8 +81,8 @@ def validate(sources: Dict[str, str]) -> None:
         forbid(platforms, needle, label)
 
     lifecycle = extract_braced_item(
-        server,
-        "struct WhiteboardEventLifecycle<Proxy>",
+        lifecycle_source,
+        "pub(crate) struct WhiteboardEventLifecycle<Proxy>",
         "whiteboard event lifecycle state",
     )
     require_order(
@@ -91,8 +92,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     install = extract_braced_item(
-        server,
-        "fn install(&mut self, proxy: Proxy) -> Option<Proxy>",
+        lifecycle_source,
+        "pub(crate) fn install(&mut self, proxy: Proxy) -> Option<Proxy>",
         "level-triggered proxy installation",
     )
     require_order(
@@ -107,8 +108,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     terminate = extract_braced_item(
-        server,
-        "fn terminate(&mut self) -> Option<Proxy>",
+        lifecycle_source,
+        "pub(crate) fn terminate(&mut self) -> Option<Proxy>",
         "exact-once IPC termination",
     )
     require_order(
@@ -123,8 +124,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     clear_proxy = extract_braced_item(
-        server,
-        "fn clear_proxy(&mut self)",
+        lifecycle_source,
+        "pub(crate) fn clear_proxy(&mut self)",
         "event-loop proxy retirement",
     )
     require(clear_proxy, "self.proxy = None;", "proxy-only event-loop retirement")
@@ -314,12 +315,21 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once",
         "r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch",
     ):
-        require(server, test, f"{test} regression")
+        require(lifecycle_source, test, f"{test} regression")
+
+    require(sources["module"], "mod event_lifecycle;", "production lifecycle module wiring")
+    require(
+        server,
+        "event_lifecycle::WhiteboardEventLifecycle",
+        "server use of the independently executable lifecycle module",
+    )
 
     focused_gate = "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test"
+    fast_behavior_gate = "rustc --edition=2021 --crate-name whiteboard_event_lifecycle --test"
     behavior_gate = "cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never"
     for key, needle, label in (
         ("verify", focused_gate, "shared focused gate"),
+        ("verify", fast_behavior_gate, "shared fast behavior gate"),
         ("verify", behavior_gate, "shared behavior gate"),
         ("apple", focused_gate, "Apple focused gate"),
         (
@@ -349,12 +359,12 @@ def validate(sources: Dict[str, str]) -> None:
 Mutation = Tuple[str, str, str, str]
 
 MUTATIONS: Tuple[Mutation, ...] = (
-    ("server", "ipc_terminated: bool", "ipc_termination_was_advisory: bool", "terminal latch state"),
-    ("server", "if self.ipc_terminated {\n            Some(proxy)", "if false {\n            Some(proxy)", "termination-before-proxy delivery"),
-    ("server", "self.proxy = Some(proxy);", "self.proxy = None;", "proxy installation ownership"),
-    ("server", "self.ipc_terminated = true;", "self.ipc_terminated = false;", "terminal latch publication"),
-    ("server", "self.proxy.take()", "None", "installed proxy exact take"),
-    ("server", "fn clear_proxy(&mut self) {\n        self.proxy = None;", "fn clear_proxy(&mut self) {\n        self.ipc_terminated = false;", "proxy-only retirement"),
+    ("lifecycle", "ipc_terminated: bool", "ipc_termination_was_advisory: bool", "terminal latch state"),
+    ("lifecycle", "if self.ipc_terminated {\n            Some(proxy)", "if false {\n            Some(proxy)", "termination-before-proxy delivery"),
+    ("lifecycle", "self.proxy = Some(proxy);", "self.proxy = None;", "proxy installation ownership"),
+    ("lifecycle", "self.ipc_terminated = true;", "self.ipc_terminated = false;", "terminal latch publication"),
+    ("lifecycle", "self.proxy.take()", "None", "installed proxy exact take"),
+    ("lifecycle", "pub(crate) fn clear_proxy(&mut self) {\n        self.proxy = None;", "pub(crate) fn clear_proxy(&mut self) {\n        self.ipc_terminated = false;", "proxy-only retirement"),
     ("server", "EVENT_LIFECYCLE.write().unwrap().install(proxy)", "WhiteboardEventLifecycle::default().install(proxy)", "serialized proxy install"),
     ("server", "EVENT_LIFECYCLE.write().unwrap().terminate()", "WhiteboardEventLifecycle::default().terminate()", "serialized terminal publication"),
     ("server", "proxy.send_event((0, CustomEvent::Exit))", "proxy.send_event((0, CustomEvent::Clear))", "latched exit delivery"),
@@ -376,10 +386,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("linux", "    if let Err(err) = worker.stop_and_join() {\n        log::error!(\"Failed to finish whiteboard IPC worker: {err}\");\n    }\n}", "    if let Err(err) = Ok(()) {\n        log::error!(\"Failed to finish whiteboard IPC worker: {err}\");\n    }\n}", "Linux event-loop-return join"),
     ("windows", "install_whiteboard_event_proxy(proxy)", "proxy", "Windows proxy lifecycle"),
     ("macos", "install_whiteboard_event_proxy(proxy)", "proxy", "macOS proxy lifecycle"),
-    ("server", "fn r_s11hn_whiteboard_ipc_termination_before_proxy_is_delivered_once", "fn whiteboard_ipc_termination_before_proxy_may_be_lost", "termination-before-proxy regression"),
-    ("server", "fn r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once", "fn whiteboard_ipc_termination_may_repeat", "proxy-before-termination regression"),
-    ("server", "fn r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch", "fn whiteboard_event_loop_retirement_resets_terminal_latch", "retirement-latch regression"),
+    ("lifecycle", "fn r_s11hn_whiteboard_ipc_termination_before_proxy_is_delivered_once", "fn whiteboard_ipc_termination_before_proxy_may_be_lost", "termination-before-proxy regression"),
+    ("lifecycle", "fn r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once", "fn whiteboard_ipc_termination_may_repeat", "proxy-before-termination regression"),
+    ("lifecycle", "fn r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch", "fn whiteboard_event_loop_retirement_resets_terminal_latch", "retirement-latch regression"),
+    ("module", "mod event_lifecycle;", "// lifecycle module removed", "production lifecycle module wiring"),
+    ("server", "event_lifecycle::WhiteboardEventLifecycle", "WhiteboardEventLifecycle", "server lifecycle module use"),
     ("verify", "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test", "true # whiteboard lifecycle gate disabled", "shared focused gate"),
+    ("verify", "rustc --edition=2021 --crate-name whiteboard_event_lifecycle --test", "true # fast lifecycle behavior gate disabled", "shared fast behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never", "true # whiteboard lifecycle tests disabled", "shared behavior gate"),
     ("apple", "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test", "true # whiteboard lifecycle gate disabled", "Apple focused gate"),
     ("requirements", '<div class="req"><span class="id">R-S11hn</span>', '<div class="req"><span class="id">R-S11hn-disabled</span>', "normative lifecycle requirement"),

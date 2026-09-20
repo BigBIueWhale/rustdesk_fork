@@ -9210,8 +9210,9 @@ performance/resource soak, and cleanup—remain OPEN under the global STOP-SHIP 
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Status:** SOURCE IMPLEMENTED / FOCUSED RUST TESTS AUTHORED / CONFINED
-SOURCE EVIDENCE COMPLETE / NATIVE PLATFORM EXECUTION EVIDENCE OPEN.
+**Status:** SOURCE IMPLEMENTED / EXACT PRODUCTION LIFECYCLE MODULE EXECUTED
+UNDER RUST 1.75 / CONFINED SOURCE AND MUTATION EVIDENCE COMPLETE / FULL ROOT
+CARGO AND NATIVE PLATFORM EXECUTION EVIDENCE OPEN.
 
 This continuation selected one residual helper-lifecycle slice under the
 binding R-S11b/R-S11c loop. The prior R-S11c-8/R-S11dz correction gave the
@@ -9262,10 +9263,15 @@ service/activity kill, Android foreground-service weakening, port, network
 behavior, dependency, privilege transition, or alternate command route is
 added.
 
-Three deterministic generic state-machine regressions prove
+The generic `WhiteboardEventLifecycle` is now a small production module imported
+by `server.rs`, rather than test logic duplicated beside the server. That exact
+production module can be compiled directly without first building unrelated
+capture/codec dependencies. Three deterministic state-machine regressions prove
 termination-before-proxy delivery once, proxy-before-termination exact take
 and repeated-finalization refusal, and event-loop retirement followed by
-preserved latched delivery. The focused
+preserved latched delivery. The shared verifier runs that fast behavior gate
+before retaining the complete root-crate Cargo gate; it does not replace,
+disable, or weaken the latter. The focused
 `scripts/verify-whiteboard-ipc-lifecycle.py` validator binds the state machine,
 terminal guards, one-shot named worker, exact join sites, all three platform
 proxy owners, absence of obsolete semantics, focused Rust tests,
@@ -9278,6 +9284,9 @@ older R-S11dz shared, Apple, Linux-focused, and independent checks were updated
 to require startup-wide finality instead of incorrectly requiring termination
 inside the post-authenticated stream handler.
 
+The exact normative requirements input for this disposition is
+`c6dfc50e63b16f59bacbafabf9921779b3ab2525c9c83f9bbcd0483d278f5a87  requirements.html`.
+
 One preflight command mistakenly invoked Python bytecode compilation directly
 on the host while checking the newly edited verifier scripts. It read only
 repository scripts, used no networking or privilege, and did not inspect or
@@ -9287,7 +9296,7 @@ workload. Its result is discarded as validation evidence and its generated
 evidence for this slice must come from the sole approved networkless,
 read-only, capability-dropped verifier container.
 
-Confined source evidence used the approved verifier image identity
+Earlier confined source evidence used the approved verifier image identity
 `sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
 with no network, a read-only repository mount, all capabilities dropped,
 `no-new-privileges`, non-root UID/GID 1000, bounded PIDs/memory/CPU, and only a
@@ -9296,10 +9305,33 @@ focused self-test; a targeted preflight of the new lifecycle fixtures and the
 affected legacy whiteboard fixtures passed. The updated Linux
 nondumpable/CM/PA/whiteboard focused verifier also passed. Python AST parsing of the three edited
 verifiers, requirements HTML parsing, and Bash syntax parsing of both edited
-gate scripts passed under that confinement. The approved image contains no Rust/Cargo, Dart/Flutter,
-or native platform toolchain, so the authored focused Rust behavior test and
-all native builds/tests remain explicitly unexecuted rather than being
-misrepresented as passing.
+gate scripts passed under that confinement. That earlier image contains no
+Rust/Cargo, Dart/Flutter, or native platform toolchain.
+
+A subsequent exact-candidate run executed the independently compilable
+production lifecycle module with pinned `rustc 1.75.0` and `cargo 1.75.0` in
+builder image
+`sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`.
+The snapshot-on QEMU guest had `-nic none`; before, during, and after the run it
+had only `lo`, only loopback routes, and zero listening TCP/UDP sockets. The
+guest mounted the candidate read-only with `nosuid,nodev,noexec`. Its nested
+container used `--network=none`, a read-only root and source mount, UID/GID
+1000, no effective capabilities, `no-new-privileges`, seccomp mode 2, no port
+bindings, bounded PIDs/memory/CPU, and private bounded tmpfs work areas. The
+focused verifier passed all 39 deliberate mutations; the exact production
+module passed all three Rust state tests with zero failures. The complete
+focused container took 800,367,522 ns. Candidate hashes were byte-identical
+before and after, the guest Docker container and daemon were removed/stopped,
+both virtiofs helpers exited, the guest powered off, no QEMU/virtiofs process
+remained, host listening endpoints were unchanged, and the retained child
+overlay passed `qemu-img check` at 133,111,808 allocated bytes.
+
+An attempted complete root-crate Cargo run reached dependency discovery before
+test execution and stopped because this Debian builder has no `libyuv.pc`.
+That is verifier-infrastructure incompleteness, not a product-test failure and
+not passing evidence. No dependency was downloaded or fabricated to conceal
+it. Full root-crate compilation therefore remains open alongside the target-
+native platform runs below.
 
 Exact Rust/native compilation and tests, Windows/macOS/Linux platform
 execution, physical helper startup/failure/exit reproduction, orphan-process

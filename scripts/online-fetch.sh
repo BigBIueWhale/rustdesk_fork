@@ -1368,11 +1368,55 @@ cargo_vendor_output_args() {
         --rust-sha256 "$SHA256_RUST_1_75" \
         --vendor-sha256 "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         --config-sha256 "$SHA256_CARGO_VENDOR_CONFIG" \
-        --config-vendor-path "$ONLINE_DIR/cargo-vendor" \
+        --config-vendor-path "/online/cargo-vendor" \
         --config-size "$SIZE_CARGO_VENDOR_CONFIG" \
         --files "$CARGO_VENDOR_FILES_V1" \
         --directories "$CARGO_VENDOR_DIRECTORIES_V1" \
         --content-bytes "$CARGO_VENDOR_CONTENT_BYTES_V1"
+}
+
+maintenance_print_cargo_vendor_candidate() {
+    local candidate staging raw raw_before raw_after config_sha256 config_size
+    local restore_nullglob=0
+    local -a candidates=()
+    if ! shopt -q nullglob; then
+        shopt -s nullglob
+        restore_nullglob=1
+    fi
+    candidates=("$ONLINE_DIR"/.rustdesk-cargo-vendor.*.tree)
+    [ "$restore_nullglob" -eq 0 ] || shopt -u nullglob
+    [ "${#candidates[@]}" -eq 1 ] \
+        || die "maintenance Cargo vendor inspection requires exactly one retained candidate"
+    candidate=${candidates[0]}
+    [[ "${candidate##*/}" =~ ^\.rustdesk-cargo-vendor\.[A-Za-z0-9_]{8,64}\.tree$ ]] \
+        || die "retained Cargo vendor candidate name is malformed"
+    [ -d "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$candidate")" = \
+             "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "retained Cargo vendor candidate metadata differs"
+    staging=${candidate%.tree}
+    raw=$staging/raw-config.toml
+    [ -d "$staging" ] && [ ! -L "$staging" ] \
+        && [ -f "$raw" ] && [ ! -L "$raw" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$raw")" = \
+             "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:600:1" ] \
+        || die "retained Cargo vendor transaction metadata differs"
+    raw_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$raw"):$(/usr/bin/sha256sum "$raw")"
+    config_sha256="$(
+        /usr/bin/sed 's#^directory = "/outputs/vendor"$#directory = "/online/cargo-vendor"#' "$raw" \
+            | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }'
+    )"
+    config_size="$(
+        /usr/bin/sed 's#^directory = "/outputs/vendor"$#directory = "/online/cargo-vendor"#' "$raw" \
+            | /usr/bin/wc -c
+    )"
+    raw_after="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$raw"):$(/usr/bin/sha256sum "$raw")"
+    [ "$raw_after" = "$raw_before" ] \
+        || die "retained Cargo vendor raw config changed during inspection"
+    printf 'cargo_vendor_config_sha256=%s\ncargo_vendor_config_size=%s\n' \
+        "$config_sha256" "$config_size"
+    /usr/bin/python3 -I -S "$LIB_DIR/online-input-provenance.py" \
+        maintenance-print-root --tree "$candidate"
 }
 
 retire_cargo_vendor_output_staging() {
@@ -6182,6 +6226,12 @@ main() {
             python3 "$LIB_DIR/online-input-provenance.py" maintenance-print-root --tree "$ONLINE_DIR"
             return 0
             ;;
+        --maintenance-print-cargo-vendor-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-print-cargo-vendor-candidate takes no arguments"
+            maintenance_print_cargo_vendor_candidate
+            return 0
+            ;;
         --maintenance-write-online-closure)
             [ "$#" -eq 1 ] || die "--maintenance-write-online-closure takes no arguments"
             python3 "$LIB_DIR/online-input-provenance.py" maintenance-write-record --tree "$ONLINE_DIR"
@@ -6204,7 +6254,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

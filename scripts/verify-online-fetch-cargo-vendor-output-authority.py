@@ -96,9 +96,9 @@ def validate(sources: Mapping[str, str]) -> None:
             "fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"
         ),
         "SHA256_CARGO_VENDOR_CONFIG": (
-            "18a946aa319d64fa07e9616801981b1794c01764f9d870090de593cec412d62f"
+            "a83d604b007513c6aecfa4a34a0f0cc6c0cdde9218417a7a2e01dd194645620c"
         ),
-        "SIZE_CARGO_VENDOR_CONFIG": "4393",
+        "SIZE_CARGO_VENDOR_CONFIG": "4361",
         "CARGO_VENDOR_FILES_V1": "50926",
         "CARGO_VENDOR_DIRECTORIES_V1": "12144",
         "CARGO_VENDOR_CONTENT_BYTES_V1": "2299420401",
@@ -133,7 +133,7 @@ def validate(sources: Mapping[str, str]) -> None:
         ("--vendor-sha256", "vendor closure binding"),
         ("--config-sha256", "source-map binding"),
         (
-            '--config-vendor-path "$ONLINE_DIR/cargo-vendor"',
+            '--config-vendor-path "/online/cargo-vendor"',
             "canonical source-map destination binding",
         ),
         ("--config-size", "source-map size binding"),

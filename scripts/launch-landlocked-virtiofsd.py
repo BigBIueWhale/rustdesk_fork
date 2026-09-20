@@ -326,7 +326,7 @@ def main() -> int:
         "--xattr",
         "--inode-file-handles=never",
         "--thread-pool-size=0",
-        "--rlimit-nofile=4096",
+        "--rlimit-nofile=524544",
         "--log-level=info",
     ]
     environment = {

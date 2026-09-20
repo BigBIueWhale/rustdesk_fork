@@ -296,7 +296,8 @@ case "$REQUEST" in
     --maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|\
     --maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|\
     --devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|\
-    --maintenance-print-online-closure|--maintenance-write-online-closure|\
+    --maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|\
+    --maintenance-write-online-closure|\
     --verify-offline-inputs|--debian-systemd-smoke-image|__authority_smoke__) ;;
     *) fail 'guest acquisition request is not one supported closed operation' ;;
 esac

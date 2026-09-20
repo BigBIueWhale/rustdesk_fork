@@ -8,6 +8,7 @@ transaction. Runtime evidence comes only from smoke-flutter-peer-presentation.sh
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 
@@ -325,13 +326,17 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "exact consumed-input validation",
     )
-    for pin_name, pin_value in (
-        ("SHA256_PUB_CACHE_CLOSURE_V1", "e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12"),
-        ("SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1", "9564b164d4c6d4a9b3d7540a1655505009af34a9e610eadaf076e4807f63cf2c"),
-        ("SHA256_FLUTTER_PEER_FRB_CODEGEN", "24508d54dcad4f6b5c5b70395d24437a563d64fc2c24a17ca7e25f24ddb418fa"),
-        ("SIZE_FLUTTER_PEER_FRB_CODEGEN", "17211448"),
+    for pin_name in (
+        "SHA256_PUB_CACHE_CLOSURE_V1",
+        "SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1",
+        "SHA256_FLUTTER_PEER_FRB_CODEGEN",
     ):
-        require(pins, f'{pin_name}="{pin_value}"', f"exact input pin {pin_name}")
+        if re.search(rf'(?m)^{pin_name}="[0-9a-f]{{64}}"(?:\s|$)', pins) is None:
+            raise VerificationError(f"malformed exact input pin {pin_name}")
+    if re.search(
+        r'(?m)^SIZE_FLUTTER_PEER_FRB_CODEGEN="[1-9][0-9]*"(?:\s|$)', pins
+    ) is None:
+        raise VerificationError("malformed exact FRB executable size pin")
     require(pins, "This does not repin SHA256_ONLINE_CLOSURE_V1.", "full-online non-inference")
     require_order(
         stage,

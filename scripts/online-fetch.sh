@@ -1752,15 +1752,37 @@ stage_archive_bundle() {
         *) die "fixed-archive transaction returned an unknown action: $action" ;;
     esac
     log "acquiring missing $label through the private transaction"
-    online_docker_run_archive_acquisition \
-        --mount "type=bind,source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly" \
-        --mount "type=bind,source=$staging/state.json,target=/state.json,readonly" \
-        --mount "type=bind,source=$staging/output,target=/outputs" \
-        "$builder" \
-        /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire \
-            --state /state.json --output /outputs \
-            --builder-id "$builder" --helper-sha256 "$helper_sha256" \
-        || producer_status=$?
+    if [ "$kind" = rust-test ]; then
+        online_docker_run_archive_acquisition \
+            --env "RUSTDESK_RUST_TEST_SIZE=$SIZE_RUST_1_75" \
+            --env "RUSTDESK_RUST_TEST_SHA256=$SHA256_RUST_1_75" \
+            --env "RUSTDESK_RUST_TEST_VERSION=$RUST_VERSION" \
+            --mount "type=bind,source=$staging/output,target=/outputs" \
+            "$builder" \
+            /bin/bash --noprofile --norc -euo pipefail -c '
+                umask 077
+                output="/outputs/rust-${RUSTDESK_RUST_TEST_VERSION}.tar.xz"
+                /usr/bin/curl --disable --proto "=https" --proto-redir "=https" \
+                    --tlsv1.2 --fail --silent --show-error --location --max-redirs 0 \
+                    --max-time 300 --speed-time 60 --speed-limit 1024 \
+                    --max-filesize "$RUSTDESK_RUST_TEST_SIZE" --output "$output" \
+                    "https://static.rust-lang.org/dist/rust-${RUSTDESK_RUST_TEST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz"
+                [ "$(/usr/bin/stat -c %s -- "$output")" = "$RUSTDESK_RUST_TEST_SIZE" ]
+                printf "%s  %s\n" "$RUSTDESK_RUST_TEST_SHA256" "$output" \
+                    | /usr/bin/sha256sum -c -
+                /bin/chmod 0400 "$output"
+            ' || producer_status=$?
+    else
+        online_docker_run_archive_acquisition \
+            --mount "type=bind,source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly" \
+            --mount "type=bind,source=$staging/state.json,target=/state.json,readonly" \
+            --mount "type=bind,source=$staging/output,target=/outputs" \
+            "$builder" \
+            /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire \
+                --state /state.json --output /outputs \
+                --builder-id "$builder" --helper-sha256 "$helper_sha256" \
+            || producer_status=$?
+    fi
     if [ "$producer_status" -eq 0 ]; then
         archive_bundle_tool "$kind" "$root" verify "$staging" "$helper_sha256" "$builder" \
             || verification_status=$?

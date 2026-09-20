@@ -1886,7 +1886,7 @@ stage_flutter_test_inputs() {
         "pinned Flutter test toolchain archive" "$ANDROID_BUILDER_CONFIG_ID" android-builder
     verify_or_load_deb_builder_image
     vendor_cargo
-    build_frb_codegen
+    build_frb_codegen reproduce
     stage_pub_cache
 }
 
@@ -3909,7 +3909,7 @@ recover_cargo_tool_output_staging() {
 }
 
 stage_cargo_installed_tool() {
-    local kind="$1" builder="$2"
+    local kind="$1" builder="$2" existing_mode="${3:-reuse}"
     local role package binary tool_version features destination
     case "$kind:$builder" in
         "frb:$DEB_BUILDER_CONFIG_ID")
@@ -3930,7 +3930,12 @@ stage_cargo_installed_tool() {
             ;;
         *) die "networked Cargo tool request is outside the closed producer set" ;;
     esac
+    case "$existing_mode" in
+        reuse|reproduce) ;;
+        *) die "unsupported existing Cargo tool disposition: $existing_mode" ;;
+    esac
     local status=0 input_status=0 output_status=0 publication_status=0
+    local existing=0 reproduced_sha256= reproduced_size=
     local lock_fd staging staging_id output_id
     local semantic_args=()
     require_online_fetch_builder_image "$role" "$builder"
@@ -3948,11 +3953,14 @@ stage_cargo_installed_tool() {
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
             "${semantic_args[@]}" \
             || die "existing $kind Cargo tool is incomplete or structurally unsafe"
-        "$FLOCK_BIN" --unlock "$lock_fd" \
-            || die "cannot release the $kind Cargo tool transaction lock"
-        exec {lock_fd}<&-
-        log "$kind Cargo tool already staged and semantically verified, skipping"
-        return 0
+        if [ "$existing_mode" = reuse ]; then
+            "$FLOCK_BIN" --unlock "$lock_fd" \
+                || die "cannot release the $kind Cargo tool transaction lock"
+            exec {lock_fd}<&-
+            log "$kind Cargo tool already staged and semantically verified, skipping"
+            return 0
+        fi
+        existing=1
     fi
     staging="$(
         umask 077
@@ -4026,11 +4034,25 @@ stage_cargo_installed_tool() {
         "${semantic_args[@]}" \
         || output_status=$?
     if [ "$status" -eq 0 ] && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
-        cargo_tool_output_tool publish \
-            --online "$ONLINE_DIR" --staging "$staging" \
-            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
-            "${semantic_args[@]}" \
-            || publication_status=$?
+        if [ "$existing" -eq 1 ]; then
+            cargo_tool_output_tool compare-existing \
+                --online "$ONLINE_DIR" --staging "$staging" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${semantic_args[@]}" \
+                || publication_status=$?
+            if [ "$publication_status" -eq 0 ]; then
+                reproduced_sha256="$(/usr/bin/sha256sum \
+                    "$ONLINE_DIR/$destination/bin/$binary" | /usr/bin/awk '{ print $1 }')"
+                reproduced_size="$(/usr/bin/stat -c %s -- \
+                    "$ONLINE_DIR/$destination/bin/$binary")"
+            fi
+        else
+            cargo_tool_output_tool publish \
+                --online "$ONLINE_DIR" --staging "$staging" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${semantic_args[@]}" \
+                || publication_status=$?
+        fi
     fi
     retire_cargo_tool_output_staging "$staging" "$staging_id" "$kind"
     "$FLOCK_BIN" --unlock "$lock_fd" \
@@ -4039,7 +4061,11 @@ stage_cargo_installed_tool() {
     [ "$input_status" -eq 0 ] || die "networked $kind Cargo tool input postcondition failed"
     [ "$output_status" -eq 0 ] || die "networked $kind Cargo tool output postcondition failed"
     [ "$status" -eq 0 ] || die "networked $kind Cargo tool producer failed"
-    [ "$publication_status" -eq 0 ] || die "networked $kind Cargo tool publication failed"
+    [ "$publication_status" -eq 0 ] \
+        || die "networked $kind Cargo tool publication/reproduction failed"
+    if [ "$existing" -eq 1 ]; then
+        log "$kind Cargo tool independently reproduced byte-for-byte: size=$reproduced_size sha256=$reproduced_sha256"
+    fi
 }
 
 # ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/inputs/frb-tool ──
@@ -4048,8 +4074,12 @@ stage_cargo_installed_tool() {
 # (networked) in the deb-builder image with the pinned rust — exactly as upstream's
 # bridge.yml does: `cargo install ... --version <pin> --features uuid --locked`.
 build_frb_codegen() {
+    case "${1:-reuse}" in
+        reuse|reproduce) ;;
+        *) die "build_frb_codegen accepts only reuse or reproduce" ;;
+    esac
     local builder="$DEB_BUILDER_CONFIG_ID"
-    stage_cargo_installed_tool frb "$builder"
+    stage_cargo_installed_tool frb "$builder" "${1:-reuse}"
 }
 
 # ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/inputs/pub-cache ──

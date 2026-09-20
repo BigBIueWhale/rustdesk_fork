@@ -821,6 +821,47 @@ def check_complete(
     )
 
 
+def compare_existing(
+    online: Path,
+    staging: Path,
+    uid: int,
+    gid: int,
+    *,
+    kind: str,
+    tool_version: str,
+    rust_version: str,
+) -> TreeSummary:
+    candidate = verify_staged(
+        online,
+        staging,
+        uid,
+        gid,
+        kind=kind,
+        tool_version=tool_version,
+        rust_version=rust_version,
+    )
+    spec = spec_for(kind)
+    validate_root(online, "online root", {(uid, gid)})
+    published_root = online / spec.destination
+    published = inspect_tree(
+        published_root,
+        owners={(uid, gid), (0, 0)},
+        published=True,
+    )
+    validate_semantics(
+        published_root,
+        kind=kind,
+        tool_version=tool_version,
+        rust_version=rust_version,
+    )
+    if candidate != published:
+        fail(
+            "fresh Cargo tool reproduction differs from published output: "
+            f"candidate={candidate.digest} published={published.digest}"
+        )
+    return candidate
+
+
 def sync_tree(root: Path) -> None:
     directories = []
     for current, names, files in os.walk(root, topdown=True, followlinks=False):
@@ -1711,6 +1752,9 @@ def argument_parser() -> argparse.ArgumentParser:
     publish_parser = subparsers.add_parser("publish")
     common_arguments(publish_parser)
     semantic_arguments(publish_parser)
+    compare_parser = subparsers.add_parser("compare-existing")
+    common_arguments(compare_parser)
+    semantic_arguments(compare_parser)
     recover_parser = subparsers.add_parser("recover")
     common_arguments(recover_parser)
     check_parser = subparsers.add_parser("check-complete")
@@ -1758,6 +1802,22 @@ def main() -> int:
             kind=arguments.kind,
             tool_version=arguments.tool_version,
             rust_version=arguments.rust_version,
+        )
+    elif arguments.command == "compare-existing":
+        summary = compare_existing(
+            arguments.online,
+            staging,
+            arguments.uid,
+            arguments.gid,
+            kind=arguments.kind,
+            tool_version=arguments.tool_version,
+            rust_version=arguments.rust_version,
+        )
+        print(
+            "CARGO_TOOL_REPRODUCTION=pass "
+            f"kind={arguments.kind} files={summary.files} "
+            f"directories={summary.directories} bytes={summary.bytes} "
+            f"tree_sha256={summary.digest}"
         )
     elif arguments.command == "recover":
         print(

@@ -991,6 +991,78 @@ prepare_retired_online_input_root() {
        = "$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" ] \
         || die "retired online-input root is not on the online filesystem"
 }
+
+retire_archived_online_input() {
+    [ "$#" -eq 2 ] || die "retired online-input cleanup requires PATH and LABEL"
+    local archive="$1" label="$2" archive_parent archive_id
+    archive_parent="$(/usr/bin/dirname -- "$archive")" \
+        || die "cannot derive $label archive parent"
+    [ "$archive_parent" = "$RETIRED_ONLINE_INPUT_ROOT" ] \
+        || die "$label archive is outside the retired online-input root"
+    [ -d "$archive" ] && [ ! -L "$archive" ] \
+        || die "$label archive is not one real directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$archive")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "$label archive is not acquisition-identity-owned mode 0700"
+    archive_id="$(/usr/bin/stat -c '%d:%i' -- "$archive")" \
+        || die "cannot record $label archive identity"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$archive" --expected-identity "$archive_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore $label archive traversal before retirement"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$archive" --expected-identity "$archive_id" \
+        || die "cannot retire the exact $label archive"
+    [ ! -e "$archive" ] && [ ! -L "$archive" ] \
+        || die "$label archive survived exact retirement"
+}
+
+retire_empty_online_input_root() {
+    [ "$#" -eq 0 ] || die "retired online-input root cleanup takes no arguments"
+    [ -d "$RETIRED_ONLINE_INPUT_ROOT" ] && [ ! -L "$RETIRED_ONLINE_INPUT_ROOT" ] \
+        || die "retired online-input root is not one real directory before cleanup"
+    local retired_root_id
+    retired_root_id="$(/usr/bin/stat -c '%d:%i' -- "$RETIRED_ONLINE_INPUT_ROOT")" \
+        || die "cannot record retired online-input root identity"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-empty-private-root "$RETIRED_ONLINE_INPUT_ROOT" \
+        --expected-identity "$retired_root_id" \
+        || die "cannot retire the empty online-input record root"
+    [ ! -e "$RETIRED_ONLINE_INPUT_ROOT" ] && [ ! -L "$RETIRED_ONLINE_INPUT_ROOT" ] \
+        || die "empty retired online-input root survived cleanup"
+}
+
+retire_empty_online_input_root_if_present() {
+    [ "$#" -eq 0 ] || die "conditional retired online-input root cleanup takes no arguments"
+    if [ ! -e "$RETIRED_ONLINE_INPUT_ROOT" ] && [ ! -L "$RETIRED_ONLINE_INPUT_ROOT" ]; then
+        return 0
+    fi
+    prepare_retired_online_input_root
+    retire_empty_online_input_root
+}
+
+reconcile_retired_online_input_archives() {
+    [ "$#" -eq 0 ] || die "retired online-input reconciliation takes no arguments"
+    if [ ! -e "$RETIRED_ONLINE_INPUT_ROOT" ] && [ ! -L "$RETIRED_ONLINE_INPUT_ROOT" ]; then
+        return 0
+    fi
+    prepare_retired_online_input_root
+    local archives=() archive archive_name
+    mapfile -d '' archives < <(
+        /usr/bin/find "$RETIRED_ONLINE_INPUT_ROOT" -mindepth 1 -maxdepth 1 -print0
+    ) || die "cannot enumerate retired online-input archives"
+    for archive in "${archives[@]}"; do
+        archive_name="${archive##*/}"
+        [[ "$archive_name" =~ ^(pub-cache|gradle-home)-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$ ]] \
+            || die "retired online-input root contains an unknown entry: $archive_name"
+        retire_archived_online_input "$archive" "interrupted completed replacement"
+        log "Interrupted completed online-input replacement archive was exactly retired: $archive_name"
+    done
+    retire_empty_online_input_root
+}
 assert_online_fetch_docker_authority
 
 # The installed-systemd behavior gate needs a real PID-1/cgroup environment but
@@ -4110,7 +4182,7 @@ retire_pub_cache_output_staging() {
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
     )" || die "cannot reconcile private Pub-cache output staging"
     log "Pub-cache output staging reconciliation: $disposition"
-    if [ "$disposition" = replaced ]; then
+    if [ "$disposition" = replaced ] || [ "$disposition" = replaced-staged ]; then
         prepare_retired_online_input_root
         archive="$(
             pub_cache_output_tool archive-replaced \
@@ -4121,7 +4193,9 @@ retire_pub_cache_output_staging() {
             || die "Pub-cache replacement-record archive is not one real directory"
         [ ! -e "$staging" ] && [ ! -L "$staging" ] \
             || die "private Pub-cache staging survived archival"
-        log "Displaced Pub cache remains an untouched reserved sibling; transaction record: $archive"
+        retire_archived_online_input "$archive" "completed Pub-cache replacement"
+        retire_empty_online_input_root
+        log "Displaced Pub cache and its completed replacement record were exactly retired"
         return 0
     fi
     case "$disposition" in
@@ -4139,10 +4213,12 @@ retire_pub_cache_output_staging() {
         || die "cannot retire private Pub-cache output staging"
     [ ! -e "$staging" ] && [ ! -L "$staging" ] \
         || die "private Pub-cache output staging survived retirement"
+    retire_empty_online_input_root_if_present
 }
 
 recover_pub_cache_output_staging() {
     local stale=() staging staging_id
+    reconcile_retired_online_input_archives
     mapfile -d '' stale < <(
         /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
             -name '.rustdesk-pub-cache.*' -print0
@@ -5496,7 +5572,7 @@ retire_gradle_output_staging() {
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
     )" || die "cannot reconcile private Gradle output staging"
     log "Gradle output staging reconciliation: $disposition"
-    if [ "$disposition" = replaced ]; then
+    if [ "$disposition" = replaced ] || [ "$disposition" = replaced-staged ]; then
         prepare_retired_online_input_root
         archived="$(
             gradle_output_tool archive-replaced \
@@ -5507,6 +5583,9 @@ retire_gradle_output_staging() {
             || die "Gradle replacement-record archive is not one real directory"
         [ ! -e "$staging" ] && [ ! -L "$staging" ] \
             || die "Gradle replacement-record archival left online staging"
+        retire_archived_online_input "$archived" "completed Gradle replacement"
+        retire_empty_online_input_root
+        log "Displaced Gradle output and its completed replacement record were exactly retired"
         return 0
     fi
     case "$disposition" in
@@ -5524,10 +5603,12 @@ retire_gradle_output_staging() {
         || die "cannot retire private Gradle output staging"
     [ ! -e "$staging" ] && [ ! -L "$staging" ] \
         || die "private Gradle output staging survived retirement"
+    retire_empty_online_input_root_if_present
 }
 
 recover_gradle_output_staging() {
     local stale=() staging staging_id
+    reconcile_retired_online_input_archives
     mapfile -d '' stale < <(
         /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
             -name '.rustdesk-gradle-warm.*' -print0

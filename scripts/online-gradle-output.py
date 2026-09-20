@@ -28,6 +28,7 @@ ARCHIVE_PATTERN = re.compile(
 REPLACEMENT_PATTERN = re.compile(
     r"\.rustdesk-retired-gradle-home-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+\Z"
 )
+ARCHIVED_REPLACED_OUTPUT = "replaced-gradle-home"
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 GRADLE_LIMITS = (100_000, 100_000, 12 * 1024**3, 2 * 1024**3)
 SDK_LIMITS = (100_000, 100_000, 4 * 1024**3, 2 * 1024**3)
@@ -1305,6 +1306,141 @@ def optional_relative_identity(directory_fd: int, name: str) -> tuple[int, int] 
         return None
 
 
+def seal_displaced_move_root(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    label: str,
+) -> None:
+    metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if (
+        identity(metadata) != expected_identity
+        or not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+    ):
+        fail(f"{label} identity changed before sealing")
+    mode = stat.S_IMODE(metadata.st_mode)
+    if (metadata.st_uid, metadata.st_gid) != (uid, gid):
+        fail(f"{label} has an unrecoverable owner")
+    if mode == 0o500:
+        return
+    if mode != 0o700:
+        fail(f"{label} has an unrecoverable movable-root mode")
+    transition_root_mode(
+        parent_fd,
+        name,
+        expected_identity,
+        uid,
+        gid,
+        {0o700},
+        0o500,
+        label,
+    )
+    os.fsync(parent_fd)
+
+
+def seal_displaced_move_path(
+    parent: Path,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    label: str,
+) -> None:
+    parent_fd = open_directory(parent)
+    try:
+        seal_displaced_move_root(
+            parent_fd,
+            name,
+            expected_identity,
+            uid,
+            gid,
+            label,
+        )
+    finally:
+        os.close(parent_fd)
+
+
+def stage_displaced_for_archive(
+    source_fd: int,
+    source_name: str,
+    destination_fd: int,
+    destination_name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+) -> None:
+    try:
+        transition_root_mode(
+            source_fd,
+            source_name,
+            expected_identity,
+            uid,
+            gid,
+            {0o500},
+            0o700,
+            "displaced Gradle archival move",
+        )
+        os.fsync(source_fd)
+        renameat2(
+            source_fd,
+            source_name,
+            destination_fd,
+            destination_name,
+            RENAME_NOREPLACE,
+        )
+        os.fsync(source_fd)
+        os.fsync(destination_fd)
+        seal_displaced_move_root(
+            destination_fd,
+            destination_name,
+            expected_identity,
+            uid,
+            gid,
+            "staged displaced Gradle output",
+        )
+    except BaseException as primary:
+        try:
+            source_identity = optional_relative_identity(source_fd, source_name)
+            destination_identity = optional_relative_identity(
+                destination_fd,
+                destination_name,
+            )
+            if (
+                source_identity == expected_identity
+                and destination_identity != expected_identity
+            ):
+                seal_displaced_move_root(
+                    source_fd,
+                    source_name,
+                    expected_identity,
+                    uid,
+                    gid,
+                    "failed displaced Gradle archival move",
+                )
+            elif (
+                destination_identity == expected_identity
+                and source_identity != expected_identity
+            ):
+                seal_displaced_move_root(
+                    destination_fd,
+                    destination_name,
+                    expected_identity,
+                    uid,
+                    gid,
+                    "failed staged displaced Gradle output",
+                )
+            else:
+                fail("displaced Gradle archival move location is ambiguous")
+        except BaseException as recovery:
+            primary.add_note(
+                f"displaced Gradle archival move recovery also failed: {recovery}"
+            )
+        raise
+
+
 def rollback_replacement(
     online_fd: int,
     staging_fd: int,
@@ -1525,6 +1661,11 @@ def replace(
     state = load_state(online, staging, uid, gid)
     destination = online / "gradle-home"
     replaced_metadata = os.lstat(destination)
+    if (
+        (replaced_metadata.st_uid, replaced_metadata.st_gid) != (uid, gid)
+        or stat.S_IMODE(replaced_metadata.st_mode) != 0o500
+    ):
+        fail("existing Gradle root is not acquisition-owned and sealed")
     replaced = validate_displaced_output(destination, uid, gid)
     retired_metadata = validate_retired_root(online, retired_root, uid, gid)
     candidate_identity = decode_identity(
@@ -1748,6 +1889,8 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             fail("replacement Gradle name is malformed")
         replacement = online / replacement_name
         replacement_identity = optional_identity(replacement)
+        staged_replacement = staging / ARCHIVED_REPLACED_OUTPUT
+        staged_replacement_identity = optional_identity(staged_replacement)
         retired_root = Path(str(state.get("retired_root")))
         retired_identity = decode_identity(
             state.get("retired_root_identity"), "retired Gradle root"
@@ -1757,6 +1900,7 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             private_candidate == candidate
             and live_candidate == replaced
             and replacement_identity is None
+            and staged_replacement_identity is None
         ):
             validate_candidate_output(
                 online,
@@ -1781,6 +1925,7 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             private_candidate is None
             and live_candidate == replaced
             and replacement_identity == candidate
+            and staged_replacement_identity is None
         ):
             finish_promoted_replacement(
                 online,
@@ -1795,7 +1940,16 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             private_candidate is None
             and live_candidate == candidate
             and replacement_identity == replaced
+            and staged_replacement_identity is None
         ):
+            seal_displaced_move_path(
+                online,
+                replacement_name,
+                replaced,
+                uid,
+                gid,
+                "recovered displaced Gradle output",
+            )
             finish_promoted_replacement(
                 online,
                 staging,
@@ -1805,6 +1959,39 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
                 already_exchanged=True,
             )
             return "replaced"
+        if (
+            private_candidate is None
+            and live_candidate == candidate
+            and replacement_identity is None
+            and staged_replacement_identity == replaced
+        ):
+            seal_displaced_move_path(
+                staging,
+                ARCHIVED_REPLACED_OUTPUT,
+                replaced,
+                uid,
+                gid,
+                "recovered staged displaced Gradle output",
+            )
+            validate_candidate_output(
+                online,
+                online / "gradle-home",
+                state,
+                uid,
+                gid,
+                candidate,
+                expected_digest,
+                published=True,
+            )
+            validate_displaced_output(
+                staged_replacement,
+                uid,
+                gid,
+                replaced,
+                replaced_digest,
+                replaced_metadata_digest,
+            )
+            return "replaced-staged"
         fail("Gradle replacement transaction state is incoherent and was preserved")
     if (
         publication == "unselected"
@@ -1872,7 +2059,8 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
 
 
 def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
-    if recover(online, staging, uid, gid) != "replaced":
+    disposition = recover(online, staging, uid, gid)
+    if disposition not in {"replaced", "replaced-staged"}:
         fail("Gradle output is not a completed replacement")
     state = load_state(online, staging, uid, gid)
     retired_root = Path(str(state.get("retired_root")))
@@ -1898,19 +2086,55 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
     replaced_digest = str(state.get("replaced_gradle_digest"))
     replaced_metadata_digest = str(state.get("replaced_gradle_metadata_digest"))
     replacement = online / replacement_name
-    validate_displaced_output(
-        replacement,
-        uid,
-        gid,
-        replaced_identity,
-        replaced_digest,
-        replaced_metadata_digest,
-    )
+    staged_replacement = staging / ARCHIVED_REPLACED_OUTPUT
+    if disposition == "replaced":
+        validate_displaced_output(
+            replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
+        if staged_replacement.exists() or staged_replacement.is_symlink():
+            fail("archived displaced Gradle name is already occupied")
+    else:
+        validate_displaced_output(
+            staged_replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
     online_fd = open_directory(online)
+    staging_fd = open_directory(staging)
     retired_fd = open_directory(retired_root)
     try:
         if identity(os.lstat(staging)) != staging_identity:
             fail("Gradle staging identity changed before archival")
+        if disposition == "replaced":
+            stage_displaced_for_archive(
+                online_fd,
+                replacement_name,
+                staging_fd,
+                ARCHIVED_REPLACED_OUTPUT,
+                replaced_identity,
+                uid,
+                gid,
+            )
+        if optional_identity(replacement) is not None:
+            fail("displaced Gradle output survived staging for archival")
+        if optional_identity(staged_replacement) != replaced_identity:
+            fail("staged displaced Gradle identity postcondition failed")
+        validate_displaced_output(
+            staged_replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
         renameat2(
             online_fd,
             staging.name,
@@ -1925,7 +2149,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         if identity(os.lstat(destination)) != staging_identity:
             fail("retired Gradle archive identity postcondition failed")
         validate_displaced_output(
-            replacement,
+            destination / ARCHIVED_REPLACED_OUTPUT,
             uid,
             gid,
             replaced_identity,
@@ -1934,6 +2158,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         )
     finally:
         os.close(retired_fd)
+        os.close(staging_fd)
         os.close(online_fd)
     return destination
 
@@ -2233,10 +2458,27 @@ def self_test() -> None:
         staging: Path,
     ) -> None:
         state = load_state(online, staging, uid, gid)
-        displaced = online / str(state.get("replacement_name"))
+        replacement_name = str(state.get("replacement_name"))
+        replaced_identity = decode_identity(
+            state.get("replaced_gradle_identity"), "self-test displaced Gradle"
+        )
+        replaced_digest = str(state.get("replaced_gradle_digest"))
+        replaced_metadata_digest = str(
+            state.get("replaced_gradle_metadata_digest")
+        )
         archived = archive_replaced(online, staging, uid, gid)
+        replacement = online / replacement_name
+        if replacement.exists() or replacement.is_symlink():
+            fail("self-test Gradle archival left a consumer-namespace residue")
+        validate_displaced_output(
+            archived / ARCHIVED_REPLACED_OUTPUT,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
         remove_stage(archived)
-        remove_stage(displaced)
         remove_stage(online / "gradle-home")
         remove_stage(online / "android-sdk")
         retired.rmdir()
@@ -2487,6 +2729,49 @@ def self_test() -> None:
         remove_stage(staging)
 
         (
+            unsealed_online,
+            unsealed_retired,
+            unsealed_staging,
+            unsealed_candidate,
+            _,
+            unsealed_old_identity,
+        ) = replacement_fixture(base / "unsealed-replacement")
+        (unsealed_online / "gradle-home").chmod(0o700)
+        try:
+            replace(
+                unsealed_online,
+                unsealed_staging,
+                unsealed_retired,
+                uid,
+                gid,
+                gradle_version=version,
+                gradle_sha256=archive_hash,
+                build_tools=build_tools,
+                compile_sdk=compile_sdk,
+                expected_digest=unsealed_candidate.digest,
+            )
+        except OutputError:
+            pass
+        else:
+            fail("self-test replaced an unsealed Gradle output")
+        if (
+            identity(os.lstat(unsealed_online / "gradle-home"))
+            != unsealed_old_identity
+        ):
+            fail("unsealed-replacement refusal changed the live Gradle output")
+        if (
+            load_state(unsealed_online, unsealed_staging, uid, gid).get("publication")
+            != "unselected"
+        ):
+            fail("unsealed-replacement refusal selected a Gradle publication")
+        (unsealed_online / "gradle-home").chmod(0o500)
+        remove_stage(unsealed_staging)
+        remove_stage(unsealed_online / "gradle-home")
+        remove_stage(unsealed_online / "android-sdk")
+        unsealed_retired.rmdir()
+        unsealed_online.rmdir()
+
+        (
             replacement_online,
             replacement_retired,
             replacement_staging,
@@ -2676,6 +2961,25 @@ def self_test() -> None:
             != promoted_old.digest
         ):
             fail("promoted recovery changed the displaced Gradle output")
+        promoted_online_fd = open_directory(promoted_online)
+        try:
+            transition_root_mode(
+                promoted_online_fd,
+                str(promoted_state.get("replacement_name")),
+                promoted_old_identity,
+                uid,
+                gid,
+                {0o500},
+                0o700,
+                "self-test pre-move displaced Gradle output",
+            )
+            os.fsync(promoted_online_fd)
+        finally:
+            os.close(promoted_online_fd)
+        if recover(promoted_online, promoted_staging, uid, gid) != "replaced":
+            fail("self-test did not recover unsealed displaced Gradle output")
+        if stat.S_IMODE(os.lstat(promoted_old_path).st_mode) != 0o500:
+            fail("self-test did not reseal recovered displaced Gradle output")
         cleanup_replacement(promoted_online, promoted_retired, promoted_staging)
 
         (
@@ -2714,6 +3018,42 @@ def self_test() -> None:
             != exchanged_old.digest
         ):
             fail("exchanged recovery changed the displaced Gradle output")
+        exchanged_online_fd = open_directory(exchanged_online)
+        exchanged_staging_fd = open_directory(exchanged_staging)
+        try:
+            transition_root_mode(
+                exchanged_online_fd,
+                str(exchanged_state.get("replacement_name")),
+                exchanged_old_identity,
+                uid,
+                gid,
+                {0o500},
+                0o700,
+                "self-test staged displaced Gradle output",
+            )
+            os.fsync(exchanged_online_fd)
+            renameat2(
+                exchanged_online_fd,
+                str(exchanged_state.get("replacement_name")),
+                exchanged_staging_fd,
+                ARCHIVED_REPLACED_OUTPUT,
+                RENAME_NOREPLACE,
+            )
+            os.fsync(exchanged_online_fd)
+            os.fsync(exchanged_staging_fd)
+        finally:
+            os.close(exchanged_staging_fd)
+            os.close(exchanged_online_fd)
+        if stat.S_IMODE(
+            os.lstat(exchanged_staging / ARCHIVED_REPLACED_OUTPUT).st_mode
+        ) != 0o700:
+            fail("self-test staged displaced Gradle output was unexpectedly sealed")
+        if recover(exchanged_online, exchanged_staging, uid, gid) != "replaced-staged":
+            fail("self-test did not recover displaced Gradle output staged for archival")
+        if stat.S_IMODE(
+            os.lstat(exchanged_staging / ARCHIVED_REPLACED_OUTPUT).st_mode
+        ) != 0o500:
+            fail("self-test did not reseal staged displaced Gradle output")
         cleanup_replacement(exchanged_online, exchanged_retired, exchanged_staging)
 
         (

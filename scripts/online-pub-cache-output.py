@@ -27,6 +27,7 @@ ARCHIVE_PATTERN = re.compile(
 REPLACEMENT_PATTERN = re.compile(
     r"\.rustdesk-retired-pub-cache-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"
 )
+ARCHIVED_REPLACED_OUTPUT = "replaced-output"
 HEX_OBJECT_PATTERN = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 HEX_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 VERSION_PATTERN = re.compile(r"[0-9]+(?:\.[0-9]+){2,3}")
@@ -1389,6 +1390,141 @@ def optional_relative_identity(directory_fd: int, name: str) -> tuple[int, int] 
         return None
 
 
+def seal_displaced_move_root(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    label: str,
+) -> None:
+    metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if (
+        identity(metadata) != expected_identity
+        or not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+    ):
+        fail(f"{label} identity changed before sealing")
+    mode = stat.S_IMODE(metadata.st_mode)
+    if (metadata.st_uid, metadata.st_gid) != (uid, gid):
+        fail(f"{label} has an unrecoverable owner")
+    if mode == 0o500:
+        return
+    if mode != 0o700:
+        fail(f"{label} has an unrecoverable movable-root mode")
+    transition_root_mode(
+        parent_fd,
+        name,
+        expected_identity,
+        uid,
+        gid,
+        {0o700},
+        0o500,
+        label,
+    )
+    os.fsync(parent_fd)
+
+
+def seal_displaced_move_path(
+    parent: Path,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    label: str,
+) -> None:
+    parent_fd = open_directory(parent)
+    try:
+        seal_displaced_move_root(
+            parent_fd,
+            name,
+            expected_identity,
+            uid,
+            gid,
+            label,
+        )
+    finally:
+        os.close(parent_fd)
+
+
+def stage_displaced_for_archive(
+    source_fd: int,
+    source_name: str,
+    destination_fd: int,
+    destination_name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+) -> None:
+    try:
+        transition_root_mode(
+            source_fd,
+            source_name,
+            expected_identity,
+            uid,
+            gid,
+            {0o500},
+            0o700,
+            "displaced Pub-cache archival move",
+        )
+        os.fsync(source_fd)
+        renameat2(
+            source_fd,
+            source_name,
+            destination_fd,
+            destination_name,
+            RENAME_NOREPLACE,
+        )
+        os.fsync(source_fd)
+        os.fsync(destination_fd)
+        seal_displaced_move_root(
+            destination_fd,
+            destination_name,
+            expected_identity,
+            uid,
+            gid,
+            "staged displaced Pub-cache",
+        )
+    except BaseException as primary:
+        try:
+            source_identity = optional_relative_identity(source_fd, source_name)
+            destination_identity = optional_relative_identity(
+                destination_fd,
+                destination_name,
+            )
+            if (
+                source_identity == expected_identity
+                and destination_identity != expected_identity
+            ):
+                seal_displaced_move_root(
+                    source_fd,
+                    source_name,
+                    expected_identity,
+                    uid,
+                    gid,
+                    "failed displaced Pub-cache archival move",
+                )
+            elif (
+                destination_identity == expected_identity
+                and source_identity != expected_identity
+            ):
+                seal_displaced_move_root(
+                    destination_fd,
+                    destination_name,
+                    expected_identity,
+                    uid,
+                    gid,
+                    "failed staged displaced Pub-cache",
+                )
+            else:
+                fail("displaced Pub-cache archival move location is ambiguous")
+        except BaseException as recovery:
+            primary.add_note(
+                f"displaced Pub-cache archival move recovery also failed: {recovery}"
+            )
+        raise
+
+
 def rollback_replacement(
     online_fd: int,
     staging_fd: int,
@@ -1594,6 +1730,11 @@ def replace(
     state = load_state(online, staging, uid, gid)
     destination = online / "pub-cache"
     replaced_metadata = os.lstat(destination)
+    if (
+        (replaced_metadata.st_uid, replaced_metadata.st_gid) != (uid, gid)
+        or stat.S_IMODE(replaced_metadata.st_mode) != 0o500
+    ):
+        fail("existing Pub-cache root is not acquisition-owned and sealed")
     replaced = validate_displaced_output(destination, uid, gid)
     retired_metadata = validate_retired_root(online, retired_root, uid, gid)
     output = staging / "output"
@@ -1711,6 +1852,8 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             fail("replacement Pub-cache name is malformed")
         replacement = online / replacement_name
         replacement_output = optional_identity(replacement)
+        staged_replacement = staging / ARCHIVED_REPLACED_OUTPUT
+        staged_replacement_output = optional_identity(staged_replacement)
         retired_root = Path(str(state.get("retired_root")))
         retired_identity = decode_identity(
             state.get("retired_root_identity"), "retired Pub-cache root"
@@ -1720,6 +1863,7 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             private_output == output
             and live_output == replaced_output
             and replacement_output is None
+            and staged_replacement_output is None
         ):
             validate_candidate_output(
                 staging / "output",
@@ -1742,6 +1886,7 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             private_output is None
             and live_output == replaced_output
             and replacement_output == output
+            and staged_replacement_output is None
         ):
             finish_promoted_replacement(
                 online,
@@ -1756,7 +1901,16 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
             private_output is None
             and live_output == output
             and replacement_output == replaced_output
+            and staged_replacement_output is None
         ):
+            seal_displaced_move_path(
+                online,
+                replacement_name,
+                replaced_output,
+                uid,
+                gid,
+                "recovered displaced Pub-cache",
+            )
             finish_promoted_replacement(
                 online,
                 staging,
@@ -1766,6 +1920,36 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
                 already_exchanged=True,
             )
             return "replaced"
+        if (
+            private_output is None
+            and live_output == output
+            and replacement_output is None
+            and staged_replacement_output == replaced_output
+        ):
+            seal_displaced_move_path(
+                staging,
+                ARCHIVED_REPLACED_OUTPUT,
+                replaced_output,
+                uid,
+                gid,
+                "recovered staged displaced Pub-cache",
+            )
+            validate_published_candidate(
+                online / "pub-cache",
+                uid,
+                gid,
+                output,
+                expected_digest,
+            )
+            validate_displaced_output(
+                staged_replacement,
+                uid,
+                gid,
+                replaced_output,
+                replaced_digest,
+                replaced_metadata_digest,
+            )
+            return "replaced-staged"
         fail("Pub-cache replacement transaction state is incoherent and was preserved")
     if publication == "unselected":
         if private_output == output:
@@ -1827,7 +2011,8 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
 
 
 def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
-    if recover(online, staging, uid, gid) != "replaced":
+    disposition = recover(online, staging, uid, gid)
+    if disposition not in {"replaced", "replaced-staged"}:
         fail("Pub-cache output is not a completed replacement")
     state = load_state(online, staging, uid, gid)
     retired_root = Path(str(state.get("retired_root")))
@@ -1857,19 +2042,55 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
     replaced_digest = str(state.get("replaced_output_digest"))
     replaced_metadata_digest = str(state.get("replaced_output_metadata_digest"))
     replacement = online / replacement_name
-    validate_displaced_output(
-        replacement,
-        uid,
-        gid,
-        replaced_identity,
-        replaced_digest,
-        replaced_metadata_digest,
-    )
+    staged_replacement = staging / ARCHIVED_REPLACED_OUTPUT
+    if disposition == "replaced":
+        validate_displaced_output(
+            replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
+        if staged_replacement.exists() or staged_replacement.is_symlink():
+            fail("archived displaced Pub-cache name is already occupied")
+    else:
+        validate_displaced_output(
+            staged_replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
     online_fd = open_directory(online)
+    staging_fd = open_directory(staging)
     retired_fd = open_directory(retired_root)
     try:
         if identity(os.lstat(staging)) != staging_identity:
             fail("Pub-cache staging identity changed before archival")
+        if disposition == "replaced":
+            stage_displaced_for_archive(
+                online_fd,
+                replacement_name,
+                staging_fd,
+                ARCHIVED_REPLACED_OUTPUT,
+                replaced_identity,
+                uid,
+                gid,
+            )
+        if optional_identity(replacement) is not None:
+            fail("displaced Pub-cache survived staging for archival")
+        if optional_identity(staged_replacement) != replaced_identity:
+            fail("staged displaced Pub-cache identity postcondition failed")
+        validate_displaced_output(
+            staged_replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+            replaced_metadata_digest,
+        )
         renameat2(
             online_fd,
             staging.name,
@@ -1884,7 +2105,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         if identity(os.lstat(destination)) != staging_identity:
             fail("retired Pub-cache archive identity postcondition failed")
         validate_displaced_output(
-            replacement,
+            destination / ARCHIVED_REPLACED_OUTPUT,
             uid,
             gid,
             replaced_identity,
@@ -1893,6 +2114,7 @@ def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
         )
     finally:
         os.close(retired_fd)
+        os.close(staging_fd)
         os.close(online_fd)
     return destination
 
@@ -2144,11 +2366,8 @@ def self_test() -> None:
             case_retired: Path,
             case_staging: Path,
         ) -> None:
-            state = load_state(case_online, case_staging, uid, gid)
-            displaced_path = case_online / str(state.get("replacement_name"))
             archived = archive_replaced(case_online, case_staging, uid, gid)
             remove_stage(archived)
-            remove_stage(displaced_path)
             remove_stage(case_online / "pub-cache")
             case_retired.rmdir()
             case_online.rmdir()
@@ -2405,6 +2624,45 @@ def self_test() -> None:
                     fail("self-test accepted extended attributes in Pub-cache output")
             remove_stage(staging)
 
+        (
+            unsealed_online,
+            unsealed_retired,
+            unsealed_staging,
+            unsealed_candidate,
+            _,
+            unsealed_old_identity,
+        ) = prepare_replacement_case("unsealed-replacement")
+        (unsealed_online / "pub-cache").chmod(0o700)
+        try:
+            replace(
+                unsealed_online,
+                unsealed_staging,
+                unsealed_retired,
+                uid,
+                gid,
+                provenance,
+                unsealed_candidate.digest,
+            )
+        except PubCacheError:
+            pass
+        else:
+            fail("self-test replaced an unsealed Pub-cache")
+        if (
+            identity(os.lstat(unsealed_online / "pub-cache"))
+            != unsealed_old_identity
+        ):
+            fail("unsealed-replacement refusal changed the live Pub-cache")
+        if (
+            load_state(unsealed_online, unsealed_staging, uid, gid).get("publication")
+            != "unselected"
+        ):
+            fail("unsealed-replacement refusal selected a publication")
+        (unsealed_online / "pub-cache").chmod(0o500)
+        remove_stage(unsealed_staging)
+        remove_stage(unsealed_online / "pub-cache")
+        unsealed_retired.rmdir()
+        unsealed_online.rmdir()
+
         replacement_online = Path(temporary) / "replacement-online"
         replacement_online.mkdir(mode=0o700)
         retired_root = Path(temporary) / "retired"
@@ -2461,8 +2719,17 @@ def self_test() -> None:
         archived = archive_replaced(replacement_online, staging, uid, gid)
         if staging.exists() or staging.is_symlink():
             fail("self-test replacement archival left the online staging name present")
-        if identity(os.lstat(retired_output)) != displaced_identity:
-            fail("self-test record archival changed the displaced Pub-cache identity")
+        if retired_output.exists() or retired_output.is_symlink():
+            fail("self-test replacement archival left a consumer-namespace residue")
+        archived_displaced = archived / ARCHIVED_REPLACED_OUTPUT
+        if identity(os.lstat(archived_displaced)) != displaced_identity:
+            fail("self-test archival changed the displaced Pub-cache identity")
+        archived_summary = validate_displaced_output(archived_displaced, uid, gid)
+        if (
+            archived_summary.digest != displaced_summary.digest
+            or archived_summary.metadata_digest != displaced_summary.metadata_digest
+        ):
+            fail("self-test archival changed the displaced Pub-cache")
         if not (archived / STATE_NAME).is_file():
             fail("self-test replacement archival lost its transaction state")
         complete = check_complete(replacement_online, uid, gid)
@@ -2470,7 +2737,6 @@ def self_test() -> None:
             fail("self-test replacement changed the current Pub-cache candidate")
         remove_stage(archived)
         retired_root.rmdir()
-        remove_stage(retired_output)
         remove_stage(replacement_online / "pub-cache")
         replacement_online.rmdir()
 
@@ -2505,6 +2771,25 @@ def self_test() -> None:
             or promoted_summary.metadata_digest != promoted_old.metadata_digest
         ):
             fail("promoted-candidate recovery changed the displaced Pub-cache")
+        promoted_online_fd = open_directory(promoted_online)
+        try:
+            transition_root_mode(
+                promoted_online_fd,
+                str(promoted_state.get("replacement_name")),
+                promoted_old_identity,
+                uid,
+                gid,
+                {0o500},
+                0o700,
+                "self-test pre-move displaced Pub-cache",
+            )
+            os.fsync(promoted_online_fd)
+        finally:
+            os.close(promoted_online_fd)
+        if recover(promoted_online, promoted_staging, uid, gid) != "replaced":
+            fail("self-test did not recover an unsealed displaced Pub-cache")
+        if stat.S_IMODE(os.lstat(promoted_displaced).st_mode) != 0o500:
+            fail("self-test did not reseal the recovered displaced Pub-cache")
         cleanup_completed_replacement(
             promoted_online,
             promoted_records,
@@ -2546,6 +2831,38 @@ def self_test() -> None:
             or exchanged_summary.metadata_digest != exchanged_old.metadata_digest
         ):
             fail("exchanged-candidate recovery changed the displaced Pub-cache")
+        exchanged_online_fd = open_directory(exchanged_online)
+        exchanged_staging_fd = open_directory(exchanged_staging)
+        try:
+            transition_root_mode(
+                exchanged_online_fd,
+                str(exchanged_state.get("replacement_name")),
+                exchanged_old_identity,
+                uid,
+                gid,
+                {0o500},
+                0o700,
+                "self-test staged displaced Pub-cache",
+            )
+            os.fsync(exchanged_online_fd)
+            renameat2(
+                exchanged_online_fd,
+                str(exchanged_state.get("replacement_name")),
+                exchanged_staging_fd,
+                ARCHIVED_REPLACED_OUTPUT,
+                RENAME_NOREPLACE,
+            )
+            os.fsync(exchanged_online_fd)
+            os.fsync(exchanged_staging_fd)
+        finally:
+            os.close(exchanged_staging_fd)
+            os.close(exchanged_online_fd)
+        if stat.S_IMODE(os.lstat(exchanged_staging / ARCHIVED_REPLACED_OUTPUT).st_mode) != 0o700:
+            fail("self-test staged displaced Pub-cache was unexpectedly sealed")
+        if recover(exchanged_online, exchanged_staging, uid, gid) != "replaced-staged":
+            fail("self-test did not recover a displaced Pub-cache staged for archival")
+        if stat.S_IMODE(os.lstat(exchanged_staging / ARCHIVED_REPLACED_OUTPUT).st_mode) != 0o500:
+            fail("self-test did not reseal the staged displaced Pub-cache")
         cleanup_completed_replacement(
             exchanged_online,
             exchanged_records,

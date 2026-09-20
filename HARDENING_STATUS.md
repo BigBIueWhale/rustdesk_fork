@@ -889,6 +889,16 @@ installed lifecycle evidence cannot presently be completed from the retained loc
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback.
 
+Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
+replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old
+root is made writable only for the cross-parent directory move required by `renameat2(2)`, is immediately resealed,
+and is revalidated by exact identity, content digest, and metadata digest. Recovery reseals and completes both the
+pre-move and post-move crash states. The old output and transaction record leave no consumer-namespace sibling after
+success, completed archives are exactly retired, and an interrupted archive is reclaimed on the next serialized
+online-output transaction. Actual Pub and Gradle state machines passed as UID/GID 4000 in the no-NIC verifier VM;
+this is output-publication/finality evidence only, not a complete canonical input closure, product build, package,
+installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reproduction result.
+
 ### Authoritative native/runtime evidence retained
 
 - The R-S11b/R-B4 portable Linux transaction at clean pushed commit

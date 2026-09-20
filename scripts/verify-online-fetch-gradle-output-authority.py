@@ -117,6 +117,12 @@ def validate(sources: Dict[str, str]) -> None:
         "\n}\n\n# ── The windows flutter ENGINE",
         "Gradle output lifecycle",
     )
+    retirement = extract_between(
+        shell,
+        "retire_gradle_output_staging() {",
+        "\n}\n\nrecover_gradle_output_staging() {",
+        "Gradle output retirement",
+    )
     for token, label in (
         ("readonly FLOCK_BIN=/usr/bin/flock", "fixed transaction-lock client"),
         ('/usr/bin/chmod 0700 "$ONLINE_DIR"', "private existing online root"),
@@ -139,6 +145,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("gradle_output_tool replace", "checked stale-output replacement"),
         ("gradle_output_tool archive-replaced", "replacement-record archival"),
         ("prepare_retired_online_input_root", "retired-record root preparation"),
+        ('replaced-staged', "crash-recoverable displaced-output staging"),
         ('--expected-digest "$digest"', "verified candidate digest binding"),
         (
             '            replace_existing=1\n'
@@ -162,6 +169,12 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(shell, token, label)
+    require(
+        retirement,
+        'retire_archived_online_input "$archived" '
+        '"completed Gradle replacement"',
+        "completed Gradle replacement retirement",
+    )
     require_count(stage, "target=/online", 1, "Gradle online input mount")
     require(
         stage,
@@ -661,6 +674,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "            gradle_output_tool archive-replaced \\\n",
         "            gradle_output_tool recover \\\n",
         "replacement-record archival",
+    ),
+    Mutation(
+        "shell",
+        '        retire_archived_online_input "$archived" "completed Gradle replacement"\n',
+        '        true # completed Gradle replacement archive retained\n',
+        "completed replacement retirement",
     ),
     Mutation(
         "shell",

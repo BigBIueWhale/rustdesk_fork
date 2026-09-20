@@ -76,6 +76,9 @@ readonly WINDOWS_HELPER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-windows-he
 readonly WINDOWS_HELPER_RUNTIME_TEST=$VERIFY_REPO/scripts/test-windows-helper-vm-runtime.sh
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
+readonly ONLINE_PUB_CACHE_OUTPUT=$VERIFY_REPO/scripts/online-pub-cache-output.py
+readonly ONLINE_GRADLE_OUTPUT=$VERIFY_REPO/scripts/online-gradle-output.py
+readonly ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-online-fetch-gradle-output-authority.py
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
@@ -1020,7 +1023,9 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     Dockerfile.win-helper Dockerfile.builder-bootstrap-seal \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
-    online-fetch.sh android-rust-check.sh \
+    online-fetch.sh online-pub-cache-output.py online-gradle-output.py \
+    verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \
+    android-rust-check.sh \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -1030,6 +1035,9 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     [ -f "$verify_path" ] && [ ! -L "$verify_path" ] \
         || fail "main verifier entry source is absent or ambiguous: $verify_source"
 done
+[ -f "$VERIFY_REPO/flutter/android/gradle/wrapper/gradle-wrapper.properties" ] \
+    && [ ! -L "$VERIFY_REPO/flutter/android/gradle/wrapper/gradle-wrapper.properties" ] \
+    || fail 'Gradle wrapper authority input is absent or ambiguous'
 for repository_source in requirements.html HARDENING_STATUS.md; do
     [ -f "$VERIFY_REPO/$repository_source" ] && [ ! -L "$VERIFY_REPO/$repository_source" ] \
         || fail "FRB source-gate input is absent or ambiguous: $repository_source"
@@ -1794,6 +1802,47 @@ offline_image_provenance_output="$(
     || fail "offline image-provenance result differs: $offline_image_provenance_output"
 printf '%s\n' "$offline_image_provenance_output"
 printf 'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=40 debian_decisions=9 windows_decisions=22\n'
+
+online_gradle_source_status=0
+online_gradle_source_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" \
+        --repo "$VERIFY_REPO" --self-test
+)" || online_gradle_source_status=$?
+[ "${#online_gradle_source_output}" -le 4096 ] \
+    || fail 'online Gradle output source-gate diagnostic exceeded its bound'
+[ "$online_gradle_source_status" -eq 0 ] \
+    || fail "online Gradle output source gate failed: $online_gradle_source_output"
+[[ "$online_gradle_source_output" =~ ^verify-online-fetch-gradle-output-authority:\ PASS\ \([0-9]+\ mutations\ rejected\)$ ]] \
+    || fail "online Gradle output source-gate result differs: $online_gradle_source_output"
+printf '%s\n' "$online_gradle_source_output"
+printf 'VERIFIER_VM_ONLINE_GRADLE_SOURCE_GATE=pass uid=4000 gid=4000\n'
+
+pub_cache_output_status=0
+pub_cache_output_result="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$ONLINE_PUB_CACHE_OUTPUT" self-test
+)" || pub_cache_output_status=$?
+[ "${#pub_cache_output_result}" -le 4096 ] \
+    || fail 'Pub-cache replacement-finality diagnostic exceeded its bound'
+[ "$pub_cache_output_status" -eq 0 ] \
+    || fail "Pub-cache replacement-finality self-test failed: $pub_cache_output_result"
+[ "$pub_cache_output_result" = 'ONLINE PUB CACHE OUTPUT SELF-TEST: PASS' ] \
+    || fail "Pub-cache replacement-finality result differs: $pub_cache_output_result"
+
+gradle_output_status=0
+gradle_output_result="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$ONLINE_GRADLE_OUTPUT" self-test
+)" || gradle_output_status=$?
+[ "${#gradle_output_result}" -le 4096 ] \
+    || fail 'Gradle replacement-finality diagnostic exceeded its bound'
+[ "$gradle_output_status" -eq 0 ] \
+    || fail "Gradle replacement-finality self-test failed: $gradle_output_result"
+[ "$gradle_output_result" = 'online-gradle-output: self-test OK' ] \
+    || fail "Gradle replacement-finality result differs: $gradle_output_result"
+printf '%s\n%s\n' "$pub_cache_output_result" "$gradle_output_result"
+printf 'VERIFIER_VM_ONLINE_REPLACEMENT_FINALITY=pass uid=4000 gid=4000 pub_cache=actual gradle=actual residue=absent recovery=replaced-staged\n'
 
 if /bin/bash "$ANDROID_RUST_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-android-rust-entry.out" 2>"$ROOT/root-android-rust-entry.err"; then

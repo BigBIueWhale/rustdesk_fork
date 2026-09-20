@@ -2857,38 +2857,40 @@ Widget dialogButton(String text,
     bool isOutline = false,
     Widget? icon,
     TextStyle? style,
-    ButtonStyle? buttonStyle}) {
+    ButtonStyle? buttonStyle,
+    F? translateText}) {
+  final label = translateText?.call(text) ?? translate(text);
   if (isDesktop || isWebDesktop) {
     if (isOutline) {
       return icon == null
           ? OutlinedButton(
               onPressed: onPressed,
-              child: Text(translate(text), style: style),
+              child: Text(label, style: style),
             )
           : OutlinedButton.icon(
               icon: icon,
               onPressed: onPressed,
-              label: Text(translate(text), style: style),
+              label: Text(label, style: style),
             );
     } else {
       return icon == null
           ? ElevatedButton(
               style: ElevatedButton.styleFrom(elevation: 0).merge(buttonStyle),
               onPressed: onPressed,
-              child: Text(translate(text), style: style),
+              child: Text(label, style: style),
             )
           : ElevatedButton.icon(
               icon: icon,
               style: ElevatedButton.styleFrom(elevation: 0).merge(buttonStyle),
               onPressed: onPressed,
-              label: Text(translate(text), style: style),
+              label: Text(label, style: style),
             );
     }
   } else {
     return TextButton(
       onPressed: onPressed,
       child: Text(
-        translate(text),
+        label,
         style: style,
       ),
     );

@@ -49,6 +49,7 @@ typedef GetDialogManager = OverlayDialogManager? Function();
 typedef IsCurrentSession = bool Function(SessionID sessionId);
 typedef GetPeerPlatform = String? Function();
 typedef GetPeerVersion = String Function();
+typedef TranslateText = String Function(String text);
 typedef ReadRemoteDirectory = Future<void> Function(
     SessionID sessionId, String path, bool showHidden);
 typedef ReadRemoteDirectoryTree = Future<void> Function(SessionID sessionId,
@@ -292,6 +293,7 @@ class FileModel {
         getPeerVersion: () => parent.target?.ffiModel.pi.version ?? '',
         jobController: jobController,
         fileFetcher: fileFetcher,
+        translateText: translate,
         getOtherSideDirectoryData: () => remoteController.directoryData());
     remoteController = FileController(
         isLocal: false,
@@ -302,6 +304,7 @@ class FileModel {
         getPeerVersion: () => parent.target?.ffiModel.pi.version ?? '',
         jobController: jobController,
         fileFetcher: fileFetcher,
+        translateText: translate,
         getOtherSideDirectoryData: () => localController.directoryData());
     evtLoop = FileDialogEventLoop();
     _ownedSessionId = getSessionID();
@@ -648,6 +651,7 @@ class FileController {
   final GetPeerPlatform getPeerPlatform;
   final GetPeerVersion getPeerVersion;
   final FileControllerRequests _requests;
+  final TranslateText _translate;
 
   final FileFetcher fileFetcher;
 
@@ -672,8 +676,10 @@ class FileController {
       required this.jobController,
       required this.fileFetcher,
       required this.getOtherSideDirectoryData,
+      required TranslateText translateText,
       FileControllerRequests? requests})
-      : _requests = requests ?? FileControllerRequests.native;
+      : _requests = requests ?? FileControllerRequests.native,
+        _translate = translateText;
 
   void resetForSession() {
     directory.value.clear();
@@ -1051,14 +1057,14 @@ class FileController {
       var content = "";
       late final List<_FileOperationEntry> entries;
       if (removeAsLeaf) {
-        title = translate("Are you sure you want to delete this file?");
+        title = _translate("Are you sure you want to delete this file?");
         content = item.name;
         entries = [item];
       } else if (item.isDirectory) {
         final jobID = jobController.allocateJobId(selectedSessionId);
         if (jobID == null) return;
-        title = translate("Not an empty directory");
-        manager?.showLoading(translate("Waiting"));
+        title = _translate("Not an empty directory");
+        manager?.showLoading(_translate("Waiting"));
         final FileDirectory fd;
         try {
           fd = await fileFetcher.fetchDirectoryRecursiveToRemove(
@@ -1069,7 +1075,7 @@ class FileController {
           manager?.dismissAll();
           if (manager != null) {
             msgBox(selectedSessionId, 'custom-error-nook-nocancel-hasclose',
-                translate("Error"), error.toString(), '', manager);
+                _translate("Error"), error.toString(), '', manager);
           } else {
             debugPrint("removeAction error msgbox failed: $error");
           }
@@ -1086,7 +1092,7 @@ class FileController {
               item.toEntry(), !isLocal, 0, selectedSessionId);
           if (deleteJobId == null) return;
           final confirm = await _showRemoveDialog(
-              translate(
+              _translate(
                   "Are you sure you want to delete this empty directory?"),
               item.name,
               false,
@@ -1125,7 +1131,7 @@ class FileController {
       for (var i = 0; i < entries.length; i++) {
         if (!_isCurrentSession(selectedSessionId)) return;
         final dirShow = !removeAsLeaf && item.isDirectory
-            ? "${translate("Are you sure you want to delete the file of this directory?")}\n"
+            ? "${_translate("Are you sure you want to delete the file of this directory?")}\n"
             : "";
         final count = entries.length > 1 ? "${i + 1}/${entries.length}" : "";
         content = "$dirShow\n\n${entries[i].path}".trim();
@@ -1220,7 +1226,7 @@ class FileController {
           children: [
             Text(content),
             Text(
-              translate("This is irreversible!"),
+              _translate("This is irreversible!"),
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.red,
@@ -1232,7 +1238,7 @@ class FileController {
                     dense: true,
                     controlAffinity: ListTileControlAffinity.leading,
                     title: Text(
-                      translate("Do this for all conflicts"),
+                      _translate("Do this for all conflicts"),
                     ),
                     value: confirmationState.remember,
                     onChanged: (v) {
@@ -1249,11 +1255,13 @@ class FileController {
             icon: Icon(Icons.close_rounded),
             onPressed: cancel,
             isOutline: true,
+            translateText: _translate,
           ),
           dialogButton(
             "OK",
             icon: Icon(Icons.done_rounded),
             onPressed: submit,
+            translateText: _translate,
           ),
         ],
         onSubmit: submit,
@@ -1360,16 +1368,16 @@ class FileController {
           }
           if (existingNames.contains(newName)) {
             setState(() {
-              errorText = translate("Already exists");
+              errorText = _translate("Already exists");
             });
             return;
           }
           if (!PathUtil.validName(newName, targetIsWindows)) {
             setState(() {
               if (ownedItem.isDirectory) {
-                errorText = translate("Invalid folder name");
+                errorText = _translate("Invalid folder name");
               } else {
-                errorText = translate("Invalid file name");
+                errorText = _translate("Invalid file name");
               }
             });
             return;
@@ -1398,7 +1406,7 @@ class FileController {
           content: Column(
             children: [
               DialogTextField(
-                title: '${translate('Rename')} ${ownedItem.name}',
+                title: '${_translate('Rename')} ${ownedItem.name}',
                 controller: textEditingController,
                 errorText: errorText,
               ),
@@ -1410,11 +1418,13 @@ class FileController {
               icon: Icon(Icons.close_rounded),
               onPressed: close,
               isOutline: true,
+              translateText: _translate,
             ),
             dialogButton(
               "OK",
               icon: Icon(Icons.done_rounded),
               onPressed: submit,
+              translateText: _translate,
             ),
           ],
           onSubmit: submit,

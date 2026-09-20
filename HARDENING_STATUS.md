@@ -9121,8 +9121,8 @@ matrix. Historical implementation details remain in Git at
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**Status: SOURCE IMPLEMENTED; EXECUTABLE DART/RUST REGRESSIONS AUTHORED BUT NOT RUN;
-DART/FLUTTER/NATIVE AND TARGET-PLATFORM EVIDENCE OPEN.**
+**Status: SOURCE IMPLEMENTED; DART MODEL REGRESSIONS PASS IN A NO-NIC LINUX VM;
+FRESH GENERATED-BRIDGE, NATIVE, AND TARGET-PLATFORM EVIDENCE OPEN.**
 
 Current source captures exact sessions and immutable command inputs before asynchronous
 boundaries. Delete-file events settle only their bounded exact session/action/file owner;
@@ -9185,19 +9185,28 @@ and idempotent nested creation, complete validation before creation, symlink/jun
 refusal, exact/same-name rename, destination-symlink replacement without target mutation, Unix
 source-generation mismatch and retained-parent path swap, and Windows exact-source-handle rename
 after its original name is replaced.
-The Dart suite remains wired into `scripts/dart-verify.sh`. The 859-line source-wording recognizer, its 572-line workspace
-duplicate, and shared/Apple invocations were deleted because they ran no Dart, bridge,
-filesystem command, target, or application behavior. No Dart, Flutter, Rust compiler, RustDesk
-product, or test executable ran for this correction. Host `rustfmt --check` parsed the changed
-Rust source and found no formatting difference in the new regions; its only remaining findings
-are three pre-existing test-format differences outside this slice. No user-owned Podman, Docker,
-or libvirt socket was present; an unprivileged
-Bubblewrap container and direct user/network namespace fallback both failed before command
-execution because this host denied their namespace setup. No ambient host Cargo, rootful daemon,
-root, host RustDesk, or host product/compiler/test execution fallback was used. Exact isolated
+The Dart suite remains wired into `scripts/dart-verify.sh`. The 859-line source-wording recognizer,
+its 572-line workspace duplicate, and shared/Apple invocations were deleted because they ran no
+Dart, bridge, filesystem command, target, or application behavior. The inherited
+`flutter/test/cm_test.dart` manual GUI launcher was also deleted: it contained no `test` or
+`testWidgets` case and no assertion, had no live caller, no longer compiled against `Client`, and
+made the real Flutter test inventory fail before behavioral execution.
+
+The exact tracked candidate source subsequently ran under the retained Flutter 3.24.5 toolchain in
+an ordinary-user, snapshot-on QEMU guest with `-nic none`, no route, and only guest loopback enabled
+for Flutter's private test-runner socket. Offline package resolution left `pubspec.lock` unchanged.
+The ownership file passed all 15 visible cases in 4 seconds; the complete remaining 22-file Flutter
+inventory passed all 165 visible cases with zero runner errors in 17 seconds at concurrency one.
+The `FileController` translation dependency is now explicit at every construction site, so these
+model tests do not initialize native FFI merely to label a dialog. The empty-directory case uses
+`tester.pump()` instead of awaiting a fake-async zero-duration timer that can never advance itself.
+This was an exact-source Dart/Flutter model run, not fresh FRB generation: it reused the retained
+generated Dart bridge (`33db9d840bdfe2081f187b61f88436515d58c8482a6c49626901702d259ef813` /
+`07607702bac08dd620102cda04ef86759902ba04f256e469e2f567b9f5b5a686`). It ran no Rust native
+deletion implementation or RustDesk product process. Fresh bridge generation and exact isolated
 execution on Android, iOS, Windows, Linux, macOS, and applicable web targets—including task
 swipe/reopen/Force Stop, desktop replacement, reordered results, cross-version transfer,
-performance/resource soak, and cleanup—remains OPEN under the global STOP-SHIP matrix.
+performance/resource soak, and cleanup—remain OPEN under the global STOP-SHIP matrix.
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 

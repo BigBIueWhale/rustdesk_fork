@@ -8,6 +8,8 @@ import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
 
+String _identityTranslate(String text) => text;
+
 FileFetcherRequests _fetcherRequests() => FileFetcherRequests(
       readDirectory: (sessionId, path, showHidden) => Future<void>.value(),
       readEmptyDirectories: (sessionId, path, showHidden) =>
@@ -124,6 +126,7 @@ void main() {
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
           DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
       requests: _controllerRequests(sendFiles: (sessionId, actionId, path,
           to, fileNum, includeHidden, isRemote, isDirectory) async {
         calls.add({
@@ -182,6 +185,7 @@ void main() {
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
           DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
       requests: _controllerRequests(sendFiles: (actualSession, actionId, path,
           to, fileNum, includeHidden, isRemote, isDirectory) async {
         calls.add({'session': actualSession, 'path': path, 'to': to});
@@ -247,6 +251,7 @@ void main() {
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
           DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
       requests: _controllerRequests(
           renameFile: (actualSession, actionId, path, newName, isRemote) async {
         calls.add({
@@ -313,6 +318,7 @@ void main() {
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
           DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
       requests: _controllerRequests(
           createDirectory: (actualSession, actionId, path, isRemote) async {
         expect(actionId, 71);
@@ -400,6 +406,7 @@ void main() {
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
           DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
       requests: _controllerRequests(removeEmptyDirectories:
           (actualSession, actionId, path, isRemote) async {
         removeCalls.add({
@@ -444,7 +451,7 @@ void main() {
         await jobController.jobDone(
             {'id': '3', 'file_num': '0', 'speed': '0'}, session),
         isFalse);
-    await Future<void>.delayed(Duration.zero);
+    await tester.pump();
     expect(displayJob.state, JobState.none);
 
     releaseRemove.complete();
@@ -510,6 +517,7 @@ void main() {
       fileFetcher: fileFetcher,
       getOtherSideDirectoryData: () =>
           DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
       requests: _controllerRequests(
         removeFile: (actualSession, actionId, path, isRemote, fileNum) async {
           fileRemovals.add({

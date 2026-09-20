@@ -135,7 +135,7 @@ def main() -> int:
     parser.add_argument(
         "--authority",
         required=True,
-        choices=("cache", "systemd-cache", "bounded-result"),
+        choices=("cache", "systemd-cache", "bounded-result", "sealed-input"),
     )
     parser.add_argument("--shared-dir", required=True)
     parser.add_argument("--shared-identity", required=True)
@@ -247,7 +247,8 @@ def main() -> int:
         fail(f"cannot create Landlock ruleset: {os.strerror(error)}")
 
     allowed_fds: list[int] = [shared_fd, binary_fd]
-    add_path_rule(libc, ruleset_fd, shared_fd, SHARED_ACCESS)
+    shared_access = READ_ACCESS if args.authority == "sealed-input" else SHARED_ACCESS
+    add_path_rule(libc, ruleset_fd, shared_fd, shared_access)
     add_path_rule(libc, ruleset_fd, binary_fd, FS_EXECUTE | FS_READ_FILE)
     for path, access, directory in (
         ("/usr/lib", READ_ACCESS, True),

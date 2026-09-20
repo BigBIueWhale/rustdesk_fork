@@ -6,11 +6,14 @@ case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
         ;;
+    12:--hbb-common-fs)
+        MODE=hbb-common-fs
+        ;;
     12:--debian-systemd-lifecycle)
         MODE=debian-systemd-lifecycle
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -22,6 +25,10 @@ readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
 readonly MODE
+readonly HBB_SOURCE_ARCHIVE=${9:-}
+readonly HBB_SOURCE_COMMIT=${10:-}
+readonly HBB_SOURCE_TREE=${11:-}
+readonly HBB_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly DEV_CHECK_ARCHIVE=${9:-}
 readonly LIFECYCLE_ARTIFACT=${10:-}
 readonly LIFECYCLE_ARTIFACT_SHA256=${11:-}
@@ -68,6 +75,7 @@ readonly CONTAINER=rustdesk-verifier-authority-probe
 DAEMON_PID=
 CONTAINER_ID=
 LIFECYCLE_LIBS_MOUNTED=0
+SEALED_INPUTS_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -234,6 +242,230 @@ run_debian_systemd_lifecycle() {
         "$LIFECYCLE_ARTIFACT_SHA256" "$LIFECYCLE_COMMIT"
 }
 
+run_hbb_common_fs() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/hbb-common-fs-source
+    local output=$ROOT/hbb-common-fs.out
+    local rust_archive=$inputs/rust-1.75.tar.xz
+    local vendor=$inputs/cargo-vendor
+    local vendor_config=$inputs/cargo-vendor-config.toml
+    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
+    local load_output container_status=0 inspect namespace_inspect result_line tests_passed
+    local source_archive_sha source_before input_mount_options
+    local -a required_tests=(
+        r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree
+        r_s11hm_remove_empty_directory_tree_reports_a_nonempty_tree
+        r_s11hm_nonrecursive_directory_removal_uses_empty_only_finality
+        r_s11hm_remove_empty_directory_tree_refuses_a_directory_symlink_root
+        r_s11hm_remove_empty_directory_tree_unlinks_nested_symlink_without_traversal
+        r_s11hm_retained_directory_refuses_a_replacement_root_edge
+        r_s11hm_remove_empty_directory_tree_enforces_depth_bound
+        r_s11hm_remove_file_refuses_a_symlinked_parent
+        remove_file_rejects_empty_path
+        remove_file_rejects_null_byte_path
+        create_dir_rejects_empty_path
+        create_dir_rejects_null_byte_path
+        create_dir_creates_a_legitimate_nested_tree_idempotently
+        create_dir_rejects_parent_traversal_before_any_component_is_created
+        create_dir_refuses_a_symlink_parent_without_mutating_its_target
+        rename_file_rejects_invalid_new_name
+        rename_file_accepts_valid_new_name
+        rename_file_replaces_a_symlink_leaf_without_touching_its_target
+        rename_file_refuses_a_symlink_parent_without_mutating_its_target
+        rename_admitted_entry_refuses_a_replaced_source_name
+        rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
+    )
+
+    [[ "$HBB_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Rust-test source commit is malformed'
+    [[ "$HBB_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Rust-test source tree is malformed'
+    [[ "$HBB_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Rust-test source archive digest is malformed'
+    [ -f "$HBB_SOURCE_ARCHIVE" ] && [ ! -L "$HBB_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$HBB_SOURCE_ARCHIVE")" = 4000:4000:400:1 ] \
+        || fail 'focused Rust-test source archive metadata differs'
+    source_archive_sha="$(sha256sum "$HBB_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$HBB_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Rust-test source archive digest differs'
+
+    rm -rf -- "$source_root"
+    mkdir "$source_root"
+    tar -xf "$HBB_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$source_root" \
+        || fail 'cannot extract the exact focused-test source archive'
+    chown -R 1000:1000 "$source_root"
+    [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
+              | awk '{ print $1 }')" = \
+      "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
+        || fail 'focused-test source archive differs from its guest bootstrap'
+    source_before="$source_archive_sha:$(sha256sum "$source_root/Cargo.lock" \
+        "$source_root/libs/hbb_common/src/fs.rs")"
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed focused-test input authority'
+    SEALED_INPUTS_MOUNTED=1
+    input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed focused-test input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed focused-test inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed focused-test inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed focused-test inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed focused-test inputs permit direct execution' ;; esac
+
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
+      "1000:1000:400:1:$SIZE_RUST_1_75" ] \
+        && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = "$SHA256_RUST_1_75" ] \
+        || fail 'sealed Rust 1.75 archive differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
+      "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
+        && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
+             "$SHA256_CARGO_VENDOR_CONFIG" ] \
+        || fail 'sealed Cargo source map differs'
+    [ -d "$vendor" ] && [ ! -L "$vendor" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$vendor")" = 1000:1000:500 ] \
+        || fail 'sealed Cargo vendor root metadata differs'
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        python3 -I -S "$source_root/scripts/online-input-provenance.py" \
+            verify-subtree --tree "$vendor" \
+            --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        || fail 'sealed Cargo vendor closure differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
+      "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
+             "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Debian-builder image archive differs'
+
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
+                --archive "$builder_archive" \
+                --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+                --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                --role deb-builder \
+                --expected-id "$DEB_BUILDER_IMAGE_ID" \
+                --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+                --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+                --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+                --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                --config-id "$DEB_BUILDER_CONFIG_ID" \
+                --manifest-id "$DEB_BUILDER_MANIFEST_ID"
+    )" || fail 'certified Debian-builder image verification/load failed'
+    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+        || fail "Debian-builder image receipt differs: $load_output"
+
+    CONTAINER_ID="$(
+        "$CLIENT" --host "unix://$SOCK" create \
+            --name rustdesk-hbb-common-fs \
+            --pull=never \
+            --network=none \
+            --read-only \
+            --pids-limit=1024 \
+            --memory=8g \
+            --memory-swap=8g \
+            --cpus=4 \
+            --ulimit nofile=4096:4096 \
+            --ulimit core=0:0 \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --security-opt=apparmor=docker-default \
+            --user 1000:1000 \
+            --mount "type=bind,source=$source_root,target=/source" \
+            --mount "type=bind,source=$vendor,target=/vendor,readonly" \
+            --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly" \
+            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly" \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
+            --workdir /source \
+            "$DEB_BUILDER_IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+                set -- /sys/class/net/*
+                [ "$#" -eq 1 ] && [ "$1" = /sys/class/net/lo ]
+                uid= gid= cap= nnp= seccomp=
+                while IFS=":" read -r key value; do
+                    set -- $value
+                    case "$key" in
+                        Uid) uid="$1:$2:$3:$4" ;;
+                        Gid) gid="$1:$2:$3:$4" ;;
+                        CapEff) cap=$1 ;;
+                        NoNewPrivs) nnp=$1 ;;
+                        Seccomp) seccomp=$1 ;;
+                    esac
+                done </proc/self/status
+                [ "$uid" = 1000:1000:1000:1000 ]
+                [ "$gid" = 1000:1000:1000:1000 ]
+                [ "$cap" = 0000000000000000 ]
+                [ "$nnp" = 1 ]
+                [ "$seccomp" = 2 ]
+                IFS= read -r apparmor </proc/self/attr/current
+                case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
+                mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home /tmp/cargo-target
+                tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
+                /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
+                    --prefix=/tmp/rust --disable-ldconfig >/dev/null
+                sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
+                    /inputs/config.toml >/tmp/cargo-home/config.toml
+                [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
+                export HOME=/tmp/home CARGO_HOME=/tmp/cargo-home \
+                    CARGO_TARGET_DIR=/tmp/cargo-target RUSTUP_HOME=/nonexistent \
+                    RUSTUP_TOOLCHAIN= PATH=/tmp/rust/bin:/usr/bin:/bin \
+                    LANG=C LC_ALL=C CARGO_NET_OFFLINE=true
+                [ "$(rustc --version)" = "rustc 1.75.0 (82e1608df 2023-12-21)" ]
+                [ "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)" ]
+                cargo test --offline --locked -p hbb_common --lib \
+                    fs::tests:: --color never -- --test-threads=1
+            '
+    )"
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Rust-test container ID is malformed'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
+        "$CONTAINER_ID")"
+    [ "$inspect" = \
+      'none|true|1000:1000|8589934592|8589934592|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+        || fail "focused Rust-test container authority differs: $inspect"
+    namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
+        "$CONTAINER_ID")"
+    [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
+        || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+        >"$output" 2>&1 || container_status=$?
+    [ "$container_status" -eq 0 ] \
+        || { tail -n 200 "$output" >&2; fail "focused Rust tests exited with status $container_status"; }
+    [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
+        || fail 'focused Rust-test output exceeds its bound'
+    result_line="$(grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" \
+        || { tail -n 200 "$output" >&2; fail 'focused Rust-test success summary is absent'; }
+    [ "$(grep -Ec '^test result: ' "$output")" -eq 1 ] \
+        || fail 'focused Rust-test result summary is duplicated'
+    tests_passed="$(printf '%s\n' "$result_line" | sed -E 's/^test result: ok\. ([0-9]+) passed;.*/\1/')"
+    for test_name in "${required_tests[@]}"; do
+        grep -Fxq "test fs::tests::$test_name ... ok" "$output" \
+            || { tail -n 200 "$output" >&2; fail "load-bearing filesystem test did not pass: $test_name"; }
+    done
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'focused Rust-test container did not exit cleanly'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_IMAGE_ID" >/dev/null
+    [ "$source_before" = \
+      "$source_archive_sha:$(sha256sum "$source_root/Cargo.lock" \
+          "$source_root/libs/hbb_common/src/fs.rs")" ] \
+        || fail 'focused Rust-test source inputs changed during execution'
+    stop_docker_authority
+    umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$result_line"
+    printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$tests_passed" \
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID"
+}
+
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
@@ -254,6 +486,10 @@ cleanup() {
         wait "$DAEMON_PID" 2>/dev/null || daemon_status=$?
         [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] || status=1
         DAEMON_PID=
+    fi
+    if [ "$SEALED_INPUTS_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1
+        SEALED_INPUTS_MOUNTED=0
     fi
     if [ "$status" -ne 0 ] && [ -f "$LOG" ]; then
         tail -n 160 "$LOG" >&2 || true
@@ -456,10 +692,12 @@ done
 [ "$ready" -eq 1 ] || fail 'guest-only Docker daemon did not become ready'
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
-chown 0:4000 "$SOCK"
+docker_socket_gid=4000
+[ "$MODE" != hbb-common-fs ] || docker_socket_gid=1000
+chown "0:$docker_socket_gid" "$SOCK"
 chmod 0660 "$SOCK"
 chmod 0444 "$PIDFILE"
-[ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:4000:660 ] \
+[ "$(stat -c '%u:%g:%a' -- "$SOCK")" = "0:$docker_socket_gid:660" ] \
     || fail 'Docker Unix socket authority differs'
 [ "$(readlink -f -- "/proc/$DAEMON_PID/exe")" = "$BIN/dockerd" ] \
     || fail 'Docker daemon executable identity differs before generation publication'
@@ -485,6 +723,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = hbb-common-fs ]; then
+    run_hbb_common_fs
     exit 0
 fi
 

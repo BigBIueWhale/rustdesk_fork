@@ -25,6 +25,12 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
+    1:--hbb-common-fs)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=hbb-common-fs
+        ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
             && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
@@ -39,7 +45,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -52,6 +58,13 @@ readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
 readonly BOOT_ROOT="$INPUT_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
 readonly KERNEL="$BOOT_ROOT/vmlinuz"
 readonly INITRD="$BOOT_ROOT/initrd.img"
+readonly VIRTIOFSD_PACKAGE="$INPUT_ROOT/virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
+readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
+readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
+readonly RUST_TEST_ARCHIVE="$ONLINE_INPUTS/rust-${RUST_VERSION}.tar.xz"
+readonly CARGO_VENDOR_ROOT="$ONLINE_INPUTS/cargo-vendor"
+readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
+readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar.gz"
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
@@ -119,9 +132,15 @@ readonly SERIAL_LIMIT=8388608
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly VM_TIMEOUT_SECONDS=480
     readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=2048
+elif [ "$MODE" = hbb-common-fs ]; then
+    readonly VM_TIMEOUT_SECONDS=1800
+    readonly OVERLAY_SIZE=16G
+    readonly VM_MEMORY=8192
 else
     readonly VM_TIMEOUT_SECONDS=90
     readonly OVERLAY_SIZE=6G
+    readonly VM_MEMORY=2048
 fi
 
 RUN=
@@ -134,6 +153,9 @@ CAPTURE_PID=
 CAPTURE_START=
 KERNEL_FD=
 INITRD_FD=
+VIRTIOFSD_PID=
+VIRTIOFSD_START=
+VIRTIOFSD_BINARY=
 RUN_COMPLETE=0
 
 fail() {
@@ -177,6 +199,66 @@ is_exact_capture_process() {
         && [ "$(process_start_time "$CAPTURE_PID" 2>/dev/null)" = "$CAPTURE_START" ] \
         && [ "$(/usr/bin/readlink -f "/proc/$CAPTURE_PID/exe" 2>/dev/null)" = \
              "$(/usr/bin/readlink -f /usr/bin/python3)" ]
+}
+
+is_exact_virtiofsd_process() {
+    [ -n "$VIRTIOFSD_PID" ] && [ -n "$VIRTIOFSD_START" ] \
+        && [ -n "$VIRTIOFSD_BINARY" ] \
+        && [ -r "/proc/$VIRTIOFSD_PID/stat" ] \
+        && [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+        && [ "$(/usr/bin/readlink -f "/proc/$VIRTIOFSD_PID/exe" 2>/dev/null)" = \
+             "$VIRTIOFSD_BINARY" ] \
+        && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ]
+}
+
+terminate_exact_virtiofsd_process() {
+    local signal attempt
+    is_exact_virtiofsd_process || return 0
+    for signal in TERM KILL; do
+        /usr/bin/kill -"$signal" "$VIRTIOFSD_PID" 2>/dev/null || return 1
+        for attempt in $(/usr/bin/seq 1 100); do
+            is_exact_virtiofsd_process || return 0
+            /usr/bin/sleep 0.01
+        done
+    done
+    ! is_exact_virtiofsd_process
+}
+
+start_sealed_input_virtiofsd() {
+    local socket=$1 log=$2 shared_identity=$3 receipt ready=0
+    /usr/bin/python3 -I -S "$VIRTIOFSD_LAUNCHER" \
+        --binary "$VIRTIOFSD_BINARY" \
+        --binary-sha256 "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY" \
+        --authority sealed-input \
+        --shared-dir "$ONLINE_INPUTS" --shared-identity "$shared_identity" \
+        --socket "$socket" --uid "$HOST_UID" --gid "$HOST_GID" \
+        >"$log" 2>&1 &
+    VIRTIOFSD_PID=$!
+    VIRTIOFSD_START="$(process_start_time "$VIRTIOFSD_PID")" \
+        || fail 'cannot record sealed-input virtiofsd generation'
+    for _ in $(/usr/bin/seq 1 600); do
+        if is_exact_virtiofsd_process \
+           && verify_private_socket "$socket" \
+           && [ "$(/usr/bin/awk '/^NoNewPrivs:/ { print $2 }' "/proc/$VIRTIOFSD_PID/status")" = 1 ] \
+           && [ "$(/usr/bin/awk '/^Seccomp:/ { print $2 }' "/proc/$VIRTIOFSD_PID/status")" = 2 ]; then
+            ready=1
+            break
+        fi
+        is_exact_virtiofsd_process || break
+        /usr/bin/sleep 0.05
+    done
+    [ "$ready" -eq 1 ] \
+        || { /usr/bin/tail -n 120 "$log" >&2; fail 'sealed-input virtiofsd did not become ready'; }
+    [ "$(/usr/bin/awk '/^Uid:/ { print $2":"$3":"$4":"$5 }' "/proc/$VIRTIOFSD_PID/status")" = \
+      "$HOST_UID:$HOST_UID:$HOST_UID:$HOST_UID" ] \
+        && [ "$(/usr/bin/awk '/^Gid:/ { print $2":"$3":"$4":"$5 }' "/proc/$VIRTIOFSD_PID/status")" = \
+             "$HOST_GID:$HOST_GID:$HOST_GID:$HOST_GID" ] \
+        || fail 'sealed-input virtiofsd process identity differs'
+    receipt="$(/usr/bin/grep '^VIRTIOFSD_LANDLOCK=' "$log")" \
+        || fail 'sealed-input virtiofsd Landlock receipt is absent'
+    [[ "$receipt" =~ ^VIRTIOFSD_LANDLOCK=pass\ abi=([0-9]+)\ uid=$HOST_UID\ gid=$HOST_GID\ filesystem=sealed-input-only\ tcp=denied\ socket=prebound\ seccomp=kill$ ]] \
+        && [ "${BASH_REMATCH[1]}" -ge 8 ] \
+        || fail 'sealed-input virtiofsd Landlock receipt differs'
 }
 
 terminate_exact_vm_process() {
@@ -235,6 +317,12 @@ cleanup() {
     terminate_exact_vm_process || cleanup_failed=1
     VM_PID=
     VM_START=
+    if [ -n "$VIRTIOFSD_PID" ]; then
+        terminate_exact_virtiofsd_process || cleanup_failed=1
+        wait "$VIRTIOFSD_PID" 2>/dev/null || true
+        VIRTIOFSD_PID=
+        VIRTIOFSD_START=
+    fi
     if [ -n "$CAPTURE_PID" ]; then
         if is_exact_capture_process; then
             kill -TERM "$CAPTURE_PID" 2>/dev/null || cleanup_failed=1
@@ -315,6 +403,38 @@ done
 verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
 verify_sha256 "$DOCKER_BUNDLE" "$SHA256_VERIFIER_VM_DOCKER_STATIC"
 /usr/bin/qemu-img check -q "$BASE" || fail 'Debian verifier-VM base failed qcow2 validation'
+if [ "$MODE" = hbb-common-fs ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed focused-test input root metadata differs'
+    for input in \
+        "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
+        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed focused-test input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Cargo vendor root metadata differs'
+fi
 /usr/bin/python3 -I -S - "$BASE" <<'PY'
 import json
 import subprocess
@@ -354,7 +474,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" \
     "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" \
     "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" \
-    "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" \
+    "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" \
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
@@ -379,6 +499,8 @@ done
     && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
 [ -x "$BOOT_DERIVER" ] || fail 'verifier-VM boot deriver must be executable'
+[ "$MODE" != hbb-common-fs ] || [ -x "$VIRTIOFSD_LAUNCHER" ] \
+    || fail 'sealed-input virtiofsd launcher must be executable'
 VERIFIER_VM_INPUT_ROOT="$INPUT_ROOT" "$BOOT_DERIVER"
 [ -d "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
     || fail 'direct-boot cache is absent or ambiguous'
@@ -397,6 +519,27 @@ for input in "$KERNEL:$SIZE_VERIFIER_VM_KERNEL" "$INITRD:$SIZE_VERIFIER_VM_INITR
 done
 verify_sha256 "$KERNEL" "$SHA256_VERIFIER_VM_KERNEL"
 verify_sha256 "$INITRD" "$SHA256_VERIFIER_VM_INITRD"
+
+HBB_SOURCE_COMMIT=
+HBB_SOURCE_TREE=
+HBB_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = hbb-common-fs ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        || fail 'focused Rust tests require the one checked-out master authority'
+    HBB_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve focused Rust-test source commit'
+    HBB_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve focused Rust-test source tree'
+    [ "$HBB_SOURCE_COMMIT" = \
+      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+        && [ "$HBB_SOURCE_COMMIT" = \
+             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
+        || fail 'focused Rust-test source differs from pushed master'
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'focused Rust tests require a clean source tree'
+    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+        || fail 'Git replacement refs are forbidden'
+fi
 
 LIFECYCLE_ARTIFACT_ID=
 DEV_CHECK_ARCHIVE_ID=
@@ -479,17 +622,54 @@ readonly LISTENERS_DURING=$RUN/listeners.during
 readonly LISTENERS_AFTER=$RUN/listeners.after
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
+readonly HBB_SOURCE_ARCHIVE=$RUN/source.tar
+readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
+readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 
 base_before="$(/usr/bin/sha512sum "$BASE")"
 docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
+focused_inputs_before=
+if [ "$MODE" = hbb-common-fs ]; then
+    focused_inputs_before="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$DEB_BUILDER_ARCHIVE" \
+            "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" \
+            "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+fi
 capture_listeners >"$LISTENERS_BEFORE"
 /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
+
+if [ "$MODE" = hbb-common-fs ]; then
+    git_closed -C "$REPO_ROOT" archive --format=tar "$HBB_SOURCE_COMMIT" \
+        >"$HBB_SOURCE_ARCHIVE" \
+        || fail 'cannot create the exact focused Rust-test source archive'
+    /usr/bin/chmod 0400 "$HBB_SOURCE_ARCHIVE"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$HBB_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        || fail 'focused Rust-test source archive metadata differs'
+    HBB_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$HBB_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
+    )"
+    /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
+    /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
+        || fail 'cannot extract the authenticated virtiofsd package privately'
+    VIRTIOFSD_BINARY="$RUN/virtiofsd-package/usr/libexec/virtiofsd"
+    [ -f "$VIRTIOFSD_BINARY" ] && [ ! -L "$VIRTIOFSD_BINARY" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h:%s' -- "$VIRTIOFSD_BINARY")" = \
+             "$HOST_UID:$HOST_GID:1:$SIZE_VERIFIER_VM_VIRTIOFSD_BINARY" ] \
+        || fail 'extracted virtiofsd binary is absent or ambiguous'
+    /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
+    verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
+fi
 
 payload_identity=()
 lifecycle_payload_grafts=()
@@ -499,6 +679,9 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
         "devcheck.docker.tar.gz=$DEV_CHECK_ARCHIVE"
         "artifact/rustdesk-x86_64.deb=$LIFECYCLE_ARTIFACT"
     )
+elif [ "$MODE" = hbb-common-fs ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=("source.tar=$HBB_SOURCE_ARCHIVE")
 fi
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
     -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
@@ -574,6 +757,8 @@ fi
 guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
+elif [ "$MODE" = hbb-common-fs ]; then
+    guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $HBB_SOURCE_COMMIT $HBB_SOURCE_TREE $HBB_SOURCE_ARCHIVE_SHA256"
 fi
 printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -618,6 +803,25 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
 [ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a:%h:%s' -- "/proc/$$/fd/$INITRD_FD")" = \
   "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD")" ] \
     || fail 'retained initramfs descriptor identity differs'
+memory_args=(-m "$VM_MEMORY")
+focused_qemu_args=()
+if [ "$MODE" = hbb-common-fs ]; then
+    start_sealed_input_virtiofsd \
+        "$VIRTIOFS_SOCKET" "$VIRTIOFSD_LOG" \
+        "$(/usr/bin/stat -c '%d:%i' -- "$ONLINE_INPUTS")"
+    focused_qemu_args=(
+        -chardev "socket,id=sealed-input,path=$VIRTIOFS_SOCKET"
+        -device "vhost-user-fs-pci,chardev=sealed-input,tag=rustdesk-sealed-inputs,queue-size=1024"
+    )
+    memory_args=(
+        -m "$VM_MEMORY"
+        -object "memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on"
+        -numa node,memdev=mem
+    )
+    capture_listeners >"$LISTENERS_DURING"
+    /usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_DURING" \
+        || fail 'sealed-input virtiofsd changed the host INET listener inventory'
+fi
 vm_started_seconds=$SECONDS
 /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
     /usr/bin/qemu-system-x86_64 \
@@ -625,7 +829,7 @@ vm_started_seconds=$SECONDS
         -machine q35 \
         -accel kvm \
         -cpu host \
-        -m 2048 \
+        "${memory_args[@]}" \
         -smp 4 \
         -no-reboot \
         -no-user-config \
@@ -641,6 +845,7 @@ vm_started_seconds=$SECONDS
         -chardev "socket,id=serial0,path=$SERIAL_SOCKET,server=on,wait=on" \
         -device isa-serial,chardev=serial0 \
         -qmp "unix:$QMP_SOCKET,server=on,wait=off" \
+        "${focused_qemu_args[@]}" \
         -drive "file=$OVERLAY,if=virtio,format=qcow2,cache=none" \
         -drive "file=$SEED,if=virtio,format=raw,media=cdrom,readonly=on" \
         -drive "file=$PAYLOAD,if=virtio,format=raw,media=cdrom,readonly=on" &
@@ -699,6 +904,20 @@ CAPTURE_PID=
 CAPTURE_START=
 [ "$vm_status" -eq 0 ] || { tail -n 240 "$SERIAL_LOG" >&2; fail "networkless verifier VM exited with status $vm_status"; }
 [ "$capture_status" -eq 0 ] || fail "bounded serial capture exited with status $capture_status"
+if [ -n "$VIRTIOFSD_PID" ]; then
+    for _ in $(/usr/bin/seq 1 1000); do
+        is_exact_virtiofsd_process || break
+        /usr/bin/sleep 0.01
+    done
+    is_exact_virtiofsd_process \
+        && { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd did not retire after QEMU disconnected'; }
+    virtiofsd_status=0
+    wait "$VIRTIOFSD_PID" || virtiofsd_status=$?
+    [ "$virtiofsd_status" -eq 0 ] \
+        || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail "sealed-input virtiofsd exited with status $virtiofsd_status"; }
+    VIRTIOFSD_PID=
+    VIRTIOFSD_START=
+fi
 grep -Fxq "bounded-unix-stream-capture: PASS bytes=$(stat -c '%s' "$SERIAL_LOG")" "$CAPTURE_RECEIPT" \
     || fail 'bounded serial-capture receipt differs'
 if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)" = "$VM_START" ]; then
@@ -709,6 +928,9 @@ capture_listeners >"$LISTENERS_AFTER"
 [ ! -s "$NEW_AFTER" ] || fail 'verifier VM left an unexpected host INET listener'
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
+[ "$MODE" != hbb-common-fs ] \
+    || reconcile_socket "$VIRTIOFS_SOCKET" \
+    || fail 'sealed-input virtiofsd channel cleanup is ambiguous'
 
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     /usr/bin/grep -Eq \
@@ -736,7 +958,7 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     require_exact_fixed_receipt \
         "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact" \
         'lifecycle guest authority marker'
-else
+elif [ "$MODE" = authority-smoke ]; then
 /usr/bin/grep -Fq \
     "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off inner_uid=4000 inner_network=none inner_root=readonly inner_caps=none inner_nnp=on inner_seccomp=filter inner_apparmor=docker-default" \
     "$SERIAL_LOG" \
@@ -882,6 +1104,14 @@ mapfile -t dart_frb_source_gate_receipts < <(
 printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
+else
+    /usr/bin/grep -Eq \
+        "^HBB_COMMON_FS_VM=pass commit=$HBB_SOURCE_COMMIT tree=$HBB_SOURCE_TREE tests=[1-9][0-9]* rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder=$DEB_BUILDER_IMAGE_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined$" \
+        "$SERIAL_LOG" \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused hbb_common filesystem test receipt is absent'; }
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'focused Rust-test cloud-init completion marker'
 fi
 [ "$MODE" != debian-systemd-lifecycle ] || /usr/bin/grep -Fq \
     'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
@@ -898,8 +1128,25 @@ fi
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
+if [ "$MODE" = hbb-common-fs ]; then
+    focused_inputs_after="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$DEB_BUILDER_ARCHIVE" \
+            "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" \
+            "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed focused-test inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$HBB_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$HBB_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$HBB_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Rust-test source archive changed during execution'
+fi
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     [ "$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = \
       "$LIFECYCLE_ARTIFACT_ID" ] \
@@ -917,7 +1164,10 @@ RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
-else
+elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
+else
+    printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
 fi

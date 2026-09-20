@@ -8760,8 +8760,8 @@ state, VM, Android device/service, unrelated workload, or OS privilege boundary.
 
 ### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership
 
-**SOURCE IMPLEMENTED; EXECUTABLE DART REGRESSIONS AUTHORED AND WIRED; EXACT CURRENT
-FLUTTER/NATIVE/PACKAGE EVIDENCE OPEN.** The process-owned `ServerModel` uses one
+**SOURCE IMPLEMENTED; REAL GENERATED-BRIDGE VM EXECUTION REACHED THE TESTS BUT IS NOT
+YET GREEN; EXACT CURRENT FLUTTER/NATIVE/PACKAGE EVIDENCE OPEN.** The process-owned `ServerModel` uses one
 `ServerStatusRefreshLoop`: one one-shot timer, at most one active complete turn, no queue or
 catch-up path, and a terminal close that cancels pending time and awaits the active turn. The
 next 500-millisecond interval starts only after client-count/snapshot/window reconciliation and
@@ -8772,16 +8772,28 @@ persistent foreground service.
 
 `flutter/test/server_status_refresh_loop_test.dart` exercises slow-turn nonoverlap and the full
 post-completion interval, one-time readiness, visible failure with later progress, close/drain/
-no-rearm finality, and duplicate/restart refusal. Its real `flutter test --no-pub` invocation
-remains in `scripts/dart-verify.sh`. The former focused Python verifier, duplicated workspace
-validator/mutation catalog, and shared/Apple invocations were deleted because they only parsed
-source and documentation wording and did not execute the Dart scheduler.
+no-rearm finality, cancellation before the deferred first turn, and duplicate/restart refusal.
+Its real `flutter test --no-pub` invocation remains in `scripts/dart-verify.sh`. The former focused
+Python verifier, duplicated workspace validator/mutation catalog, and shared/Apple invocations were
+deleted because they only parsed source and documentation wording and did not execute the Dart
+scheduler.
 
-The repository's canonical `online/` toolchain/input closure is absent on this checkout, so no
-new exact Flutter test or package verdict is claimed here. Exact Android task-swipe/reopen/
-Force-Stop and Windows focus/minimize behavior, other platforms and cross-version operation,
-capture-through-presentation latency, sustained connection/resource soak, cold R-B2/R-B10
-equality, installed artifacts, independent reproduction, and external review remain STOP-SHIP.
+The first exact focused transaction at commit `a3e7752` ran in a no-NIC VM and networkless
+guest-only container from the sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, independently
+reproduced FRB-generator, Cargo-vendor, and Pub-cache inputs. It generated all bridge outputs,
+compiled them, and executed the combined 12-suite Flutter workload. The 11 unaffected suites
+completed, but this suite was not a pass: its first test used `tester.pump()` without a duration,
+which Flutter 3.24.5 documents and implements as microtask-only, so the zero-delay first-turn timer
+never fired and the test waited until the ten-minute default timeout. Later cases in that poisoned
+test isolate were not independent product failures. Commit `e5990ce` drives the exact fake-clock
+boundary with `pump(Duration.zero)`, removes waits on callbacks that had not started, adds the
+deferred-first-turn cancellation case, and reduces the per-test failure timeout to 30 seconds. An
+exact clean rerun is still required; no Flutter-model pass is claimed yet.
+
+Exact Android task-swipe/reopen/Force-Stop and Windows focus/minimize behavior, other platforms and
+cross-version operation, capture-through-presentation latency, sustained connection/resource soak,
+cold R-B2/R-B10 equality, installed artifacts, independent reproduction, and external review remain
+STOP-SHIP.
 
 ### R-S11hf/R-S11e-244 — bounded exact-generation global event dispatch
 

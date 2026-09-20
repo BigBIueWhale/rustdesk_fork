@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0f4219712621b43dbca643a39044a8ce1f2b560fd84dc18f8a8ac4fe91ad545a  requirements.html
+103fb56391e868fc2188ae8c634ac66213ab953ade3160b941e8a9a7f5bf19fd  requirements.html
 ```
 
 ## Current Verdict
@@ -539,7 +539,6 @@ timings, hashes, and confinement narration remain in Git history.
 | R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority | Screenshot checks reject only the retired process-global cache/setter path, while media checks select the exact owning constructor, controlled-audio owner, connection fields, and read-before-install order. |
 | R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority | The shared edge gate follows the bounded connection/channel-owned screenshot registry and the typed, authorized Remote-only Android desktop-capture owner set; the deleted `isViewCamera` Boolean is not authority. |
 | R-S11e-164 exact software-codec build-path verifier scope | The build-path scan excludes only the workspace verifier that contains inert negative-test literals; new and ordinary build-capable scripts remain scanned by default. |
-| R-S11e-165 current mobile build-authority launcher mutation | The Android outer builder has one fixed `local_docker` launcher with `--network=none`; the hostile fixture changes that exact launcher to host networking and must be rejected. |
 | R-S11e-166 current shared Apple companion-gate authority | The shared gate binds the fixed selected Apple target matrix, rejects target overrides, and checks the exact reproducibility-epoch transfer plus two private read-only source mounts. |
 | R-S11e-167 current shared Android serialization-gate authority | An exact adjacency predicate requires `@Synchronized` immediately before `rustSetByName`; the broken quiet-grep pipeline and broad annotation-presence surrogate are absent. |
 | R-S11e-168 current Pub-cache lock-postcondition gate authority | Networked production and offline replay retain exact read-only project-lock preimages and require equality after enforced resolution, with Flutter tool lock protection remaining separate. |
@@ -7867,51 +7866,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   gate, existing R-X9 requirement, Appendix C #193, and this ledger. Focused portable-crate tests and a locked,
   offline nonroot Linux check provide source/build evidence; native Windows and exact setup-artifact execution remain
   part of R-B2/R-B10.
-- **R-R2c — alternate mobile build authorities deleted — SOURCE CLOSED/GATED 2026-07-21; EXACT CURRENT-COMMIT
-  APK EVIDENCE REMAINS R-B2/R-B10.** History and current caller tracing establish two different layers. The ten
-  top-level Flutter scripts imported with the upstream tree were standalone entry points: `flutter/run.sh` fetched
-  tools and ran a generic host build; `flutter/build_android.sh` emitted multi-ABI APKs and an AAB;
-  `flutter/build_android_deps.sh` offered a second vcpkg acquisition model; `flutter/build_fdroid.sh` fetched and
-  built four Android ABIs; the iOS pair plus generic iOS builder emitted Apple artifacts; and the armv7/x86/x86_64
-  NDK helpers compiled unshipped Android targets. None had a live caller in the fork's release scripts. Commit
-  `e323e09` had already marked the F-Droid, iOS arm64, and Android armv7 scripts for deletion with target pruning,
-  but the imported executable files remained.
-
-  The actual authority was already singular: `scripts/online-fetch.sh` authenticates and stages the complete pinned
-  Android closure, including classic-mode `arm64-android` vcpkg natives; `scripts/build-android.sh` starts the
-  networkless nonroot build/signing containers; `scripts/android-apk-build.sh` invokes exactly
-  `flutter/ndk_arm64.sh` and one `flutter build apk --target-platform android-arm64 --split-per-abi`; and only the
-  exact arm64 helper is consumed from the Flutter directory. The upstream full matrix exists only at the
-  non-workflow `.github/workflows/flutter-build.yml.disabled` path. Its marker now makes that historical role
-  explicit, its top-level trigger/job keys are schema-demoted to `historical_on`/`historical_jobs`, and its
-  references to deleted helpers intentionally remain dangling. Renaming the file alone therefore cannot activate
-  the reference, let alone silently revive an alternate build. Apple compilation remains source-conformance-only
-  through the separate checker required by R-R2.
-
-  All ten obsolete scripts are deleted. R-R2c makes the exact negative inventory, sole top-level Flutter shell,
-  arm64 command chain, cache-staging authority, and inert-workflow boundary normative. The shared verifier rejects
-  every deleted path including dangling symlinks, rejects any second top-level Flutter shell, checks the retained
-  helper's regular executable type, and runs `scripts/verify-mobile-build-authority.py --self-test`. The focused
-  semantic validator independently checks the exact helper bytes, one caller, one arm64 split-APK command,
-  networkless/nonroot outer harness, arm64-only native staging, absent enabled workflow, schema-demoted inert
-  reference, requirement, Appendix C #194, and this ledger, with a deliberate mutation for every deleted path and
-  each positive authority edge. This closes conflicting source/build authority and future-reactivation debt; it is
-  not evidence that any obsolete script ran, the host was mutated, a listener existed, a non-arm64 artifact shipped,
-  privilege escalation occurred, or a system was compromised. A clean cold exact-commit Android double build,
-  signed-APK verification on the release artifact, and device behavior remain owned by R-B2/R-B10 and are not
-  inferred from this source closure.
-
-  Focused verification used the already-present immutable Apple/Rust/Python image
-  `sha256:612145fabd0c603417ab5e689e84d5b5a619f4edf31efceb3ecbe2813da2199c` as numeric UID/GID
-  1000:1000 with networking disabled, a read-only root/source mount, all capabilities dropped,
-  no-new-privileges, bounded CPU/memory/PIDs, no published ports, no Docker socket, and disposable tmpfs. The mobile
-  validator passed its baseline and rejected all 32 deliberate mutations. The complete workspace source-mutation
-  matrix, the dependency-inventory self-test and current inventory, the 63-case main-verifier authority
-  suite, native-codec/hash normal and mutation gates, Python parsing, edited-shell Bash parsing, and diff hygiene
-  passed.
-  No project build, APK build/sign, Android/device execution, full `scripts/verify.sh`, whole Apple checker, or R-B2
-  release was run for this source-only slice. The complete verifier still lacks its exact pinned dev-check image,
-  and the whole Apple checker would build images in preflight; neither boundary was bypassed or represented green.
+- **R-R2c — alternate mobile build authorities deleted — SOURCE CLOSED; CURRENT APK/DEVICE EVIDENCE OPEN.**
+  `scripts/online-fetch.sh`, `scripts/build-android.sh`, and `scripts/android-apk-build.sh` are the sole Android
+  release path. The ten imported generic, multi-ABI, F-Droid, iOS, and non-aarch64 top-level Flutter scripts remain
+  absent, including as symlinks; `flutter/ndk_arm64.sh` is the only top-level Flutter shell and contains the exact
+  locked arm64 command consumed once by the one arm64 split-APK build. The retained Flutter workflow text is
+  schema-inert and is checked separately by the GitHub-automation gate. The shared verifier directly checks this
+  small source topology, while the Android builder checker binds the authenticated verifier-VM funnel and forbids
+  host-Docker, root, host-network, published-port, and live-worktree fallbacks. The obsolete standalone 32-mutation
+  mobile verifier and its duplicate workspace verifier-of-verifier block are deleted; they had become false after
+  the builder correctly replaced `local_docker` with guest-only `verifier_vm_docker` and established no product or
+  artifact behavior. A clean cold exact-commit double build, signed current APK, installation, device lifecycle,
+  peer, presentation, and resource evidence remain required by R-B2/R-B10 and are not inferred from source checks.
 - **R-R2d — retained GitHub Actions references made schema-inert — SOURCE CLOSED/GATED 2026-07-21; EXACT
   CURRENT-COMMIT ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Commit `16252a9` disabled GitHub-hosted CI/CD by
   suffix-renaming seven upstream definitions under `.github/workflows/` to `*.disabled`. Current history and
@@ -7941,20 +7907,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   focused validator's rejection semantics and wiring and mutation-tests the validator, documentation, normative
   records, and shared invocation. This is a
   source-authority closure only; cold exact-commit artifacts and release execution remain R-B2/R-B10.
-
-  Focused verification used the already-present immutable Apple/Rust/Python image
-  `sha256:612145fabd0c603417ab5e689e84d5b5a619f4edf31efceb3ecbe2813da2199c` as numeric UID/GID
-  1000:1000 with networking disabled, a read-only root/source mount, all capabilities dropped,
-  no-new-privileges, bounded CPU/memory/PIDs, no published ports, no Docker socket, and disposable tmpfs. The
-  focused validator passed its baseline and rejected all 23 deliberate mutations, including alternate YAML key
-  spellings; the exact extracted shared-verifier block passed. The existing 32-mutation mobile authority gate,
-  complete independent workspace source-mutation sweep, dependency inventory/current inventory,
-  63-mutation main-verifier authority suite, native-codec/hash normal and self-test gates, in-memory Python parsing,
-  edited-shell Bash parsing, and diff hygiene passed. The broader workspace behavioral self-test reached its
-  intentional live-systemd-user-bus prerequisite inside the isolated container; the host bus was not mounted, and
-  that incomplete run is not represented as a pass. Verification and publication evidence for this loop are
-  recorded in `/tmp/privilege_securiry_deep_audit.md`. No project build, artifact build/signing, Android/device
-  execution, full `scripts/verify.sh`, whole Apple checker, or R-B2 release is claimed by this source-only change.
 - **R-R1a — obsolete Dependabot submodule updater deleted — SOURCE CLOSED/GATED 2026-07-21; REPOSITORY-SETTING
   STATE REMAINS SEPARATE EXTERNAL EVIDENCE.** Commit `16252a9` suffix-renamed the imported
   `.github/dependabot.yml` while disabling GitHub-hosted CI/CD. Unlike the seven workflow bodies retained for build

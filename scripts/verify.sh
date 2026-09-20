@@ -15642,8 +15642,21 @@ if [ "${#rr2c_flutter_shells[@]}" -ne 1 ] \
 fi
 [ -f flutter/ndk_arm64.sh ] && [ ! -L flutter/ndk_arm64.sh ] && [ -x flutter/ndk_arm64.sh ] \
   || rr2c_bad="$rr2c_bad arm64-helper-type-or-mode"
-if ! python3 scripts/verify-mobile-build-authority.py --repo . --self-test; then
-  rr2c_bad="$rr2c_bad semantic-contract"
+cmp -s flutter/ndk_arm64.sh <(printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'cargo ndk --platform 21 --target aarch64-linux-android build --locked --release --features flutter') \
+  || rr2c_bad="$rr2c_bad arm64-helper-command"
+[ "$(grep -cFx 'bash ./flutter/ndk_arm64.sh' scripts/android-apk-build.sh || true)" -eq 1 ] \
+  || rr2c_bad="$rr2c_bad arm64-helper-dispatch"
+mapfile -t rr2c_flutter_build_commands < <(
+  awk '!/^[[:space:]]*#/ && /flutter build (apk|appbundle)([[:space:]]|$)/ {
+    sub(/^[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); print
+  }' scripts/android-apk-build.sh
+)
+if [ "${#rr2c_flutter_build_commands[@]}" -ne 1 ] \
+  || [ "${rr2c_flutter_build_commands[0]:-}" != \
+       'cd flutter && flutter build apk --release --target-platform android-arm64 --split-per-abi' ]; then
+  rr2c_bad="$rr2c_bad flutter-build-command"
 fi
 if [ -n "$rr2c_bad" ]; then
   echo "  FAIL R-R2/R-R2c: mobile build authority is not the exact script-owned Android arm64 path:$rr2c_bad"; rc=1

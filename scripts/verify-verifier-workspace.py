@@ -15160,77 +15160,6 @@ def validate_debian_vendor_unit_ownership_contract(sources):
 
 
 
-def validate_mobile_build_authority_verifier_contract(sources):
-    focused = sources["mobile_build_authority_verifier"]
-    for text, label in (
-        ("FORBIDDEN_PATHS: Tuple[str, ...]", "mobile forbidden-path inventory"),
-        ("flutter/build_android.sh", "generic Android builder absence contract"),
-        ("flutter/build_android_deps.sh", "alternate Android dependency builder absence contract"),
-        ("flutter/build_fdroid.sh", "F-Droid builder absence contract"),
-        ("flutter/build_ios.sh", "generic iOS builder absence contract"),
-        ("flutter/ios_arm64.sh", "iOS arm64 helper absence contract"),
-        ("flutter/ios_x64.sh", "iOS x64 helper absence contract"),
-        ("flutter/ndk_arm.sh", "Android armv7 helper absence contract"),
-        ("flutter/ndk_x64.sh", "Android x64 helper absence contract"),
-        ("flutter/ndk_x86.sh", "Android x86 helper absence contract"),
-        ("flutter/run.sh", "generic host runner absence contract"),
-        (
-            'if sources[f"path:{relative}"] != "absent":',
-            "mobile path-state rejection semantics",
-        ),
-        (
-            'sources["flutter_shell_inventory"] != "flutter/ndk_arm64.sh"',
-            "sole Flutter shell inventory semantics",
-        ),
-        ('sources["helper"] != EXPECTED_HELPER', "exact arm64 helper semantics"),
-        (
-            "commands != (EXPECTED_FLUTTER_COMMAND,)",
-            "exact arm64 Flutter command semantics",
-        ),
-        (
-            'EXPECTED_ANDROID_CONTAINER_LAUNCHER = (\n'
-            '    "local_docker run --rm --pull=never --network=none --read-only"\n'
-            ")",
-            "current fixed-local Android container launcher",
-        ),
-        (
-            "EXPECTED_ANDROID_CONTAINER_LAUNCHER,\n"
-            "        1,\n"
-            '        "sole fixed-local networkless Android container launcher",',
-            "current Android launcher cardinality semantics",
-        ),
-        (
-            'EXPECTED_ANDROID_CONTAINER_LAUNCHER.replace(\n'
-            '            "--network=none", "--network=host"\n'
-            "        )",
-            "current Android host-network negative mutation",
-        ),
-        ("historical_on:", "schema-demoted workflow trigger semantics"),
-        ("historical_jobs:", "schema-demoted workflow jobs semantics"),
-        ('re.search(r"(?m)^(?:on|jobs):", disabled)', "active workflow schema rejection"),
-        ("--network=host", "host-network rejection semantics"),
-        ("--user 0:0", "root-container rejection semantics"),
-        ("MUTATIONS: Tuple[Mutation, ...]", "mobile authority mutation inventory"),
-        ("run_mutations(sources)", "mobile authority mutation dispatch"),
-    ):
-        require_text(focused, text, label)
-    require_text(
-        sources["verify"],
-        "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
-        "mobile authority focused-verifier wiring",
-    )
-    require_absent(
-        focused,
-        '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
-        "retired direct-Docker Android mutation anchor",
-    )
-    require_text(
-        sources["hardening"],
-        "R-S11e-165 current mobile build-authority launcher mutation",
-        "mobile current-launcher hardening ledger",
-    )
-
-
 def validate_installed_service_classifier_contract(sources):
     focused = sources["installed_service_classifier_verifier"]
     for text, label in (
@@ -29602,7 +29531,6 @@ def validate_sources(sources):
     validate_windows_amyuni_cleanup_excision_contract(sources)
     validate_windows_declarative_runtime_cleanup_contract(sources)
     validate_debian_vendor_unit_ownership_contract(sources)
-    validate_mobile_build_authority_verifier_contract(sources)
     validate_installed_service_classifier_contract(sources)
     validate_linux_service_terminal_authority_contract(sources)
     validate_linux_nondumpable_cm_contract(sources)
@@ -33763,9 +33691,6 @@ def main():
                 repo / "scripts/offline-image-provenance.py"
             ).read_text(encoding="utf-8"),
             "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
-            "mobile_build_authority_verifier": (
-                repo / "scripts/verify-mobile-build-authority.py"
-            ).read_text(encoding="utf-8"),
             "installed_service_classifier_verifier": (
                 repo / "scripts/verify-installed-service-classifier.py"
             ).read_text(encoding="utf-8"),

@@ -211,6 +211,18 @@ is_exact_virtiofsd_process() {
         && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ]
 }
 
+virtiofsd_seccomp_enforced() {
+    local task_status task_count=0
+    is_exact_virtiofsd_process || return 1
+    for task_status in /proc/"$VIRTIOFSD_PID"/task/[0-9]*/status; do
+        [ -r "$task_status" ] || return 1
+        [ "$(/usr/bin/awk '/^Seccomp:/ { print $2 }' "$task_status" 2>/dev/null)" = 2 ] \
+            || return 1
+        task_count=$((task_count + 1))
+    done
+    [ "$task_count" -ge 1 ]
+}
+
 terminate_exact_virtiofsd_process() {
     local signal attempt
     is_exact_virtiofsd_process || return 0
@@ -239,8 +251,7 @@ start_sealed_input_virtiofsd() {
     for _ in $(/usr/bin/seq 1 600); do
         if is_exact_virtiofsd_process \
            && verify_private_socket "$socket" \
-           && [ "$(/usr/bin/awk '/^NoNewPrivs:/ { print $2 }' "/proc/$VIRTIOFSD_PID/status")" = 1 ] \
-           && [ "$(/usr/bin/awk '/^Seccomp:/ { print $2 }' "/proc/$VIRTIOFSD_PID/status")" = 2 ]; then
+           && [ "$(/usr/bin/awk '/^NoNewPrivs:/ { print $2 }' "/proc/$VIRTIOFSD_PID/status")" = 1 ]; then
             ready=1
             break
         fi
@@ -873,6 +884,20 @@ VM_PID="$(<"$QEMU_PIDFILE")"
 [ "$(/usr/bin/readlink -f "/proc/$VM_PID/exe")" = /usr/bin/qemu-system-x86_64 ] \
     || fail 'QEMU PID does not identify the fixed hypervisor'
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
+if [ "$MODE" = hbb-common-fs ]; then
+    virtiofsd_seccomp_ready=0
+    for _ in $(/usr/bin/seq 1 1000); do
+        if virtiofsd_seccomp_enforced; then
+            virtiofsd_seccomp_ready=1
+            break
+        fi
+        is_exact_virtiofsd_process \
+            || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd exited during QEMU startup'; }
+        /usr/bin/sleep 0.01
+    done
+    [ "$virtiofsd_seccomp_ready" -eq 1 ] \
+        || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd did not enforce seccomp after QEMU connected'; }
+fi
 
 /usr/bin/python3 -I -S "$CAPTURE_HELPER" \
     --socket "$SERIAL_SOCKET" --output "$SERIAL_LOG" --max-bytes "$SERIAL_LIMIT" \

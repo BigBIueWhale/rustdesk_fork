@@ -199,8 +199,11 @@ def download_timeout_seconds(spec: ArchiveSpec) -> int:
 def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     names = tuple(spec.name for spec in specs)
     if len(specs) == 1:
-        if not is_debian_systemd_image_name(names[0]):
-            fail("the one-entry systemd image manifest has a noncanonical destination")
+        if not (
+            is_debian_systemd_image_name(names[0])
+            or names[0] == "rust-1.75.tar.xz"
+        ):
+            fail("the one-entry fixed-archive manifest has a noncanonical destination")
         return
     if len(specs) == 2:
         if names != (

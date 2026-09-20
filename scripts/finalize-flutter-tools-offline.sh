@@ -27,8 +27,12 @@ esac
 
 [ -d "$FLUTTER_ROOT" ] && [ ! -L "$FLUTTER_ROOT" ] \
     || fail 'Flutter root is not one real directory'
-[ "$(/usr/bin/readlink -f -- "$FLUTTER_ROOT")" = "$FLUTTER_ROOT" ] \
+canonical_flutter_root="$(
+    cd -P -- "$FLUTTER_ROOT" 2>/dev/null && builtin pwd -P
+)" || fail 'Flutter root cannot be resolved'
+[ "$canonical_flutter_root" = "$FLUTTER_ROOT" ] \
     || fail 'Flutter root is not canonical'
+readonly canonical_flutter_root
 
 readonly VERSION_FILE=$FLUTTER_ROOT/version
 readonly TOOLS_ROOT=$FLUTTER_ROOT/packages/flutter_tools
@@ -54,7 +58,7 @@ done
 $CURRENT_UID:$CURRENT_GID" ] \
     || fail 'offline Pub output is not owned by the invoking principal'
 [ "$(/usr/bin/stat -c '%s' -- "$VERSION_FILE")" = "${#EXPECTED_VERSION}" ] \
-    && [ "$(/usr/bin/cat -- "$VERSION_FILE")" = "$EXPECTED_VERSION" ] \
+    && [ "$(<"$VERSION_FILE")" = "$EXPECTED_VERSION" ] \
     || fail 'Flutter version file differs from the expected version'
 [ "$(/usr/bin/sha256sum "$LOCK" | /usr/bin/awk '{ print $1 }')" = \
   "$EXPECTED_LOCK_SHA256" ] \

@@ -211,6 +211,20 @@ is_exact_virtiofsd_process() {
         && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ]
 }
 
+is_owned_virtiofsd_generation() {
+    local executable
+    [ -n "$VIRTIOFSD_PID" ] && [ -n "$VIRTIOFSD_START" ] \
+        && [ -n "$VIRTIOFSD_BINARY" ] \
+        && [ -r "/proc/$VIRTIOFSD_PID/stat" ] \
+        && [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+        && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+        || return 1
+    executable="$(/usr/bin/readlink -f "/proc/$VIRTIOFSD_PID/exe" 2>/dev/null)" \
+        || return 1
+    [ "$executable" = "$VIRTIOFSD_BINARY" ] \
+        || [ "$executable" = "$(/usr/bin/readlink -f /usr/bin/python3)" ]
+}
+
 virtiofsd_seccomp_enforced() {
     local task_status task_count=0
     is_exact_virtiofsd_process || return 1
@@ -223,17 +237,27 @@ virtiofsd_seccomp_enforced() {
     [ "$task_count" -ge 1 ]
 }
 
-terminate_exact_virtiofsd_process() {
+terminate_owned_virtiofsd_generation() {
     local signal attempt
-    is_exact_virtiofsd_process || return 0
+    [ -r "/proc/$VIRTIOFSD_PID/stat" ] || return 0
+    [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+        || return 0
+    [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+        || return 0
+    is_owned_virtiofsd_generation || return 1
     for signal in TERM KILL; do
         /usr/bin/kill -"$signal" "$VIRTIOFSD_PID" 2>/dev/null || return 1
         for attempt in $(/usr/bin/seq 1 100); do
-            is_exact_virtiofsd_process || return 0
+            [ -r "/proc/$VIRTIOFSD_PID/stat" ] || return 0
+            [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+                || return 0
+            [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+                || return 0
+            is_owned_virtiofsd_generation || return 1
             /usr/bin/sleep 0.01
         done
     done
-    ! is_exact_virtiofsd_process
+    return 1
 }
 
 start_sealed_input_virtiofsd() {
@@ -255,7 +279,7 @@ start_sealed_input_virtiofsd() {
             ready=1
             break
         fi
-        is_exact_virtiofsd_process || break
+        is_owned_virtiofsd_generation || break
         /usr/bin/sleep 0.05
     done
     [ "$ready" -eq 1 ] \
@@ -329,8 +353,11 @@ cleanup() {
     VM_PID=
     VM_START=
     if [ -n "$VIRTIOFSD_PID" ]; then
-        terminate_exact_virtiofsd_process || cleanup_failed=1
-        wait "$VIRTIOFSD_PID" 2>/dev/null || true
+        if terminate_owned_virtiofsd_generation; then
+            wait "$VIRTIOFSD_PID" 2>/dev/null || true
+        else
+            cleanup_failed=1
+        fi
         VIRTIOFSD_PID=
         VIRTIOFSD_START=
     fi
@@ -931,10 +958,16 @@ CAPTURE_START=
 [ "$capture_status" -eq 0 ] || fail "bounded serial capture exited with status $capture_status"
 if [ -n "$VIRTIOFSD_PID" ]; then
     for _ in $(/usr/bin/seq 1 1000); do
-        is_exact_virtiofsd_process || break
+        [ -r "/proc/$VIRTIOFSD_PID/stat" ] || break
+        [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+            || break
+        [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+            || break
+        is_exact_virtiofsd_process \
+            || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd executable identity changed'; }
         /usr/bin/sleep 0.01
     done
-    is_exact_virtiofsd_process \
+    is_owned_virtiofsd_generation \
         && { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd did not retire after QEMU disconnected'; }
     virtiofsd_status=0
     wait "$VIRTIOFSD_PID" || virtiofsd_status=$?

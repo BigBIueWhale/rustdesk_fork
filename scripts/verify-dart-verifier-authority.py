@@ -147,6 +147,7 @@ def validate_vm_wrappers(
 def validate_contract(sources: Dict[str, str]) -> None:
     dart = sources["dart"]
     frb = sources["frb"]
+    finalizer = sources["finalizer"]
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
@@ -277,6 +278,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "'Timer? _initialMaximizedTimer;'",
             "'_initialMaximizedTimer?.cancel();'",
             '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
+            '--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
             'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
             '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
             'printf "[net]\\noffline = true\\n"',
@@ -285,6 +287,10 @@ def validate_contract(sources: Dict[str, str]) -> None:
             '[ -d "$VCPKG_ROOT/installed/x64-linux/lib" ]',
             'export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0',
             '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)',
+            '/src/scripts/finalize-flutter-tools-offline.sh \\\n'
+            '      "$toolchain/flutter" \\\n'
+            '      "$RUSTDESK_FLUTTER_VERSION" \\\n'
+            '      "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"',
             'cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never',
             'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n'
             '      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1',
@@ -343,8 +349,9 @@ def validate_contract(sources: Dict[str, str]) -> None:
     )
     require(
         dart.index('(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)')
+        < dart.index('/src/scripts/finalize-flutter-tools-offline.sh \\\n')
         < dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/'),
-        "Flutter tool dependencies are not explicitly resolved offline before analyzer launch",
+        "Flutter tool dependencies are not finalized offline before analyzer launch",
     )
     require(
         dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
@@ -448,6 +455,13 @@ def validate_contract(sources: Dict[str, str]) -> None:
             '--role deb-builder',
             '--image-ref "$IMAGE_ID"',
             "verifier_vm_docker run --rm",
+            '--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"',
+            '--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
+            '(cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile)',
+            '/src/scripts/finalize-flutter-tools-offline.sh \\\n'
+            '            "$TC/flutter" \\\n'
+            '            "$RUSTDESK_FLUTTER_VERSION" \\\n'
+            '            "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"',
         ),
         "FRB generator authority",
     )
@@ -477,6 +491,26 @@ def validate_contract(sources: Dict[str, str]) -> None:
     require(
         '--workdir /src "$IMAGE_ID"' in frb_block,
         "FRB generator does not execute the immutable pinned image in its private source",
+    )
+    require(
+        frb.index('(cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile)')
+        < frb.index('/src/scripts/finalize-flutter-tools-offline.sh \\\n')
+        < frb.index('/online/frb-tool/bin/flutter_rust_bridge_codegen'),
+        "FRB generator does not finalize Flutter tools before code generation",
+    )
+
+    require_all(
+        finalizer,
+        (
+            "export PATH=/usr/bin:/bin",
+            "Flutter-tools lockfile differs from its expected digest",
+            '[ "$PUBSPEC" -ot "$LOCK" ]',
+            '[ "$PUBSPEC" -ot "$PACKAGE_CONFIG" ]',
+            "existing Flutter-tools freshness marker is not exact",
+            "published Flutter-tools freshness marker is not exact",
+            "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass",
+        ),
+        "Flutter-tools offline finalizer",
     )
 
     require_once(
@@ -726,6 +760,24 @@ MUTATIONS = (
         '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)',
         '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)',
         "offline enforced-lockfile Flutter-tool bootstrap",
+    ),
+    Mutation(
+        "dart",
+        '/src/scripts/finalize-flutter-tools-offline.sh \\\n',
+        'true # Flutter-tools freshness finalization disabled \\\n',
+        "Dart Flutter-tools freshness finalization",
+    ),
+    Mutation(
+        "frb",
+        '/src/scripts/finalize-flutter-tools-offline.sh \\\n',
+        'true # Flutter-tools freshness finalization disabled \\\n',
+        "FRB Flutter-tools freshness finalization",
+    ),
+    Mutation(
+        "finalizer",
+        "existing Flutter-tools freshness marker is not exact",
+        "existing Flutter-tools freshness marker accepted",
+        "Flutter-tools exact existing-marker refusal",
     ),
     Mutation(
         "dart",
@@ -1101,6 +1153,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "dart": repo / "scripts/dart-verify.sh",
         "frb": repo / "scripts/frb-codegen.sh",
+        "finalizer": repo / "scripts/finalize-flutter-tools-offline.sh",
         "verify": repo / "scripts/verify.sh",
         "requirements": repo / "requirements.html",
         "hardening": repo / "HARDENING_STATUS.md",

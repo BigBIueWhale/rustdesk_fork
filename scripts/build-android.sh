@@ -569,6 +569,8 @@ build_apk() {
         --env SOURCE_DATE_EPOCH \
         --env RUSTDESK_CANARY_OFFLINE=1 \
         --env APK_MODE=offline \
+        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src" \
         --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \

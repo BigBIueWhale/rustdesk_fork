@@ -132,6 +132,10 @@ fi
 pub_lock_before="$(sha256sum flutter/pubspec.lock | awk '{print $1}')"
 ( cd flutter && dart pub get --offline --enforce-lockfile )
 ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile )
+/src/scripts/finalize-flutter-tools-offline.sh \
+    "$TC/flutter" \
+    "${RUSTDESK_FLUTTER_VERSION:?}" \
+    "${RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256:?}"
 # Plugin injection: bare `dart pub get` above does NOT write .flutter-plugins-dependencies (the gradle plugin
 # list) -- only the REAL `flutter pub get` does (the flutter-tool's plugin resolution). Without it the gradle
 # build reuses whatever .flutter-plugins-dependencies is on disk, which can be STALE/wrong -- e.g. one a

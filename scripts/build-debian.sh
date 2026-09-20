@@ -499,6 +499,8 @@ debian_compiler_run() {
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g \
         --env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
         --env RUSTDESK_CANARY_OFFLINE=1 \
+        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src,bind-recursive=disabled" \
         --tmpfs /src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
@@ -717,6 +719,10 @@ CFG
             # would otherwise re-resolve it IN-PROCESS + ONLINE (pub.dev + the advisories _TypeError).
             # Its deps are staged in PUB_CACHE by stage_pub_cache. Must precede the injection + build below.
             ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile )
+            /src/scripts/finalize-flutter-tools-offline.sh \
+                "$TC/flutter" \
+                "$RUSTDESK_FLUTTER_VERSION" \
+                "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
             # Plugin injection (R-B7), mirroring build-windows.ps1:107-110. `dart pub get`
             # resolves the project (writes .dart_tool) but does NOT run flutter'\''s plugin
             # injection, which is what (re)generates flutter/linux/flutter/generated_plugins.cmake

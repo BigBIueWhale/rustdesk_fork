@@ -210,6 +210,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
   --mount "type=bind,source=$ONLINE_SNAPSHOT,target=/online,readonly" \
   --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
   --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+  --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
   --workdir /src "$IMAGE_ID" \
   bash -euo pipefail -c '
     toolchain=/tmp/rustdesk-dart-toolchain
@@ -235,6 +236,10 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0
     cargo_lock_before="$(sha256sum /src/Cargo.lock | awk "{print \$1}")"
     (cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)
+    /src/scripts/finalize-flutter-tools-offline.sh \
+      "$toolchain/flutter" \
+      "$RUSTDESK_FLUTTER_VERSION" \
+      "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
     cd /src/flutter
     lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
     dart pub get --offline --enforce-lockfile >/dev/null

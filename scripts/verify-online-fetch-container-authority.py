@@ -424,7 +424,10 @@ def validate(repo: pathlib.Path) -> None:
         ('expect_landlock_denial("outside-file read"', "filesystem escape negative probe"),
         ('expect_landlock_denial("TCP bind"', "TCP bind negative probe"),
         ('expect_landlock_denial("TCP connect"', "TCP connect negative probe"),
-        ('choices=("cache", "systemd-cache", "bounded-result")', "enumerated filesystem authority"),
+        (
+            'choices=("cache", "systemd-cache", "bounded-result", "sealed-input")',
+            "enumerated filesystem authority",
+        ),
         ('"--sandbox=none"', "explicit rootless backend mode"),
         ('"--seccomp=kill"', "virtiofsd seccomp floor"),
         ("os.execve(binary_fd", "descriptor-executed backend"),
@@ -493,8 +496,8 @@ def validate(repo: pathlib.Path) -> None:
     )
     require(
         image_capture,
-        "if private_archive:\n        validate_private_output_parent(output.parent)\n        save_ref = spec.image_id",
-        "private exact-image-ID archive capture",
+        "if private_archive:\n        validate_private_output_parent(output.parent)\n        save_ref = runtime_id",
+        "private verified-runtime-ID archive capture",
     )
     forbid(
         image_capture,
@@ -578,6 +581,40 @@ def validate(repo: pathlib.Path) -> None:
             forbid(body, forbidden, f"{function_name} {forbidden}")
     if re.search(r"(?m)^\s*docker\s+(?:run|build|pull|tag)\b", online):
         raise AuthorityError("ambient Docker command exists outside the fixed inner funnel")
+
+    pub_resolution = extract(
+        online,
+        "verify_pub_cache_resolution() {",
+        "\n}\n\nproduce_pub_cache_candidate() {",
+        "offline Pub-cache semantic resolution",
+    )
+    for token, label in (
+        (
+            "source=$GRADLE_SOURCE_AUTHORITY,target=/authority,readonly,bind-recursive=disabled",
+            "read-only source authority",
+        ),
+        (
+            '--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"',
+            "pinned Flutter version",
+        ),
+        (
+            '--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
+            "pinned Flutter-tools lock digest",
+        ),
+    ):
+        require(pub_resolution, token, f"Pub-cache semantic resolution {label}")
+    positions = tuple(
+        pub_resolution.find(token)
+        for token in (
+            "dart pub get --offline --enforce-lockfile",
+            "/authority/scripts/finalize-flutter-tools-offline.sh",
+            "flutter pub get --offline --enforce-lockfile",
+        )
+    )
+    if any(position < 0 for position in positions) or positions != tuple(sorted(positions)):
+        raise AuthorityError(
+            "Pub-cache semantic resolution does not finalize Flutter tools before Flutter"
+        )
 
 
 def main() -> int:

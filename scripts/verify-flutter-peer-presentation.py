@@ -37,6 +37,7 @@ def require_order(source: str, needles: tuple[str, ...], label: str) -> None:
 PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
+    "flutter_tools_finalizer": "scripts/finalize-flutter-tools-offline.sh",
     "pins": "scripts/pins.env",
     "ready": "scripts/smoke-ready.sh",
     "linux_runner": "flutter/linux/main.cc",
@@ -62,6 +63,7 @@ def load(repo: Path) -> dict[str, str]:
 def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
+    flutter_tools_finalizer = sources["flutter_tools_finalizer"]
     pins = sources["pins"]
     ready = sources["ready"]
     linux_runner = sources["linux_runner"]
@@ -282,18 +284,20 @@ def validate(sources: dict[str, str]) -> None:
         vm_outer,
         (
             'readonly FLUTTER_PEER_SOURCE="$SCRIPT_DIR/smoke-flutter-peer-presentation.sh"',
+            'readonly FLUTTER_TOOLS_FINALIZER_SOURCE="$SCRIPT_DIR/finalize-flutter-tools-offline.sh"',
             'for source in "$OUTER_SOURCE" "$GUEST_SCRIPT"',
-            '"$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE"',
+            '"$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE"',
             '"repo/scripts/smoke-flutter-peer-presentation.sh=$FLUTTER_PEER_SOURCE"',
+            '"repo/scripts/finalize-flutter-tools-offline.sh=$FLUTTER_TOOLS_FINALIZER_SOURCE"',
             "VERIFIER_VM_FLUTTER_PEER_ENTRY=pass",
-            '"$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE"',
+            '"$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE"',
         ),
         "outer no-NIC VM payload, receipt, and final source replay",
     )
     require_order(
         vm_guest,
         (
-            "smoke-flutter-peer-presentation.sh frb-codegen.sh",
+            "smoke-flutter-peer-presentation.sh finalize-flutter-tools-offline.sh",
             'readonly FLUTTER_PEER_SCRIPT="$VERIFY_REPO/scripts/smoke-flutter-peer-presentation.sh"',
             "if /bin/bash \"$FLUTTER_PEER_SCRIPT\" --self-test-vm-authority",
             "setpriv --reuid=4001 --regid=4001 --clear-groups",
@@ -357,6 +361,7 @@ def validate(sources: dict[str, str]) -> None:
             'verify_archive "/online/flutter-',
             'verify_archive "/online/llvm-',
             "dart pub get --offline --enforce-lockfile",
+            '"$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh"',
             '"$REAL_FLUTTER" pub get --offline --enforce-lockfile',
             "flutter_rust_bridge_codegen",
             "! grep -Fq '[SEVERE]'",
@@ -370,6 +375,17 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "exact offline full-product bundle build",
     )
+    for token, label in (
+        ("export PATH=/usr/bin:/bin", "fixed command authority"),
+        ("LOCK_SHA256", "explicit lock-digest input"),
+        ("Flutter-tools lockfile differs from its expected digest", "lock equality"),
+        ('[ "$PUBSPEC" -ot "$LOCK" ]', "lock freshness"),
+        ('[ "$PUBSPEC" -ot "$PACKAGE_CONFIG" ]', "package-config freshness"),
+        ("existing Flutter-tools freshness marker is not exact", "existing-marker refusal"),
+        ("published Flutter-tools freshness marker is not exact", "published-marker finality"),
+        ("FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass", "exact freshness receipt"),
+    ):
+        require(flutter_tools_finalizer, token, label)
     require(stage, "cp -a /source/. \"$BUILD_SOURCE/\"", "private writable build copy")
     require(stage, "readonly PROBE=/out/smoke-readiness", "runtime readiness probe")
     require(stage, "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "sealed Pub cache")

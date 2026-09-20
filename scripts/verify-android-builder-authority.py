@@ -52,6 +52,7 @@ def section(source: str, start: str, end: str, label: str) -> str:
 
 def validate(repo: pathlib.Path) -> None:
     builder = read(repo, "scripts/build-android.sh")
+    apk_builder = read(repo, "scripts/android-apk-build.sh")
     pins = read(repo, "scripts/pins.env")
     verify = read(repo, "scripts/verify.sh")
     outer = read(repo, "scripts/smoke-verifier-vm-authority.sh")
@@ -323,6 +324,35 @@ def validate(repo: pathlib.Path) -> None:
         require(operation, '"$IMAGE_ID"', f"{label} immutable image")
         for mount in mounts:
             require(operation, mount, f"{label} least-authority mount")
+
+    compilation = section(
+        builder,
+        "build_apk() {",
+        "\n}\n\nsign_apk() {",
+        "compilation",
+    )
+    for token, label in (
+        ('--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"', "pinned Flutter version"),
+        (
+            '--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
+            "pinned Flutter-tools lock digest",
+        ),
+    ):
+        require(compilation, token, f"compilation {label}")
+    require_order(
+        apk_builder,
+        (
+            '( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile )',
+            "/src/scripts/finalize-flutter-tools-offline.sh",
+            '"$REAL_FLUTTER" pub get --offline --enforce-lockfile',
+        ),
+        "offline Flutter-tools finalization before Android plugin injection",
+    )
+    require(
+        apk_builder,
+        '"${RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256:?}"',
+        "required Flutter-tools lock-digest environment",
+    )
 
     for token, label in (
         ('prepare_build_source "$pass"', "fresh per-pass source"),

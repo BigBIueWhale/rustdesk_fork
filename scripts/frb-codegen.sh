@@ -317,6 +317,8 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only --user "$BUI
     --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
     --mount "type=bind,source=$WORK_SOURCE,target=/src" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+    --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+    --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
     --workdir /src "$IMAGE_ID" \
     bash -euo pipefail -c '
         TC=/tmp/rustdesk-frb-toolchain
@@ -350,6 +352,10 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only --user "$BUI
         export PUB_CACHE=/online/pub-cache CI=true
         (cd flutter && dart pub get --offline --enforce-lockfile)
         (cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile)
+        /src/scripts/finalize-flutter-tools-offline.sh \
+            "$TC/flutter" \
+            "$RUSTDESK_FLUTTER_VERSION" \
+            "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
         clang_headers=("$LLVM_ROOT"/lib/clang/*/include)
         [ "${#clang_headers[@]}" -eq 1 ] && [ -d "${clang_headers[0]}" ]
         /online/frb-tool/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \

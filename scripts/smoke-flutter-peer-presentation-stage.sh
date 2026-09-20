@@ -367,6 +367,10 @@ CFG
       cd "$FLUTTER_ROOT/packages/flutter_tools"
       dart pub get --offline --enforce-lockfile >/dev/null
     )
+    "$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh" \
+      "$FLUTTER_ROOT" \
+      "$RUSTDESK_FLUTTER_VERSION" \
+      "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
     pub_lock_before="$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')"
     (
       cd "$BUILD_SOURCE/flutter"

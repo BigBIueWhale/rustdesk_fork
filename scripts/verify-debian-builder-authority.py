@@ -141,6 +141,10 @@ def validate(repo: pathlib.Path) -> None:
         ('--env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"',
          "explicit reproducibility epoch"),
         ("--env RUSTDESK_CANARY_OFFLINE=1", "offline canary"),
+        ('--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"',
+         "pinned Flutter version"),
+        ('--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
+         "pinned Flutter-tools lock digest"),
         ("source=$BUILD_SOURCE_ROOT,target=/src,bind-recursive=disabled",
          "private source-only writable mount"),
         ("/src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m",
@@ -150,6 +154,16 @@ def validate(repo: pathlib.Path) -> None:
         ("--workdir /src", "fixed source workdir"),
     ):
         require(compiler, token, label)
+
+    require_order(
+        build,
+        (
+            '( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile )',
+            "/src/scripts/finalize-flutter-tools-offline.sh",
+            '"$REAL_FLUTTER" pub get --offline --enforce-lockfile',
+        ),
+        "offline Flutter-tools finalization before Debian plugin injection",
+    )
 
     self_test = extract(
         build,

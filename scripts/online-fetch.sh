@@ -4205,6 +4205,8 @@ verify_pub_cache_resolution() {
         --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$cache,target=/online/pub-cache,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/authority,readonly,bind-recursive=disabled" \
+        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --workdir /tmp \
         "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
@@ -4222,6 +4224,10 @@ verify_pub_cache_resolution() {
         (cd /tmp/toolchain/flutter/packages/flutter_tools \
             && dart pub get --offline --enforce-lockfile >/dev/null)
         [ "$tools_lock" = "$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+        /authority/scripts/finalize-flutter-tools-offline.sh \
+            /tmp/toolchain/flutter \
+            "$RUSTDESK_FLUTTER_VERSION" \
+            "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
         (cd /tmp/project && dart pub get --offline --enforce-lockfile >/dev/null)
         (cd /tmp/project && flutter pub get --offline --enforce-lockfile >/dev/null)
         [ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]

@@ -802,28 +802,8 @@ run_flutter_model_tests() {
                     tail -n 120 /work/tools-pub.out /work/tools-pub.err >&2
                     exit 1
                 fi
-                # The Flutter freshness check also requires this version
-                # marker; Dart Pub does not create it. Publish it only after
-                # the pinned offline resolve and all of its freshness inputs.
-                tools_root=/work/toolchain/flutter/packages/flutter_tools
-                tools_marker="$tools_root/.dart_tool/version"
-                [ ! -e "$tools_marker" ] && [ ! -L "$tools_marker" ]
-                [ -f /work/toolchain/flutter/version ] \
-                    && [ ! -L /work/toolchain/flutter/version ] \
-                    && [ "$(cat /work/toolchain/flutter/version)" = \
-                         "$RUSTDESK_FLUTTER_VERSION" ]
-                [ "$(sha256sum "$tools_root/pubspec.lock" | awk "{print \$1}")" = \
-                  "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
-                [ -f "$tools_root/.dart_tool/package_config.json" ] \
-                    && [ ! -L "$tools_root/.dart_tool/package_config.json" ]
-                [ "$tools_root/pubspec.yaml" -ot "$tools_root/pubspec.lock" ]
-                [ "$tools_root/pubspec.yaml" -ot \
-                  "$tools_root/.dart_tool/package_config.json" ]
-                install -m 0644 /work/toolchain/flutter/version "$tools_marker"
-                [ "$(stat -c "%u:%g:%a:%h:%s" "$tools_marker")" = \
-                  "1000:1000:644:1:${#RUSTDESK_FLUTTER_VERSION}" ]
-                cmp -s /work/toolchain/flutter/version "$tools_marker"
-                printf "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=%s lock=%s implicit_pub=prevented\n" \
+                /source/scripts/finalize-flutter-tools-offline.sh \
+                    /work/toolchain/flutter \
                     "$RUSTDESK_FLUTTER_VERSION" \
                     "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
                 if ! flutter pub get --offline --enforce-lockfile \
@@ -1012,7 +992,8 @@ done
 for verify_source in verify.sh verify-release.sh build-release.sh \
     publish-github-release.sh finalize-release-set.py \
     verify-release-workspace-runtime.sh apple-conform-check.sh \
-    smoke-flutter-peer-presentation.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
+    smoke-flutter-peer-presentation.sh finalize-flutter-tools-offline.sh \
+    frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \

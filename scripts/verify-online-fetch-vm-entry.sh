@@ -12,6 +12,11 @@ fail() {
 [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" = 1 ] \
     || fail 'guest authority marker is absent'
 [ "$(/usr/bin/id -u)" -ne 0 ] || fail 'online-fetch VM entry refuses root'
+case "${RUSTDESK_ONLINE_FETCH_VM_RETIRED_POLICY:-}" in
+    required|ephemeral) ;;
+    *) fail 'retired cache-state policy is absent or malformed' ;;
+esac
+readonly RETIRED_POLICY="$RUSTDESK_ONLINE_FETCH_VM_RETIRED_POLICY"
 
 readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
 readonly REPO_ROOT="$(cd "$SCRIPT_DIR/.." && /usr/bin/pwd -P)"
@@ -365,9 +370,19 @@ cache_inventory="$(
     /usr/bin/find "$REPO_ROOT/online" -mindepth 1 -maxdepth 1 -printf '%f\n' \
         | LC_ALL=C /usr/bin/sort
 )"
-[ "$cache_inventory" = $'inputs\nretired' ] \
-    || fail 'cache state root contains something other than the one inputs/retired layout'
-for path in "$REPO_ROOT/online/inputs" "$REPO_ROOT/online/retired"; do
+cache_paths=("$REPO_ROOT/online/inputs")
+if [ "$RETIRED_POLICY" = required ]; then
+    [ "$cache_inventory" = $'inputs\nretired' ] \
+        || fail 'cache state root differs from the required inputs/retired layout'
+    cache_paths+=("$REPO_ROOT/online/retired")
+else
+    [ "$cache_inventory" = inputs ] || [ "$cache_inventory" = $'inputs\nretired' ] \
+        || fail 'cache state root contains something other than inputs and its optional retired transaction root'
+    if [ -e "$REPO_ROOT/online/retired" ] || [ -L "$REPO_ROOT/online/retired" ]; then
+        cache_paths+=("$REPO_ROOT/online/retired")
+    fi
+fi
+for path in "${cache_paths[@]}"; do
     [ -d "$path" ] && [ ! -L "$path" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$path")" = "$EXPECTED_UID:$EXPECTED_GID:700" ] \
         || fail "cache-state child metadata differs: $path"
@@ -377,9 +392,12 @@ for path in "$REPO_ROOT/online/inputs" "$REPO_ROOT/online/retired"; do
 done
 [ "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online")" \
   = "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/inputs")" ] \
-    && [ "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/inputs")" \
-         = "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/retired")" ] \
-    || fail 'active and retired cache roots do not share one atomic-rename filesystem'
+    || fail 'cache state and active-input roots do not share one atomic-rename filesystem'
+if [ "${#cache_paths[@]}" -eq 2 ]; then
+    [ "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/inputs")" \
+      = "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/retired")" ] \
+        || fail 'active and retired cache roots do not share one atomic-rename filesystem'
+fi
 
 current_commit="$(
     /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent GIT_CONFIG_NOSYSTEM=1 \

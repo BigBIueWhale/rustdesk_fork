@@ -277,7 +277,7 @@ for identity in "$ACQUISITION_UID" "$ACQUISITION_GID"; do
         || fail 'acquisition principal is malformed or root'
 done
 case "$REQUEST" in
-    __full__|--rust-test-inputs|--flutter-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|\
+    __full__|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|\
     --maintenance-build-deb-builder-bootstrap-candidate|\
     --maintenance-build-android-builder-bootstrap-candidate|\
     --maintenance-build-win-helper-bootstrap-candidate|\
@@ -520,14 +520,31 @@ cache_inventory="$(
     /usr/bin/find "$REPO/online" -mindepth 1 -maxdepth 1 -printf '%f\n' \
         | LC_ALL=C /usr/bin/sort
 )"
-[ "$cache_inventory" = $'inputs\nretired' ] \
-    || fail 'cache-state export does not contain the exact inputs/retired layout'
-for directory in "$REPO/online" "$REPO/online/inputs" "$REPO/online/retired" \
+cache_directories=("$REPO/online" "$REPO/online/inputs")
+if [ "$REQUEST" = __authority_smoke__ ]; then
+    [ "$cache_inventory" = $'inputs\nretired' ] \
+        || fail 'focused cache-state export does not contain the exact inputs/retired layout'
+    cache_directories+=("$REPO/online/retired")
+else
+    [ "$cache_inventory" = inputs ] || [ "$cache_inventory" = $'inputs\nretired' ] \
+        || fail 'cache-state export contains something other than inputs and its optional retired transaction root'
+    if [ -e "$REPO/online/retired" ] || [ -L "$REPO/online/retired" ]; then
+        cache_directories+=("$REPO/online/retired")
+    fi
+fi
+for directory in "${cache_directories[@]}" \
     "$REPO/.harness-state/debian-systemd-smoke" "$RESULT_ROOT"; do
     [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" = \
       "$ACQUISITION_UID:$ACQUISITION_GID:700" ] \
         || fail "writable export metadata differs: $directory"
 done
+rename_retired_created=0
+if [ ! -e "$REPO/online/retired" ] && [ ! -L "$REPO/online/retired" ]; then
+    /usr/bin/setpriv --reuid="$ACQUISITION_UID" --regid="$ACQUISITION_GID" --clear-groups \
+        /usr/bin/install -d -m 0700 -- "$REPO/online/retired" \
+        || fail 'cannot create the ephemeral retired root for the flagged-rename probe'
+    rename_retired_created=1
+fi
 /usr/bin/setpriv --reuid="$ACQUISITION_UID" --regid="$ACQUISITION_GID" --clear-groups \
     /usr/bin/env -i PATH=/usr/bin:/bin HOME="$WORK_ROOT" LC_ALL=C \
     /usr/bin/python3 -I -S "$REPO/scripts/verify-online-fetch-virtiofs-rename.py" \
@@ -536,6 +553,18 @@ done
 [ "$(/usr/bin/cat "$RENAME_CONTRACT")" = \
   'VIRTIOFS_RENAME_CONTRACT=pass noreplace=cross-parent collision=no-clobber exchange=nonempty cleanup=complete' ] \
     || fail 'virtiofs flagged-rename receipt differs'
+if [ "$rename_retired_created" -eq 1 ]; then
+    rename_retired_id="$(/usr/bin/stat -c '%d:%i' -- "$REPO/online/retired")" \
+        || fail 'cannot bind the ephemeral retired root after the flagged-rename probe'
+    /usr/bin/setpriv --reuid="$ACQUISITION_UID" --regid="$ACQUISITION_GID" --clear-groups \
+        /usr/bin/env -i PATH=/usr/bin:/bin HOME="$WORK_ROOT" LC_ALL=C \
+        /usr/bin/python3 -I -S "$REPO/scripts/verify-private-tree-closure.py" \
+            --remove-empty-private-root "$REPO/online/retired" \
+            --expected-identity "$rename_retired_id" \
+        || fail 'cannot retire the exact ephemeral flagged-rename root'
+    [ ! -e "$REPO/online/retired" ] && [ ! -L "$REPO/online/retired" ] \
+        || fail 'ephemeral flagged-rename root survived exact retirement'
+fi
 /usr/bin/chmod 0444 "$RENAME_CONTRACT"
 
 /usr/bin/systemctl stop systemd-timesyncd.service systemd-resolved.service \
@@ -761,6 +790,7 @@ readonly INNER_ENV=(
     RUSTDESK_ONLINE_FETCH_VM_GUEST=1
     RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT="$EXPECTED_SOURCE_COMMIT"
     RUSTDESK_ONLINE_FETCH_VM_SOURCE_TREE="$EXPECTED_SOURCE_TREE"
+    RUSTDESK_ONLINE_FETCH_VM_RETIRED_POLICY="$([ "$REQUEST" = __authority_smoke__ ] && printf required || printf ephemeral)"
 )
 if /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root "${INNER_ENV[@]}" \
     /bin/bash "$REPO/scripts/online-fetch.sh" --vm-authority-probe \
@@ -996,6 +1026,11 @@ else
     run_online_fetch || fail 'online-fetch transaction failed'
 fi
 
+if [ "$REQUEST" != __authority_smoke__ ]; then
+    [ ! -e "$REPO/online/retired" ] && [ ! -L "$REPO/online/retired" ] \
+        || fail 'successful acquisition left its retired transaction namespace behind'
+fi
+
 /usr/bin/setpriv --reuid="$ACQUISITION_UID" --regid="$ACQUISITION_GID" --clear-groups \
     /usr/bin/env -i PATH=/usr/bin:/bin HOME="$WORK_ROOT" LC_ALL=C \
     "${INNER_ENV[@]}" "$REPO/scripts/verify-online-fetch-vm-entry.sh" \
@@ -1018,7 +1053,9 @@ verify_buildkit_daemon_generation "$buildkit_start" \
     || fail 'online-fetch result exceeded its output bound'
 /usr/bin/sync -f "$REPO/online"
 /usr/bin/sync -f "$REPO/online/inputs"
-/usr/bin/sync -f "$REPO/online/retired"
+if [ "$REQUEST" = __authority_smoke__ ]; then
+    /usr/bin/sync -f "$REPO/online/retired"
+fi
 /usr/bin/sync -f "$REPO/.harness-state/debian-systemd-smoke"
 /usr/bin/sync -f "$RESULT_ROOT"
 stop_buildkit_daemon

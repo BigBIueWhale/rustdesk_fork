@@ -23,7 +23,7 @@ case "$#:${1:-}" in
         MODE=authority-smoke
         REQUEST=__authority_smoke__
         ;;
-    1:--rust-test-inputs|1:--flutter-test-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|\
+    1:--rust-test-inputs|1:--flutter-test-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-build-android-builder-bootstrap-candidate|\
     1:--maintenance-build-win-helper-bootstrap-candidate|\
@@ -51,7 +51,7 @@ case "$#:${1:-}" in
         REQUEST=$1
         ;;
     *)
-        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--rust-test-inputs|--flutter-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
+        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
         exit 2
         ;;
 esac
@@ -606,7 +606,17 @@ for export_root in "$CACHE_EXPORT" "$SYSTEMD_EXPORT" "$RESULT_EXPORT"; do
         /usr/bin/install -d -m 0700 -- "$export_root"
     fi
 done
-for cache_child in "$CACHE_EXPORT/inputs" "$CACHE_EXPORT/retired"; do
+cache_child="$CACHE_EXPORT/inputs"
+if [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
+    [ -d "$cache_child" ] && [ ! -L "$cache_child" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$cache_child")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail "cache-state child metadata differs: $cache_child"
+else
+    /usr/bin/install -d -m 0700 -- "$cache_child"
+fi
+RETIRED_EXPORT_ID=
+if [ "$MODE" = authority-smoke ]; then
+    cache_child="$CACHE_EXPORT/retired"
     if [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
         [ -d "$cache_child" ] && [ ! -L "$cache_child" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$cache_child")" = "$HOST_UID:$HOST_GID:700" ] \
@@ -614,23 +624,36 @@ for cache_child in "$CACHE_EXPORT/inputs" "$CACHE_EXPORT/retired"; do
     else
         /usr/bin/install -d -m 0700 -- "$cache_child"
     fi
-done
+    RETIRED_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$cache_child")"
+elif [ -e "$CACHE_EXPORT/retired" ] || [ -L "$CACHE_EXPORT/retired" ]; then
+    [ -d "$CACHE_EXPORT/retired" ] && [ ! -L "$CACHE_EXPORT/retired" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CACHE_EXPORT/retired")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail "cache-state child metadata differs: $CACHE_EXPORT/retired"
+    RETIRED_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$CACHE_EXPORT/retired")"
+fi
 cache_inventory="$(
     /usr/bin/find "$CACHE_EXPORT" -mindepth 1 -maxdepth 1 -printf '%f\n' \
         | LC_ALL=C /usr/bin/sort
 )"
-[ "$cache_inventory" = $'inputs\nretired' ] \
-    || fail 'cache state root contains something other than the one inputs/retired layout'
+if [ "$MODE" = authority-smoke ]; then
+    [ "$cache_inventory" = $'inputs\nretired' ] \
+        || fail 'focused cache state root differs from the inputs/retired layout'
+else
+    [ "$cache_inventory" = inputs ] || [ "$cache_inventory" = $'inputs\nretired' ] \
+        || fail 'cache state root contains something other than inputs and its optional retired transaction root'
+fi
 [ "$(/usr/bin/stat -c '%d' -- "$CACHE_EXPORT")" \
   = "$(/usr/bin/stat -c '%d' -- "$CACHE_EXPORT/inputs")" ] \
-    && [ "$(/usr/bin/stat -c '%d' -- "$CACHE_EXPORT/inputs")" \
-         = "$(/usr/bin/stat -c '%d' -- "$CACHE_EXPORT/retired")" ] \
-    || fail 'host active and retired cache roots do not share one filesystem'
+    || fail 'host cache state and active-input roots do not share one filesystem'
+if [ -n "$RETIRED_EXPORT_ID" ]; then
+    [ "$(/usr/bin/stat -c '%d' -- "$CACHE_EXPORT/inputs")" \
+      = "$(/usr/bin/stat -c '%d' -- "$CACHE_EXPORT/retired")" ] \
+        || fail 'host active and retired cache roots do not share one filesystem'
+fi
 [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$CACHE_EXPORT")" ] \
     || fail 'cache state root contains a descendant mount'
 CACHE_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$CACHE_EXPORT")"
 ONLINE_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$CACHE_EXPORT/inputs")"
-RETIRED_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$CACHE_EXPORT/retired")"
 SYSTEMD_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$SYSTEMD_EXPORT")"
 RESULT_EXPORT_ID="$(/usr/bin/stat -c '%d:%i' -- "$RESULT_EXPORT")"
 
@@ -863,7 +886,7 @@ for socket in "${VIRTIOFS_SOCKETS[@]}"; do
 done
 
 for binding in "$CACHE_EXPORT|$CACHE_EXPORT_ID" "$CACHE_EXPORT/inputs|$ONLINE_EXPORT_ID" \
-    "$CACHE_EXPORT/retired|$RETIRED_EXPORT_ID" "$SYSTEMD_EXPORT|$SYSTEMD_EXPORT_ID" \
+    "$SYSTEMD_EXPORT|$SYSTEMD_EXPORT_ID" \
     "$RESULT_EXPORT|$RESULT_EXPORT_ID"; do
     path=${binding%%|*}
     identity=${binding#*|}
@@ -872,6 +895,12 @@ for binding in "$CACHE_EXPORT|$CACHE_EXPORT_ID" "$CACHE_EXPORT/inputs|$ONLINE_EX
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$path")" = "$HOST_UID:$HOST_GID:700" ] \
         || fail "writable export root identity changed: $path"
 done
+if [ "$MODE" = authority-smoke ]; then
+    [ -d "$CACHE_EXPORT/retired" ] && [ ! -L "$CACHE_EXPORT/retired" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$CACHE_EXPORT/retired")" = "$RETIRED_EXPORT_ID" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CACHE_EXPORT/retired")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'focused retired cache-transport authority changed'
+fi
 /usr/bin/grep -Fq \
     "ONLINE_FETCH_VM_GUEST=pass uid=$HOST_UID gid=$HOST_GID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied docker=guest-unix image_store=containerd buildkit=guest-unix git=pinned-deb cache=virtiofs-atomic nofile=524544 result=16MiB cleanup=joined" \
     "$SERIAL_LOG" || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest completion receipt is absent'; }
@@ -906,6 +935,9 @@ if [ "$MODE" = authority-smoke ]; then
             && [ "$(/usr/bin/cat "$fixture")" = online-fetch-vm-cache-transport-v1 ] \
             || fail "focused cache-transport fixture differs: $fixture"
     done
+else
+    [ ! -e "$CACHE_EXPORT/retired" ] && [ ! -L "$CACHE_EXPORT/retired" ] \
+        || fail 'successful acquisition left its retired transaction namespace behind'
 fi
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
     && [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \

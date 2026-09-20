@@ -1015,6 +1015,52 @@ def check_complete(online: Path, uid: int, gid: int) -> TreeSummary:
     return summary
 
 
+def seal_exact_existing(
+    online: Path,
+    uid: int,
+    gid: int,
+    expected_digest: str,
+) -> TreeSummary:
+    validate_pin(expected_digest, "expected Pub-cache digest", HEX_SHA256_PATTERN)
+    validate_root(online, "online root", {(uid, gid)})
+    output = online / "pub-cache"
+    output_metadata = os.lstat(output)
+    output_identity = identity(output_metadata)
+    summary = verify_private_output(
+        output,
+        uid,
+        gid,
+        normalize=False,
+        expected_identity=output_identity,
+    )
+    if summary.digest != expected_digest:
+        fail("unsealed Pub-cache does not match the committed closure")
+    sync_tree(output)
+    online_fd = open_directory(online)
+    try:
+        transition_root_mode(
+            online_fd,
+            "pub-cache",
+            output_identity,
+            uid,
+            gid,
+            {0o700},
+            0o500,
+            "exact existing Pub-cache",
+        )
+        os.fsync(online_fd)
+    finally:
+        os.close(online_fd)
+    validate_published_candidate(
+        output,
+        uid,
+        gid,
+        output_identity,
+        expected_digest,
+    )
+    return summary
+
+
 def sync_tree(root: Path) -> None:
     directories = []
     for current, names, files in os.walk(root, topdown=True, followlinks=False):
@@ -2372,6 +2418,45 @@ def self_test() -> None:
             case_retired.rmdir()
             case_online.rmdir()
 
+        exact_online = Path(temporary) / "seal-exact-online"
+        exact_online.mkdir(mode=0o700)
+        exact_output = exact_online / "pub-cache"
+        exact_output.mkdir(mode=0o700)
+        make_fake_cache(exact_output)
+        exact_identity = identity(os.lstat(exact_output))
+        exact_summary = verify_private_output(
+            exact_output,
+            uid,
+            gid,
+            normalize=True,
+            expected_identity=exact_identity,
+        )
+        wrong_digest = "0" * 64
+        if wrong_digest == exact_summary.digest:
+            wrong_digest = "1" * 64
+        try:
+            seal_exact_existing(exact_online, uid, gid, wrong_digest)
+        except PubCacheError:
+            pass
+        else:
+            fail("self-test sealed an unpinned existing Pub-cache")
+        if stat.S_IMODE(os.lstat(exact_output).st_mode) != 0o700:
+            fail("self-test changed an existing Pub-cache after pin rejection")
+        sealed_summary = seal_exact_existing(
+            exact_online,
+            uid,
+            gid,
+            exact_summary.digest,
+        )
+        if sealed_summary.digest != exact_summary.digest:
+            fail("self-test exact Pub-cache seal changed the closure digest")
+        if stat.S_IMODE(os.lstat(exact_output).st_mode) != 0o500:
+            fail("self-test did not seal the exact existing Pub-cache")
+        if check_complete(exact_online, uid, gid).digest != exact_summary.digest:
+            fail("self-test exact existing Pub-cache is not complete")
+        remove_stage(exact_output)
+        exact_online.rmdir()
+
         (
             new_crash_online,
             new_crash_staging,
@@ -2989,6 +3074,9 @@ def argument_parser() -> argparse.ArgumentParser:
     common_arguments(archive_parser)
     complete_parser = commands.add_parser("check-complete")
     common_arguments(complete_parser, staging=False)
+    seal_parser = commands.add_parser("seal-exact-existing")
+    common_arguments(seal_parser, staging=False)
+    seal_parser.add_argument("--expected-digest", required=True)
     reproduction_parser = commands.add_parser("verify-reproduction")
     reproduction_parser.add_argument("--cache", type=Path, required=True)
     reproduction_parser.add_argument("--uid", type=int, required=True)
@@ -3074,6 +3162,14 @@ def main() -> int:
             )
         elif arguments.command == "check-complete":
             summary = check_complete(arguments.online, arguments.uid, arguments.gid)
+            print(f"sha256={summary.digest}")
+        elif arguments.command == "seal-exact-existing":
+            summary = seal_exact_existing(
+                arguments.online,
+                arguments.uid,
+                arguments.gid,
+                arguments.expected_digest,
+            )
             print(f"sha256={summary.digest}")
         elif arguments.command == "verify-reproduction":
             summary = verify_reproduction(arguments.cache, arguments.uid, arguments.gid)

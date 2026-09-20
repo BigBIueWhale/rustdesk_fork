@@ -307,10 +307,10 @@ def validate_archive_host(
         fail("Android NDK archive is not one regular file")
     if metadata.st_dev != online_metadata.st_dev:
         fail("Android NDK archive is not on the online filesystem")
-    if (metadata.st_uid, metadata.st_gid) not in ((uid, gid), (0, 0)):
-        fail("Android NDK archive has foreign ownership")
-    if stat.S_IMODE(metadata.st_mode) != 0o644:
-        fail("Android NDK archive is not exact mode 0644")
+    if (metadata.st_uid, metadata.st_gid) != (uid, gid):
+        fail("Android NDK archive is not owned by the acquisition identity")
+    if stat.S_IMODE(metadata.st_mode) != 0o400:
+        fail("Android NDK archive is not the sealed mode-0400 fixed input")
     if metadata.st_nlink != 1:
         fail("Android NDK archive has an external hardlink")
     reject_extended_metadata(archive_path, metadata, "Android NDK archive")
@@ -1775,7 +1775,7 @@ def run_self_test() -> None:
         online.mkdir(mode=0o700)
         archive = online / f"android-ndk-{version}.zip"
         archive_sha256 = write_fixture_archive(archive, spec)
-        archive.chmod(0o644)
+        archive.chmod(0o400)
         staging = make_staging(online)
         prepare(
             online,

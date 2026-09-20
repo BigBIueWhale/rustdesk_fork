@@ -135,6 +135,10 @@ def validate(sources: Dict[str, str]) -> None:
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),
         ("android_sdk_output_tool check-complete", "exact SDK precondition"),
         ("--env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home", "one exact output"),
+        ('--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"',
+         "pinned Flutter version contract"),
+        ('--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
+         "pinned Flutter-tools lock contract"),
         ("target=/online,readonly,bind-recursive=disabled", "read-only online input"),
         (
             "source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home",
@@ -179,6 +183,8 @@ def validate(sources: Dict[str, str]) -> None:
     require(
         stage,
         "--env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \\\n"
+        '        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \\\n'
+        '        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \\\n'
         "        --mount "
         '"type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \\\n'
         "        --mount "
@@ -611,6 +617,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "shell",
         "--env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \\\n"
+        '        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \\\n'
+        '        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \\\n'
         "        --mount "
         '"type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \\\n'
         "        --mount "
@@ -621,6 +629,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
         '"type=bind,source=$ONLINE_DIR,target=/online,readonly,'
         'bind-recursive=disabled"',
         "--env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \\\n"
+        '        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \\\n'
+        '        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \\\n'
         "        --mount "
         '"type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \\\n'
         "        --mount "

@@ -269,6 +269,10 @@ def validate(repo: pathlib.Path) -> None:
     for token, label in (
         ("local status=0 source_status=0", "separate producer/source verdicts"),
         ("prepare_gradle_source", "private-source preparation"),
+        ('--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"',
+         "pinned Flutter version contract"),
+        ('--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"',
+         "pinned Flutter-tools lock contract"),
         ('source=$GRADLE_SOURCE_BUILD,target=/src"',
          "private writable source mount"),
         ('source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,'

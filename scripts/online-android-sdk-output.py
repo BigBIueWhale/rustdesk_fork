@@ -390,10 +390,12 @@ def validate_cmdline_archive(
         fail("Android command-line-tools archive is not one regular file")
     if metadata.st_dev != online_metadata.st_dev:
         fail("Android command-line-tools archive is not on the online filesystem")
-    if (metadata.st_uid, metadata.st_gid) not in ((uid, gid), (0, 0)):
-        fail("Android command-line-tools archive has foreign ownership")
-    if stat.S_IMODE(metadata.st_mode) != 0o644 or metadata.st_nlink != 1:
-        fail("Android command-line-tools archive metadata is unsafe")
+    if (metadata.st_uid, metadata.st_gid) != (uid, gid):
+        fail(
+            "Android command-line-tools archive is not owned by the acquisition identity"
+        )
+    if stat.S_IMODE(metadata.st_mode) != 0o400 or metadata.st_nlink != 1:
+        fail("Android command-line-tools archive is not the sealed mode-0400 fixed input")
     reject_extended_metadata(
         archive,
         metadata,
@@ -2286,7 +2288,7 @@ def run_self_test() -> None:
                 cmdline.write_bytes(
                     (root / "authority" / "android-cmdline-tools.zip").read_bytes()
                 )
-                cmdline.chmod(0o644)
+                cmdline.chmod(0o400)
                 staging = make_staging(online)
                 prepare(
                     online,

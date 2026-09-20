@@ -226,6 +226,21 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
                 "Flutter/Rust/LLVM toolchain source"
             )
         return
+    if len(specs) == 7:
+        if names != (
+            "android-cmdline-tools.zip",
+            "android-ndk-r28c.zip",
+            "flutter-3.24.5.tar.xz",
+            "llvm-15.0.6.tar.xz",
+            "rust-1.75.tar.xz",
+            "rust-std-1.75-aarch64-linux-android.tar.xz",
+            "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
+        ):
+            fail(
+                "the Android build manifest is not the exact seven-archive "
+                "toolchain source"
+            )
+        return
     if len(specs) == 14:
         if any(
             len(validate_name(name)) > 1 and validate_name(name)[0] != "win"
@@ -272,7 +287,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     fail(
         "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
         "two Dart audit inputs, three Flutter model-test toolchain entries, "
-        "six WiX packages, 14 toolchain entries, "
+        "six WiX packages, seven Android build toolchain entries, 14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
     )
@@ -1491,6 +1506,30 @@ def test_flutter_model_archive_specs() -> tuple[ArchiveSpec, ...]:
     return parse_specs(records)
 
 
+def test_android_build_archive_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for name in (
+        "android-cmdline-tools.zip",
+        "android-ndk-r28c.zip",
+        "flutter-3.24.5.tar.xz",
+        "llvm-15.0.6.tar.xz",
+        "rust-1.75.tar.xz",
+        "rust-std-1.75-aarch64-linux-android.tar.xz",
+        "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
+    ):
+        payload = f"{name}-fixture".encode("ascii")
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def test_dart_audit_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name, payload in (
@@ -1738,12 +1777,32 @@ def self_test() -> None:
         systemd_specs = test_systemd_image_specs()
         flutter_specs = test_flutter_archive_specs()
         flutter_model_specs = test_flutter_model_archive_specs()
+        android_build_specs = test_android_build_archive_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:
             fail("systemd-image self-test lost its bounded large-image timeout")
         if download_timeout_seconds(flutter_specs[0]) != 120:
             fail("Flutter-archive self-test widened the ordinary download timeout")
         if len(flutter_model_specs) != 3:
             fail("Flutter model-test self-test lost its exact toolchain manifest")
+        if len(android_build_specs) != 7:
+            fail("Android build self-test lost its exact toolchain manifest")
+        substituted_android_specs = [
+            [
+                spec.name,
+                spec.url,
+                str(spec.size),
+                spec.sha256,
+                ",".join(spec.redirect_hosts),
+            ]
+            for spec in android_build_specs
+        ]
+        substituted_android_specs[-1][0] = "vcpkg-substituted.tar.gz"
+        try:
+            parse_specs(substituted_android_specs)
+        except ContractError:
+            pass
+        else:
+            fail("Android build self-test accepted a substituted toolchain archive")
         if download_timeout_seconds(specs[0]) != 120:
             fail("archive self-test widened the ordinary download timeout")
         flutter_name = "flutter-3.24.6.tar.xz"

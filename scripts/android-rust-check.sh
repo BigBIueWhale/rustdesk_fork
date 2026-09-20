@@ -187,6 +187,8 @@ if ! verifier_vm_docker run --rm --pull=never --network=none --read-only \
     --env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH_PIN" \
     --env RUSTDESK_CANARY_OFFLINE=1 \
     --env APK_MODE=rust-check \
+    --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+    --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
     --mount "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled" \
     --mount "type=bind,source=$SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$online,target=/online,readonly,bind-recursive=disabled" \

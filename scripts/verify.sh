@@ -16668,6 +16668,8 @@ for contract in 'readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entr
   '--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4' \
   '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g' \
   '--env RUSTDESK_CANARY_OFFLINE=1' '--env APK_MODE=rust-check' \
+  '--env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION"' \
+  '--env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK"' \
   'source=$BUILD_SOURCE,target=/src,bind-recursive=disabled' \
   'source=$online,target=/online,readonly,bind-recursive=disabled'; do
   grep -qF -- "$contract" scripts/android-rust-check.sh \

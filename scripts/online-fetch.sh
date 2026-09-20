@@ -408,6 +408,50 @@ readonly -a FLUTTER_TEST_FIXED_ARCHIVE_ARGS=(
     "$SHA256_RUST_1_75"
     "static.rust-lang.org"
 )
+readonly -a ANDROID_BUILD_FIXED_ARCHIVE_ARGS=(
+    --entry
+    "android-cmdline-tools.zip"
+    "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"
+    "$SIZE_ANDROID_CMDLINE_TOOLS"
+    "$SHA256_ANDROID_CMDLINE_TOOLS"
+    "dl.google.com"
+    --entry
+    "android-ndk-${ANDROID_NDK_VERSION}.zip"
+    "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip"
+    "$SIZE_ANDROID_NDK_R28C"
+    "$SHA256_ANDROID_NDK_R28C"
+    "dl.google.com"
+    --entry
+    "flutter-${FLUTTER_VERSION}.tar.xz"
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
+    "$SIZE_FLUTTER_3_24_5"
+    "$SHA256_FLUTTER_3_24_5"
+    "storage.googleapis.com"
+    --entry
+    "llvm-${LLVM_VERSION}.tar.xz"
+    "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-18.04.tar.xz"
+    "$SIZE_LLVM_15_0_6"
+    "$SHA256_LLVM_15_0_6"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    --entry
+    "rust-${RUST_VERSION}.tar.xz"
+    "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz"
+    "$SIZE_RUST_1_75"
+    "$SHA256_RUST_1_75"
+    "static.rust-lang.org"
+    --entry
+    "rust-std-${RUST_VERSION}-aarch64-linux-android.tar.xz"
+    "https://static.rust-lang.org/dist/2023-12-28/rust-std-${RUST_VERSION}.0-aarch64-linux-android.tar.xz"
+    "$SIZE_RUST_STD_ANDROID_1_75"
+    "$SHA256_RUST_STD_ANDROID_1_75"
+    "static.rust-lang.org"
+    --entry
+    "vcpkg-${VCPKG_BASELINE}.tar.gz"
+    "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz"
+    "$SIZE_VCPKG_120DEAC3"
+    "$SHA256_VCPKG_120DEAC3"
+    "github.com,codeload.github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+)
 readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(
     --entry
     "dart-audit-inputs/Pub-all.zip"
@@ -1745,9 +1789,9 @@ vendor_cargo() {
 # Remote bytes receive one private output transaction, not the online root or a
 # final name. The host independently checks every exact length/digest before a
 # descriptor-relative no-clobber publication. The admitted manifests are the
-# fourteen toolchain/installer archives, the two Dart-audit rebuild inputs, six
-# signed WiX packages, 33 vcpkg source/tool distfiles, and the one dated Debian
-# systemd image.
+# fourteen toolchain/installer archives, the exact seven-archive Android build
+# projection, the two Dart-audit rebuild inputs, six signed WiX packages, 33
+# vcpkg source/tool distfiles, and the one dated Debian systemd image.
 load_vcpkg_fixed_archive_manifest() {
     local name size digest url hosts extra tool_name tool_hash tool_extra count=0
     local manifest_sha256
@@ -1809,6 +1853,7 @@ archive_bundle_tool() {
     local -a archive_args=()
     shift 6
     case "$kind" in
+        android-build) archive_args=("${ANDROID_BUILD_FIXED_ARCHIVE_ARGS[@]}") ;;
         dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}") ;;
         flutter-test) archive_args=("${FLUTTER_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         rust-test) archive_args=("${RUST_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
@@ -1960,6 +2005,25 @@ stage_flutter_test_inputs() {
     vendor_cargo
     build_frb_codegen reproduce
     stage_pub_cache
+}
+
+stage_android_build_inputs() {
+    verify_or_load_android_builder_image
+    stage_archive_bundle android-build "$ONLINE_DIR" \
+        .rustdesk-android-build-archives \
+        "pinned Android build toolchain archives" \
+        "$ANDROID_BUILDER_CONFIG_ID" android-builder
+    verify_or_load_deb_builder_image
+    vendor_cargo
+    build_frb_codegen reproduce
+    stage_pub_cache
+    stage_vcpkg_distfiles
+    stage_android_ndk
+    stage_vcpkg_natives_arm64
+    stage_cargo_ndk
+    stage_android_sdk
+    stage_gradle
+    log "canonical Android producer outputs are acquired and individually checked; no-NIC workload transport remains separate"
 }
 
 validate_dart_audit_inputs() {
@@ -4591,7 +4655,7 @@ stage_pub_cache() {
     local status=0 reproduction_status=0 source_status=0 input_status=0 output_status=0
     local reproduction_output_status=0 semantic_status=0 reproduction_semantic_status=0
     local pin_status=0 publication_status=0
-    local lock_fd receipt="" digest="" reproduction_receipt="" reproduction_digest=""
+    local lock_fd receipt="" seal_receipt="" digest="" reproduction_receipt="" reproduction_digest=""
     local reproduction="" current=0 replace_existing=0
     require_online_fetch_builder_image deb-builder "$builder"
     assert_online_fetch_source_tools
@@ -4615,6 +4679,25 @@ stage_pub_cache() {
            && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"
         then
             current=1
+        elif seal_receipt="$(
+            pub_cache_output_tool seal-exact-existing \
+                --online "$ONLINE_DIR" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                --expected-digest "$SHA256_PUB_CACHE_CLOSURE_V1"
+        )" \
+           && [[ "$seal_receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
+           && [ "${BASH_REMATCH[1]}" = "$SHA256_PUB_CACHE_CLOSURE_V1" ] \
+           && receipt="$(
+               pub_cache_output_tool check-complete \
+                   --online "$ONLINE_DIR" \
+                   --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+           )" \
+           && [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
+           && [ "${BASH_REMATCH[1]}" = "$SHA256_PUB_CACHE_CLOSURE_V1" ] \
+           && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"
+        then
+            current=1
+            log "Exact pinned Pub cache root finality was recovered without replacing its closure"
         else
             replace_existing=1
             log "existing Pub cache is stale, unpinned, or semantically incomplete; preparing one verified replacement"
@@ -5886,6 +5969,8 @@ stage_gradle() {
     online_docker_run \
         --env APK_MODE=warm \
         --env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \
+        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --mount "type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
@@ -6650,6 +6735,11 @@ main() {
             stage_flutter_test_inputs
             return 0
             ;;
+        --android-build-inputs)
+            [ "$#" -eq 1 ] || die "--android-build-inputs takes no arguments"
+            stage_android_build_inputs
+            return 0
+            ;;
         --maintenance-capture-apple-check-image)
             [ "$#" -eq 1 ] || die "--maintenance-capture-apple-check-image takes no arguments"
             maintenance_capture_apple_check_image
@@ -6718,7 +6808,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

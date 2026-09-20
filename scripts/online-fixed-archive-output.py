@@ -201,7 +201,10 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     if len(specs) == 1:
         if not (
             is_debian_systemd_image_name(names[0])
-            or names[0] == "rust-1.75.tar.xz"
+            or names[0] in (
+                "flutter-3.24.5.tar.xz",
+                "rust-1.75.tar.xz",
+            )
         ):
             fail("the one-entry fixed-archive manifest has a noncanonical destination")
         return
@@ -256,7 +259,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             )
         return
     fail(
-        "the archive manifest must contain exactly one Debian systemd image, "
+        "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
         "two Dart audit inputs, six WiX packages, 14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
@@ -1440,6 +1443,22 @@ def test_systemd_image_specs() -> tuple[ArchiveSpec, ...]:
     )
 
 
+def test_flutter_archive_specs() -> tuple[ArchiveSpec, ...]:
+    name = "flutter-3.24.5.tar.xz"
+    payload = b"flutter-toolchain-fixture"
+    return parse_specs(
+        [
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        ]
+    )
+
+
 def test_dart_audit_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name, payload in (
@@ -1685,10 +1704,31 @@ def self_test() -> None:
             os.close(wix_online_fd)
 
         systemd_specs = test_systemd_image_specs()
+        flutter_specs = test_flutter_archive_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:
             fail("systemd-image self-test lost its bounded large-image timeout")
+        if download_timeout_seconds(flutter_specs[0]) != 120:
+            fail("Flutter-archive self-test widened the ordinary download timeout")
         if download_timeout_seconds(specs[0]) != 120:
             fail("archive self-test widened the ordinary download timeout")
+        flutter_name = "flutter-3.24.6.tar.xz"
+        flutter_payload = b"unpinned-flutter-toolchain-fixture"
+        try:
+            parse_specs(
+                [
+                    [
+                        flutter_name,
+                        f"https://example.invalid/{flutter_name}",
+                        str(len(flutter_payload)),
+                        hashlib.sha256(flutter_payload).hexdigest(),
+                        "example.invalid",
+                    ]
+                ]
+            )
+        except ContractError:
+            pass
+        else:
+            fail("Flutter-archive self-test accepted an unpinned toolchain name")
         systemd_online = root / "systemd-online"
         systemd_staging = root / "systemd-staging"
         systemd_online.mkdir(mode=0o700)

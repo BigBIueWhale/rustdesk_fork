@@ -218,8 +218,8 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     if len(specs) == 3:
         if names != (
             "flutter-3.24.5.tar.xz",
-            "rust-1.75.tar.xz",
             "llvm-15.0.6.tar.xz",
+            "rust-1.75.tar.xz",
         ):
             fail(
                 "the Flutter model-test manifest is not the exact "
@@ -1475,8 +1475,8 @@ def test_flutter_model_archive_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name in (
         "flutter-3.24.5.tar.xz",
-        "rust-1.75.tar.xz",
         "llvm-15.0.6.tar.xz",
+        "rust-1.75.tar.xz",
     ):
         payload = f"{name}-fixture".encode("ascii")
         records.append(

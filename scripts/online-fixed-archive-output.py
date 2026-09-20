@@ -215,6 +215,17 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         ):
             fail("the Dart audit manifest is not the exact two-input rebuild source")
         return
+    if len(specs) == 3:
+        if names != (
+            "flutter-3.24.5.tar.xz",
+            "rust-1.75.tar.xz",
+            "llvm-15.0.6.tar.xz",
+        ):
+            fail(
+                "the Flutter model-test manifest is not the exact "
+                "Flutter/Rust/LLVM toolchain source"
+            )
+        return
     if len(specs) == 14:
         if any(
             len(validate_name(name)) > 1 and validate_name(name)[0] != "win"
@@ -260,7 +271,8 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         return
     fail(
         "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
-        "two Dart audit inputs, six WiX packages, 14 toolchain entries, "
+        "two Dart audit inputs, three Flutter model-test toolchain entries, "
+        "six WiX packages, 14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
     )
@@ -1459,6 +1471,26 @@ def test_flutter_archive_specs() -> tuple[ArchiveSpec, ...]:
     )
 
 
+def test_flutter_model_archive_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for name in (
+        "flutter-3.24.5.tar.xz",
+        "rust-1.75.tar.xz",
+        "llvm-15.0.6.tar.xz",
+    ):
+        payload = f"{name}-fixture".encode("ascii")
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def test_dart_audit_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name, payload in (
@@ -1705,10 +1737,13 @@ def self_test() -> None:
 
         systemd_specs = test_systemd_image_specs()
         flutter_specs = test_flutter_archive_specs()
+        flutter_model_specs = test_flutter_model_archive_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:
             fail("systemd-image self-test lost its bounded large-image timeout")
         if download_timeout_seconds(flutter_specs[0]) != 120:
             fail("Flutter-archive self-test widened the ordinary download timeout")
+        if len(flutter_model_specs) != 3:
+            fail("Flutter model-test self-test lost its exact toolchain manifest")
         if download_timeout_seconds(specs[0]) != 120:
             fail("archive self-test widened the ordinary download timeout")
         flutter_name = "flutter-3.24.6.tar.xz"

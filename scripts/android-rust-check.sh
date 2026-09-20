@@ -59,7 +59,7 @@ require_verifier_vm_android_builder() {
     verifier_vm_image_provenance verify-local \
         --role android-builder \
         --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
-        --image-ref "$ANDROID_BUILDER_IMAGE_ID" \
+        --image-ref "$ANDROID_BUILDER_CONFIG_ID" \
         --base "ubuntu:24.04@$SHA256_BASEIMAGE_UBUNTU_2404" \
         --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
         --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
@@ -148,7 +148,8 @@ for relative in sys.stdin.buffer.read().split(b"\0"):
 require_cmd git python3 sha256sum tar
 require_online_complete
 [[ "$ANDROID_BUILDER_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-    || die "Android Rust release check has a malformed immutable builder image ID"
+    && [[ "$ANDROID_BUILDER_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || die "Android Rust release check has malformed certified/runtime builder identities"
 
 WORKSPACE="$(umask 077 && /usr/bin/mktemp -d /tmp/rustdesk-android-rust-check.XXXXXXXXXX)" \
     || die "cannot create Android Rust release-check workspace"
@@ -190,7 +191,7 @@ if ! verifier_vm_docker run --rm --pull=never --network=none --read-only \
     --mount "type=bind,source=$SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$online,target=/online,readonly,bind-recursive=disabled" \
     --workdir /src \
-    "$ANDROID_BUILDER_IMAGE_ID" \
+    "$ANDROID_BUILDER_CONFIG_ID" \
     /bin/bash /authority/android-apk-build.sh; then
     die "Android Rust release-check container failed"
 fi

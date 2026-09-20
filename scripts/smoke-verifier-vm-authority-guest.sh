@@ -382,7 +382,7 @@ run_hbb_common_fs() {
             --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
             --workdir /source \
-            "$DEB_BUILDER_IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+            "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
                 set -- /sys/class/net/*
                 [ "$#" -eq 1 ] && [ "$1" = /sys/class/net/lo ]
                 uid= gid= cap= nnp= seccomp=
@@ -452,7 +452,7 @@ run_hbb_common_fs() {
         || fail 'focused Rust-test container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
-    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_IMAGE_ID" >/dev/null
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     [ "$source_before" = \
       "$source_archive_sha:$(sha256sum "$source_root/Cargo.lock" \
           "$source_root/libs/hbb_common/src/fs.rs")" ] \
@@ -461,9 +461,10 @@ run_hbb_common_fs() {
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$tests_passed" \
-        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID"
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
+        "$DEB_BUILDER_CONFIG_ID"
 }
 
 cleanup() {

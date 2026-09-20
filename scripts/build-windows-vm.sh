@@ -1008,9 +1008,9 @@ preflight() {
         && [ ! -L "$ONLINE_DIR/vcpkg-distfiles/libvpx-native-key.txt" ] \
         || die "libvpx native key is missing"
     windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"
-    require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \
+    require_pinned_builder_image deb-builder "$DEB_BUILDER_CONFIG_ID" \
         windows_helper_image_provenance
-    DEB_BUILDER_IMAGE="$DEB_BUILDER_IMAGE_ID"
+    DEB_BUILDER_IMAGE="$DEB_BUILDER_CONFIG_ID"
 }
 
 golden_identity() {

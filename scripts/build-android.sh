@@ -107,7 +107,7 @@ OUT_PARENT_ID=""
 # build-deps (xz/openjdk/cmake/ninja/nasm/...), baked by online-fetch.sh
 # (build_android_builder_image) via Dockerfile.android-builder. The compile runs inside
 # it with --network=none; the rust/flutter/NDK toolchains come from ./online.
-IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
+IMAGE_ID="${ANDROID_BUILDER_CONFIG_ID:-}"
 # R-B2: fixed pinned reproducible epoch (pins.env SOURCE_DATE_EPOCH_PIN), not a commit date.
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 
@@ -392,7 +392,7 @@ prepare_pass_output() {
 resolve_image() {
     require_verifier_vm_android_builder
     if [ "$RELEASE_CHILD" -eq 1 ] && [ "$RELEASE_DOCKER_IMAGE_ID" != "$IMAGE_ID" ]; then
-        die "release Android image ID does not equal ANDROID_BUILDER_IMAGE_ID"
+        die "release Android runtime image ID does not equal ANDROID_BUILDER_CONFIG_ID"
     fi
 }
 

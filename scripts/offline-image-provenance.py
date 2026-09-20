@@ -864,6 +864,13 @@ def requires_private_archive(spec: ImageSpec) -> bool:
     ) or (isinstance(spec, Spec) and spec.config_id is not None)
 
 
+def runtime_image_id(spec: ImageSpec) -> str:
+    """Return the immutable ID that a Docker daemon uses to run the image."""
+    if isinstance(spec, CertifiedBuilderSpec):
+        return spec.config_id
+    return spec.image_id
+
+
 def fail(message: str) -> None:
     raise ProvenanceError(message)
 
@@ -1337,8 +1344,17 @@ def inspect_image(image_ref: str) -> dict[str, object]:
 
 
 def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec) -> None:
-    if payload.get("Id") != spec.image_id:
-        fail(f"image reference {image_ref} resolves to {payload.get('Id')!r}, expected {spec.image_id}")
+    expected_runtime_id = runtime_image_id(spec)
+    if isinstance(spec, CertifiedBuilderSpec) and image_ref != expected_runtime_id:
+        fail(
+            f"image reference must be the immutable runtime ID "
+            f"{expected_runtime_id}, got {image_ref}"
+        )
+    if payload.get("Id") != expected_runtime_id:
+        fail(
+            f"image reference {image_ref} resolves to {payload.get('Id')!r}, "
+            f"expected {expected_runtime_id}"
+        )
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
@@ -1705,7 +1721,7 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
                 "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
                 "--entrypoint",
                 "/bin/sh",
-                spec.image_id,
+                image_ref,
                 "-c",
                 command,
             ]
@@ -5289,7 +5305,7 @@ def load_archive(
         stable_file(before, os.fstat(fd), archive_path)
     finally:
         os.close(fd)
-    verify_local(spec.image_id, spec)
+    verify_local(runtime_image_id(spec), spec)
 
 
 def rename_noreplace(source: Path, destination: Path) -> None:
@@ -6502,7 +6518,8 @@ def capture(
     require_private: bool = False,
     layout_output: Path | None = None,
 ) -> tuple[str, int, ArchiveIdentity | None, str | None]:
-    verify_local(spec.image_id, spec)
+    runtime_id = runtime_image_id(spec)
+    verify_local(runtime_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
     private_archive = requires_private_archive(spec) or require_private
@@ -6510,10 +6527,10 @@ def capture(
     archive_spec = spec
     if private_archive:
         validate_private_output_parent(output.parent)
-        save_ref = spec.image_id
+        save_ref = runtime_id
     else:
         output.parent.mkdir(parents=True, exist_ok=True)
-        result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
+        result = run([DOCKER, "tag", runtime_id, spec.capture_tag])
         if result.returncode != 0:
             fail(f"cannot create fixed capture tag: {result.stderr.decode(errors='replace').strip()}")
         validate_inspect(inspect_image(spec.capture_tag), spec.capture_tag, spec)
@@ -10312,14 +10329,14 @@ def self_test() -> None:
             android_size,
         )
         android_payload = {
-            "Id": android_spec.image_id,
+            "Id": android_spec.config_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": android_spec.runtime_inspect_config,
         }
         validate_inspect(
             android_payload,
-            android_spec.image_id,
+            android_spec.config_id,
             android_spec,
         )
         if android_spec.bootstrap_history_count != 13 \
@@ -10415,7 +10432,7 @@ def self_test() -> None:
                         "User": "0:0",
                     },
                 },
-                android_spec.image_id,
+                android_spec.config_id,
                 android_spec,
             ),
             "certified Android builder runtime identity",
@@ -10740,12 +10757,12 @@ def self_test() -> None:
         deb_size = len(deb_bytes)
         verify_archive(deb_archive, deb_sha, deb_spec, deb_size)
         deb_payload = {
-            "Id": deb_spec.image_id,
+            "Id": deb_spec.config_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": deb_spec.runtime_inspect_config,
         }
-        validate_inspect(deb_payload, deb_spec.image_id, deb_spec)
+        validate_inspect(deb_payload, deb_spec.config_id, deb_spec)
         if deb_spec.display_name != "Debian builder" \
            or deb_spec.argument_prefix != "DEB_BUILDER" \
            or deb_spec.bootstrap_context_name != "deb-builder-bootstrap" \
@@ -10906,14 +10923,14 @@ def self_test() -> None:
             win_size,
         )
         win_payload = {
-            "Id": win_spec.image_id,
+            "Id": win_spec.config_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": win_spec.runtime_inspect_config,
         }
         validate_inspect(
             win_payload,
-            win_spec.image_id,
+            win_spec.config_id,
             win_spec,
         )
         if win_spec.display_name != "Windows helper" \
@@ -11019,7 +11036,7 @@ def self_test() -> None:
                         "User": "0:0",
                     },
                 },
-                win_spec.image_id,
+                win_spec.config_id,
                 win_spec,
             ),
             "certified Windows helper runtime identity",
@@ -12254,7 +12271,7 @@ def main() -> int:
         return 0
     spec = spec_from_args(args)
     if args.command == "verify-local":
-        verify_local(args.image_ref or spec.image_id, spec)
+        verify_local(args.image_ref or runtime_image_id(spec), spec)
         print(f"verified {spec.role} {spec.image_id}")
     elif args.command == "verify-load":
         load_archive(args.archive, args.archive_sha, spec, args.archive_size)
@@ -12318,8 +12335,9 @@ def main() -> int:
         print(f"sha256={archive_sha}")
         print(f"bytes={size}")
     elif args.command == "maintenance-estimate":
-        payload = inspect_image(spec.image_id)
-        validate_inspect(payload, spec.image_id, spec)
+        runtime_id = runtime_image_id(spec)
+        payload = inspect_image(runtime_id)
+        validate_inspect(payload, runtime_id, spec)
         size = payload.get("Size")
         if not isinstance(size, int) or size < 0:
             fail("docker inspect returned an invalid image size")

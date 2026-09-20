@@ -1364,7 +1364,7 @@ cargo_vendor_output_args() {
         --source-commit "$GRADLE_SOURCE_COMMIT" \
         --source-tree "$GRADLE_SOURCE_TREE" \
         --source-archive-sha256 "$GRADLE_SOURCE_ARCHIVE_SHA256" \
-        --builder "$DEB_BUILDER_IMAGE_ID" \
+        --builder "$DEB_BUILDER_CONFIG_ID" \
         --rust-sha256 "$SHA256_RUST_1_75" \
         --vendor-sha256 "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         --config-sha256 "$SHA256_CARGO_VENDOR_CONFIG" \
@@ -1499,7 +1499,7 @@ verify_cargo_vendor_source_unchanged() {
 }
 
 vendor_cargo() {
-    local builder="$DEB_BUILDER_IMAGE_ID"
+    local builder="$DEB_BUILDER_CONFIG_ID"
     local producer_status=0 source_status=0 input_status=0
     local output_status=0 semantic_status=0 publication_status=0
     local lock_fd staging staging_id candidate
@@ -1763,7 +1763,7 @@ reconcile_archive_bundle_transactions() {
 
 stage_archive_bundle() {
     local kind="$1" root="$2" prefix="$3" label="$4"
-    local builder="${5:-$ANDROID_BUILDER_IMAGE_ID}"
+    local builder="${5:-$ANDROID_BUILDER_CONFIG_ID}"
     local builder_role="${6:-android-builder}"
     local lock_fd helper_sha256 staging staging_identity action
     local producer_status=0 verification_status=0 publication_status=0
@@ -1855,12 +1855,12 @@ stage_fixed_archives() {
 stage_rust_test_inputs() {
     verify_or_load_deb_builder_image
     stage_archive_bundle rust-test "$ONLINE_DIR" .rustdesk-rust-test-archive \
-        "pinned Rust test toolchain archive" "$DEB_BUILDER_IMAGE_ID" deb-builder
+        "pinned Rust test toolchain archive" "$DEB_BUILDER_CONFIG_ID" deb-builder
     vendor_cargo
 }
 
 validate_dart_audit_inputs() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     require_online_fetch_builder_image android-builder "$builder"
     online_docker_run_offline \
         --mount "type=bind,source=$SCRIPT_DIR/dart-audit-image-input.py,target=/authority/dart-audit-image-input.py,readonly,bind-recursive=disabled" \
@@ -2154,7 +2154,7 @@ verify_or_load_deb_builder_image() {
         --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --image-ref "$DEB_BUILDER_IMAGE_ID" \
+        --image-ref "$DEB_BUILDER_CONFIG_ID" \
         "${args[@]}"
 }
 
@@ -2168,7 +2168,7 @@ verify_or_load_android_builder_image() {
         --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --image-ref "$ANDROID_BUILDER_IMAGE_ID" \
+        --image-ref "$ANDROID_BUILDER_CONFIG_ID" \
         "${args[@]}"
 }
 
@@ -2182,7 +2182,7 @@ verify_or_load_win_helper_image() {
         --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --image-ref "$WIN_HELPER_IMAGE_ID" \
+        --image-ref "$WIN_HELPER_CONFIG_ID" \
         "${args[@]}"
 }
 
@@ -3849,7 +3849,7 @@ stage_cargo_installed_tool() {
     local kind="$1" builder="$2"
     local role package binary tool_version features destination
     case "$kind:$builder" in
-        "frb:$DEB_BUILDER_IMAGE_ID")
+        "frb:$DEB_BUILDER_CONFIG_ID")
             role=deb-builder
             package=flutter_rust_bridge_codegen
             binary=flutter_rust_bridge_codegen
@@ -3857,7 +3857,7 @@ stage_cargo_installed_tool() {
             features=uuid
             destination=frb-tool
             ;;
-        "cargo-ndk:$ANDROID_BUILDER_IMAGE_ID")
+        "cargo-ndk:$ANDROID_BUILDER_CONFIG_ID")
             role=android-builder
             package=cargo-ndk
             binary=cargo-ndk
@@ -3985,7 +3985,7 @@ stage_cargo_installed_tool() {
 # (networked) in the deb-builder image with the pinned rust — exactly as upstream's
 # bridge.yml does: `cargo install ... --version <pin> --features uuid --locked`.
 build_frb_codegen() {
-    local builder="$DEB_BUILDER_IMAGE_ID"
+    local builder="$DEB_BUILDER_CONFIG_ID"
     stage_cargo_installed_tool frb "$builder"
 }
 
@@ -4105,7 +4105,7 @@ restore_pub_cache_output_traversal() {
 }
 
 verify_pub_cache_resolution() {
-    local cache="$1" builder="$DEB_BUILDER_IMAGE_ID"
+    local cache="$1" builder="$DEB_BUILDER_CONFIG_ID"
     [ -d "$cache" ] && [ ! -L "$cache" ] \
         || die "Pub-cache semantic candidate is not one real directory"
     online_docker_run_pub_semantic \
@@ -4183,7 +4183,7 @@ verify_pub_cache_resolution() {
 }
 
 stage_pub_cache() {
-    local builder="$DEB_BUILDER_IMAGE_ID"
+    local builder="$DEB_BUILDER_CONFIG_ID"
     local status=0 source_status=0 input_status=0 output_status=0 semantic_status=0 publication_status=0
     local lock_fd receipt="" digest="" current=0 replace_existing=0
     require_online_fetch_builder_image deb-builder "$builder"
@@ -4403,7 +4403,7 @@ recover_libyuv_distfile_staging() {
 
 stage_vcpkg_distfiles() {
     stage_libvpx_distfiles
-    local builder="$DEB_BUILDER_IMAGE_ID"
+    local builder="$DEB_BUILDER_CONFIG_ID"
     local status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=()
@@ -4566,7 +4566,7 @@ recover_vcpkg_native_output_staging() {
 }
 
 stage_vcpkg_natives() {
-    local builder="$DEB_BUILDER_IMAGE_ID"
+    local builder="$DEB_BUILDER_CONFIG_ID"
     local status=0 source_status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=()
@@ -4726,7 +4726,7 @@ recover_android_ndk_output_staging() {
 }
 
 stage_android_ndk() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     local status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=()
@@ -4819,7 +4819,7 @@ stage_android_ndk() {
 # builtin-baseline), but ./online/inputs stages the pinned TARBALL (no .git) — classic mode over the
 # tarball baseline ports + the overlay is equivalent + git-free.
 stage_vcpkg_natives_arm64() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     local status=0 source_status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=()
@@ -4929,7 +4929,7 @@ stage_vcpkg_natives_arm64() {
 # the android-builder image with the pinned rust — exactly as upstream's android job does
 # (`cargo install cargo-ndk --version <pin> --locked`). A host-target tool → ./online/inputs/cargo-ndk-tool.
 stage_cargo_ndk() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     stage_cargo_installed_tool cargo-ndk "$builder"
 }
 
@@ -5001,7 +5001,7 @@ recover_android_sdk_output_staging() {
 }
 
 stage_android_sdk() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     local status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=() container_pins=()
@@ -5392,7 +5392,7 @@ restore_gradle_output_traversal() {
 }
 
 stage_gradle() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     local status=0 source_status=0 output_status=0 publication_status=0
     local lock_fd semantic_args=() sdk_args=()
     local receipt="" digest="" current=0 replace_existing=0
@@ -5498,7 +5498,7 @@ windows_engine_output_args() {
         --uid "$ONLINE_FETCH_UID" \
         --gid "$ONLINE_FETCH_GID" \
         --flutter-version "$FLUTTER_VERSION" \
-        --builder "$ANDROID_BUILDER_IMAGE_ID" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID" \
         --source-sha256 "$SHA256_FLUTTER_3_24_5" \
         --sha256 "$SHA256_FLUTTER_WIN_ENGINE" \
         --size "$SIZE_FLUTTER_WIN_ENGINE"
@@ -5559,7 +5559,7 @@ recover_windows_engine_staging() {
 # networkless process verifies the exact digest and closed 73-file tar contract
 # before descriptor-relative, durable, no-clobber publication.
 stage_windows_engine() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     local status=0 source_status=0 output_status=0 semantic_status=0
     local publication_status=0 lock_fd staging staging_id
     local source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
@@ -5743,7 +5743,7 @@ flutter_pub_cache_output_args() {
         --uid "$ONLINE_FETCH_UID" \
         --gid "$ONLINE_FETCH_GID" \
         --flutter-version "$FLUTTER_VERSION" \
-        --builder "$ANDROID_BUILDER_IMAGE_ID" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID" \
         --source-digest "$source_digest" \
         --flutter-source-sha256 "$SHA256_FLUTTER_3_24_5" \
         --flutter-tools-lock-sha256 "$SHA256_FLUTTER_TOOLS_LOCK" \
@@ -5814,7 +5814,7 @@ recover_flutter_pub_cache_staging() {
 }
 
 verify_flutter_pub_cache_archive_resolution() {
-    local archive="$1" builder="$ANDROID_BUILDER_IMAGE_ID"
+    local archive="$1" builder="$ANDROID_BUILDER_CONFIG_ID"
     local source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
     [ -f "$archive" ] && [ ! -L "$archive" ] \
         || die "Flutter Pub-cache semantic input is not one real file"
@@ -5877,7 +5877,7 @@ verify_flutter_pub_cache_archive_resolution() {
 # host mount, and an independent process validates the complete logical archive
 # and resolves the pinned flutter_tools lock before no-clobber publication.
 stage_flutter_pub_cache() {
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
     local status=0 source_status=0 input_status=0 output_status=0
     local semantic_status=0 publication_status=0 lock_fd staging staging_id
     local source_digest after_digest

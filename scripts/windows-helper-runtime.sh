@@ -319,7 +319,7 @@ windows_helper_run_profile() {
         --ulimit core=0:0 --ulimit nofile=4096:4096 \
         --ulimit fsize=137438953472:137438953472 \
         "${limits[@]}" "${runtime[@]}" "${WINDOWS_HELPER_MOUNTS[@]}" \
-        "$WIN_HELPER_IMAGE_ID" "${WINDOWS_HELPER_COMMAND[@]}"; then
+        "$WIN_HELPER_CONFIG_ID" "${WINDOWS_HELPER_COMMAND[@]}"; then
         status=0
     else
         status=$?
@@ -384,7 +384,7 @@ windows_helper_runtime_resolve() {
         || die "pinned Windows helper image archive must be a regular non-symlink file"
     windows_helper_verify_archive "$archive" \
         || die "pinned Windows helper image archive provenance verification failed"
-    require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \
+    require_pinned_builder_image win-helper "$WIN_HELPER_CONFIG_ID" \
         windows_helper_image_provenance
     windows_helper_assert_vm_authority \
         || die "Windows helper verifier-VM authority changed"

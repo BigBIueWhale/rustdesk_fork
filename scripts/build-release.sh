@@ -691,9 +691,9 @@ release_preflight() {
         && [ "$(stat -c '%u:%g:%a' -- "$HOST_VERIFIER_VM_INPUT_ROOT")" = \
              "$(id -u):$(id -g):700" ] \
         || die "release verifier-VM input root is not private and canonical"
-    DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
-    ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
-    WINDOWS_IMAGE_ID="${WIN_HELPER_IMAGE_ID:-}"
+    DEBIAN_IMAGE_ID="${DEB_BUILDER_CONFIG_ID:-}"
+    ANDROID_IMAGE_ID="${ANDROID_BUILDER_CONFIG_ID:-}"
+    WINDOWS_IMAGE_ID="${WIN_HELPER_CONFIG_ID:-}"
     assert_release_builder_image_ids
     verify_private_tree_cleanup_preflight \
         || die "release preflight cannot establish the complete terminal cleanup authority"
@@ -1903,7 +1903,7 @@ main() {
         || die "cannot resolve repository HEAD"
     PINNED_HEAD_SHORT="${PINNED_HEAD:0:12}"
     export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
-    DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
+    DEBIAN_IMAGE_ID="${DEB_BUILDER_CONFIG_ID:-}"
     create_workspace
     release_preflight
     if [ "$DOCTOR" -eq 1 ]; then

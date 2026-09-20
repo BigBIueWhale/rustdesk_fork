@@ -126,7 +126,7 @@ readonly SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
   || die 'source commit or tree identity is malformed'
 
 for pin in \
-  DEB_BUILDER_IMAGE_ID DEV_CHECK_IMAGE_ID \
+  DEB_BUILDER_IMAGE_ID DEB_BUILDER_CONFIG_ID DEV_CHECK_IMAGE_ID \
   RUST_VERSION SHA256_RUST_1_75 SIZE_RUST_1_75 \
   FLUTTER_VERSION SHA256_FLUTTER_3_24_5 SIZE_FLUTTER_3_24_5 \
   LLVM_VERSION SHA256_LLVM_15_0_6 SIZE_LLVM_15_0_6 \
@@ -158,7 +158,7 @@ require_exact_local_image() {
     || die "$label image content ID differs: expected $expected, got $actual"
 }
 
-require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"
+require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"
 require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"
 
 readonly SOURCE_ARCHIVE="$WORKSPACE/source.tar"
@@ -399,7 +399,7 @@ run_owned_container "$WORKSPACE/build.cid" \
   --env "RUSTDESK_LLVM_SIZE=$SIZE_LLVM_15_0_6" \
   --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
-  "$DEB_BUILDER_IMAGE_ID" \
+  "$DEB_BUILDER_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh build
 
 echo '== reverify the exact evidence Pub-cache copy after the offline build =='

@@ -35,7 +35,7 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 readonly INNER_SOURCE="$SCRIPT_DIR/android-keystore-generate.sh"
-readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"
+readonly IMAGE_ID="$ANDROID_BUILDER_CONFIG_ID"
 readonly KEY_ALIAS=rustdesk-fork
 readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
 readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker

@@ -134,7 +134,7 @@ verify_online_shas \
   "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6" \
   "frb-${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz" "$SHA256_FRB_1_80_1"
 
-IMAGE_ID="$DEB_BUILDER_IMAGE_ID"
+IMAGE_ID="$DEB_BUILDER_CONFIG_ID"
 [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || die "dart-verify has a malformed immutable image ID: $IMAGE_ID"
 

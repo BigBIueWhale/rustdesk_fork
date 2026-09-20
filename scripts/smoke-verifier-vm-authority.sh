@@ -1164,7 +1164,7 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
 else
     /usr/bin/grep -Eq \
-        "^HBB_COMMON_FS_VM=pass commit=$HBB_SOURCE_COMMIT tree=$HBB_SOURCE_TREE tests=[1-9][0-9]* rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder=$DEB_BUILDER_IMAGE_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined$" \
+        "^HBB_COMMON_FS_VM=pass commit=$HBB_SOURCE_COMMIT tree=$HBB_SOURCE_TREE tests=[1-9][0-9]* rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined$" \
         "$SERIAL_LOG" \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused hbb_common filesystem test receipt is absent'; }
     require_exact_fixed_receipt \

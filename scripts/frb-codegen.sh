@@ -269,8 +269,8 @@ PY
 IMAGE_ID="${FRB_IMAGE_ID:-}"
 [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || die "FRB image has a malformed immutable ID: $IMAGE_ID"
-[ "$IMAGE_ID" = "${DEB_BUILDER_IMAGE_ID:-}" ] \
-    || die "FRB_IMAGE_ID does not equal the audited deb-builder image pin"
+[ "$IMAGE_ID" = "${DEB_BUILDER_CONFIG_ID:-}" ] \
+    || die "FRB_IMAGE_ID does not equal the audited deb-builder runtime pin"
 
 WORK_ROOT="$(umask 077 && mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"
 [ -d "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \

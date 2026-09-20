@@ -679,7 +679,7 @@ chmod 0400 "$VERIFY_CARGO_CONFIG"
 # stale ignored bridge in a developer checkout from influencing the verifier verdict.
 create_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"
 verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"
-ONLINE_DIR="$VERIFY_FRB_ONLINE_PARENT/online" FRB_IMAGE_ID="$DEB_BUILDER_IMAGE_ID" \
+ONLINE_DIR="$VERIFY_FRB_ONLINE_PARENT/online" FRB_IMAGE_ID="$DEB_BUILDER_CONFIG_ID" \
   /usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh" \
     --source-root "$VERIFY_SOURCE" \
     --online-root "$VERIFY_FRB_ONLINE_PARENT/online" \

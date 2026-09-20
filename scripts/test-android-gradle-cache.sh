@@ -188,7 +188,7 @@ require_verifier_vm_android_builder() {
     verifier_vm_image_provenance verify-local \
         --role android-builder \
         --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
-        --image-ref "$ANDROID_BUILDER_IMAGE_ID" \
+        --image-ref "$ANDROID_BUILDER_CONFIG_ID" \
         --base "ubuntu:24.04@$SHA256_BASEIMAGE_UBUNTU_2404" \
         --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
         --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
@@ -336,7 +336,8 @@ trap 'exit 143' TERM
 require_cmd find readlink stat
 require_online_complete
 [[ "$ANDROID_BUILDER_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-    || die "Android Gradle release gate has a malformed immutable builder image ID"
+    && [[ "$ANDROID_BUILDER_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || die "Android Gradle release gate has malformed certified/runtime builder identities"
 
 WORKSPACE="$(umask 077 && /usr/bin/mktemp -d /tmp/rustdesk-android-gradle-gate.XXXXXXXXXX)" \
     || die "cannot create Android Gradle release-gate workspace"
@@ -378,7 +379,7 @@ if android_gradle_mount_rejection_run \
     --mount "type=bind,source=$SCRIPT_DIR/android-gradle-offline.init.gradle,target=$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$GRADLE_FIXTURE/seed,target=/seed,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$GRADLE_FIXTURE/overlay,target=/seed/nested,readonly,bind-recursive=disabled" \
-    "$ANDROID_BUILDER_IMAGE_ID" \
+    "$ANDROID_BUILDER_CONFIG_ID" \
     python3 -I -S "$CONTAINER_TEST_ROOT/android-gradle-cache.py" materialize \
         --source /seed \
         --init-script "$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle" \
@@ -395,6 +396,6 @@ android_gradle_semantics_run \
     --mount "type=bind,source=$SCRIPT_DIR/android-apk-build.sh,target=$CONTAINER_TEST_ROOT/android-apk-build.sh,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$SCRIPT_DIR/test-android-gradle-cache.sh,target=$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$gradle_root,target=/gradle-distribution,readonly,bind-recursive=disabled" \
-    "$ANDROID_BUILDER_IMAGE_ID" \
+    "$ANDROID_BUILDER_CONFIG_ID" \
     /bin/bash "$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh" --inside
 require_online_complete

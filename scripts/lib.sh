@@ -232,6 +232,9 @@ require_pinned_builder_image() {
             --config-id "${!config_var}"
             --manifest-id "${!manifest_var}"
         )
+        [ -n "$image_ref" ] || image_ref="${!config_var}"
+        [ "$image_ref" = "${!config_var}" ] \
+            || die "pinned $role runtime reference must equal $config_var"
     else
         args=(
             verify-local --role "$role" --expected-id "$image_id" --base "$base"

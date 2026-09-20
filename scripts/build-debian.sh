@@ -100,7 +100,7 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # The pinned .deb build image: the digest-pinned ubuntu:18.04 baseline + the system
 # build-deps, baked by online-fetch.sh (the ONE networked step) via Dockerfile.deb-builder.
 # The compile then runs inside it with --network=none.
-IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
+IMAGE_ID="${DEB_BUILDER_CONFIG_ID:-}"
 RELEASE_CHILD=0
 ONLINE_SNAPSHOT_PARENT=""
 OWNED_WORKSPACE=""
@@ -356,7 +356,7 @@ prepare_execution_contract() {
 resolve_image() {
     require_pinned_builder_image deb-builder "$IMAGE_ID" verifier_vm_image_provenance
     if [ "$RELEASE_CHILD" -eq 1 ] && [ "$RELEASE_DOCKER_IMAGE_ID" != "$IMAGE_ID" ]; then
-        die "release Debian image ID does not equal DEB_BUILDER_IMAGE_ID"
+        die "release Debian runtime image ID does not equal DEB_BUILDER_CONFIG_ID"
     fi
 }
 

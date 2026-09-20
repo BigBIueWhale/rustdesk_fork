@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-103fb56391e868fc2188ae8c634ac66213ab953ade3160b941e8a9a7f5bf19fd  requirements.html
+ee58685a3f1baa5d5767625b0891caf3380efdaf0d7e3b8c733a7177fbe14710  requirements.html
 ```
 
 ## Current Verdict
@@ -68,7 +68,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Appendix C #185–196 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in R-D7a/R-T4/R-S11eq and the closed-excision, build-authority, and current-release sections of this ledger. |
+| Appendix C #185–202 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in R-D7a/R-T4/R-S11eq, R-S11bj–R-S11bm, and the closed-excision, build-authority, and current-release sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`, and the current snapshot/verdict provenance and distribution gaps remain in the R-R3 status entry below. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but the complete canonical input closure, stable Android signing material, a current APK/AAB, installation, lifecycle, peer, presentation, and device evidence are absent or open. |
@@ -1803,170 +1803,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   launchd. Exact signed installed artifacts still require the full present/absent/disabled/wrong-domain,
   partial-install, failure, retry, upgrade, logout/user-switch, restart, uninstall, abrupt-exit, state-agreement,
   and resource-cleanup matrix on supported macOS versions.
-- **R-S11bj/R-S11e-76 — Android APK builder container and source authority — SOURCE CLOSED/GATED
-  2026-07-21; EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.**
-  Platform: Android artifact
-  construction, signing, and verification. Endpoint/action: the four local Docker launches used for keystore
-  inspection, offline compilation, signing, and signed-APK verification. Boundary: checked-in exact-commit source,
-  signing secrets, verified offline inputs, and private intermediate artifacts ↔ an already-present pinned builder
-  image and the final host-side artifact publication. Before this correction, compilation mounted the real repository
-  read-write, signing mounted the final output directory read-write, verification mounted the repository read-only for
-  two checker scripts, and the compile used a fixed daemon-global container name. The launches were networkless and
-  numeric-nonroot, but did not explicitly refuse pulls, make the container root read-only, remove all capabilities,
-  set no-new-privileges, or bound processes, memory, CPU, and scratch space. A clean-tree check occurred before the
-  live mount, so a concurrent edit could also make consumed source differ from the named commit. This is source-proven
-  excessive build authority and a reproducibility race; it is not evidence that Docker gained root, changed a host
-  service or firewall, exposed a port, escaped, exploited anything, or compromised a host or device.
-
-  `scripts/build-android.sh` now rejects `ALLOW_DIRTY_TREE`, resolves one full clean `HEAD`, rejects symlink/gitlink/
-  special tree entries, archives the commit once into a mode-protected private workspace, and retains a non-writable
-  authority extraction. Each build pass creates a freshly absent writable extraction; the new descriptor-based
-  `scripts/verify-android-build-source.py` requires the initial inventory to contain no extras and match every
-  committed regular file/directory, owner, byte digest, and canonical full mode, rejects symlink/hardlink substitution and
-  unstable reads, and after compilation proves every committed input still matches while allowing generated outputs.
-  The writable tree is removed before signing, so the second pass starts from a fresh extraction rather than prior
-  generated state. Neither the real repository nor final output directory is mounted into a container.
-
-  One common launcher now binds every keytool/build/sign/verify invocation to R-S11dj's admitted guest-only Docker
-  authority, the existing immutable image ID, `--pull=never`, `--network=none`, a read-only root, the invoking numeric
-  uid/gid, all capabilities dropped, no-new-privileges, explicit PID/memory/CPU limits, and bounded task-specific tmpfs. The compile sees only its private
-  writable source plus the immutable inner script and verified online closure; signing sees only private pass output,
-  read-only signing files, exact-commit verifier scripts, and online inputs; verification sees only the APK and those
-  read-only checker/input files. There is no port publication, host namespace, Docker socket, privileged/cap-add path,
-  image build, or image pull. Signed private output passes signature/certificate, manifest, mobile-key, and checksum
-  validation before host-side publication; final APK/checksum bytes are compared to the private result and the
-  published hash is checked again. Standalone builds retain their default A/B comparison, while `build-release.sh`
-  retains its stronger independent-snapshot A/B authority.
-
-  `scripts/verify-android-build-source.py --self-test` owns the comparator's behavioral coverage, while the compact
-  `scripts/verify-android-builder-authority.py` binds this source/mount/launch shape and R-S11dj's real VM entry. The
-  duplicate workspace verifier and unrelated mutation/documentation checks were deleted. The historical target-local
-  A/B transaction at `29915f0075f4d1464361f218e61dd7d7e7072b85` validates the then-current inner source/build/signing
-  behavior, but predates the guest-only outer authority and is not current-path evidence. Full VM build transport,
-  current R-B2/R-B10 release, and real-device behavior remain open.
-- **R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority — SOURCE CLOSED/GATED
-  2026-07-21; EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.**
-  Platform: Android artifact source staging.
-  Endpoint/action: exact clean commit archive extraction into the immutable authority and per-pass writable build
-  copy. Boundary: Git's committed regular/executable distinction ↔ filesystem permissions consumed by the offline
-  build and its independently strict Gradle-init authority. The first exact-current target-local attempt at clean
-  commit `d8d9ddafe4e406c3bd46d17b8d286961a81ecb15` verified its private 25-GiB online snapshot, every Android input
-  pin, immutable builder image, and signing certificate, then stopped before compilation: the comparator accepted
-  `0664` checked-in files inherited from archive extraction, but `scripts/android-gradle-cache.py` correctly
-  refused group-writable `scripts/android-gradle-offline.init.gradle`. No APK was signed or published. This was a
-  fail-closed source-mode coherence defect, not execution of the file, weakened Gradle authority, root/container
-  escape, host/service/firewall mutation, port exposure, exploitation, or compromise.
-
-  `scripts/build-android.sh` now maps the already-closed Git inventory deterministically after each extraction. The
-  immutable root, every directory, and every executable are exactly `0555`; immutable ordinary files are `0444`.
-  Each private writable root, directory, and executable is exactly `0755`; writable ordinary files are `0644`.
-  Archive-producer and extractor umasks are no longer semantic inputs. `scripts/verify-android-build-source.py`
-  binds those complete modes on both roots, all committed directories, and all committed files in addition to its
-  existing owner/type/link/stable-read/digest checks. Its self-test rejects noncanonical authority and candidate
-  roots, directories, regular files, and executable transitions. The strict Gradle-init ownership/mode policy is
-  unchanged. The comparator self-test binds every comparison level and negative mode case; the compact Android
-  builder gate binds both normalization calls without duplicating that behavioral test or documentation. The later exact target-local A/B transaction at
-  `29915f0075f4d1464361f218e61dd7d7e7072b85` crossed this mode authority and produced byte-identical validated
-  signed APKs; full R-B2/R-B10 release and device behavior remain open.
-- **R-S11bl/R-S11e-78 — Android bounded scratch lifecycle — SOURCE CLOSED/GATED 2026-07-21;
-  EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android
-  offline artifact compilation.
-  Endpoint/action: the pinned toolchain extraction, native JNI compilation, and private Gradle-cache projection
-  inside the existing non-root networkless Android compile container. Boundary: verified immutable offline inputs
-  and disposable build state ↔ the explicit 10-GiB <code>/tmp</code> tmpfs and 12-GiB memory/no-swap ceiling.
-  The first exact build at pushed commit <code>fea99e583a560736771606a39f58a309ad550a2a</code> passed both
-  exact-source comparisons and strict Gradle authority, then failed closed with <code>ENOSPC</code> while extracting
-  LLVM. The inner harness had already projected 4,694,925,312 allocated bytes of Gradle state before retaining
-  9,093,156,864 bytes of expanded Rust-installer, Android cross-std, Flutter, and LLVM payloads and adding the
-  645,922,816-byte installed Rust toolchain. This was a deterministic resource-lifecycle contradiction before
-  compilation, not an unbounded host write, partial-toolchain execution, root/container escape, host service or
-  firewall mutation, port exposure, exploitation, or compromise.
-
-  The correction keeps every outer authority bound unchanged and shortens inner ownership instead. Host Rust and
-  Android cross-std installers are installed first, removed immediately, and proven absent before Flutter or LLVM
-  extraction. LLVM remains available for bridge generation and native JNI compilation; after the JNI library and
-  NDK runtime are copied into the private source output, LLVM is removed and proven absent and its environment is
-  cleared. Only then does offline mode materialize the writable Gradle cache exactly once for final packaging.
-  Installed Cargo deliberately remains because <code>flutter/android/app/build.gradle</code> executes
-  <code>cargo metadata</code> while configuring the final build. Direct measurement in the already-present pinned
-  image gives an 8,133,832,704-byte toolchain live set after installer retirement, a 2,352,091,136-byte base after
-  LLVM retirement, and about 7.05 GB after adding the 4,694,925,312-byte Gradle projection. No larger tmpfs/cgroup,
-  host scratch, extra mount, image operation, privilege, capability, network, or persistence fallback was added.
-
-  The inner Android build and Gradle-focused gates bind the phase order, retirement postconditions, retained Cargo
-  consumer, and scratch bounds; the compact outer builder gate retains the container resource shape without
-  duplicating those consumers. The later exact target-local A/B transaction at
-  `29915f0075f4d1464361f218e61dd7d7e7072b85` crossed the unchanged scratch bounds twice and produced
-  byte-identical validated signed APKs; the complete R-B2/R-B10 transaction and device behavior remain open.
-- **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CORRECTION AND EXACT
-  CORRECTED-COMMIT A/B CLOSED/GATED 2026-07-21; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
-  Endpoint/action: Android SDK/AGP user-preference state created during final Flutter/Gradle packaging. Boundary:
-  numeric non-root build identity and the existing bounded ephemeral `/tmp` tmpfs ↔ the deliberately read-only
-  container root and image-account home. The first exact build at pushed commit
-  `c413f4e86cd05b4aac5f19bbdd9b79d4c63f50b5` proved R-S11bl through bridge generation and a complete release
-  native Rust/JNI build, retired LLVM, and verified the deferred Gradle projection. AGP 7.3.1 then failed closed
-  while applying `com.android.application` because it tried to create `/home/ubuntu/.android` on the read-only
-  root. Shell `HOME=/tmp/buildhome` was already present, but Java's `user.home` remained account-backed. This was
-  a separate hermetic-state ownership/availability defect, not ENOSPC, root execution, a host write, container
-  escape, host service or firewall mutation, port exposure, exploitation, or compromise.
-
-  The initial correction at pushed commit `ba29c955ea61a374318f94ad7a24699c987256a6` used Android's official
-  `ANDROID_USER_HOME` preference-directory contract. Its clean default A/B transaction completed successfully:
-  both passes produced the same signed and externally validated APK SHA-256
-  `918456d08bb6b7a5ef3bf767ce7aa1395afb30dfefea56fca23cca0699d9e603`, with manifest, mobile at-rest bootstrap,
-  v2/v3 signing, checksum, exact-source postconditions, and offline cache projection all green. Both passes also
-  emitted the same nonfatal warning for `/home/ubuntu/.android/analytics.settings`, so that result is retained as
-  baseline artifact evidence but is not misrepresented as complete preference ownership. Direct `javap` inspection
-  inside the pinned non-root, networkless, read-only-root builder established that AGP 7.3.1's exact
-  `com.android.tools.analytics-library:shared:30.3.1` dependency predates `ANDROID_USER_HOME`: its
-  `AnalyticsPaths.getAndEnsureAndroidSettingsHome()` checks `ANDROID_PREFS_ROOT`, then `ANDROID_SDK_HOME`, then JVM
-  `user.home`.
-
-  The dual-variable correction at pushed commit `b757d8207a8be8fc063661dfba1369428021debd` was then tested through
-  the exact default path rather than accepted from source reasoning. Its pass A authenticated the complete online
-  snapshot, reproduced the private exact source, generated the bridge, completed the release native Rust/JNI build
-  in 2m27s, retired LLVM, and verified the deferred Gradle projection. AGP then failed closed while deriving its
-  default debug-keystore location. Inspection of exact `com.android.tools:common:30.3.1` bytecode proved why:
-  `ANDROID_USER_HOME` is a final path, whereas `ANDROID_PREFS_ROOT` is a parent to which current tools append
-  `.android`. Giving both the same string therefore produced two different resolved locations, which
-  `PathLocator.singlePathOf()` rejects. The failed private build published no APK and its owned workspace was
-  removed. This was another fail-closed compatibility/availability finding, not a reason to widen the root,
-  resources, privileges, or mounts.
-
-  The corrected single-input design clears `ANDROID_USER_HOME` and `ANDROID_SDK_HOME`, then exports only
-  `ANDROID_PREFS_ROOT=/tmp/android-preferences-root`. Before any extracted toolchain or Android/Gradle consumer,
-  each fresh container requires that root absent, creates both it and its `.android` child as real mode-0700
-  directories, and proves current numeric-UID ownership and mode for both. The exact pinned legacy analytics
-  component uses the private root directly; current location code resolves the private child, so both semantics
-  are owned without conflicting injections. The tree remains on the already-authorized 10-GiB tmpfs and is
-  discarded with the pass. Competing Android homes and JVM-wide Java options/home overrides are explicitly
-  refused; there is still no host mount, writable root, scratch or memory increase, persistence fallback, image
-  operation, privilege, capability, network, or port. The Android Gradle/cache behavioral gates own the preference
-  path and tool-consumer semantics; the compact outer builder gate deliberately does not mirror them, and the former
-  duplicate workspace/meta and mutation checks are deleted.
-
-  Exact target-local artifact evidence: clean pushed commit
-  `36ed7a621496ed470cad5347f7598c18858de827` ran the default A/B transaction in the already-present immutable
-  builder image `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121` against independently reverified
-  online closure `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac`. Both passes completed the native
-  release build, produced the same Gradle projection
-  `d125106b46b68b91618ca0c612f163098c1a3141d9bbe47bf7cf07d6353d7dab`, and emitted byte-identical v2/v3-signed
-  APKs with SHA-256 `918456d08bb6b7a5ef3bf767ce7aa1395afb30dfefea56fca23cca0699d9e603`. Manifest, mobile at-rest bootstrap,
-  certificate, checksum, exact-source pre/postconditions, and host publication checks passed. The complete retained
-  log contained neither the legacy `/home/ubuntu/.android/analytics.settings` warning nor the conflicting-location
-  and debug-keystore diagnostics, and the wrapper reported `ANDROID_PREFERENCES_RESULT=clean`. This is exact
-  named-commit target-local A/B evidence. It is not the independent-snapshot full R-B2/R-B10 release transaction
-  and does not prove Android device behavior; those obligations remain open.
-
-  Exact current source/artifact follow-up: clean pushed commit
-  `29915f0075f4d1464361f218e61dd7d7e7072b85`, which includes the complete persistent-service capture-owner and
-  listener-generation correction, completed the same official default A/B transaction against refreshed canonical
-  online closure `5ad074e7bfba62f87d3dc58614c0b33749b513d353bcaf6eaa315a6d8bf67d07`. Both passes independently
-  produced Gradle projection `b95fd5dae80230287c850081fdf0804503888bb67f337649f24b1075770f02b2` and
-  byte-identical, one-signer v2/v3-valid, fully artifact-validated APKs at SHA-256
-  `20af1c99178feb02e3a584a4148dbc5ce8129261361f7f37d0c09461d3e6f02e`. This supersedes the older
-  target-local artifact as the current named-commit APK evidence. It still is not physical-device validation or
-  the complete independent-snapshot R-B2/R-B10 release transaction.
+- **R-S11bj/R-S11e-76 — Android APK builder container and source authority — SOURCE CLOSED; CURRENT
+  VM BUILD, RELEASE, AND DEVICE EVIDENCE OPEN.** `scripts/build-android.sh` rejects dirty overrides, binds one
+  clean commit, creates a private immutable authority plus one fresh writable copy per pass, and proves committed
+  inputs unchanged. Key inspection, compilation, signing, and verification use only the authenticated no-NIC
+  verifier-VM guest-Docker funnel, immutable image ID, fixed nonroot/networkless/read-only confinement, bounded
+  resources, and role-specific mounts. Live repository/output mounts, host Docker, image pull/build, Docker-socket,
+  host-namespace, privileged, added-capability, and published-port fallbacks are absent. A sealed result must pass
+  certificate, signature, manifest, mobile-key, checksum, source, and stable-publication checks; standalone A/B and
+  release independent-snapshot equality remain required. Source and authority-entry checks are supplementary;
+  current APK construction and R-B2/R-B10 remain open.
+- **R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority — SOURCE CLOSED; CURRENT ARTIFACT
+  EVIDENCE OPEN.** Git modes are normalized after every extraction: immutable roots/directories/executables are
+  `0555`, immutable ordinary files `0444`, writable roots/directories/executables `0755`, and writable ordinary
+  files `0644`. The descriptor-based comparator binds complete modes, ownership, types, link counts, stable
+  identity, and content across both roots and refuses noncanonical input before compilation. The Gradle init-script
+  gate remains independently strict.
+- **R-S11bl/R-S11e-78 — Android bounded scratch lifecycle — SOURCE CLOSED; CURRENT BEHAVIORAL BUILD
+  EVIDENCE OPEN.** The inner harness installs and retires Rust and Android cross-std payloads before expanding
+  Flutter/LLVM, retains LLVM only through bridge/JNI production, retires LLVM and its environment before one
+  Gradle projection, and retains Cargo through the final tracked metadata consumer. The 10-GiB executable tmpfs
+  and 12-GiB no-swap ceiling remain fixed; no larger resource grant, host scratch, extra mount, or persistence
+  fallback substitutes for phase ownership.
+- **R-S11bm/R-S11e-79 — Android tool-preference scratch ownership — SOURCE CLOSED; CURRENT BEHAVIORAL
+  BUILD EVIDENCE OPEN.** Before tool use, the inner harness clears competing Android home inputs, creates one fresh
+  current-UID mode-0700 `ANDROID_PREFS_ROOT=/tmp/android-preferences-root` and `.android` child, and keeps legacy
+  analytics plus current tool state inside that bounded private tree. Account-home, JVM-home/options, writable-root,
+  host-mount, persistence, resource-widening, network, capability, and privilege fallbacks remain forbidden.
+- **Retained named Android build evidence for R-S11bj–R-S11bm — OLDER COMMIT ONLY.** Clean commit
+  `29915f0075f4d1464361f218e61dd7d7e7072b85` completed two fresh-source target-local passes and produced
+  byte-identical, one-signer v2/v3-valid APKs at SHA-256
+  `20af1c99178feb02e3a584a4148dbc5ce8129261361f7f37d0c09461d3e6f02e`. That result exercised the then-current
+  inner source, mode, scratch, preference, signing, and artifact checks, but predates current master and the
+  guest-only outer authority. It is not a current no-NIC VM build, independent-snapshot R-B2/R-B10 result, package
+  installation, peer/presentation, lifecycle, resource-soak, or device result.
 - **R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities — SOURCE
   IMPLEMENTED/GATED 2026-07-22; NATIVE MACOS AND EXACT PACKAGED-ARTIFACT EVIDENCE REMAIN
   R-R2/R-B2.** Platforms: Linux and macOS installed desktop entry processes; Windows retains its

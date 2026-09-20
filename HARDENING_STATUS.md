@@ -1579,7 +1579,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | Focused source/model gates remain supplementary. R-S11dh's authenticated ordinary-user, zero-NIC QEMU smoke proves direct boot, guest-only Docker, private Unix control, selected root/foreign refusal, bounded containers, listener invariance, finality, and joined cleanup; its script entries have no host-Docker fallback. R-S11cj's distinct outbound-only VM has real pinned-HTTPS/cache-transport authority and exact listener/finality receipts. The reviewed Android bootstrap was promoted by `run.wn6nrHxpyi`. Current BuildKit v0.18.2 research and real failures then corrected the certification contract from an assumed SLSA v1/post-rewrite layer model to its actual in-toto v0.1/SLSA v0.2 statement, original uncompressed bootstrap-layer map, rewritten output layers, 21-entry history, and Docker 27.5.1 loaded-config representation. At clean pushed commit `bc3bfe9cc6ceb4dd928cd89906ae542bf0f62928`, real `run.61vb0nCRcV` completed the networkless UID/GID-1000 Android certification, exact pinned-layout validation, direct-OCI normalization, guest-only load, and runtime fingerprint in 99 seconds. After deliberate pin review at `b5d39e1dafd0fe534fac02f4cff78750a4a0453b`, `run.phE39wA0oN` reverified the full candidate, no-clobber promoted it, and reloaded/reverified the final in 38 seconds. The renewed Debian certification `run.w9S8gnkc6K` passed from clean pushed source; after independent byte/graph review and pinning, `run.BkBCC92iEd` no-clobber promoted and final-runtime-reverified it. These compact receipts bind no host forwarding, unchanged listeners, guest-only Docker/BuildKit, and joined cleanup. Windows-helper final-pin promotion, real Android Gradle/Rust/signing/APK work, complete cache/producers, exact full-peer transport, prepared toolchain reproduction, native targets, cold release, independent reproduction, and external review remain open. |
+| Verification/build authority | Focused source/model gates remain supplementary. R-S11dh's authenticated ordinary-user, zero-NIC QEMU smoke proves direct boot, guest-only Docker, private Unix control, selected root/foreign refusal, bounded containers, listener invariance, finality, and joined cleanup; its script entries have no host-Docker fallback. R-S11cj's distinct outbound-only VM has real pinned-HTTPS/cache-transport authority and exact listener/finality receipts. The reviewed Android bootstrap was promoted by `run.wn6nrHxpyi`. Current BuildKit v0.18.2 research and real failures then corrected the certification contract from an assumed SLSA v1/post-rewrite layer model to its actual in-toto v0.1/SLSA v0.2 statement, original uncompressed bootstrap-layer map, rewritten output layers, 21-entry history, and Docker 27.5.1 loaded-config representation. At clean pushed commit `bc3bfe9cc6ceb4dd928cd89906ae542bf0f62928`, real `run.61vb0nCRcV` completed the networkless UID/GID-1000 Android certification, exact pinned-layout validation, direct-OCI normalization, guest-only load, and runtime fingerprint in 99 seconds. After deliberate pin review at `b5d39e1dafd0fe534fac02f4cff78750a4a0453b`, `run.phE39wA0oN` reverified the full candidate, no-clobber promoted it, and reloaded/reverified the final in 38 seconds. The renewed Debian certification `run.w9S8gnkc6K` passed from clean pushed source; after independent byte/graph review and pinning, `run.BkBCC92iEd` no-clobber promoted and final-runtime-reverified it. These compact receipts bind no host forwarding, unchanged listeners, guest-only Docker/BuildKit, and joined cleanup. Windows-helper product/native lifecycle, real Android Gradle/Rust/signing/APK work, complete cache/producers, exact full-peer transport, prepared toolchain reproduction, native targets, cold release, independent reproduction, and external review remain open. |
 
 Certified-builder candidate construction now depends only on the reviewed bootstrap archive/layout, certification
 recipe, package manifest, and source-date inputs. Canonicalization derives the image/index, runtime-manifest, and
@@ -1706,12 +1706,26 @@ SLSA v0.2 statement. That statement is recursively VCS-free and binds the exact 
 uncompressed bootstrap layers, five build arguments, sole networkless UID/GID-1000 execution with only the root
 mount, rewritten output-layer map, and byte-identical 2,743-byte certification Dockerfile. Only the five certified
 image/config/manifest/archive/size pins, their compact expected-value consumer, and the stable normative identities
-are transitioning; the candidate is deliberately not promoted in the pin-review commit. A disposable ordinary-user
-no-NIC authority VM then passed the complete provenance suite, all compact builder-image gates, real guest-only
-Docker authority probes, the confined Windows-helper runtime, root/foreign refusals, identical host-listener
-inventories, and joined cleanup in 49 seconds; successful run `run.su4QuBlJUA` and its exact process generation are
-absent. Pin-bound no-clobber final promotion, final-name load/runtime revalidation, Windows product/native/installed
-lifecycle, cold artifacts, independent reproduction, external review, and release remain open.
+were installed by pin-review commit `5878252113856ef0388bd2b35f085492bbfd8049`; that commit deliberately did not
+promote the candidate. A disposable ordinary-user no-NIC authority VM then passed the complete provenance suite,
+all compact builder-image gates, real guest-only Docker authority probes, the confined Windows-helper runtime,
+root/foreign refusals, identical host-listener inventories, and joined cleanup in 49 seconds; successful run
+`run.su4QuBlJUA` and its exact process generation are absent.
+
+Pin-bound final promotion `run.IfymT8ruhE` at that exact clean pushed commit completed in 41 seconds. It fully
+reverified the fixed candidate against every final pin, published only through the descriptor-relative no-clobber
+operation, loaded and runtime-reverified the stable final, retired the candidate and successful run root, and left
+no exact harness/QEMU/virtiofsd process. Its current-user-owned, mode-0400, one-link, 2,374-byte receipt has SHA-256
+`71cd18f7357ee480bb9133d8406559127fb8b415aeb985659c9ff8112f6e4253` and binds the exact source/tree/bundle,
+authenticated VM inputs, pinned Buildx/BuildKit, no host forwarding, denied UDP, guest-only Docker/BuildKit,
+unchanged 605-byte host-listener inventory at SHA-256
+`d0657aea16dc017adc4cd7386e5fa8ef785e4b0bed418120923515aae425f809`, empty transaction stderr, and joined
+cleanup. The final `online/inputs/build-images/win-helper.docker.tar.gz` is current-user-owned, mode 0400, one link,
+998,725,383 bytes, and independently rehashes to
+`e7dae7a080fda65778ef7ed3c05bcb31b98830f56f514b2f01c084f055b66995`; the candidate name and exact VM generation
+are absent. This closes the current Windows-helper bootstrap/certification/pin/promotion prerequisite only. Windows
+product/native/installed lifecycle, cold artifacts, independent reproduction, external review, and release remain
+open.
 
 The first real Android certification attempt, `run.iBE1tYKAdS` at clean pushed commit
 `b6216ba7a63b2b86ae37887b475b699dada8f23b`, reached the exact networkless Buildx command and failed in 27 seconds
@@ -6562,8 +6576,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed Debian lifecycle, other maintenance images, native/device behavior, independent
   reproduction, and external review remain open.
 - **R-S11dc/R-S11e-121 — authenticated Windows helper image distribution authority —
-  RENEWED BOOTSTRAP PROMOTED; CURRENT CERTIFIED CANDIDATE BUILT, REVIEWED, AND PINNED;
-  PIN-BOUND FINAL PROMOTION, COLD RELEASE, WINDOWS GUEST LIFECYCLE, INDEPENDENT REPRODUCTION,
+  RENEWED BOOTSTRAP AND CERTIFIED FINAL BUILT, REVIEWED, PINNED, AND PROMOTED;
+  COLD RELEASE, WINDOWS GUEST LIFECYCLE, INDEPENDENT REPRODUCTION,
   AND EXTERNAL REVIEW REMAIN OPEN.** Platform/boundary: the unprivileged acquisition host,
   local Docker/BuildKit certification transaction, and every offline Windows-release helper
   consumer must admit one authenticated final helper without treating a mutable image tag,
@@ -6587,7 +6601,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   null-tag mode-0400 archive and promotion verifies every final pin before descriptor-relative
   `RENAME_NOREPLACE`.
 
-  The reviewed candidate's final archive pins are image
+  The final archive pins are image
   `sha256:5fe6b794695afc69c32d037f1e6e24224f2925c2e48e98d82c35a23b584ee256`,
   manifest
   `sha256:72e72381f5402ae5ab495b99b9a4ff4ce9c7d08aea2a679ab8760cc2de6bc030`,
@@ -6610,10 +6624,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   gates execute as UID/GID 4000 in the sole no-NIC verifier VM, which uses private Unix
   management channels and proves host-listener invariance and joined residue-free cleanup.
 
-  The current certification transaction and independent archive review are recorded above. They
-  prove the real networkless candidate graph, exact loaded-runtime fingerprint, and certification
-  inputs, but the candidate remains deliberately unpromoted until these final pins are committed and
-  pushed. Historical evidence also records device-free derivation of the pinned 15,042,952-byte
+  The current certification, independent archive review, pin transition, and separate final
+  promotion are recorded above. They prove the real networkless graph, exact loaded-runtime
+  fingerprint, final archive identity, no-clobber publication, candidate retirement, and cleanup.
+  This builder prerequisite is not Windows product or release evidence. Historical evidence also
+  records device-free derivation of the pinned 15,042,952-byte
   `vmlinuz-6.8.0-134-generic` at SHA-256
   `72526aac4c8c3f63d30fe0741f0c3b1923e700585750cb135815d5c2f831b691`.
   The generated executable fixture is not the real bootstrap or certified archive, a current loaded

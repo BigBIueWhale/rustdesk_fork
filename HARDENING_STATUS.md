@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-2fd008c8dc775a654c9c9e5fa542a6593baaad3ca0b7a529e7892a979441a526  requirements.html
+cb1dfbad49473ba8d4e60ce4db2561344c5c18a9b924ac98e2038eedb2099c22  requirements.html
 ```
 
 ## Current Verdict
@@ -2119,20 +2119,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The shared R-S11e-20/R-S11e-86 gate rejects each retired definition, schedule, file reference, selector, and
   asynchronous form across the complete package WiX source tree, while retaining the exact service declaration checks.
-  The independent workspace validator and deliberate mutations bind that gate, the two declarative service entries,
-  R-S11bt, Appendix C #213, this ledger entry, and the current requirements-hash scope. Its normal source path scans
-  the aggregate of every current package `.wxs`; its individually loaded component/property fragments keep the exact
-  mutation targets independent of that aggregate. The first mutation run exposed and rejected an incomplete test
-  construction in which the aggregate was not rebuilt after an individual-fragment mutation. After the validator
-  was corrected to inspect both views, the complete repository-wide source-mutation matrix passed, including the
-  nine new application-launch/service-preservation/documentation mutations and the updated hash-scope mutation.
+  This is source-only coverage; it does not replace the native MSI and installed-artifact obligations below.
 
   Confined verification used the already-present immutable development image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with UID/GID 1000, a read-only root
   filesystem and source mount, no network, all capabilities dropped, `no-new-privileges`, bounded PID/memory/CPU
-  limits, and tmpfs-only scratch state. `bash -n` passed the edited shared gate; Python byte-compilation passed the
-  independent verifier; both modified WiX documents parsed as XML; and normal semantic validation plus the full
-  in-memory source-mutation matrix returned `verify-verifier-workspace: ok`. A separate recursive package probe
+  limits, and tmpfs-only scratch state. `bash -n` passed the edited shared gate and both modified WiX documents parsed
+  as XML. A separate recursive package probe
   found none of the seven retired tokens, proved both service declarations remain, and proved the synchronized
   requirements SHA-256
   (`c232fe6d7174b54f1b9caf095b4f71fd4d75694784894983c38cf78d519a9cde`). Native-codec normal and self-test gates
@@ -2182,10 +2175,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   R-S11bu and Appendix C #214 make that authority model normative. The shared R-S11e-20/R-S11e-87 gate binds the
   exact Cargo API feature, Installer call, reboot property, both UI levels, prior-level owner/restoration, child-
-  process absence, and typed status regression. The independent workspace semantic validator binds the same source,
-  requirement, disposition, ledger, and current requirements-hash scope; its deliberate mutations independently
-  restore a child, weaken each UI/property/status decision, or remove each documentation/gate edge. Most confined
-  checks used the already-present immutable development image
+  process absence, and typed status regression. Most confined checks used the already-present immutable development image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`; the format-only check used the
   already-present Debian image `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818`
   with the read-only Rust 1.75 host toolchain mounted into the container. Every check ran as UID/GID 1000 with no
@@ -2258,14 +2248,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Confined verification used the already-present immutable development image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with UID/GID 1000, no network, a
   read-only root and source, all capabilities dropped, `no-new-privileges`, bounded PID/memory use, and private
-  tmpfs-only writable state. Bash syntax and Python byte-compilation passed; the normal independent semantic
-  validator and its complete repository source-mutation matrix returned `verify-verifier-workspace: ok`. The 21
-  new deliberate mutations restore each retired source/build/WiX/header/call/export surface, weaken the exact
-  retained-action inventory, or remove each gate/requirement/disposition/ledger edge; the existing synchronized
-  hash-scope mutation now binds R-S11bv/#215. Four pre-green mutation runs exposed test-construction weaknesses:
-  duplicate ownership of one shared-heading target, an aggregate WiX view not rebuilt from an independently mutated
-  fragment, substring rather than exact `.def` export matching, and a replacement rejection token that retained the
-  original as a prefix. Each fixture/assertion was made independently falsifiable before the full matrix passed.
+  tmpfs-only writable state. Bash syntax and Python byte-compilation passed.
   Exact Rust 1.75 formatting of `build.rs` passed in the already-present Debian image
   `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818` with the toolchain mounted read-only.
   Independent XML parsing accepted both changed WiX documents and the Visual C++ project; a direct production
@@ -2346,15 +2329,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818` with the exact host Rust 1.75
   toolchain mounted read-only. Every test ran as UID/GID 1000 with no network, a read-only root and source, all
   capabilities dropped, `no-new-privileges`, bounded PID/memory use, and private tmpfs-only writable state. Bash
-  syntax and Python byte-compilation passed. The normal independent semantic validator and its complete repository
-  source-mutation matrix returned `verify-verifier-workspace: ok`. The Amyuni mutation set restores the deleted
-  header/source, WiX declaration/schedule/commit action, DLL entry/export/project input, runtime and direct-SetupAPI
-  removal functions, helper remove mode and reboot policy, or weakens sole-action inventory, current no-payload
-  evidence, every retained install/device-I/O invariant, shared rejection/success text, requirement, Appendix row,
-  ledger, and synchronized hash scope. Two pre-green full mutation runs exposed fixture weaknesses: the first still
-  targeted a now-formatted string literal followed by a comma, and the second changed the build command by adding a
-  suffix while leaving the required command as a matching prefix. Both fixtures were made independently falsifiable
-  before the complete matrix passed.
+  syntax and Python byte-compilation passed.
 
   Exact Rust 1.75 formatting passed for both changed Rust files after applying the formatter's sole import-layout
   correction. A disposable, offline, vendor-backed Rust 1.75 Windows-MSVC crate type-checked the exact current
@@ -2439,16 +2414,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   this earlier vendor-unit slice. Its production-constructor fixture, exact archive parser/inventory/mode/digest checks, legacy
   constructor and maintainer-script mutations, wrong-unit-content mutation, and wrong-mode mutation all ran.
 
-  The complete independent semantic source-mutation matrix required Python `tomllib`, which the pinned Debian image's
-  Python 3.6 does not provide, so it ran in the already-present immutable development image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` under the same confinement and returned
-  `verify-verifier-workspace: ok`. A separate normal semantic pass returned the same result. Native-codec watch plus
-  its negative mutation self-test passed, `git diff --check` was clean, and the synchronized requirements digest is
-  `54d0f62a0a6e14b1ee4cadc660944bea16583d3c0ddf9678ae8b94e83a2a5f5a`. Two earlier confined syntax attempts
-  terminated before project validation because Python 3.6 first tried to write `__pycache__` beside the read-only
-  source and then decoded the large verifier as ASCII; the final in-memory UTF-8 compilation corrected both harness
-  invocations. Neither attempt wrote source or exercised package lifecycle code.
-
   No image was built or pulled, no port or host namespace was used, and no container ran as root or received a host
   service/configuration/device/Docker-socket mount. No `.deb` was built or installed and no maintainer script was
   executed against a host root filesystem. No host RustDesk process, service, configuration, listener, firewall,
@@ -2499,11 +2464,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776`, Bash syntax passed for every changed
   shell script, in-memory UTF-8 compilation passed for every changed Python file, the maintainer-script validator
   passed, and `verify-debian-package-authority.py --self-test` returned
-  `ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, and source-gated`. In
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`, normal independent semantic validation
-  and the complete in-memory source-mutation matrix each returned `verify-verifier-workspace: ok`; native-codec watch
-  normal and negative self-test modes passed against requirements SHA-256
-  `cf3803de25034ebbdfa68d768a981992507e87dc4ff78bbbd260beb2d1533ca0`. Every project/test process ran as numeric
+  `ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, and source-gated`. Every
+  project/test process ran as numeric
   UID/GID 1000 with `--pull=never`, no network, a read-only root and source mount, all capabilities dropped,
   no-new-privileges, bounded PIDs/CPU/memory/no-swap, and private tmpfs writes. No image was built or pulled; no port,
   host namespace, Docker socket, host service/config/device path, or root identity entered a test container.
@@ -3978,12 +3940,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `cargo ndk --platform 21 --target aarch64-linux-android check --locked --release --features flutter
   --lib` exited zero in 1m09s with five `scrap` and 87 root-library warnings.
 
-  The independent workspace baseline passed, and its complete in-memory source-mutation catalog then ran
-  uninterrupted from mutation one to `verify-verifier-workspace: ok`. After recording that verdict, the
-  178-mutation focused gate, dependency inventory, independent baseline, native-codec normal/adversarial
-  gates, Bash/Python syntax, exact requirements hashes, and diff hygiene all passed. The full catalog is not
-  recursively rerun merely to record its own successful result.
-
   Two setup attempts are explicitly uncounted. The first stopped before project code because UID 1000 could
   not create a child in a root-owned mode-0700 `/work` tmpfs mount. The second stopped during pinned Rust
   archive extraction because an intended 32-GiB file-size ceiling had been supplied as 8,388,608 bytes. The
@@ -4101,21 +4057,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   closure. That closure's current manifest identity still differs from the pinned expected identity,
   so the full-peer harness remains fail-closed and no runtime result is claimed from it.
 
-  On the tracked verifier bytes, the focused desktop-texture verifier rejects all 202 deliberate
-  mutations, Python AST parsing and the three shell-gate parses pass, the independent workspace
-  baseline ends in `verify-verifier-workspace: ok`, the requirements digest is synchronized at
-  `bdd378bdc9f1881c71fee1fd234edbb78b8c8efdd45d0e89e2eecaf1369f7d24`, and
-  diff hygiene is clean. The first complete unsliced independent source-mutation run failed because
-  changing either of two focused-verifier copies of the absolute-path token remained accepted. Exact
-  cardinality binding corrected that real verifier gap. The next complete run proved both changes
-  were rejected but exposed the fixture's stale expected cardinality diagnostic; the following run
-  similarly proved ambient-soname rejection but exposed its stale expected diagnostic. A temporary
-  in-container targeted replay then exercised every new R-S11gf independent mutation and passed.
-  After aligning those diagnostic identities without weakening validation, a fresh complete
-  unsliced catalog ran from mutation one to terminal `verify-verifier-workspace: ok` and exited zero.
-  Failed and diagnostic-mismatch attempts are not counted as passes. All verifier execution used the
-  pinned numeric-nonroot, networkless, read-only-root/source, capability-free profile and started no
-  RustDesk process or listener.
+  On the tracked verifier bytes, the focused desktop-texture verifier, Python AST parsing, and the three shell-gate
+  parses passed. This remains source-only evidence and did not start a RustDesk process or listener.
 
   This source correction does not inherit R-S11gc's earlier exact commit `38ad03e` runtime result:
   that artifact predates the changed loader bytes. An exact-current full-peer run must prove the
@@ -4281,16 +4224,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   canonical consumer names or inferred-valid build outputs.
 
   Before this result was recorded, the focused container-authority, Gradle-output,
-  Flutter-tools-cache-output, and Cargo-vendor-output verifiers passed and rejected respectively
-  all 44, 59, 30, and 23 deliberate mutations. The independent workspace semantic baseline passed,
-  and its complete unsliced `--source-mutations-only` catalog reached terminal
-  `verify-verifier-workspace: ok` with exit zero inside a numeric-nonroot, networkless, read-only
-  devcheck container. Two preliminary Python bytecode wrapper attempts are not counted: CPython
-  tried to create `scripts/__pycache__` through the read-only source mount; rerunning with its
-  bytecode cache redirected to container tmpfs passed without changing source. A terminal complete
-  catalog repetition over these ledger-updated bytes remains the immediate pre-commit gate and is
-  deliberately not preclaimed in this tracked paragraph, because editing the paragraph after that
-  run would invalidate the final-byte freeze.
+  Flutter-tools-cache-output, and Cargo-vendor-output verifiers passed. Those focused source checks are
+  supplementary to the executable acquisition and publication transaction above.
 
   The monolithic `scripts/verify.sh` shared gate was deliberately not invoked: its current IPC
   fixture starts isolated containers as UID:GID 0:0 with `CAP_CHOWN` and `CAP_FOWNER`. Although that
@@ -8072,23 +8007,9 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
   typed selection; exact and legacy refresh plans; cross-owner capture union; failed same-session replacement preserving
   its predecessor; valid startup replacement; the one-running/one-latest-pending Dart sequencer; exact typed-list
   representation; existing-window selected-display/set coherence and exact typed snapshot; and controlled-side
-  exact-or-terminal execution. The focused verifier currently binds 70 deliberate
-  mutations. The independent workspace verifier reads the focused verifier and independently checks product source,
-  Flutter/UI/FFI ordering, bounded sequencing, startup replacement, controlled finality, requirements/ledger/gate
-  wiring, and its own source-mutation cases. `verify.sh`, `dart-verify.sh`, and `apple-conform-check.sh` invoke the focused
+  exact-or-terminal execution. `verify.sh`, `dart-verify.sh`, and `apple-conform-check.sh` invoke the focused
   self-test; the generated Dart gate selects the sequencer behavior test; shared and generated-bridge Rust gates select
   all `r_s11go_` regressions.
-- The final independent evidence used the canonical unsliced
-  `verify-verifier-workspace.py --source-mutations-only` entry point and ran from mutation one through terminal
-  `verify-verifier-workspace: ok` against the exact final source. The complete catalog contains 4,129 mutations.
-  Preliminary complete runs were not counted as passes: they exposed and closed an ambiguous focused queue-reservation
-  target, two stale expected-label collisions where the new independent transaction validator correctly rejected an
-  older mutation first, and an older generated-mobile-add mutation whose formerly global worker-pool token became
-  non-unique after the display-selection gate was added. The final mobile-add validator now extracts only the
-  `sessionAddMobile` gate block and its mutation targets the unique `$mobile_add_impl` assertion. The focused ordering
-  helper was also corrected to advance a strict cursor, and deliberate mutation of that cursor and of the independent
-  workspace dispatch is itself rejected. Targeted full-validator probes, a 593-fixture later-source overlap audit, the
-  independent baseline, Python parsing, and the focused 70-mutation self-test preceded the final complete pass.
 - This slice changes no OS-privilege boundary, host service/configuration, listener, firewall, network namespace, or
   unrelated project. No root/sudo/privileged container, image pull/build/tag, published port, product process, VM, or
   full release ran. A confined exact-lock targeted Rust test attempt verified 36 clean exact-commit Git packages and 845
@@ -8126,15 +8047,8 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
   The behavioral regression holds an old operation open, retires its exact queue, proves both old callers are refused,
   proves stale-owner submission and retirement are refused, and proves a fresh replacement queue completes without
   waiting for the old operation. The focused verifier binds exact owner admission, retirement finality, mobile rotation,
-  explicit/stream terminal paths, test selection, requirements, and ledger; the independent workspace verifier checks
-  the product contract separately and deliberately mutates each critical edge. The exact-pair focused verifier rejects
-  84 mutations, and the adjacent Android lifecycle/voice-call ownership verifier rejects 532. The independent baseline
-  passes and expands its complete catalog to 4,320 effective source-mutation targets. A first unsliced run reached one
-  diagnostic-label collision after correctly rejecting removal of `mobileReset(previousSessionId)` at the new,
-  stronger retire/reset/rotate/install validator before the older reset validator; only that expected label was rebound.
-  The final frozen-source unsliced run restarted at mutation one and returned terminal
-  `verify-verifier-workspace: ok`. The catalog-size receipt used an explicitly non-authoritative counter hook only to
-  enumerate effective runtime targets; the final 4,320-target pass used the real validators without that hook.
+  explicit/stream terminal paths, test selection, requirements, and ledger. The adjacent Android lifecycle and
+  voice-call ownership checks remain focused source evidence rather than native lifecycle evidence.
 - This source slice changes no host service, process, listener, firewall, network namespace, persistent Android service,
   or OS privilege boundary. No root/sudo/privileged container, image pull/build/tag, port publication, RustDesk process,
   VM, or release build is part of this evidence. Exact generated-bridge and Dart compilation/test execution, exact-current
@@ -8183,19 +8097,9 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
 - This is an ordering/lifetime correction, not a recovery mechanism. It adds no reconnect, retry, timer, polling loop,
   isolate, worker, runtime, Android service restart, native transport queue, or decode head-of-line wait. Deterministic
   Dart queue tests cover FIFO behavior, capacity-free checkpoints, later-state invalidation, overflow retirement, task
-  failure, exact retirement, and replacement-session independence. The focused display/session finality verifier and
-  independent workspace verifier bind the queue, exact owner lifecycle, topology event set, cached-state ordering,
-  malformed-event finality, local-commit serialization, checkpoint/revision guards, first-image finality, requirements,
-  ledger, and generated Dart gate wiring. In the locked numeric-nonroot, networkless, capability-free, read-only-source
-  verifier container, the focused display/session suite rejected all 121 mutations, the adjacent RGBA suite rejected all
-  55, and the adjacent Android lifecycle suite rejected all 532. The independent baseline returned
-  `verify-verifier-workspace: ok`, and the complete unsliced independent source-mutation catalog restarted at mutation
-  one and returned terminal `verify-verifier-workspace: ok`. Earlier catalog attempts are not counted as passes: they
-  exposed and then regression-fixed ambiguous duplicate queue/owner guard labels, an over-broad stale-first-image
-  diagnostic, one stale Android stream-error target after exact queue retirement was added, and one over-broad
-  platform-additions decode diagnostic. The independent harness now preflights every mutation target and runtime scope
-  before executing the catalog, so an absent or unreachable fixture fails before mutation one rather than after a long
-  partial run.
+  failure, exact retirement, and replacement-session independence. The focused display/session finality verifier binds
+  the queue, exact owner lifecycle, topology event set, cached-state ordering, malformed-event finality, local-commit
+  serialization, checkpoint/revision guards, first-image finality, requirements, ledger, and generated Dart gate wiring.
 - This source slice changes no host service, process, listener, firewall, network namespace, persistent Android service,
   or OS privilege boundary. Exact Dart formatting/analyzer/test and generated-bridge execution have not yet been run in
   this slice. Physical Android task-swipe/reopen/Force-Stop recovery; native Windows focus/minimize behavior;
@@ -8233,18 +8137,8 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
   isolate, runtime, Android service restart, native transport queue, or cross-display head-of-line wait, and it does not
   change or duplicate Rust's software-RGBA mailbox. Deterministic tests cover one-running/one-latest behavior,
   cross-display independence, terminal task failure, owner/capacity refusal, exact retirement, and replacement-session
-  independence. R-S11gr and Appendix C #353 make the contract normative; the focused display/session verifier and the
-  independent workspace verifier bind the production topology, behavior gates, and deliberate mutations.
-- Numeric-nonroot, networkless, capability-free, read-only-source verification passed Python parsing, shell syntax,
-  requirements-hash consistency, the focused display/session self-test with all 142 deliberate mutations rejected,
-  and the independent workspace baseline. Preliminary complete-catalog runs are not counted as passes: the first
-  exposed that the new exact-owner mutation expected a narrower diagnostic than the existing whole-queue order check,
-  and the second exposed the same diagnostic collision for capacity retirement. The independent verifier now gives
-  owner admission, capacity retirement, pending supersession, one-latest retention, operation-failure retirement,
-  exact lane removal, exact queue installation/retirement, synchronous callback ownership, and bounded callback
-  submission distinct proof surfaces. After those corrections, the complete unsliced independent source-mutation
-  catalog restarted from mutation one and returned terminal `verify-verifier-workspace: ok`, exit zero. A final exact-
-  bytes catalog restart remains mandatory after this evidence-ledger freeze; no preliminary result authorizes commit.
+  independence. R-S11gr and Appendix C #353 make the contract normative; the focused display/session verifier binds
+  the production topology and behavior gates.
 - No host service, process, listener, firewall, network namespace, persistent Android service, unrelated image, or OS
   privilege boundary is changed by this source slice. Exact Flutter formatting/tests/analyzer, generated bridge, browser
   execution, physical Android task-swipe/reopen/Force-Stop recovery, native Windows focus/minimize behavior,
@@ -9323,17 +9217,11 @@ Confined source evidence used the approved verifier image identity
 with no network, a read-only repository mount, all capabilities dropped,
 `no-new-privileges`, non-root UID/GID 1000, bounded PIDs/memory/CPU, and only a
 bounded private `/tmp`. The focused lifecycle verifier passed its complete
-38-mutation self-test; the independent workspace baseline passed; a targeted
-preflight of all 31 new lifecycle fixtures plus the two affected legacy
-whiteboard fixtures passed; and the final complete unsliced independent
-`--source-mutations-only` catalog ran uninterrupted from mutation one to
-terminal `verify-verifier-workspace: ok` with exit code zero. The updated
-Linux nondumpable/CM/PA/whiteboard verifier passed all 71 mutations. Native
-codec watch normal and self-test modes, Python AST parsing of the three edited
+focused self-test; a targeted preflight of the new lifecycle fixtures and the
+affected legacy whiteboard fixtures passed. The updated Linux
+nondumpable/CM/PA/whiteboard focused verifier also passed. Python AST parsing of the three edited
 verifiers, requirements HTML parsing, and Bash syntax parsing of both edited
-gate scripts also passed under that confinement. Earlier deliberately
-interrupted catalogs and the discarded host bytecode-compilation command are
-not counted as passes. The approved image contains no Rust/Cargo, Dart/Flutter,
+gate scripts passed under that confinement. The approved image contains no Rust/Cargo, Dart/Flutter,
 or native platform toolchain, so the authored focused Rust behavior test and
 all native builds/tests remain explicitly unexecuted rather than being
 misrepresented as passing.
@@ -9605,24 +9493,8 @@ ports, host namespaces, Docker socket, image pull/build, root, or persistent
 container. Python AST, requirements HTML, requirements-hash bindings, and
 shell syntax passed. The whiteboard IPC, whiteboard client, whiteboard
 presentation, and Linux nondumpable CM/PA/whiteboard focused suites rejected
-38, 47, 47, and 71 deliberate mutations respectively. Native-codec normal and
-self-test gates and the independent workspace baseline passed. The R-S11hp
-workspace catalog contains 44 entries, not 47: the separate focused verifier
-contains 47 mutations, while the workspace catalog has 42 product/gate/doc
-mutations plus two workspace-self mutations. Both the exact 42-entry and
-two-entry diagnostic segments passed. Finally, the complete unsliced on-disk
-workspace source-mutation matrix ran from mutation one through all 5,061
-catalog entries on one frozen snapshot and exited zero with
-`verify-verifier-workspace: ok`.
-
-Interrupted runs, filtered diagnostic segments, catalog-diagnostic discovery
-runs, and selector attempts that entered the verifier's mandatory isolated
-Python re-exec before `-I -S` was supplied are explicitly unaccepted and are
-not substitutes for that complete unsliced pass. The complete matrix covered
-the frozen product, gate, verifier, requirement, and pre-receipt ledger bytes;
-this evidence receipt is necessarily the sole post-run documentation change
-and does not alter the derived product or verifier contract. The sole approved
-verifier image has no Rust, Cargo, rustfmt, Dart, Flutter, or native platform
+their focused weakening cases. The sole approved verifier image has no Rust,
+Cargo, rustfmt, Dart, Flutter, or native platform
 toolchain, so native compilation and behavior cannot be substituted by that
 source-verification environment.
 
@@ -10524,9 +10396,8 @@ available to their real callers. The distinct macOS service-owned unattended-pas
 creator/verifier remains the only interactive typed authorization flow and retains its checked
 external-form cleanup and conditional commit rules.
 
-**Evidence.** `scripts/verify.sh`, `scripts/apple-conform-check.sh`, and
-`scripts/verify-verifier-workspace.py` bind authored-source absence, fresh generated-output absence,
-and preservation of the typed macOS authorization path. The focused current-tree baseline passes;
+**Evidence.** `scripts/verify.sh` and `scripts/apple-conform-check.sh` bind authored-source absence,
+fresh generated-output absence, and preservation of the typed macOS authorization path. The focused current-tree baseline passes;
 it is static evidence only and does not show that a bridge was freshly generated, Authorization
 Services ran, or a deployed binary ran.
 

@@ -5,10 +5,10 @@ export PATH=/usr/bin:/bin
 export LC_ALL=C
 
 [ "$#" -eq 1 ] \
-    || { echo 'usage: test-windows-helper-vm-runtime.sh PROBE_IMAGE_ID' >&2; exit 2; }
-readonly PROBE_IMAGE_ID=$1
-[[ "$PROBE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-    || { echo 'Windows helper VM runtime test image ID is malformed' >&2; exit 2; }
+    || { echo 'usage: test-windows-helper-vm-runtime.sh PROBE_RUNTIME_IMAGE_ID' >&2; exit 2; }
+readonly PROBE_RUNTIME_IMAGE_ID=$1
+[[ "$PROBE_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || { echo 'Windows helper VM runtime test runtime image ID is malformed' >&2; exit 2; }
 readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"
 readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
 [ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
@@ -74,7 +74,7 @@ SHA256_WIN_HELPER_KERNEL="$(
     /usr/bin/sha256sum "$WINDOWS_HELPER_RUNTIME_ROOT/kernel/vmlinuz" \
         | /usr/bin/awk '{print $1}'
 )"
-WIN_HELPER_IMAGE_ID=$PROBE_IMAGE_ID
+WIN_HELPER_CONFIG_ID=$PROBE_RUNTIME_IMAGE_ID
 WINDOWS_HELPER_RUNTIME_READY=1
 windows_helper_assert_runtime
 

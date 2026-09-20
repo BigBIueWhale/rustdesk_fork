@@ -37,6 +37,7 @@ not a claim that every target OS has executed them.
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
 | Linux full-peer presentation (`11b20830f5d1c5354cbcee872557b28b6923f8a1`) | Real capture-to-X11-pixel delivery, a bounded focus-loss cycle, responsive control, and joined teardown on Linux software rendering. It is not current Windows/Android/Apple, repeated reconnect/soak, or installed-service evidence. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
+| Exact clean Flutter model transaction (`5c2fbfc9f78c8953a945283ef3c0cbef7f981064`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 12 focused suites and 103 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
 | Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for the named older source parents. No current APK installation, Activity/foreground-service lifecycle, task swipe/reopen/Force Stop, real peer, presentation, or device result exists. |
 | Apple and iOS checks | Source/portable checks only. No signed installed macOS or current iOS package/device result exists. |
@@ -875,7 +876,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | R-S11dh's authenticated ordinary-user, zero-NIC VM and R-S11cj's distinct outbound-only acquisition VM are the sole execution authorities. Focused runs establish their isolation, guest-only Docker/BuildKit ownership, exact input admission, listener invariance, root/foreign refusal, bounded cleanup, and finality; source/model gates remain supplementary. Every Unix fresh-SDK path that invokes Flutter after an offline Flutter-tools resolve—Android, Debian, Dart/FRB, full-peer staging, the focused Flutter model transaction, and Pub-cache semantic replay—now uses one exact finalizer. It admits only the pinned Flutter version and lock digest, single-link inputs, current-principal Pub output, lock/package-config timestamp freshness, an exact mode-0644 version marker, and a bounded package configuration whose every file-URI root contains `pubspec.yaml`, covering both Flutter bootstrap freshness and Flutter 3.24.5's running `PubDependencies.isUpToDate()` predicate before claiming that implicit Pub is prevented. A reused-overlay, loopback-only diagnostic passed all 12 focused suites and 103 tests, but a clean authoritative run and Windows-golden freshness correction/reprovisioning remain open. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but they establish builder distribution and runtime identity only. The complete canonical offline-input closure, stable Android signing-key files, Windows golden/operator inputs, current product artifacts, installed/native lifecycle evidence, cold A==B reproduction, independent reproduction, and external review are absent or open. |
+| Verification/build authority | R-S11dh's authenticated ordinary-user, zero-NIC VM and R-S11cj's distinct outbound-only acquisition VM are the sole execution authorities. Focused runs establish their isolation, guest-only Docker/BuildKit ownership, exact input admission, listener invariance, root/foreign refusal, bounded cleanup, and finality; source/model gates remain supplementary. Every Unix fresh-SDK path that invokes Flutter after an offline Flutter-tools resolve—Android, Debian, Dart/FRB, full-peer staging, the focused Flutter model transaction, and Pub-cache semantic replay—now uses one exact finalizer. It admits only the pinned Flutter version and lock digest, single-link inputs, current-principal Pub output, lock/package-config timestamp freshness, an exact mode-0644 version marker, and a bounded package configuration whose every file-URI root contains `pubspec.yaml`, covering both Flutter bootstrap freshness and Flutter 3.24.5's running `PubDependencies.isUpToDate()` predicate before claiming that implicit Pub is prevented. The exact clean transaction at `5c2fbfc9f78c8953a945283ef3c0cbef7f981064` freshly generated the bridges and passed all 12 focused suites and 103 tests in 326 seconds with VM and container networking absent, read-only Landlocked inputs, unchanged host listeners, joined guest-only Docker/QEMU/virtiofsd cleanup, and automatic run-root retirement. Windows-golden freshness correction/reprovisioning remains open. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but they establish builder distribution and runtime identity only. The complete canonical offline-input closure, stable Android signing-key files, Windows golden/operator inputs, current product artifacts, installed/native lifecycle evidence, cold A==B reproduction, independent reproduction, and external review are absent or open. |
 
 The six current Android, Debian, and Windows-helper bootstrap/certified builder archives are present under
 `online/inputs/build-images`; their pin-bound acquisition, certification, and promotion evidence remains in the
@@ -8744,8 +8745,8 @@ state, VM, Android device/service, unrelated workload, or OS privilege boundary.
 
 ### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership
 
-**SOURCE IMPLEMENTED; SIX FOCUSED REGRESSIONS PASS IN A REUSED-OVERLAY NO-NIC DIAGNOSTIC;
-CLEAN AUTHORITATIVE COMBINED EXECUTION AND EXACT CURRENT NATIVE/PACKAGE EVIDENCE OPEN.** The process-owned `ServerModel` uses one
+**SOURCE IMPLEMENTED; SIX FOCUSED REGRESSIONS AND THE CLEAN COMBINED 12-SUITE/103-TEST
+NO-NIC AUTHORITY PASS; EXACT CURRENT NATIVE/PACKAGE EVIDENCE OPEN.** The process-owned `ServerModel` uses one
 `ServerStatusRefreshLoop`: one one-shot timer, at most one active complete turn, no queue or
 catch-up path, and a terminal close that cancels pending time and awaits the active turn. The
 next 500-millisecond interval starts only after client-count/snapshot/window reconciliation and
@@ -8762,71 +8763,41 @@ Python verifier, duplicated workspace validator/mutation catalog, and shared/App
 deleted because they only parsed source and documentation wording and did not execute the Dart
 scheduler.
 
-The first exact focused transaction at commit `a3e7752` ran in a no-NIC VM and networkless
-guest-only container from the sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, independently
-reproduced FRB-generator, Cargo-vendor, and Pub-cache inputs. It generated all bridge outputs,
-compiled them, and executed the combined 12-suite Flutter workload. The 11 unaffected suites
-completed, but this suite was not a pass: its first test used `tester.pump()` without a duration,
-which Flutter 3.24.5 documents and implements as microtask-only, so the zero-delay first-turn timer
-never fired and the test waited until the ten-minute default timeout. Later cases in that poisoned
-test isolate were not independent product failures. Commit `e5990ce` drives the exact fake-clock
-boundary with `pump(Duration.zero)`, removes waits on callbacks that had not started, adds the
-deferred-first-turn cancellation case, and reduces the per-test failure timeout to 30 seconds. An
-exact clean rerun is still required; no Flutter-model pass is claimed yet.
+Flutter's tool bootstrap regards `packages/flutter_tools` as stale unless `.dart_tool/version`
+byte-equals the SDK `version` file and the lock/package configuration are newer than
+`pubspec.yaml`; Flutter 3.24.5's running `PubDependencies.isUpToDate()` check also requires every
+package root to contain `pubspec.yaml`. One shared finalizer therefore checks the exact pinned SDK
+version and lock digest, current-principal ownership, non-symlink/single-link inputs, timestamp
+freshness, a bounded version-2 package configuration with 1–4096 unique file-URI package roots and
+one `pubspec.yaml` at every root, and exact marker metadata/content before publishing the marker.
+It uses shell-owned canonical-path and exact-file reads rather than assuming a merged `/usr`, so
+the pinned Ubuntu 18.04 builder and current Debian guests execute the same contract. Android,
+Debian, Dart/FRB, full-peer staging, focused model execution, and Pub-cache semantic replay all
+call it before their first relevant Flutter operation. The focused model transaction also consumes
+Flutter's supported `config --no-analytics` first-run action into bounded diagnostics before
+requesting JSON, so the validator never strips or tolerates non-JSON banners.
 
-The first corrected diagnostic exposed a separate verifier defect rather than another model
-failure. Flutter's tool bootstrap regards `packages/flutter_tools` as stale unless
-`.dart_tool/version` byte-equals the SDK `version` file and the lock/package configuration are
-newer than `pubspec.yaml`; after the tool starts, Flutter 3.24.5's
-`PubDependencies.isUpToDate()` independently loads that package configuration and requires every
-package root to contain `pubspec.yaml`. A pinned `dart pub get --offline --enforce-lockfile`
-creates the package configuration but not the version marker. Consequently `flutter test
---no-pub` could still launch a second implicit Dart Pub resolution without `--offline` and hang in
-the no-NIC guest. One shared finalizer now checks the exact pinned SDK version, lock digest,
-ownership, non-symlink/single-link inputs, timestamp freshness, a bounded version-2 package
-configuration with 1–4096 unique file-URI package roots and a `pubspec.yaml` at every root, and
-exact marker metadata/content before publishing the marker. Android, Debian,
-Dart/FRB, full-peer staging, focused model execution, and Pub-cache semantic replay all call it
-before their first relevant Flutter operation; their compact source gates passed in a `-nic none`
-QEMU guest with a read-only Landlocked source export.
+At clean pushed commit `5c2fbfc9f78c8953a945283ef3c0cbef7f981064` (tree
+`008431690aaeeab277f6a81e013f532daab50d67`), the authority created a fresh source archive and
+QCOW2 child, generated all Rust and Dart bridge outputs, compiled the Flutter workload, and passed
+all 12 named suites and all 103 visible tests: global-event dispatch, status refresh, display
+selection, session events, latest-frame ownership, session-stream finality, mobile-session start,
+desktop-texture lifecycle, desktop-tab retirement, presentation recovery, RGBA publication order,
+and custom-cursor registry. Inputs were
+the sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB generator
+`5f8b26a0aadbe8a14aa7cb3ba5ca55e7d1a6d5c751381d3119e73cfc686c2ad0`, Cargo-vendor closure
+`b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6`, Pub-cache closure
+`e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12`, and the separately pinned
+Debian-builder OCI-index/runtime-config identities. The outer run completed in 326 seconds with
+QEMU `-nic none`, container `--network=none`, a read-only container root, numeric UID/GID 1000,
+all capabilities dropped, no-new-privileges, AppArmor, read-only Landlocked inputs, unchanged host
+INET listeners, exact receipts, joined guest-only Docker/QEMU/virtiofsd cleanup, and automatic
+private-run-root retirement.
 
-With that finalizer, a diagnostic replay from the retained child overlay resolved Flutter tools
-offline, published and idempotently reaccepted the exact marker, and passed all six
-`server_status_refresh_loop_test.dart` cases in about three seconds. QEMU and both tested
-virtiofsd generations joined, the child QCOW2 remained clean/non-corrupt, and the complete host
-INET listener inventory was byte-identical before and after. A separate no-NIC runtime fixture
-accepted publication and idempotent re-entry, then rejected a wrong lock digest, corrupt existing
-marker, symlinked package configuration, stale package-configuration timestamp, noncanonical root,
-and hardlinked lockfile. This is useful executable evidence,
-but reuse of a retained overlay means it is not the required clean authoritative twelve-suite
-result. The Windows golden-image provisioning path has the same conceptual freshness obligation;
-correcting it requires a new golden receipt, reprovisioning, inspection, and repinning, and remains
-open rather than being source-edited into an unverified claim.
-
-A subsequent diagnostic deliberately reused that overlay but removed its Flutter `build/` output.
-The first attempt timed out before a test event because the ad hoc boot mounted the sealed Pub
-closure at `/mnt/online` while the retained package configuration named `/online`; verbose replay
-showed 95 absent package roots and Flutter's attempted online `dart pub get --example`. After that
-mount was reconstructed, compilation correctly exposed the retained project's second absolute
-path, `/work/toolchain/flutter`; after that path was reconstructed, the Flutter tester correctly
-exposed that the sole `lo` interface was still down. These were diagnostic-VM setup failures, not
-product failures. With both read-only absolute paths present and only guest loopback enabled, the
-same fresh-build invocation exited zero in 13 seconds: all 12 suites and all 103 visible tests
-completed successfully, stderr was empty, and the bounded JSON stream was 53,857 bytes with
-SHA-256 `0d8dc61ec73cb70e13b782ab72f145b98ed1903e0a90698dfaa24ab4d1f3acf4`.
-The retained validator copy still expected 102 tests; substituting the current contract's exact
-103 count accepted the otherwise unchanged stream. This remains diagnostic evidence because its
-source/toolchain/generated bridges and disk overlay were retained rather than admitted afresh.
-
-The package-root correction itself was then exercised in a separate snapshot boot with no NIC,
-loopback down, zero route entries, and a read-only/no-exec Landlocked source export. A synthetic
-relative file-URI package closure published the exact marker and passed idempotent re-entry;
-missing-root and HTTPS-root configurations were both refused before marker publication. The
-Dart/FRB authority self-test rejected 132 mutations and the full-peer source contract passed.
-All diagnostic QEMU and virtiofsd processes joined, the host listener endpoint inventory was
-unchanged, and the child QCOW2 remained `dirty=false`, `corrupt=false`, and 133,111,808 actual
-bytes. This closes the false offline-freshness receipt found by the diagnostic; it does not convert
-either reused-overlay run into the required clean authority.
+This closes the clean combined Dart/model and fresh generated-bridge execution gap only. The
+Windows golden-image provisioning path has the same conceptual freshness obligation; correcting it
+still requires a new golden receipt, reprovisioning, inspection, and repinning. Exact native
+renderer/compositor behavior and the platform/device/package evidence below also remain open.
 
 Exact Android task-swipe/reopen/Force-Stop and Windows focus/minimize behavior, other platforms and
 cross-version operation, capture-through-presentation latency, sustained connection/resource soak,
@@ -8835,8 +8806,8 @@ STOP-SHIP.
 
 ### R-S11hf/R-S11e-244 — bounded exact-generation global event dispatch
 
-**SOURCE IMPLEMENTED; EXECUTABLE DART REGRESSIONS AUTHORED AND WIRED; EXACT CURRENT
-FLUTTER/NATIVE/WEB/PACKAGE EVIDENCE OPEN.** One process-owned `GlobalEventDispatcher`
+**SOURCE IMPLEMENTED; EXACT CLEAN FLUTTER MODEL REGRESSIONS PASS WITH FRESH BRIDGES;
+NATIVE/WEB/PACKAGE EVIDENCE OPEN.** One process-owned `GlobalEventDispatcher`
 synchronously selects an exact registered-handler binding or fallback generation before admission.
 Registered/control work has one serial drain, one running entry, at most 64 pending entries, a
 16,777,216-code-unit message bound, a 67,108,864-byte retained bound, and at most 256 registered
@@ -8855,12 +8826,10 @@ settlement, exact retirement, count/byte bounds, registered-route ownership, nat
 separation, synchronous cursor handoff, malformed input, visible failure, and recovery.
 `flutter/test/latest_frame_queue_test.dart` separately covers observed one-running/one-latest
 submission and exact failure retirement. Their real `flutter test --no-pub` invocations remain in
-`scripts/dart-verify.sh`. The former focused Python verifier, duplicated workspace validator/
-mutation catalog, and shared/Apple invocations were deleted because they only parsed source and
-documentation strings and did not execute either Dart owner.
-
-The canonical `online/` inputs and pinned builder image remain absent on this checkout, so these
-tests receive no new execution verdict here. Exact Android task-swipe/reopen/Force-Stop, native
+`scripts/dart-verify.sh` and both passed in the exact clean 12-suite transaction recorded above.
+The former focused Python verifier, duplicated workspace validator/mutation catalog, and
+shared/Apple invocations were deleted because they only parsed source and documentation strings
+and did not execute either Dart owner. Exact Android task-swipe/reopen/Force-Stop, native
 desktop and web routing, Windows focus/minimize/reconnect, other-platform/cross-version behavior,
 capture-through-presentation latency, sustained resource soak, cold R-B2/R-B10 equality, installed
 artifacts, independent reproduction, causation, and external review remain STOP-SHIP.
@@ -10405,10 +10374,10 @@ performant remain open STOP-SHIP obligations.
 
 ### R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation
 
-**State:** Source implementation, Dart regressions, and focused source gates
-exist. Exact Dart/Flutter/generated-bridge and native execution, device lifecycle
-and performance evidence, current artifacts, independent reproduction, and
-external review remain pending.
+**State:** Source implementation plus the exact clean Flutter model regression and
+fresh bridge generation pass at `5c2fbfc9f78c8953a945283ef3c0cbef7f981064`.
+Native execution, device lifecycle and performance evidence, current artifacts,
+independent reproduction, and external review remain pending.
 
 **Boundary and current implementation.** This is the Flutter session-event
 consumer shared by Android, iOS, Windows, Linux, macOS, and the web parity path.
@@ -10425,8 +10394,10 @@ retry, queue, worker, service transition, or reconnect policy is added.
 replacement, strict generation advance, different-owner retirement refusal, and
 exact current-owner retirement. `scripts/verify-session-stream-generation.py`,
 the shared Android ownership gate, Apple gate, and independent workspace baseline
-bind pre-native reservation and exact-current callback/finality checks. This is
-source and Dart unit-contract evidence, not device or installed-artifact evidence.
+bind pre-native reservation and exact-current callback/finality checks. The named
+clean transaction generated the bridges and executed this suite under Flutter
+3.24.5 in a networkless guest-only container. This is Dart/model and generated-
+bridge evidence, not device or installed-artifact evidence.
 
 **Open evidence.** Run the exact current bridge and artifact through physical
 Android task-swipe/reopen/Force-Stop and native Windows focus/minimize/window-
@@ -10439,9 +10410,11 @@ STOP-SHIP obligations.
 
 ### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication
 
-**State:** Source implementation and Dart/Rust regressions exist. Exact generated-bridge and native desktop execution, installed-platform
-behavior, performance and resource evidence, current artifacts, independent
-reproduction, and external review remain pending.
+**State:** Source implementation plus the exact clean Dart model regression and
+fresh bridge generation pass at `5c2fbfc9f78c8953a945283ef3c0cbef7f981064`.
+Exact-current Rust regression execution, native desktop execution, installed-
+platform behavior, performance and resource evidence, current artifacts,
+independent reproduction, and external review remain pending.
 
 **Boundary and current implementation.** This is the Windows, Linux, and macOS
 outgoing-viewer texture lifecycle from Dart display demand through asynchronous
@@ -10460,9 +10433,11 @@ retirement, false/true demand, predecessor finality, and single retirement. Rust
 regression `r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers
 selected-display, collision, wrong-pointer, exact-removal, and retired-owner cases.
 `scripts/dart-verify.sh` and `scripts/verify.sh` retain those executable tests;
-the independent workspace baseline supplies only supplementary source checks.
-This is source and unit-contract evidence, not native plugin or installed-artifact
-behavior evidence.
+the independent workspace baseline supplies only supplementary source checks. The
+named clean transaction generated the bridges and executed the Dart suite under
+Flutter 3.24.5; it did not execute the Rust regression or a native plugin. This is
+source, Dart/model, and generated-bridge evidence, not native plugin or installed-
+artifact behavior evidence.
 
 **Open evidence.** Run the exact current generated bridge and native Windows,
 Linux, and macOS plugins through focus/minimize, display-switch, window-transfer,

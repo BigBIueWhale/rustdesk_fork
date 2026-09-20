@@ -19,6 +19,7 @@ case "$#:${8:-}" in
 esac
 readonly DOCKER_ARCHIVE=$1
 readonly ENTRY_PREFLIGHT=$2
+readonly GIT_PACKAGE=/mnt/rustdesk-verifier-inputs/git.deb
 readonly EXPECTED_VERSION=$3
 readonly EXPECTED_SIZE=$4
 readonly EXPECTED_SHA256=$5
@@ -71,6 +72,7 @@ readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
+readonly GIT_RUNTIME_ROOT=/opt/rustdesk-verifier-git
 
 DAEMON_PID=
 CONTAINER_ID=
@@ -80,6 +82,79 @@ SEALED_INPUTS_MOUNTED=0
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
     exit 1
+}
+
+provision_git_runtime() {
+    local mount_options
+    case "$SIZE_VERIFIER_VM_GIT_PACKAGE" in
+        0|*[!0-9]*|'') fail 'Git package size pin is malformed' ;;
+    esac
+    [[ "$SHA256_VERIFIER_VM_GIT_PACKAGE" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Git package digest pin is malformed'
+    case "$SIZE_VERIFIER_VM_GIT_BINARY" in
+        0|*[!0-9]*|'') fail 'Git binary size pin is malformed' ;;
+    esac
+    [[ "$SHA256_VERIFIER_VM_GIT_BINARY" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Git binary digest pin is malformed'
+    [ -f "$GIT_PACKAGE" ] && [ ! -L "$GIT_PACKAGE" ] \
+        && [ "$(/usr/bin/stat -c '%a:%h:%s' -- "$GIT_PACKAGE")" = \
+             "400:1:$SIZE_VERIFIER_VM_GIT_PACKAGE" ] \
+        || fail 'Git package payload metadata differs'
+    mount_options="$(/usr/bin/findmnt -n -o OPTIONS --target "$GIT_PACKAGE")" \
+        || fail 'Git package payload mount is absent'
+    case ",$mount_options," in *,ro,*) ;; *) fail 'Git package payload is not read-only' ;; esac
+    case ",$mount_options," in *,nodev,*) ;; *) fail 'Git package payload permits devices' ;; esac
+    case ",$mount_options," in *,nosuid,*) ;; *) fail 'Git package payload permits set-user-ID execution' ;; esac
+    case ",$mount_options," in *,noexec,*) ;; *) fail 'Git package payload permits direct execution' ;; esac
+    [ "$(/usr/bin/sha256sum "$GIT_PACKAGE" | /usr/bin/awk '{print $1}')" = \
+      "$SHA256_VERIFIER_VM_GIT_PACKAGE" ] \
+        || fail 'Git package payload digest differs'
+    [ "$(/usr/bin/dpkg-deb --field "$GIT_PACKAGE" Package)" = git ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$GIT_PACKAGE" Version)" = \
+             "$VERIFIER_VM_GIT_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$GIT_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'Git package payload identity differs'
+
+    for destination in /usr/bin/git /usr/lib/git-core /usr/share/git-core; do
+        [ ! -e "$destination" ] && [ ! -L "$destination" ] \
+            || fail "Git runtime destination is already occupied: $destination"
+    done
+    [ ! -e "$GIT_RUNTIME_ROOT" ] && [ ! -L "$GIT_RUNTIME_ROOT" ] \
+        || fail 'private Git runtime root is already occupied'
+    /usr/bin/install -d -m 0700 -- "$GIT_RUNTIME_ROOT"
+    /usr/bin/dpkg-deb --extract "$GIT_PACKAGE" "$GIT_RUNTIME_ROOT" \
+        || fail 'cannot extract the authenticated Git runtime'
+    /usr/bin/chmod -R a-w -- "$GIT_RUNTIME_ROOT"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$GIT_RUNTIME_ROOT")" = 0:0:555 ] \
+        || fail 'private Git runtime root metadata differs'
+    [ -z "$(/usr/bin/find "$GIT_RUNTIME_ROOT" -xdev \
+        \( \( ! -type d -a ! -type f -a ! -type l \) \
+           -o \( ! -type l -a \( -perm /022 -o -perm /6000 \) \) \) \
+        -print -quit)" ] \
+        || fail 'private Git runtime contains a special or writable entry'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$GIT_RUNTIME_ROOT/usr/bin/git")" = \
+      "0:0:555:1:$SIZE_VERIFIER_VM_GIT_BINARY" ] \
+        && [ "$(/usr/bin/sha256sum "$GIT_RUNTIME_ROOT/usr/bin/git" | /usr/bin/awk '{print $1}')" = \
+             "$SHA256_VERIFIER_VM_GIT_BINARY" ] \
+        && [ -d "$GIT_RUNTIME_ROOT/usr/lib/git-core" ] \
+        && [ ! -L "$GIT_RUNTIME_ROOT/usr/lib/git-core" ] \
+        && [ -d "$GIT_RUNTIME_ROOT/usr/share/git-core/templates" ] \
+        && [ ! -L "$GIT_RUNTIME_ROOT/usr/share/git-core/templates" ] \
+        || fail 'private Git runtime layout or binary identity differs'
+
+    /usr/bin/install -m 0555 -- "$GIT_RUNTIME_ROOT/usr/bin/git" /usr/bin/git
+    /bin/cp -a -- "$GIT_RUNTIME_ROOT/usr/lib/git-core" /usr/lib/git-core
+    /bin/cp -a -- "$GIT_RUNTIME_ROOT/usr/share/git-core" /usr/share/git-core
+    /usr/bin/chmod -R a-w -- /usr/lib/git-core /usr/share/git-core
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- /usr/bin/git)" = \
+      "0:0:555:1:$SIZE_VERIFIER_VM_GIT_BINARY" ] \
+        && [ "$(/usr/bin/sha256sum /usr/bin/git | /usr/bin/awk '{print $1}')" = \
+             "$SHA256_VERIFIER_VM_GIT_BINARY" ] \
+        || fail 'provisioned Git binary identity differs'
+    [ "$(/usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /usr/bin/git --version)" = 'git version 2.39.5' ] \
+        || fail 'provisioned Git runtime version differs'
+    printf 'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none\n'
 }
 
 network_inventory() {
@@ -531,7 +606,9 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh verify-release.sh build-release.sh apple-conform-check.sh \
+for verify_source in verify.sh verify-release.sh build-release.sh \
+    publish-github-release.sh finalize-release-set.py \
+    verify-release-workspace-runtime.sh apple-conform-check.sh \
     smoke-flutter-peer-presentation.sh frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
@@ -575,7 +652,9 @@ done
     || fail 'installed-systemd lifecycle script metadata differs'
 # shellcheck source=/dev/null
 source "$VERIFY_REPO/scripts/pins.env"
+provision_git_runtime
 readonly RELEASE_PARENT_SCRIPT="$VERIFY_REPO/scripts/build-release.sh"
+readonly RELEASE_WORKSPACE_RUNTIME_TEST="$VERIFY_REPO/scripts/verify-release-workspace-runtime.sh"
 readonly APPLE_CHECK_SCRIPT="$VERIFY_REPO/scripts/apple-conform-check.sh"
 readonly FLUTTER_PEER_SCRIPT="$VERIFY_REPO/scripts/smoke-flutter-peer-presentation.sh"
 [ "$ENTRY_PREFLIGHT" = "$VERIFY_REPO/scripts/verify-vm-entry-preflight.sh" ] \
@@ -820,6 +899,37 @@ release_parent_output="$(
     || fail "release-parent verifier-VM entry result differs: $release_parent_output"
 printf '%s\n' "$release_parent_output"
 printf 'VERIFIER_VM_RELEASE_PARENT_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused parent_docker=absent cleanup=descriptor-bound children=vm-only\n'
+
+if /bin/bash "$RELEASE_WORKSPACE_RUNTIME_TEST" --self-test-vm-runtime \
+    >"$ROOT/root-release-workspace-runtime.out" \
+    2>"$ROOT/root-release-workspace-runtime.err"; then
+    fail 'VM root passed the release-workspace runtime entry'
+fi
+[ ! -s "$ROOT/root-release-workspace-runtime.out" ] \
+    || fail 'root release-workspace refusal produced standard output'
+[ "$(<"$ROOT/root-release-workspace-runtime.err")" = \
+  'release-workspace-runtime: requires UID/GID 4000' ] \
+    || fail 'root release-workspace refusal diagnostic differs'
+if setpriv --reuid=4001 --regid=4001 --clear-groups \
+    /bin/bash "$RELEASE_WORKSPACE_RUNTIME_TEST" --self-test-vm-runtime \
+    >"$ROOT/foreign-release-workspace-runtime.out" \
+    2>"$ROOT/foreign-release-workspace-runtime.err"; then
+    fail 'foreign numeric principal passed the release-workspace runtime entry'
+fi
+[ ! -s "$ROOT/foreign-release-workspace-runtime.out" ] \
+    || fail 'foreign release-workspace refusal produced standard output'
+[ "$(<"$ROOT/foreign-release-workspace-runtime.err")" = \
+  'release-workspace-runtime: requires UID/GID 4000' ] \
+    || fail 'foreign release-workspace refusal diagnostic differs'
+release_workspace_runtime_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$RELEASE_WORKSPACE_RUNTIME_TEST" --self-test-vm-runtime
+)" || fail 'numeric-nonroot release-workspace runtime failed'
+[ "$release_workspace_runtime_output" = \
+  'RELEASE_WORKSPACE_RUNTIME=pass uid=4000 gid=4000 network=none release=actual reset=actual publisher=actual closure=actual cleanup=joined' ] \
+    || fail "release-workspace runtime result differs: $release_workspace_runtime_output"
+printf '%s\n' "$release_workspace_runtime_output"
+printf 'VERIFIER_VM_RELEASE_WORKSPACE_RUNTIME=pass uid=4000 gid=4000 root=refused foreign=refused network=none release=actual reset=actual publisher=actual closure=actual cleanup=joined\n'
 
 if /bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-apple-check.out" 2>"$ROOT/root-apple-check.err"; then

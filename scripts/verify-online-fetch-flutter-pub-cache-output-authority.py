@@ -78,7 +78,6 @@ def validate(sources: Dict[str, str]) -> None:
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    workspace = sources["workspace"]
     focused = sources["focused"]
     win_guest = sources["win_guest"]
     try:
@@ -436,23 +435,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority",
         "Flutter Pub-cache hardening ledger",
     )
-    for token, label in (
-        (
-            "validate_online_fetch_flutter_pub_cache_output_authority_contract(sources)",
-            "workspace contract dispatch",
-        ),
-        (
-            '"online_flutter_pub_cache_output_helper"',
-            "workspace helper source binding",
-        ),
-        (
-            '"online_fetch_flutter_pub_cache_output_authority_verifier"',
-            "workspace focused-verifier binding",
-        ),
-    ):
-        require(workspace, token, label)
-
-
 def mutations() -> Tuple[Mutation, ...]:
     return (
         Mutation(
@@ -672,9 +654,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (
-            repo / "scripts/verify-verifier-workspace.py"
-        ).read_text(encoding="utf-8"),
         "win_guest": (repo / "scripts/win-guest-setup.ps1").read_text(
             encoding="utf-8"
         ),

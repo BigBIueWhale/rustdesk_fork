@@ -38,11 +38,11 @@ AT_EMPTY_PATH = 0x1000
 AT_FDCWD = -100
 AT_SYMLINK_FOLLOW = 0x400
 FILE_HANDLE_LIMIT = 128
-FS_IOC_GETFSUUID = 0x80111500
-FILESYSTEM_UUID_SIZE = 16
 SUPPORTED_FILESYSTEMS = {
     0xEF53: "ext4",
 }
+RECORD_FORMAT = "rustdesk-release-transaction-v4"
+LEGACY_RECORD_FORMAT = "rustdesk-release-transaction-v3"
 RECORD_STATES = frozenset(
     ("initializing", "staging", "prepared", "rollback", "cleanup")
 )
@@ -247,17 +247,22 @@ def filesystem_authority(descriptor, mount_id):
     observed = mount_filesystem_type(mount_id)
     if expected is None or observed != expected:
         raise PublicationError(f"publication filesystem is unsupported: 0x{value:08x}")
-    filesystem_uuid = bytearray(FILESYSTEM_UUID_SIZE + 1)
-    try:
-        fcntl.ioctl(descriptor, FS_IOC_GETFSUUID, filesystem_uuid, True)
-    except OSError as error:
-        raise PublicationError("publication filesystem UUID is unavailable") from error
-    if filesystem_uuid[0] != FILESYSTEM_UUID_SIZE:
-        raise PublicationError("publication filesystem UUID has an invalid size")
-    value = bytes(filesystem_uuid[1:])
-    if value == bytes(FILESYSTEM_UUID_SIZE):
-        raise PublicationError("publication filesystem UUID is zero")
-    return f"{observed}:{value.hex()}"
+    fsid_low = int(result.f_fsid[0]) & 0xFFFFFFFF
+    fsid_high = int(result.f_fsid[1]) & 0xFFFFFFFF
+    if fsid_low == 0 and fsid_high == 0:
+        raise PublicationError("publication filesystem identity is zero")
+    return f"{observed}:fsid-v1:{fsid_high:08x}{fsid_low:08x}"
+
+
+def legacy_filesystem_authority_matches(recorded, current):
+    match = re.fullmatch(r"ext4:([0-9a-f]{32})", recorded)
+    if match is None:
+        return False
+    raw_uuid = bytes.fromhex(match.group(1))
+    folded = int.from_bytes(raw_uuid[:8], "little") ^ int.from_bytes(
+        raw_uuid[8:], "little"
+    )
+    return current == f"ext4:fsid-v1:{folded:016x}"
 
 
 def renameat2(parent_fd, source, destination, flags):
@@ -868,11 +873,19 @@ def validate_record(record, parent, token):
                 "epoch",
             )
         )
-        or record["format"] != "rustdesk-release-transaction-v3"
+        or record["format"] not in (RECORD_FORMAT, LEGACY_RECORD_FORMAT)
         or record["state"] not in RECORD_STATES
         or record["token"] != token
         or record["destination"] != parent.destination
-        or record["filesystem"] != parent.filesystem
+        or (
+            record["filesystem"] != parent.filesystem
+            and not (
+                record["format"] == LEGACY_RECORD_FORMAT
+                and legacy_filesystem_authority_matches(
+                    record["filesystem"], parent.filesystem
+                )
+            )
+        )
         or parse_handle(record["parent_handle"]) != parent.handle
         or record["payload"] != f".{parent.destination}-release-payload.{token}"
         or re.fullmatch(r"[0-9a-f]{64}", record["token"]) is None
@@ -1619,7 +1632,7 @@ def recover(parent):
 
 def initial_record(parent, token, commit, version, epoch, old_handle):
     return {
-        "format": "rustdesk-release-transaction-v3",
+        "format": RECORD_FORMAT,
         "state": "initializing",
         "token": token,
         "destination": parent.destination,

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-d5246ba1fe495603e8142845cd5c704044c33f3d00dfa4281c7cb3c45a6bdcdc  requirements.html
+2fd008c8dc775a654c9c9e5fa542a6593baaad3ca0b7a529e7892a979441a526  requirements.html
 ```
 
 ## Current Verdict
@@ -535,7 +535,7 @@ timings, hashes, and confinement narration remain in Git history.
 | R-S11e-161 current Linux service-child executable-object gate authority | The gate inspects the dedicated executable-object helper: the running image and byte-identical installed fallback are opened close-on-exec, and the installed path is also no-follow, before credential-changing launch. |
 | R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority | Screenshot checks reject only the retired process-global cache/setter path, while media checks select the exact owning constructor, controlled-audio owner, connection fields, and read-before-install order. |
 | R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority | The shared edge gate follows the bounded connection/channel-owned screenshot registry and the typed, authorized Remote-only Android desktop-capture owner set; the deleted `isViewCamera` Boolean is not authority. |
-| R-S11e-164 exact software-codec build-path verifier scope | The build-path scan excludes only the workspace verifier that contains inert negative-test literals; new and ordinary build-capable scripts remain scanned by default. |
+| R-S11e-164 exact software-codec build-path verifier scope | The build-path scan has no verifier-specific exemption; the deleted global source/mutation catalog no longer stores inert forbidden-token fixtures, and all build-capable scripts are scanned by default. |
 | R-S11e-166 current shared Apple companion-gate authority | The shared gate binds the fixed selected Apple target matrix, rejects target overrides, and checks the exact reproducibility-epoch transfer plus two private read-only source mounts. |
 | R-S11e-167 current shared Android serialization-gate authority | An exact adjacency predicate requires `@Synchronized` immediately before `rustSetByName`; the broken quiet-grep pipeline and broad annotation-presence surrogate are absent. |
 | R-S11e-168 current Pub-cache lock-postcondition gate authority | Networked production and offline replay retain exact read-only project-lock preimages and require equality after enforced resolution, with Flutter tool lock protection remaining separate. |
@@ -1385,9 +1385,11 @@ ignored state can become verifier input. Final APK certificate verification prec
 manifest write. Final `dist` installation requires an exact canonical current-UID/current-primary-GID parent with owner
 read/write/traverse, no group/world write, and no extended POSIX ACL. An advisory lock on the exact Git common-directory
 inode excludes cooperating release orchestrators. Publication is Linux ext4-only: descriptor-bound `fstatfs` magic must
-agree with the exact runtime mount's `/proc/self/mountinfo` type, and descriptor-bound `FS_IOC_GETFSUUID` must return the
-nonzero 16-byte external ext4 UUID. That complete UUID is recorded with opaque parent, payload, and prior-destination
-handles. Folded `f_fsid` and runtime mount IDs remain live-process authority only.
+agree with the exact runtime mount's `/proc/self/mountinfo` type, and ext4 must return a nonzero `f_fsid` derived from
+its superblock UUID. The canonical 64-bit `f_fsid` and opaque persistent parent handle are recorded and must match
+together across restart; the runtime mount ID remains live-process authority only. This avoids the newer-only
+`FS_IOC_GETFSUUID` dependency that the pinned Debian 12 Linux 6.1 verifier VM correctly rejected. New journals are v4;
+legacy v3 full-UUID records recover only when that UUID folds to the current ext4 `f_fsid` and the parent handle matches.
 
 Every untrusted file edge is acquired first with `O_PATH|O_NOFOLLOW`, rejected unless it is a stable regular file, then
 reopened nonblocking through its retained `/proc/self/fd/N` authority and re-proved. FIFO or other special-file
@@ -1396,7 +1398,7 @@ five files remain current-UID/current-GID, mode 0444, single-linked, xattr-free,
 The same-parent payload root is mode 0700 while staging and explicitly finalized and synchronized at mode 0555 only
 after exact content and security proof.
 
-The canonical mode-0400 v3 journal is linked and parent-synchronized in `initializing` state before payload creation.
+The canonical mode-0400 v4 journal is linked and parent-synchronized in `initializing` state before payload creation.
 The empty payload is then created and parent-synchronized; its persistent handle is durably committed in `staging`
 before source copying begins. A fully synchronized and finalized payload advances to manifest-bound `prepared`.
 First installation uses `RENAME_NOREPLACE`; replacement uses one same-parent `RENAME_EXCHANGE`. The parent is
@@ -6095,7 +6097,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 - **R-S11dm/R-S11e-131 — release-parent host-Docker removal, verifier-VM
   admission, and descriptor-bound workspace lifecycle — SOURCE CORRECTED;
-  REAL CLEANUP AND VM-ENTRY EVIDENCE GREEN 2026-09-15; FULL COLD RELEASE,
+  REAL CLEANUP, VM-ENTRY, AND RELEASE-WORKSPACE FIXTURES GREEN 2026-09-20; FULL COLD RELEASE,
   NATIVE/DEVICE, INDEPENDENT, AND EXTERNAL EVIDENCE PENDING.**
   Platform: ordinary-user Linux orchestration host and the authenticated
   no-NIC Debian verifier VM. Endpoint/action: <code>scripts/build-release.sh</code>
@@ -6165,11 +6167,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The former 950-line, 27-mutation checker tied to the retired host socket is
   deleted. <code>scripts/verify-release-parent-authority.py</code> is a compact
-  architecture invariant with no mutation-catalog pretense. The global
-  workspace verifier's duplicated Docker-parent block and most of its obsolete
-  release checker were deleted; it retains only compact transaction topology
-  checks. The real behavioral fixtures, not either source checker, establish
-  cleanup behavior.
+  architecture invariant with no mutation-catalog pretense. The separate
+  35,217-line <code>scripts/verify-verifier-workspace.py</code> global
+  source/document/mutation catalog is also deleted in full, along with its
+  ordinary-gate call, its software-codec scan exemption, and reciprocal
+  source/dispatch assertions in focused checkers. It did not execute the
+  release workspace and was not behavioral evidence. A bounded
+  <code>verify-release-workspace-runtime.sh</code> entry is instead wired into
+  the authenticated no-NIC VM authority run to execute the actual release,
+  reset, publisher, and descriptor-helper fixtures as UID/GID 4000 while
+  refusing VM root and UID/GID 4001. The first real run exposed absent Git; the
+  second, after exact pinned-package provisioning in the disposable guest,
+  exposed the finalizer's Linux-6.8-only filesystem-UUID ioctl on pinned Debian
+  12 Linux 6.1. After replacing that dependency with the kernel-defined ext4
+  `f_fsid` plus persistent parent-handle authority, the 67-second no-NIC run
+  emitted <code>VERIFIER_VM_RELEASE_WORKSPACE_RUNTIME=pass uid=4000 gid=4000
+  root=refused foreign=refused network=none release=actual reset=actual
+  publisher=actual closure=actual cleanup=joined</code> and the outer exact
+  unchanged-listener/joined-cleanup receipt. Old catalog passes are not carried
+  forward as a substitute.
 
   Remaining STOP-SHIP work is explicit: the outer common VM does not yet carry
   the complete release source/online/image/signing/Windows-golden input set or

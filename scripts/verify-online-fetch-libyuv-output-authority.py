@@ -82,7 +82,6 @@ def validate(sources: Dict[str, str]) -> None:
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    workspace = sources["workspace"]
     try:
         ast.parse(helper)
     except SyntaxError as error:
@@ -267,18 +266,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
         "hardening-ledger disposition",
     )
-    require(
-        workspace,
-        '"online_fetch_libyuv_output_authority_verifier"',
-        "workspace-verifier source ownership",
-    )
-    require(
-        workspace,
-        "Online-fetch libyuv output authority focused verifier",
-        "workspace-verifier semantic binding",
-    )
-
-
 MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "shell",
@@ -467,9 +454,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(
-            encoding="utf-8"
-        ),
     }
 
 

@@ -168,15 +168,7 @@ verify_scan_self_test "$VERIFY_TMP"
 source scripts/fork-version.sh
 rc=0
 
-echo "== (0) focused verifier workspace + release source/workflow ordering (R-S11c-10w/R-B2) =="
-r_s11c10w=
-if ! /usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .; then
-  r_s11c10w="$r_s11c10w workspace-or-release-source-baseline-failed"
-fi
-if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w/R-B2 focused verifier workspace or release source ordering:$r_s11c10w"; rc=1; else
-  echo "  ok  R-S11c-10w/R-B2 focused source baseline + same-clean-HEAD release verification + publish/version workflow ordering"; fi
-
-echo "== (0a) dependency, workflow, build-script, and unsafe-source inventory =="
+echo "== (0) dependency, workflow, build-script, and unsafe-source inventory =="
 inventory_gate=
 if ! python3 scripts/dependency-inventory.py --self-test; then
   inventory_gate="$inventory_gate verifier-self-test-failed"
@@ -15267,10 +15259,7 @@ fi
 # early, but the flutter mobile scripts + the CI matrix + build.py's own flags still
 # selected it until 575859a's follow-on — this locks the universal drop in tree-wide.
 #
-# One exact verifier program carries forbidden-token strings solely as source and
-# mutation fixtures. It is not a build driver. Exclude that exact path rather
-# than a verify-* class, so every new script remains scanned by default. The
-# repository's ignored .harness-state/ root contains retained exact-source evidence
+# The repository's ignored .harness-state/ root contains retained exact-source evidence
 # trees, not release inputs; scanning those copies makes the live verdict depend on
 # local evidence retention instead of the build paths in the current source tree.
 software_codec_build_hits() (
@@ -15278,7 +15267,6 @@ software_codec_build_hits() (
   grep -rInE 'hwcodec|vram|mediacodec' \
       --exclude-dir='.git' --exclude-dir='target' --exclude-dir='.harness-state' \
       --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
-    | grep -vE '^\./scripts/verify-verifier-workspace\.py:[0-9]+:' \
     | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
     | grep -vE ':[0-9]+:[[:space:]]*#' \
     | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
@@ -15290,8 +15278,6 @@ software_codec_default_feature_is_forbidden() {
 software_codec_build_gate_self_test() {
   local fixture="$VERIFY_TMP/software-codec-build-gate" hits
   install -d -m 0700 "$fixture/scripts" "$fixture/.harness-state/evidence" || return 1
-  printf '%s\n' 'mediacodec = ["ndk"]' \
-    >"$fixture/scripts/verify-verifier-workspace.py" || return 1
   printf '%s\n' 'features.append("hwcodec")' \
     >"$fixture/.harness-state/evidence/build.py" || return 1
   printf '%s\n' '# features.append("hwcodec"); vram dropped' >"$fixture/build.py" || return 1

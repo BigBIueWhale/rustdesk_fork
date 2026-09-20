@@ -30,7 +30,6 @@ FILES = {
     "verify": "scripts/verify.sh",
     "requirements": "requirements.html",
     "hardening": "HARDENING_STATUS.md",
-    "workspace": "scripts/verify-verifier-workspace.py",
     "focused": "scripts/verify-windows-libvirt-storage-pools.py",
 }
 
@@ -420,17 +419,6 @@ def validate(sources: dict[str, str]) -> None:
         "R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership",
         "hardening disposition",
     )
-    for literal, label in (
-        ('"windows_libvirt_storage_verifier": (', "independent verifier source ownership"),
-        ('"windows_libvirt_storage_library": (', "independent library source ownership"),
-        ("    validate_windows_libvirt_storage_authority_contract(sources)", "independent semantic validation call"),
-        ("Windows libvirt focused verifier wiring", "independent verifier-wiring mutation"),
-        ("Windows libvirt transient pool creation", "independent pool-creation mutation"),
-        ("Windows libvirt Appendix C #349 disposition", "independent Appendix mutation"),
-    ):
-        require(sources["workspace"], literal, label)
-
-
 def run_command(
     command: list[str],
     *,
@@ -1135,9 +1123,6 @@ MUTATIONS = (
     Mutation("requirements", '<span class="id">R-S11gn</span>', '<span class="id">R-S11gn-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>349</td>", "<tr><td>349-disabled</td>", "Appendix disposition"),
     Mutation("hardening", "R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership", "R-S11gn/R-S11e-226 — Windows harness ambient storage", "hardening ledger"),
-    Mutation("workspace", "    validate_windows_libvirt_storage_authority_contract(sources)", "    pass # Windows libvirt independent validation omitted", "independent validation call"),
-    Mutation("workspace", '"windows_libvirt_storage_verifier": (', '"windows_libvirt_storage_verifier_disabled": (', "independent focused-source ownership"),
-    Mutation("workspace", '"windows_libvirt_storage_library": (', '"windows_libvirt_storage_library_disabled": (', "independent library-source ownership"),
 )
 
 

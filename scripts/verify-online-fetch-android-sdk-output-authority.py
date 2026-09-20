@@ -402,18 +402,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
         "raw SDK root mode disposition",
     )
-    require(
-        sources["workspace"],
-        '"online_fetch_android_sdk_output_authority_verifier"',
-        "workspace source ownership",
-    )
-    require(
-        sources["workspace"],
-        "Online-fetch Android SDK output authority focused verifier",
-        "workspace semantic binding",
-    )
-
-
 MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("pins", "SHA256_ANDROID_BUILD_TOOLS_30_0_3=",
              "SHA256_ANDROID_BUILD_TOOLS_30_0_3_DISABLED=", "build-tools 30 pin"),
@@ -654,9 +642,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(
-            encoding="utf-8"
-        ),
     }
 
 

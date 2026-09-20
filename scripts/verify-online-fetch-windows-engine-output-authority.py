@@ -78,7 +78,6 @@ def validate(sources: Dict[str, str]) -> None:
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
-    workspace = sources["workspace"]
     focused = sources["focused"]
     try:
         ast.parse(helper)
@@ -312,23 +311,6 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
         "Windows-engine hardening ledger",
     )
-    for token, label in (
-        (
-            "validate_online_fetch_windows_engine_output_authority_contract(sources)",
-            "workspace contract dispatch",
-        ),
-        (
-            '"online_windows_engine_output_helper"',
-            "workspace helper source binding",
-        ),
-        (
-            '"online_fetch_windows_engine_output_authority_verifier"',
-            "workspace focused-verifier binding",
-        ),
-    ):
-        require(workspace, token, label)
-
-
 def mutations() -> Tuple[Mutation, ...]:
     return (
         Mutation(
@@ -466,9 +448,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
-        "workspace": (
-            repo / "scripts/verify-verifier-workspace.py"
-        ).read_text(encoding="utf-8"),
         "focused": pathlib.Path(__file__).read_text(encoding="utf-8"),
     }
 

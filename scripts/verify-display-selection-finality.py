@@ -100,7 +100,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "verify": "scripts/verify.sh",
         "dart_verify": "scripts/dart-verify.sh",
         "apple": "scripts/apple-conform-check.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -1729,42 +1728,8 @@ def validate(sources: Dict[str, str]) -> None:
             "python3 scripts/verify-display-selection-finality.py --repo . --self-test",
             "Apple/shared focused gate",
         ),
-        (
-            "workspace",
-            '"display_selection_finality_verifier": (',
-            "independent verifier source binding",
-        ),
-        (
-            "workspace",
-            "validate_display_selection_finality_contract(sources)",
-            "independent verifier dispatch",
-        ),
     ):
         require(sources[key], needle, label)
-
-    workspace_module = ast.parse(sources["workspace"])
-    validate_sources_function = next(
-        (
-            node
-            for node in workspace_module.body
-            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
-        ),
-        None,
-    )
-    if validate_sources_function is None:
-        raise VerificationError("independent workspace validate_sources function is absent")
-    dispatches = [
-        node
-        for node in validate_sources_function.body
-        if isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id == "validate_display_selection_finality_contract"
-    ]
-    if len(dispatches) != 1:
-        raise VerificationError(
-            "independent display-selection validator must have one direct runtime dispatch"
-        )
 
     requirements_digest = hashlib.sha256(
         sources["requirements"].encode("utf-8")
@@ -1963,7 +1928,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_verify", "flutter test --no-pub test/latest_frame_queue_test.dart", "true # latest frame queue test disabled", "generated bounded web-frame test gate"),
     ("dart_verify", "display selection is not a normal worker-pool bridge call", "display selection worker mode is unchecked", "generated display-selection worker-mode gate"),
     ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "Apple gate"),
-    ("workspace", '"display_selection_finality_verifier": (', '"display_selection_finality_verifier_disabled": (', "independent source binding"),
 )
 
 

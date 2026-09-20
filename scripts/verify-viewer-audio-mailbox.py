@@ -69,7 +69,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -380,18 +379,6 @@ def validate(sources: Dict[str, str]) -> None:
             "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test",
             "Apple/shared focused-verifier wiring",
         ),
-        (
-            "workspace",
-            '            "viewer_audio_mailbox_verifier": (\n'
-            '                repo / "scripts/verify-viewer-audio-mailbox.py"\n'
-            '            ).read_text(encoding="utf-8"),',
-            "independent focused-verifier source binding",
-        ),
-        (
-            "workspace",
-            "    validate_viewer_audio_mailbox_contract(sources)\n",
-            "independent validator dispatch",
-        ),
     ):
         require(sources[key], needle, label)
 
@@ -428,22 +415,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox", "R-S11hi-disabled/R-S11e-246 — bounded format-first peer-audio decoder mailbox", "hardening ledger"),
     ("verify", "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "true # peer-audio mailbox verifier disabled", "shared gate"),
     ("apple", "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "true # peer-audio mailbox verifier disabled", "Apple gate"),
-    (
-        "workspace",
-        '            "viewer_audio_mailbox_verifier": (\n'
-        '                repo / "scripts/verify-viewer-audio-mailbox.py"\n'
-        '            ).read_text(encoding="utf-8"),',
-        '            "viewer_audio_mailbox_verifier_disabled": (\n'
-        '                repo / "scripts/verify-viewer-audio-mailbox.py"\n'
-        '            ).read_text(encoding="utf-8"),',
-        "independent source binding",
-    ),
-    (
-        "workspace",
-        "    validate_viewer_audio_mailbox_contract(sources)\n",
-        "    validate_viewer_audio_mailbox_contract_disabled(sources)\n",
-        "independent dispatch",
-    ),
 )
 
 

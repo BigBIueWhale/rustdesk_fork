@@ -143,13 +143,6 @@ def validate(sources):
         "python3 scripts/verify-cleanup-authority.py --repo . --self-test",
         "cleanup focused gate wiring",
     )
-    require_text(
-        sources["workspace"],
-        "def validate_cleanup_process_domain_path_authority_contract(sources):",
-        "cleanup independent workspace contract",
-    )
-
-
 def mutate(source, old, new, label):
     require(old in source, "self-test fixture missing: {}".format(label))
     return source.replace(old, new, 1)
@@ -253,12 +246,6 @@ def run_self_test(sources):
             "true # cleanup authority gate removed",
             "cleanup focused gate wiring",
         ),
-        (
-            "workspace",
-            "def validate_cleanup_process_domain_path_authority_contract(sources):",
-            "validate_cleanup_guessed_authority_contract",
-            "cleanup independent workspace contract",
-        ),
     )
     for key, old, new, expected in mutations:
         candidate = dict(sources)
@@ -284,7 +271,6 @@ def load_sources(repo):
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
-        "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")

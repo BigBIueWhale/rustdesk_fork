@@ -79,7 +79,6 @@ def validate(sources: Mapping[str, str]) -> None:
     helper = sources["helper"]
     pins = sources["pins"]
     verify = sources["verify"]
-    workspace = sources["workspace"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
 
@@ -446,18 +445,6 @@ def validate(sources: Mapping[str, str]) -> None:
         "verify.sh helper-fixture integration",
     )
     require(
-        workspace,
-        "/usr/bin/python3 -I -S "
-        "scripts/verify-online-fetch-cargo-vendor-output-authority.py "
-        "--repo . --self-test",
-        "workspace focused-gate integration",
-    )
-    require(
-        workspace,
-        "/usr/bin/python3 -I -S scripts/online-cargo-vendor-output.py self-test",
-        "workspace helper-fixture integration",
-    )
-    require(
         requirements,
         '<span class="id">R-S11cw</span>',
         "normative Cargo vendor requirement",
@@ -609,12 +596,6 @@ def mutations() -> Sequence[Mutation]:
             "verify integration removal",
         ),
         Mutation(
-            "workspace",
-            "/usr/bin/python3 -I -S scripts/online-cargo-vendor-output.py self-test",
-            "/usr/bin/python3 -I -S scripts/online-cargo-vendor-output.py disabled",
-            "workspace fixture removal",
-        ),
-        Mutation(
             "requirements",
             '<span class="id">R-S11cw</span>',
             '<span class="id">R-S11cw-disabled</span>',
@@ -660,7 +641,6 @@ def load(repo: Path) -> Mapping[str, str]:
         "helper": repo / "scripts/online-cargo-vendor-output.py",
         "pins": repo / "scripts/pins.env",
         "verify": repo / "scripts/verify.sh",
-        "workspace": repo / "scripts/verify-verifier-workspace.py",
         "requirements": repo / "requirements.html",
         "hardening": repo / "HARDENING_STATUS.md",
     }

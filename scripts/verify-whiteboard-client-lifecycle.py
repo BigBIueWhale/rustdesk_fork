@@ -60,7 +60,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
         "linux_verifier": "scripts/verify-linux-nondumpable-cm.py",
-        "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -456,44 +455,8 @@ def validate(sources: Dict[str, str]) -> None:
             "### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership",
             "hardening lifecycle ledger",
         ),
-        (
-            "workspace",
-            "def validate_whiteboard_client_lifecycle_contract(sources):",
-            "independent workspace contract",
-        ),
-        (
-            "workspace",
-            '            "whiteboard_client_lifecycle_verifier": (\n'
-            '                repo / "scripts/verify-whiteboard-client-lifecycle.py"\n'
-            '            ).read_text(encoding="utf-8"),',
-            "independent focused-verifier source binding",
-        ),
     ):
         require(sources[key], needle, label)
-
-    workspace_module = ast.parse(sources["workspace"])
-    validate_sources_function = next(
-        (
-            node
-            for node in workspace_module.body
-            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
-        ),
-        None,
-    )
-    if validate_sources_function is None:
-        raise VerificationError("independent whiteboard client lifecycle dispatch is absent")
-    dispatches = [
-        node
-        for node in validate_sources_function.body
-        if isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id == "validate_whiteboard_client_lifecycle_contract"
-    ]
-    if len(dispatches) != 1:
-        raise VerificationError(
-            "independent whiteboard client lifecycle dispatch must occur exactly once"
-        )
 
     requirements_digest = hashlib.sha256(
         sources["requirements"].encode("utf-8")
@@ -553,8 +516,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11ho</span>', '<div class="req"><span class="id">R-S11ho-disabled</span>', "normative lifecycle requirement"),
     ("requirements", "<tr><td>375</td>", "<tr><td>375-disabled</td>", "Appendix C lifecycle disposition"),
     ("hardening", "### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership", "### R-S11ho-disabled/R-S11e-252 — exact-generation whiteboard client worker ownership", "hardening lifecycle ledger"),
-    ("workspace", "    validate_whiteboard_client_lifecycle_contract(sources)\n", "    validate_whiteboard_client_lifecycle_contract_disabled(sources)\n", "independent lifecycle dispatch"),
-    ("workspace", '            "whiteboard_client_lifecycle_verifier": (\n', '            "whiteboard_client_lifecycle_verifier_disabled": (\n', "focused-verifier source binding"),
 )
 
 

@@ -806,6 +806,13 @@ run_flutter_model_tests() {
                     /work/toolchain/flutter \
                     "$RUSTDESK_FLUTTER_VERSION" \
                     "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+                if ! "$REAL_FLUTTER" config --no-analytics \
+                    >/work/flutter-config.out 2>/work/flutter-config.err; then
+                    tail -n 120 /work/flutter-config.out /work/flutter-config.err >&2
+                    exit 1
+                fi
+                [ "$(stat -c %s /work/flutter-config.out)" -le 1048576 ]
+                [ "$(stat -c %s /work/flutter-config.err)" -le 1048576 ]
                 if ! flutter pub get --offline --enforce-lockfile \
                     >/work/project-pub.out 2>/work/project-pub.err; then
                     tail -n 120 /work/project-pub.out /work/project-pub.err >&2

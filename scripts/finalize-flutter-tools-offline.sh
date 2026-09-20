@@ -64,6 +64,61 @@ $CURRENT_UID:$CURRENT_GID" ] \
 [ "$PUBSPEC" -ot "$PACKAGE_CONFIG" ] \
     || fail 'offline Pub package configuration is not newer than its pubspec'
 
+if ! package_count="$(
+    /usr/bin/python3 -I -S - "$PACKAGE_CONFIG" <<'PY'
+import json
+import os
+import pathlib
+import sys
+import urllib.parse
+
+
+def invalid():
+    raise ValueError
+
+
+try:
+    config_path = os.path.abspath(sys.argv[1])
+    if os.path.getsize(config_path) > 1024 * 1024:
+        invalid()
+    with open(config_path, "rb") as stream:
+        config = json.load(stream)
+    if not isinstance(config, dict) or config.get("configVersion") != 2:
+        invalid()
+    packages = config.get("packages")
+    if not isinstance(packages, list) or not 0 < len(packages) <= 4096:
+        invalid()
+    base_uri = pathlib.Path(config_path).as_uri()
+    names = set()
+    for package in packages:
+        if not isinstance(package, dict):
+            invalid()
+        name = package.get("name")
+        root_uri = package.get("rootUri")
+        if not isinstance(name, str) or not name or name in names:
+            invalid()
+        if not isinstance(root_uri, str) or not root_uri:
+            invalid()
+        names.add(name)
+        resolved = urllib.parse.urlsplit(urllib.parse.urljoin(base_uri, root_uri))
+        if (resolved.scheme != "file" or resolved.netloc
+                or resolved.query or resolved.fragment):
+            invalid()
+        root_path = urllib.parse.unquote(resolved.path)
+        if not os.path.isabs(root_path):
+            invalid()
+        if not os.path.isfile(os.path.join(root_path, "pubspec.yaml")):
+            invalid()
+    print(len(packages))
+except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+    sys.exit(1)
+PY
+)"; then
+    fail "offline Pub package roots do not satisfy Flutter's freshness predicate"
+fi
+[[ "$package_count" =~ ^[1-9][0-9]*$ ]] \
+    || fail 'offline Pub package count is malformed'
+
 if [ -e "$MARKER" ] || [ -L "$MARKER" ]; then
     [ -f "$MARKER" ] && [ ! -L "$MARKER" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$MARKER")" = \

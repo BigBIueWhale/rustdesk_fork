@@ -506,6 +506,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "Flutter-tools lockfile differs from its expected digest",
             '[ "$PUBSPEC" -ot "$LOCK" ]',
             '[ "$PUBSPEC" -ot "$PACKAGE_CONFIG" ]',
+            '/usr/bin/python3 -I -S - "$PACKAGE_CONFIG"',
+            "offline Pub package roots do not satisfy Flutter's freshness predicate",
             "existing Flutter-tools freshness marker is not exact",
             "published Flutter-tools freshness marker is not exact",
             "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass",
@@ -772,6 +774,12 @@ MUTATIONS = (
         '/src/scripts/finalize-flutter-tools-offline.sh \\\n',
         'true # Flutter-tools freshness finalization disabled \\\n',
         "FRB Flutter-tools freshness finalization",
+    ),
+    Mutation(
+        "finalizer",
+        "offline Pub package roots do not satisfy Flutter's freshness predicate",
+        "offline Pub package roots accepted without validation",
+        "Flutter-tools package-root freshness refusal",
     ),
     Mutation(
         "finalizer",

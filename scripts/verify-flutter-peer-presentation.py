@@ -381,6 +381,8 @@ def validate(sources: dict[str, str]) -> None:
         ("Flutter-tools lockfile differs from its expected digest", "lock equality"),
         ('[ "$PUBSPEC" -ot "$LOCK" ]', "lock freshness"),
         ('[ "$PUBSPEC" -ot "$PACKAGE_CONFIG" ]', "package-config freshness"),
+        ('/usr/bin/python3 -I -S - "$PACKAGE_CONFIG"', "package-root parser authority"),
+        ("offline Pub package roots do not satisfy Flutter's freshness predicate", "package-root freshness refusal"),
         ("existing Flutter-tools freshness marker is not exact", "existing-marker refusal"),
         ("published Flutter-tools freshness marker is not exact", "published-marker finality"),
         ("FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass", "exact freshness receipt"),

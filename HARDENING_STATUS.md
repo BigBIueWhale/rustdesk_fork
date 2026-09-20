@@ -875,7 +875,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
-| Verification/build authority | R-S11dh's authenticated ordinary-user, zero-NIC VM and R-S11cj's distinct outbound-only acquisition VM are the sole execution authorities. Focused runs establish their isolation, guest-only Docker/BuildKit ownership, exact input admission, listener invariance, root/foreign refusal, bounded cleanup, and finality; source/model gates remain supplementary. Every Unix fresh-SDK path that invokes Flutter after an offline Flutter-tools resolve—Android, Debian, Dart/FRB, full-peer staging, the focused Flutter model transaction, and Pub-cache semantic replay—now uses one exact finalizer. It admits only the pinned Flutter version and lock digest, Flutter's own lock/package-config freshness predicate, and an exact current-owner mode-0644 version marker, preventing a second implicit non-offline Pub transaction. A reused-overlay no-NIC diagnostic passed the six status-refresh regressions and the compact source gates, but a clean authoritative twelve-suite run and Windows-golden freshness correction/reprovisioning remain open. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but they establish builder distribution and runtime identity only. The complete canonical offline-input closure, stable Android signing-key files, Windows golden/operator inputs, current product artifacts, installed/native lifecycle evidence, cold A==B reproduction, independent reproduction, and external review are absent or open. |
+| Verification/build authority | R-S11dh's authenticated ordinary-user, zero-NIC VM and R-S11cj's distinct outbound-only acquisition VM are the sole execution authorities. Focused runs establish their isolation, guest-only Docker/BuildKit ownership, exact input admission, listener invariance, root/foreign refusal, bounded cleanup, and finality; source/model gates remain supplementary. Every Unix fresh-SDK path that invokes Flutter after an offline Flutter-tools resolve—Android, Debian, Dart/FRB, full-peer staging, the focused Flutter model transaction, and Pub-cache semantic replay—now uses one exact finalizer. It admits only the pinned Flutter version and lock digest, single-link inputs, current-principal Pub output, lock/package-config timestamp freshness, an exact mode-0644 version marker, and a bounded package configuration whose every file-URI root contains `pubspec.yaml`, covering both Flutter bootstrap freshness and Flutter 3.24.5's running `PubDependencies.isUpToDate()` predicate before claiming that implicit Pub is prevented. A reused-overlay, loopback-only diagnostic passed all 12 focused suites and 103 tests, but a clean authoritative run and Windows-golden freshness correction/reprovisioning remain open. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but they establish builder distribution and runtime identity only. The complete canonical offline-input closure, stable Android signing-key files, Windows golden/operator inputs, current product artifacts, installed/native lifecycle evidence, cold A==B reproduction, independent reproduction, and external review are absent or open. |
 
 The six current Android, Debian, and Windows-helper bootstrap/certified builder archives are present under
 `online/inputs/build-images`; their pin-bound acquisition, certification, and promotion evidence remains in the
@@ -8791,14 +8791,17 @@ deferred-first-turn cancellation case, and reduces the per-test failure timeout 
 exact clean rerun is still required; no Flutter-model pass is claimed yet.
 
 The first corrected diagnostic exposed a separate verifier defect rather than another model
-failure. Flutter 3.24.5 treats its own `packages/flutter_tools` package as stale unless
-`.dart_tool/version` byte-equals the SDK `version` file and both `pubspec.lock` and
-`package_config.json` are newer than `pubspec.yaml`. A pinned
-`dart pub get --offline --enforce-lockfile` creates the package configuration but not that version
-marker. Consequently `flutter test --no-pub` still launched a second implicit Dart Pub resolution
-without `--offline` and hung in the no-NIC guest. One shared finalizer now checks the exact pinned
-SDK version, lock digest, ownership, non-symlink/single-link inputs, Flutter's own freshness
-predicate, and exact marker metadata/content before publishing the marker. Android, Debian,
+failure. Flutter's tool bootstrap regards `packages/flutter_tools` as stale unless
+`.dart_tool/version` byte-equals the SDK `version` file and the lock/package configuration are
+newer than `pubspec.yaml`; after the tool starts, Flutter 3.24.5's
+`PubDependencies.isUpToDate()` independently loads that package configuration and requires every
+package root to contain `pubspec.yaml`. A pinned `dart pub get --offline --enforce-lockfile`
+creates the package configuration but not the version marker. Consequently `flutter test
+--no-pub` could still launch a second implicit Dart Pub resolution without `--offline` and hang in
+the no-NIC guest. One shared finalizer now checks the exact pinned SDK version, lock digest,
+ownership, non-symlink/single-link inputs, timestamp freshness, a bounded version-2 package
+configuration with 1–4096 unique file-URI package roots and a `pubspec.yaml` at every root, and
+exact marker metadata/content before publishing the marker. Android, Debian,
 Dart/FRB, full-peer staging, focused model execution, and Pub-cache semantic replay all call it
 before their first relevant Flutter operation; their compact source gates passed in a `-nic none`
 QEMU guest with a read-only Landlocked source export.
@@ -8815,6 +8818,31 @@ but reuse of a retained overlay means it is not the required clean authoritative
 result. The Windows golden-image provisioning path has the same conceptual freshness obligation;
 correcting it requires a new golden receipt, reprovisioning, inspection, and repinning, and remains
 open rather than being source-edited into an unverified claim.
+
+A subsequent diagnostic deliberately reused that overlay but removed its Flutter `build/` output.
+The first attempt timed out before a test event because the ad hoc boot mounted the sealed Pub
+closure at `/mnt/online` while the retained package configuration named `/online`; verbose replay
+showed 95 absent package roots and Flutter's attempted online `dart pub get --example`. After that
+mount was reconstructed, compilation correctly exposed the retained project's second absolute
+path, `/work/toolchain/flutter`; after that path was reconstructed, the Flutter tester correctly
+exposed that the sole `lo` interface was still down. These were diagnostic-VM setup failures, not
+product failures. With both read-only absolute paths present and only guest loopback enabled, the
+same fresh-build invocation exited zero in 13 seconds: all 12 suites and all 103 visible tests
+completed successfully, stderr was empty, and the bounded JSON stream was 53,857 bytes with
+SHA-256 `0d8dc61ec73cb70e13b782ab72f145b98ed1903e0a90698dfaa24ab4d1f3acf4`.
+The retained validator copy still expected 102 tests; substituting the current contract's exact
+103 count accepted the otherwise unchanged stream. This remains diagnostic evidence because its
+source/toolchain/generated bridges and disk overlay were retained rather than admitted afresh.
+
+The package-root correction itself was then exercised in a separate snapshot boot with no NIC,
+loopback down, zero route entries, and a read-only/no-exec Landlocked source export. A synthetic
+relative file-URI package closure published the exact marker and passed idempotent re-entry;
+missing-root and HTTPS-root configurations were both refused before marker publication. The
+Dart/FRB authority self-test rejected 132 mutations and the full-peer source contract passed.
+All diagnostic QEMU and virtiofsd processes joined, the host listener endpoint inventory was
+unchanged, and the child QCOW2 remained `dirty=false`, `corrupt=false`, and 133,111,808 actual
+bytes. This closes the false offline-freshness receipt found by the diagnostic; it does not convert
+either reused-overlay run into the required clean authority.
 
 Exact Android task-swipe/reopen/Force-Stop and Windows focus/minimize behavior, other platforms and
 cross-version operation, capture-through-presentation latency, sustained connection/resource soak,

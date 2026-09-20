@@ -556,7 +556,12 @@ run_flutter_model_tests() {
     local output=$ROOT/flutter-model-tests.out
     local result_validator=$ROOT/flutter-model-result-validator.py
     local pub_validator=$ROOT/flutter-pub-cache-validator.py
+    local rust_archive=$inputs/rust-1.75.tar.xz
     local flutter_archive=$inputs/flutter-3.24.5.tar.xz
+    local llvm_archive=$inputs/llvm-15.0.6.tar.xz
+    local cargo_vendor=$inputs/cargo-vendor
+    local cargo_config=$inputs/cargo-vendor-config.toml
+    local frb_codegen=$inputs/frb-tool/bin/flutter_rust_bridge_codegen
     local pub_cache=$inputs/pub-cache
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect result_line
@@ -618,6 +623,29 @@ run_flutter_model_tests() {
         && [ "$(sha256sum "$flutter_archive" | awk '{ print $1 }')" = \
              "$SHA256_FLUTTER_3_24_5" ] \
         || fail 'sealed Flutter 3.24.5 archive differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
+      "1000:1000:400:1:$SIZE_RUST_1_75" ] \
+        && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = \
+             "$SHA256_RUST_1_75" ] \
+        || fail 'sealed Rust 1.75.0 archive differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$llvm_archive")" = \
+      "1000:1000:400:1:$SIZE_LLVM_15_0_6" ] \
+        && [ "$(sha256sum "$llvm_archive" | awk '{ print $1 }')" = \
+             "$SHA256_LLVM_15_0_6" ] \
+        || fail 'sealed LLVM 15.0.6 archive differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$cargo_config")" = \
+      "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
+        && [ "$(sha256sum "$cargo_config" | awk '{ print $1 }')" = \
+             "$SHA256_CARGO_VENDOR_CONFIG" ] \
+        || fail 'sealed Cargo-vendor configuration differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
+      "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+        && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
+             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" ] \
+        || fail 'sealed FRB generator differs'
+    [ -d "$cargo_vendor" ] && [ ! -L "$cargo_vendor" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$cargo_vendor")" = 1000:1000:500 ] \
+        || fail 'sealed Cargo-vendor root metadata differs'
     [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
         && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
         || fail 'sealed Pub-cache root metadata differs'
@@ -679,8 +707,14 @@ run_flutter_model_tests() {
             --mount "type=bind,source=$source_root,target=/source" \
             --mount "type=bind,source=$work_root,target=/work" \
             --mount "type=bind,source=$pub_cache,target=/online/pub-cache,readonly" \
+            --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly" \
             --mount "type=bind,source=$flutter_archive,target=/inputs/flutter.tar.xz,readonly" \
+            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly" \
+            --mount "type=bind,source=$llvm_archive,target=/inputs/llvm.tar.xz,readonly" \
+            --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly" \
+            --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly" \
             --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
+            --env "RUSTDESK_CARGO_VENDOR_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
             --workdir /source/flutter \
             "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -704,16 +738,43 @@ run_flutter_model_tests() {
                 [ "$seccomp" = 2 ]
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
-                mkdir /work/toolchain /work/home
+                mkdir /work/toolchain /work/home /work/cargo-home /work/flutter-shim
+                tar -C /work/toolchain -xf /inputs/rust.tar.xz
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
-                export HOME=/work/home PUB_CACHE=/online/pub-cache CI=true
+                tar -C /work/toolchain -xf /inputs/llvm.tar.xz
+                rust_installer=(/work/toolchain/rust-1.*/install.sh)
+                [ "${#rust_installer[@]}" -eq 1 ] && [ -f "${rust_installer[0]}" ]
+                "${rust_installer[0]}" --prefix=/work/toolchain/rustinstall \
+                    --disable-ldconfig \
+                    --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
+                    >/dev/null
+                llvm_roots=(/work/toolchain/clang+llvm-*)
+                [ "${#llvm_roots[@]}" -eq 1 ] && [ -d "${llvm_roots[0]}" ]
+                LLVM_ROOT="${llvm_roots[0]}"
+                clang_headers=("$LLVM_ROOT"/lib/clang/*/include)
+                [ "${#clang_headers[@]}" -eq 1 ] && [ -d "${clang_headers[0]}" ]
+                cp /inputs/flutter_rust_bridge_codegen \
+                    /work/toolchain/flutter_rust_bridge_codegen
+                chmod 0500 /work/toolchain/flutter_rust_bridge_codegen
+                export HOME=/work/home CARGO_HOME=/work/cargo-home
+                export PUB_CACHE=/online/pub-cache CI=true
                 export PUB_HOSTED_URL=https://pub.dev
                 export FLUTTER_SUPPRESS_ANALYTICS=true
                 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
                 export GIT_ATTR_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
                 export GIT_OPTIONAL_LOCKS=0
-                export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+                export LIBCLANG_PATH="$LLVM_ROOT/lib"
+                export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/work/toolchain/rustinstall/bin:/usr/bin:/bin
                 [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
+                {
+                    printf "[net]\noffline = true\n"
+                    sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
+                        /inputs/cargo-vendor-config.toml
+                } >"$CARGO_HOME/config.toml"
+                cp /source/scripts/flutter-offline-shim.sh /work/flutter-shim/flutter
+                chmod 0500 /work/flutter-shim/flutter
+                export REAL_FLUTTER=/work/toolchain/flutter/bin/flutter
+                export PATH=/work/flutter-shim:$PATH
                 project_lock="$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")"
                 tools_lock="$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
                 if ! (cd /work/toolchain/flutter/packages/flutter_tools \
@@ -728,6 +789,34 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+                [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                /usr/bin/python3 -I -S \
+                    /source/scripts/online-input-provenance.py verify-subtree \
+                    --tree /online/cargo-vendor \
+                    --expected "$RUSTDESK_CARGO_VENDOR_SHA256"
+                codegen_log=/work/codegen.log
+                if ! (cd /source && \
+                    /work/toolchain/flutter_rust_bridge_codegen \
+                        --rust-input ./src/flutter_ffi.rs \
+                        --dart-output ./flutter/lib/generated_bridge.dart \
+                        --llvm-path "$LLVM_ROOT" \
+                        --llvm-compiler-opts="-I${clang_headers[0]}") \
+                    >"$codegen_log" 2>&1; then
+                    tail -n 160 "$codegen_log" >&2
+                    exit 1
+                fi
+                [ "$(stat -c %s "$codegen_log")" -le 1048576 ]
+                ! grep -Fq "[SEVERE]" "$codegen_log" \
+                    || { tail -n 160 "$codegen_log" >&2; exit 1; }
+                for generated in \
+                    /source/src/bridge_generated.rs \
+                    /source/src/bridge_generated.io.rs \
+                    /source/flutter/lib/generated_bridge.dart \
+                    /source/flutter/lib/generated_bridge.freezed.dart; do
+                    [ -s "$generated" ] && [ ! -L "$generated" ]
+                done
+                sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
+                    /source/flutter/lib/generated_bridge.dart
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
                 tests=(
                     test/global_event_dispatcher_test.dart
@@ -801,8 +890,10 @@ run_flutter_model_tests() {
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=102 flutter=3.24.5 pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=102 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+        "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         "$SHA256_PUB_CACHE_CLOSURE_V1" \
         "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
 }

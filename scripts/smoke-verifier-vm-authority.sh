@@ -70,6 +70,8 @@ readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
 readonly RUST_TEST_ARCHIVE="$ONLINE_INPUTS/rust-${RUST_VERSION}.tar.xz"
 readonly FLUTTER_TEST_ARCHIVE="$ONLINE_INPUTS/flutter-${FLUTTER_VERSION}.tar.xz"
+readonly LLVM_TEST_ARCHIVE="$ONLINE_INPUTS/llvm-${LLVM_VERSION}.tar.xz"
+readonly FRB_CODEGEN="$ONLINE_INPUTS/frb-tool/bin/flutter_rust_bridge_codegen"
 readonly PUB_CACHE_ROOT="$ONLINE_INPUTS/pub-cache"
 readonly CARGO_VENDOR_ROOT="$ONLINE_INPUTS/cargo-vendor"
 readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
@@ -145,9 +147,13 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly VM_TIMEOUT_SECONDS=480
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+elif [ "$MODE" = hbb-common-fs ]; then
     readonly VM_TIMEOUT_SECONDS=1800
     readonly OVERLAY_SIZE=16G
+    readonly VM_MEMORY=8192
+elif [ "$MODE" = flutter-model-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=1800
+    readonly OVERLAY_SIZE=24G
     readonly VM_MEMORY=8192
 else
     readonly VM_TIMEOUT_SECONDS=90
@@ -498,7 +504,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
              "$HOST_UID:$HOST_GID:700" ] \
         || fail 'sealed focused-test input root metadata differs'
     for input in \
+        "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
         "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
+        "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
         "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
         path=${input%%:*}
@@ -511,6 +520,11 @@ elif [ "$MODE" = flutter-model-tests ]; then
             || fail "sealed focused-test input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
+    [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
+             "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+        || fail "sealed focused-test executable metadata differs: $FRB_CODEGEN"
+    verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
     verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
@@ -521,6 +535,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Pub-cache root metadata differs'
+    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Cargo vendor root metadata differs'
 fi
 /usr/bin/python3 -I -S - "$BASE" <<'PY'
 import json
@@ -759,10 +777,14 @@ if [ "$MODE" = hbb-common-fs ]; then
     )"
 elif [ "$MODE" = flutter-model-tests ]; then
     focused_inputs_before="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$PUB_CACHE_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
+            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$FLUTTER_TEST_ARCHIVE" \
+            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
+            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
+            "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
+            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 fi
@@ -1300,7 +1322,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         'focused Rust-test cloud-init completion marker'
 else
     require_exact_fixed_receipt \
-        "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=12 tests=102 flutter=$FLUTTER_VERSION pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined" \
+        "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=12 tests=102 flutter=$FLUTTER_VERSION rust=$RUST_VERSION llvm=$LLVM_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined" \
         'focused Flutter model-test receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -1344,10 +1366,14 @@ if [ "$MODE" = hbb-common-fs ]; then
         || fail 'focused Rust-test source archive changed during execution'
 elif [ "$MODE" = flutter-model-tests ]; then
     focused_inputs_after="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$PUB_CACHE_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
+            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$FLUTTER_TEST_ARCHIVE" \
+            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
+            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
+            "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
+            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
@@ -1382,6 +1408,6 @@ elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
 else
-    printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=model-tests cleanup=joined elapsed_seconds=%s\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
 fi

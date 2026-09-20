@@ -395,6 +395,18 @@ readonly -a FLUTTER_TEST_FIXED_ARCHIVE_ARGS=(
     "$SIZE_FLUTTER_3_24_5"
     "$SHA256_FLUTTER_3_24_5"
     "storage.googleapis.com"
+    --entry
+    "rust-${RUST_VERSION}.tar.xz"
+    "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz"
+    "$SIZE_RUST_1_75"
+    "$SHA256_RUST_1_75"
+    "static.rust-lang.org"
+    --entry
+    "llvm-${LLVM_VERSION}.tar.xz"
+    "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-18.04.tar.xz"
+    "$SIZE_LLVM_15_0_6"
+    "$SHA256_LLVM_15_0_6"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
 )
 readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(
     --entry
@@ -1873,6 +1885,8 @@ stage_flutter_test_inputs() {
     stage_archive_bundle flutter-test "$ONLINE_DIR" .rustdesk-flutter-test-archive \
         "pinned Flutter test toolchain archive" "$ANDROID_BUILDER_CONFIG_ID" android-builder
     verify_or_load_deb_builder_image
+    vendor_cargo
+    build_frb_codegen
     stage_pub_cache
 }
 

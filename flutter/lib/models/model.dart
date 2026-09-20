@@ -4744,7 +4744,10 @@ class FFI {
           if (decoded is! Map<String, dynamic>) {
             throw FormatException('session event is not an object');
           }
-          _observeSessionTask(cb(decoded), activeSessionId, 'Session event');
+          final task = cb(decoded);
+          if (task != null) {
+            _observeSessionTask(task, activeSessionId, 'Session event');
+          }
         } catch (error) {
           debugPrint('Session event decoding failed: ${error.runtimeType}');
           _reportSessionStreamFailure(activeSessionId, peerId,

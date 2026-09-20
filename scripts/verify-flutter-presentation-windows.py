@@ -205,7 +205,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         pins,
-        'SHA256_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
+        'SHA256_PUB_CACHE_CLOSURE_V1="e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12"',
         "dedicated Windows presentation Pub-cache authority pin",
     )
     require(
@@ -463,7 +463,7 @@ def validate(sources: dict[str, str]) -> None:
             "windows-presentation-source-manifest.py",
             "--verify",
             "$sourcePubCache = Join-Path $sourceRoot 'pub-cache'",
-            "$expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock'",
+            "$expectedPubCacheIdentity = 'source_sha256=e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock'",
             "Get-ChildItem -LiteralPath $sourcePubCache -Force",
             "'hosted,hosted-hashes'",
             "$env:PUB_CACHE = Join-Path $workRoot 'pub-cache'",
@@ -1498,7 +1498,7 @@ def self_test(sources: dict[str, str]) -> int:
         ("host", "assert_clean_worktree", "true # worktree check removed"),
         (
             "pins",
-            'SHA256_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
+            'SHA256_PUB_CACHE_CLOSURE_V1="e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12"',
             'SHA256_PUB_CACHE_CLOSURE_V1="0000000000000000000000000000000000000000000000000000000000000000"',
         ),
         (
@@ -1698,8 +1698,8 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "runner",
-            "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock",
-            "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=0000000000000000000000000000000000000000000000000000000000000000 packages=8 semantics=exact-probe-lock",
+            "source_sha256=e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock",
+            "source_sha256=e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12 projection_sha256=0000000000000000000000000000000000000000000000000000000000000000 packages=8 semantics=exact-probe-lock",
         ),
         (
             "runner",

@@ -940,11 +940,13 @@ fallback.
   validator is absent. The Debian compiler-authority checker was reduced from a 1,093-line cross-document mutation catalog
   to a focused launch/VM-funnel invariant, and its duplicate 292-line workspace verifier block is absent. The same admitted
   UID/GID-4000 guest executes the generic archive/OCI provenance self-test, including
-  its 39 Android decisions, eight certified-Debian role/archive/direct-normalization decisions, and 21 Windows
-  role/archive/direct-normalization decisions. The current Windows-helper smoke also executes the production runtime's
-  `small` profile against the real guest daemon: root and UID/GID-4001 are refused, UID/GID-4000 completes, seven hostile
-  mount shapes are refused, resource/security/read-only/network properties are observed in the container, and exact cleanup
-  joins without residue. The Android Gradle entry likewise executes both exact production profiles against a minimal probe,
+  40 Android, nine certified-Debian, and 22 Windows role/archive/direct-normalization decisions. Each certified-builder
+  profile rejects use of its OCI-index digest as Docker's runtime reference and accepts only the separately pinned config
+  digest. At exact clean commit `dce876543d80b6f5e71aa2dce4d09dfc83e1fa8e`, the 48-second authority smoke also
+  executed the production Windows-helper runtime's `small` profile against the real guest daemon: root and UID/GID-4001
+  were refused, UID/GID-4000 completed, seven hostile mount shapes were refused, resource/security/read-only/network
+  properties were observed in the container, and exact cleanup joined without residue. The Android Gradle entry likewise
+  executes both exact production profiles against a minimal probe,
   observes their resource/security/read-only/network properties, and proves the guest container inventory is unchanged;
   it does not execute Gradle. The Debian entry executes its exact production compiler envelope, including private source,
   hidden Git, read-only online, security, namespace, and resource controls, while truthfully leaving the compiler workload

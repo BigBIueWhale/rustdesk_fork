@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-edd17314029352cdf365f23551b27ce1530ffc86e05c6d6dffe7e63993b83ab8  requirements.html
+b11ffffaad0a48cf924e430488dbf4316547624cd5ba877c3ee016a8b4a7ba53  requirements.html
 ```
 
 ## Current Verdict
@@ -68,6 +68,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
+| Appendix C #185–191 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in R-D7a/R-T4/R-S11eq and the closed-excision/current-release sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`, and the current snapshot/verdict provenance and distribution gaps remain in the R-R3 status entry below. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but the complete canonical input closure, stable Android signing material, a current APK/AAB, installation, lifecycle, peer, presentation, and device evidence are absent or open. |

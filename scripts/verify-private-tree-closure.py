@@ -94,13 +94,28 @@ def validate_parent_authority(metadata):
 
 
 class PrivateTreeRoot:
-    def __init__(self, path=None, inherited_fd=None, require_empty=True):
+    def __init__(
+        self,
+        path=None,
+        inherited_fd=None,
+        require_empty=True,
+        expected_identity=None,
+    ):
+        if (path is None) == (inherited_fd is None):
+            raise ClosureError(
+                "private-tree root requires exactly one pathname or inherited descriptor"
+            )
         if inherited_fd is not None:
+            if expected_identity is None:
+                raise ClosureError(
+                    "inherited scratch descriptor lacks creation identity"
+                )
             descriptor = os.dup(inherited_fd)
             try:
                 metadata = os.fstat(descriptor)
                 if (
-                    not stat.S_ISDIR(metadata.st_mode)
+                    identity(metadata) != expected_identity
+                    or not stat.S_ISDIR(metadata.st_mode)
                     or metadata.st_uid != os.geteuid()
                     or metadata.st_gid != os.getegid()
                     or stat.S_IMODE(metadata.st_mode) != 0o700
@@ -131,6 +146,10 @@ class PrivateTreeRoot:
             self.removed = False
             self.cleanup_started = False
             return
+        if expected_identity is not None:
+            raise ClosureError(
+                "pathname scratch acquisition does not accept inherited identity"
+            )
         if not os.path.isabs(path) or os.path.normpath(path) != path:
             raise ClosureError("private-tree root is not an absolute normalized path")
         components = path.split("/")[1:]
@@ -1643,10 +1662,21 @@ def main():
             if (
                 arguments.scratch_fd is None
                 or arguments.scratch_fd < 3
-                or arguments.expected_identity is not None
+                or arguments.expected_identity is None
             ):
-                raise ClosureError("self-test requires an inherited --scratch-fd")
-            scratch = PrivateTreeRoot(inherited_fd=arguments.scratch_fd)
+                raise ClosureError(
+                    "self-test requires an inherited --scratch-fd and creation identity"
+                )
+            match = re.fullmatch(
+                r"([0-9]+):([1-9][0-9]*)",
+                arguments.expected_identity,
+            )
+            if match is None:
+                raise ClosureError("self-test scratch identity is malformed")
+            scratch = PrivateTreeRoot(
+                inherited_fd=arguments.scratch_fd,
+                expected_identity=(int(match.group(1)), int(match.group(2))),
+            )
             try:
                 exercise_cleanup_failure_accounting()
                 exercise_authority_bounds(scratch)

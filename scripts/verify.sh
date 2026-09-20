@@ -152,6 +152,12 @@ then
   exit 1
 fi
 if [ "$VERIFY_WORKSPACE_SELF_TEST" -eq 1 ]; then
+  (
+    exec {verify_workspace_fd}<"$VERIFY_TMP"
+    /usr/bin/python3 -I -S scripts/verify-private-tree-closure.py \
+      --self-test --scratch-fd "$verify_workspace_fd" \
+      --expected-identity "$VERIFY_TMP_ID"
+  )
   VERIFY_SUCCESS_MESSAGE="verify workspace self-test: OK"
   exit 0
 fi

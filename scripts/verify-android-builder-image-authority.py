@@ -277,13 +277,20 @@ def validate_online_fetch(source: str) -> None:
         (
             "require_android_builder_image_pins",
             "android_builder_image_spec_args",
-            'verify-load \\\n        --archive "$ONLINE_DIR/build-images/android-builder.docker.tar.gz"',
+            "verify-load",
+            '--archive "$ONLINE_DIR/build-images/android-builder.docker.tar.gz"',
             '--archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE"',
             '--archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE"',
             "verify-local",
-            '--image-ref "$ANDROID_BUILDER_CONFIG_ID"',
+            '--image-ref "$ANDROID_BUILDER_IMAGE_ID"',
         ),
-        "ordinary release loader",
+        "containerd-store release loader",
+    )
+    require_count(
+        loader,
+        "--certified-index-runtime",
+        2,
+        "containerd-store release identity",
     )
     require_absent(
         loader,
@@ -292,8 +299,9 @@ def validate_online_fetch(source: str) -> None:
             "android_builder_bootstrap_spec_args",
             "android-builder-bootstrap.docker.tar.gz",
             "docker tag",
+            '--image-ref "$ANDROID_BUILDER_CONFIG_ID"',
         ),
-        "ordinary release loader",
+        "containerd-store release loader",
     )
 
     bootstrap_helper = shell_function(source, "build_builder_bootstrap_image")

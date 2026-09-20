@@ -100,6 +100,7 @@ readonly ANDROID_KEYSTORE_SOURCE="$SCRIPT_DIR/gen-android-keystore.sh"
 readonly ANDROID_KEYSTORE_INNER="$SCRIPT_DIR/android-keystore-generate.sh"
 readonly ANDROID_KEYSTORE_CHECKER="$SCRIPT_DIR/verify-android-keystore-authority.py"
 readonly ANDROID_BUILDER_SOURCE="$SCRIPT_DIR/build-android.sh"
+readonly ANDROID_APK_BUILD_SOURCE="$SCRIPT_DIR/android-apk-build.sh"
 readonly ANDROID_BUILDER_CHECKER="$SCRIPT_DIR/verify-android-builder-authority.py"
 readonly ANDROID_GRADLE_SOURCE="$SCRIPT_DIR/test-android-gradle-cache.sh"
 readonly ANDROID_GRADLE_CHECKER="$SCRIPT_DIR/verify-android-gradle-authority.py"
@@ -876,6 +877,7 @@ fi
     "repo/scripts/android-keystore-generate.sh=$ANDROID_KEYSTORE_INNER" \
     "repo/scripts/verify-android-keystore-authority.py=$ANDROID_KEYSTORE_CHECKER" \
     "repo/scripts/build-android.sh=$ANDROID_BUILDER_SOURCE" \
+    "repo/scripts/android-apk-build.sh=$ANDROID_APK_BUILD_SOURCE" \
     "repo/scripts/verify-android-builder-authority.py=$ANDROID_BUILDER_CHECKER" \
     "repo/scripts/test-android-gradle-cache.sh=$ANDROID_GRADLE_SOURCE" \
     "repo/scripts/verify-android-gradle-authority.py=$ANDROID_GRADLE_CHECKER" \
@@ -1169,7 +1171,7 @@ elif [ "$MODE" = authority-smoke ]; then
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'guest verifier-entry authority marker is absent'; }
 /usr/bin/grep -Fq \
-    "VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 foreign=refused nofile=524544 workspace_cleanup=joined" \
+    "VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused nofile=524544 workspace_fixtures=actual workspace_cleanup=joined" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'main verifier exact-entry result marker is absent'; }
 /usr/bin/grep -Fq \

@@ -403,8 +403,10 @@ def validate(repo: pathlib.Path) -> None:
     )
     for token, label in (
         ('readonly ANDROID_BUILDER_SOURCE="$SCRIPT_DIR/build-android.sh"', "outer source binding"),
+        ('readonly ANDROID_APK_BUILD_SOURCE="$SCRIPT_DIR/android-apk-build.sh"', "outer APK-builder binding"),
         ('readonly ANDROID_BUILDER_CHECKER="$SCRIPT_DIR/verify-android-builder-authority.py"', "outer checker binding"),
         ('repo/scripts/build-android.sh=$ANDROID_BUILDER_SOURCE', "builder payload"),
+        ('repo/scripts/android-apk-build.sh=$ANDROID_APK_BUILD_SOURCE', "APK-builder payload"),
         ('repo/scripts/verify-android-builder-authority.py=$ANDROID_BUILDER_CHECKER', "checker payload"),
         ("VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass", "outer runtime receipt"),
         ("VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass", "outer source-gate receipt"),

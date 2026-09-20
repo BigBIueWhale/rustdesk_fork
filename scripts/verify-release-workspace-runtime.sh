@@ -105,9 +105,18 @@ run_stage() {
     fi
 }
 
+if /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 120s \
+    /usr/bin/python3 -I -S "$TREE_HELPER" --self-test --scratch-fd 9 \
+    --expected-identity 0:1 9<"$ROOT" >/dev/null 2>&1; then
+    fail 'private-tree descriptor fixture accepted the wrong creation identity'
+fi
+[ -z "$(/usr/bin/find "$ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+    || fail 'wrong-identity descriptor fixture created scratch state'
+
 run_stage 'private-tree descriptor fixture' '' \
     /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 120s \
     /usr/bin/python3 -I -S "$TREE_HELPER" --self-test --scratch-fd 9 \
+    --expected-identity "$ROOT_ID" \
     9<"$ROOT"
 
 run_stage 'release transaction fixture' 'build-release self-test: OK' \

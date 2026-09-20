@@ -295,9 +295,15 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"',
             '--archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE"',
             "verify-local",
-            '--image-ref "$DEB_BUILDER_CONFIG_ID"',
+            '--image-ref "$DEB_BUILDER_IMAGE_ID"',
         ),
-        "ordinary release loader",
+        "containerd-store release loader",
+    )
+    require_count(
+        loader,
+        "--certified-index-runtime",
+        2,
+        "containerd-store release identity",
     )
     require_absent(
         loader,
@@ -307,8 +313,9 @@ def validate_online_fetch(source: str) -> None:
             "deb-builder-bootstrap.docker.tar.gz",
             "deb-builder-certified-candidate.docker.tar.gz",
             "docker tag",
+            '--image-ref "$DEB_BUILDER_CONFIG_ID"',
         ),
-        "ordinary release loader",
+        "containerd-store release loader",
     )
 
     bootstrap_helper = shell_function(source, "build_builder_bootstrap_image")

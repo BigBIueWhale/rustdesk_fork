@@ -997,7 +997,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
-    build-android.sh verify-android-builder-authority.py \
+    build-android.sh android-apk-build.sh verify-android-builder-authority.py \
     test-android-gradle-cache.sh verify-android-gradle-authority.py \
     verify-android-builder-image-authority.py \
     verify-deb-builder-image-authority.py build-debian.sh \
@@ -1202,6 +1202,15 @@ if [ "$MODE" = flutter-model-tests ]; then
     exit 0
 fi
 
+if /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
+    >"$ROOT/root-entry.out" 2>"$ROOT/root-entry.err"; then
+    fail 'VM root passed the main verifier entry'
+fi
+[ ! -s "$ROOT/root-entry.out" ] \
+    || fail 'root main-verifier refusal produced standard output'
+[ "$(<"$ROOT/root-entry.err")" = \
+  'verify: refuses host or container-root execution' ] \
+    || fail 'root main-verifier refusal diagnostic differs'
 if setpriv --reuid=4001 --regid=4001 --clear-groups \
     /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
     >"$ROOT/foreign-entry.out" 2>"$ROOT/foreign-entry.err"; then
@@ -1231,7 +1240,7 @@ verify workspace self-test: OK"
 [ "$main_entry_output" = "$expected_main_entry_output" ] \
     || fail "main verifier entry result differs: $main_entry_output"
 printf '%s\n' "$main_entry_output"
-printf 'VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 foreign=refused nofile=524544 workspace_cleanup=joined\n'
+printf 'VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused nofile=524544 workspace_fixtures=actual workspace_cleanup=joined\n'
 
 # build-release.sh deliberately resolves the invoking principal through the
 # guest's passwd database before it closes its environment.  Give both test

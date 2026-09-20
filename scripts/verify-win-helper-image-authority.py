@@ -322,9 +322,15 @@ def validate_online_fetch(source: str) -> None:
             '--archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"',
             '--archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE"',
             "online_image_provenance verify-local",
-            '--image-ref "$WIN_HELPER_CONFIG_ID"',
+            '--image-ref "$WIN_HELPER_IMAGE_ID"',
         ),
-        "ordinary release loader",
+        "containerd-store release loader",
+    )
+    require_count(
+        loader,
+        "--certified-index-runtime",
+        2,
+        "containerd-store release identity",
     )
     require_absent(
         loader,
@@ -335,8 +341,9 @@ def validate_online_fetch(source: str) -> None:
             "win-helper-certified-candidate.docker.tar.gz",
             "docker tag",
             "docker save",
+            '--image-ref "$WIN_HELPER_CONFIG_ID"',
         ),
-        "ordinary release loader",
+        "containerd-store release loader",
     )
     require_all(
         shell_function(source, "load_builder_images"),

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9d79e12d9011d0f226c00b40fbc503ee3ce3b13fb23920aa967f954f89030e09  requirements.html
+5da70dba38c5f520f829611ca5fbeb19756bc192fde65cd25cb5f997902a22ce  requirements.html
 ```
 
 ## Current Verdict
@@ -918,7 +918,8 @@ fallback.
   listener-invariance, complete-bounded-capture, joined-process, and successful-run residue-free cleanup assertions.
   Controlled cancellation joined the exact processes and left no listener while retaining only exact private
   diagnostics, which were then explicitly reconciled. It executed the minimal read-only repository subset needed
-  for the real `verify.sh --self-test-workspace`, `dart-verify.sh --self-test-vm-authority`,
+  for the real `verify.sh --self-test-workspace`, which drives the descriptor-owned private-tree fixtures,
+  and `dart-verify.sh --self-test-vm-authority`,
   `frb-codegen.sh --self-test-vm-authority`, `smoke-server.sh --self-test-vm-authority`, and
   `dart-audit.sh --self-test-vm-authority`, `audit.sh --self-test-vm-authority`, the identity-access-free
   `gen-android-keystore.sh --self-test-vm-authority`, the source/signing/output-access-free
@@ -940,9 +941,12 @@ fallback.
   validator is absent. The Debian compiler-authority checker was reduced from a 1,093-line cross-document mutation catalog
   to a focused launch/VM-funnel invariant, and its duplicate 292-line workspace verifier block is absent. The same admitted
   UID/GID-4000 guest executes the generic archive/OCI provenance self-test, including
-  40 Android, nine certified-Debian, and 22 Windows role/archive/direct-normalization decisions. Each certified-builder
-  profile rejects use of its OCI-index digest as Docker's runtime reference and accepts only the separately pinned config
-  digest. At exact clean commit `dce876543d80b6f5e71aa2dce4d09dfc83e1fa8e`, the 48-second authority smoke also
+  40 Android, nine certified-Debian, and 22 Windows role/archive/direct-normalization decisions. The default classic-store
+  profile rejects use of a certified builder's OCI-index digest as Docker's runtime reference and accepts only the
+  separately pinned config digest. The fixed online-acquisition VM instead authenticates Docker's containerd image store
+  and uses the explicit certified-index runtime mode, which binds the separately pinned OCI-index digest that this store
+  resolves after loading the same archive; that exception is restricted to certified builders and is not an ambient
+  fallback. At exact clean commit `dce876543d80b6f5e71aa2dce4d09dfc83e1fa8e`, the 48-second authority smoke also
   executed the production Windows-helper runtime's `small` profile against the real guest daemon: root and UID/GID-4001
   were refused, UID/GID-4000 completed, seven hostile mount shapes were refused, resource/security/read-only/network
   properties were observed in the container, and exact cleanup joined without residue. The Android Gradle entry likewise
@@ -950,7 +954,7 @@ fallback.
   observes their resource/security/read-only/network properties, and proves the guest container inventory is unchanged;
   it does not execute Gradle. The Debian entry executes its exact production compiler envelope, including private source,
   hidden Git, read-only online, security, namespace, and resource controls, while truthfully leaving the compiler workload
-  unexecuted. Complete authority runs finished in 28–49 seconds with host listeners unchanged. It did not execute RustDesk,
+  unexecuted. Complete authority runs finished in 28–71 seconds with host listeners unchanged. It did not execute RustDesk,
   the verifier image, FRB code generation, a Gradle or Rust build, a Debian compiler/toolchain workload, an OSV or RustSec scan, the certified
   Windows helper archive/kernel/KVM/Windows workloads, the complete source/input transaction, an artifact, or an
   output-publication transaction.
@@ -1232,15 +1236,20 @@ The pinned-image gate executes Gradle 7.6.4 under the production no-network/non-
 enabled, unset, and malformed flag states. The online-input mutation suite is now a mandatory release gate.
 Current artifact evidence remains open until a clean pushed exact commit completes the full R-B2 transaction.
 
-**R-S11c-10w verifier scratch authority — SOURCE AND FOCUSED BEHAVIOR IMPLEMENTED; COMPLETE MANAGED-SCOPE
-SELF-TEST ENVIRONMENT OPEN.** `scripts/verify.sh` owns one authenticated private workspace and runs only the fast
-semantic baseline in the ordinary loop. Explicit executable self-test mode instead authenticates one caller-created,
-initially empty mode-0700 scratch root by descriptor, allocates unpredictable descriptor-relative fixture children,
-and rejects path, mount, inventory, external-link, cleanup, or final-emptiness ambiguity. Its failure-injection
-fixture proves that cleanup uncertainty remains secondary to the original body failure while both ambiguous directory
-objects remain unchanged. Normal semantic checks and the executable fixtures bind those implementation paths; no test
-depends on the status heading or a retired shell-owned `VERIFIER_FIXTURE_TMP`. Complete managed-command coverage still
-requires an isolated same-principal systemd user scope and is not inferred from confined source or scratch checks.
+**R-S11c-10w verifier scratch authority — SOURCE IMPLEMENTED; FOCUSED NO-NIC VM RUNTIME GREEN.**
+`scripts/verify.sh` owns one authenticated private workspace and runs only the fast semantic baseline in the ordinary
+loop. Its explicit VM self-test opens that exact initially empty mode-0700 root once and passes only the inherited
+descriptor plus its recorded creation identity to `verify-private-tree-closure.py`. The helper rejects a descriptor
+whose device/inode differs before allocating unpredictable descriptor-relative fixture
+children and exercises cleanup-error preservation, authority bounds, acquisition failures, normalization,
+external-hardlink refusal, retained-inode authority, root removal, and final emptiness. Any path, mount, identity,
+inventory, cleanup, or finality ambiguity is fatal and preserves ambiguous state. The authenticated no-NIC verifier
+VM refuses root and UID/GID 4001, admits only UID/GID 4000, rejects a deliberately mismatched creation identity before
+the scratch root gains any entry, executes the real positive fixtures, and defers its success marker until descriptor-safe
+workspace removal proves absence. The prior current-user-systemd prerequisite belonged to the
+deleted global source/mutation catalog; no live verifier operation uses or requires that deleted managed-command
+framework. This closes the focused workspace-fixture execution gap only, not the full verifier image/product gate,
+release artifacts, native product behavior, independent reproduction, or external review.
 
 The release source-gate boundary is closed before expensive input copying. `scripts/verify-release.sh
 --preflight` proves a fixed `/usr/bin/grep` that is an executable, root-owned, non-group/world-writable regular
@@ -2005,19 +2014,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   current APK, native Android/desktop voice-call transaction, real-device sequence, exact release artifact, or
   R-B2/R-B10 transaction is claimed here.
 
-  Verification: exact Rust 1.75 locked/offline library tests compiled against the complete pinned read-only
-  `online/cargo-vendor` source map in a fresh non-root/network-disabled tmpfs target. Both R-S11e-83 ownership
-  regressions passed (`2 passed`, `0 failed`, `342 filtered`). The former R-S11e-82 worker regressions are
-  superseded by R-S11eh's bounded mailbox and direct-select behavior set. Compilation completed with the repository's
-  existing warning set and is not claimed warning-free. The focused semantic verifier passed normally and rejected
-  all 36 registered R-S11bp/R-S11bq mutations. The independent workspace verifier passed normally and its complete
-  current-tree in-memory source-mutation matrix passed. Python byte-compilation, edited Bash syntax, retired-symbol
-  residue checks, `git diff --check`, requirements-hash equality, and native-codec normal/self-test gates passed.
-  The available image has no Rustfmt component, so no formatter result is claimed. The workspace verifier's broader
-  behavioral self-test was attempted but is not counted: its managed-command fixture requires a real current-UID
-  systemd user-bus socket, and the isolated container deliberately mounts no host runtime directory or bus. The
-  current repo-pinned full-verifier image is not locally present, and the binding loop excludes the long release
-  build, so no repository-wide `scripts/verify.sh` or release transaction result is claimed.
+  The named source slice compiled exact Rust 1.75 locked/offline library tests against the pinned read-only
+  Cargo-vendor closure and passed its two ownership regressions. That establishes only the Rust ownership model at
+  that source state. Current packaged desktop/Android voice-call behavior, complete native lifecycles, and release
+  artifacts remain open under the global matrix; deleted workspace-catalog results are not carried forward.
 - **R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners — SOURCE
   IMPLEMENTED; EXACT-CURRENT PACKAGED NATIVE/DEVICE EVIDENCE OPEN.** One serialized
   `VoiceCallAudioCoordinator` owns the process-wide `AudioRecordHandle`. Controlled owners are
@@ -5725,22 +5725,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   physical device, real peer screen stream, background/suspend transition, performance/soak, or
   release artifact. Those native cross-platform connection/display lifecycle obligations remain
   open and must not be inferred from this smoke.
-
-  Bash syntax for the smoke and shared gate, Python syntax for the process helper and
-  independent workspace validator, the pure process-helper positive/negative self-test, the
-  workspace normal semantic contract, and its complete in-memory source-mutation catalog pass
-  in immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
-  Each successful project check ran as the invoking UID:GID with no network, read-only
-  container root and repository, all capabilities dropped, no-new-privileges, no Docker
-  socket or published port, and explicit PID, memory/no-swap, CPU, and scratch ceilings. The
-  workspace validator's executable-fixture mode was intentionally not completed because its
-  managed-command fixture requires a live current-user systemd bus. Two diagnostic
-  invocations stopped at the absent `/run/user/1000` directory/socket authority check before
-  a fixture consumer ran; no host bus or runtime directory was mounted, and both exact
-  current-user-private scratch remnants were inspected as empty fixture directories and
-  removed. The complete source-mutation mode is the binding independent mutation evidence for
-  this slice.
 
   No project application binary, root fixture, host-process scan, listener, firewall/network
   query, or host RustDesk process/service/configuration inspection or mutation was performed

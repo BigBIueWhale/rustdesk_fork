@@ -23944,7 +23944,6 @@ def validate_android_media_projection_finality_contract(sources):
     capture_owners = sources["android_controlled_capture_owner_state"]
     voice_owners = sources["android_voice_call_owner_state"]
     voice_coordinator = sources["android_voice_call_coordinator"]
-    voice_owner_test = sources["android_voice_call_owner_test"]
     ffi_kt = sources["android_ffi_kt"]
     android_ffi = sources["android_scrap_ffi"]
     flutter = sources["flutter_source"]
@@ -23996,10 +23995,6 @@ def validate_android_media_projection_finality_contract(sources):
         (
             "if (!owners.clearControlledConnections(generation))",
             "stale controlled-audio clear refusal",
-        ),
-        (
-            "stale generation cleared replacement controlled owners",
-            "controlled-audio generation-ABA behavior",
         ),
     ):
         require_text(
@@ -24746,50 +24741,6 @@ def validate_android_media_projection_finality_contract(sources):
         ),
         "Android audio coordinator exact-generation playback update",
     )
-    for text, label in (
-        (
-            "stale generation registered a same-number controlled owner",
-            "same-ID generation-ABA registration",
-        ),
-        (
-            "stale generation cleared replacement controlled owners",
-            "stale-generation teardown refusal",
-        ),
-        (
-            "same-ID replacement retained predecessor voice state",
-            "same-ID registry-generation replacement",
-        ),
-        (
-            "duplicate same-ID registry generation was admitted",
-            "same-ID duplicate registry-generation refusal",
-        ),
-        (
-            "stale same-ID registry generation was admitted",
-            "same-ID stale registry-generation refusal",
-        ),
-        (
-            "stale same-ID owner changed replacement voice state",
-            "same-ID stale voice update refusal",
-        ),
-        (
-            "stale same-ID owner retired replacement voice state",
-            "same-ID stale voice retirement refusal",
-        ),
-        (
-            "current generation idempotent begin cleared live owners",
-            "idempotent current-generation preservation",
-        ),
-        (
-            "controlled-service replacement cleared the outgoing owner",
-            "controlled replacement preserves outgoing ownership",
-        ),
-        (
-            "superseded controlled generation was reactivated",
-            "superseded-generation refusal",
-        ),
-        ("retired generation was reactivated", "retired-generation refusal"),
-    ):
-        require_text(voice_owner_test, text, f"Android audio behavior {label}")
     require_text(
         ffi_kt,
         "external fun init(service: Context, applicationContext: Context): Boolean",
@@ -33930,15 +33881,6 @@ def main():
                 repo
                 / "flutter/third_party/texture_rgba_renderer/macos/Classes/"
                 "TextureRgbaApi.m"
-            ).read_text(encoding="utf-8"),
-            "android_voice_call_owner_test": (
-                repo / "scripts/android-voice-call-owner-state-test.kt"
-            ).read_text(encoding="utf-8"),
-            "android_main_service_generation_owner_test": (
-                repo / "scripts/android-main-service-generation-owner-test.kt"
-            ).read_text(encoding="utf-8"),
-            "android_controlled_input_owner_test": (
-                repo / "scripts/android-controlled-input-owner-test.kt"
             ).read_text(encoding="utf-8"),
             "android_rust_release_gate": (
                 repo / "scripts/android-rust-check.sh"

@@ -16034,11 +16034,9 @@ r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/Contro
 r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
 r_s14_voice_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt
 r_s14_voice_coordinator_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallAudioCoordinator.kt
-r_s14_voice_test=scripts/android-voice-call-owner-state-test.kt
 r_s14_input_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/InputService.kt
 r_s14_input_owner_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt
 r_s14_input_queue_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ExactOwnerBoundedQueue.kt
-r_s14_input_test=scripts/android-controlled-input-owner-test.kt
 r_s14_ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
 r_s14_ffi_rs=libs/scrap/src/android/ffi.rs
 r_s14_frame_raw=libs/scrap/src/android/frame_raw.rs
@@ -16218,17 +16216,11 @@ if grep -qF 'Timer()' "$r_s14_input_kt" \
     || grep -qE 'TimerTask|wheelActionsQueue|isWheelActionsPolling' "$r_s14_input_kt"; then
   r_s14_missing="$r_s14_missing retired-unbounded-input-timer-path"
 fi
-grep -qF 'old generation retirement selected the replacement owner' "$r_s14_input_test" || r_s14_missing="$r_s14_missing exact-input-generation-aba-regression"
-grep -qF 'nonpositive registry generation was admitted' "$r_s14_input_test" || r_s14_missing="$r_s14_missing exact-input-registry-generation-regression"
 grep -qF 'private val controlledConnections = mutableMapOf<Int, Long>()' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing exact-controlled-voice-owner-map"
 grep -qF 'private var greatestControlledServiceGeneration = 0L' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing monotonic-controlled-audio-generation"
 grep -qF 'private var activeControlledServiceGeneration: Long? = null' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing exact-active-controlled-audio-generation"
 grep -qF 'private var playbackProjection: Pair<Long, MediaProjection>? = null' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-projection-generation-owner"
 grep -qF 'if (!owners.clearControlledConnections(generation))' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing stale-controlled-audio-clear-not-rejected"
-grep -qF 'stale generation cleared replacement controlled owners' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-generation-aba-regression"
-grep -qF 'same-ID replacement retained predecessor voice state' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-registry-generation-aba-regression"
-grep -qF 'duplicate same-ID registry generation was admitted' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-duplicate-registry-generation-regression"
-grep -qF 'stale same-ID registry generation was admitted' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-stale-registry-generation-regression"
 grep -qF '"(IIIII)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing pointer-jni-connection-id-or-result"
 grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-connection-id-or-result"
 grep -qF 'internal class MainServiceStatusOwner' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-owner"

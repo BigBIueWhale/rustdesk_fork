@@ -262,8 +262,9 @@ unknown, case-varied, or future unhandled tags
 fail closed before notification, voice ownership, or capture demand. The foreground service admits
 MediaProjection demand only for exact Remote and voice-call ownership only for exact Remote/ViewCamera;
 parallel booleans and `port_forward` remain presentation data and no longer decide either resource. The
-Android-free Kotlin transition regression, shared source gate, focused voice
-ownership verifier, and independent workspace mutation verifier bind the carry-through and both policies.
+former standalone Android-free Kotlin transition model was compiled only in the dated checkpoint below and is
+now deleted. Current shared checks inspect the production carry-through and policy topology without claiming
+Kotlin behavior.
 The persistent service is deliberately unchanged: Android documents that a started service has a lifecycle
 independent of its creating Activity
 (<https://developer.android.com/develop/background-work/services>), while MediaProjection separately requires
@@ -272,7 +273,7 @@ callback registration before `createVirtualDisplay()` and exact resource cleanup
 implication is persistent listener/service ownership plus exact per-connection capture demand—not killing the
 service to recover incoherent state.
 
-Prior exact-type follow-up verification (2026-07-23): the Android-free Kotlin decoder/policy regression compiled with
+Prior exact-type follow-up verification (2026-07-23): the now-deleted Android-free Kotlin decoder/policy driver compiled with
 the pinned Kotlin 2.1.21 compiler and passed every canonical/noncanonical/type-policy assertion. The pinned Android
 release graph completed `:app:compileReleaseKotlin` with only `:app:compileFlutterBuildRelease` excluded because
 this bounded check did not generate the separate Rust/Flutter bridge: `BUILD SUCCESSFUL` in 27 seconds, with 228
@@ -307,9 +308,9 @@ The JNI object lifetime is closed at the same boundary. Initialization now retai
 `MainService` separately from a process-lifetime global reference to Android `applicationContext`; the NDK context
 receives only that retained application object, never a Service or JNI local reference whose native call has
 returned. `onDestroy()` stops the server and uses exact-object JNI release to clear only its own `GlobalRef`; a
-delayed old Service cannot clear a replacement. Kotlin behavior regressions cover unauthorized and non-Remote
+delayed old Service cannot clear a replacement. The then-current standalone Kotlin driver covered unauthorized and non-Remote
 exclusion, concurrent Remote aggregation, remove→add and add→remove convergence, same-ID type replacement, and full
-clear. Focused/shared/independent mutation gates bind the serialized owner update, reconciliation, stale-stop
+clear. Then-current focused/shared/independent mutation gates inspected the serialized owner update, reconciliation, stale-stop
 absence, teardown admission latch, exact JNI object release, R-S14, Appendix C #205, and this ledger. Exact
 APK validation is recorded below; physical-device reproduction and the full R-B2/R-B10 release remain open.
 
@@ -325,7 +326,7 @@ an obsolete Service cannot stop the replacement listener.
 Exact object identity, exact listener generation, and the service-owned connection-ID set are therefore one closed
 lifecycle boundary rather than three independently timed best-effort facts.
 
-Final confined verification (2026-07-23): the Android-free Kotlin regression compiled with pinned Kotlin 2.1.21
+Final confined verification (2026-07-23): the now-deleted Android-free Kotlin driver compiled with pinned Kotlin 2.1.21
 and passed exact connection-type decoding, capture/voice policy, positive owner admission, two-Remote aggregation,
 both cross-connection delivery orders, same-ID type replacement, and clear. Locked/offline pinned Android Rust
 `cargo ndk check --release --features flutter --lib` passed. A disposable, non-root, networkless full Android
@@ -606,8 +607,9 @@ always attempts Activity unbinding even if `Context.stopService` throws; absent,
 remain distinct, uncertain bookkeeping is retained for retry, and failure stays visible. The sole resource
 teardown remains `MainService.onDestroy`. The duplicate callable `destroy()`/plain `stopSelf()` path,
 generationless companion booleans, and dead clipboard capture-status replica are absent; the internal exact-
-failed-start `stopSelfResult(startId)` path remains intentional. The exact production status-owner regression
-compiles and passes in confinement. The focused Flutter regression is authored and wired but unexecuted here;
+failed-start `stopSelfResult(startId)` path remains intentional. One historical confined run compiled and executed
+the exact production status owner with the now-deleted standalone driver; no retained Kotlin unit or instrumentation
+regression currently covers it. The focused Flutter regression is authored and wired but unexecuted here;
 current `MainActivity`/Flutter target compilation and installed start/status/Stop/binding/task-swipe/reopen/
 Force-Stop/replacement/failure/resource scenarios remain open in the global matrix. R-S11en owns the complete
 contract.
@@ -623,10 +625,14 @@ stream error/end is exact-session-bound, retires that session, dismisses loading
 bounded nonsecret error rather than a successful-looking UUID or indefinite `Connecting...` state.
 R-S11eo owns the complete contract.
 
-**Retained evidence and boundary.** Focused generation/ABA, listener epoch, raw-frame, status/Stop,
+**Retained evidence and boundary.** Executable Rust/Dart listener-epoch, raw-frame, status/Stop,
 bounded-start, exact-cancellation, rollback/join, and stream-finality tests exist, and historical
-networkless nonroot Android Rust/Kotlin plus shared Dart/Flutter compilation exercised the corrected
-source. Those results were source/compile evidence only. Mutation counts, repeated catalog runs, cache
+networkless nonroot Android Rust/Kotlin plus shared Dart/Flutter compilation exercised named corrected
+source. The connection/capture driver and four additional standalone Kotlin owner `main()` programs were not
+Gradle unit/instrumentation tests; the current gate never compiled or executed them, and they are deleted instead
+of being grepped as behavioral evidence. The connection/capture and status-owner drivers retain their explicitly
+bounded historical execution records only. Those prior
+results were source/compile evidence only. Mutation counts, repeated catalog runs, cache
 workarounds, failed wrapper attempts, per-run timings, log hashes, and publication narration remain in
 Git history rather than the current ledger. An older disposable APK compile predates these corrections
 and is not evidence for them.
@@ -2140,8 +2146,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   constructs its subscription, lease, and bounded receiver before publishing native/UI started state.
 
   The deleted 5,638-line aggregate Android source verifier did not execute this lifecycle and no longer counts
-  as evidence. The shared gate retains a narrow source backstop and relevant Rust behavior-test invocations;
-  Android-free Kotlin owner fixtures remain available for isolated execution. Historical target-local APK
+  as evidence. The shared gate retains a narrow source backstop and relevant Rust behavior-test invocations.
+  No standalone Android-free Kotlin owner fixture remains: the files were outside Gradle test source sets and the
+  current gate only searched their prose rather than compiling them. Historical target-local APK
   assembly binds only its named older source. Exact-current package installation must still exercise concurrent
   controlled calls, controlled/outgoing overlap, Activity replacement, task swipe/reopen with the persistent
   service retained, Force Stop, projection replacement/revocation, injected permission/buffer/start/read
@@ -11119,11 +11126,15 @@ unchanged-snapshot inertness, canonical generation order, and whole-snapshot dup
 Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
 payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.
 These state tests do not exercise the complete rendered Flutter window or native event stream.
-Android connection-type and capture-owner evidence is limited to supplementary checks of the production
-Kotlin topology. No retained Kotlin unit/instrumentation test or installed package currently executes
-`ControlledConnectionType` and `ControlledCaptureOwnerState` through their concurrent replacement and retirement
-cases. The shared source gate still checks the retained Android child future, exact generation transfer,
-terminal/connection finality, and RAII registry retirement without treating model text as behavior.
+Android owner-state evidence is limited to supplementary checks of production Kotlin topology. No retained Kotlin
+unit/instrumentation test or installed package currently executes `ControlledConnectionType`,
+`ControlledCaptureOwnerState`, `ControlledInputOwner`, `ExactOwnerBoundedQueue`, `VoiceCallOwnerState`,
+`MainServiceGenerationOwner`, or `MainServiceStatusOwner` through their replacement, retirement, stale-generation,
+and cleanup cases. Five standalone owner `main()` programs outside Gradle test source sets are deleted rather than
+retained as tests; the last four deletions removed six shell prose searches plus the workspace meta-verifier's
+twelve repeated assertions and three source loads. The shared
+source gate still checks the retained Android child future, exact generation transfer, terminal/connection finality,
+RAII registry retirement, and selected production owner topology without treating model text as behavior.
 
 The activation, child-future, registry, file-owner, and Dart cases have not been executed against the
 current dependency closure: the fixed rootless Docker socket, repository Cargo vendor closure,

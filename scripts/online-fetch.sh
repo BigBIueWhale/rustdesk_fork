@@ -379,6 +379,15 @@ readonly -a FIXED_ARCHIVE_ARGS=(
     "$SHA256_RUST_MSVC_1_75"
     "static.rust-lang.org"
 )
+
+readonly -a RUST_TEST_FIXED_ARCHIVE_ARGS=(
+    --entry
+    "rust-${RUST_VERSION}.tar.xz"
+    "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz"
+    "$SIZE_RUST_1_75"
+    "$SHA256_RUST_1_75"
+    "static.rust-lang.org"
+)
 readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(
     --entry
     "dart-audit-inputs/Pub-all.zip"
@@ -1665,6 +1674,7 @@ archive_bundle_tool() {
     shift 6
     case "$kind" in
         dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}") ;;
+        rust-test) archive_args=("${RUST_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
         toolchain) archive_args=("${FIXED_ARCHIVE_ARGS[@]}") ;;
         vcpkg) archive_args=("${VCPKG_FIXED_ARCHIVE_ARGS[@]}") ;;
@@ -1709,10 +1719,11 @@ reconcile_archive_bundle_transactions() {
 
 stage_archive_bundle() {
     local kind="$1" root="$2" prefix="$3" label="$4"
-    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local builder="${5:-$ANDROID_BUILDER_IMAGE_ID}"
+    local builder_role="${6:-android-builder}"
     local lock_fd helper_sha256 staging staging_identity action
     local producer_status=0 verification_status=0 publication_status=0
-    require_online_fetch_builder_image android-builder "$builder"
+    require_online_fetch_builder_image "$builder_role" "$builder"
     [ -f "$FIXED_ARCHIVE_HELPER" ] && [ ! -L "$FIXED_ARCHIVE_HELPER" ] \
         || die "fixed-archive helper is not one real source file"
     helper_sha256="$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}')"
@@ -1773,6 +1784,13 @@ stage_archive_bundle() {
 stage_fixed_archives() {
     stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-fixed-archives \
         "fixed toolchain and installer archives"
+}
+
+stage_rust_test_inputs() {
+    verify_or_load_deb_builder_image
+    stage_archive_bundle rust-test "$ONLINE_DIR" .rustdesk-rust-test-archive \
+        "pinned Rust test toolchain archive" "$DEB_BUILDER_IMAGE_ID" deb-builder
+    vendor_cargo
 }
 
 validate_dart_audit_inputs() {
@@ -6092,6 +6110,11 @@ main() {
             stage_dart_audit_inputs
             return 0
             ;;
+        --rust-test-inputs)
+            [ "$#" -eq 1 ] || die "--rust-test-inputs takes no arguments"
+            stage_rust_test_inputs
+            return 0
+            ;;
         --maintenance-capture-devcheck-image)
             [ "$#" -eq 1 ] || die "--maintenance-capture-devcheck-image takes no arguments"
             maintenance_capture_devcheck_image
@@ -6159,7 +6182,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

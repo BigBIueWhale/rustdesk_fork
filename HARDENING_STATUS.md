@@ -11119,13 +11119,11 @@ unchanged-snapshot inertness, canonical generation order, and whole-snapshot dup
 Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
 payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.
 These state tests do not exercise the complete rendered Flutter window or native event stream.
-`scripts/android-controlled-connection-type-test.kt`
-contains useful model assertions, but no retained gate compiles or executes it; grepping
-its strings is not an Android regression. The shared source gate checks the retained
-Android child future, exact generation transfer, terminal/connection finality, and RAII
-registry retirement without asserting documentation text. The duplicate workspace CM
-validator and the unrelated CM/listener checks formerly embedded in the Android voice
-and media source validators are deleted; none of those source checks executed these paths.
+Android connection-type and capture-owner evidence is limited to supplementary checks of the production
+Kotlin topology. No retained Kotlin unit/instrumentation test or installed package currently executes
+`ControlledConnectionType` and `ControlledCaptureOwnerState` through their concurrent replacement and retirement
+cases. The shared source gate still checks the retained Android child future, exact generation transfer,
+terminal/connection finality, and RAII registry retirement without treating model text as behavior.
 
 The activation, child-future, registry, file-owner, and Dart cases have not been executed against the
 current dependency closure: the fixed rootless Docker socket, repository Cargo vendor closure,

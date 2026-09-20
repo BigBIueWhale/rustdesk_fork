@@ -23941,7 +23941,6 @@ def validate_android_media_projection_finality_contract(sources):
     verify = sources["verify"]
     cm = sources["ui_cm_source"]
     connection_type = sources["android_controlled_connection_type"]
-    connection_type_test = sources["android_controlled_connection_type_test"]
     capture_owners = sources["android_controlled_capture_owner_state"]
     voice_owners = sources["android_voice_call_owner_state"]
     voice_coordinator = sources["android_voice_call_coordinator"]
@@ -24094,41 +24093,6 @@ def validate_android_media_projection_finality_contract(sources):
         "else -> null",
         "Android unknown connection-type refusal",
     )
-    for text, label in (
-        ('"Remote" to ControlledConnectionType.REMOTE', "Remote behavior fixture"),
-        (
-            '"PortForward" to ControlledConnectionType.PORT_FORWARD',
-            "PortForward behavior fixture",
-        ),
-        ('"remote", "REMOTE", "Portforward", "Unknown"', "noncanonical refusal fixtures"),
-        (
-            "connectionType.requiresDesktopCapture ==",
-            "complete capture-policy behavior assertion",
-        ),
-        (
-            "connectionType.allowsVoiceCall ==",
-            "complete voice-call-policy behavior assertion",
-        ),
-        ("!owners.unregister(41, 10)", "stale same-ID cleanup assertion"),
-        (
-            "!owners.upsert(41, 11, true, ControlledConnectionType.VIEW_CAMERA)",
-            "duplicate same-ID refusal assertion",
-        ),
-        (
-            "!owners.upsert(41, 9, true, ControlledConnectionType.VIEW_CAMERA)",
-            "stale same-ID replacement assertion",
-        ),
-        ("owners.isCurrent(41, 11)", "exact current same-ID assertion"),
-        (
-            "owners.remoteInputRegistryGeneration(41) == 11L",
-            "exact Remote input-generation assertion",
-        ),
-    ):
-        require_text(
-            connection_type_test,
-            text,
-            f"Android controlled connection type {label}",
-        )
     capture_owner_state = extract_between(
         capture_owners,
         "internal class ControlledCaptureOwnerState",
@@ -24155,38 +24119,6 @@ def validate_android_media_projection_finality_contract(sources):
         ("owners.clear()", "complete capture-owner teardown"),
     ):
         require_text(capture_owner_state, text, f"Android capture state {label}")
-    for text, label in (
-        (
-            "one Remote teardown cleared another live owner",
-            "concurrent Remote aggregation",
-        ),
-        (
-            "remove-then-add ordering lost new Remote demand",
-            "remove-before-add convergence",
-        ),
-        (
-            "add-then-remove ordering lost new Remote demand",
-            "add-before-remove convergence",
-        ),
-        (
-            "non-Remote replacement retained capture demand",
-            "same-ID exact-type replacement",
-        ),
-        (
-            "non-Remote replacement retained Remote input authority",
-            "same-ID exact-type input-authority replacement",
-        ),
-        (
-            "stale same-ID operations changed the current owner",
-            "same-ID exact-generation input-authority preservation",
-        ),
-        ("owner clear retained capture demand", "service teardown"),
-    ):
-        require_text(
-            connection_type_test,
-            text,
-            f"Android capture-owner behavior {label}",
-        )
     require_text(
         android,
         "@Volatile\n    private var captureRequested = false",
@@ -34004,9 +33936,6 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_main_service_generation_owner_test": (
                 repo / "scripts/android-main-service-generation-owner-test.kt"
-            ).read_text(encoding="utf-8"),
-            "android_controlled_connection_type_test": (
-                repo / "scripts/android-controlled-connection-type-test.kt"
             ).read_text(encoding="utf-8"),
             "android_controlled_input_owner_test": (
                 repo / "scripts/android-controlled-input-owner-test.kt"

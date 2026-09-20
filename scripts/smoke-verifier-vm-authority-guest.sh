@@ -556,6 +556,7 @@ run_flutter_model_tests() {
     local output=$ROOT/flutter-model-tests.out
     local result_validator=$ROOT/flutter-model-result-validator.py
     local pub_validator=$ROOT/flutter-pub-cache-validator.py
+    local cargo_validator=$ROOT/flutter-cargo-vendor-validator.py
     local rust_archive=$inputs/rust-1.75.tar.xz
     local flutter_archive=$inputs/flutter-3.24.5.tar.xz
     local llvm_archive=$inputs/llvm-15.0.6.tar.xz
@@ -565,7 +566,7 @@ run_flutter_model_tests() {
     local pub_cache=$inputs/pub-cache
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect result_line
-    local source_archive_sha input_mount_options pub_receipt post_pub_receipt
+    local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
 
     [[ "$FLUTTER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'focused Flutter-test source commit is malformed'
@@ -596,13 +597,19 @@ run_flutter_model_tests() {
     [ -f "$source_root/scripts/online-pub-cache-output.py" ] \
         && [ ! -L "$source_root/scripts/online-pub-cache-output.py" ] \
         || fail 'focused Flutter-test Pub-cache validator is absent or ambiguous'
+    [ -f "$source_root/scripts/online-input-provenance.py" ] \
+        && [ ! -L "$source_root/scripts/online-input-provenance.py" ] \
+        || fail 'focused Flutter-test Cargo-vendor validator is absent or ambiguous'
     install -o 0 -g 0 -m 0444 -- \
         "$source_root/scripts/verify-flutter-model-test-result.py" \
         "$result_validator"
     install -o 0 -g 0 -m 0444 -- \
         "$source_root/scripts/online-pub-cache-output.py" "$pub_validator"
-    [ "$(stat -c '%u:%g:%a:%h' -- "$result_validator" "$pub_validator")" = \
-      $'0:0:444:1\n0:0:444:1' ] \
+    install -o 0 -g 0 -m 0444 -- \
+        "$source_root/scripts/online-input-provenance.py" "$cargo_validator"
+    [ "$(stat -c '%u:%g:%a:%h' -- \
+            "$result_validator" "$pub_validator" "$cargo_validator")" = \
+      $'0:0:444:1\n0:0:444:1\n0:0:444:1' ] \
         || fail 'focused Flutter-test immutable validator metadata differs'
     chown -R 1000:1000 "$source_root" "$work_root"
     chmod 0700 "$work_root"
@@ -646,6 +653,16 @@ run_flutter_model_tests() {
     [ -d "$cargo_vendor" ] && [ ! -L "$cargo_vendor" ] \
         && [ "$(stat -c '%u:%g:%a' -- "$cargo_vendor")" = 1000:1000:500 ] \
         || fail 'sealed Cargo-vendor root metadata differs'
+    cargo_receipt="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            python3 -I -S "$cargo_validator" verify-subtree \
+                --tree "$cargo_vendor" \
+                --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    )" || fail 'sealed Cargo-vendor closure validation failed'
+    [ "$cargo_receipt" = \
+      "verified subtree $SHA256_CARGO_VENDOR_CLOSURE_V1" ] \
+        || fail "sealed Cargo-vendor closure receipt differs: $cargo_receipt"
     [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
         && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
         || fail 'sealed Pub-cache root metadata differs'
@@ -714,7 +731,6 @@ run_flutter_model_tests() {
             --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly" \
             --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly" \
             --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
-            --env "RUSTDESK_CARGO_VENDOR_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
             --workdir /source/flutter \
             "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -790,10 +806,6 @@ run_flutter_model_tests() {
                 fi
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
-                /usr/bin/python3 -I -S \
-                    /source/scripts/online-input-provenance.py verify-subtree \
-                    --tree /online/cargo-vendor \
-                    --expected "$RUSTDESK_CARGO_VENDOR_SHA256"
                 codegen_log=/work/codegen.log
                 if ! (cd /source && \
                     /work/toolchain/flutter_rust_bridge_codegen \

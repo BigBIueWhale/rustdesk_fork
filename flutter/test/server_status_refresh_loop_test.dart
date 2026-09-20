@@ -24,8 +24,8 @@ void main() {
     );
 
     loop.start();
-    await tester.pump();
-    await firstEntered.future;
+    await tester.pump(Duration.zero);
+    expect(firstEntered.isCompleted, isTrue);
     await tester.pump(const Duration(seconds: 5));
     expect(turns, 1);
 
@@ -35,6 +35,7 @@ void main() {
     expect(turns, 1);
     await tester.pump(const Duration(milliseconds: 1));
     expect(turns, 2);
+    await tester.pump();
     await loop.close();
   });
 
@@ -54,7 +55,7 @@ void main() {
       readinessChecks += 1;
       return false;
     });
-    await tester.pump();
+    await tester.pump(Duration.zero);
     await tester.pump();
     expect(readinessChecks, 1);
     expect(turns, 0);
@@ -81,7 +82,7 @@ void main() {
     );
 
     loop.start();
-    await tester.pump();
+    await tester.pump(Duration.zero);
     await tester.pump();
     expect(turns, 1);
     expect(errors, hasLength(1));
@@ -109,8 +110,8 @@ void main() {
     );
 
     loop.start();
-    await tester.pump();
-    await entered.future;
+    await tester.pump(Duration.zero);
+    expect(entered.isCompleted, isTrue);
     final close = loop.close();
     unawaited(close.then((_) => closeCompleted = true));
     await tester.pump();
@@ -124,6 +125,23 @@ void main() {
     expect(turns, 1);
   });
 
+  testWidgets('close cancels the deferred first turn before it begins',
+      (tester) async {
+    var turns = 0;
+    final loop = ServerStatusRefreshLoop(
+      interval: interval,
+      refresh: () async {
+        turns += 1;
+      },
+      onError: (error, stackTrace) => fail('unexpected error: $error'),
+    );
+
+    loop.start();
+    await loop.close();
+    await tester.pump(Duration.zero);
+    expect(turns, 0);
+  });
+
   testWidgets('refuses duplicate start and restart after close',
       (tester) async {
     final loop = ServerStatusRefreshLoop(
@@ -134,6 +152,7 @@ void main() {
 
     loop.start();
     expect(loop.start, throwsStateError);
+    await tester.pump(Duration.zero);
     await tester.pump();
     await loop.close();
     expect(loop.start, throwsStateError);

@@ -850,6 +850,7 @@ run_flutter_model_tests() {
                 done
                 if ! timeout --signal=TERM --kill-after=10s 900s \
                     flutter test --no-pub --reporter json --concurrency=4 \
+                        --timeout=30s \
                         "${tests[@]}" >/work/test.json 2>/work/test.err; then
                     tail -n 240 /work/test.json /work/test.err >&2
                     exit 1
@@ -878,7 +879,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Flutter-test output exceeds its bound'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=12 tests=102' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=12 tests=103' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -902,7 +903,7 @@ run_flutter_model_tests() {
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=102 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=103 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

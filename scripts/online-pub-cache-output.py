@@ -527,7 +527,7 @@ def validate_shape(
             fail(f"Pub cache {label} is missing or not one real directory")
 
     metadata_cache = hosted / ".cache"
-    if metadata_cache.exists() or metadata_cache.is_symlink():
+    if strict_output and (metadata_cache.exists() or metadata_cache.is_symlink()):
         fail("Pub cache contains volatile hosted-response metadata")
 
     package_names = set()

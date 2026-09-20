@@ -8145,15 +8145,6 @@ exact empty-root retirement. These runs used no Docker. The pinned complete
 offline closure and full release transport are absent, so no current cold
 release proves that every real builder returns only current-principal-owned
 state.
-### R-B10 reproducible consumer-only online closure after cleanup regression (2026-08-13)
-
-**Source rule retained; current input/release evidence is absent.** The acquisition model rejects
-`.rustdesk-retired-*` preservation objects rather than allowing historical displaced outputs to become
-canonical build input. A prior consumer-only closure was reacquired and checked, but that was operational
-input-coherence evidence only, not a Debian/Android/Windows build or A==B release result. The repository's
-ignored `online/` closure and the pinned builder images are absent in the current 2026-09-11 inventory.
-Therefore the clean committed R-B2/R-B10 acquisition, two-pass artifact equality, independent reproduction,
-native/package lifecycle, and external review remain open.
 
 ### R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership (2026-08-13)
 

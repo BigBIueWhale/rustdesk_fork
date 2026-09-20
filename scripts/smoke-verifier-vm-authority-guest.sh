@@ -9,11 +9,14 @@ case "$#:${8:-}" in
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
+    12:--flutter-model-tests)
+        MODE=flutter-model-tests
+        ;;
     12:--debian-systemd-lifecycle)
         MODE=debian-systemd-lifecycle
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -30,6 +33,10 @@ readonly HBB_SOURCE_ARCHIVE=${9:-}
 readonly HBB_SOURCE_COMMIT=${10:-}
 readonly HBB_SOURCE_TREE=${11:-}
 readonly HBB_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly FLUTTER_SOURCE_ARCHIVE=${9:-}
+readonly FLUTTER_SOURCE_COMMIT=${10:-}
+readonly FLUTTER_SOURCE_TREE=${11:-}
+readonly FLUTTER_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly DEV_CHECK_ARCHIVE=${9:-}
 readonly LIFECYCLE_ARTIFACT=${10:-}
 readonly LIFECYCLE_ARTIFACT_SHA256=${11:-}
@@ -542,6 +549,264 @@ run_hbb_common_fs() {
         "$DEB_BUILDER_CONFIG_ID"
 }
 
+run_flutter_model_tests() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/flutter-model-source
+    local work_root=$ROOT/flutter-model-work
+    local output=$ROOT/flutter-model-tests.out
+    local result_validator=$ROOT/flutter-model-result-validator.py
+    local pub_validator=$ROOT/flutter-pub-cache-validator.py
+    local flutter_archive=$inputs/flutter-3.24.5.tar.xz
+    local pub_cache=$inputs/pub-cache
+    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
+    local load_output container_status=0 inspect namespace_inspect result_line
+    local source_archive_sha input_mount_options pub_receipt post_pub_receipt
+
+    [[ "$FLUTTER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Flutter-test source commit is malformed'
+    [[ "$FLUTTER_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Flutter-test source tree is malformed'
+    [[ "$FLUTTER_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Flutter-test source archive digest is malformed'
+    [ -f "$FLUTTER_SOURCE_ARCHIVE" ] && [ ! -L "$FLUTTER_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FLUTTER_SOURCE_ARCHIVE")" = \
+             4000:4000:400:1 ] \
+        || fail 'focused Flutter-test source archive metadata differs'
+    source_archive_sha="$(sha256sum "$FLUTTER_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$FLUTTER_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Flutter-test source archive digest differs'
+
+    rm -rf -- "$source_root" "$work_root"
+    mkdir "$source_root" "$work_root"
+    tar -xf "$FLUTTER_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$source_root" \
+        || fail 'cannot extract the exact focused Flutter-test source archive'
+    [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
+              | awk '{ print $1 }')" = \
+      "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
+        || fail 'focused Flutter-test source archive differs from its guest bootstrap'
+    [ -f "$source_root/scripts/verify-flutter-model-test-result.py" ] \
+        && [ ! -L "$source_root/scripts/verify-flutter-model-test-result.py" ] \
+        || fail 'focused Flutter-test result validator is absent or ambiguous'
+    [ -f "$source_root/scripts/online-pub-cache-output.py" ] \
+        && [ ! -L "$source_root/scripts/online-pub-cache-output.py" ] \
+        || fail 'focused Flutter-test Pub-cache validator is absent or ambiguous'
+    install -o 0 -g 0 -m 0444 -- \
+        "$source_root/scripts/verify-flutter-model-test-result.py" \
+        "$result_validator"
+    install -o 0 -g 0 -m 0444 -- \
+        "$source_root/scripts/online-pub-cache-output.py" "$pub_validator"
+    [ "$(stat -c '%u:%g:%a:%h' -- "$result_validator" "$pub_validator")" = \
+      $'0:0:444:1\n0:0:444:1' ] \
+        || fail 'focused Flutter-test immutable validator metadata differs'
+    chown -R 1000:1000 "$source_root" "$work_root"
+    chmod 0700 "$work_root"
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed focused-test input authority'
+    SEALED_INPUTS_MOUNTED=1
+    input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed focused-test input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed focused-test inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed focused-test inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed focused-test inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed focused-test inputs permit direct execution' ;; esac
+
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$flutter_archive")" = \
+      "1000:1000:400:1:$SIZE_FLUTTER_3_24_5" ] \
+        && [ "$(sha256sum "$flutter_archive" | awk '{ print $1 }')" = \
+             "$SHA256_FLUTTER_3_24_5" ] \
+        || fail 'sealed Flutter 3.24.5 archive differs'
+    [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
+        || fail 'sealed Pub-cache root metadata differs'
+    pub_receipt="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            python3 -I -S "$pub_validator" \
+                check-complete --online "$inputs" --uid 1000 --gid 1000
+    )" || fail 'sealed Pub-cache closure validation failed'
+    [ "$pub_receipt" = \
+      "sha256=$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1" ] \
+        || fail "sealed Pub-cache closure receipt differs: $pub_receipt"
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
+      "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
+             "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Debian-builder image archive differs'
+
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
+                --archive "$builder_archive" \
+                --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+                --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                --role deb-builder \
+                --expected-id "$DEB_BUILDER_IMAGE_ID" \
+                --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+                --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+                --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+                --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                --config-id "$DEB_BUILDER_CONFIG_ID" \
+                --manifest-id "$DEB_BUILDER_MANIFEST_ID"
+    )" || fail 'certified Debian-builder image verification/load failed'
+    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+        || fail "Debian-builder image receipt differs: $load_output"
+
+    CONTAINER_ID="$(
+        "$CLIENT" --host "unix://$SOCK" create \
+            --name rustdesk-flutter-model-tests \
+            --pull=never \
+            --network=none \
+            --read-only \
+            --pids-limit=2048 \
+            --memory=8g \
+            --memory-swap=8g \
+            --cpus=4 \
+            --shm-size=1g \
+            --ulimit nofile=8192:8192 \
+            --ulimit core=0:0 \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --security-opt=apparmor=docker-default \
+            --user 1000:1000 \
+            --mount "type=bind,source=$source_root,target=/source" \
+            --mount "type=bind,source=$work_root,target=/work" \
+            --mount "type=bind,source=$pub_cache,target=/online/pub-cache,readonly" \
+            --mount "type=bind,source=$flutter_archive,target=/inputs/flutter.tar.xz,readonly" \
+            --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
+            --workdir /source/flutter \
+            "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+                set -- /sys/class/net/*
+                [ "$#" -eq 1 ] && [ "$1" = /sys/class/net/lo ]
+                uid= gid= cap= nnp= seccomp=
+                while IFS=":" read -r key value; do
+                    set -- $value
+                    case "$key" in
+                        Uid) uid="$1:$2:$3:$4" ;;
+                        Gid) gid="$1:$2:$3:$4" ;;
+                        CapEff) cap=$1 ;;
+                        NoNewPrivs) nnp=$1 ;;
+                        Seccomp) seccomp=$1 ;;
+                    esac
+                done </proc/self/status
+                [ "$uid" = 1000:1000:1000:1000 ]
+                [ "$gid" = 1000:1000:1000:1000 ]
+                [ "$cap" = 0000000000000000 ]
+                [ "$nnp" = 1 ]
+                [ "$seccomp" = 2 ]
+                IFS= read -r apparmor </proc/self/attr/current
+                case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
+                mkdir /work/toolchain /work/home
+                tar -C /work/toolchain -xf /inputs/flutter.tar.xz
+                export HOME=/work/home PUB_CACHE=/online/pub-cache CI=true
+                export PUB_HOSTED_URL=https://pub.dev
+                export FLUTTER_SUPPRESS_ANALYTICS=true
+                export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+                export GIT_ATTR_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
+                export GIT_OPTIONAL_LOCKS=0
+                export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
+                project_lock="$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")"
+                tools_lock="$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
+                if ! (cd /work/toolchain/flutter/packages/flutter_tools \
+                    && dart pub get --offline --enforce-lockfile) \
+                    >/work/tools-pub.out 2>/work/tools-pub.err; then
+                    tail -n 120 /work/tools-pub.out /work/tools-pub.err >&2
+                    exit 1
+                fi
+                if ! flutter pub get --offline --enforce-lockfile \
+                    >/work/project-pub.out 2>/work/project-pub.err; then
+                    tail -n 120 /work/project-pub.out /work/project-pub.err >&2
+                    exit 1
+                fi
+                [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+                [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                tests=(
+                    test/global_event_dispatcher_test.dart
+                    test/server_status_refresh_loop_test.dart
+                    test/display_selection_queue_test.dart
+                    test/session_event_queue_test.dart
+                    test/latest_frame_queue_test.dart
+                    test/session_stream_finality_test.dart
+                    test/mobile_session_start_queue_test.dart
+                    test/desktop_texture_lifecycle_test.dart
+                    test/desktop_tab_retirement_test.dart
+                    test/presentation_recovery_test.dart
+                    test/rgba_publication_order_test.dart
+                    test/custom_cursor_registry_test.dart
+                )
+                [ "${#tests[@]}" -eq 12 ]
+                for test_path in "${tests[@]}"; do
+                    [ -f "$test_path" ] && [ ! -L "$test_path" ]
+                done
+                if ! timeout --signal=TERM --kill-after=10s 900s \
+                    flutter test --no-pub --reporter json --concurrency=4 \
+                        "${tests[@]}" >/work/test.json 2>/work/test.err; then
+                    tail -n 240 /work/test.json /work/test.err >&2
+                    exit 1
+                fi
+                [ "$(stat -c %s /work/test.err)" -le 1048576 ]
+                [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
+                /usr/bin/python3 -I -S /authority/result.py /work/test.json
+            '
+    )"
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Flutter-test container ID is malformed'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{.HostConfig.ShmSize}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
+        "$CONTAINER_ID")"
+    [ "$inspect" = \
+      'none|true|1000:1000|8589934592|8589934592|4000000000|2048|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+        || fail "focused Flutter-test container authority differs: $inspect"
+    namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
+        "$CONTAINER_ID")"
+    [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
+        || fail "focused Flutter-test container namespace/device/port authority differs: $namespace_inspect"
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+        >"$output" 2>&1 || container_status=$?
+    [ "$container_status" -eq 0 ] \
+        || { tail -n 240 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
+    [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
+        || fail 'focused Flutter-test output exceeds its bound'
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=12 tests=102' "$output")" \
+        || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
+    [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
+        || fail 'focused Flutter-test result summary is duplicated'
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'focused Flutter-test container did not exit cleanly'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
+    [ "$(sha256sum "$FLUTTER_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
+      "$source_archive_sha" ] \
+        || fail 'focused Flutter-test source archive changed during execution'
+    post_pub_receipt="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            python3 -I -S "$pub_validator" \
+                check-complete --online "$inputs" --uid 1000 --gid 1000
+    )" || fail 'sealed Pub-cache postcondition validation failed'
+    [ "$post_pub_receipt" = "$pub_receipt" ] \
+        || fail 'sealed Pub-cache closure changed during execution'
+    stop_docker_authority
+    umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$result_line"
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=102 flutter=3.24.5 pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined\n' \
+        "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+        "$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1" \
+        "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+}
+
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
@@ -773,7 +1038,9 @@ done
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
-[ "$MODE" != hbb-common-fs ] || docker_socket_gid=1000
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+    docker_socket_gid=1000
+fi
 chown "0:$docker_socket_gid" "$SOCK"
 chmod 0660 "$SOCK"
 chmod 0444 "$PIDFILE"
@@ -808,6 +1075,11 @@ fi
 
 if [ "$MODE" = hbb-common-fs ]; then
     run_hbb_common_fs
+    exit 0
+fi
+
+if [ "$MODE" = flutter-model-tests ]; then
+    run_flutter_model_tests
     exit 0
 fi
 

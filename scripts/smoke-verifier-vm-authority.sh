@@ -31,6 +31,12 @@ case "$#:${1:-}" in
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=hbb-common-fs
         ;;
+    1:--flutter-model-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused Flutter-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=flutter-model-tests
+        ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
             && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
@@ -45,7 +51,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -63,6 +69,8 @@ readonly VIRTIOFSD_PACKAGE="$INPUT_ROOT/virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAG
 readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
 readonly RUST_TEST_ARCHIVE="$ONLINE_INPUTS/rust-${RUST_VERSION}.tar.xz"
+readonly FLUTTER_TEST_ARCHIVE="$ONLINE_INPUTS/flutter-${FLUTTER_VERSION}.tar.xz"
+readonly PUB_CACHE_ROOT="$ONLINE_INPUTS/pub-cache"
 readonly CARGO_VENDOR_ROOT="$ONLINE_INPUTS/cargo-vendor"
 readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
 readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar.gz"
@@ -137,7 +145,7 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly VM_TIMEOUT_SECONDS=480
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = hbb-common-fs ]; then
+elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
     readonly VM_TIMEOUT_SECONDS=1800
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=8192
@@ -483,6 +491,36 @@ if [ "$MODE" = hbb-common-fs ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
+elif [ "$MODE" = flutter-model-tests ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed focused-test input root metadata differs'
+    for input in \
+        "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
+        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed focused-test input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Pub-cache root metadata differs'
 fi
 /usr/bin/python3 -I -S - "$BASE" <<'PY'
 import json
@@ -552,7 +590,8 @@ done
     && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'verifier-VM scripts must be executable'
 [ -x "$BOOT_DERIVER" ] || fail 'verifier-VM boot deriver must be executable'
-[ "$MODE" != hbb-common-fs ] || [ -x "$VIRTIOFSD_LAUNCHER" ] \
+[ "$MODE" = authority-smoke ] || [ "$MODE" = debian-systemd-lifecycle ] \
+    || [ -x "$VIRTIOFSD_LAUNCHER" ] \
     || fail 'sealed-input virtiofsd launcher must be executable'
 VERIFIER_VM_INPUT_ROOT="$INPUT_ROOT" "$BOOT_DERIVER"
 [ -d "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
@@ -590,6 +629,27 @@ if [ "$MODE" = hbb-common-fs ]; then
         || fail 'focused Rust-test source differs from pushed master'
     [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'focused Rust tests require a clean source tree'
+    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+        || fail 'Git replacement refs are forbidden'
+fi
+
+FLUTTER_SOURCE_COMMIT=
+FLUTTER_SOURCE_TREE=
+FLUTTER_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = flutter-model-tests ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        || fail 'focused Flutter tests require the one checked-out master authority'
+    FLUTTER_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve focused Flutter-test source commit'
+    FLUTTER_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve focused Flutter-test source tree'
+    [ "$FLUTTER_SOURCE_COMMIT" = \
+      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+        && [ "$FLUTTER_SOURCE_COMMIT" = \
+             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
+        || fail 'focused Flutter-test source differs from pushed master'
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'focused Flutter tests require a clean source tree'
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
 fi
@@ -676,6 +736,7 @@ readonly LISTENERS_AFTER=$RUN/listeners.after
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
 readonly HBB_SOURCE_ARCHIVE=$RUN/source.tar
+readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
 readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 
@@ -694,6 +755,14 @@ if [ "$MODE" = hbb-common-fs ]; then
             "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$DEB_BUILDER_ARCHIVE" \
             "$VIRTIOFSD_PACKAGE"
         /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" \
+            "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+elif [ "$MODE" = flutter-model-tests ]; then
+    focused_inputs_before="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$PUB_CACHE_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$FLUTTER_TEST_ARCHIVE" \
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 fi
@@ -723,6 +792,27 @@ if [ "$MODE" = hbb-common-fs ]; then
         || fail 'extracted virtiofsd binary is absent or ambiguous'
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
+elif [ "$MODE" = flutter-model-tests ]; then
+    git_closed -C "$REPO_ROOT" archive --format=tar "$FLUTTER_SOURCE_COMMIT" \
+        >"$FLUTTER_SOURCE_ARCHIVE" \
+        || fail 'cannot create the exact focused Flutter-test source archive'
+    /usr/bin/chmod 0400 "$FLUTTER_SOURCE_ARCHIVE"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FLUTTER_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        || fail 'focused Flutter-test source archive metadata differs'
+    FLUTTER_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$FLUTTER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
+    )"
+    /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
+    /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
+        || fail 'cannot extract the authenticated virtiofsd package privately'
+    VIRTIOFSD_BINARY="$RUN/virtiofsd-package/usr/libexec/virtiofsd"
+    [ -f "$VIRTIOFSD_BINARY" ] && [ ! -L "$VIRTIOFSD_BINARY" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h:%s' -- "$VIRTIOFSD_BINARY")" = \
+             "$HOST_UID:$HOST_GID:1:$SIZE_VERIFIER_VM_VIRTIOFSD_BINARY" ] \
+        || fail 'extracted virtiofsd binary is absent or ambiguous'
+    /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
+    verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 fi
 
 payload_identity=()
@@ -736,6 +826,9 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = hbb-common-fs ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$HBB_SOURCE_ARCHIVE")
+elif [ "$MODE" = flutter-model-tests ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=("source.tar=$FLUTTER_SOURCE_ARCHIVE")
 fi
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
     -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
@@ -817,6 +910,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $HBB_SOURCE_COMMIT $HBB_SOURCE_TREE $HBB_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = flutter-model-tests ]; then
+    guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
 fi
 printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -863,7 +958,7 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
     || fail 'retained initramfs descriptor identity differs'
 memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
-if [ "$MODE" = hbb-common-fs ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
     start_sealed_input_virtiofsd \
         "$VIRTIOFS_SOCKET" "$VIRTIOFSD_LOG" \
         "$(/usr/bin/stat -c '%d:%i' -- "$ONLINE_INPUTS")"
@@ -931,7 +1026,7 @@ VM_PID="$(<"$QEMU_PIDFILE")"
 [ "$(/usr/bin/readlink -f "/proc/$VM_PID/exe")" = /usr/bin/qemu-system-x86_64 ] \
     || fail 'QEMU PID does not identify the fixed hypervisor'
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
-if [ "$MODE" = hbb-common-fs ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
     virtiofsd_seccomp_ready=0
     for _ in $(/usr/bin/seq 1 1000); do
         if virtiofsd_seccomp_enforced; then
@@ -1006,9 +1101,10 @@ capture_listeners >"$LISTENERS_AFTER"
 [ ! -s "$NEW_AFTER" ] || fail 'verifier VM left an unexpected host INET listener'
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
-[ "$MODE" != hbb-common-fs ] \
-    || reconcile_socket "$VIRTIOFS_SOCKET" \
-    || fail 'sealed-input virtiofsd channel cleanup is ambiguous'
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+    reconcile_socket "$VIRTIOFS_SOCKET" \
+        || fail 'sealed-input virtiofsd channel cleanup is ambiguous'
+fi
 require_exact_fixed_receipt \
     'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
     'authenticated verifier-VM Git runtime marker'
@@ -1190,7 +1286,7 @@ mapfile -t dart_frb_source_gate_receipts < <(
 printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 /usr/bin/grep -Fq 'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'cloud-init completion marker is absent'; }
-else
+elif [ "$MODE" = hbb-common-fs ]; then
     mapfile -t hbb_common_fs_receipts < <(
         /usr/bin/grep -Eo \
             "HBB_COMMON_FS_VM=pass commit=$HBB_SOURCE_COMMIT tree=$HBB_SOURCE_TREE tests=[1-9][0-9]* rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
@@ -1202,6 +1298,13 @@ else
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Rust-test cloud-init completion marker'
+else
+    require_exact_fixed_receipt \
+        "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=12 tests=102 flutter=$FLUTTER_VERSION pub_cache=$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=model-tests cleanup=joined" \
+        'focused Flutter model-test receipt'
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'focused Flutter-test cloud-init completion marker'
 fi
 [ "$MODE" != debian-systemd-lifecycle ] || /usr/bin/grep -Fq \
     'VERIFIER_VM_CLOUD_INIT=pass' "$SERIAL_LOG" \
@@ -1239,6 +1342,21 @@ if [ "$MODE" = hbb-common-fs ]; then
         && [ "$(/usr/bin/sha256sum "$HBB_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$HBB_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Rust-test source archive changed during execution'
+elif [ "$MODE" = flutter-model-tests ]; then
+    focused_inputs_after="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$PUB_CACHE_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$FLUTTER_TEST_ARCHIVE" \
+            "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed focused-test inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FLUTTER_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$FLUTTER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$FLUTTER_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Flutter-test source archive changed during execution'
 fi
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     [ "$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = \
@@ -1260,7 +1378,10 @@ if [ "$MODE" = authority-smoke ]; then
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
-else
+elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
+else
+    printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=model-tests cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
 fi

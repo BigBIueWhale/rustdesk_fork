@@ -4040,8 +4040,8 @@ build_frb_codegen() {
 
 # ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/inputs/pub-cache ──
 # Pub receives the canonical cache path but only through one nested private output
-# mount. The complete online input closure and the exact committed source authority
-# remain read-only. Both the app and pinned flutter_tools lockfiles are enforced.
+# mount. The exact pinned Flutter archive and committed source authority remain
+# read-only. Both the app and pinned flutter_tools lockfiles are enforced.
 pub_cache_output_tool() {
     [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ] \
         || die "Pub-cache output authority requires the exact source snapshot"
@@ -4158,15 +4158,14 @@ verify_pub_cache_resolution() {
     [ -d "$cache" ] && [ ! -L "$cache" ] \
         || die "Pub-cache semantic candidate is not one real directory"
     online_docker_run_pub_semantic \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$cache,target=/online/pub-cache,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/authority,readonly,bind-recursive=disabled" \
-        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
         --workdir /tmp \
         "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
         mkdir /tmp/toolchain /tmp/home /tmp/project
-        tar -C /tmp/toolchain -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+        tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
         cp -a /authority/flutter/. /tmp/project/
         chmod -R u+rwX /tmp/project
         export HOME=/tmp/home PUB_CACHE=/online/pub-cache CI=true
@@ -4263,15 +4262,14 @@ stage_pub_cache() {
         prepare_pub_cache_output_staging
         log "staging both enforced Pub lock closures into one private output; ./online/inputs remains read-only"
         online_docker_run \
-            --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
-            --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
             --mount "type=bind,source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache" \
             --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
             --workdir /tmp \
             "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             mkdir /tmp/toolchain /tmp/home /tmp/project
-            tar -C /tmp/toolchain -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+            tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
             cp -a /project-source/. /tmp/project/
             chmod -R u+rwX /tmp/project
             export HOME=/tmp/home PUB_CACHE=/online/pub-cache CI=true

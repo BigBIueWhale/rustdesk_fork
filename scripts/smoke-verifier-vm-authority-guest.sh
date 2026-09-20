@@ -567,6 +567,7 @@ run_flutter_model_tests() {
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect result_line
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
+    local tools_freshness_line
 
     [[ "$FLUTTER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'focused Flutter-test source commit is malformed'
@@ -731,6 +732,8 @@ run_flutter_model_tests() {
             --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly" \
             --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly" \
             --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
+            --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
+            --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
             --workdir /source/flutter \
             "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -799,6 +802,30 @@ run_flutter_model_tests() {
                     tail -n 120 /work/tools-pub.out /work/tools-pub.err >&2
                     exit 1
                 fi
+                # The Flutter freshness check also requires this version
+                # marker; Dart Pub does not create it. Publish it only after
+                # the pinned offline resolve and all of its freshness inputs.
+                tools_root=/work/toolchain/flutter/packages/flutter_tools
+                tools_marker="$tools_root/.dart_tool/version"
+                [ ! -e "$tools_marker" ] && [ ! -L "$tools_marker" ]
+                [ -f /work/toolchain/flutter/version ] \
+                    && [ ! -L /work/toolchain/flutter/version ] \
+                    && [ "$(cat /work/toolchain/flutter/version)" = \
+                         "$RUSTDESK_FLUTTER_VERSION" ]
+                [ "$(sha256sum "$tools_root/pubspec.lock" | awk "{print \$1}")" = \
+                  "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
+                [ -f "$tools_root/.dart_tool/package_config.json" ] \
+                    && [ ! -L "$tools_root/.dart_tool/package_config.json" ]
+                [ "$tools_root/pubspec.yaml" -ot "$tools_root/pubspec.lock" ]
+                [ "$tools_root/pubspec.yaml" -ot \
+                  "$tools_root/.dart_tool/package_config.json" ]
+                install -m 0644 /work/toolchain/flutter/version "$tools_marker"
+                [ "$(stat -c "%u:%g:%a:%h:%s" "$tools_marker")" = \
+                  "1000:1000:644:1:${#RUSTDESK_FLUTTER_VERSION}" ]
+                cmp -s /work/toolchain/flutter/version "$tools_marker"
+                printf "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=%s lock=%s implicit_pub=prevented\n" \
+                    "$RUSTDESK_FLUTTER_VERSION" \
+                    "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
                 if ! flutter pub get --offline --enforce-lockfile \
                     >/work/project-pub.out 2>/work/project-pub.err; then
                     tail -n 120 /work/project-pub.out /work/project-pub.err >&2
@@ -879,6 +906,12 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Flutter-test output exceeds its bound'
+    tools_freshness_line="$(grep -Fx \
+        "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=$FLUTTER_VERSION lock=$SHA256_FLUTTER_TOOLS_LOCK implicit_pub=prevented" \
+        "$output")" \
+        || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
+    [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
+        || fail 'Flutter-tools offline-freshness receipt is duplicated'
     result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=12 tests=103' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
@@ -902,6 +935,7 @@ run_flutter_model_tests() {
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$result_line"
     printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=103 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \

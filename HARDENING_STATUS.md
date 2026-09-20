@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-cb1dfbad49473ba8d4e60ce4db2561344c5c18a9b924ac98e2038eedb2099c22  requirements.html
+a5fedefea1393b35c2d2cc8160ef710c0efd2ee68d32d1108131496f43fcae21  requirements.html
 ```
 
 ## Current Verdict
@@ -69,7 +69,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Appendix C #185–203 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in R-D7a/R-T4/R-S11eq, R-S11bj–R-S11bm, and the closed-excision, build-authority, media-lifetime, and current-release sections of this ledger. |
+| Appendix C #185–203, #266, #350–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`, and the current snapshot/verdict provenance and distribution gaps remain in the R-R3 status entry below. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but the complete canonical input closure, stable Android signing material, a current APK/AAB, installation, lifecycle, peer, presentation, and device evidence are absent or open. |
@@ -9285,7 +9285,7 @@ to require startup-wide finality instead of incorrectly requiring termination
 inside the post-authenticated stream handler.
 
 The exact normative requirements input for this disposition is
-`c6dfc50e63b16f59bacbafabf9921779b3ab2525c9c83f9bbcd0483d278f5a87  requirements.html`.
+`a5fedefea1393b35c2d2cc8160ef710c0efd2ee68d32d1108131496f43fcae21  requirements.html`.
 
 One preflight command mistakenly invoked Python bytecode compilation directly
 on the host while checking the newly edited verifier scripts. It read only

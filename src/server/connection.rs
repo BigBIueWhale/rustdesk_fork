@@ -1195,10 +1195,12 @@ lazy_static::lazy_static! {
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
     static ref WAKELOCK_WORKER: WakelockWorker = start_wakelock_worker();
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
-    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+lazy_static::lazy_static! {
     static ref FINAL_REMOTE_CLEANUP_COORDINATOR: Arc<FinalRemoteCleanupCoordinator> =
         Arc::new(FinalRemoteCleanupCoordinator::new());
-    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     static ref FINAL_REMOTE_CLEANUP_DISPATCHER: Result<FinalRemoteCleanupDispatcher, String> =
         start_final_remote_cleanup_dispatcher();
 }
@@ -6028,7 +6030,10 @@ impl Connection {
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
         let mut pending_video_delivery: Option<PendingVideoDelivery> = None;
 
-        #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
+        #[cfg(all(
+            feature = "unix-file-copy-paste",
+            not(any(target_os = "windows", target_os = "android", target_os = "ios"))
+        ))]
         let (mut rx_clip, _cliprdr_route) = match clipboard::register_cliprdr_controlled(id) {
             Ok(route) => route,
             Err(error) => {
@@ -6039,9 +6044,6 @@ impl Connection {
                 return;
             }
         };
-        #[cfg(not(all(feature = "unix-file-copy-paste", not(target_os = "windows"))))]
-        let (_tx_clip, mut rx_clip) = clipboard::clipboard_file_egress_channel();
-
         loop {
             if let Some(error) = conn.cm_command_failure.take() {
                 conn.on_close(
@@ -6059,6 +6061,17 @@ impl Connection {
                 conn.on_close(&reason, false).await;
                 break;
             }
+
+            #[cfg(all(
+                feature = "unix-file-copy-paste",
+                not(any(target_os = "windows", target_os = "android", target_os = "ios"))
+            ))]
+            let file_clipboard_egress = rx_clip.recv();
+            #[cfg(not(all(
+                feature = "unix-file-copy-paste",
+                not(any(target_os = "windows", target_os = "android", target_os = "ios"))
+            )))]
+            let file_clipboard_egress = std::future::pending::<Option<()>>();
 
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
@@ -6504,31 +6517,43 @@ impl Connection {
                         }
                     }
                 }
-                clip_file = rx_clip.recv() => match clip_file {
-                    Some(clipboard::ClipboardFileEgressItem::Message(clip)) => {
-                        #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
-                        if crate::is_support_file_copy_paste(&conn.lr.version)
-                        {
-                            conn.handle_file_clip(clip).await;
+                clip_file = file_clipboard_egress => {
+                    #[cfg(all(
+                        feature = "unix-file-copy-paste",
+                        not(any(target_os = "windows", target_os = "android", target_os = "ios"))
+                    ))]
+                    match clip_file {
+                        Some(clipboard::ClipboardFileEgressItem::Message(clip)) => {
+                            if crate::is_support_file_copy_paste(&conn.lr.version) {
+                                conn.handle_file_clip(clip).await;
+                            }
+                        }
+                        Some(clipboard::ClipboardFileEgressItem::Failed(failure)) => {
+                            conn.on_close(
+                                &format!("controlled file-clipboard route failed: {failure}"),
+                                false,
+                            )
+                            .await;
+                            break;
+                        }
+                        None => {
+                            conn.on_close(
+                                "controlled file-clipboard route closed before its network round",
+                                false,
+                            )
+                            .await;
+                            break;
                         }
                     }
-                    Some(clipboard::ClipboardFileEgressItem::Failed(failure)) => {
-                        conn.on_close(
-                            &format!("controlled file-clipboard route failed: {failure}"),
-                            false,
-                        )
-                        .await;
-                        break;
+                    #[cfg(not(all(
+                        feature = "unix-file-copy-paste",
+                        not(any(target_os = "windows", target_os = "android", target_os = "ios"))
+                    )))]
+                    {
+                        let _ = clip_file;
+                        unreachable!("inactive file-clipboard future resolved");
                     }
-                    None => {
-                        conn.on_close(
-                            "controlled file-clipboard route closed before its network round",
-                            false,
-                        )
-                        .await;
-                        break;
-                    }
-                },
+                }
             }
         }
 

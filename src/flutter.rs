@@ -3069,8 +3069,8 @@ pub fn send_clipboard_msg(msg: Message, _is_file: bool) {
 pub mod connection_manager {
     use std::collections::HashMap;
 
-    #[cfg(any(target_os = "android"))]
-    use hbb_common::log;
+    #[cfg(target_os = "android")]
+    use hbb_common::{bail, log, ResultType};
     #[cfg(any(target_os = "android"))]
     use scrap::android::call_main_service_set_by_name_for_generation;
     use serde_json::json;

@@ -1361,8 +1361,16 @@ impl<T: InvokeUiSession> Remote<T> {
                     return;
                 }
 
-                let (_tx_holder, mut rx_clip_client) = clipboard::clipboard_file_egress_channel();
-                #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
+                #[cfg(all(
+                    not(any(target_os = "android", target_os = "ios")),
+                    any(target_os = "windows", feature = "unix-file-copy-paste")
+                ))]
+                let (_tx_holder, mut rx_clip_client) =
+                    clipboard::clipboard_file_egress_channel();
+                #[cfg(all(
+                    not(any(target_os = "android", target_os = "ios")),
+                    any(target_os = "windows", feature = "unix-file-copy-paste")
+                ))]
                 let _cliprdr_route = {
                     if self.handler.is_default() {
                         let (conn_id, receiver, route) =
@@ -1384,6 +1392,17 @@ impl<T: InvokeUiSession> Remote<T> {
                 let mut fps_instant = Instant::now();
 
                 loop {
+                    #[cfg(all(
+                        not(any(target_os = "android", target_os = "ios")),
+                        any(target_os = "windows", feature = "unix-file-copy-paste")
+                    ))]
+                    let file_clipboard_egress = rx_clip_client.recv();
+                    #[cfg(not(all(
+                        not(any(target_os = "android", target_os = "ios")),
+                        any(target_os = "windows", feature = "unix-file-copy-paste")
+                    )))]
+                    let file_clipboard_egress = std::future::pending::<Option<()>>();
+
                     tokio::select! {
                         res = peer.next() => {
                             if let Some(res) = res {
@@ -1496,10 +1515,13 @@ impl<T: InvokeUiSession> Remote<T> {
                                 break;
                             }
                         }
-                        clip_item = rx_clip_client.recv() => {
+                        clip_item = file_clipboard_egress => {
+                            #[cfg(all(
+                                not(any(target_os = "android", target_os = "ios")),
+                                any(target_os = "windows", feature = "unix-file-copy-paste")
+                            ))]
                             match clip_item {
                                 Some(clipboard::ClipboardFileEgressItem::Message(clip)) => {
-                                    #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
                                     self.handle_local_clipboard_msg(&mut peer, clip).await;
                                 }
                                 Some(clipboard::ClipboardFileEgressItem::Failed(failure)) => {
@@ -1512,6 +1534,14 @@ impl<T: InvokeUiSession> Remote<T> {
                                     log::error!("viewer file-clipboard route closed before its network round");
                                     break;
                                 }
+                            }
+                            #[cfg(not(all(
+                                not(any(target_os = "android", target_os = "ios")),
+                                any(target_os = "windows", feature = "unix-file-copy-paste")
+                            )))]
+                            {
+                                let _ = clip_item;
+                                unreachable!("inactive viewer file-clipboard future resolved");
                             }
                         }
                         _ = self.timer.tick(), if !self.file_writes.has_transfer_data() => {

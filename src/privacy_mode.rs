@@ -2,7 +2,7 @@ use crate::ui_interface::get_option;
 #[cfg(windows)]
 use crate::{display_service, ipc::Data, platform::is_installed};
 use hbb_common::tokio;
-use hbb_common::{anyhow::anyhow, bail, lazy_static, tokio::sync::oneshot, ResultType};
+use hbb_common::{anyhow::anyhow, bail, lazy_static, log, tokio::sync::oneshot, ResultType};
 use serde_derive::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -189,12 +189,14 @@ lazy_static::lazy_static! {
 
     static ref PRIVACY_OWNER_LIFECYCLE: PrivacyOwnerLifecycleCell =
         PrivacyOwnerLifecycleCell::default();
+}
 
-    // Disconnect-time retirement must survive cancellation of the connection future without
-    // making Drop wait for the global privacy transaction or native display restoration. The
-    // queue is deliberately bounded above the process's authenticated-session ceiling, and the
-    // sole process-lifetime worker owns every accepted request through its exact result.
-    #[cfg(any(windows, target_os = "macos"))]
+// Disconnect-time retirement must survive cancellation of the connection future without
+// making Drop wait for the global privacy transaction or native display restoration. The
+// queue is deliberately bounded above the process's authenticated-session ceiling, and the
+// sole process-lifetime worker owns every accepted request through its exact result.
+#[cfg(any(windows, target_os = "macos"))]
+lazy_static::lazy_static! {
     static ref PRIVACY_RETIREMENT_DISPATCHER:
         Result<PrivacyRetirementDispatcher, String> = {
         let (sender, receiver) =

@@ -1,38 +1,115 @@
-# Dev/CI compile-check image for the Linux x86_64 build of the hardened fork.
+# Reproducible acquisition recipe for the Linux x86_64 development verifier.
 #
-# This is NOT the release build (that is the vcpkg-pinned containerized flow in
-# build-debian.sh, §12). It is a fast `cargo check` / `cargo test` environment
-# that uses scrap's `linux-pkg-config` feature to satisfy libvpx/yuv from the
-# distro instead of vcpkg, so the whole Rust workspace — including the main crate
-# and the §10/§9/§8 security-relevant changes — can be compile- and test-verified
-# on the pinned 1.75 toolchain without a full release pipeline.
-#
-# Build:  docker build -t rd-devcheck -f scripts/Dockerfile.devcheck scripts
-# Check:  docker run --rm -v "$PWD:/work:rw" -e CARGO_TARGET_DIR=/build -w /work \
-#           rd-devcheck cargo check --features linux-pkg-config
-# Test :  ... rd-devcheck cargo test -p pake -p cpace_it -p config_it
-#
-# Default features are `use_dasp` + the Sciter (non-flutter) UI; the flutter build
-# additionally needs the flutter_rust_bridge codegen and is out of scope here.
+# This image is not a release builder. It supplies the distro development
+# libraries used by the fast `linux-pkg-config` Cargo checks. It may be built
+# only by the explicit outbound acquisition-VM maintenance transaction. The
+# normal verifier consumes the resulting exact, networkless archive.
 
-FROM rust:1.75-slim
+ARG BASE_IMAGE_REF=rust:1.75-slim@sha256:70c2a016184099262fd7cee46f3d35fec3568c45c62f87e37f7f665f766b1f74
+FROM ${BASE_IMAGE_REF}
 
-RUN apt-get update -qq && apt-get install -y -qq \
+ARG BASE_IMAGE_REF
+ARG DEV_CHECK_DEBIAN_SNAPSHOT
+ARG DEV_CHECK_SECURITY_SNAPSHOT
+ARG DEV_CHECK_DOCKERFILE_SHA256
+ARG DEV_CHECK_DPKG_MANIFEST_SHA256
+ARG SOURCE_DATE_EPOCH
+ARG DEBIAN_FRONTEND=noninteractive
+
+# The publisher-signed snapshot Release files select one immutable package
+# universe. Check-Valid-Until is disabled only for these timestamped snapshot
+# sources; signature verification remains enabled through Debian's archive
+# keyring. BuildKit's timestamp rewrite is applied by the acquisition driver.
+RUN --network=default set -eux; \
+    case "$DEV_CHECK_DEBIAN_SNAPSHOT" in \
+        [0-9][0-9][0-9][0-9][0-1][0-9][0-3][0-9]T[0-2][0-9][0-5][0-9][0-5][0-9]Z) ;; \
+        *) exit 1 ;; \
+    esac; \
+    case "$DEV_CHECK_SECURITY_SNAPSHOT" in \
+        [0-9][0-9][0-9][0-9][0-1][0-9][0-3][0-9]T[0-2][0-9][0-5][0-9][0-5][0-9]Z) ;; \
+        *) exit 1 ;; \
+    esac; \
+    test "${#DEV_CHECK_DOCKERFILE_SHA256}" -eq 64; \
+    test "${#DEV_CHECK_DPKG_MANIFEST_SHA256}" -eq 64; \
+    case "$DEV_CHECK_DOCKERFILE_SHA256$DEV_CHECK_DPKG_MANIFEST_SHA256" in \
+        *[!0-9a-f]*) exit 1 ;; \
+    esac; \
+    case "$SOURCE_DATE_EPOCH" in 0|*[!0-9]*) exit 1 ;; esac; \
+    rm -f /etc/apt/sources.list; \
+    rm -rf /etc/apt/sources.list.d; \
+    install -d -m 0755 /etc/apt/sources.list.d; \
+    printf '%s\n' \
+        'Types: deb' \
+        "URIs: https://snapshot.debian.org/archive/debian/${DEV_CHECK_DEBIAN_SNAPSHOT}/" \
+        'Suites: bookworm bookworm-updates' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        'Check-Valid-Until: no' \
+        '' \
+        'Types: deb' \
+        "URIs: https://snapshot.debian.org/archive/debian-security/${DEV_CHECK_SECURITY_SNAPSHOT}/" \
+        'Suites: bookworm-security' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        'Check-Valid-Until: no' \
+        > /etc/apt/sources.list.d/rustdesk-snapshot.sources; \
+    apt-get update -qq; \
+    apt-get install -y -qq --no-install-recommends \
         git build-essential pkg-config clang libclang-dev cmake nasm busybox \
-        openrc=0.45.2-2+deb12u1 runit=2.1.2-54 \
+        openrc runit \
         libssl-dev libsodium-dev \
         libvpx-dev libyuv-dev libopus-dev \
         libgtk-3-dev libxcb1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
         libxdo-dev libxfixes-dev libxtst-dev libxext-dev libxrandr-dev \
         libasound2-dev libpulse-dev libdbus-1-dev libappindicator3-dev \
         libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-        libpam0g-dev libva-dev libdrm-dev \
-    && rm -rf /var/lib/apt/lists/*
+        libpam0g-dev libva-dev libdrm-dev; \
+    install -d -m 0755 /usr/local/share/rustdesk-devcheck-provenance; \
+    dpkg-query -W -f='${binary:Package}\t${Version}\n' \
+        | LC_ALL=C sort \
+        > /usr/local/share/rustdesk-devcheck-provenance/dpkg-manifest.tsv; \
+    if test "$DEV_CHECK_DPKG_MANIFEST_SHA256" != \
+        0000000000000000000000000000000000000000000000000000000000000000; then \
+        printf '%s  %s\n' \
+            "$DEV_CHECK_DPKG_MANIFEST_SHA256" \
+            /usr/local/share/rustdesk-devcheck-provenance/dpkg-manifest.tsv \
+            | sha256sum --check --strict --status -; \
+    fi; \
+    printf '%s\n' \
+        'contract=rustdesk-devcheck-image-v2' \
+        "base=${BASE_IMAGE_REF}" \
+        "debian_snapshot=${DEV_CHECK_DEBIAN_SNAPSHOT}" \
+        "security_snapshot=${DEV_CHECK_SECURITY_SNAPSHOT}" \
+        "source_date_epoch=${SOURCE_DATE_EPOCH}" \
+        "dockerfile_sha256=${DEV_CHECK_DOCKERFILE_SHA256}" \
+        "dpkg_manifest_sha256=${DEV_CHECK_DPKG_MANIFEST_SHA256}" \
+        > /usr/local/share/rustdesk-devcheck-provenance/contract-v2; \
+    chmod 0444 \
+        /usr/local/share/rustdesk-devcheck-provenance/dpkg-manifest.tsv \
+        /usr/local/share/rustdesk-devcheck-provenance/contract-v2; \
+    : > /etc/machine-id; \
+    rm -f /var/lib/dbus/machine-id; \
+    ln -s /etc/machine-id /var/lib/dbus/machine-id; \
+    rm -rf \
+        /var/cache/apt/* \
+        /var/lib/apt/lists/* \
+        /var/log/apt/* \
+        /var/log/dpkg.log; \
+    rm -f \
+        /var/cache/ldconfig/aux-cache \
+        /var/log/alternatives.log
 
-# libyuv-dev ships the library but no pkg-config descriptor; scrap's
-# linux-pkg-config path probes `libyuv`, so synthesize the .pc file it expects.
-RUN printf 'prefix=/usr\nlibdir=/usr/lib/x86_64-linux-gnu\nincludedir=/usr/include\n\nName: libyuv\nDescription: libyuv\nVersion: 0.0\nLibs: -L${libdir} -lyuv\nCflags: -I${includedir}\n' \
+# libyuv-dev ships no pkg-config descriptor, while scrap's
+# linux-pkg-config feature probes `libyuv`.
+RUN --network=none printf 'prefix=/usr\nlibdir=/usr/lib/x86_64-linux-gnu\nincludedir=/usr/include\n\nName: libyuv\nDescription: libyuv\nVersion: 0.0\nLibs: -L${libdir} -lyuv\nCflags: -I${includedir}\n' \
         > /usr/lib/x86_64-linux-gnu/pkgconfig/libyuv.pc
 
-# Let sodiumoxide link the system libsodium rather than building the bundled copy.
 ENV SODIUM_USE_PKG_CONFIG=1
+
+LABEL org.rustdesk.devcheck.contract="rustdesk-devcheck-image-v2" \
+      org.rustdesk.devcheck.base="${BASE_IMAGE_REF}" \
+      org.rustdesk.devcheck.debian-snapshot="${DEV_CHECK_DEBIAN_SNAPSHOT}" \
+      org.rustdesk.devcheck.security-snapshot="${DEV_CHECK_SECURITY_SNAPSHOT}" \
+      org.rustdesk.devcheck.source-date-epoch="${SOURCE_DATE_EPOCH}" \
+      org.rustdesk.devcheck.dockerfile-sha256="${DEV_CHECK_DOCKERFILE_SHA256}" \
+      org.rustdesk.devcheck.dpkg-manifest-sha256="${DEV_CHECK_DPKG_MANIFEST_SHA256}"

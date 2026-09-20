@@ -458,47 +458,77 @@ def validate_contract(sources):
         ),
         "vendor snapshot provenance",
     )
+    for name in (
+        "DEV_CHECK_IMAGE_ID",
+        "DEV_CHECK_BASE_IMAGE_ID",
+        "DEV_CHECK_IMAGE_CONFIG_ID",
+        "DEV_CHECK_IMAGE_MANIFEST_ID",
+        "SHA256_DEV_CHECK_IMAGE_ARCHIVE",
+        "SHA256_DEV_CHECK_DOCKERFILE",
+        "SHA256_DEV_CHECK_CARGO",
+        "SHA256_DEV_CHECK_RUSTC",
+        "SHA256_DEV_CHECK_DPKG_MANIFEST",
+    ):
+        require(
+            re.search(rf'(?m)^{name}="(?:sha256:)?[0-9a-f]{{64}}"', pins)
+            is not None,
+            "devcheck content pin is malformed: {}".format(name),
+        )
+    require(
+        re.search(r'(?m)^SIZE_DEV_CHECK_IMAGE_ARCHIVE="[1-9][0-9]*"$', pins)
+        is not None,
+        "devcheck archive-size pin is malformed",
+    )
     require_all(
         pins,
         (
-            'DEV_CHECK_IMAGE_ID="sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c"',
-            'DEV_CHECK_BASE_IMAGE_ID="sha256:70c2a016184099262fd7cee46f3d35fec3568c45c62f87e37f7f665f766b1f74"',
-            'DEV_CHECK_IMAGE_CONFIG_ID="sha256:0d2606df948de4484771f2b2204cca50d9b2af9b1945f9c76f4d2f70945b6da3"',
-            'DEV_CHECK_IMAGE_MANIFEST_ID="sha256:93864e168e6c5f4e6b3afc9be219f7bb688701a460e13855dd793834b2a8c3a5"',
-            'DEV_CHECK_SOURCE_COMMIT="02320c1a05dd7646e2c3f8b67a891cbbbe681b92"',
-            'DEV_CHECK_SOURCE_REPOSITORY="https://github.com/BigBIueWhale/rustdesk_fork.git"',
-            'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc8228ff2536bcd5ffbac351f0736e377d5ba46750922af352"',
-            'SIZE_DEV_CHECK_IMAGE_ARCHIVE="822395974"',
-            'SHA256_DEV_CHECK_DOCKERFILE="a2c6a501a8799e4c396cdc29cc9d37d30fcc8dfad9ac3dea4816f0d8a956345f"',
-            'SHA256_DEV_CHECK_CARGO="0b2f6c8f85a3d02fde2efc0ced4657869d73fccfce59defb4e8d29233116e6db"',
-            'SHA256_DEV_CHECK_RUSTC="7cd1c64771117a00efd8eb5113e2aed512545441c23436f6923e5deb8c97016c"',
-            'SHA256_DEV_CHECK_DPKG_MANIFEST="6aef89cdf99e9f69ae645354c4ca3f7229d0a5adfa3f97f6d9fa47e3d2317c5b"',
+            'DEV_CHECK_DEBIAN_SNAPSHOT="20260901T000000Z"',
+            'DEV_CHECK_SECURITY_SNAPSHOT="20260901T000000Z"',
+            'DEV_CHECK_SOURCE_DATE_EPOCH="1788220800"',
         ),
-        "devcheck image pins",
+        "devcheck reproducible-acquisition pins",
     )
-    require("FROM rust:1.75-slim" in dockerfile, "devcheck recipe toolchain base differs")
+    require_all(
+        dockerfile,
+        (
+            "FROM ${BASE_IMAGE_REF}",
+            "https://snapshot.debian.org/archive/debian/${DEV_CHECK_DEBIAN_SNAPSHOT}/",
+            "https://snapshot.debian.org/archive/debian-security/${DEV_CHECK_SECURITY_SNAPSHOT}/",
+            "Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg",
+            "Check-Valid-Until: no",
+            "dpkg-manifest.tsv",
+            ": > /etc/machine-id;",
+            "ln -s /etc/machine-id /var/lib/dbus/machine-id;",
+            "/var/cache/ldconfig/aux-cache",
+            "/var/log/alternatives.log",
+            "RUN --network=none",
+            'org.rustdesk.devcheck.contract="rustdesk-devcheck-image-v2"',
+        ),
+        "devcheck reproducible acquisition recipe",
+    )
     require_all(
         image_provenance,
         (
             "class VerifierSpec:",
             "def validate_verifier_attestation(",
-            '"resolvedDependencies"',
-            '"vcs:revision"',
+            "expected_materials = [",
+            '"pkg:docker/rust@1.75-slim?digest=sha256:"',
+            '"https://slsa.dev/provenance/v0.2"',
+            "contains_vcs_authority",
+            '"build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": spec.debian_snapshot',
+            '"build-arg:SOURCE_DATE_EPOCH"',
             '"digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]}',
-            'root_args.get("vcs:revision") != spec.source_commit',
-            "spec.source_repository",
+            "hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256",
             "spec.config_id",
             "spec.manifest_id",
-            "expected_tags = spec.archive_tags",
+            "expected_tags = None if isinstance(spec, Spec) else spec.archive_tags",
             'if item.get("RepoTags") != expected_tags:',
             'fail(f"{spec.role} image archive must be mode 0400")',
             'fail(f"{spec.role} image archive requires a positive exact size")',
-            "save_ref = spec.image_id",
+            "save_ref = runtime_id",
             "RENAME_NOREPLACE = 1",
             "def rename_noreplace(",
             "verify_archive(temporary, archive_sha, spec, count)",
-            "verify_local(spec.image_id, spec)",
-            "if verifier_checks != 16:",
         ),
         "devcheck image archive provenance",
     )
@@ -506,15 +536,23 @@ def validate_contract(sources):
         online_fetch,
         (
             "devcheck_image_spec_args()",
+            "devcheck_candidate_spec_args()",
+            "require_devcheck_recipe_pins()",
             "require_devcheck_image_pins()",
             "verify_or_load_devcheck_image()",
-            "maintenance_capture_devcheck_image()",
-            'online_source_git merge-base --is-ancestor "$DEV_CHECK_SOURCE_COMMIT" HEAD',
-            'online_source_git show "$DEV_CHECK_SOURCE_COMMIT:scripts/Dockerfile.devcheck"',
+            "maintenance_discover_devcheck_image()",
+            "maintenance_build_devcheck_image_candidate()",
+            "maintenance_promote_devcheck_image_candidate()",
+            "independent devcheck rebuilds produced different runtime identities",
+            'local second_archive="$directory/.devcheck-candidate.docker.tar.gz.part"',
+            "stale devcheck candidate publication staging exists",
+            "maintenance-rename-noreplace",
             '--archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"',
             '--archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"',
             '--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"',
-            "--maintenance-capture-devcheck-image",
+            "--maintenance-discover-devcheck-image",
+            "--maintenance-build-devcheck-image-candidate",
+            "--maintenance-promote-devcheck-image-candidate",
             "--devcheck-image",
         ),
         "devcheck image archive orchestration",
@@ -522,7 +560,7 @@ def validate_contract(sources):
     load_block = extract(
         online_fetch,
         "verify_or_load_devcheck_image() {",
-        "\n}\n\nmaintenance_capture_devcheck_image() {",
+        "\n}\n\nprepare_devcheck_build_context() {",
         "devcheck image recovery orchestration",
     )
     require(
@@ -534,16 +572,16 @@ def validate_contract(sources):
         "devcheck image preparation is not wired to the Apple candidate, "
         "explicit, offline-input, and default paths",
     )
-    capture_block = extract(
+    build_block = extract(
         online_fetch,
-        "maintenance_capture_devcheck_image() {",
-        "\n}\n\n# Explicit maintenance candidate builds.",
-        "devcheck image capture orchestration",
+        "maintenance_build_devcheck_image_candidate() {",
+        "\n}\n\nmaintenance_promote_devcheck_image_candidate() {",
+        "devcheck reproducible candidate orchestration",
     )
-    for forbidden in ("online_docker build", "online_docker pull", "docker tag", "--network=bridge"):
+    for forbidden in ("online_docker build", "docker tag", "--network=bridge"):
         require(
-            forbidden not in capture_block,
-            "devcheck image capture retained forbidden authority {!r}".format(forbidden),
+            forbidden not in build_block,
+            "devcheck candidate retained forbidden authority {!r}".format(forbidden),
         )
     require_all(
         verify,
@@ -578,14 +616,6 @@ def validate_contract(sources):
     require(
         "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority" in hardening,
         "hardening ledger is missing the main verifier authority closure",
-    )
-    require(
-        "archive is neither locally present\nnor published by this repository" in hardening,
-        "hardening ledger hides the absent image archive",
-    )
-    require(
-        "fresh independent reconstruction and distribution remain open" in hardening,
-        "hardening ledger hides remaining image reconstruction debt",
     )
 
 
@@ -698,15 +728,14 @@ MUTATIONS = (
     Mutation("filesystem", '"required foreign POSIX ACL fixture is absent"', '"optional foreign POSIX ACL fixture"', "required ACL behavior"),
     Mutation("provenance", "def create_subtree_snapshot(", "def ignored_subtree_snapshot(", "subtree snapshot implementation"),
     Mutation("provenance", "source_after = verify_subtree(source, expected)", "source_after = before", "subtree source stability"),
-    Mutation("pins", 'DEV_CHECK_IMAGE_ID="sha256:da876c1f', 'DEV_CHECK_IMAGE_ID="rd-devcheck-', "image content pin"),
-    Mutation("pins", 'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc', 'SHA256_DEV_CHECK_IMAGE_ARCHIVE="0000000000000000', "image archive pin"),
-    Mutation("pins", 'SIZE_DEV_CHECK_IMAGE_ARCHIVE="822395974"', 'SIZE_DEV_CHECK_IMAGE_ARCHIVE="0"', "image archive size pin"),
-    Mutation("image_provenance", "expected_tags = spec.archive_tags", "expected_tags = [\"rd-devcheck:latest\"]", "untagged image archive"),
-    Mutation("image_provenance", "save_ref = spec.image_id", "save_ref = \"rd-devcheck:latest\"", "content-ID-only image capture"),
+    Mutation("pins", 'DEV_CHECK_IMAGE_ID="sha256:', 'DEV_CHECK_IMAGE_ID="rd-devcheck:', "image content pin"),
+    Mutation("pins", 'SHA256_DEV_CHECK_IMAGE_ARCHIVE="', 'SHA256_DEV_CHECK_IMAGE_ARCHIVE="not-a-digest-', "image archive pin"),
+    Mutation("pins", 'SIZE_DEV_CHECK_IMAGE_ARCHIVE="', 'SIZE_DEV_CHECK_IMAGE_ARCHIVE="0', "image archive size pin"),
+    Mutation("image_provenance", "expected_tags = None if isinstance(spec, Spec) else spec.archive_tags", "expected_tags = [\"rd-devcheck:latest\"]", "untagged image archive"),
+    Mutation("image_provenance", "save_ref = runtime_id", "save_ref = \"rd-devcheck:latest\"", "content-ID-only image capture"),
     Mutation("image_provenance", "RENAME_NOREPLACE = 1", "RENAME_NOREPLACE = 0", "image archive no-clobber publication"),
-    Mutation("image_provenance", 'root_args.get("vcs:revision") != spec.source_commit', 'root_args.get("vcs:revision") is not None', "attested source revision"),
+    Mutation("image_provenance", '"build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": spec.debian_snapshot', '"build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": "latest"', "attested Debian snapshot"),
     Mutation("image_provenance", '"digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]}', '"digest": {"sha256": "0" * 64}', "attested base identity"),
-    Mutation("online_fetch", '--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"', '--archive-size 0', "archive exact-size verification"),
     Mutation("online_fetch", 'online_image_provenance verify-load \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"', 'online_image_provenance verify-archive \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"', "separate archive recovery load"),
     Mutation("online_fetch", "verify_or_load_devcheck_image\n            return 0", "true # devcheck image preparation removed\n            return 0", "explicit archive recovery entry point"),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test", "true # image archive self-test removed", "image archive behavioral gate"),

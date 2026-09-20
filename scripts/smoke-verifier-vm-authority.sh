@@ -726,16 +726,10 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     [ "$(/usr/bin/sha256sum "$DEV_CHECK_DOCKERFILE_SOURCE" | /usr/bin/awk '{ print $1 }')" = \
       "$SHA256_DEV_CHECK_DOCKERFILE" ] \
         || fail 'current devcheck Dockerfile differs from its reviewed pin'
-    historical_devcheck_sha="$(
-        git_closed -C "$REPO_ROOT" cat-file blob \
-            "$DEV_CHECK_SOURCE_COMMIT:scripts/Dockerfile.devcheck" \
-            | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }'
-    )" || fail 'cannot read the devcheck Dockerfile from its provenance commit'
-    [ "$historical_devcheck_sha" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
-        || fail 'devcheck provenance commit has different Dockerfile bytes'
-    git_closed -C "$REPO_ROOT" merge-base --is-ancestor \
-        "$DEV_CHECK_SOURCE_COMMIT" "$LIFECYCLE_COMMIT" \
-        || fail 'devcheck provenance commit is not an ancestor of lifecycle source'
+    [[ "$DEV_CHECK_DEBIAN_SNAPSHOT" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] \
+        && [[ "$DEV_CHECK_SECURITY_SNAPSHOT" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] \
+        && [[ "$DEV_CHECK_SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'devcheck reproducible-acquisition pins are malformed'
     /usr/bin/python3 -I -S "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" \
         --repo "$REPO_ROOT" --deb "$LIFECYCLE_ARTIFACT" \
         || fail 'lifecycle artifact failed independent package verification'

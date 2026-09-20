@@ -546,10 +546,11 @@ class VerifierSpec:
     dpkg_sha256: str
     cargo_sha256: str
     rustc_sha256: str
-    source_commit: str
-    source_repository: str
-    config_id: str
-    manifest_id: str
+    debian_snapshot: str
+    security_snapshot: str
+    source_date_epoch: int
+    config_id: str | None
+    manifest_id: str | None
 
     @property
     def archive_tags(self) -> None:
@@ -557,7 +558,23 @@ class VerifierSpec:
 
     @property
     def root_annotations(self) -> dict[str, str]:
-        return {"containerd.io/distribution.source.docker.io": "library/rd-devcheck"}
+        created = datetime.fromtimestamp(
+            self.source_date_epoch,
+            timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"org.opencontainers.image.created": created}
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            "org.rustdesk.devcheck.contract": "rustdesk-devcheck-image-v2",
+            "org.rustdesk.devcheck.base": self.base,
+            "org.rustdesk.devcheck.debian-snapshot": self.debian_snapshot,
+            "org.rustdesk.devcheck.security-snapshot": self.security_snapshot,
+            "org.rustdesk.devcheck.source-date-epoch": str(self.source_date_epoch),
+            "org.rustdesk.devcheck.dockerfile-sha256": self.dockerfile_sha256,
+            "org.rustdesk.devcheck.dpkg-manifest-sha256": self.dpkg_sha256,
+        }
 
 
 @dataclass(frozen=True)
@@ -1198,13 +1215,30 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             config_id=config_id,
             manifest_id=manifest_id,
         )
-    if args.role == "devcheck":
+    if args.role in {"devcheck", "devcheck-candidate"}:
         if not re.fullmatch(r"rust:1[.]75-slim@sha256:[0-9a-f]{64}", args.base):
             fail("devcheck base image identity is malformed or unsupported")
-        if not re.fullmatch(r"[0-9a-f]{40}", args.source_commit or ""):
-            fail("devcheck source commit must be exactly 40 lowercase hexadecimal characters")
-        if not re.fullmatch(r"https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+[.]git", args.source_repository or ""):
-            fail("devcheck source repository is malformed or unsupported")
+        timestamp = r"[0-9]{8}T[0-9]{6}Z"
+        if re.fullmatch(timestamp, args.debian_snapshot or "") is None \
+           or re.fullmatch(timestamp, args.security_snapshot or "") is None:
+            fail("devcheck Debian snapshot timestamps are malformed")
+        if args.source_date_epoch is None or args.source_date_epoch <= 0:
+            fail("devcheck source-date epoch is malformed")
+        config_id = (
+            require_image_id(args.config_id, "devcheck config ID")
+            if args.config_id
+            else None
+        )
+        manifest_id = (
+            require_image_id(args.manifest_id, "devcheck manifest ID")
+            if args.manifest_id
+            else None
+        )
+        if args.role == "devcheck" and (config_id is None or manifest_id is None):
+            fail("final devcheck config and manifest pins are required")
+        if args.role == "devcheck-candidate" \
+           and (config_id is not None or manifest_id is not None):
+            fail("devcheck candidate identities must be derived from its archive")
         return VerifierSpec(
             role=args.role,
             image_id=require_image_id(args.expected_id, "expected image ID"),
@@ -1213,10 +1247,11 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             dpkg_sha256=require_sha(args.dpkg_sha or "", "dpkg manifest SHA-256"),
             cargo_sha256=require_sha(args.cargo_sha or "", "Cargo SHA-256"),
             rustc_sha256=require_sha(args.rustc_sha or "", "rustc SHA-256"),
-            source_commit=args.source_commit,
-            source_repository=args.source_repository,
-            config_id=require_image_id(args.config_id or "", "devcheck config ID"),
-            manifest_id=require_image_id(args.manifest_id or "", "devcheck manifest ID"),
+            debian_snapshot=args.debian_snapshot,
+            security_snapshot=args.security_snapshot,
+            source_date_epoch=args.source_date_epoch,
+            config_id=config_id,
+            manifest_id=manifest_id,
         )
     if args.role in {"android-builder", "deb-builder", "win-helper"}:
         contract = certified_builder_input_from_args(args)
@@ -1431,8 +1466,8 @@ def validate_inspect(
             fail("devcheck image environment differs from the reviewed contract")
         if config.get("Cmd") != ["bash"]:
             fail("devcheck image command differs from the reviewed contract")
-        if config.get("Labels") not in (None, {}):
-            fail("devcheck image has unexpected labels")
+        if config.get("Labels") != spec.labels:
+            fail("devcheck image labels differ from the exact acquisition contract")
         return
     labels = config.get("Labels")
     if not isinstance(labels, dict):
@@ -1980,15 +2015,28 @@ def verify_local(
         command = (
             "set -euo pipefail; "
             "[ \"$(id -u)\" -ne 0 ] && [ \"$(id -g)\" -ne 0 ]; "
+            "[ \"$(cat /usr/local/share/rustdesk-devcheck-provenance/contract-v2)\" = "
+            "\"$(printf '%s\\n' "
+            "'contract=rustdesk-devcheck-image-v2' "
+            f"'base={spec.base}' "
+            f"'debian_snapshot={spec.debian_snapshot}' "
+            f"'security_snapshot={spec.security_snapshot}' "
+            f"'source_date_epoch={spec.source_date_epoch}' "
+            f"'dockerfile_sha256={spec.dockerfile_sha256}' "
+            f"'dpkg_manifest_sha256={spec.dpkg_sha256}')\" ]; "
             "printf 'rustc=%s\\n' \"$(rustc --version)\"; "
             "printf 'cargo=%s\\n' \"$(cargo --version)\"; "
             "cargo_sha=\"$(sha256sum /usr/local/cargo/bin/cargo)\"; cargo_sha=\"${cargo_sha%% *}\"; "
             "rustc_sha=\"$(sha256sum /usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc)\"; "
             "rustc_sha=\"${rustc_sha%% *}\"; "
-            "dpkg_sha=\"$(dpkg-query -W | LC_ALL=C sort | sha256sum)\"; dpkg_sha=\"${dpkg_sha%% *}\"; "
+            "dpkg_sha=\"$(dpkg-query -W -f='${binary:Package}\\t${Version}\\n' | LC_ALL=C sort | sha256sum)\"; "
+            "dpkg_sha=\"${dpkg_sha%% *}\"; "
+            "embedded_dpkg_sha=\"$(sha256sum /usr/local/share/rustdesk-devcheck-provenance/dpkg-manifest.tsv)\"; "
+            "embedded_dpkg_sha=\"${embedded_dpkg_sha%% *}\"; "
             "printf 'cargo-sha=%s\\n' \"$cargo_sha\"; "
             "printf 'rustc-sha=%s\\n' \"$rustc_sha\"; "
             "printf 'dpkg-sha=%s\\n' \"$dpkg_sha\"; "
+            "printf 'embedded-dpkg-sha=%s\\n' \"$embedded_dpkg_sha\"; "
             "printf 'sodium=%s\\n' \"${SODIUM_USE_PKG_CONFIG-}\""
         )
         result = run(
@@ -2028,6 +2076,7 @@ def verify_local(
             f"cargo-sha={spec.cargo_sha256}\n"
             f"rustc-sha={spec.rustc_sha256}\n"
             f"dpkg-sha={spec.dpkg_sha256}\n"
+            f"embedded-dpkg-sha={spec.dpkg_sha256}\n"
             "sodium=1\n"
         ).encode("ascii")
         if result.stdout != expected or result.stderr:
@@ -2292,18 +2341,15 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
            or config.get("Env") != DEV_CHECK_ENV \
            or config.get("Cmd") != ["bash"] \
            or config.get("User") not in (None, "") \
-           or config.get("Labels") not in (None, {}):
+           or config.get("Labels") != spec.labels:
             fail("Docker archive devcheck runtime config differs from the reviewed contract")
         rootfs = config_json.get("rootfs")
         if not isinstance(rootfs, dict) or rootfs.get("type") != "layers":
             fail("Docker archive devcheck rootfs metadata is malformed")
         diff_ids = rootfs.get("diff_ids")
-        if not isinstance(diff_ids, list) or len(diff_ids) != len(layers) or len(diff_ids) != 4 \
+        if not isinstance(diff_ids, list) or len(diff_ids) != len(layers) \
            or any(not isinstance(value, str) or not IMAGE_ID.fullmatch(value) for value in diff_ids):
-            fail("Docker archive devcheck layer identities differ from the four-layer contract")
-        history = config_json.get("history")
-        if not isinstance(history, list) or len(history) != 7:
-            fail("Docker archive devcheck history differs from the reviewed build topology")
+            fail("Docker archive devcheck layer identities are malformed")
         return
     labels = config_json.get("config", {}).get("Labels") if isinstance(config_json, dict) else None
     if not isinstance(labels, dict):
@@ -2857,69 +2903,277 @@ def validate_verifier_attestation(
     image_manifest_id: object,
     spec: VerifierSpec,
 ) -> None:
+    def contains_vcs_authority(value: object) -> bool:
+        if isinstance(value, dict):
+            return any(
+                (
+                    isinstance(key, str)
+                    and (key == "vcs" or key.startswith("vcs:"))
+                )
+                or contains_vcs_authority(item)
+                for key, item in value.items()
+            )
+        if isinstance(value, list):
+            return any(contains_vcs_authority(item) for item in value)
+        return False
+
+    def diagnostic_value(value: object) -> str:
+        rendered = canonical_json(value).decode("utf-8")
+        if len(rendered) > 4096:
+            return rendered[:4096] + "...<truncated>"
+        return rendered
+
     expected_digest = str(image_manifest_id).removeprefix("sha256:")
-    if not isinstance(statement, dict) or statement.get("subject") != [
-        {
-            "name": "pkg:docker/rd-devcheck@latest?platform=linux%2Famd64",
-            "digest": {"sha256": expected_digest},
-        }
-    ]:
+    if not isinstance(statement, dict) \
+       or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
+       or statement.get("subject") != [{
+           "name": (
+               "pkg:docker/rd-devcheck@authenticated-v2"
+               "?platform=linux%2Famd64"
+           ),
+           "digest": {"sha256": expected_digest},
+       }]:
         fail("Docker archive devcheck provenance subject differs from the image manifest")
+    if contains_vcs_authority(statement):
+        fail("Docker archive devcheck provenance contains undeclared VCS authority")
     predicate = statement.get("predicate")
-    if not isinstance(predicate, dict):
-        fail("Docker archive devcheck provenance predicate is absent")
-    definition = predicate.get("buildDefinition")
-    if not isinstance(definition, dict) \
-       or definition.get("buildType") != (
-           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
-           "slsa-definitions.md"
+    expected_predicate_keys = {
+        "builder",
+        "buildConfig",
+        "buildType",
+        "invocation",
+        "materials",
+        "metadata",
+    }
+    expected_materials = [
+        {
+            "uri": (
+                "pkg:docker/rust@1.75-slim?digest=sha256:"
+                f"{spec.base.rsplit('sha256:', 1)[1]}"
+                "&platform=linux%2Famd64"
+            ),
+            "digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]},
+        }
+    ]
+    if not isinstance(predicate, dict) or (
+        set(predicate) != expected_predicate_keys
+        or predicate.get("builder") != {"id": ""}
+        or predicate.get("buildType")
+        != "https://mobyproject.org/buildkit@v1"
+        or predicate.get("materials") != expected_materials
+    ):
+        actual_summary = (
+            {
+                "keys": sorted(predicate),
+                "builder": predicate.get("builder"),
+                "buildType": predicate.get("buildType"),
+                "materials": predicate.get("materials"),
+            }
+            if isinstance(predicate, dict)
+            else {"type": type(predicate).__name__}
+        )
+        fail(
+            "Docker archive devcheck provenance predicate differs: "
+            f"expected keys={sorted(expected_predicate_keys)!r} "
+            "builder={'id': ''} "
+            "buildType='https://mobyproject.org/buildkit@v1' "
+            f"materials={diagnostic_value(expected_materials)}; "
+            f"actual={diagnostic_value(actual_summary)}"
+        )
+    expected_args = {
+        "build-arg:BASE_IMAGE_REF": spec.base,
+        "build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": spec.debian_snapshot,
+        "build-arg:DEV_CHECK_DOCKERFILE_SHA256": spec.dockerfile_sha256,
+        "build-arg:DEV_CHECK_DPKG_MANIFEST_SHA256": spec.dpkg_sha256,
+        "build-arg:DEV_CHECK_SECURITY_SNAPSHOT": spec.security_snapshot,
+        "build-arg:SOURCE_DATE_EPOCH": str(spec.source_date_epoch),
+        "no-cache": "",
+    }
+    expected_parameters = {
+        "args": expected_args,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+    }
+    if predicate.get("invocation") != {
+        "configSource": {"entryPoint": "Dockerfile"},
+        "parameters": expected_parameters,
+        "environment": {"platform": "linux/amd64"},
+    }:
+        fail(
+            "Docker archive devcheck provenance does not bind the private "
+            "recipe inputs: "
+            f"{diagnostic_value(predicate.get('invocation'))}"
+        )
+    build_config = predicate.get("buildConfig")
+    digest_mapping = (
+        build_config.get("digestMapping")
+        if isinstance(build_config, dict)
+        else None
+    )
+    llb = (
+        build_config.get("llbDefinition")
+        if isinstance(build_config, dict)
+        else None
+    )
+    if not isinstance(build_config, dict) \
+       or set(build_config) != {"digestMapping", "llbDefinition"} \
+       or not isinstance(digest_mapping, dict) \
+       or len(digest_mapping) != 4 \
+       or any(
+           not isinstance(key, str) or not IMAGE_ID.fullmatch(key)
+           for key in digest_mapping
        ) \
-       or definition.get("resolvedDependencies") != [
-           {
-               "uri": "pkg:docker/rust@1.75-slim?platform=linux%2Famd64",
-               "digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]},
-           }
-       ]:
-        fail("Docker archive devcheck provenance does not bind the exact Rust base")
-    external = definition.get("externalParameters")
-    request = external.get("request") if isinstance(external, dict) else None
-    root = request.get("root") if isinstance(request, dict) else None
-    root_request = root.get("request") if isinstance(root, dict) else None
-    root_args = root_request.get("args") if isinstance(root_request, dict) else None
-    if not isinstance(external, dict) \
-       or external.get("configSource") != {"path": "Dockerfile.devcheck"} \
-       or not isinstance(request, dict) \
-       or request.get("frontend") != "dockerfile.v0" \
-       or request.get("locals") != [{"name": "context"}, {"name": "dockerfile"}] \
-       or not isinstance(root, dict) \
-       or root.get("configSource") != {"path": "Dockerfile.devcheck"} \
-       or not isinstance(root_args, dict) \
-       or root_args.get("vcs:localdir:context") != "scripts" \
-       or root_args.get("vcs:localdir:dockerfile") != "scripts" \
-       or root_args.get("vcs:revision") != spec.source_commit \
-       or root_args.get("vcs:source") != spec.source_repository:
-        fail("Docker archive devcheck provenance does not bind the reviewed source revision")
-    internal = definition.get("internalParameters")
-    if not isinstance(internal, dict) \
-       or internal.get("builderPlatform") != "linux/amd64" \
-       or internal.get("dockerfileVersion") != "1.25.0":
-        fail("Docker archive devcheck provenance builder contract differs")
-    run_details = predicate.get("runDetails")
-    metadata = run_details.get("metadata") if isinstance(run_details, dict) else None
-    buildkit_metadata = metadata.get("buildkit_metadata") if isinstance(metadata, dict) else None
-    completeness = metadata.get("buildkit_completeness") if isinstance(metadata, dict) else None
-    if not isinstance(buildkit_metadata, dict) \
-       or buildkit_metadata.get("vcs") != {
-           "localdir:context": "scripts",
-           "localdir:dockerfile": "scripts",
-           "revision": spec.source_commit,
-           "source": spec.source_repository,
+       or set(digest_mapping.values()) != {
+           "step0",
+           "step1",
+           "step2",
+           "step3",
        } \
-       or completeness != {
-           "request": True,
-           "resolvedDependencies": False,
-       }:
-        fail("Docker archive devcheck provenance metadata differs from the reviewed statement")
+       or not isinstance(llb, list) \
+       or len(llb) != 4:
+        fail(
+            "Docker archive devcheck provenance builder contract differs: "
+            f"{diagnostic_value(build_config)}"
+        )
+    metadata = predicate.get("metadata")
+    buildkit_metadata = (
+        metadata.get("https://mobyproject.org/buildkit@v1#metadata")
+        if isinstance(metadata, dict)
+        else None
+    )
+    source = (
+        buildkit_metadata.get("source")
+        if isinstance(buildkit_metadata, dict)
+        else None
+    )
+    infos = source.get("infos") if isinstance(source, dict) else None
+    if not isinstance(metadata, dict) \
+       or set(metadata) != {
+           "buildFinishedOn",
+           "buildInvocationID",
+           "buildStartedOn",
+           "completeness",
+           "https://mobyproject.org/buildkit@v1#metadata",
+           "reproducible",
+       } \
+       or any(
+           not isinstance(metadata.get(name), str) or not metadata.get(name)
+           for name in (
+               "buildFinishedOn",
+               "buildInvocationID",
+               "buildStartedOn",
+           )
+       ) \
+       or metadata.get("completeness") != {
+           "parameters": True,
+           "environment": True,
+           "materials": False,
+       } \
+       or metadata.get("reproducible") is not False \
+       or not isinstance(buildkit_metadata, dict) \
+       or set(buildkit_metadata) != {"layers", "source"} \
+       or not isinstance(buildkit_metadata.get("layers"), dict) \
+       or not isinstance(source, dict) \
+       or set(source) != {"infos", "locations"} \
+       or not isinstance(source.get("locations"), dict) \
+       or not isinstance(infos, list) \
+       or len(infos) != 1:
+        fail(
+            "Docker archive devcheck provenance metadata differs from the "
+            "reviewed statement: "
+            f"{diagnostic_value(metadata)}"
+        )
+    source_info = infos[0]
+    source_digest_mapping = (
+        source_info.get("digestMapping")
+        if isinstance(source_info, dict)
+        else None
+    )
+    expected_source_llb = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "identifier": "local://dockerfile",
+                        "attrs": {
+                            "local.differ": "none",
+                            "local.followpaths": (
+                                '["Dockerfile","Dockerfile.dockerignore",'
+                                '"dockerfile"]'
+                            ),
+                            "local.sharedkeyhint": "dockerfile",
+                        },
+                    }
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step1",
+            "op": {"Op": {}},
+            "inputs": ["step0:0"],
+        },
+    ]
+    if not isinstance(source_info, dict) \
+       or set(source_info) != {
+           "data",
+           "digestMapping",
+           "filename",
+           "language",
+           "llbDefinition",
+       } \
+       or source_info.get("filename") != "Dockerfile" \
+       or source_info.get("language") != "Dockerfile" \
+       or not isinstance(source_info.get("data"), str) \
+       or not isinstance(source_digest_mapping, dict) \
+       or len(source_digest_mapping) != 2 \
+       or any(
+           not isinstance(key, str) or not IMAGE_ID.fullmatch(key)
+           for key in source_digest_mapping
+       ) \
+       or set(source_digest_mapping.values()) != {"step0", "step1"} \
+       or source_info.get("llbDefinition") != expected_source_llb:
+        fail(
+            "Docker archive devcheck provenance source record differs: "
+            f"{diagnostic_value(source_info)}"
+        )
+    try:
+        dockerfile = base64.b64decode(source_info["data"], validate=True)
+    except (ValueError, TypeError) as exc:
+        fail(f"Docker archive devcheck provenance Dockerfile is malformed: {exc}")
+    if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
+        fail("Docker archive devcheck provenance Dockerfile differs from its pin")
+    source_runs = [
+        network for network, _ in dockerfile_run_contract(dockerfile)
+    ]
+    if source_runs != ["default", "none"]:
+        fail("Docker archive devcheck Dockerfile RUN network contract differs")
+    expected_inputs: list[list[str] | None] = [
+        None,
+        ["step0:0"],
+        ["step1:0"],
+        ["step2:0"],
+    ]
+    expected_kinds = [{"source"}, {"exec"}, {"exec"}, set()]
+    exec_networks: list[int | None] = []
+    for position, item in enumerate(llb):
+        wrapper = item.get("op") if isinstance(item, dict) else None
+        operation = wrapper.get("Op") if isinstance(wrapper, dict) else None
+        if not isinstance(item, dict) \
+           or item.get("id") != f"step{position}" \
+           or item.get("inputs") != expected_inputs[position] \
+           or not isinstance(operation, dict) \
+           or set(operation) != expected_kinds[position]:
+            fail(
+                "Docker archive devcheck provenance input graph differs at "
+                f"step {position}: {diagnostic_value(item)}"
+            )
+        execution = operation.get("exec") if isinstance(operation, dict) else None
+        if isinstance(execution, dict):
+            exec_networks.append(execution.get("network"))
+    if exec_networks != [None, 2]:
+        fail("Docker archive devcheck execution graph network contract differs")
 
 
 def validate_apple_check_attestation(
@@ -4197,7 +4451,14 @@ def validate_modern_archive(
            and root_descriptor.get("digest") != expected_digest
        ) \
        or root_descriptor.get("annotations") != expected_annotations:
-        fail("Docker archive root OCI descriptor does not bind the expected image identity")
+        fail(
+            "Docker archive root OCI descriptor does not bind the expected "
+            "image identity: "
+            f"expected keys={sorted(expected_root_keys)!r} "
+            f"mediaType={expected_root_media_type!r} "
+            f"digest={expected_digest!r} annotations={expected_annotations!r}; "
+            f"actual={root_descriptor!r}"
+        )
     if direct_bootstrap_manifest:
         expected_index_name = None
         descriptors = [root_descriptor]
@@ -4226,12 +4487,12 @@ def validate_modern_archive(
         spec,
         (
             CertifiedBuilderSpec,
-            VerifierSpec,
             AppleCheckSpec,
             DartAuditSpec,
             RustAuditSpec,
         ),
-    ) or (isinstance(spec, Spec) and spec.manifest_id is not None):
+    ) or (isinstance(spec, VerifierSpec) and spec.manifest_id is not None) \
+       or (isinstance(spec, Spec) and spec.manifest_id is not None):
         if spec.manifest_id is None:
             fail(f"Docker archive {spec.role} manifest pin is absent")
         if image_descriptor.get("digest") != spec.manifest_id:
@@ -4258,12 +4519,12 @@ def validate_modern_archive(
         spec,
         (
             CertifiedBuilderSpec,
-            VerifierSpec,
             AppleCheckSpec,
             DartAuditSpec,
             RustAuditSpec,
         ),
-    ) or (isinstance(spec, Spec) and spec.config_id is not None):
+    ) or (isinstance(spec, VerifierSpec) and spec.config_id is not None) \
+       or (isinstance(spec, Spec) and spec.config_id is not None):
         if spec.config_id is None:
             fail(f"Docker archive {spec.role} config pin is absent")
         if config_descriptor.get("digest") != spec.config_id:
@@ -4400,12 +4661,14 @@ def validate_modern_archive(
         attestation_layer = attestation_layers[0]
         predicate_type = (
             "https://slsa.dev/provenance/v0.2"
-            if isinstance(spec, CertifiedBuilderSpec) or raw_bootstrap_index
+            if isinstance(spec, (CertifiedBuilderSpec, VerifierSpec))
+            or raw_bootstrap_index
             else "https://slsa.dev/provenance/v1"
         )
         statement_type = (
             "https://in-toto.io/Statement/v0.1"
-            if isinstance(spec, CertifiedBuilderSpec) or raw_bootstrap_index
+            if isinstance(spec, (CertifiedBuilderSpec, VerifierSpec))
+            or raw_bootstrap_index
             else "https://in-toto.io/Statement/v1"
         )
         if not isinstance(attestation_layer, dict) \
@@ -7026,6 +7289,28 @@ def create_verifier_fixture_archive(
             **extra,
         }
 
+    base_digest = "6" * 64
+    base = "rust:1.75-slim@sha256:" + base_digest
+    dockerfile = (
+        f"ARG BASE_IMAGE_REF={base}\n"
+        "FROM ${BASE_IMAGE_REF}\n"
+        "RUN --network=default true\n"
+        "RUN --network=none true\n"
+    ).encode("ascii")
+    dockerfile_sha = hashlib.sha256(dockerfile).hexdigest()
+    dpkg_sha = "8" * 64
+    debian_snapshot = "20260901T000000Z"
+    security_snapshot = "20260901T000000Z"
+    source_date_epoch = 1788220800
+    labels = {
+        "org.rustdesk.devcheck.contract": "rustdesk-devcheck-image-v2",
+        "org.rustdesk.devcheck.base": base,
+        "org.rustdesk.devcheck.debian-snapshot": debian_snapshot,
+        "org.rustdesk.devcheck.security-snapshot": security_snapshot,
+        "org.rustdesk.devcheck.source-date-epoch": str(source_date_epoch),
+        "org.rustdesk.devcheck.dockerfile-sha256": dockerfile_sha,
+        "org.rustdesk.devcheck.dpkg-manifest-sha256": dpkg_sha,
+    }
     layers = [gzip.compress(f"fixture layer {position}".encode("ascii"), mtime=0) for position in range(4)]
     layer_descriptors = [
         blob_descriptor(layer, "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -7034,7 +7319,11 @@ def create_verifier_fixture_archive(
     config = encoded(
         {
             "architecture": "amd64",
-            "config": {"Env": DEV_CHECK_ENV, "Cmd": ["bash"]},
+            "config": {
+                "Env": DEV_CHECK_ENV,
+                "Cmd": ["bash"],
+                "Labels": labels,
+            },
             "history": [{"created_by": f"fixture {position}"} for position in range(7)],
             "os": "linux",
             "rootfs": {
@@ -7057,71 +7346,139 @@ def create_verifier_fixture_archive(
         "application/vnd.oci.image.manifest.v1+json",
         platform={"architecture": "amd64", "os": "linux"},
     )
-    source_commit = "5" * 40
-    source_repository = "https://github.com/example/rustdesk_fork.git"
-    base_digest = "6" * 64
+    expected_args = {
+        "build-arg:BASE_IMAGE_REF": base,
+        "build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": debian_snapshot,
+        "build-arg:DEV_CHECK_DOCKERFILE_SHA256": dockerfile_sha,
+        "build-arg:DEV_CHECK_DPKG_MANIFEST_SHA256": dpkg_sha,
+        "build-arg:DEV_CHECK_SECURITY_SNAPSHOT": security_snapshot,
+        "build-arg:SOURCE_DATE_EPOCH": str(source_date_epoch),
+        "no-cache": "",
+    }
     statement = encoded(
         {
-            "_type": "https://in-toto.io/Statement/v1",
-            "predicateType": "https://slsa.dev/provenance/v1",
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v0.2",
             "subject": [
                 {
-                    "name": "pkg:docker/rd-devcheck@latest?platform=linux%2Famd64",
+                    "name": (
+                        "pkg:docker/rd-devcheck@authenticated-v2"
+                        "?platform=linux%2Famd64"
+                    ),
                     "digest": {
                         "sha256": image_descriptor["digest"].removeprefix("sha256:")
                     },
                 }
             ],
             "predicate": {
-                "buildDefinition": {
-                    "buildType": (
-                        "https://github.com/moby/buildkit/blob/master/docs/attestations/"
-                        "slsa-definitions.md"
-                    ),
-                    "resolvedDependencies": [
+                "builder": {"id": ""},
+                "buildConfig": {
+                    "digestMapping": {
+                        "sha256:" + str(position) * 64: f"step{position - 1}"
+                        for position in range(1, 5)
+                    },
+                    "llbDefinition": [
+                        {"id": "step0", "op": {"Op": {"source": {}}}},
                         {
-                            "uri": "pkg:docker/rust@1.75-slim?platform=linux%2Famd64",
-                            "digest": {"sha256": base_digest},
-                        }
+                            "id": "step1",
+                            "inputs": ["step0:0"],
+                            "op": {"Op": {"exec": {}}},
+                        },
+                        {
+                            "id": "step2",
+                            "inputs": ["step1:0"],
+                            "op": {"Op": {"exec": {"network": 2}}},
+                        },
+                        {
+                            "id": "step3",
+                            "inputs": ["step2:0"],
+                            "op": {"Op": {}},
+                        },
                     ],
-                    "externalParameters": {
-                        "configSource": {"path": "Dockerfile.devcheck"},
-                        "request": {
-                            "frontend": "dockerfile.v0",
-                            "locals": [{"name": "context"}, {"name": "dockerfile"}],
-                            "root": {
-                                "configSource": {"path": "Dockerfile.devcheck"},
-                                "request": {
-                                    "args": {
-                                        "vcs:localdir:context": "scripts",
-                                        "vcs:localdir:dockerfile": "scripts",
-                                        "vcs:revision": source_commit,
-                                        "vcs:source": source_repository,
-                                    }
-                                },
-                            },
-                        },
-                    },
-                    "internalParameters": {
-                        "builderPlatform": "linux/amd64",
-                        "dockerfileVersion": "1.25.0",
-                    },
                 },
-                "runDetails": {
-                    "metadata": {
-                        "buildkit_metadata": {
-                            "vcs": {
-                                "localdir:context": "scripts",
-                                "localdir:dockerfile": "scripts",
-                                "revision": source_commit,
-                                "source": source_repository,
-                            }
-                        },
-                        "buildkit_completeness": {
-                            "request": True,
-                            "resolvedDependencies": False,
-                        },
+                "buildType": "https://mobyproject.org/buildkit@v1",
+                "invocation": {
+                    "configSource": {"entryPoint": "Dockerfile"},
+                    "parameters": {
+                        "frontend": "dockerfile.v0",
+                        "args": expected_args,
+                        "locals": [
+                            {"name": "context"},
+                            {"name": "dockerfile"},
+                        ],
+                    },
+                    "environment": {"platform": "linux/amd64"},
+                },
+                "materials": [
+                    {
+                        "uri": (
+                            "pkg:docker/rust@1.75-slim"
+                            f"?digest=sha256:{base_digest}"
+                            "&platform=linux%2Famd64"
+                        ),
+                        "digest": {"sha256": base_digest},
                     }
+                ],
+                "metadata": {
+                    "buildFinishedOn": "2026-09-01T00:00:02Z",
+                    "buildInvocationID": "fixture",
+                    "buildStartedOn": "2026-09-01T00:00:01Z",
+                    "completeness": {
+                        "parameters": True,
+                        "environment": True,
+                        "materials": False,
+                    },
+                    "https://mobyproject.org/buildkit@v1#metadata": {
+                        "layers": {},
+                        "source": {
+                            "infos": [
+                                {
+                                    "data": base64.b64encode(dockerfile).decode(
+                                        "ascii"
+                                    ),
+                                    "digestMapping": {
+                                        "sha256:" + "5" * 64: "step0",
+                                        "sha256:" + "6" * 64: "step1",
+                                    },
+                                    "filename": "Dockerfile",
+                                    "language": "Dockerfile",
+                                    "llbDefinition": [
+                                        {
+                                            "id": "step0",
+                                            "op": {
+                                                "Op": {
+                                                    "source": {
+                                                        "identifier": (
+                                                            "local://dockerfile"
+                                                        ),
+                                                        "attrs": {
+                                                            "local.differ": "none",
+                                                            "local.followpaths": (
+                                                                '["Dockerfile",'
+                                                                '"Dockerfile.dockerignore",'
+                                                                '"dockerfile"]'
+                                                            ),
+                                                            "local.sharedkeyhint": (
+                                                                "dockerfile"
+                                                            ),
+                                                        },
+                                                    }
+                                                },
+                                                "constraints": {},
+                                            },
+                                        },
+                                        {
+                                            "id": "step1",
+                                            "op": {"Op": {}},
+                                            "inputs": ["step0:0"],
+                                        },
+                                    ],
+                                }
+                            ],
+                            "locations": {},
+                        },
+                    },
+                    "reproducible": False,
                 },
             },
         }
@@ -7129,7 +7486,9 @@ def create_verifier_fixture_archive(
     statement_descriptor = blob_descriptor(
         statement,
         "application/vnd.in-toto+json",
-        annotations={"in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"},
+        annotations={
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v0.2"
+        },
     )
     attestation_config = encoded(
         {
@@ -7176,13 +7535,14 @@ def create_verifier_fixture_archive(
     spec = VerifierSpec(
         role="devcheck",
         image_id=image_id,
-        base="rust:1.75-slim@sha256:" + base_digest,
-        dockerfile_sha256="7" * 64,
-        dpkg_sha256="8" * 64,
+        base=base,
+        dockerfile_sha256=dockerfile_sha,
+        dpkg_sha256=dpkg_sha,
         cargo_sha256="9" * 64,
         rustc_sha256="a" * 64,
-        source_commit=source_commit,
-        source_repository=source_repository,
+        debian_snapshot=debian_snapshot,
+        security_snapshot=security_snapshot,
+        source_date_epoch=source_date_epoch,
         config_id=str(config_descriptor["digest"]),
         manifest_id=str(image_descriptor["digest"]),
     )
@@ -11249,7 +11609,7 @@ def self_test() -> None:
                 "User": None,
                 "Env": DEV_CHECK_ENV,
                 "Cmd": ["bash"],
-                "Labels": None,
+                "Labels": verifier_spec.labels,
             },
         }
         validate_inspect(verifier_payload, verifier_spec.image_id, verifier_spec)
@@ -11321,10 +11681,10 @@ def self_test() -> None:
             lambda: verify_archive(
                 verifier_archive,
                 verifier_sha,
-                replace(verifier_spec, source_commit="f" * 40),
+                replace(verifier_spec, debian_snapshot="20260902T000000Z"),
                 verifier_size,
             ),
-            "devcheck attested source commit",
+            "devcheck attested Debian snapshot",
         )
         verifier_failure(
             lambda: validate_inspect(
@@ -12134,8 +12494,8 @@ def add_spec_arguments(
     parser.add_argument("--dpkg-sha")
     parser.add_argument("--cargo-sha")
     parser.add_argument("--rustc-sha")
-    parser.add_argument("--source-commit")
-    parser.add_argument("--source-repository")
+    parser.add_argument("--debian-snapshot")
+    parser.add_argument("--security-snapshot")
     parser.add_argument("--config-id")
     parser.add_argument("--manifest-id")
     parser.add_argument("--base-manifest-id")

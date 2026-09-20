@@ -2310,34 +2310,55 @@ devcheck_image_spec_args() {
         --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
         --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
         --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
-        --source-commit "$DEV_CHECK_SOURCE_COMMIT" \
-        --source-repository "$DEV_CHECK_SOURCE_REPOSITORY" \
+        --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
         --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
         --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
 }
 
-require_devcheck_image_pins() {
+require_devcheck_recipe_pins() {
     local names=(
-        DEV_CHECK_IMAGE_ID DEV_CHECK_BASE_IMAGE_ID
-        DEV_CHECK_IMAGE_CONFIG_ID DEV_CHECK_IMAGE_MANIFEST_ID
-        DEV_CHECK_SOURCE_COMMIT DEV_CHECK_SOURCE_REPOSITORY
-        SHA256_DEV_CHECK_DOCKERFILE SHA256_DEV_CHECK_DPKG_MANIFEST
-        SHA256_DEV_CHECK_CARGO SHA256_DEV_CHECK_RUSTC
+        DEV_CHECK_BASE_IMAGE_ID DEV_CHECK_DEBIAN_SNAPSHOT
+        DEV_CHECK_SECURITY_SNAPSHOT DEV_CHECK_SOURCE_DATE_EPOCH
+        SHA256_DEV_CHECK_DOCKERFILE SHA256_DEV_CHECK_CARGO
+        SHA256_DEV_CHECK_RUSTC
     )
     local name
     for name in "${names[@]}"; do require_image_pin "$name"; done
-    local historical_sha
-    online_source_git merge-base --is-ancestor "$DEV_CHECK_SOURCE_COMMIT" HEAD \
-        || die "devcheck provenance source revision is not an ancestor of the current source"
-    historical_sha="$(
-        online_source_git show "$DEV_CHECK_SOURCE_COMMIT:scripts/Dockerfile.devcheck" \
-            | /usr/bin/sha256sum | /usr/bin/awk '{print $1}'
-    )" || die "cannot read the devcheck provenance Dockerfile from its source revision"
-    [ "$historical_sha" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
-        || die "devcheck provenance revision does not contain the reviewed Dockerfile"
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.devcheck" | /usr/bin/awk '{print $1}')" \
        = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
-        || die "current devcheck Dockerfile differs from the archived image recipe"
+        || die "current devcheck Dockerfile differs from its acquisition pin"
+    [[ "$DEV_CHECK_DEBIAN_SNAPSHOT" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] \
+        && [[ "$DEV_CHECK_SECURITY_SNAPSHOT" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] \
+        || die "devcheck Debian snapshot timestamps are malformed"
+    [[ "$DEV_CHECK_SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
+        || die "devcheck source-date epoch is malformed"
+}
+
+require_devcheck_image_pins() {
+    require_devcheck_recipe_pins
+    local names=(
+        DEV_CHECK_IMAGE_ID DEV_CHECK_IMAGE_CONFIG_ID
+        DEV_CHECK_IMAGE_MANIFEST_ID SHA256_DEV_CHECK_DPKG_MANIFEST
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+}
+
+devcheck_candidate_spec_args() {
+    [ "$#" -eq 1 ] || die "internal devcheck candidate specification error"
+    printf '%s\0' \
+        --role devcheck-candidate \
+        --expected-id "$1" \
+        --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+        --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+        --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+        --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+        --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+        --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH"
 }
 
 verify_or_load_devcheck_image() {
@@ -2356,34 +2377,191 @@ verify_or_load_devcheck_image() {
         "${args[@]}"
 }
 
-maintenance_capture_devcheck_image() {
-    require_devcheck_image_pins
+prepare_devcheck_build_context() {
+    [ "$#" -eq 1 ] || die "internal devcheck context preparation error"
+    local context="$1"
+    [ ! -e "$context" ] && [ ! -L "$context" ] \
+        || die "private devcheck build context already exists"
+    /usr/bin/install -d -m 0700 "$context"
+    /usr/bin/install -m 0400 "$SCRIPT_DIR/Dockerfile.devcheck" "$context/Dockerfile"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$context")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$context/Dockerfile")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" ] \
+        || die "private devcheck build context metadata differs"
+    [ "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 -type f \
+        | /usr/bin/wc -l)" -eq 1 ] \
+        && [ -f "$context/Dockerfile" ] && [ ! -L "$context/Dockerfile" ] \
+        && [ -z "$({ /usr/bin/find "$context" -mindepth 1 -maxdepth 1 \
+            ! -type f -print -quit; })" ] \
+        || die "private devcheck build context inventory differs"
+}
+
+build_devcheck_image() {
+    [ "$#" -eq 3 ] || die "internal devcheck build error"
+    local context="$1" tag="$2" dpkg_sha="$3"
+    online_buildx_build \
+        --network=default --pull=false --no-cache \
+        --platform=linux/amd64 --provenance=mode=max \
+        --output=type=docker,rewrite-timestamp=true \
+        --build-arg "BASE_IMAGE_REF=rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+        --build-arg "DEV_CHECK_DEBIAN_SNAPSHOT=${DEV_CHECK_DEBIAN_SNAPSHOT}" \
+        --build-arg "DEV_CHECK_SECURITY_SNAPSHOT=${DEV_CHECK_SECURITY_SNAPSHOT}" \
+        --build-arg "DEV_CHECK_DOCKERFILE_SHA256=${SHA256_DEV_CHECK_DOCKERFILE}" \
+        --build-arg "DEV_CHECK_DPKG_MANIFEST_SHA256=${dpkg_sha}" \
+        --build-arg "SOURCE_DATE_EPOCH=${DEV_CHECK_SOURCE_DATE_EPOCH}" \
+        --tag "$tag" --file "$context/Dockerfile" "$context"
+}
+
+maintenance_discover_devcheck_image() {
+    require_devcheck_recipe_pins
+    local context="$ONLINE_FETCH_TMP/devcheck-discovery-context"
+    local tag="rd-devcheck-discovery:non-authoritative"
+    local image_id result
+    prepare_devcheck_build_context "$context"
+    build_devcheck_image "$context" "$tag" \
+        0000000000000000000000000000000000000000000000000000000000000000
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the devcheck discovery image"
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "devcheck discovery image identity is malformed"
+    result="$(
+        online_docker run --rm --pull=never --network=none --read-only \
+            --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
+            "$tag" /bin/bash --noprofile --norc -euo pipefail -c \
+            'sha256sum /usr/local/share/rustdesk-devcheck-provenance/dpkg-manifest.tsv | cut -d " " -f 1'
+    )" || die "cannot derive the devcheck package-manifest identity"
+    [[ "$result" =~ ^[0-9a-f]{64}$ ]] \
+        || die "derived devcheck package-manifest identity is malformed"
+    printf 'SHA256_DEV_CHECK_DPKG_MANIFEST="%s"\n' "$result"
+    printf 'discovery_image_id=%s\n' "$image_id"
+}
+
+capture_devcheck_rebuild() {
+    [ "$#" -eq 2 ] || die "internal devcheck rebuild capture error"
+    local output="$1" expected_id="$2"
+    local args=()
+    mapfile -d '' args < <(devcheck_candidate_spec_args "$expected_id")
+    online_image_provenance maintenance-capture \
+        --output "$output" "${args[@]}"
+}
+
+devcheck_capture_field() {
+    [ "$#" -eq 2 ] || die "internal devcheck capture parsing error"
+    local result="$1" field="$2"
+    [ "$({ /usr/bin/grep -c "^${field}=" <<<"$result"; })" -eq 1 ] \
+        || die "devcheck rebuild capture result has no unique ${field}"
+    /usr/bin/sed -n "s/^${field}=//p" <<<"$result"
+}
+
+maintenance_build_devcheck_image_candidate() {
+    require_devcheck_recipe_pins
+    require_image_pin SHA256_DEV_CHECK_DPKG_MANIFEST
     local directory="$ONLINE_DIR/verifier-images"
-    if [ -e "$directory" ] || [ -L "$directory" ]; then
-        [ -d "$directory" ] && [ ! -L "$directory" ] \
-            || die "devcheck image archive root is not one real directory"
-        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
-          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-            || die "devcheck image archive root is not current-user-private mode 0700"
-    else
+    local context="$ONLINE_FETCH_TMP/devcheck-build-context"
+    local first_archive="$ONLINE_FETCH_TMP/devcheck-rebuild-a.docker.tar.gz"
+    local second_archive="$directory/.devcheck-candidate.docker.tar.gz.part"
+    local candidate="$directory/devcheck-candidate.docker.tar.gz"
+    local tag="rd-devcheck:authenticated-v2"
+    local first_id second_id first_result second_result
+    local first_manifest second_manifest first_config second_config
+    local archive_sha archive_size lock_fd
+    if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
         /usr/bin/install -d -m 0700 "$directory"
     fi
-    local lock_fd
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "devcheck image archive root is not current-user-private mode 0700"
     exec {lock_fd}<"$directory" \
         || die "cannot open the devcheck image archive root for locking"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
         || die "another devcheck image archive transaction owns the archive root"
-    local args=() result
-    mapfile -d '' args < <(devcheck_image_spec_args)
-    result="$(
-        online_image_provenance maintenance-capture \
-            --output "$directory/devcheck.docker.tar.gz" \
-            "${args[@]}"
-    )" || die "devcheck image archive capture failed"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "devcheck candidate archive already exists"
+    [ ! -e "$second_archive" ] && [ ! -L "$second_archive" ] \
+        || die "stale devcheck candidate publication staging exists"
+    prepare_devcheck_build_context "$context"
+
+    build_devcheck_image "$context" "$tag" "$SHA256_DEV_CHECK_DPKG_MANIFEST"
+    first_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the first devcheck rebuild"
+    first_result="$(capture_devcheck_rebuild "$first_archive" "$first_id")" \
+        || die "first devcheck rebuild capture failed"
+
+    build_devcheck_image "$context" "$tag" "$SHA256_DEV_CHECK_DPKG_MANIFEST"
+    second_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the second devcheck rebuild"
+    second_result="$(capture_devcheck_rebuild "$second_archive" "$second_id")" \
+        || die "second devcheck rebuild capture failed"
+
+    first_manifest="$(devcheck_capture_field "$first_result" manifest_id)"
+    second_manifest="$(devcheck_capture_field "$second_result" manifest_id)"
+    first_config="$(devcheck_capture_field "$first_result" config_id)"
+    second_config="$(devcheck_capture_field "$second_result" config_id)"
+    [ "$first_manifest:$first_config" = "$second_manifest:$second_config" ] \
+        || die "independent devcheck rebuilds produced different runtime identities"
+    archive_sha="$(devcheck_capture_field "$second_result" sha256)"
+    archive_size="$(devcheck_capture_field "$second_result" bytes)"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$second_archive" --destination "$candidate" \
+        || die "devcheck candidate publication failed"
+    /usr/bin/rm -f -- "$first_archive" \
+        || die "cannot retire the first verified devcheck rebuild archive"
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the devcheck image archive lock"
     exec {lock_fd}<&-
-    printf '%s\n' "$result"
+    printf 'DEV_CHECK_IMAGE_ID="%s"\n' "$second_id"
+    printf 'DEV_CHECK_IMAGE_CONFIG_ID="%s"\n' "$second_config"
+    printf 'DEV_CHECK_IMAGE_MANIFEST_ID="%s"\n' "$second_manifest"
+    printf 'SHA256_DEV_CHECK_IMAGE_ARCHIVE="%s"\n' "$archive_sha"
+    printf 'SIZE_DEV_CHECK_IMAGE_ARCHIVE="%s"\n' "$archive_size"
+    printf 'reproducible_runtime=%s\n' "$second_manifest:$second_config"
+    printf 'candidate=%s\n' "$candidate"
+}
+
+maintenance_promote_devcheck_image_candidate() {
+    require_devcheck_image_pins
+    require_image_pin SHA256_DEV_CHECK_IMAGE_ARCHIVE
+    require_image_pin SIZE_DEV_CHECK_IMAGE_ARCHIVE
+    local directory="$ONLINE_DIR/verifier-images"
+    local candidate="$directory/devcheck-candidate.docker.tar.gz"
+    local final="$directory/devcheck.docker.tar.gz"
+    local lock_fd args=()
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "devcheck image archive root is not current-user-private mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the devcheck image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another devcheck image archive transaction owns the archive root"
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "devcheck candidate archive is absent or unsafe"
+    [ ! -e "$final" ] && [ ! -L "$final" ] \
+        || die "final devcheck archive already exists"
+    mapfile -d '' args < <(devcheck_image_spec_args)
+    online_image_provenance verify-archive \
+        --archive "$candidate" \
+        --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+        "${args[@]}" \
+        || die "devcheck candidate differs from the final pins"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$candidate" --destination "$final" \
+        || die "devcheck candidate promotion failed"
+    online_image_provenance verify-load \
+        --archive "$final" \
+        --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+        "${args[@]}" \
+        || die "promoted devcheck archive verification failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the devcheck image archive lock"
+    exec {lock_fd}<&-
+    printf 'promoted=%s\n' "$final"
 }
 
 apple_check_image_spec_args() {
@@ -6442,6 +6620,21 @@ main() {
             maintenance_build_rust_audit_image_candidate
             return 0
             ;;
+        --maintenance-discover-devcheck-image)
+            [ "$#" -eq 1 ] || die "--maintenance-discover-devcheck-image takes no arguments"
+            maintenance_discover_devcheck_image
+            return 0
+            ;;
+        --maintenance-build-devcheck-image-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-build-devcheck-image-candidate takes no arguments"
+            maintenance_build_devcheck_image_candidate
+            return 0
+            ;;
+        --maintenance-promote-devcheck-image-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-promote-devcheck-image-candidate takes no arguments"
+            maintenance_promote_devcheck_image_candidate
+            return 0
+            ;;
         --dart-audit-inputs)
             [ "$#" -eq 1 ] || die "--dart-audit-inputs takes no arguments"
             stage_dart_audit_inputs
@@ -6455,11 +6648,6 @@ main() {
         --flutter-test-inputs)
             [ "$#" -eq 1 ] || die "--flutter-test-inputs takes no arguments"
             stage_flutter_test_inputs
-            return 0
-            ;;
-        --maintenance-capture-devcheck-image)
-            [ "$#" -eq 1 ] || die "--maintenance-capture-devcheck-image takes no arguments"
-            maintenance_capture_devcheck_image
             return 0
             ;;
         --maintenance-capture-apple-check-image)
@@ -6530,7 +6718,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

@@ -234,8 +234,9 @@ run_debian_systemd_lifecycle() {
                 --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
                 --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
                 --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
-                --source-commit "$DEV_CHECK_SOURCE_COMMIT" \
-                --source-repository "$DEV_CHECK_SOURCE_REPOSITORY" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+                --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
                 --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
                 --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
     )" || fail 'devcheck archive verification/load failed'

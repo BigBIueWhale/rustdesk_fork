@@ -18,7 +18,6 @@ use hbb_common::{
     config::{self, LocalConfig, PeerConfig},
     fs, lazy_static, log,
     rendezvous_proto::ConnType,
-    ResultType,
 };
 use std::{
     collections::HashMap,
@@ -104,7 +103,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
 }
 
 #[inline]
-pub fn start_global_event_stream(s: StreamSink<String>, app_type: String) -> ResultType<()> {
+pub fn start_global_event_stream(s: StreamSink<String>, app_type: String) -> Result<()> {
     super::flutter::start_global_event_stream(s, app_type)
 }
 
@@ -243,7 +242,7 @@ pub fn session_start(
     session_id: SessionID,
     client_owner_id: SessionID,
     id: String,
-) -> ResultType<()> {
+) -> Result<()> {
     session_start_(&session_id, &client_owner_id, &id, events2ui)
 }
 
@@ -608,7 +607,7 @@ pub fn session_switch_display(
     session_id: SessionID,
     client_owner_id: SessionID,
     value: Vec<i32>,
-) -> ResultType<()> {
+) -> Result<()> {
     sessions::session_switch_display(session_id, client_owner_id, value)
 }
 

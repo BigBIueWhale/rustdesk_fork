@@ -370,6 +370,8 @@ run_dart_audit() {
     tar -xf "$DART_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
         -C "$source_root" \
         || fail 'cannot extract the exact focused Dart-audit source archive'
+    chmod -R u=rwX,go=rX "$source_root" \
+        || fail 'cannot seal the focused Dart-audit source as root-owned read-only input'
     [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
               | awk '{ print $1 }')" = \
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \

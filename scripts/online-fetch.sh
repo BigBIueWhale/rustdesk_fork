@@ -2559,11 +2559,11 @@ capture_devcheck_rebuild() {
         --output "$output" "${args[@]}"
 }
 
-devcheck_capture_field() {
-    [ "$#" -eq 2 ] || die "internal devcheck capture parsing error"
+image_capture_field() {
+    [ "$#" -eq 2 ] || die "internal image capture parsing error"
     local result="$1" field="$2"
     [ "$({ /usr/bin/grep -c "^${field}=" <<<"$result"; })" -eq 1 ] \
-        || die "devcheck rebuild capture result has no unique ${field}"
+        || die "image capture result has no unique ${field}"
     /usr/bin/sed -n "s/^${field}=//p" <<<"$result"
 }
 
@@ -2608,14 +2608,14 @@ maintenance_build_devcheck_image_candidate() {
     second_result="$(capture_devcheck_rebuild "$second_archive" "$second_id")" \
         || die "second devcheck rebuild capture failed"
 
-    first_manifest="$(devcheck_capture_field "$first_result" manifest_id)"
-    second_manifest="$(devcheck_capture_field "$second_result" manifest_id)"
-    first_config="$(devcheck_capture_field "$first_result" config_id)"
-    second_config="$(devcheck_capture_field "$second_result" config_id)"
+    first_manifest="$(image_capture_field "$first_result" manifest_id)"
+    second_manifest="$(image_capture_field "$second_result" manifest_id)"
+    first_config="$(image_capture_field "$first_result" config_id)"
+    second_config="$(image_capture_field "$second_result" config_id)"
     [ "$first_manifest:$first_config" = "$second_manifest:$second_config" ] \
         || die "independent devcheck rebuilds produced different runtime identities"
-    archive_sha="$(devcheck_capture_field "$second_result" sha256)"
-    archive_size="$(devcheck_capture_field "$second_result" bytes)"
+    archive_sha="$(image_capture_field "$second_result" sha256)"
+    archive_size="$(image_capture_field "$second_result" bytes)"
     online_image_provenance maintenance-rename-noreplace \
         --source "$second_archive" --destination "$candidate" \
         || die "devcheck candidate publication failed"
@@ -2797,10 +2797,12 @@ maintenance_capture_apple_check_image() {
     printf '%s\n' "$result"
 }
 
-dart_audit_image_spec_args() {
+dart_audit_contract_spec_args() {
+    [ "$#" -eq 2 ] || die "internal Dart advisory specification error"
+    local role="$1" expected_id="$2"
     printf '%s\0' \
-        --role dart-audit \
-        --expected-id "$DART_AUDIT_IMAGE_ID" \
+        --role "$role" \
+        --expected-id "$expected_id" \
         --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
         --dockerfile-sha "$SHA256_DART_AUDIT_DOCKERFILE" \
         --scanner-sha "$OSV_SCANNER_SHA256" \
@@ -2811,16 +2813,24 @@ dart_audit_image_spec_args() {
         --database-sha "$OSV_DB_PUB_SHA256" \
         --database-size "$OSV_DB_PUB_SIZE" \
         --database-capture-epoch "$OSV_DB_PUB_CAPTURE_EPOCH" \
-        --database-generation "$OSV_DB_PUB_GENERATION" \
+        --database-generation "$OSV_DB_PUB_GENERATION"
+}
+
+dart_audit_image_spec_args() {
+    dart_audit_contract_spec_args dart-audit "$DART_AUDIT_IMAGE_ID"
+    printf '%s\0' \
         --config-id "$DART_AUDIT_IMAGE_CONFIG_ID" \
         --manifest-id "$DART_AUDIT_IMAGE_MANIFEST_ID"
 }
 
-require_dart_audit_image_pins() {
+dart_audit_candidate_spec_args() {
+    [ "$#" -eq 1 ] || die "internal Dart advisory candidate specification error"
+    dart_audit_contract_spec_args dart-audit-candidate "$1"
+}
+
+require_dart_audit_recipe_pins() {
     local names=(
-        DART_AUDIT_IMAGE_ID DART_AUDIT_IMAGE_CONFIG_ID
-        DART_AUDIT_IMAGE_MANIFEST_ID SHA256_BASEIMAGE_UBUNTU_1804
-        SHA256_DART_AUDIT_DOCKERFILE
+        SHA256_BASEIMAGE_UBUNTU_1804 SHA256_DART_AUDIT_DOCKERFILE
         OSV_SCANNER_SHA256 OSV_SCANNER_VERSION OSV_SCALIBR_VERSION
         OSV_SCANNER_COMMIT OSV_SCANNER_BUILT_AT
         OSV_DB_PUB_SHA256 OSV_DB_PUB_SIZE OSV_DB_PUB_CAPTURE_EPOCH
@@ -2831,6 +2841,18 @@ require_dart_audit_image_pins() {
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.dart-audit" | /usr/bin/awk '{print $1}')" \
        = "$SHA256_DART_AUDIT_DOCKERFILE" ] \
         || die "current Dart advisory Dockerfile differs from the archived image recipe"
+    [[ "$OSV_DB_PUB_CAPTURE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
+        || die "Dart advisory source-date epoch is malformed"
+}
+
+require_dart_audit_image_pins() {
+    require_dart_audit_recipe_pins
+    local names=(
+        DART_AUDIT_IMAGE_ID DART_AUDIT_IMAGE_CONFIG_ID
+        DART_AUDIT_IMAGE_MANIFEST_ID
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
 verify_or_load_dart_audit_image() {
@@ -2847,36 +2869,6 @@ verify_or_load_dart_audit_image() {
         --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
         "${args[@]}"
-}
-
-maintenance_capture_dart_audit_image() {
-    require_dart_audit_image_pins
-    local directory="$ONLINE_DIR/verifier-images"
-    if [ -e "$directory" ] || [ -L "$directory" ]; then
-        [ -d "$directory" ] && [ ! -L "$directory" ] \
-            || die "Dart advisory image archive root is not one real directory"
-        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
-          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-            || die "Dart advisory image archive root is not current-user-private mode 0700"
-    else
-        /usr/bin/install -d -m 0700 "$directory"
-    fi
-    local lock_fd
-    exec {lock_fd}<"$directory" \
-        || die "cannot open the Dart advisory image archive root for locking"
-    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
-        || die "another Dart advisory image archive transaction owns the archive root"
-    local args=() result
-    mapfile -d '' args < <(dart_audit_image_spec_args)
-    result="$(
-        online_image_provenance maintenance-capture \
-            --output "$directory/dart-audit.docker.tar.gz" \
-            "${args[@]}"
-    )" || die "Dart advisory image archive capture failed"
-    "$FLOCK_BIN" --unlock "$lock_fd" \
-        || die "cannot release the Dart advisory image archive lock"
-    exec {lock_fd}<&-
-    printf '%s\n' "$result"
 }
 
 rust_audit_image_spec_args() {
@@ -3909,22 +3901,9 @@ maintenance_build_apple_check_image_candidate() {
     printf '%s\n' "$result"
 }
 
-maintenance_build_dart_audit_image_candidate() {
-    local names=(
-        SHA256_BASEIMAGE_UBUNTU_1804
-        OSV_SCANNER_VERSION OSV_SCALIBR_VERSION OSV_SCANNER_COMMIT
-        OSV_SCANNER_BUILT_AT OSV_SCANNER_SIZE OSV_SCANNER_SHA256
-        OSV_DB_PUB_SHA256 OSV_DB_PUB_SIZE OSV_DB_PUB_CAPTURE_EPOCH
-        OSV_DB_PUB_GENERATION SHA256_DART_AUDIT_DOCKERFILE
-    )
-    local name base_identity image_id
-    local tag="rd-dart-audit-candidate:provenance-v1"
-    local context="$ONLINE_FETCH_TMP/dart-audit-build-context"
-    for name in "${names[@]}"; do require_image_pin "$name"; done
-    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.dart-audit" | /usr/bin/awk '{print $1}')" \
-       = "$SHA256_DART_AUDIT_DOCKERFILE" ] \
-        || die "Dart advisory Dockerfile differs from its pin"
-    stage_dart_audit_inputs
+prepare_dart_audit_build_context() {
+    [ "$#" -eq 1 ] || die "internal Dart advisory context preparation error"
+    local context="$1"
     [ ! -e "$context" ] && [ ! -L "$context" ] \
         || die "private Dart advisory build context already exists"
     /usr/bin/install -d -m 0700 "$context"
@@ -3952,16 +3931,17 @@ maintenance_build_dart_audit_image_candidate() {
     [ "$(/usr/bin/sha256sum "$context/Pub-all.zip" | /usr/bin/awk '{print $1}')" \
        = "$OSV_DB_PUB_SHA256" ] \
         || die "private Dart advisory database bytes differ"
-    base_identity="$(
-        online_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}' \
-            "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
-    )" || die "the exact Dart advisory base image is not already present"
-    [ "$base_identity" = "${SHA256_BASEIMAGE_UBUNTU_1804}|linux|amd64" ] \
-        || die "the local Dart advisory base image differs from its exact Linux/amd64 pin"
+}
+
+build_dart_audit_image() {
+    [ "$#" -eq 2 ] || die "internal Dart advisory build error"
+    local context="$1" tag="$2"
     online_buildx_build \
         --network=none --pull=false --no-cache \
-        --platform=linux/amd64 --provenance=mode=max --load \
+        --platform=linux/amd64 --provenance=mode=max \
+        --output=type=docker,rewrite-timestamp=true \
         --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        --build-arg "SOURCE_DATE_EPOCH=${OSV_DB_PUB_CAPTURE_EPOCH}" \
         --build-arg "OSV_SCANNER_VERSION=${OSV_SCANNER_VERSION}" \
         --build-arg "OSV_SCANNER_SHA256=${OSV_SCANNER_SHA256}" \
         --build-arg "OSV_DB_PUB_SHA256=${OSV_DB_PUB_SHA256}" \
@@ -3972,24 +3952,136 @@ maintenance_build_dart_audit_image_candidate() {
         --tag "$tag" \
         --file "$context/Dockerfile.dart-audit" \
         "$context"
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
-        || die "cannot resolve the Dart advisory candidate"
-    online_image_provenance verify-local \
-        --image-ref "$tag" \
-        --role dart-audit \
-        --expected-id "$image_id" \
-        --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
-        --dockerfile-sha "$SHA256_DART_AUDIT_DOCKERFILE" \
-        --scanner-sha "$OSV_SCANNER_SHA256" \
-        --scanner-version "$OSV_SCANNER_VERSION" \
-        --scalibr-version "$OSV_SCALIBR_VERSION" \
-        --scanner-commit "$OSV_SCANNER_COMMIT" \
-        --scanner-built-at "$OSV_SCANNER_BUILT_AT" \
-        --database-sha "$OSV_DB_PUB_SHA256" \
-        --database-size "$OSV_DB_PUB_SIZE" \
-        --database-capture-epoch "$OSV_DB_PUB_CAPTURE_EPOCH" \
-        --database-generation "$OSV_DB_PUB_GENERATION"
-    printf 'DART_AUDIT_IMAGE_ID="%s"\n' "$image_id"
+}
+
+capture_dart_audit_rebuild() {
+    [ "$#" -eq 2 ] || die "internal Dart advisory rebuild capture error"
+    local output="$1" expected_id="$2"
+    local args=()
+    mapfile -d '' args < <(dart_audit_candidate_spec_args "$expected_id")
+    online_image_provenance maintenance-capture \
+        --output "$output" "${args[@]}"
+}
+
+maintenance_build_dart_audit_image_candidate() {
+    require_dart_audit_recipe_pins
+    require_image_pin OSV_SCANNER_SIZE
+    stage_dart_audit_inputs
+    local directory="$ONLINE_DIR/verifier-images"
+    local context="$ONLINE_FETCH_TMP/dart-audit-build-context"
+    local first_archive="$ONLINE_FETCH_TMP/dart-audit-rebuild-a.docker.tar.gz"
+    local second_archive="$directory/.dart-audit-candidate.docker.tar.gz.part"
+    local candidate="$directory/dart-audit-candidate.docker.tar.gz"
+    local tag="rd-dart-audit-candidate:provenance-v1"
+    local base_identity first_id second_id first_result second_result
+    local first_manifest second_manifest first_config second_config
+    local archive_sha archive_size lock_fd
+    if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+        /usr/bin/install -d -m 0700 "$directory"
+    fi
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "Dart advisory image archive root is not current-user-private mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the Dart advisory image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Dart advisory image archive transaction owns the archive root"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "Dart advisory candidate archive already exists"
+    [ ! -e "$second_archive" ] && [ ! -L "$second_archive" ] \
+        || die "stale Dart advisory candidate publication staging exists"
+
+    online_docker pull --platform=linux/amd64 \
+        "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" >/dev/null
+    base_identity="$(
+        online_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}' \
+            "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
+    )" || die "cannot inspect the exact Dart advisory base image"
+    [ "$base_identity" = "${SHA256_BASEIMAGE_UBUNTU_1804}|linux|amd64" ] \
+        || die "the local Dart advisory base image differs from its exact Linux/amd64 pin"
+    prepare_dart_audit_build_context "$context"
+
+    build_dart_audit_image "$context" "$tag"
+    first_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the first Dart advisory rebuild"
+    first_result="$(capture_dart_audit_rebuild "$first_archive" "$first_id")" \
+        || die "first Dart advisory rebuild capture failed"
+
+    build_dart_audit_image "$context" "$tag"
+    second_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the second Dart advisory rebuild"
+    second_result="$(capture_dart_audit_rebuild "$second_archive" "$second_id")" \
+        || die "second Dart advisory rebuild capture failed"
+
+    first_manifest="$(image_capture_field "$first_result" manifest_id)"
+    second_manifest="$(image_capture_field "$second_result" manifest_id)"
+    first_config="$(image_capture_field "$first_result" config_id)"
+    second_config="$(image_capture_field "$second_result" config_id)"
+    [ "$first_manifest:$first_config" = "$second_manifest:$second_config" ] \
+        || die "independent Dart advisory rebuilds produced different runtime identities"
+    archive_sha="$(image_capture_field "$second_result" sha256)"
+    archive_size="$(image_capture_field "$second_result" bytes)"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$second_archive" --destination "$candidate" \
+        || die "Dart advisory candidate publication failed"
+    /usr/bin/rm -f -- "$first_archive" \
+        || die "cannot retire the first verified Dart advisory rebuild archive"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Dart advisory image archive lock"
+    exec {lock_fd}<&-
+    printf 'DART_AUDIT_IMAGE_ID="%s"\n' "$second_id"
+    printf 'DART_AUDIT_IMAGE_CONFIG_ID="%s"\n' "$second_config"
+    printf 'DART_AUDIT_IMAGE_MANIFEST_ID="%s"\n' "$second_manifest"
+    printf 'SHA256_DART_AUDIT_IMAGE_ARCHIVE="%s"\n' "$archive_sha"
+    printf 'SIZE_DART_AUDIT_IMAGE_ARCHIVE="%s"\n' "$archive_size"
+    printf 'reproducible_runtime=%s\n' "$second_manifest:$second_config"
+    printf 'candidate=%s\n' "$candidate"
+}
+
+maintenance_promote_dart_audit_image_candidate() {
+    require_dart_audit_image_pins
+    require_image_pin SHA256_DART_AUDIT_IMAGE_ARCHIVE
+    require_image_pin SIZE_DART_AUDIT_IMAGE_ARCHIVE
+    case "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" in
+        0|*[!0-9]*|'') die "SIZE_DART_AUDIT_IMAGE_ARCHIVE is not one positive decimal integer" ;;
+    esac
+    local directory="$ONLINE_DIR/verifier-images"
+    local candidate="$directory/dart-audit-candidate.docker.tar.gz"
+    local final="$directory/dart-audit.docker.tar.gz"
+    local lock_fd args=()
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "Dart advisory image archive root is not current-user-private mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the Dart advisory image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Dart advisory image archive transaction owns the archive root"
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "Dart advisory candidate archive is absent or unsafe"
+    [ ! -e "$final" ] && [ ! -L "$final" ] \
+        || die "final Dart advisory archive already exists"
+    mapfile -d '' args < <(dart_audit_image_spec_args)
+    online_image_provenance verify-archive \
+        --archive "$candidate" \
+        --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
+        "${args[@]}" \
+        || die "Dart advisory candidate differs from the final pins"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$candidate" --destination "$final" \
+        || die "Dart advisory candidate promotion failed"
+    online_image_provenance verify-load \
+        --archive "$final" \
+        --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
+        "${args[@]}" \
+        || die "promoted Dart advisory archive verification failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Dart advisory image archive lock"
+    exec {lock_fd}<&-
+    printf 'promoted=%s\n' "$final"
 }
 
 maintenance_build_rust_audit_image_candidate() {
@@ -6964,6 +7056,11 @@ main() {
             maintenance_build_dart_audit_image_candidate
             return 0
             ;;
+        --maintenance-promote-dart-audit-image-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-promote-dart-audit-image-candidate takes no arguments"
+            maintenance_promote_dart_audit_image_candidate
+            return 0
+            ;;
         --maintenance-build-rust-audit-image-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-build-rust-audit-image-candidate takes no arguments"
             maintenance_build_rust_audit_image_candidate
@@ -7013,11 +7110,6 @@ main() {
         --maintenance-capture-apple-check-image)
             [ "$#" -eq 1 ] || die "--maintenance-capture-apple-check-image takes no arguments"
             maintenance_capture_apple_check_image
-            return 0
-            ;;
-        --maintenance-capture-dart-audit-image)
-            [ "$#" -eq 1 ] || die "--maintenance-capture-dart-audit-image takes no arguments"
-            maintenance_capture_dart_audit_image
             return 0
             ;;
         --maintenance-capture-rust-audit-image)
@@ -7078,7 +7170,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

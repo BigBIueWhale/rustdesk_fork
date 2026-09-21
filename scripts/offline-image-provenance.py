@@ -96,7 +96,9 @@ APPLE_CHECK_ENV = [
     "HOME=/tmp",
 ]
 DART_AUDIT_VALIDATION_COMMAND = (
-    "set -eu;     printf '%s  %s\\n' \"${OSV_SCANNER_SHA256}\" "
+    "set -eu;     [ \"${SOURCE_DATE_EPOCH}\" = "
+    "\"${OSV_DB_PUB_CAPTURE_EPOCH}\" ];     "
+    "printf '%s  %s\\n' \"${OSV_SCANNER_SHA256}\" "
     "/inputs/osv-scanner       | sha256sum --check --strict --status -;     "
     "printf '%s  %s\\n' \"${OSV_DB_PUB_SHA256}\" /inputs/all.zip       "
     "| sha256sum --check --strict --status -;     "
@@ -106,7 +108,7 @@ DART_AUDIT_VALIDATION_COMMAND = (
     "\"${OSV_DB_PUB_CAPTURE_EPOCH}\" ];     /inputs/osv-scanner --version"
 )
 DART_AUDIT_VALIDATION_COMMAND_SHA256 = (
-    "e8c2ad1bc895b67920107e76caf327c54a740ab84f4b40018f59b5948cf46a47"
+    "d681bb2402e799a8ed4edb69ca7c470d88f21fa76cc14e0143408a1b89078a29"
 )
 RUST_AUDIT_ROOT = "/var/tmp/rustdesk-rust-audit"
 RUST_AUDIT_PASSWD = (
@@ -739,6 +741,8 @@ class DartAuditSpec:
             + "database-capture-epoch": str(self.database_capture_epoch),
             DART_AUDIT_LABEL_PREFIX
             + "database-generation": self.database_generation,
+            DART_AUDIT_LABEL_PREFIX
+            + "source-date-epoch": str(self.database_capture_epoch),
         }
 
 
@@ -1160,7 +1164,7 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             config_id=config_id,
             manifest_id=manifest_id,
         )
-    if args.role == "dart-audit":
+    if args.role in {"dart-audit", "dart-audit-candidate"}:
         if not re.fullmatch(r"ubuntu:18[.]04@sha256:[0-9a-f]{64}", args.base):
             fail("Dart audit base image identity is malformed or unsupported")
         if not re.fullmatch(r"2[.][0-9]+[.][0-9]+", args.scanner_version or ""):
@@ -1192,6 +1196,12 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
         )
         if (config_id is None) != (manifest_id is None):
             fail("Dart audit config and manifest pins must be supplied together")
+        if args.role == "dart-audit" \
+           and (config_id is None or manifest_id is None):
+            fail("final Dart audit config and manifest pins are required")
+        if args.role == "dart-audit-candidate" \
+           and (config_id is not None or manifest_id is not None):
+            fail("Dart audit candidate identities must be derived from its archive")
         return DartAuditSpec(
             role=args.role,
             image_id=require_image_id(args.expected_id, "expected image ID"),
@@ -2320,10 +2330,18 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
             )
         return
     if isinstance(spec, DartAuditSpec):
+        expected_created = datetime.fromtimestamp(
+            spec.database_capture_epoch,
+            tz=timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
-           or config_json.get("os") != "linux":
-            fail("Docker archive Dart audit config platform is malformed")
+           or config_json.get("os") != "linux" \
+           or config_json.get("created") != expected_created:
+            fail(
+                "Docker archive Dart audit config platform or epoch is "
+                "malformed"
+            )
         config = config_json.get("config")
         if not isinstance(config, dict) \
            or config.get("Env") != DART_AUDIT_ENV \
@@ -2331,6 +2349,18 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
            or config.get("User") not in (None, "") \
            or config.get("Labels") != spec.labels:
             fail("Docker archive Dart audit runtime config differs from the reviewed contract")
+        rootfs = config_json.get("rootfs")
+        diff_ids = rootfs.get("diff_ids") if isinstance(rootfs, dict) else None
+        if not isinstance(rootfs, dict) \
+           or rootfs.get("type") != "layers" \
+           or not isinstance(diff_ids, list) \
+           or len(diff_ids) != len(layers) \
+           or any(
+               not isinstance(value, str) or not IMAGE_ID.fullmatch(value)
+               for value in diff_ids
+           ):
+            fail("Docker archive Dart audit layer identities are malformed")
+        return
     if isinstance(spec, VerifierSpec):
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
@@ -3734,6 +3764,7 @@ def validate_dart_audit_attestation(
         "build-arg:OSV_DB_PUB_SIZE": str(spec.database_size),
         "build-arg:OSV_SCANNER_SHA256": spec.scanner_sha256,
         "build-arg:OSV_SCANNER_VERSION": spec.scanner_version,
+        "build-arg:SOURCE_DATE_EPOCH": str(spec.database_capture_epoch),
         "force-network-mode": "none",
         "no-cache": "",
     }
@@ -3826,6 +3857,7 @@ def validate_dart_audit_attestation(
     )
     expected_environment = [
         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        f"SOURCE_DATE_EPOCH={spec.database_capture_epoch}",
         f"OSV_SCANNER_VERSION={spec.scanner_version}",
         f"OSV_SCANNER_SHA256={spec.scanner_sha256}",
         f"OSV_DB_PUB_SHA256={spec.database_sha256}",
@@ -4488,10 +4520,10 @@ def validate_modern_archive(
         (
             CertifiedBuilderSpec,
             AppleCheckSpec,
-            DartAuditSpec,
             RustAuditSpec,
         ),
-    ) or (isinstance(spec, VerifierSpec) and spec.manifest_id is not None) \
+    ) or (isinstance(spec, DartAuditSpec) and spec.manifest_id is not None) \
+       or (isinstance(spec, VerifierSpec) and spec.manifest_id is not None) \
        or (isinstance(spec, Spec) and spec.manifest_id is not None):
         if spec.manifest_id is None:
             fail(f"Docker archive {spec.role} manifest pin is absent")
@@ -4520,10 +4552,10 @@ def validate_modern_archive(
         (
             CertifiedBuilderSpec,
             AppleCheckSpec,
-            DartAuditSpec,
             RustAuditSpec,
         ),
-    ) or (isinstance(spec, VerifierSpec) and spec.config_id is not None) \
+    ) or (isinstance(spec, DartAuditSpec) and spec.config_id is not None) \
+       or (isinstance(spec, VerifierSpec) and spec.config_id is not None) \
        or (isinstance(spec, Spec) and spec.config_id is not None):
         if spec.config_id is None:
             fail(f"Docker archive {spec.role} config pin is absent")
@@ -4565,6 +4597,29 @@ def validate_modern_archive(
                or descriptor.get("annotations") != expected_annotations:
                 fail(
                     "Docker archive Apple check layer timestamp-rewrite "
+                    f"annotations differ at layer {position}: expected "
+                    f"keys={sorted(expected_keys)!r} annotations="
+                    f"{expected_annotations!r}, got keys="
+                    f"{sorted(descriptor)!r} annotations="
+                    f"{descriptor.get('annotations')!r}"
+                )
+        elif isinstance(spec, DartAuditSpec):
+            expected_annotations = (
+                None
+                if position == 0
+                else {
+                    "buildkit/rewritten-timestamp": (
+                        str(spec.database_capture_epoch)
+                    )
+                }
+            )
+            expected_keys = {"digest", "mediaType", "size"}
+            if expected_annotations is not None:
+                expected_keys.add("annotations")
+            if set(descriptor) != expected_keys \
+               or descriptor.get("annotations") != expected_annotations:
+                fail(
+                    "Docker archive Dart audit layer timestamp-rewrite "
                     f"annotations differ at layer {position}: expected "
                     f"keys={sorted(expected_keys)!r} annotations="
                     f"{expected_annotations!r}, got keys="
@@ -8395,8 +8450,22 @@ def create_dart_audit_fixture_archive(
         for position in range(4)
     ]
     layer_descriptors = [
-        blob_descriptor(layer, "application/vnd.oci.image.layer.v1.tar+gzip")
-        for layer in layers
+        blob_descriptor(
+            layer,
+            "application/vnd.oci.image.layer.v1.tar+gzip",
+            **(
+                {}
+                if position == 0
+                else {
+                    "annotations": {
+                        "buildkit/rewritten-timestamp": str(
+                            preliminary.database_capture_epoch
+                        )
+                    }
+                }
+            ),
+        )
+        for position, layer in enumerate(layers)
     ]
     config = encoded(
         {
@@ -8406,6 +8475,7 @@ def create_dart_audit_fixture_archive(
                 "Env": DART_AUDIT_ENV,
                 "Labels": preliminary.labels,
             },
+            "created": "2026-07-08T07:10:18Z",
             "os": "linux",
             "rootfs": {
                 "type": "layers",
@@ -8446,6 +8516,9 @@ def create_dart_audit_fixture_archive(
         "build-arg:OSV_DB_PUB_SIZE": str(preliminary.database_size),
         "build-arg:OSV_SCANNER_SHA256": preliminary.scanner_sha256,
         "build-arg:OSV_SCANNER_VERSION": preliminary.scanner_version,
+        "build-arg:SOURCE_DATE_EPOCH": str(
+            preliminary.database_capture_epoch
+        ),
         "force-network-mode": "none",
         "no-cache": "",
     }
@@ -8528,6 +8601,12 @@ def create_dart_audit_fixture_archive(
                                 (
                                     "PATH=/usr/local/sbin:/usr/local/bin:"
                                     "/usr/sbin:/usr/bin:/sbin:/bin"
+                                ),
+                                (
+                                    "SOURCE_DATE_EPOCH="
+                                    + str(
+                                        preliminary.database_capture_epoch
+                                    )
                                 ),
                                 (
                                     "OSV_SCANNER_VERSION="

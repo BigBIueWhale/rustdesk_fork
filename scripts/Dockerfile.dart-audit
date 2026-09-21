@@ -22,8 +22,10 @@
 # SHA256_BASEIMAGE_UBUNTU_1804 provenance used by the .deb builder). osv-scanner
 # is a static Go binary, so no package installation or network operation exists.
 ARG BASE_DIGEST=sha256:152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98
+ARG SOURCE_DATE_EPOCH
 FROM ubuntu:18.04@${BASE_DIGEST} AS validated-inputs
 
+ARG SOURCE_DATE_EPOCH
 ARG OSV_SCANNER_VERSION
 ARG OSV_SCANNER_SHA256
 ARG OSV_DB_PUB_SHA256
@@ -35,6 +37,7 @@ COPY --chown=65532:65532 --chmod=0755 osv-scanner /inputs/osv-scanner
 COPY --chown=65532:65532 --chmod=0644 Pub-all.zip /inputs/all.zip
 
 RUN set -eu; \
+    [ "${SOURCE_DATE_EPOCH}" = "${OSV_DB_PUB_CAPTURE_EPOCH}" ]; \
     printf '%s  %s\n' "${OSV_SCANNER_SHA256}" /inputs/osv-scanner \
       | sha256sum --check --strict --status -; \
     printf '%s  %s\n' "${OSV_DB_PUB_SHA256}" /inputs/all.zip \
@@ -47,6 +50,7 @@ RUN set -eu; \
 FROM ubuntu:18.04@${BASE_DIGEST}
 
 ARG BASE_DIGEST
+ARG SOURCE_DATE_EPOCH
 ARG OSV_SCANNER_VERSION
 ARG OSV_SCANNER_SHA256
 ARG OSV_DB_PUB_SHA256
@@ -66,7 +70,8 @@ LABEL org.rustdesk.dart-audit-input.contract="${DART_AUDIT_CONTRACT}" \
       org.rustdesk.dart-audit-input.database-sha256="${OSV_DB_PUB_SHA256}" \
       org.rustdesk.dart-audit-input.database-size="${OSV_DB_PUB_SIZE}" \
       org.rustdesk.dart-audit-input.database-capture-epoch="${OSV_DB_PUB_CAPTURE_EPOCH}" \
-      org.rustdesk.dart-audit-input.database-generation="${OSV_DB_PUB_GENERATION}"
+      org.rustdesk.dart-audit-input.database-generation="${OSV_DB_PUB_GENERATION}" \
+      org.rustdesk.dart-audit-input.source-date-epoch="${SOURCE_DATE_EPOCH}"
 
 COPY --from=validated-inputs --chown=0:0 --chmod=0755 \
     /inputs/osv-scanner /usr/local/bin/osv-scanner

@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlsplit
@@ -287,6 +290,37 @@ def require_all(text: str, needles: tuple[str, ...], label: str) -> None:
         require(needle in text, f"{label} is missing {needle!r}")
 
 
+def pin_value(pins: str, name: str) -> str:
+    matches = re.findall(
+        rf'(?m)^{re.escape(name)}="([^"\r\n]*)"$',
+        pins,
+    )
+    require(len(matches) == 1, f"pin is absent, duplicated, or malformed: {name}")
+    return matches[0]
+
+
+def positive_decimal_pin(pins: str, name: str, maximum: int) -> int:
+    value = pin_value(pins, name)
+    require(re.fullmatch(r"[1-9][0-9]*", value) is not None, f"pin is not canonical: {name}")
+    parsed = int(value)
+    require(parsed <= maximum, f"pin exceeds its admitted bound: {name}")
+    return parsed
+
+
+def base64_pin(pins: str, name: str, decoded_size: int) -> str:
+    value = pin_value(pins, name)
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except binascii.Error as exc:
+        raise VerificationError(f"pin is not canonical base64: {name}") from exc
+    require(len(decoded) == decoded_size, f"pin has the wrong decoded size: {name}")
+    require(
+        base64.b64encode(decoded).decode("ascii") == value,
+        f"pin is not canonical base64: {name}",
+    )
+    return value
+
+
 def function_block(text: str, name: str) -> str:
     marker = f"{name}() {{"
     start = text.find(marker)
@@ -369,27 +403,69 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "OSV_SCANNER_SHA256",
             "15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0",
         ),
-        ("OSV_DB_PUB_SIZE", "19448"),
-        (
-            "OSV_DB_PUB_SHA256",
-            "5fdd3db5059b4f935a507385cb93cab3c35ba3d632332a5c8f5deb604f95a5c0",
-        ),
-        ("OSV_DB_PUB_GENERATION", "1783494617999513"),
     ):
         require(
             pins.count(f'{name}="{value}"') == 1,
             f"Dart advisory fixed-input pin changed: {name}",
         )
-        if name == "OSV_DB_PUB_GENERATION":
-            require(
-                dart_manifest.count("${OSV_DB_PUB_GENERATION}") == 1,
-                "Dart advisory database generation is not consumed once",
-            )
-        else:
-            require(
-                dart_manifest.count(f'"${name}"') == 1,
-                f"Dart advisory fixed-input pin is not consumed once: {name}",
-            )
+        require(
+            dart_manifest.count(f'"${name}"') == 1,
+            f"Dart advisory fixed-input pin is not consumed once: {name}",
+        )
+    database_sha256 = pin_value(pins, "OSV_DB_PUB_SHA256")
+    require(
+        re.fullmatch(r"[0-9a-f]{64}", database_sha256) is not None,
+        "Dart advisory database SHA-256 pin is not canonical",
+    )
+    database_size = positive_decimal_pin(pins, "OSV_DB_PUB_SIZE", 16 * 1024 * 1024)
+    database_capture_epoch = positive_decimal_pin(
+        pins,
+        "OSV_DB_PUB_CAPTURE_EPOCH",
+        9_999_999_999,
+    )
+    require(
+        pin_value(pins, "OSV_DB_PUB_MAX_AGE_DAYS") == "30",
+        "Dart advisory database freshness policy changed",
+    )
+    positive_decimal_pin(pins, "OSV_DB_PUB_GENERATION", 9_999_999_999_999_999_999)
+    positive_decimal_pin(pins, "OSV_DB_PUB_METAGENERATION", 9_999_999_999_999_999_999)
+    database_updated = pin_value(pins, "OSV_DB_PUB_UPDATED")
+    require(
+        re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z", database_updated)
+        is not None,
+        "Dart advisory database update time is not canonical UTC milliseconds",
+    )
+    try:
+        database_updated_epoch = int(
+            datetime.strptime(database_updated, "%Y-%m-%dT%H:%M:%S.%fZ")
+            .replace(tzinfo=timezone.utc)
+            .timestamp()
+        )
+    except ValueError as exc:
+        raise VerificationError("Dart advisory database update time is invalid") from exc
+    require(
+        database_updated_epoch == database_capture_epoch,
+        "Dart advisory database capture epoch differs from its publisher update time",
+    )
+    base64_pin(pins, "OSV_DB_PUB_MD5_BASE64", 16)
+    base64_pin(pins, "OSV_DB_PUB_CRC32C_BASE64", 4)
+    database_records = positive_decimal_pin(pins, "OSV_DB_PUB_RECORDS", 100_000)
+    database_uncompressed_bytes = positive_decimal_pin(
+        pins,
+        "OSV_DB_PUB_UNCOMPRESSED_BYTES",
+        64 * 1024 * 1024,
+    )
+    require(
+        database_records <= database_uncompressed_bytes
+        and database_size <= database_uncompressed_bytes,
+        "Dart advisory database pin relationships are impossible",
+    )
+    require(
+        dart_manifest.count('"$OSV_DB_PUB_SIZE"') == 1
+        and dart_manifest.count('"$OSV_DB_PUB_SHA256"') == 1
+        and dart_manifest.count("${OSV_DB_PUB_GENERATION}") == 1,
+        "Dart advisory database acquisition pins are not each consumed once",
+    )
     wix_manifest_start = shell.find("readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(")
     require(wix_manifest_start >= 0, "WiX fixed-package manifest declaration is absent")
     wix_manifest_end = shell.find("\n)\n", wix_manifest_start)

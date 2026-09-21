@@ -3757,7 +3757,7 @@ pub mod sessions {
                     break;
                 }
             };
-            let retire_exact_handler = || {
+            let mut retire_exact_handler = || {
                 let Some(_handler) = handlers.remove(id) else {
                     log::error!("exact viewer handler disappeared during its retirement commit");
                     std::process::abort();
@@ -3847,7 +3847,7 @@ pub mod sessions {
         }
         let remains_displays = remaining_displays_after_retiring(retiring_session_ids, handlers)?;
         let mut removed_handlers = Vec::with_capacity(retiring_session_ids.len());
-        let commit = || {
+        let mut commit = || {
             for session_id in retiring_session_ids {
                 let Some(handler) = handlers.remove(session_id) else {
                     log::error!("viewer handler disappeared during its retirement commit");

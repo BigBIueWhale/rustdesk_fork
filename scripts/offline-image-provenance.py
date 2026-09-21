@@ -415,8 +415,12 @@ class CertifiedBuilderInputSpec:
         return None
 
     @property
-    def root_annotations(self) -> None:
-        return None
+    def root_annotations(self) -> dict[str, str]:
+        created = datetime.fromtimestamp(
+            self.database_capture_epoch,
+            tz=timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"org.opencontainers.image.created": created}
 
     @property
     def labels(self) -> dict[str, str]:
@@ -8777,6 +8781,7 @@ def create_dart_audit_fixture_archive(
         "mediaType": "application/vnd.oci.image.index.v1+json",
         "digest": spec.image_id,
         "size": len(image_index),
+        "annotations": spec.root_annotations,
     }
     if annotate_root:
         root_descriptor["annotations"] = {"unexpected": "authority"}

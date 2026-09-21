@@ -3816,7 +3816,6 @@ def validate_dart_audit_attestation(
     ]
     expected_sources = [
         {
-            "attrs": {"image.resolvemode": "local"},
             "identifier": (
                 "docker-image://docker.io/library/"
                 f"ubuntu:18.04@{base_digest}"
@@ -8594,7 +8593,6 @@ def create_dart_audit_fixture_archive(
             "op": {
                 "Op": {
                     "source": {
-                        "attrs": {"image.resolvemode": "local"},
                         "identifier": (
                             "docker-image://docker.io/library/"
                             "ubuntu:18.04@sha256:" + base_digest

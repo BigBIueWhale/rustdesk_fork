@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-5da70dba38c5f520f829611ca5fbeb19756bc192fde65cd25cb5f997902a22ce  requirements.html
+dd8abb0d789a7e84950496af92723c682cccf00814fc557c62fee16a8179d196  requirements.html
 ```
 
 ## Current Verdict
@@ -1019,7 +1019,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has a pin-bound recoverable verifier image: two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. A current confined full product/source gate and a fresh independent-environment rebuild remain required; this infrastructure result supplies no product or native evidence. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Real Dart/FRB and advisory scans, normal Android signing/build/Gradle/Rust workloads, Apple source work, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Current `run.52py3CWymM` executed the real Android Rust, Gradle/Kotlin, warm-APK, and Gradle-seed publication path at `a73040d`, while its outer verdict was invalidated solely by disappearance of a pre-existing listener; clean `run.hutLn5juYg` then passed exact seed reuse, unchanged listeners, and joined finality. Android signing and retained release artifacts, installation/device lifecycle, advisory scans, Apple source work, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -3128,9 +3128,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   output semantics, product builds, cold R-B2/R-B10 artifacts, independent reproduction, and external review
   remain open. No host RustDesk/service/configuration,
   Haggai environment, host Docker, firewall, route, interface, or sysctl was used or changed.
-- **R-S11ck/R-S11e-103 — networked Gradle warmer source authority — SOURCE TOPOLOGY
-  CORRECTED; ACQUISITION-VM AUTHORITY/TRANSPORT EVIDENCE RETAINED; EXACT-CURRENT GRADLE
-  SOURCE-LIFECYCLE, REAL PRODUCER, AND COLD-RELEASE EVIDENCE OPEN.** The sole supported entry crosses
+- **R-S11ck/R-S11e-103 — networked Gradle warmer source authority — CURRENT REAL SOURCE
+  LIFECYCLE, PRODUCER, AND CLEAN REUSE EXECUTED; FAILURE NEGATIVES AND COLD RELEASE OPEN.** The sole supported entry crosses
   R-S11cj's authenticated acquisition VM. Inside that guest, one root-owned digest-pinned Git runtime
   closure admits a clean exact commit and rejects sparse/index/tracked divergence, nonignored untracked
   inputs, repository-local archive attributes, grafts, replacement refs, nonregular committed entries,
@@ -3143,28 +3142,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the exact principal-, mount-, and inode-bound writable tree. The Gradle producer has no operator/guest
   working-repository mount or copy path.
 
-  The focused checker is a compact source-topology invariant only. Its former cross-document/self-mutation
-  catalog and the workspace verifier's duplicate implementation are absent; the independent comparator and
-  directory-restoration filesystem fixtures remain in the confined shared gate. Neither those fixtures nor
-  source inspection proves the real acquisition transaction. The retained VM result at
-  `c8817457dde6e874fbbe380f37022d4b77b40c4d` proves root/foreign refusal, pinned Git installation,
-  bounded outbound-only container authority, atomic cache transport, unchanged host listeners, and joined
-  cleanup, but its probe did not call `prepare_gradle_source`, `stage_gradle`, or Gradle.
+  The focused checker remains supplementary. At exact source
+  `a73040d8dda104f1493e1e3cb97c2a3855f379b1`, retained acquisition run `run.52py3CWymM`
+  exercised `prepare_gradle_source`, the real Rust/Flutter/Gradle producer, committed-input pre/post comparison,
+  source retirement, cache validation, and publication. It compiled the Android Rust release, completed
+  `assembleRelease` in 291.1 seconds, built a 45.3 MiB warm APK, and published a verified 4.1 GiB Gradle seed.
+  The outer harness deliberately invalidated that run because one pre-existing host listener
+  (`0.0.0.0:21128`) disappeared only between its identical during-run and final inventories; both new-listener
+  sets were empty. This therefore counts as real producer/source-lifecycle evidence but not as a clean outer
+  listener-finality result, and the harness neither inspected nor repaired the unrelated service.
 
-  STOP-SHIP evidence still required: execute the exact-current candidate through the isolated acquisition VM
-  with the real Gradle producer; cover first construction and retained reuse, normal generated extras,
-  producer failure, committed-input tampering, forbidden Git metadata, publication refusal, and exact cleanup;
-  then retain artifact/source identities, listener invariance, resource bounds, cold R-B2/R-B10 equality,
-  independent reproduction, and external review. The current clean-cache prerequisite is blocked by R-S11cj's
-  cross-generation bootstrap build/capture defect; the descriptor-budget repair does not substitute for Gradle.
-  R-S11cl owns the distinct cache/SDK output transaction.
-- **R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority — SOURCE IMPLEMENTED
-  2026-07-23; CONFINED TRANSACTION/FIXTURE EVIDENCE RECORDED; OTHER ONLINE PRODUCERS AND EXACT COLD
-  RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and Android
-  cache-warming container. Endpoint/action: `scripts/online-fetch.sh::stage_gradle` populating the
-  Gradle User Home and allowing the Android Gradle plugin to install missing packages into the Android
-  SDK. Boundary: network/dependency-controlled build execution ↔ the complete pinned offline-input
+  The separate exact-source reuse run `run.hutLn5juYg` then revalidated the canonical cache and skipped warming,
+  completing in 500 seconds with `hostfwd=absent`, unchanged host listeners, guest-only Docker/BuildKit, and
+  joined cleanup. Still STOP-SHIP: producer-failure, committed-input-tampering, forbidden-Git-metadata, and
+  publication-refusal runtime negatives; retained release-artifact identity, resource bounds/soak, cold
+  R-B2/R-B10 equality, independent reproduction, and external review. R-S11cl and R-S11fv own the distinct
+  cache-input/output transaction.
+- **R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority — CURRENT REAL PRODUCER AND
+  PUBLICATION EXECUTED; CLEAN REUSE/FINALITY GREEN; FAILURE NEGATIVES AND EXACT COLD RELEASE OPEN.**
+  Platform: the unprivileged Linux acquisition host and Android cache-warming container. Endpoint/action:
+  `scripts/online-fetch.sh::stage_gradle` populating Gradle User Home while the complete Android SDK remains
+  immutable. Boundary: network/dependency-controlled build execution ↔ the complete pinned offline-input
   closure and durable cache publication.
+
+  Current source at `a73040d8dda104f1493e1e3cb97c2a3855f379b1` further narrows the historical topology below:
+  dependency-controlled Gradle writes only one guest-local private producer tree, never the durable candidate;
+  trusted transaction code validates and imports the quiescent tree after exit. JVM archive inputs that failed
+  memory mapping over virtiofs are exact guest-local projections of the Android SDK and
+  `rustls-platform-verifier-android` Maven repository, shadow-mounted read-only at their canonical paths and
+  revalidated with the canonical sealed sources after the producer. R-S11fv records the current execution.
 
   Before this slice the producer still received `$ONLINE_DIR` read-write at `/online`. Its two
   legitimate outputs were `/online/gradle-home` and additions to `/online/android-sdk`, but the same
@@ -3756,9 +3762,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Gradle warm, networkless APK build, artifact inspection, and pinned-epoch payload comparison are
   recorded immediately below. Stable-key signed A/B release reproduction and device execution
   remain open.
-- **R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure — SOURCE IMPLEMENTED;
-  CURRENT NONROOT FILESYSTEM TRANSACTION SELF-TEST GREEN; NAMED OLDER ANDROID ARTIFACT EVIDENCE
-  EXISTS; CURRENT CANONICAL, COLD-RELEASE, AND DEVICE EVIDENCE OPEN.** Platform: the unprivileged
+- **R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure — CURRENT CANONICAL FIRST
+  PUBLICATION EXECUTED; CLEAN REUSE/FINALITY GREEN; COLD-RELEASE AND DEVICE EVIDENCE OPEN.** Platform: the unprivileged
   Linux acquisition transaction and immutable Android builder. Endpoint/action:
   `scripts/online-gradle-output.py::{verify_staged,publish,recover,check_complete}` and
   `scripts/android-gradle-cache.py::materialize`. Boundary: writable networked Gradle output ↔ one
@@ -3773,6 +3778,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   rollback act only on the recorded inode topology; `check_complete` and the offline projector reject
   writable, permissive, or mixed seeds.
 
+  The dependency-controlled JVM no longer executes against a virtiofs-backed writable output or directly
+  memory-maps its SDK/Maven classpath archives through virtiofs. The transaction makes independently validated
+  guest-local projections of the exact Android SDK closure (including the pinned command-line-tools archive for
+  closure validation) and the `rustls-platform-verifier-android` Maven repository, then shadow-mounts only the
+  SDK and Maven subtrees read-only at their canonical `/online` paths. The canonical inputs remain read-only.
+  Gradle writes one different-filesystem guest-local producer root; only after exit does trusted code revalidate
+  canonical and projected inputs, normalize and digest the quiescent output, import it into the still-unmounted
+  durable candidate, require producer-before/import/producer-after/durable digests to agree, and publish.
+
   The current executable helper self-test creates real temporary filesystem transactions and covers
   successful publication and final modes, writable-root/file refusal, destination races, SDK/content
   mutation, symlink and checksum rejection, exact post-rename/pre-root-seal recovery, rollback, and
@@ -3781,13 +3795,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   longer parses requirements/ledger prose, meta-checks test error strings, or requires a duplicate
   workspace validator; that duplicate validator, source loader, and mutation layer are deleted.
 
-  Named older evidence remains useful but bounded: `a3c40349483ec1a66e0d94a07c891d2fb23d7c58`
-  exercised a real warm/publish/offline JNI/APK path with the sealed profile, and the separately retained
-  private-input workflow reproduced stable-signed APK bytes for product parent
-  `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`. Neither result is current-master canonical-cache or
-  physical-device evidence. Real current canonical publication/replacement, cold R-B2/R-B10 A==B, exact
-  APK installation, Activity/persistent-service/task-swipe/Force-Stop/reconnect/presentation behavior,
-  latency/resource soak, independent reproduction, and external review remain STOP-SHIP.
+  Exact-source retained run `run.52py3CWymM` exercised this first-construction path at
+  `a73040d8dda104f1493e1e3cb97c2a3855f379b1`: Android Rust release compilation finished in 4m31s,
+  Gradle/Kotlin completed without either former `FileChannelImpl.map0`/`No such device` failure,
+  `assembleRelease` built a 45.3 MiB ARM64 warm APK in 291.1 seconds, every projection retired, and the
+  validated 4.1 GiB cache published. Its overall outer verdict remains invalid because the final inventory was
+  missing one pre-existing `0.0.0.0:21128` listener that was present both before and during; it created no new
+  listener. Separate run `run.hutLn5juYg` then revalidated the exact cache and completed the reuse path in 500
+  seconds with unchanged listeners and joined cleanup. These are current canonical warm-publication/reuse
+  results, not a retained signed release artifact, cold R-B2/R-B10 A==B, replacement-path run, APK installation,
+  Activity/persistent-service/task-swipe/Force-Stop/reconnect/presentation evidence, latency/resource soak,
+  independent reproduction, or external review; all of those remain STOP-SHIP.
 
 - **R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority — SOURCE IMPLEMENTED;
   RETAINED CONFINED KERNEL TEST EVIDENCE; REAL X SERVER AND RELEASE EVIDENCE OPEN.** The current

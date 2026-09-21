@@ -5828,10 +5828,32 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   independently validated the 19,142-byte/13-record/47,157-expanded-byte database and the 56,676,514-byte
   scanner, and no-clobber published both mode-0400 inputs. Its 49-second receipt binds exact source,
   QEMU user-only egress, UDP denial, absent host forwarding, unchanged 605-byte host listener inventories,
-  guest-only Docker/BuildKit, and joined cleanup. Dart audit-image reconstruction/distribution and the
-  current no-NIC OSV scan remain open, so no current OSV verdict is claimed. The current RustSec scan,
-  other Docker consumers, complete canonical closure/current cold artifacts, independent reproduction,
-  and external review also remain open.
+  guest-only Docker/BuildKit, and joined cleanup.
+
+  Repository-local Dart audit-image reconstruction and archive distribution are now closed for this
+  snapshot. Commits `22b5c339`, `fed5eaa0`, `d8b1fe3a`, `21a5704f`, `4bcf4450`, and `fdcb194a` make
+  reconstruction recoverable, bind deterministic created/layer epochs, model the exact native SLSA v0.2
+  statement and LLB graph emitted by pinned BuildKit 0.18.2, and retain useful fail-closed graph diagnostics.
+  The intermediate VM runs stopped before publication on a misplaced spec property, an incorrect v1
+  provenance assumption, and a newer-builder-only source attribute; their retained evidence was used to
+  correct the exact model rather than weaken it or fabricate a fixture pass.
+
+  Fresh acquisition run `run.n4FnJ8P0Uq` at `fdcb194a` performed two no-cache, `--network=none` builds in
+  one disposable guest. Both produced runtime manifest
+  `sha256:cfddb726527d6434eaf6e652f0c404d6115aa879fcc02a71645446f0bac5baf6` and config
+  `sha256:0a4213605273bbe7272cde29fa6376cd6391aa3d1797add39121822131879443`; the reviewed second
+  provenance index is `sha256:f44a8c8c2cdbb7269dbcc6a3a726acfe35f94d2a183ec62ef821d94ff57d5f2b`.
+  Its private candidate archive was 45,818,990 bytes at SHA-256
+  `8ccf86653e1a1de16ddf9dc6657daad49b29c51d58771ad70fa779a038272a0c`. Commit `f6ff9b38`
+  records those reviewed pins. Separate fresh-VM run `run.xzqruM0OmH` then reverified the candidate against
+  that commit, no-clobber promoted it to the final mode-0400 archive, loaded it into the empty guest store,
+  and verified the exact image. The 69- and 27-second receipts bind guest-only Docker/BuildKit, QEMU
+  user-only networking with no host forwarding, UDP denial, byte-identical 605-byte host listener
+  inventories, and joined cleanup.
+
+  The current no-NIC OSV scan remains open, so no current vulnerability verdict is claimed. A separately
+  administered independent reconstruction, current RustSec scan, other Docker consumers, complete canonical
+  closure/current cold artifacts, release artifacts, native behavior, and external review also remain open.
 - **R-S11dg/R-S11e-125 — Rust advisory execution authority — VM ENTRY IMPLEMENTED;
   CURRENT RUSTSEC SCAN AND RELEASE EVIDENCE OPEN.** `scripts/audit.sh` now refuses
   UID/GID zero and authenticates R-S11dh before reading repository audit inputs or

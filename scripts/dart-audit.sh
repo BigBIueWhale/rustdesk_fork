@@ -120,8 +120,11 @@ esac
 : "${OSV_DB_PUB_CAPTURE_EPOCH:?dart-audit.sh: OSV_DB_PUB_CAPTURE_EPOCH unset in pins.env}"
 : "${OSV_DB_PUB_MAX_AGE_DAYS:?dart-audit.sh: OSV_DB_PUB_MAX_AGE_DAYS unset in pins.env}"
 : "${DART_AUDIT_IMAGE_ID:?dart-audit.sh: DART_AUDIT_IMAGE_ID unset in pins.env}"
+: "${DART_AUDIT_IMAGE_CONFIG_ID:?dart-audit.sh: DART_AUDIT_IMAGE_CONFIG_ID unset in pins.env}"
 [[ "$DART_AUDIT_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || dart_audit_die "DART_AUDIT_IMAGE_ID is malformed"
+[[ "$DART_AUDIT_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || dart_audit_die "DART_AUDIT_IMAGE_CONFIG_ID is malformed"
 
 AUDIT_TMP=""
 AUDIT_TMP_ID=""
@@ -183,10 +186,10 @@ SOURCE_POLICY_SHA="$(/usr/bin/sha256sum -- "$IGNORES_FILE" | /usr/bin/awk '{prin
   || dart_audit_die "$IGNORES_FILE changed during private staging"
 readonly SOURCE_LOCK_SHA SOURCE_POLICY_SHA
 
-IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DART_AUDIT_IMAGE_ID")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DART_AUDIT_IMAGE_CONFIG_ID")" \
   || dart_audit_die "the pinned Dart advisory image is not present locally (no pull/build fallback)"
-[ "$IMAGE_ID" = "$DART_AUDIT_IMAGE_ID" ] \
-  || dart_audit_die "Docker did not resolve the exact pinned Dart advisory content ID"
+[ "$IMAGE_ID" = "$DART_AUDIT_IMAGE_CONFIG_ID" ] \
+  || dart_audit_die "Docker did not resolve the exact pinned Dart advisory runtime config ID"
 readonly IMAGE_ID
 
 IMAGE_PREFLIGHT_OUT="$AUDIT_TMP/image-preflight.out"

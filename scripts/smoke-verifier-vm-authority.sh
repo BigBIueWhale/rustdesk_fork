@@ -1414,7 +1414,7 @@ elif [ "$MODE" = dart-audit ]; then
         'focused Dart advisory verdict'
     mapfile -t dart_audit_receipts < <(
         /usr/bin/grep -Eo \
-            "DART_AUDIT_VM=pass commit=$DART_SOURCE_COMMIT tree=$DART_SOURCE_TREE image=$DART_AUDIT_IMAGE_ID lock=[0-9a-f]{64} policy=[0-9a-f]{64} uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined" \
+            "DART_AUDIT_VM=pass commit=$DART_SOURCE_COMMIT tree=$DART_SOURCE_TREE image=$DART_AUDIT_IMAGE_ID runtime=$DART_AUDIT_IMAGE_CONFIG_ID lock=[0-9a-f]{64} policy=[0-9a-f]{64} uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#dart_audit_receipts[@]}" -eq 1 ] \
@@ -1527,9 +1527,9 @@ elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = dart-audit ]; then
-    printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s network=none listeners=unchanged inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=unchanged inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" \
-        "$DART_AUDIT_IMAGE_ID" "$vm_elapsed_seconds"
+        "$DART_AUDIT_IMAGE_ID" "$DART_AUDIT_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
 else
     printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"

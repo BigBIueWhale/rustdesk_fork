@@ -494,15 +494,15 @@ run_dart_audit() {
         || fail 'focused Dart-audit image archive changed during execution'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'focused Dart audit left a container behind'
-    "$CLIENT" --host "unix://$SOCK" image rm "$DART_AUDIT_IMAGE_ID" >/dev/null \
+    "$CLIENT" --host "unix://$SOCK" image rm "$DART_AUDIT_IMAGE_CONFIG_ID" >/dev/null \
         || fail 'cannot retire the focused Dart-audit image'
     [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
         || fail 'focused Dart audit left a Docker image behind'
     stop_docker_authority
     printf '%s\n' "$audit_output"
-    printf 'DART_AUDIT_VM=pass commit=%s tree=%s image=%s lock=%s policy=%s uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined\n' \
+    printf 'DART_AUDIT_VM=pass commit=%s tree=%s image=%s runtime=%s lock=%s policy=%s uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined\n' \
         "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" "$DART_AUDIT_IMAGE_ID" \
-        "$lock_sha" "$policy_sha"
+        "$DART_AUDIT_IMAGE_CONFIG_ID" "$lock_sha" "$policy_sha"
 }
 
 run_hbb_common_fs() {

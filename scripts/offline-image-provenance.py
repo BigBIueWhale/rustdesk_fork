@@ -893,6 +893,8 @@ def runtime_image_id(spec: ImageSpec) -> str:
     """Return the immutable ID that a Docker daemon uses to run the image."""
     if isinstance(spec, CertifiedBuilderSpec):
         return spec.config_id
+    if isinstance(spec, DartAuditSpec) and spec.config_id is not None:
+        return spec.config_id
     return spec.image_id
 
 
@@ -1999,7 +2001,7 @@ def verify_local(
                 "--cpus=1",
                 "--tmpfs",
                 "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
-                spec.image_id,
+                runtime_image_id(spec),
                 "/bin/bash",
                 "--noprofile",
                 "--norc",
@@ -12154,7 +12156,7 @@ def self_test() -> None:
         dart_size = len(dart_bytes)
         verify_archive(dart_archive, dart_sha, dart_spec, dart_size)
         dart_payload = {
-            "Id": dart_spec.image_id,
+            "Id": dart_spec.config_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": {
@@ -12164,7 +12166,7 @@ def self_test() -> None:
                 "Labels": dart_spec.labels,
             },
         }
-        validate_inspect(dart_payload, dart_spec.image_id, dart_spec)
+        validate_inspect(dart_payload, dart_spec.config_id, dart_spec)
         dart_checks = 2
 
         def dart_failure(operation: Callable[[], object], label: str) -> None:
@@ -12237,7 +12239,7 @@ def self_test() -> None:
                         "Env": DART_AUDIT_ENV[:-1],
                     },
                 },
-                dart_spec.image_id,
+                dart_spec.config_id,
                 dart_spec,
             ),
             "Dart audit runtime environment",

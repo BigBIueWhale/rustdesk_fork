@@ -71,7 +71,7 @@ by their requirements and the STOP-SHIP matrices below.
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
 | Appendix C #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
-| Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`, and the current snapshot/verdict provenance and distribution gaps remain in the R-R3 status entry below. Documentation or mutation counts are not scanner evidence. |
+| Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub snapshot has a real no-NIC VM verdict recorded in R-S11df below; current RustSec execution, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but the complete canonical input closure, stable Android signing material, a current APK/AAB, installation, lifecycle, peer, presentation, and device evidence are absent or open. |
 
@@ -5798,8 +5798,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   present. The exact development image and complete source/vendor/Xvfb input medium are likewise
   absent, so no RustDesk build, listener, protocol, display, video, root fixture, installed-service,
   artifact, native-platform, or performance/soak claim is made.
-- **R-S11df/R-S11e-124 — Dart advisory execution authority — VM ENTRY IMPLEMENTED;
-  CURRENT OSV SCAN AND RELEASE EVIDENCE OPEN.** `scripts/dart-audit.sh` refuses UID/GID
+- **R-S11df/R-S11e-124 — Dart advisory execution authority — CURRENT NO-NIC OSV
+  SCAN PASS 2026-09-22; RELEASE EVIDENCE OPEN.** `scripts/dart-audit.sh` refuses UID/GID
   zero and authenticates R-S11dh before reading the lockfile/policy or creating scratch.
   Image inspection and both bounded scanner launches use only the fixed guest client,
   guest-private socket, and root-owned read-only configuration in an empty environment,
@@ -5851,9 +5851,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   user-only networking with no host forwarding, UDP denial, byte-identical 605-byte host listener
   inventories, and joined cleanup.
 
-  The current no-NIC OSV scan remains open, so no current vulnerability verdict is claimed. A separately
-  administered independent reconstruction, current RustSec scan, other Docker consumers, complete canonical
-  closure/current cold artifacts, release artifacts, native behavior, and external review also remain open.
+  Commit `4ca6c2f` adds the actual focused transaction rather than promoting an entry/source check into verdict
+  evidence. Three retained VM failures then corrected real integration faults: unreadable root-extracted source
+  (`run.JQqIXQMRLV`, fixed by `f115da6`), confusion between the OCI publication index and classic-Docker runtime
+  config identity (`run.AFpgN5nwWg`, fixed for Dart by `be5f6b4`), and a focused-path descriptor ceiling below the
+  descriptor-bound cleanup requirement (`run.CImYjMHdDD`, fixed globally by `a82aaba`). Their listener inventories
+  were unchanged; none is counted as a pass.
+
+  Exact clean pushed-source run `run.EDeOJHBrIT` at
+  `a82aaba7fd8b4d89df2280f3ab1afb9d26e512da`, tree
+  `61ed3e89d224d417fb7f5613ab31c7d48ac3abcd`, completed the real offline OSV scan in 28 seconds. It binds image
+  publication index `sha256:f44a8c8c2cdbb7269dbcc6a3a726acfe35f94d2a183ec62ef821d94ff57d5f2b`, runtime config
+  `sha256:0a4213605273bbe7272cde29fa6376cd6391aa3d1797add39121822131879443`, lock SHA-256
+  `cc7da12d2a7033bd76f5d19926ee39242ff1cd19f55223d2d9ad12d530329eae`, and empty-policy SHA-256
+  `c60870472e03eaa1cda0b1cd0b2c74591c6255d1c8ab1dde13e7b7392938e143`. The exact R-R3/R-S11be green verdict
+  was present once; root and UID/GID 4001 were refused; UID/GID 4000 ran with exact soft/hard `nofile=524544`;
+  QEMU and the scanner container had no network; source/image inputs stayed read-only; Docker remained guest-only;
+  host listeners were unchanged; and cleanup joined. Separate default no-NIC run `run.MU5pT3LVL3` completed in 82
+  seconds and exercised the 31-decision result gate plus offline-image provenance fixtures. This closes the current
+  Dart verdict only for that exact 2026-09-10 Pub snapshot, lockfile, policy, image, and source.
+
+  A separately administered independent reconstruction, current RustSec scan, analogous publication/runtime
+  identity assumptions in other Docker consumers, complete canonical closure/current cold artifacts, release and
+  signed artifacts, native/device behavior, display/session lifecycle, performance/soak, and external review remain
+  open. Neither run used host/root Docker, host RustDesk or Haggai state, a published port, or host firewall/network
+  mutation.
 - **R-S11dg/R-S11e-125 — Rust advisory execution authority — VM ENTRY IMPLEMENTED;
   CURRENT RUSTSEC SCAN AND RELEASE EVIDENCE OPEN.** `scripts/audit.sh` now refuses
   UID/GID zero and authenticates R-S11dh before reading repository audit inputs or
@@ -7695,7 +7717,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   snapshot and policy were reviewed on 2026-07-22; both scanner verdicts are green for the recorded lockfile, policy,
   vendor closure, image, and snapshot, while freshness is reevaluated on every invocation. Independently archived
   and provenance-verified image distribution plus exact R-B2/R-B10 artifacts remain open. `scripts/dart-audit.sh`
-  runs pinned offline OSV for `flutter/pubspec.lock` and requires reason-bearing future accepts. `scripts/verify.sh`
+  runs pinned offline OSV for `flutter/pubspec.lock` and requires reason-bearing future accepts. Exact no-NIC VM
+  run `run.EDeOJHBrIT` is green for the 2026-09-10 Pub snapshot, current lockfile, empty policy, and pinned audit
+  image at source commit `a82aaba`; its precise scope and remaining gaps are recorded in R-S11df. `scripts/verify.sh`
   mutation-binds both advisory authority models; `scripts/native-codec-watch.sh` covers the vcpkg native-codec watch
   separately.
 - **Peer-avatar remote-image egress — ✅ CLOSED 2026-07-01.** The 2026-07-01

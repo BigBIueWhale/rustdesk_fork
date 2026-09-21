@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Check the small static complement to the Dart-audit VM entry smoke.
 
-The authoritative execution test lives in smoke-verifier-vm-authority.sh: it
-boots the no-NIC verifier VM, rejects root and a foreign principal, and makes
-the real dart-audit entry perform a Docker client/server request. This checker
-does only what source inspection is suited to: prove that the production audit
-has no parallel host-Docker path and that its two scanner launches retain their
-confined shape. Scanner result semantics have their own behavioral self-test in
-dart-audit-result.py; acquisition and OCI provenance have separate gates.
+The authoritative execution tests live in smoke-verifier-vm-authority.sh: the
+default smoke rejects root and a foreign principal and makes the real entry
+perform a Docker client/server request; --dart-audit loads the exact promoted
+image and executes the real scan in the no-NIC VM. This checker does only what
+source inspection is suited to: prove that those routes remain wired, that the
+production audit has no parallel host-Docker path, and that its two scanner
+launches retain their confined shape. Scanner result semantics have their own
+behavioral self-test in dart-audit-result.py; acquisition and OCI provenance
+have separate gates.
 """
 
 import argparse
@@ -91,6 +93,12 @@ def validate_container(block, label):
 def validate_contract(repo):
     shell = (repo / "scripts/dart-audit.sh").read_text(encoding="utf-8")
     verify = (repo / "scripts/verify.sh").read_text(encoding="utf-8")
+    vm_outer = (repo / "scripts/smoke-verifier-vm-authority.sh").read_text(
+        encoding="utf-8"
+    )
+    vm_guest = (repo / "scripts/smoke-verifier-vm-authority-guest.sh").read_text(
+        encoding="utf-8"
+    )
 
     require_all(
         shell,
@@ -277,6 +285,55 @@ def validate_contract(repo):
         "Dart audit scanner",
     )
     require(scanner.count("--mount ") == 1, "Dart audit scanner must have one read-only input mount")
+
+    require_all(
+        vm_outer,
+        (
+            "1:--dart-audit)",
+            "MODE=dart-audit",
+            'readonly DART_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/dart-audit.docker.tar.gz"',
+            'verify_sha256 "$DART_AUDIT_IMAGE_ARCHIVE" "$SHA256_DART_AUDIT_IMAGE_ARCHIVE"',
+            "focused Dart audit requires the one checked-out master authority",
+            "focused Dart-audit source differs from pushed master",
+            "focused Dart audit requires a clean source tree",
+            'git_closed -C "$REPO_ROOT" archive --format=tar "$DART_SOURCE_COMMIT"',
+            '"dart-audit.docker.tar.gz=$DART_AUDIT_IMAGE_ARCHIVE"',
+            'guest_invocation+=" --dart-audit ',
+            "-nic none",
+            "DART_AUDIT_VM_OUTER=pass",
+            "listeners=unchanged",
+            "docker=guest-only",
+            "cleanup=joined",
+        ),
+        "focused Dart-audit outer VM route",
+    )
+    require_all(
+        vm_guest,
+        (
+            "13:--dart-audit)",
+            "run_dart_audit() {",
+            "focused Dart-audit source archive digest differs",
+            "focused Dart-audit image archive digest differs",
+            'python3 -I -S "$source_root/scripts/offline-image-provenance.py"',
+            "verify-load",
+            '--role dart-audit',
+            '--expected-id "$DART_AUDIT_IMAGE_ID"',
+            "VM root passed the focused Dart-audit entry",
+            "foreign principal passed the focused Dart-audit entry",
+            '/bin/bash "$source_root/scripts/dart-audit.sh"',
+            "focused Dart advisory green verdict is absent or duplicated",
+            'image rm "$DART_AUDIT_IMAGE_ID"',
+            "stop_docker_authority",
+            "DART_AUDIT_VM=pass",
+            "vm_network=none container_network=none",
+            "source=readonly cleanup=joined",
+        ),
+        "focused Dart-audit guest transaction",
+    )
+    require(
+        vm_guest.count('/bin/bash "$source_root/scripts/dart-audit.sh"') == 3,
+        "focused Dart-audit guest must have root, foreign, and authorized entries",
+    )
 
     require_once(
         verify,

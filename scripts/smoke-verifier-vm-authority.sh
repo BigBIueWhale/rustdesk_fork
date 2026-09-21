@@ -37,6 +37,12 @@ case "$#:${1:-}" in
             || { echo 'focused Flutter-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=flutter-model-tests
         ;;
+    1:--dart-audit)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused Dart-audit input/run overrides are forbidden' >&2; exit 2; }
+        MODE=dart-audit
+        ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
             && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
@@ -51,7 +57,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --dart-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -76,6 +82,7 @@ readonly PUB_CACHE_ROOT="$ONLINE_INPUTS/pub-cache"
 readonly CARGO_VENDOR_ROOT="$ONLINE_INPUTS/cargo-vendor"
 readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
 readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar.gz"
+readonly DART_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/dart-audit.docker.tar.gz"
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
@@ -162,6 +169,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
     readonly VM_TIMEOUT_SECONDS=1800
     readonly OVERLAY_SIZE=24G
     readonly VM_MEMORY=8192
+elif [ "$MODE" = dart-audit ]; then
+    readonly VM_TIMEOUT_SECONDS=300
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=2048
 else
     readonly VM_TIMEOUT_SECONDS=90
     readonly OVERLAY_SIZE=6G
@@ -547,6 +558,17 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
+elif [ "$MODE" = dart-audit ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Dart-audit input root metadata differs'
+    [ -f "$DART_AUDIT_IMAGE_ARCHIVE" ] && [ ! -L "$DART_AUDIT_IMAGE_ARCHIVE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE")" = \
+             "$HOST_UID:$HOST_GID:400:1:$SIZE_DART_AUDIT_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Dart-audit image archive metadata differs'
+    verify_sha256 "$DART_AUDIT_IMAGE_ARCHIVE" "$SHA256_DART_AUDIT_IMAGE_ARCHIVE"
 fi
 /usr/bin/python3 -I -S - "$BASE" <<'PY'
 import json
@@ -680,6 +702,27 @@ if [ "$MODE" = flutter-model-tests ]; then
         || fail 'Git replacement refs are forbidden'
 fi
 
+DART_SOURCE_COMMIT=
+DART_SOURCE_TREE=
+DART_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = dart-audit ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        || fail 'focused Dart audit requires the one checked-out master authority'
+    DART_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve focused Dart-audit source commit'
+    DART_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve focused Dart-audit source tree'
+    [ "$DART_SOURCE_COMMIT" = \
+      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+        && [ "$DART_SOURCE_COMMIT" = \
+             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
+        || fail 'focused Dart-audit source differs from pushed master'
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'focused Dart audit requires a clean source tree'
+    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+        || fail 'Git replacement refs are forbidden'
+fi
+
 LIFECYCLE_ARTIFACT_ID=
 DEV_CHECK_ARCHIVE_ID=
 if [ "$MODE" = debian-systemd-lifecycle ]; then
@@ -757,6 +800,7 @@ readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
 readonly HBB_SOURCE_ARCHIVE=$RUN/source.tar
 readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
+readonly DART_SOURCE_ARCHIVE=$RUN/dart-source.tar
 readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 
@@ -788,6 +832,12 @@ elif [ "$MODE" = flutter-model-tests ]; then
         /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
             "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+elif [ "$MODE" = dart-audit ]; then
+    focused_inputs_before="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE"
+        /usr/bin/sha256sum -- "$DART_AUDIT_IMAGE_ARCHIVE"
     )"
 fi
 capture_listeners >"$LISTENERS_BEFORE"
@@ -837,6 +887,17 @@ elif [ "$MODE" = flutter-model-tests ]; then
         || fail 'extracted virtiofsd binary is absent or ambiguous'
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
+elif [ "$MODE" = dart-audit ]; then
+    git_closed -C "$REPO_ROOT" archive --format=tar "$DART_SOURCE_COMMIT" \
+        >"$DART_SOURCE_ARCHIVE" \
+        || fail 'cannot create the exact focused Dart-audit source archive'
+    /usr/bin/chmod 0400 "$DART_SOURCE_ARCHIVE"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DART_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        || fail 'focused Dart-audit source archive metadata differs'
+    DART_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$DART_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
+    )"
 fi
 
 payload_identity=()
@@ -853,6 +914,12 @@ elif [ "$MODE" = hbb-common-fs ]; then
 elif [ "$MODE" = flutter-model-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_SOURCE_ARCHIVE")
+elif [ "$MODE" = dart-audit ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "source.tar=$DART_SOURCE_ARCHIVE"
+        "dart-audit.docker.tar.gz=$DART_AUDIT_IMAGE_ARCHIVE"
+    )
 fi
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
     -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
@@ -943,6 +1010,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $HBB_SOURCE_COMMIT $HBB_SOURCE_TREE $HBB_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = dart-audit ]; then
+    guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
 fi
 printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -1339,6 +1408,21 @@ elif [ "$MODE" = hbb-common-fs ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Rust-test cloud-init completion marker'
+elif [ "$MODE" = dart-audit ]; then
+    require_exact_fixed_receipt \
+        'VERIFY-DART-AUDIT: green — exact OSV status, telemetry, and structured results contain no unignored advisories against the pinned current Pub snapshot (R-R3/R-S11be)' \
+        'focused Dart advisory verdict'
+    mapfile -t dart_audit_receipts < <(
+        /usr/bin/grep -Eo \
+            "DART_AUDIT_VM=pass commit=$DART_SOURCE_COMMIT tree=$DART_SOURCE_TREE image=$DART_AUDIT_IMAGE_ID lock=[0-9a-f]{64} policy=[0-9a-f]{64} uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#dart_audit_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused Dart-audit receipt is absent or duplicated'; }
+    printf '%s\n' "${dart_audit_receipts[0]}"
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'focused Dart-audit cloud-init completion marker'
 else
     require_exact_fixed_receipt \
         "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=$FLUTTER_VERSION lock=$SHA256_FLUTTER_TOOLS_LOCK implicit_pub=prevented" \
@@ -1405,6 +1489,19 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/sha256sum "$FLUTTER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$FLUTTER_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Flutter-test source archive changed during execution'
+elif [ "$MODE" = dart-audit ]; then
+    focused_inputs_after="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE"
+        /usr/bin/sha256sum -- "$DART_AUDIT_IMAGE_ARCHIVE"
+    )"
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed Dart-audit image input changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$DART_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$DART_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$DART_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Dart-audit source archive changed during execution'
 fi
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     [ "$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = \
@@ -1429,6 +1526,10 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = dart-audit ]; then
+    printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s network=none listeners=unchanged inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" \
+        "$DART_AUDIT_IMAGE_ID" "$vm_elapsed_seconds"
 else
     printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"

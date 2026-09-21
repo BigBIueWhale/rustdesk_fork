@@ -15,8 +15,11 @@ case "$#:${8:-}" in
     12:--debian-systemd-lifecycle)
         MODE=debian-systemd-lifecycle
         ;;
+    13:--dart-audit)
+        MODE=dart-audit
+        ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -37,6 +40,11 @@ readonly FLUTTER_SOURCE_ARCHIVE=${9:-}
 readonly FLUTTER_SOURCE_COMMIT=${10:-}
 readonly FLUTTER_SOURCE_TREE=${11:-}
 readonly FLUTTER_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly DART_SOURCE_ARCHIVE=${9:-}
+readonly DART_SOURCE_COMMIT=${10:-}
+readonly DART_SOURCE_TREE=${11:-}
+readonly DART_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly DART_AUDIT_IMAGE_ARCHIVE=${13:-}
 readonly DEV_CHECK_ARCHIVE=${9:-}
 readonly LIFECYCLE_ARTIFACT=${10:-}
 readonly LIFECYCLE_ARTIFACT_SHA256=${11:-}
@@ -326,6 +334,173 @@ run_debian_systemd_lifecycle() {
         || fail 'release artifact changed across the installed lifecycle'
     printf 'VERIFIER_VM_DEBIAN_SYSTEMD_LIFECYCLE=pass artifact_sha256=%s commit=%s staging_uid=4000 root=refused foreign=refused docker=retired network=none cleanup=joined\n' \
         "$LIFECYCLE_ARTIFACT_SHA256" "$LIFECYCLE_COMMIT"
+}
+
+run_dart_audit() {
+    local source_root=$ROOT/dart-audit-source
+    local audit_output load_output source_archive_sha source_before image_before
+    local lock_sha policy_sha
+    local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
+    local expected_green='VERIFY-DART-AUDIT: green — exact OSV status, telemetry, and structured results contain no unignored advisories against the pinned current Pub snapshot (R-R3/R-S11be)'
+
+    [[ "$DART_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Dart-audit source commit is malformed'
+    [[ "$DART_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Dart-audit source tree is malformed'
+    [[ "$DART_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Dart-audit source archive digest is malformed'
+    [ -f "$DART_SOURCE_ARCHIVE" ] && [ ! -L "$DART_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$DART_SOURCE_ARCHIVE")" = \
+             4000:4000:400:1 ] \
+        || fail 'focused Dart-audit source archive metadata differs'
+    source_archive_sha="$(sha256sum "$DART_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$DART_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Dart-audit source archive digest differs'
+    [ -f "$DART_AUDIT_IMAGE_ARCHIVE" ] && [ ! -L "$DART_AUDIT_IMAGE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE")" = \
+             "4000:4000:400:1:$SIZE_DART_AUDIT_IMAGE_ARCHIVE" ] \
+        || fail 'focused Dart-audit image archive metadata differs'
+    [ "$(sha256sum "$DART_AUDIT_IMAGE_ARCHIVE" | awk '{ print $1 }')" = \
+      "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" ] \
+        || fail 'focused Dart-audit image archive digest differs'
+    image_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE"):$(sha256sum "$DART_AUDIT_IMAGE_ARCHIVE")"
+
+    rm -rf -- "$source_root"
+    mkdir "$source_root"
+    tar -xf "$DART_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$source_root" \
+        || fail 'cannot extract the exact focused Dart-audit source archive'
+    [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
+              | awk '{ print $1 }')" = \
+      "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
+        || fail 'focused Dart-audit source archive differs from its guest bootstrap'
+    for source_path in \
+        "$source_root/flutter/pubspec.lock" \
+        "$source_root/scripts/dart-audit-ignores.txt" \
+        "$source_root/scripts/dart-audit-result.py" \
+        "$source_root/scripts/dart-audit.sh" \
+        "$source_root/scripts/lib.sh" \
+        "$source_root/scripts/offline-image-provenance.py" \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/verify-private-tree-closure.py" \
+        "$source_root/scripts/verify-vm-entry-preflight.sh"; do
+        [ -f "$source_path" ] && [ ! -L "$source_path" ] \
+            || fail "focused Dart-audit source is absent or ambiguous: $source_path"
+        [ "$(stat -c '%u:%g:%h' -- "$source_path")" = 0:0:1 ] \
+            || fail "focused Dart-audit source authority differs: $source_path"
+    done
+    [ -z "$(find "$source_root" -mindepth 1 \( -uid 4000 -o -gid 4000 \) -print -quit)" ] \
+        || fail 'focused Dart-audit extracted source is writable by the verifier principal'
+    source_before="$source_archive_sha:$(sha256sum \
+        "$source_root/flutter/pubspec.lock" \
+        "$source_root/scripts/dart-audit-ignores.txt" \
+        "$source_root/scripts/dart-audit-result.py" \
+        "$source_root/scripts/dart-audit.sh" \
+        "$source_root/scripts/lib.sh" \
+        "$source_root/scripts/offline-image-provenance.py" \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/verify-private-tree-closure.py" \
+        "$source_root/scripts/verify-vm-entry-preflight.sh")"
+    lock_sha="$(sha256sum "$source_root/flutter/pubspec.lock" | awk '{ print $1 }')"
+    policy_sha="$(sha256sum "$source_root/scripts/dart-audit-ignores.txt" | awk '{ print $1 }')"
+
+    entry_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/verify-vm-entry-preflight.sh"
+    )" || fail 'focused Dart-audit pre-load VM authority check failed'
+    [ "$entry_output" = "$expected_entry" ] \
+        || fail "focused Dart-audit pre-load authority receipt differs: $entry_output"
+    load_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$source_root/scripts/offline-image-provenance.py" \
+                verify-load \
+                --archive "$DART_AUDIT_IMAGE_ARCHIVE" \
+                --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
+                --role dart-audit \
+                --expected-id "$DART_AUDIT_IMAGE_ID" \
+                --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+                --dockerfile-sha "$SHA256_DART_AUDIT_DOCKERFILE" \
+                --scanner-sha "$OSV_SCANNER_SHA256" \
+                --scanner-version "$OSV_SCANNER_VERSION" \
+                --scalibr-version "$OSV_SCALIBR_VERSION" \
+                --scanner-commit "$OSV_SCANNER_COMMIT" \
+                --scanner-built-at "$OSV_SCANNER_BUILT_AT" \
+                --database-sha "$OSV_DB_PUB_SHA256" \
+                --database-size "$OSV_DB_PUB_SIZE" \
+                --database-capture-epoch "$OSV_DB_PUB_CAPTURE_EPOCH" \
+                --database-generation "$OSV_DB_PUB_GENERATION" \
+                --config-id "$DART_AUDIT_IMAGE_CONFIG_ID" \
+                --manifest-id "$DART_AUDIT_IMAGE_MANIFEST_ID"
+    )" || fail 'focused Dart-audit image verification/load failed'
+    [ "$load_output" = "loaded and verified dart-audit $DART_AUDIT_IMAGE_ID" ] \
+        || fail "focused Dart-audit image load receipt differs: $load_output"
+    entry_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/verify-vm-entry-preflight.sh"
+    )" || fail 'focused Dart-audit post-load VM authority check failed'
+    [ "$entry_output" = "$expected_entry" ] \
+        || fail "focused Dart-audit post-load authority receipt differs: $entry_output"
+
+    if /bin/bash "$source_root/scripts/dart-audit.sh" \
+        >"$ROOT/root-dart-audit.out" 2>"$ROOT/root-dart-audit.err"; then
+        fail 'VM root passed the focused Dart-audit entry'
+    fi
+    [ ! -s "$ROOT/root-dart-audit.out" ] \
+        || fail 'root focused Dart-audit refusal produced standard output'
+    [ "$(<"$ROOT/root-dart-audit.err")" = \
+      'dart-audit.sh: refuses host or container-root execution' ] \
+        || fail 'root focused Dart-audit refusal diagnostic differs'
+    if setpriv --reuid=4001 --regid=4001 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /bin/bash "$source_root/scripts/dart-audit.sh" \
+        >"$ROOT/foreign-dart-audit.out" 2>"$ROOT/foreign-dart-audit.err"; then
+        fail 'foreign principal passed the focused Dart-audit entry'
+    fi
+    [ ! -s "$ROOT/foreign-dart-audit.out" ] \
+        || fail 'foreign focused Dart-audit refusal produced standard output'
+    [ "$(<"$ROOT/foreign-dart-audit.err")" = \
+      'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+        || fail 'foreign focused Dart-audit refusal diagnostic differs'
+
+    audit_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/dart-audit.sh"
+    )" || fail 'focused Dart advisory scan failed'
+    [ "$(grep -Fxc "$expected_entry" <<<"$audit_output")" -eq 1 ] \
+        || fail 'focused Dart advisory authority receipt is absent or duplicated'
+    [ "$(grep -Fxc "$expected_green" <<<"$audit_output")" -eq 1 ] \
+        || fail 'focused Dart advisory green verdict is absent or duplicated'
+    [ "$source_before" = "$source_archive_sha:$(sha256sum \
+        "$source_root/flutter/pubspec.lock" \
+        "$source_root/scripts/dart-audit-ignores.txt" \
+        "$source_root/scripts/dart-audit-result.py" \
+        "$source_root/scripts/dart-audit.sh" \
+        "$source_root/scripts/lib.sh" \
+        "$source_root/scripts/offline-image-provenance.py" \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/verify-private-tree-closure.py" \
+        "$source_root/scripts/verify-vm-entry-preflight.sh")" ] \
+        || fail 'focused Dart-audit source changed during execution'
+    [ "$image_before" = \
+      "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE"):$(sha256sum "$DART_AUDIT_IMAGE_ARCHIVE")" ] \
+        || fail 'focused Dart-audit image archive changed during execution'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'focused Dart audit left a container behind'
+    "$CLIENT" --host "unix://$SOCK" image rm "$DART_AUDIT_IMAGE_ID" >/dev/null \
+        || fail 'cannot retire the focused Dart-audit image'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'focused Dart audit left a Docker image behind'
+    stop_docker_authority
+    printf '%s\n' "$audit_output"
+    printf 'DART_AUDIT_VM=pass commit=%s tree=%s image=%s lock=%s policy=%s uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined\n' \
+        "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" "$DART_AUDIT_IMAGE_ID" \
+        "$lock_sha" "$policy_sha"
 }
 
 run_hbb_common_fs() {
@@ -1205,6 +1380,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = dart-audit ]; then
+    run_dart_audit
     exit 0
 fi
 

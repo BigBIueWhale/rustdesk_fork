@@ -99,6 +99,9 @@ def validate_contract(repo):
     vm_guest = (repo / "scripts/smoke-verifier-vm-authority-guest.sh").read_text(
         encoding="utf-8"
     )
+    entry_preflight = (repo / "scripts/verify-vm-entry-preflight.sh").read_text(
+        encoding="utf-8"
+    )
 
     require_all(
         shell,
@@ -313,6 +316,9 @@ def validate_contract(repo):
         vm_guest,
         (
             "13:--dart-audit)",
+            "readonly VERIFIER_VM_NOFILE_LIMIT=524544",
+            'ulimit -Hn "$VERIFIER_VM_NOFILE_LIMIT"',
+            'ulimit -Sn "$VERIFIER_VM_NOFILE_LIMIT"',
             "run_dart_audit() {",
             "focused Dart-audit source archive digest differs",
             "focused Dart-audit image archive digest differs",
@@ -327,10 +333,20 @@ def validate_contract(repo):
             'image rm "$DART_AUDIT_IMAGE_CONFIG_ID"',
             "stop_docker_authority",
             "DART_AUDIT_VM=pass",
+            "nofile=524544",
             "vm_network=none container_network=none",
             "source=readonly cleanup=joined",
         ),
         "focused Dart-audit guest transaction",
+    )
+    require_all(
+        entry_preflight,
+        (
+            "readonly VERIFIER_VM_NOFILE_LIMIT=524544",
+            '"$VERIFIER_VM_NOFILE_LIMIT:$VERIFIER_VM_NOFILE_LIMIT"',
+            "verifier descriptor limit differs",
+        ),
+        "focused Dart-audit entry descriptor authority",
     )
     require(
         vm_guest.count('/bin/bash "$source_root/scripts/dart-audit.sh"') == 3,

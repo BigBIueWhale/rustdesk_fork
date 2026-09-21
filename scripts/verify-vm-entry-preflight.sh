@@ -17,6 +17,7 @@ readonly PIDFILE=$AUTHORITY_ROOT/docker.pid
 readonly DAEMON_IDENTITY=$AUTHORITY_ROOT/docker.identity
 readonly CONFIG_ROOT=$AUTHORITY_ROOT/docker-config
 readonly CONFIG=$CONFIG_ROOT/config.json
+readonly VERIFIER_VM_NOFILE_LIMIT=524544
 
 fail() {
     printf 'verifier-VM entry preflight: %s\n' "$*" >&2
@@ -26,6 +27,9 @@ fail() {
 [ "$#" -eq 0 ] || fail 'arguments are forbidden'
 [ "$UID_NOW" -ne 0 ] || fail 'the verifier principal must not be root'
 [ "$GID_NOW" -ne 0 ] || fail 'the verifier principal must not have a root primary group'
+[ "$(ulimit -Sn):$(ulimit -Hn)" = \
+  "$VERIFIER_VM_NOFILE_LIMIT:$VERIFIER_VM_NOFILE_LIMIT" ] \
+    || fail 'verifier descriptor limit differs'
 
 [ -d "$AUTHORITY_ROOT" ] && [ ! -L "$AUTHORITY_ROOT" ] \
     || fail 'VM authority root is absent or ambiguous'

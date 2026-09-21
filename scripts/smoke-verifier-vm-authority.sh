@@ -1414,7 +1414,7 @@ elif [ "$MODE" = dart-audit ]; then
         'focused Dart advisory verdict'
     mapfile -t dart_audit_receipts < <(
         /usr/bin/grep -Eo \
-            "DART_AUDIT_VM=pass commit=$DART_SOURCE_COMMIT tree=$DART_SOURCE_TREE image=$DART_AUDIT_IMAGE_ID runtime=$DART_AUDIT_IMAGE_CONFIG_ID lock=[0-9a-f]{64} policy=[0-9a-f]{64} uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined" \
+            "DART_AUDIT_VM=pass commit=$DART_SOURCE_COMMIT tree=$DART_SOURCE_TREE image=$DART_AUDIT_IMAGE_ID runtime=$DART_AUDIT_IMAGE_CONFIG_ID lock=[0-9a-f]{64} policy=[0-9a-f]{64} uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#dart_audit_receipts[@]}" -eq 1 ] \

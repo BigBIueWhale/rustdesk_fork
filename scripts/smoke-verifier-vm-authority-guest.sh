@@ -91,6 +91,7 @@ readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
 readonly GIT_RUNTIME_ROOT=/opt/rustdesk-verifier-git
+readonly VERIFIER_VM_NOFILE_LIMIT=524544
 
 DAEMON_PID=
 CONTAINER_ID=
@@ -500,7 +501,7 @@ run_dart_audit() {
         || fail 'focused Dart audit left a Docker image behind'
     stop_docker_authority
     printf '%s\n' "$audit_output"
-    printf 'DART_AUDIT_VM=pass commit=%s tree=%s image=%s runtime=%s lock=%s policy=%s uid=4000 gid=4000 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined\n' \
+    printf 'DART_AUDIT_VM=pass commit=%s tree=%s image=%s runtime=%s lock=%s policy=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined\n' \
         "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" "$DART_AUDIT_IMAGE_ID" \
         "$DART_AUDIT_IMAGE_CONFIG_ID" "$lock_sha" "$policy_sha"
 }
@@ -1149,6 +1150,14 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 [ "$(id -u)" = 0 ] || fail 'guest authority probe must run as VM-local root'
+[ "$(id -g)" = 0 ] || fail 'guest authority probe must have a VM-local root primary group'
+ulimit -Hn "$VERIFIER_VM_NOFILE_LIMIT" \
+    || fail 'verifier descriptor hard limit cannot be established'
+ulimit -Sn "$VERIFIER_VM_NOFILE_LIMIT" \
+    || fail 'verifier descriptor soft limit cannot be established'
+[ "$(ulimit -Sn):$(ulimit -Hn)" = \
+  "$VERIFIER_VM_NOFILE_LIMIT:$VERIFIER_VM_NOFILE_LIMIT" ] \
+    || fail 'verifier descriptor limit differs'
 [ "$(cat /proc/1/comm)" = systemd ] || fail 'guest PID 1 is not systemd'
 [ -r /etc/os-release ] || fail 'guest OS identity is absent'
 # shellcheck source=/dev/null
@@ -1425,10 +1434,6 @@ if [ "$foreign_entry_error" != \
         "$foreign_entry_error" >&2
     fail 'foreign main-verifier refusal diagnostic differs'
 fi
-ulimit -Hn 524544 || fail 'verifier descriptor hard limit cannot be established'
-ulimit -Sn 524544 || fail 'verifier descriptor soft limit cannot be established'
-[ "$(ulimit -Sn):$(ulimit -Hn)" = 524544:524544 ] \
-    || fail 'verifier descriptor limit differs'
 main_entry_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /bin/bash "$VERIFY_SCRIPT" --self-test-workspace

@@ -5818,11 +5818,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Android builder, preserved identical before/during/after host listener inventories, and then failed
   closed before publication because the pinned July Pub GCS generation now returns HTTP 404. OSV
   continuously replaces this public dump, and a GCS generation identifies immutable bytes only while
-  that version is retained; a deliberate current-snapshot discovery/review/repin transaction is still
-  required. The exact audit image and fresh Pub snapshot are absent from the admitted VM inputs, so
-  no current OSV verdict is claimed. The current RustSec scan, other Docker consumers, exact
-  input/output transport, current cold artifacts, independent reproduction, and external
-  review remain open.
+  that version is retained. The maintenance-only discovery path at `3b0e50a` now queries the one fixed
+  GCS JSON object, binds an exact generation and metageneration, downloads that revision with both
+  preconditions, independently verifies SHA-256/MD5/CRC32C/size and bounded OSV ZIP structure, rechecks
+  latest metadata for replacement, and emits candidate pins without a writable publication mount.
+  Exact run `run.xpZPC90COW` passed its 12 image-input and nine discovery decisions and emitted Pub
+  generation `1789013095985302` (updated `2026-09-10T04:04:56.119Z`, SHA-256
+  `6d103d73cb21483dfb0f1c04f3a37e1485e8d37b568d084f772dc9cfb28e9716`) with unchanged 605-byte host
+  listener inventories and joined cleanup in 44 seconds. This is a reviewed non-publishing candidate:
+  committed pins, normal exact-generation acquisition, Dart audit-image reconstruction/distribution,
+  and the current no-NIC OSV scan remain open, so no current OSV verdict is claimed. The current
+  RustSec scan, other Docker consumers, exact input/output transport, current cold artifacts,
+  independent reproduction, and external review remain open.
 - **R-S11dg/R-S11e-125 — Rust advisory execution authority — VM ENTRY IMPLEMENTED;
   CURRENT RUSTSEC SCAN AND RELEASE EVIDENCE OPEN.** `scripts/audit.sh` now refuses
   UID/GID zero and authenticates R-S11dh before reading repository audit inputs or

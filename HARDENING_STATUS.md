@@ -3153,8 +3153,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   listener-finality result, and the harness neither inspected nor repaired the unrelated service.
 
   The separate exact-source reuse run `run.hutLn5juYg` then revalidated the canonical cache and skipped warming,
-  completing in 500 seconds with `hostfwd=absent`, unchanged host listeners, guest-only Docker/BuildKit, and
-  joined cleanup. Still STOP-SHIP: producer-failure, committed-input-tampering, forbidden-Git-metadata, and
+  completing in 500 seconds with `hostfwd=absent`, guest-only Docker/BuildKit, and joined cleanup. Its unchanged
+  605-byte listener inventory SHA-256 `d0657aea16dc017adc4cd7386e5fa8ef785e4b0bed418120923515aae425f809`
+  exactly matches the first run's original pre-run inventory, so the missing incumbent had returned before this
+  run without harness intervention. Still STOP-SHIP: producer-failure, committed-input-tampering, forbidden-Git-metadata, and
   publication-refusal runtime negatives; retained release-artifact identity, resource bounds/soak, cold
   R-B2/R-B10 equality, independent reproduction, and external review. R-S11cl and R-S11fv own the distinct
   cache-input/output transaction.
@@ -3802,7 +3804,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   validated 4.1 GiB cache published. Its overall outer verdict remains invalid because the final inventory was
   missing one pre-existing `0.0.0.0:21128` listener that was present both before and during; it created no new
   listener. Separate run `run.hutLn5juYg` then revalidated the exact cache and completed the reuse path in 500
-  seconds with unchanged listeners and joined cleanup. These are current canonical warm-publication/reuse
+  seconds with joined cleanup and an unchanged 605-byte listener inventory whose hash exactly matches the first
+  run's original baseline. These are current canonical warm-publication/reuse
   results, not a retained signed release artifact, cold R-B2/R-B10 A==B, replacement-path run, APK installation,
   Activity/persistent-service/task-swipe/Force-Stop/reconnect/presentation evidence, latency/resource soak,
   independent reproduction, or external review; all of those remain STOP-SHIP.

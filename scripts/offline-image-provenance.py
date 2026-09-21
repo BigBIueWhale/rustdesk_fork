@@ -3849,7 +3849,16 @@ def validate_dart_audit_attestation(
        ] \
        or source_operations != expected_sources \
        or len(executions) != 1:
-        fail("Docker archive Dart audit provenance input graph differs")
+        operation_kinds = [
+            sorted(operation)
+            for operation in operations
+        ]
+        fail(
+            "Docker archive Dart audit provenance input graph differs: "
+            f"llb_entries={len(llb)} operations={len(operations)} "
+            f"operation_kinds={operation_kinds!r} "
+            f"sources={source_operations!r} executions={len(executions)}"
+        )
     execution_meta = executions[0].get("meta")
     execution_arguments = (
         execution_meta.get("args") if isinstance(execution_meta, dict) else None

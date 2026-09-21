@@ -5812,7 +5812,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   catalog is replaced by a compact no-fallback and launch-shape source check; the same
   guest executes the separate 31-decision scanner-result behavioral test, while
   acquisition/OCI provenance retain their own focused gates.
-  The exact audit image and fresh Pub snapshot are absent from the admitted VM inputs, so
+  Focused fixed-archive acquisition now owns authenticated loading of its exact certified builder
+  into each fresh guest containerd store instead of relying on caller preload order; the WiX entry
+  no longer loads unrelated builders. A clean pushed-source acquisition run loaded and verified the
+  Android builder, preserved identical before/during/after host listener inventories, and then failed
+  closed before publication because the pinned July Pub GCS generation now returns HTTP 404. OSV
+  continuously replaces this public dump, and a GCS generation identifies immutable bytes only while
+  that version is retained; a deliberate current-snapshot discovery/review/repin transaction is still
+  required. The exact audit image and fresh Pub snapshot are absent from the admitted VM inputs, so
   no current OSV verdict is claimed. The current RustSec scan, other Docker consumers, exact
   input/output transport, current cold artifacts, independent reproduction, and external
   review remain open.

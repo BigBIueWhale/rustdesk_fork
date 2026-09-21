@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from dataclasses import asdict, dataclass
 import hashlib
 import io
 import json
@@ -22,6 +23,8 @@ HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 ADVISORY_FILE = re.compile(r"([A-Za-z0-9_.:-]+)[.]json\Z")
 MAX_SCANNER_BYTES = 64 * 1024 * 1024
 MAX_DATABASE_BYTES = 16 * 1024 * 1024
+MAX_DATABASE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+MAX_DATABASE_RECORDS = 100_000
 MAX_RECORD_BYTES = 4 * 1024 * 1024
 
 
@@ -65,8 +68,8 @@ def stable_read(
     path: Path,
     maximum_bytes: int,
     *,
-    expected_size: int,
-    expected_sha256: str,
+    expected_size: int | None,
+    expected_sha256: str | None,
 ) -> bytes:
     try:
         before = os.lstat(path)
@@ -75,7 +78,10 @@ def stable_read(
     require(stat.S_ISREG(before.st_mode), f"input is not one regular file: {path}")
     require(not stat.S_ISLNK(before.st_mode), f"input is a symlink: {path}")
     require(before.st_nlink == 1, f"input is hardlinked: {path}")
-    require(before.st_size == expected_size, f"input size differs from its pin: {path}")
+    if expected_size is not None:
+        require(before.st_size == expected_size, f"input size differs from its pin: {path}")
+    else:
+        require(before.st_size > 0, f"input is empty: {path}")
     require(before.st_size <= maximum_bytes, f"input exceeds its fixed parser bound: {path}")
     require(
         (before.st_uid, before.st_gid) == (os.geteuid(), os.getegid())
@@ -96,7 +102,7 @@ def stable_read(
             f"input changed while being opened: {path}",
         )
         chunks: list[bytes] = []
-        remaining = expected_size
+        remaining = before.st_size
         while remaining:
             chunk = os.read(descriptor, min(1024 * 1024, remaining))
             require(bool(chunk), f"input ended before its pinned size: {path}")
@@ -120,7 +126,8 @@ def stable_read(
         os.close(descriptor)
     data = b"".join(chunks)
     actual = hashlib.sha256(data).hexdigest()
-    require(actual == expected_sha256, f"input SHA-256 differs from its pin: {path}")
+    if expected_sha256 is not None:
+        require(actual == expected_sha256, f"input SHA-256 differs from its pin: {path}")
     return data
 
 
@@ -133,31 +140,31 @@ def crc32c(data: bytes) -> int:
     return value ^ 0xFFFFFFFF
 
 
-def validate_database(
-    data: bytes,
-    *,
-    expected_md5: str,
-    expected_crc32c: str,
-    expected_records: int,
-    expected_uncompressed_bytes: int,
-) -> None:
-    actual_md5 = base64.b64encode(
-        hashlib.md5(data, usedforsecurity=False).digest()
-    ).decode("ascii")
-    actual_crc32c = base64.b64encode(struct.pack(">I", crc32c(data))).decode("ascii")
-    require(actual_md5 == expected_md5, "Pub database MD5 differs from GCS metadata")
-    require(actual_crc32c == expected_crc32c, "Pub database CRC32C differs from GCS metadata")
+@dataclass(frozen=True)
+class DatabaseInspection:
+    sha256: str
+    size: int
+    md5_base64: str
+    crc32c_base64: str
+    records: int
+    uncompressed_bytes: int
+
+
+def inspect_database(data: bytes) -> DatabaseInspection:
+    require(0 < len(data) <= MAX_DATABASE_BYTES, "Pub database size is outside its bound")
+    records = 0
+    uncompressed_bytes = 0
     try:
         with zipfile.ZipFile(io.BytesIO(data), "r") as archive:
             require(not archive.comment, "Pub database ZIP has an archive comment")
             members = archive.infolist()
+            require(bool(members), "Pub database has no advisory records")
             require(
-                len(members) == expected_records,
-                "Pub database record count differs from its pin",
+                len(members) <= MAX_DATABASE_RECORDS,
+                "Pub database record count exceeds its fixed bound",
             )
             names: set[str] = set()
             folded: set[str] = set()
-            total = 0
             for member in members:
                 name = member.filename
                 match = ADVISORY_FILE.fullmatch(name)
@@ -173,10 +180,10 @@ def validate_database(
                     0 < member.file_size <= MAX_RECORD_BYTES,
                     f"Pub database member is empty or oversized: {name}",
                 )
-                total += member.file_size
+                uncompressed_bytes += member.file_size
                 require(
-                    total <= expected_uncompressed_bytes,
-                    "Pub database exceeds its pinned uncompressed size",
+                    uncompressed_bytes <= MAX_DATABASE_UNCOMPRESSED_BYTES,
+                    "Pub database expands beyond its fixed byte bound",
                 )
                 payload = archive.read(member)
                 require(len(payload) == member.file_size, f"short Pub database member: {name}")
@@ -188,13 +195,49 @@ def validate_database(
                 require(record.get("id") == match.group(1), f"Pub database ID/name mismatch: {name}")
                 names.add(name)
                 folded.add(name.lower())
-            require(
-                total == expected_uncompressed_bytes,
-                "Pub database uncompressed size differs from its pin",
-            )
+                records += 1
             require(archive.testzip() is None, "Pub database ZIP CRC validation failed")
     except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
         raise InputError(f"Pub database ZIP is malformed: {exc}") from exc
+    return DatabaseInspection(
+        sha256=hashlib.sha256(data).hexdigest(),
+        size=len(data),
+        md5_base64=base64.b64encode(
+            hashlib.md5(data, usedforsecurity=False).digest()
+        ).decode("ascii"),
+        crc32c_base64=base64.b64encode(
+            struct.pack(">I", crc32c(data))
+        ).decode("ascii"),
+        records=records,
+        uncompressed_bytes=uncompressed_bytes,
+    )
+
+
+def validate_database(
+    data: bytes,
+    *,
+    expected_md5: str,
+    expected_crc32c: str,
+    expected_records: int,
+    expected_uncompressed_bytes: int,
+) -> None:
+    inspection = inspect_database(data)
+    require(
+        inspection.md5_base64 == expected_md5,
+        "Pub database MD5 differs from GCS metadata",
+    )
+    require(
+        inspection.crc32c_base64 == expected_crc32c,
+        "Pub database CRC32C differs from GCS metadata",
+    )
+    require(
+        inspection.records == expected_records,
+        "Pub database record count differs from its pin",
+    )
+    require(
+        inspection.uncompressed_bytes == expected_uncompressed_bytes,
+        "Pub database uncompressed size differs from its pin",
+    )
 
 
 def validate_scanner(data: bytes) -> None:
@@ -232,6 +275,16 @@ def validate(args: argparse.Namespace) -> None:
         expected_uncompressed_bytes=uncompressed,
     )
     print("dart audit image inputs: verified")
+
+
+def inspect_database_path(path: Path) -> None:
+    data = stable_read(
+        path,
+        MAX_DATABASE_BYTES,
+        expected_size=None,
+        expected_sha256=None,
+    )
+    print(json.dumps(asdict(inspect_database(data)), sort_keys=True, separators=(",", ":")))
 
 
 def expect_failure(operation, label: str) -> None:
@@ -272,6 +325,15 @@ def run_self_test() -> None:
             )
 
         database = make_database("GHSA-test-0000-0000.json", record)
+        inspection = inspect_database(database)
+        require(
+            inspection.sha256 == hashlib.sha256(database).hexdigest()
+            and inspection.size == len(database)
+            and inspection.records == 1
+            and inspection.uncompressed_bytes == len(record),
+            "database inspection result differs",
+        )
+        checks += 1
         validate_database(
             database,
             expected_md5=base64.b64encode(
@@ -390,13 +452,14 @@ def run_self_test() -> None:
             "scanner format mismatch",
         )
         checks += 1
-    require(checks == 11, f"self-test count drifted: {checks}")
-    print("dart audit image input self-test: PASS (11 decisions)")
+    require(checks == 12, f"self-test count drifted: {checks}")
+    print("dart audit image input self-test: PASS (12 decisions)")
 
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     result.add_argument("--self-test", action="store_true")
+    result.add_argument("--inspect-database", type=Path)
     result.add_argument("--scanner", type=Path)
     result.add_argument("--scanner-size")
     result.add_argument("--scanner-sha256")
@@ -421,6 +484,15 @@ def main() -> int:
             )
             require(not supplied, "--self-test takes no input arguments")
             run_self_test()
+            return 0
+        if args.inspect_database is not None:
+            supplied = tuple(
+                value
+                for name, value in vars(args).items()
+                if name not in {"self_test", "inspect_database"} and value is not None
+            )
+            require(not supplied, "--inspect-database takes no other input arguments")
+            inspect_database_path(args.inspect_database)
             return 0
         required = (
             "scanner",

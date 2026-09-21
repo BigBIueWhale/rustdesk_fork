@@ -239,6 +239,7 @@ readonly GIT_TEMPLATE_DIR=$GIT_RUNTIME_ROOT/usr/share/git-core/templates
 readonly TAR_BIN=/usr/bin/tar
 readonly FLOCK_BIN=/usr/bin/flock
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
+readonly OSV_PUB_DISCOVERY_HELPER="$SCRIPT_DIR/discover-osv-pub-database.py"
 readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
 readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
@@ -2053,6 +2054,34 @@ stage_dart_audit_inputs() {
         "fixed Dart advisory image inputs"
     validate_dart_audit_inputs \
         || die "Dart advisory image inputs failed their independent structural validation"
+}
+
+maintenance_discover_osv_pub_database() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    local validator="$SCRIPT_DIR/dart-audit-image-input.py"
+    local validator_sha256
+    verify_or_load_online_fetch_builder_image android-builder "$builder"
+    require_online_fetch_builder_image android-builder "$builder"
+    for source in "$OSV_PUB_DISCOVERY_HELPER" "$validator"; do
+        [ -f "$source" ] && [ ! -L "$source" ] \
+            || die "OSV Pub discovery source is absent or ambiguous: $source"
+    done
+    validator_sha256="$(/usr/bin/sha256sum "$validator" | /usr/bin/awk '{print $1}')"
+    online_docker_run_offline \
+        --mount "type=bind,source=$validator,target=/authority/dart-audit-image-input.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/dart-audit-image-input.py --self-test
+    online_docker_run_offline \
+        --mount "type=bind,source=$OSV_PUB_DISCOVERY_HELPER,target=/authority/discover-osv-pub-database.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover-osv-pub-database.py --self-test
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$OSV_PUB_DISCOVERY_HELPER,target=/authority/discover-osv-pub-database.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$validator,target=/authority/dart-audit-image-input.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover-osv-pub-database.py \
+            --validator /authority/dart-audit-image-input.py \
+            --validator-sha256 "$validator_sha256"
 }
 
 stage_vcpkg_fixed_archives() {
@@ -6945,6 +6974,12 @@ main() {
             maintenance_discover_devcheck_image
             return 0
             ;;
+        --maintenance-discover-osv-pub-database)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-discover-osv-pub-database takes no arguments"
+            maintenance_discover_osv_pub_database
+            return 0
+            ;;
         --maintenance-build-devcheck-image-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-build-devcheck-image-candidate takes no arguments"
             maintenance_build_devcheck_image_candidate
@@ -7043,7 +7078,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

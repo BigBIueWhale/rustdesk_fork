@@ -5812,24 +5812,26 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   catalog is replaced by a compact no-fallback and launch-shape source check; the same
   guest executes the separate 31-decision scanner-result behavioral test, while
   acquisition/OCI provenance retain their own focused gates.
-  Focused fixed-archive acquisition now owns authenticated loading of its exact certified builder
-  into each fresh guest containerd store instead of relying on caller preload order; the WiX entry
-  no longer loads unrelated builders. A clean pushed-source acquisition run loaded and verified the
-  Android builder, preserved identical before/during/after host listener inventories, and then failed
-  closed before publication because the pinned July Pub GCS generation now returns HTTP 404. OSV
-  continuously replaces this public dump, and a GCS generation identifies immutable bytes only while
-  that version is retained. The maintenance-only discovery path at `3b0e50a` now queries the one fixed
-  GCS JSON object, binds an exact generation and metageneration, downloads that revision with both
-  preconditions, independently verifies SHA-256/MD5/CRC32C/size and bounded OSV ZIP structure, rechecks
-  latest metadata for replacement, and emits candidate pins without a writable publication mount.
-  Exact run `run.xpZPC90COW` passed its 12 image-input and nine discovery decisions and emitted Pub
-  generation `1789013095985302` (updated `2026-09-10T04:04:56.119Z`, SHA-256
-  `6d103d73cb21483dfb0f1c04f3a37e1485e8d37b568d084f772dc9cfb28e9716`) with unchanged 605-byte host
-  listener inventories and joined cleanup in 44 seconds. This is a reviewed non-publishing candidate:
-  committed pins, normal exact-generation acquisition, Dart audit-image reconstruction/distribution,
-  and the current no-NIC OSV scan remain open, so no current OSV verdict is claimed. The current
-  RustSec scan, other Docker consumers, exact input/output transport, current cold artifacts,
-  independent reproduction, and external review remain open.
+  Focused fixed-archive acquisition owns authenticated loading of its exact certified builder into each
+  fresh guest containerd store instead of relying on caller preload order; the WiX entry no longer loads
+  unrelated builders. The July Pub generation's clean HTTP-404 refusal established that a GCS generation
+  is immutable only while retained. Maintenance discovery at `3b0e50a` therefore queries one fixed GCS
+  object, binds an exact generation and metageneration, validates the publisher and independent checksums
+  plus bounded ZIP/OSV structure, rechecks latest metadata for replacement, and emits review-only pins
+  without publication authority. Run `run.xpZPC90COW` discovered generation `1789013095985302`, updated
+  `2026-09-10T04:04:56.119Z`, at SHA-256
+  `6d103d73cb21483dfb0f1c04f3a37e1485e8d37b568d084f772dc9cfb28e9716`.
+  Commit `55dc913` deliberately promotes that reviewed revision once in `pins.env`; the fixed-archive
+  verifier now checks canonical bounded pin shape, timestamp/epoch and size relationships, and exact
+  manifest consumption instead of duplicating a stale database version. Exact ordinary acquisition run
+  `run.rAYEcZNjXU` then loaded and verified the certified Android builder, requested only that generation,
+  independently validated the 19,142-byte/13-record/47,157-expanded-byte database and the 56,676,514-byte
+  scanner, and no-clobber published both mode-0400 inputs. Its 49-second receipt binds exact source,
+  QEMU user-only egress, UDP denial, absent host forwarding, unchanged 605-byte host listener inventories,
+  guest-only Docker/BuildKit, and joined cleanup. Dart audit-image reconstruction/distribution and the
+  current no-NIC OSV scan remain open, so no current OSV verdict is claimed. The current RustSec scan,
+  other Docker consumers, complete canonical closure/current cold artifacts, independent reproduction,
+  and external review also remain open.
 - **R-S11dg/R-S11e-125 — Rust advisory execution authority — VM ENTRY IMPLEMENTED;
   CURRENT RUSTSEC SCAN AND RELEASE EVIDENCE OPEN.** `scripts/audit.sh` now refuses
   UID/GID zero and authenticates R-S11dh before reading repository audit inputs or

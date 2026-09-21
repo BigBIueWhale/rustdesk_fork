@@ -3729,27 +3729,36 @@ def validate_dart_audit_attestation(
         return False
 
     expected_digest = str(image_manifest_id).removeprefix("sha256:")
-    if not isinstance(statement, dict) or statement.get("subject") != [
-        {
-            "name": (
-                "pkg:docker/rd-dart-audit-candidate@provenance-v1"
-                "?platform=linux%2Famd64"
-            ),
-            "digest": {"sha256": expected_digest},
-        }
-    ]:
+    if not isinstance(statement, dict) \
+       or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
+       or statement.get("subject") != [
+           {
+               "name": (
+                   "pkg:docker/rd-dart-audit-candidate@provenance-v1"
+                   "?platform=linux%2Famd64"
+               ),
+               "digest": {"sha256": expected_digest},
+           }
+       ]:
         fail("Docker archive Dart audit provenance subject differs from the image manifest")
     if contains_vcs_authority(statement):
         fail("Docker archive Dart audit provenance contains undeclared VCS authority")
     predicate = statement.get("predicate")
-    definition = predicate.get("buildDefinition") if isinstance(predicate, dict) else None
     base_digest = spec.base.rsplit("@", 1)[1]
-    if not isinstance(definition, dict) \
-       or definition.get("buildType") != (
-           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
-           "slsa-definitions.md"
+    if not isinstance(predicate, dict) \
+       or set(predicate) != {
+           "builder",
+           "buildConfig",
+           "buildType",
+           "invocation",
+           "materials",
+           "metadata",
+       } \
+       or predicate.get("builder") != {"id": ""} \
+       or predicate.get("buildType") != (
+           "https://mobyproject.org/buildkit@v1"
        ) \
-       or definition.get("resolvedDependencies") != [
+       or predicate.get("materials") != [
            {
                "uri": (
                    "pkg:docker/ubuntu@18.04?"
@@ -3758,7 +3767,10 @@ def validate_dart_audit_attestation(
                "digest": {"sha256": base_digest.removeprefix("sha256:")},
            }
        ]:
-        fail("Docker archive Dart audit provenance does not bind the exact Ubuntu base")
+        fail(
+            "Docker archive Dart audit provenance does not bind the exact "
+            "v0.2 builder and Ubuntu base"
+        )
     expected_args = {
         "build-arg:BASE_DIGEST": base_digest,
         "build-arg:DART_AUDIT_DOCKERFILE_SHA256": spec.dockerfile_sha256,
@@ -3772,30 +3784,20 @@ def validate_dart_audit_attestation(
         "force-network-mode": "none",
         "no-cache": "",
     }
-    external = definition.get("externalParameters")
-    expected_request = {
+    expected_parameters = {
         "args": expected_args,
-        "compatibilityVersion": 30,
         "frontend": "dockerfile.v0",
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile.dart-audit"},
-            "request": {"args": expected_args},
-        },
     }
-    if external != {
-        "configSource": {"path": "Dockerfile.dart-audit"},
-        "request": expected_request,
+    if predicate.get("invocation") != {
+        "configSource": {"entryPoint": "Dockerfile.dart-audit"},
+        "parameters": expected_parameters,
+        "environment": {"platform": "linux/amd64"},
     }:
         fail("Docker archive Dart audit provenance does not bind the reviewed recipe")
-    internal = definition.get("internalParameters")
-    build_config = internal.get("buildConfig") if isinstance(internal, dict) else None
+    build_config = predicate.get("buildConfig")
     llb = build_config.get("llbDefinition") if isinstance(build_config, dict) else None
-    if not isinstance(internal, dict) \
-       or set(internal) != {"buildConfig", "builderPlatform", "dockerfileVersion"} \
-       or internal.get("builderPlatform") != "linux/amd64" \
-       or internal.get("dockerfileVersion") != "1.25.0" \
-       or not isinstance(build_config, dict) \
+    if not isinstance(build_config, dict) \
        or set(build_config) != {"digestMapping", "llbDefinition"} \
        or not isinstance(build_config.get("digestMapping"), dict) \
        or not isinstance(llb, list):
@@ -3889,13 +3891,11 @@ def validate_dart_audit_attestation(
        or execution_meta.get("removeMountStubsRecursive") is not True \
        or execution_meta.get("user") != "65532:65532":
         fail("Docker archive Dart audit validation step is not nonroot and networkless")
-    run_details = predicate.get("runDetails") if isinstance(predicate, dict) else None
-    metadata = run_details.get("metadata") if isinstance(run_details, dict) else None
+    metadata = predicate.get("metadata")
     buildkit_metadata = (
-        metadata.get("buildkit_metadata") if isinstance(metadata, dict) else None
-    )
-    completeness = (
-        metadata.get("buildkit_completeness") if isinstance(metadata, dict) else None
+        metadata.get("https://mobyproject.org/buildkit@v1#metadata")
+        if isinstance(metadata, dict)
+        else None
     )
     source = (
         buildkit_metadata.get("source")
@@ -3903,15 +3903,37 @@ def validate_dart_audit_attestation(
         else None
     )
     infos = source.get("infos") if isinstance(source, dict) else None
-    if not isinstance(buildkit_metadata, dict) \
+    if not isinstance(metadata, dict) \
+       or set(metadata) != {
+           "buildFinishedOn",
+           "buildInvocationID",
+           "buildStartedOn",
+           "completeness",
+           "https://mobyproject.org/buildkit@v1#metadata",
+           "reproducible",
+       } \
+       or any(
+           not isinstance(metadata.get(name), str) or not metadata.get(name)
+           for name in (
+               "buildFinishedOn",
+               "buildInvocationID",
+               "buildStartedOn",
+           )
+       ) \
+       or metadata.get("completeness") != {
+           "parameters": True,
+           "environment": True,
+           "materials": False,
+       } \
+       or metadata.get("reproducible") is not False \
+       or not isinstance(buildkit_metadata, dict) \
        or set(buildkit_metadata) != {"layers", "source"} \
        or not isinstance(buildkit_metadata.get("layers"), dict) \
        or not isinstance(source, dict) \
        or set(source) != {"infos", "locations"} \
        or not isinstance(source.get("locations"), dict) \
        or not isinstance(infos, list) \
-       or len(infos) != 1 \
-       or completeness != {"request": True, "resolvedDependencies": False}:
+       or len(infos) != 1:
         fail("Docker archive Dart audit provenance metadata differs")
     source_info = infos[0]
     if not isinstance(source_info, dict) \
@@ -4720,13 +4742,19 @@ def validate_modern_archive(
         attestation_layer = attestation_layers[0]
         predicate_type = (
             "https://slsa.dev/provenance/v0.2"
-            if isinstance(spec, (CertifiedBuilderSpec, VerifierSpec))
+            if isinstance(
+                spec,
+                (CertifiedBuilderSpec, VerifierSpec, DartAuditSpec),
+            )
             or raw_bootstrap_index
             else "https://slsa.dev/provenance/v1"
         )
         statement_type = (
             "https://in-toto.io/Statement/v0.1"
-            if isinstance(spec, (CertifiedBuilderSpec, VerifierSpec))
+            if isinstance(
+                spec,
+                (CertifiedBuilderSpec, VerifierSpec, DartAuditSpec),
+            )
             or raw_bootstrap_index
             else "https://in-toto.io/Statement/v1"
         )
@@ -8526,15 +8554,10 @@ def create_dart_audit_fixture_archive(
         "force-network-mode": "none",
         "no-cache": "",
     }
-    request = {
+    parameters = {
         "args": build_args,
-        "compatibilityVersion": 30,
         "frontend": "dockerfile.v0",
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile.dart-audit"},
-            "request": {"args": build_args},
-        },
     }
     buildkit_metadata: dict[str, object] = {
         "layers": {},
@@ -8665,8 +8688,8 @@ def create_dart_audit_fixture_archive(
     llb_definition.append({"id": "step8", "op": {"Op": {}}})
     statement = encoded(
         {
-            "_type": "https://in-toto.io/Statement/v1",
-            "predicateType": "https://slsa.dev/provenance/v1",
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v0.2",
             "subject": [
                 {
                     "name": (
@@ -8681,46 +8704,42 @@ def create_dart_audit_fixture_archive(
                 }
             ],
             "predicate": {
-                "buildDefinition": {
-                    "buildType": (
-                        "https://github.com/moby/buildkit/blob/master/docs/"
-                        "attestations/slsa-definitions.md"
-                    ),
-                    "externalParameters": {
-                        "configSource": {"path": "Dockerfile.dart-audit"},
-                        "request": request,
-                    },
-                    "internalParameters": {
-                        "buildConfig": {
-                            "digestMapping": {},
-                            "llbDefinition": llb_definition,
-                        },
-                        "builderPlatform": "linux/amd64",
-                        "dockerfileVersion": "1.25.0",
-                    },
-                    "resolvedDependencies": [
-                        {
-                            "digest": {"sha256": base_digest},
-                            "uri": (
-                                "pkg:docker/ubuntu@18.04?"
-                                f"digest=sha256:{base_digest}"
-                                "&platform=linux%2Famd64"
-                            ),
-                        }
-                    ],
+                "builder": {"id": ""},
+                "buildConfig": {
+                    "digestMapping": {},
+                    "llbDefinition": llb_definition,
                 },
-                "runDetails": {
-                    "builder": {"id": ""},
-                    "metadata": {
-                        "buildkit_completeness": {
-                            "request": True,
-                            "resolvedDependencies": False,
-                        },
-                        "buildkit_metadata": buildkit_metadata,
-                        "finishedOn": "2026-07-25T00:00:01Z",
-                        "invocationId": "fixture",
-                        "startedOn": "2026-07-25T00:00:00Z",
+                "buildType": "https://mobyproject.org/buildkit@v1",
+                "invocation": {
+                    "configSource": {
+                        "entryPoint": "Dockerfile.dart-audit"
                     },
+                    "parameters": parameters,
+                    "environment": {"platform": "linux/amd64"},
+                },
+                "materials": [
+                    {
+                        "digest": {"sha256": base_digest},
+                        "uri": (
+                            "pkg:docker/ubuntu@18.04?"
+                            f"digest=sha256:{base_digest}"
+                            "&platform=linux%2Famd64"
+                        ),
+                    }
+                ],
+                "metadata": {
+                    "buildFinishedOn": "2026-07-25T00:00:01Z",
+                    "buildInvocationID": "fixture",
+                    "buildStartedOn": "2026-07-25T00:00:00Z",
+                    "completeness": {
+                        "parameters": True,
+                        "environment": True,
+                        "materials": False,
+                    },
+                    "https://mobyproject.org/buildkit@v1#metadata": (
+                        buildkit_metadata
+                    ),
+                    "reproducible": False,
                 },
             },
         }
@@ -8728,7 +8747,9 @@ def create_dart_audit_fixture_archive(
     statement_descriptor = blob_descriptor(
         statement,
         "application/vnd.in-toto+json",
-        annotations={"in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"},
+        annotations={
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v0.2"
+        },
     )
     attestation_config = encoded(
         {

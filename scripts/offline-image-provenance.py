@@ -415,12 +415,8 @@ class CertifiedBuilderInputSpec:
         return None
 
     @property
-    def root_annotations(self) -> dict[str, str]:
-        created = datetime.fromtimestamp(
-            self.database_capture_epoch,
-            tz=timezone.utc,
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        return {"org.opencontainers.image.created": created}
+    def root_annotations(self) -> None:
+        return None
 
     @property
     def labels(self) -> dict[str, str]:
@@ -726,8 +722,12 @@ class DartAuditSpec:
         return None
 
     @property
-    def root_annotations(self) -> None:
-        return None
+    def root_annotations(self) -> dict[str, str]:
+        created = datetime.fromtimestamp(
+            self.database_capture_epoch,
+            tz=timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"org.opencontainers.image.created": created}
 
     @property
     def labels(self) -> dict[str, str]:

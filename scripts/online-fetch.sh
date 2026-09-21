@@ -5630,11 +5630,12 @@ stage_android_sdk() {
 # plugin deps from google()/mavenCentral()/gradlePluginPortal(); the offline build_apk
 # (--network=none) cannot. Populate the cache HERE (the ONE networked step) by running the SAME
 # shared android build flow online (APK_MODE=warm, scripts/android-apk-build.sh). The producer
-# writes one guest-local /outputs/gradle-home and never mounts the durable candidate. After the
-# container terminates, the transaction validates and imports that quiescent tree into private
-# same-filesystem staging. The exact SDK closure is already complete and stays read-only throughout
-# warming. build_apk later projects the Gradle cache into private writable execution state whose
-# tracked init authority enables offline mode.
+# writes one guest-local /outputs/gradle-home and never mounts the durable candidate. JVM archive
+# inputs that cannot be safely memory-mapped through virtiofs are independently validated,
+# guest-local projections of the exact SDK and Rustls Maven closures, nested read-only over /online.
+# After the container terminates, the transaction revalidates those inputs and imports the quiescent
+# output into private same-filesystem staging. build_apk later projects the Gradle cache into private
+# writable execution state whose tracked init authority enables offline mode.
 prepare_gradle_source() {
     local archive_attribute_status=0 invalid_tree_entry current
     if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then
@@ -5938,6 +5939,132 @@ prepare_gradle_producer_output() {
     readonly GRADLE_PRODUCER_OUTPUT GRADLE_PRODUCER_OUTPUT_ID
 }
 
+rewrite_android_sdk_cmdline_archive_arg() {
+    local output_name="$1" replacement="$2"
+    shift 2
+    local -n output_arguments="$output_name"
+    local index found=0
+    output_arguments=("$@")
+    for ((index = 0; index < ${#output_arguments[@]}; index++)); do
+        if [ "${output_arguments[$index]}" = --cmdline-archive ]; then
+            [ "$found" -eq 0 ] \
+                || die "Android SDK arguments contain duplicate command-line archive options"
+            [ "$((index + 1))" -lt "${#output_arguments[@]}" ] \
+                || die "Android SDK command-line archive option has no value"
+            output_arguments[$((index + 1))]="$replacement"
+            found=1
+            index=$((index + 1))
+        fi
+    done
+    [ "$found" -eq 1 ] \
+        || die "Android SDK arguments omit the command-line archive option"
+}
+
+prepare_gradle_jvm_input_projections() {
+    local sdk_args=("$@")
+    local projected_sdk_args=()
+    local maven_relative="cargo-vendor/rustls-platform-verifier-android-0.1.1/maven"
+    local online_device
+    online_device="$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" \
+        || die "cannot identify the canonical online-input filesystem"
+    GRADLE_SDK_PROJECTION_ROOT="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/gradle-sdk-projection.XXXXXXXXXX"
+    )" || die "cannot create guest-local Android SDK projection root"
+    GRADLE_MAVEN_PROJECTION_ROOT="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/gradle-maven-projection.XXXXXXXXXX"
+    )" || die "cannot create guest-local Maven projection root"
+    GRADLE_SDK_PROJECTION="$GRADLE_SDK_PROJECTION_ROOT/android-sdk"
+    GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE="$GRADLE_SDK_PROJECTION_ROOT/android-cmdline-tools.zip"
+    GRADLE_MAVEN_SOURCE="$ONLINE_DIR/$maven_relative"
+    GRADLE_MAVEN_PROJECTION="$GRADLE_MAVEN_PROJECTION_ROOT/maven"
+    /usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
+        --no-preserve=ownership,xattr \
+        -- "$ONLINE_DIR/android-sdk" "$GRADLE_SDK_PROJECTION" \
+        || die "cannot project the exact Android SDK onto guest-local storage"
+    /usr/bin/cp --no-dereference --preserve=mode,timestamps \
+        --no-preserve=ownership,xattr \
+        -- "$ONLINE_DIR/android-cmdline-tools.zip" "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE" \
+        || die "cannot project the Android command-line-tools archive onto guest-local storage"
+    /usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
+        --no-preserve=ownership,xattr \
+        -- "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
+        || die "cannot project the exact Android Maven repository onto guest-local storage"
+    GRADLE_SDK_PROJECTION_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_SDK_PROJECTION_ROOT")"
+    GRADLE_SDK_PROJECTION_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_SDK_PROJECTION")"
+    GRADLE_MAVEN_PROJECTION_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_MAVEN_PROJECTION_ROOT")"
+    GRADLE_MAVEN_SOURCE_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_MAVEN_SOURCE")"
+    GRADLE_MAVEN_PROJECTION_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_MAVEN_PROJECTION")"
+    [ "${GRADLE_SDK_PROJECTION_ID%%:*}" != "$online_device" ] \
+        && [ "${GRADLE_MAVEN_PROJECTION_ID%%:*}" != "$online_device" ] \
+        || die "Gradle JVM input projection is not guest-local storage"
+    readonly GRADLE_SDK_PROJECTION_ROOT GRADLE_SDK_PROJECTION \
+        GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE \
+        GRADLE_SDK_PROJECTION_ROOT_ID GRADLE_SDK_PROJECTION_ID \
+        GRADLE_MAVEN_PROJECTION_ROOT GRADLE_MAVEN_SOURCE GRADLE_MAVEN_PROJECTION \
+        GRADLE_MAVEN_PROJECTION_ROOT_ID GRADLE_MAVEN_SOURCE_ID GRADLE_MAVEN_PROJECTION_ID
+    rewrite_android_sdk_cmdline_archive_arg \
+        projected_sdk_args "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE" "${sdk_args[@]}"
+    android_sdk_output_tool check-complete \
+        --online "$GRADLE_SDK_PROJECTION_ROOT" "${projected_sdk_args[@]}" \
+        || die "guest-local Android SDK projection differs from its canonical closure"
+    verify_gradle_maven_projection \
+        || die "guest-local Android Maven projection differs from its canonical closure"
+}
+
+verify_gradle_maven_projection() {
+    local source_device source_inode projection_device projection_inode
+    IFS=: read -r source_device source_inode <<<"$GRADLE_MAVEN_SOURCE_ID"
+    IFS=: read -r projection_device projection_inode <<<"$GRADLE_MAVEN_PROJECTION_ID"
+    gradle_output_tool verify-maven-projection \
+        --source "$GRADLE_MAVEN_SOURCE" --projection "$GRADLE_MAVEN_PROJECTION" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        --source-device "$source_device" --source-inode "$source_inode" \
+        --projection-device "$projection_device" --projection-inode "$projection_inode"
+}
+
+verify_gradle_jvm_input_projections() {
+    local sdk_args=("$@")
+    local projected_sdk_args=()
+    rewrite_android_sdk_cmdline_archive_arg \
+        projected_sdk_args "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE" "${sdk_args[@]}"
+    android_sdk_output_tool check-complete \
+        --online "$ONLINE_DIR" "${sdk_args[@]}" \
+        || return 1
+    android_sdk_output_tool check-complete \
+        --online "$GRADLE_SDK_PROJECTION_ROOT" "${projected_sdk_args[@]}" \
+        || return 1
+    verify_gradle_maven_projection >/dev/null
+}
+
+retire_gradle_jvm_input_projections() {
+    local root root_id label
+    for root in "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_MAVEN_PROJECTION_ROOT"; do
+        if [ "$root" = "$GRADLE_SDK_PROJECTION_ROOT" ]; then
+            root_id="$GRADLE_SDK_PROJECTION_ROOT_ID"
+            label="Android SDK projection"
+        else
+            root_id="$GRADLE_MAVEN_PROJECTION_ROOT_ID"
+            label="Android Maven projection"
+        fi
+        [ -d "$root" ] && [ ! -L "$root" ] \
+            && [ "$(/usr/bin/stat -c '%d:%i' -- "$root")" = "$root_id" ] \
+            || die "$label root identity changed before retirement"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+            --root "$root" --expected-identity "$root_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "cannot restore $label traversal"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+            --remove-private-root "$root" --expected-identity "$root_id" \
+            || die "cannot retire guest-local $label"
+        [ ! -e "$root" ] && [ ! -L "$root" ] \
+            || die "guest-local $label survived retirement"
+    done
+}
+
 retire_gradle_producer_output() {
     [ -d "$GRADLE_PRODUCER_OUTPUT" ] && [ ! -L "$GRADLE_PRODUCER_OUTPUT" ] \
         && [ "$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_PRODUCER_OUTPUT")" = "$GRADLE_PRODUCER_OUTPUT_ID" ] \
@@ -5959,7 +6086,7 @@ retire_gradle_producer_output() {
 
 stage_gradle() {
     local builder="$ANDROID_BUILDER_CONFIG_ID"
-    local status=0 source_status=0 producer_status=0 import_status=0 output_status=0 publication_status=0
+    local status=0 source_status=0 jvm_input_status=0 producer_status=0 import_status=0 output_status=0 publication_status=0
     local lock_fd semantic_args=() sdk_args=()
     local producer_receipt="" producer_receipt_after="" receipt="" digest="" current=0 replace_existing=0
     local producer_device="" producer_inode=""
@@ -6000,6 +6127,7 @@ stage_gradle() {
         return 0
     fi
     prepare_gradle_output_staging "${semantic_args[@]}"
+    prepare_gradle_jvm_input_projections "${sdk_args[@]}"
     prepare_gradle_producer_output
     IFS=: read -r producer_device producer_inode <<<"$GRADLE_PRODUCER_OUTPUT_ID"
     [[ "$producer_device" =~ ^[0-9]+$ ]] && [[ "$producer_inode" =~ ^[1-9][0-9]*$ ]] \
@@ -6013,12 +6141,16 @@ stage_gradle() {
         --mount "type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$GRADLE_SDK_PROJECTION,target=/online/android-sdk,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$GRADLE_MAVEN_PROJECTION,target=/online/cargo-vendor/rustls-platform-verifier-android-0.1.1/maven,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_PRODUCER_OUTPUT,target=/outputs/gradle-home" \
         --workdir /src \
         "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
         || status=$?
     (verify_gradle_source_unchanged) || source_status=$?
     retire_gradle_source_build
+    verify_gradle_jvm_input_projections "${sdk_args[@]}" || jvm_input_status=$?
+    retire_gradle_jvm_input_projections
     producer_receipt="$(
         gradle_output_tool verify-producer \
             --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
@@ -6027,7 +6159,8 @@ stage_gradle() {
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
             "${semantic_args[@]}"
     )" || producer_status=$?
-    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$producer_status" -eq 0 ]; then
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+        && [ "$jvm_input_status" -eq 0 ] && [ "$producer_status" -eq 0 ]; then
         if /usr/bin/find "$GRADLE_OUTPUT_STAGING/gradle-home" -mindepth 1 -print -quit \
             | /usr/bin/grep -q .
         then
@@ -6072,6 +6205,7 @@ stage_gradle() {
         output_status=1
     fi
     if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+        && [ "$jvm_input_status" -eq 0 ] \
         && [ "$producer_status" -eq 0 ] && [ "$import_status" -eq 0 ] \
         && [ "$output_status" -eq 0 ]; then
         if [ "$replace_existing" -eq 1 ]; then
@@ -6097,6 +6231,7 @@ stage_gradle() {
         || die "cannot release the Gradle output transaction lock"
     exec {lock_fd}<&-
     [ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"
+    [ "$jvm_input_status" -eq 0 ] || die "networked Gradle JVM-input projection postcondition failed"
     [ "$producer_status" -eq 0 ] || die "networked Gradle producer-output postcondition failed"
     [ "$import_status" -eq 0 ] || die "networked Gradle trusted import failed"
     [ "$output_status" -eq 0 ] || die "networked Gradle output postcondition failed"

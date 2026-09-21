@@ -110,6 +110,12 @@ def validate(sources: Dict[str, str]) -> None:
         "\ndef replace(",
         "Gradle replacement finisher",
     )
+    complete = extract_between(
+        helper,
+        "def check_complete(",
+        "\n\ndef fsync_directory(",
+        "complete Gradle seed validator",
+    )
 
     stage = extract_between(
         shell,
@@ -132,6 +138,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("prepare_gradle_output_staging() {", "private staging preparation"),
         ("prepare_gradle_producer_output() {", "guest-local producer preparation"),
         ("retire_gradle_producer_output() {", "guest-local producer retirement"),
+        ("rewrite_android_sdk_cmdline_archive_arg() {", "projected SDK archive binding"),
+        ("prepare_gradle_jvm_input_projections() {", "guest-local JVM-input preparation"),
+        ("verify_gradle_jvm_input_projections() {", "JVM-input projection postcondition"),
+        ("retire_gradle_jvm_input_projections() {", "guest-local JVM-input retirement"),
         ('die "Gradle producer output is not guest-local storage"', "guest-local device proof"),
         ('"$ONLINE_DIR/.rustdesk-gradle-warm.XXXXXXXXXX"', "unpredictable staging"),
         ("restore_gradle_output_traversal() {", "private traversal restoration"),
@@ -146,6 +156,22 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "source=$GRADLE_PRODUCER_OUTPUT,target=/outputs/gradle-home",
             "guest-local Gradle producer output",
+        ),
+        (
+            "source=$GRADLE_SDK_PROJECTION,target=/online/android-sdk,readonly,bind-recursive=disabled",
+            "guest-local read-only Android SDK projection",
+        ),
+        (
+            "source=$GRADLE_MAVEN_PROJECTION,target=/online/cargo-vendor/rustls-platform-verifier-android-0.1.1/maven,readonly,bind-recursive=disabled",
+            "guest-local read-only Android Maven projection",
+        ),
+        (
+            '-- "$ONLINE_DIR/android-cmdline-tools.zip" "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE"',
+            "guest-local projected SDK archive",
+        ),
+        (
+            '--online "$GRADLE_SDK_PROJECTION_ROOT" "${projected_sdk_args[@]}"',
+            "projected SDK closure validation",
         ),
         ("gradle_output_tool verify-producer", "quiescent producer-output verdict"),
         (
@@ -176,9 +202,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("retire_gradle_output_staging", "private staging retirement"),
         (
             '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+            '        && [ "$jvm_input_status" -eq 0 ] \\\n'
             '        && [ "$producer_status" -eq 0 ] && [ "$import_status" -eq 0 ] \\\n'
             '        && [ "$output_status" -eq 0 ]',
-            "five-verdict publication barrier",
+            "six-verdict publication barrier",
         ),
     ):
         require(shell, token, label)
@@ -188,7 +215,12 @@ def validate(sources: Dict[str, str]) -> None:
         '"completed Gradle replacement"',
         "completed Gradle replacement retirement",
     )
-    require_count(stage, "target=/online", 1, "Gradle online input mount")
+    require_count(
+        stage,
+        "source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled",
+        1,
+        "Gradle online input mount",
+    )
     require(
         stage,
         "--env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \\\n"
@@ -204,6 +236,17 @@ def validate(sources: Dict[str, str]) -> None:
         '"type=bind,source=$ONLINE_DIR,target=/online,readonly,'
         'bind-recursive=disabled"',
         "Gradle read-only input topology",
+    )
+    require(
+        stage,
+        '        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,'
+        'bind-recursive=disabled" \\\n'
+        '        --mount "type=bind,source=$GRADLE_SDK_PROJECTION,'
+        'target=/online/android-sdk,readonly,bind-recursive=disabled" \\\n'
+        '        --mount "type=bind,source=$GRADLE_MAVEN_PROJECTION,'
+        'target=/online/cargo-vendor/rustls-platform-verifier-android-0.1.1/'
+        'maven,readonly,bind-recursive=disabled"',
+        "nested guest-local JVM-input shadow mounts",
     )
     require_count(
         stage,
@@ -227,9 +270,12 @@ def validate(sources: Dict[str, str]) -> None:
             "recover_gradle_output_staging",
             "android_sdk_output_tool check-complete",
             "prepare_gradle_output_staging",
+            "prepare_gradle_jvm_input_projections",
             "prepare_gradle_producer_output",
             "online_docker_run",
             "(verify_gradle_source_unchanged) || source_status=$?",
+            "verify_gradle_jvm_input_projections",
+            "retire_gradle_jvm_input_projections",
             "gradle_output_tool verify-producer",
             "/usr/bin/cp --recursive --no-dereference",
             "retire_gradle_producer_output",
@@ -247,6 +293,16 @@ def validate(sources: Dict[str, str]) -> None:
         helper,
         'fail("Gradle producer output is not on guest-local storage")',
         "producer/output filesystem separation",
+    )
+    require(
+        helper,
+        'fail("Gradle Maven projection is not on guest-local storage")',
+        "Maven source/projection filesystem separation",
+    )
+    require(
+        helper,
+        'fail("Gradle Maven projection differs from its canonical source")',
+        "Maven projection content equality",
     )
     for token, label in (
         (
@@ -518,11 +574,16 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(helper, token, label)
-    require_count(
-        helper,
-        "require_sealed=True,",
-        5,
-        "complete/published/recovery sealed-tree checks",
+    require(
+        complete,
+        '    inspect_tree(\n'
+        '        gradle,\n'
+        '        owners=owners,\n'
+        '        limits=GRADLE_LIMITS,\n'
+        '        hash_contents=False,\n'
+        '        require_sealed=True,\n'
+        '    )',
+        "complete seed sealed-tree check",
     )
     require_count(
         helper,
@@ -634,7 +695,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "shell",
         "android_sdk_output_tool check-complete \\\n"
-        '        --online "$ONLINE_DIR" "${sdk_args[@]}"',
+        '        --online "$ONLINE_DIR" "${sdk_args[@]}" \\\n'
+        '        || die "exact Android SDK input is incomplete, stale, or unsafe"',
         "true # exact SDK precondition omitted",
         "exact SDK precondition",
     ),
@@ -718,6 +780,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "shell",
         '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+        '        && [ "$jvm_input_status" -eq 0 ] \\\n'
         '        && [ "$producer_status" -eq 0 ] && [ "$import_status" -eq 0 ] \\\n'
         '        && [ "$output_status" -eq 0 ]',
         '[ "$status" -eq 0 ]',

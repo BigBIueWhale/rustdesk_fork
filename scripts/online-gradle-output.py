@@ -862,6 +862,50 @@ def verify_producer_output(
     return summary
 
 
+def verify_maven_projection(
+    source: Path,
+    projection: Path,
+    uid: int,
+    gid: int,
+    *,
+    source_device: int,
+    source_inode: int,
+    projection_device: int,
+    projection_inode: int,
+) -> TreeSummary:
+    if source_device == projection_device:
+        fail("Gradle Maven projection is not on guest-local storage")
+    source_before = inspect_tree(
+        source,
+        owners={(uid, gid)},
+        limits=GRADLE_LIMITS,
+        hash_contents=True,
+        require_sealed=True,
+        expected_identity=(source_device, source_inode),
+    )
+    projected = inspect_tree(
+        projection,
+        owners={(uid, gid)},
+        limits=GRADLE_LIMITS,
+        hash_contents=True,
+        normalize=True,
+        expected_identity=(projection_device, projection_inode),
+    )
+    source_after = inspect_tree(
+        source,
+        owners={(uid, gid)},
+        limits=GRADLE_LIMITS,
+        hash_contents=True,
+        require_sealed=True,
+        expected_identity=(source_device, source_inode),
+    )
+    if source_after != source_before:
+        fail("Gradle Maven source changed while its projection was validated")
+    if projected.digest != source_before.digest:
+        fail("Gradle Maven projection differs from its canonical source")
+    return projected
+
+
 def check_complete(
     online: Path,
     uid: int,
@@ -3249,6 +3293,15 @@ def parser() -> argparse.ArgumentParser:
     producer_parser.add_argument("--producer-output", type=Path, required=True)
     producer_parser.add_argument("--producer-device", type=int, required=True)
     producer_parser.add_argument("--producer-inode", type=int, required=True)
+    maven_parser = subparsers.add_parser("verify-maven-projection")
+    maven_parser.add_argument("--source", type=Path, required=True)
+    maven_parser.add_argument("--projection", type=Path, required=True)
+    maven_parser.add_argument("--uid", type=int, required=True)
+    maven_parser.add_argument("--gid", type=int, required=True)
+    maven_parser.add_argument("--source-device", type=int, required=True)
+    maven_parser.add_argument("--source-inode", type=int, required=True)
+    maven_parser.add_argument("--projection-device", type=int, required=True)
+    maven_parser.add_argument("--projection-inode", type=int, required=True)
     publish_parser = subparsers.add_parser("publish")
     common_arguments(publish_parser)
     semantic_arguments(publish_parser)
@@ -3274,6 +3327,21 @@ def main() -> int:
     if arguments.command == "self-test":
         self_test()
         print("online-gradle-output: self-test OK")
+        return 0
+    if arguments.command == "verify-maven-projection":
+        if arguments.uid < 0 or arguments.gid < 0:
+            fail("UID/GID must be nonnegative")
+        summary = verify_maven_projection(
+            arguments.source,
+            arguments.projection,
+            arguments.uid,
+            arguments.gid,
+            source_device=arguments.source_device,
+            source_inode=arguments.source_inode,
+            projection_device=arguments.projection_device,
+            projection_inode=arguments.projection_inode,
+        )
+        print(f"sha256={summary.digest}")
         return 0
     if arguments.uid < 0 or arguments.gid < 0:
         fail("UID/GID must be nonnegative")

@@ -121,6 +121,11 @@ def validate_root(
     return metadata
 
 
+def reject_extended_attributes(path: Path, label: str) -> None:
+    if os.listxattr(path, follow_symlinks=False):
+        fail(f"{label} has extended attributes")
+
+
 def read_mountinfo() -> list[bytes]:
     descriptor = os.open(
         "/proc/self/mountinfo",
@@ -234,6 +239,7 @@ def inspect_tree(
     if sum((normalize, seal, require_sealed)) > 1:
         fail("output tree mode policies are mutually exclusive")
     root_metadata = validate_root(root, "output tree", owners, expected_identity)
+    reject_extended_attributes(root, "output tree root")
     root_device = root_metadata.st_dev
     maximum_files, maximum_directories, maximum_bytes, maximum_file = limits
     digest = hashlib.sha256(b"rustdesk-gradle-output-tree-v1\0")
@@ -282,6 +288,7 @@ def inspect_tree(
             validate_name(entry.name, child_relative)
             child = directory / entry.name
             metadata = entry.stat(follow_symlinks=False)
+            reject_extended_attributes(child, f"output tree entry {child_relative}")
             if metadata.st_dev != root_device:
                 fail(f"output tree crosses a filesystem: {child_relative}")
             if (metadata.st_uid, metadata.st_gid) not in owners:
@@ -786,6 +793,72 @@ def verify_staged(
         build_tools=build_tools,
         compile_sdk=compile_sdk,
     )
+    return summary
+
+
+def verify_producer_output(
+    online: Path,
+    staging: Path,
+    producer_output: Path,
+    uid: int,
+    gid: int,
+    *,
+    producer_device: int,
+    producer_inode: int,
+    gradle_version: str,
+    gradle_sha256: str,
+    build_tools: str,
+    compile_sdk: str,
+) -> TreeSummary:
+    state = load_state(online, staging, uid, gid)
+    if state.get("version") != STATE_VERSION:
+        fail("legacy Gradle output state cannot admit a producer result")
+    online_identity = decode_identity(state.get("online_identity"), "online root")
+    if producer_device == online_identity[0]:
+        fail("Gradle producer output is not on guest-local storage")
+    require_matching_semantics(
+        state,
+        gradle_version=gradle_version,
+        gradle_sha256=gradle_sha256,
+        build_tools=build_tools,
+        compile_sdk=compile_sdk,
+    )
+    original_sdk = online / "android-sdk"
+    original_identity = decode_identity(state.get("original_sdk_identity"), "original SDK")
+    source_before = inspect_tree(
+        original_sdk,
+        owners={(uid, gid)},
+        limits=SDK_LIMITS,
+        hash_contents=True,
+        expected_identity=original_identity,
+    )
+    if source_before.digest != state.get("sdk_source_digest"):
+        fail("live Android SDK changed before producer-output validation")
+    summary = inspect_tree(
+        producer_output,
+        owners={(uid, gid)},
+        limits=GRADLE_LIMITS,
+        hash_contents=True,
+        normalize=True,
+        expected_identity=(producer_device, producer_inode),
+    )
+    validate_semantics(
+        original_sdk,
+        producer_output,
+        gradle_version=gradle_version,
+        gradle_sha256=gradle_sha256,
+        build_tools=build_tools,
+        compile_sdk=compile_sdk,
+    )
+    source_after = inspect_tree(
+        original_sdk,
+        owners={(uid, gid)},
+        limits=SDK_LIMITS,
+        hash_contents=True,
+        expected_identity=original_identity,
+    )
+    if source_after != source_before:
+        fail("live Android SDK changed during producer-output validation")
     return summary
 
 
@@ -3170,6 +3243,12 @@ def parser() -> argparse.ArgumentParser:
     verify_parser = subparsers.add_parser("verify")
     common_arguments(verify_parser)
     semantic_arguments(verify_parser)
+    producer_parser = subparsers.add_parser("verify-producer")
+    common_arguments(producer_parser)
+    semantic_arguments(producer_parser)
+    producer_parser.add_argument("--producer-output", type=Path, required=True)
+    producer_parser.add_argument("--producer-device", type=int, required=True)
+    producer_parser.add_argument("--producer-inode", type=int, required=True)
     publish_parser = subparsers.add_parser("publish")
     common_arguments(publish_parser)
     semantic_arguments(publish_parser)
@@ -3217,6 +3296,22 @@ def main() -> int:
             staging,
             arguments.uid,
             arguments.gid,
+            gradle_version=arguments.gradle_version,
+            gradle_sha256=arguments.gradle_sha256,
+            build_tools=arguments.build_tools,
+            compile_sdk=arguments.compile_sdk,
+        )
+        print(f"sha256={summary.digest}")
+        return 0
+    elif arguments.command == "verify-producer":
+        summary = verify_producer_output(
+            online,
+            staging,
+            arguments.producer_output,
+            arguments.uid,
+            arguments.gid,
+            producer_device=arguments.producer_device,
+            producer_inode=arguments.producer_inode,
             gradle_version=arguments.gradle_version,
             gradle_sha256=arguments.gradle_sha256,
             build_tools=arguments.build_tools,

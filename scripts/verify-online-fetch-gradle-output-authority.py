@@ -130,6 +130,9 @@ def validate(sources: Dict[str, str]) -> None:
         ("gradle_output_tool() {", "exact-source Gradle output helper"),
         ("recover_gradle_output_staging() {", "reserved-state recovery"),
         ("prepare_gradle_output_staging() {", "private staging preparation"),
+        ("prepare_gradle_producer_output() {", "guest-local producer preparation"),
+        ("retire_gradle_producer_output() {", "guest-local producer retirement"),
+        ('die "Gradle producer output is not guest-local storage"', "guest-local device proof"),
         ('"$ONLINE_DIR/.rustdesk-gradle-warm.XXXXXXXXXX"', "unpredictable staging"),
         ("restore_gradle_output_traversal() {", "private traversal restoration"),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),
@@ -141,8 +144,13 @@ def validate(sources: Dict[str, str]) -> None:
          "pinned Flutter-tools lock contract"),
         ("target=/online,readonly,bind-recursive=disabled", "read-only online input"),
         (
-            "source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home",
-            "narrow Gradle output",
+            "source=$GRADLE_PRODUCER_OUTPUT,target=/outputs/gradle-home",
+            "guest-local Gradle producer output",
+        ),
+        ("gradle_output_tool verify-producer", "quiescent producer-output verdict"),
+        (
+            '-- "$GRADLE_PRODUCER_OUTPUT"/. "$GRADLE_OUTPUT_STAGING/gradle-home"/',
+            "trusted producer-output import",
         ),
         ("gradle_output_tool verify", "output postcondition"),
         ("gradle_output_tool publish", "checked publication"),
@@ -167,9 +175,10 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ("retire_gradle_output_staging", "private staging retirement"),
         (
-            '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && '
-            '[ "$output_status" -eq 0 ]',
-            "three-verdict publication barrier",
+            '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+            '        && [ "$producer_status" -eq 0 ] && [ "$import_status" -eq 0 ] \\\n'
+            '        && [ "$output_status" -eq 0 ]',
+            "five-verdict publication barrier",
         ),
     ):
         require(shell, token, label)
@@ -202,6 +211,11 @@ def validate(sources: Dict[str, str]) -> None:
         1,
         "Gradle writable output mount",
     )
+    forbid(
+        stage,
+        "source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home",
+        "durable Gradle candidate producer mount",
+    )
     forbid(stage, "target=/outputs/android-sdk", "writable Android SDK mount")
     forbid(stage, "--env RUSTDESK_ANDROID_SDK_HOME", "Android SDK redirection")
     forbid(stage, 'source=$ONLINE_DIR,target=/online"', "broad writable online mount")
@@ -213,8 +227,12 @@ def validate(sources: Dict[str, str]) -> None:
             "recover_gradle_output_staging",
             "android_sdk_output_tool check-complete",
             "prepare_gradle_output_staging",
+            "prepare_gradle_producer_output",
             "online_docker_run",
             "(verify_gradle_source_unchanged) || source_status=$?",
+            "gradle_output_tool verify-producer",
+            "/usr/bin/cp --recursive --no-dereference",
+            "retire_gradle_producer_output",
             "restore_gradle_output_traversal",
             "gradle_output_tool verify",
             "gradle_output_tool publish",
@@ -224,6 +242,12 @@ def validate(sources: Dict[str, str]) -> None:
         "Gradle output transaction",
     )
 
+    require(helper, "os.listxattr", "extended-attribute rejection")
+    require(
+        helper,
+        'fail("Gradle producer output is not on guest-local storage")',
+        "producer/output filesystem separation",
+    )
     for token, label in (
         (
             '[ "${RUSTDESK_GRADLE_WARM_HOME:-}" = /outputs/gradle-home ]',
@@ -643,9 +667,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home",
+        "source=$GRADLE_PRODUCER_OUTPUT,target=/outputs/gradle-home",
         "source=$ONLINE_DIR,target=/outputs/gradle-home",
-        "narrow Gradle output",
+        "guest-local Gradle producer output",
     ),
     Mutation(
         "shell",
@@ -693,8 +717,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && '
-        '[ "$output_status" -eq 0 ]',
+        '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+        '        && [ "$producer_status" -eq 0 ] && [ "$import_status" -eq 0 ] \\\n'
+        '        && [ "$output_status" -eq 0 ]',
         '[ "$status" -eq 0 ]',
         "publication barrier",
     ),

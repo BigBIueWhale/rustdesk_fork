@@ -5629,10 +5629,12 @@ stage_android_sdk() {
 # `flutter build apk` drives gradle, which downloads the gradle distribution + the AGP/kotlin/
 # plugin deps from google()/mavenCentral()/gradlePluginPortal(); the offline build_apk
 # (--network=none) cannot. Populate the cache HERE (the ONE networked step) by running the SAME
-# shared android build flow online (APK_MODE=warm, scripts/android-apk-build.sh) — it writes
-# one private /outputs/gradle-home candidate. The exact SDK closure is already complete and stays
-# read-only throughout warming. build_apk later projects the Gradle cache into private writable
-# execution state whose tracked init authority enables offline mode.
+# shared android build flow online (APK_MODE=warm, scripts/android-apk-build.sh). The producer
+# writes one guest-local /outputs/gradle-home and never mounts the durable candidate. After the
+# container terminates, the transaction validates and imports that quiescent tree into private
+# same-filesystem staging. The exact SDK closure is already complete and stays read-only throughout
+# warming. build_apk later projects the Gradle cache into private writable execution state whose
+# tracked init authority enables offline mode.
 prepare_gradle_source() {
     local archive_attribute_status=0 invalid_tree_entry current
     if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then
@@ -5923,11 +5925,44 @@ restore_gradle_output_traversal() {
         || die "cannot restore private Gradle cache output traversal"
 }
 
+prepare_gradle_producer_output() {
+    GRADLE_PRODUCER_OUTPUT="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/gradle-producer.XXXXXXXXXX"
+    )" || die "cannot create private guest-local Gradle producer output"
+    GRADLE_PRODUCER_OUTPUT_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$GRADLE_PRODUCER_OUTPUT"
+    )" || die "cannot identify private guest-local Gradle producer output"
+    [ "${GRADLE_PRODUCER_OUTPUT_ID%%:*}" != "$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" ] \
+        || die "Gradle producer output is not guest-local storage"
+    readonly GRADLE_PRODUCER_OUTPUT GRADLE_PRODUCER_OUTPUT_ID
+}
+
+retire_gradle_producer_output() {
+    [ -d "$GRADLE_PRODUCER_OUTPUT" ] && [ ! -L "$GRADLE_PRODUCER_OUTPUT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_PRODUCER_OUTPUT")" = "$GRADLE_PRODUCER_OUTPUT_ID" ] \
+        || die "guest-local Gradle producer-output identity changed before retirement"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$GRADLE_PRODUCER_OUTPUT" \
+        --expected-identity "$GRADLE_PRODUCER_OUTPUT_ID" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore guest-local Gradle producer-output traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$GRADLE_PRODUCER_OUTPUT" \
+        --expected-identity "$GRADLE_PRODUCER_OUTPUT_ID" \
+        || die "cannot retire guest-local Gradle producer output"
+    [ ! -e "$GRADLE_PRODUCER_OUTPUT" ] && [ ! -L "$GRADLE_PRODUCER_OUTPUT" ] \
+        || die "guest-local Gradle producer output survived retirement"
+}
+
 stage_gradle() {
     local builder="$ANDROID_BUILDER_CONFIG_ID"
-    local status=0 source_status=0 output_status=0 publication_status=0
+    local status=0 source_status=0 producer_status=0 import_status=0 output_status=0 publication_status=0
     local lock_fd semantic_args=() sdk_args=()
-    local receipt="" digest="" current=0 replace_existing=0
+    local producer_receipt="" producer_receipt_after="" receipt="" digest="" current=0 replace_existing=0
+    local producer_device="" producer_inode=""
     require_online_fetch_builder_image android-builder "$builder"
     assert_online_fetch_source_tools
     exec {lock_fd}<"$ONLINE_DIR" \
@@ -5965,7 +6000,11 @@ stage_gradle() {
         return 0
     fi
     prepare_gradle_output_staging "${semantic_args[@]}"
-    log "warming Gradle into one private cache output; the exact SDK and ./online/inputs remain read-only"
+    prepare_gradle_producer_output
+    IFS=: read -r producer_device producer_inode <<<"$GRADLE_PRODUCER_OUTPUT_ID"
+    [[ "$producer_device" =~ ^[0-9]+$ ]] && [[ "$producer_inode" =~ ^[1-9][0-9]*$ ]] \
+        || die "guest-local Gradle producer-output identity is malformed"
+    log "warming Gradle into guest-local private output; the durable candidate, exact SDK, and ./online/inputs remain outside producer write authority"
     online_docker_run \
         --env APK_MODE=warm \
         --env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \
@@ -5974,12 +6013,48 @@ stage_gradle() {
         --mount "type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home" \
+        --mount "type=bind,source=$GRADLE_PRODUCER_OUTPUT,target=/outputs/gradle-home" \
         --workdir /src \
         "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
         || status=$?
     (verify_gradle_source_unchanged) || source_status=$?
     retire_gradle_source_build
+    producer_receipt="$(
+        gradle_output_tool verify-producer \
+            --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+            --producer-output "$GRADLE_PRODUCER_OUTPUT" \
+            --producer-device "$producer_device" --producer-inode "$producer_inode" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${semantic_args[@]}"
+    )" || producer_status=$?
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$producer_status" -eq 0 ]; then
+        if /usr/bin/find "$GRADLE_OUTPUT_STAGING/gradle-home" -mindepth 1 -print -quit \
+            | /usr/bin/grep -q .
+        then
+            echo "[FATAL] durable Gradle candidate was not empty before trusted import" >&2
+            import_status=1
+        else
+            /usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
+                --no-preserve=ownership,xattr \
+                -- "$GRADLE_PRODUCER_OUTPUT"/. "$GRADLE_OUTPUT_STAGING/gradle-home"/ \
+                || import_status=$?
+        fi
+    else
+        import_status=1
+    fi
+    producer_receipt_after="$(
+        gradle_output_tool verify-producer \
+            --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+            --producer-output "$GRADLE_PRODUCER_OUTPUT" \
+            --producer-device "$producer_device" --producer-inode "$producer_inode" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${semantic_args[@]}"
+    )" || producer_status=$?
+    if [ "$producer_receipt" != "$producer_receipt_after" ]; then
+        echo "[FATAL] guest-local Gradle producer output changed across trusted import" >&2
+        producer_status=1
+    fi
+    retire_gradle_producer_output
     restore_gradle_output_traversal
     receipt="$(
         gradle_output_tool verify \
@@ -5992,7 +6067,13 @@ stage_gradle() {
     else
         output_status=1
     fi
-    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+    if [ "$receipt" != "$producer_receipt" ]; then
+        echo "[FATAL] durable Gradle candidate differs from the validated guest-local producer output" >&2
+        output_status=1
+    fi
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+        && [ "$producer_status" -eq 0 ] && [ "$import_status" -eq 0 ] \
+        && [ "$output_status" -eq 0 ]; then
         if [ "$replace_existing" -eq 1 ]; then
             prepare_retired_online_input_root
             gradle_output_tool replace \
@@ -6016,6 +6097,8 @@ stage_gradle() {
         || die "cannot release the Gradle output transaction lock"
     exec {lock_fd}<&-
     [ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"
+    [ "$producer_status" -eq 0 ] || die "networked Gradle producer-output postcondition failed"
+    [ "$import_status" -eq 0 ] || die "networked Gradle trusted import failed"
     [ "$output_status" -eq 0 ] || die "networked Gradle output postcondition failed"
     [ "$status" -eq 0 ] || die "networked Gradle warming failed"
     [ "$publication_status" -eq 0 ] || die "networked Gradle output publication failed"

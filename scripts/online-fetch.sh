@@ -1905,6 +1905,7 @@ stage_archive_bundle() {
     local builder_role="${6:-android-builder}"
     local lock_fd helper_sha256 staging staging_identity action
     local producer_status=0 verification_status=0 publication_status=0
+    verify_or_load_online_fetch_builder_image "$builder_role" "$builder"
     require_online_fetch_builder_image "$builder_role" "$builder"
     [ -f "$FIXED_ARCHIVE_HELPER" ] && [ ! -L "$FIXED_ARCHIVE_HELPER" ] \
         || die "fixed-archive helper is not one real source file"
@@ -2357,6 +2358,23 @@ verify_or_load_win_helper_image() {
         --certified-index-runtime \
         --image-ref "$WIN_HELPER_IMAGE_ID" \
         "${args[@]}"
+}
+
+verify_or_load_online_fetch_builder_image() {
+    [ "$#" -eq 2 ] \
+        || die "online builder loading requires ROLE CONFIG_ID"
+    case "$1:$2" in
+        "deb-builder:$DEB_BUILDER_CONFIG_ID")
+            verify_or_load_deb_builder_image
+            ;;
+        "android-builder:$ANDROID_BUILDER_CONFIG_ID")
+            verify_or_load_android_builder_image
+            ;;
+        "win-helper:$WIN_HELPER_CONFIG_ID")
+            verify_or_load_win_helper_image
+            ;;
+        *) die "online builder role/config pair is outside the closed certified set" ;;
+    esac
 }
 
 load_builder_images() {
@@ -6832,7 +6850,6 @@ main() {
             ;;
         --wix-nuget-packages)
             [ "$#" -eq 1 ] || die "--wix-nuget-packages takes no arguments"
-            load_builder_images
             stage_windows_wix_nuget
             return 0
             ;;

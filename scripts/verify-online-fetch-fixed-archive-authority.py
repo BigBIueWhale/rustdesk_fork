@@ -547,6 +547,8 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'archive_bundle_tool "$kind" "$root" verify "$staging"',
             'archive_bundle_tool "$kind" "$root" publish "$staging"',
             'archive_bundle_tool "$kind" "$root" reconcile "$staging"',
+            'verify_or_load_online_fetch_builder_image "$builder_role" "$builder"',
+            'require_online_fetch_builder_image "$builder_role" "$builder"',
             'dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}")',
             'exec {lock_fd}<"$root"',
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
@@ -555,7 +557,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly',
             'source=$staging/state.json,target=/state.json,readonly',
             'source=$staging/output,target=/outputs"',
-            '"$builder" \\\n        /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire',
+            '"$(online_fetch_builder_runtime_ref "$builder")" \\\n            /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire',
             '--builder-id "$builder" --helper-sha256 "$helper_sha256"',
             "stage_fixed_archives",
             "stage_dart_audit_inputs",
@@ -573,7 +575,29 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         shell.count('--builder-id "$builder" --helper-sha256 "$helper_sha256"') == 2,
         "host and container do not share the exact builder/helper binding",
     )
+    loader = function_block(shell, "verify_or_load_online_fetch_builder_image")
+    require_all(
+        loader,
+        (
+            '"deb-builder:$DEB_BUILDER_CONFIG_ID")',
+            "verify_or_load_deb_builder_image",
+            '"android-builder:$ANDROID_BUILDER_CONFIG_ID")',
+            "verify_or_load_android_builder_image",
+            '"win-helper:$WIN_HELPER_CONFIG_ID")',
+            "verify_or_load_win_helper_image",
+            '*) die "online builder role/config pair is outside the closed certified set"',
+        ),
+        "fixed archive exact builder loader",
+    )
+    require(
+        "load_builder_images\n            stage_windows_wix_nuget" not in shell,
+        "focused WiX acquisition still loads unrelated builders",
+    )
     stage = function_block(shell, "stage_archive_bundle")
+    require(
+        stage.count('source=$staging/output,target=/outputs"') == 2,
+        "fixed archive producer output mounts differ from the two admitted branches",
+    )
     require(
         'source=$root,target=' not in stage and 'source=$ONLINE_DIR,target=' not in stage,
         "fixed archive producer receives a publication root",
@@ -626,11 +650,21 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         and "\nchmod " not in systemd_fetch,
         "legacy host systemd image download/publication remains reachable",
     )
+    systemd_consumer_start = systemd_smoke.find(
+        'for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"'
+    )
+    systemd_consumer_end = systemd_smoke.find(
+        'if [ "$MODE" = hbb-common-fs ]; then',
+        systemd_consumer_start,
+    )
+    require(
+        systemd_consumer_start >= 0 and systemd_consumer_end > systemd_consumer_start,
+        "systemd image independent consumer block is absent",
+    )
+    systemd_consumer = systemd_smoke[systemd_consumer_start:systemd_consumer_end]
     require_all(
-        systemd_smoke,
+        systemd_consumer,
         (
-            'readonly HOST_UID="$(/usr/bin/id -u)"',
-            'readonly HOST_GID="$(/usr/bin/id -g)"',
             '"$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
             '"$HOST_UID:$HOST_GID:400:1:$size"',
             'verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
@@ -638,8 +672,16 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         ),
         "systemd image independent consumer",
     )
+    require_all(
+        systemd_smoke,
+        (
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+        ),
+        "systemd image independent consumer identity",
+    )
     require(
-        systemd_smoke.count('"$HOST_UID:$HOST_GID:400:1:$size"') == 2,
+        systemd_consumer.count('"$HOST_UID:$HOST_GID:400:1:$size"') == 1,
         "systemd image consumer metadata profile count changed",
     )
 
@@ -659,7 +701,9 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "if len(specs) == 14:",
             "if len(specs) == 33:",
             "is_debian_systemd_image_name(names[0])",
-            "the one-entry systemd image manifest has a noncanonical destination",
+            "names[0] in (",
+            '"flutter-3.24.5.tar.xz"',
+            '"rust-1.75.tar.xz"',
             "if is_debian_systemd_image_name(spec.name):",
             "root_profiles: set[tuple[int, int, int]] = set()",
             "validate_manifest_shape(specs)",

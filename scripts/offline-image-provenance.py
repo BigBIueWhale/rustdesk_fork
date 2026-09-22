@@ -1092,7 +1092,7 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
                 "Apple check manifest ID",
             ),
         )
-    if args.role == "rust-audit":
+    if args.role in {"rust-audit", "rust-audit-candidate"}:
         if not re.fullmatch(
             r"rust:1[.]88-bookworm@sha256:[0-9a-f]{64}",
             args.base,
@@ -1140,6 +1140,12 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
         )
         if (config_id is None) != (manifest_id is None):
             fail("Rust audit config and manifest pins must be supplied together")
+        if args.role == "rust-audit" \
+           and (config_id is None or manifest_id is None):
+            fail("final Rust audit config and manifest pins are required")
+        if args.role == "rust-audit-candidate" \
+           and (config_id is not None or manifest_id is not None):
+            fail("Rust audit candidate identities must be derived from its archive")
         return RustAuditSpec(
             role=args.role,
             image_id=require_image_id(args.expected_id, "expected image ID"),
@@ -1468,7 +1474,12 @@ def validate_inspect(
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Rust audit image platform must be exactly linux/amd64")
         if config != spec.runtime_config:
-            fail("Rust audit image runtime config differs from the reviewed contract")
+            expected = canonical_json(spec.runtime_config).decode("utf-8")
+            actual = canonical_json(config).decode("utf-8")
+            fail(
+                "Rust audit image runtime config differs from the reviewed "
+                f"contract: expected={expected[:4096]}, actual={actual[:4096]}"
+            )
         return
     if isinstance(spec, DartAuditSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":

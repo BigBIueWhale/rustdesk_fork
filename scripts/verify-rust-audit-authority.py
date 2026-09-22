@@ -334,6 +334,11 @@ def validate_contract(repo):
         "Rust audit recoverable candidate transaction",
     )
     require(
+        "rust_audit_contract_spec_args rust-audit-candidate \"$1\""
+        in acquisition,
+        "Rust audit rebuilds must use a candidate contract with archive-derived identities",
+    )
+    require(
         "maintenance_capture_rust_audit_image" not in acquisition
         and "--maintenance-capture-rust-audit-image" not in acquisition,
         "Rust audit retained the unrecoverable separate-daemon capture path",
@@ -343,6 +348,10 @@ def validate_contract(repo):
         (
             "if isinstance(spec, RustAuditSpec) and spec.config_id is not None:",
             "return spec.config_id",
+            'if args.role in {"rust-audit", "rust-audit-candidate"}:',
+            'if args.role == "rust-audit-candidate"',
+            "Rust audit candidate identities must be derived from its archive",
+            "final Rust audit config and manifest pins are required",
         ),
         "Rust audit runtime config identity",
     )

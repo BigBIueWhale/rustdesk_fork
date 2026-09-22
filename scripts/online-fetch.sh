@@ -2907,7 +2907,7 @@ rust_audit_image_spec_args() {
 
 rust_audit_candidate_spec_args() {
     [ "$#" -eq 1 ] || die "internal Rust advisory candidate specification error"
-    rust_audit_contract_spec_args rust-audit "$1"
+    rust_audit_contract_spec_args rust-audit-candidate "$1"
 }
 
 require_rust_audit_image_pins() {

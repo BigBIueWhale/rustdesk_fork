@@ -174,6 +174,7 @@ def validate(sources: dict[str, str]) -> None:
         'for key in ("frameworkVersion", "flutterVersion")',
         "Flutter version identity is absent or ambiguous",
         "offline Pub package roots do not satisfy Flutter's freshness predicate",
+        'marker_tmp="$(mktemp "$DART_TOOL_ROOT/.version.XXXXXXXXXX")"',
         'printf \'%s\' "$EXPECTED_VERSION" > "$marker_tmp"',
         '&& [ "$(<"$MARKER")" = "$EXPECTED_VERSION" ]',
     ):

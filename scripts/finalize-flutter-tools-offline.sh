@@ -160,19 +160,19 @@ if [ -e "$MARKER" ] || [ -L "$MARKER" ]; then
         && [ "$(<"$MARKER")" = "$EXPECTED_VERSION" ] \
         || fail 'existing Flutter-tools freshness marker is not exact'
 else
-    marker_tmp="$(/usr/bin/mktemp --tmpdir="$DART_TOOL_ROOT" '.version.XXXXXXXXXX')" \
+    marker_tmp="$(mktemp "$DART_TOOL_ROOT/.version.XXXXXXXXXX")" \
         || fail 'cannot allocate the Flutter-tools freshness marker'
     cleanup_marker_tmp() {
         if [ -n "${marker_tmp:-}" ]; then
-            /usr/bin/rm -f -- "$marker_tmp"
+            rm -f -- "$marker_tmp"
         fi
     }
     trap cleanup_marker_tmp EXIT
     printf '%s' "$EXPECTED_VERSION" > "$marker_tmp" \
         || fail 'cannot write the Flutter-tools freshness marker'
-    /usr/bin/chmod 0644 -- "$marker_tmp" \
+    chmod 0644 -- "$marker_tmp" \
         || fail 'cannot protect the Flutter-tools freshness marker'
-    /usr/bin/mv -T -- "$marker_tmp" "$MARKER" \
+    mv -T -- "$marker_tmp" "$MARKER" \
         || fail 'cannot publish the Flutter-tools freshness marker'
     marker_tmp=
     trap - EXIT

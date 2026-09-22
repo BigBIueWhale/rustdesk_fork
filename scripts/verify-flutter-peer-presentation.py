@@ -648,6 +648,8 @@ def validate(sources: dict[str, str]) -> None:
     require(stage, '[ "$(udp_socket_count)" -eq 0 ]', "zero UDP runtime surface")
     require(stage, "pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0", "controller link")
     require(stage, '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "private accessibility session")
+    require(stage, 'readonly EXPECTED_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"', "viewer root-name policy witness")
+    require(stage, '[ "$(getent passwd 0)" = "$EXPECTED_PASSWD_ROOT_ENTRY" ]', "viewer D-Bus root-name resolution")
     require(stage, "FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true", "password prompt verdict")
     require_order(
         stage,

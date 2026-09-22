@@ -682,12 +682,7 @@ CFG
     export DISPLAY=:98 HOME=/tmp/server-home XDG_RUNTIME_DIR=/tmp/server-runtime
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
-    [ -d "$HOME" ] && [ ! -L "$HOME" ] \
-      && [ "$(stat -c '%u:%g:%a' "$HOME")" = "$(id -u):$(id -g):700" ] \
-      && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] \
-      && [ "$(stat -c '%u:%g:%a' "$XDG_RUNTIME_DIR")" = \
-        "$(id -u):$(id -g):700" ] \
-      || fail 'viewer private session directories differ'
+    mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= SOURCE_PID= SOURCE_START= SERVER_PID= SERVER_START=
     cleanup_server() {
@@ -794,12 +789,16 @@ CFG
     verify_machine_identity
     verify_atspi_closure
     assert_loopback_only_interface
+    readonly EXPECTED_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"
     readonly EXPECTED_PASSWD_ENTRY="rustdesk-evidence:x:$(id -u):$(id -g):RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
     command -v getent >/dev/null \
       || fail 'viewer runtime lacks passwd-database inspection'
     [ -f /etc/passwd ] && [ ! -L /etc/passwd ] \
       && [ "$(stat -c '%u:%g:%a:%h' /etc/passwd)" = "$(id -u):$(id -g):400:1" ] \
-      && [ "$(</etc/passwd)" = "$EXPECTED_PASSWD_ENTRY" ] \
+      && [ "$(wc -l < /etc/passwd)" -eq 2 ] \
+      && [ "$(sed -n '1p' /etc/passwd)" = "$EXPECTED_PASSWD_ROOT_ENTRY" ] \
+      && [ "$(sed -n '2p' /etc/passwd)" = "$EXPECTED_PASSWD_ENTRY" ] \
+      && [ "$(getent passwd 0)" = "$EXPECTED_PASSWD_ROOT_ENTRY" ] \
       && [ "$(getent passwd "$(id -u)")" = "$EXPECTED_PASSWD_ENTRY" ] \
       || fail 'viewer passwd identity witness differs'
     [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
@@ -821,7 +820,12 @@ CFG
       || fail 'viewer stop marker was not freshly absent'
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
-    mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    [ -d "$HOME" ] && [ ! -L "$HOME" ] \
+      && [ "$(stat -c '%u:%g:%a' "$HOME")" = "$(id -u):$(id -g):700" ] \
+      && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] \
+      && [ "$(stat -c '%u:%g:%a' "$XDG_RUNTIME_DIR")" = \
+        "$(id -u):$(id -g):700" ] \
+      || fail 'viewer private session directories differ'
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= VIEWER_PID= VIEWER_START=
     cleanup_viewer() {

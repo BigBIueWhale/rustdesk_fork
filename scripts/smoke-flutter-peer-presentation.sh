@@ -497,6 +497,7 @@ readonly ATSPI_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' "$ATSPI_ROOT"):$(
 )"
 
 echo '== prove private D-Bus and AT-SPI activation before the expensive build =='
+atspi_check_status=0
 run_owned_container "$WORKSPACE/atspi-check.cid" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
@@ -520,8 +521,10 @@ run_owned_container "$WORKSPACE/atspi-check.cid" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   dbus-run-session -- \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh atspi-check \
-  > "$WORKSPACE/atspi-check.log" 2>&1
+  > "$WORKSPACE/atspi-check.log" 2>&1 || atspi_check_status=$?
 cat "$WORKSPACE/atspi-check.log"
+[ "$atspi_check_status" -eq 0 ] \
+  || die "private AT-SPI activation preflight exited $atspi_check_status"
 grep -q '^FLUTTER_PEER_ATSPI_RUNTIME_OK session_bus=private accessibility_bus=unix launcher=exact registry=exact x11=joined inet=0 udp=0$' \
   "$WORKSPACE/atspi-check.log" || die 'private AT-SPI activation verdict is missing'
 

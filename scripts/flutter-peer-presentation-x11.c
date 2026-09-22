@@ -4,8 +4,8 @@
  * Test-only X11 observer/controller for one exact RustDesk peer session.
  *
  * It types the password into the real Flutter prompt, observes pixels from the real remote window,
- * moves focus to a separate X11 window, returns through a real pointer click, and requires the
- * decoded presentation to become current again without replacing the connection.
+ * repeatedly moves focus to a separate X11 window, returns through a real pointer click, replaces
+ * the exact controlled-server generation, and requires current decoded presentation throughout.
  */
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -13,12 +13,15 @@
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
 #include <atspi/atspi.h>
+#include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -34,11 +37,18 @@
 #define ACCESSIBLE_DEPTH_LIMIT 64U
 #define ACCESSIBLE_NAME_LIMIT 96U
 #define AUTH_WAIT_MS 30000U
-#define BLUR_HOLD_MS 2000U
 #define RECOVERY_LIMIT_MS 2500U
+#define RECONNECT_LIMIT_MS 45000U
 #define SAMPLE_INTERVAL_MS 40U
 #define FRESH_LIMIT_MS 1000U
+#define FOCUS_CYCLE_COUNT 3U
+#define RECONNECT_COUNT 3U
+#define RESOURCE_THREAD_GROWTH_LIMIT 8U
+#define RESOURCE_FD_GROWTH_LIMIT 16U
+#define RESOURCE_RSS_GROWTH_KIB_LIMIT 131072ULL
 #define PALETTE_DISTANCE_LIMIT_SQUARED (92U * 92U)
+
+static const unsigned int blur_hold_ms[FOCUS_CYCLE_COUNT] = {2000U, 6000U, 12000U};
 
 static const uint8_t palette[16][3] = {
     {232U, 36U, 36U},   {36U, 224U, 48U},   {36U, 64U, 232U},
@@ -73,6 +83,12 @@ typedef struct {
     char remote[32];
     unsigned long inode;
 } ConnectionIdentity;
+
+typedef struct {
+    unsigned long long rss_kib;
+    unsigned int threads;
+    unsigned int descriptors;
+} ProcessResources;
 
 typedef struct {
     unsigned int nodes;
@@ -763,6 +779,50 @@ static int wait_for_current_frames(Display *source, Display *display, const View
     return -1;
 }
 
+static int observe_current_frames_for_duration(Display *source, Display *display,
+                                               const ViewerWindow *viewer,
+                                               SourceHistory *history,
+                                               unsigned int duration_ms,
+                                               uint64_t *maximum_gap_ms,
+                                               uint64_t *maximum_age_ms,
+                                               unsigned int *distinct_states) {
+    uint64_t start = monotonic_millis();
+    uint64_t deadline = start + duration_ms;
+    uint64_t last_fresh = start;
+    int last_state = -1;
+
+    *maximum_gap_ms = 0U;
+    *maximum_age_ms = 0U;
+    *distinct_states = 0U;
+    while (monotonic_millis() < deadline) {
+        uint64_t now = monotonic_millis();
+        uint64_t age;
+        uint64_t gap;
+        int state;
+
+        observe_source(source, history, now);
+        state = viewer_state(display, viewer);
+        if (state_age(history, state, now, &age) == 0 && age <= FRESH_LIMIT_MS) {
+            last_fresh = now;
+            if (age > *maximum_age_ms) {
+                *maximum_age_ms = age;
+            }
+            if (state != last_state) {
+                last_state = state;
+                *distinct_states += 1U;
+            }
+        }
+        gap = now - last_fresh;
+        if (gap > *maximum_gap_ms) {
+            *maximum_gap_ms = gap;
+        }
+        if (gap > FRESH_LIMIT_MS || sleep_millis(SAMPLE_INTERVAL_MS) != 0) {
+            return -1;
+        }
+    }
+    return *distinct_states >= duration_ms / 1000U ? 0 : -1;
+}
+
 static int read_connection_identity(ConnectionIdentity *identity) {
     FILE *stream = fopen("/proc/net/tcp", "r");
     char line[512];
@@ -806,6 +866,243 @@ static int read_connection_identity(ConnectionIdentity *identity) {
 static int same_connection(const ConnectionIdentity *left, const ConnectionIdentity *right) {
     return strcmp(left->local, right->local) == 0 &&
            strcmp(left->remote, right->remote) == 0 && left->inode == right->inode;
+}
+
+static int wait_for_replacement_connection(const ConnectionIdentity *previous,
+                                           ConnectionIdentity *replacement) {
+    uint64_t deadline = monotonic_millis() + RECONNECT_LIMIT_MS;
+    while (monotonic_millis() < deadline) {
+        ConnectionIdentity candidate = {{0}, {0}, 0UL};
+        if (read_connection_identity(&candidate) == 0 &&
+            same_connection(previous, &candidate) == 0) {
+            *replacement = candidate;
+            return 0;
+        }
+        if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) {
+            return -1;
+        }
+    }
+    return -1;
+}
+
+static int count_directory_entries(const char *path, unsigned int *count) {
+    DIR *directory = opendir(path);
+    struct dirent *entry;
+    unsigned int value = 0U;
+    int iteration_error;
+    int close_status;
+    if (directory == NULL) {
+        return -1;
+    }
+    errno = 0;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            if (value == UINT_MAX) {
+                closedir(directory);
+                return -1;
+            }
+            value += 1U;
+        }
+    }
+    iteration_error = errno;
+    close_status = closedir(directory);
+    if (iteration_error != 0 || close_status != 0) {
+        return -1;
+    }
+    *count = value;
+    return 0;
+}
+
+static int read_process_resources(unsigned long pid, ProcessResources *resources) {
+    char path[64];
+    char line[256];
+    FILE *status;
+    int saw_rss = 0;
+    int saw_threads = 0;
+    int length = snprintf(path, sizeof(path), "/proc/%lu/status", pid);
+    if (length <= 0 || (size_t)length >= sizeof(path)) {
+        return -1;
+    }
+    status = fopen(path, "r");
+    if (status == NULL) {
+        return -1;
+    }
+    while (fgets(line, sizeof(line), status) != NULL) {
+        if (sscanf(line, "VmRSS: %llu kB", &resources->rss_kib) == 1) {
+            saw_rss = 1;
+        } else if (sscanf(line, "Threads: %u", &resources->threads) == 1) {
+            saw_threads = 1;
+        }
+    }
+    if (ferror(status) != 0 || fclose(status) != 0 || saw_rss == 0 || saw_threads == 0) {
+        return -1;
+    }
+    length = snprintf(path, sizeof(path), "/proc/%lu/fd", pid);
+    if (length <= 0 || (size_t)length >= sizeof(path) ||
+        count_directory_entries(path, &resources->descriptors) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int resources_are_bounded(const ProcessResources *baseline,
+                                 const ProcessResources *current) {
+    return current->threads <= baseline->threads + RESOURCE_THREAD_GROWTH_LIMIT &&
+           current->descriptors <= baseline->descriptors + RESOURCE_FD_GROWTH_LIMIT &&
+           current->rss_kib <= baseline->rss_kib + RESOURCE_RSS_GROWTH_KIB_LIMIT;
+}
+
+static void print_resources(const char *phase, unsigned int sequence,
+                            const ProcessResources *resources) {
+    printf("FLUTTER_PEER_RESOURCE_SAMPLE phase=%s sequence=%u rss_kib=%llu threads=%u fds=%u\n",
+           phase, sequence, resources->rss_kib, resources->threads,
+           resources->descriptors);
+}
+
+static int write_all(int descriptor, const char *buffer, size_t length) {
+    size_t offset = 0U;
+    while (offset < length) {
+        ssize_t written = write(descriptor, buffer + offset, length - offset);
+        if (written < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (written == 0) {
+            return -1;
+        }
+        offset += (size_t)written;
+    }
+    return 0;
+}
+
+static int read_exact_and_eof(int descriptor, char *buffer, size_t length) {
+    size_t offset = 0U;
+    char extra;
+    while (offset < length) {
+        ssize_t received = read(descriptor, buffer + offset, length - offset);
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (received == 0) {
+            return -1;
+        }
+        offset += (size_t)received;
+    }
+    for (;;) {
+        ssize_t received = read(descriptor, &extra, 1U);
+        if (received < 0 && errno == EINTR) {
+            continue;
+        }
+        return received == 0 ? 0 : -1;
+    }
+}
+
+static int open_coord_root(void) {
+    int descriptor = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat metadata;
+    if (descriptor < 0) {
+        return -1;
+    }
+    if (fstat(descriptor, &metadata) != 0 || !S_ISDIR(metadata.st_mode) ||
+        metadata.st_uid != geteuid() || metadata.st_gid != getegid() ||
+        (metadata.st_mode & 0777U) != 0700U) {
+        close(descriptor);
+        return -1;
+    }
+    return descriptor;
+}
+
+static int request_server_restart(int coord, unsigned int generation) {
+    char temporary[64];
+    char request[64];
+    char content[64];
+    int descriptor;
+    int status = 0;
+    int content_length;
+    int temporary_length = snprintf(temporary, sizeof(temporary),
+                                    "server.restart.%u.request.tmp", generation);
+    int request_length = snprintf(request, sizeof(request),
+                                  "server.restart.%u.request", generation);
+    if (temporary_length <= 0 || (size_t)temporary_length >= sizeof(temporary) ||
+        request_length <= 0 || (size_t)request_length >= sizeof(request)) {
+        return -1;
+    }
+    content_length = snprintf(content, sizeof(content), "generation=%u\n", generation);
+    if (content_length <= 0 || (size_t)content_length >= sizeof(content)) {
+        return -1;
+    }
+    descriptor = openat(coord, temporary,
+                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (descriptor < 0) {
+        return -1;
+    }
+    if (write_all(descriptor, content, (size_t)content_length) != 0 ||
+        fsync(descriptor) != 0) {
+        status = -1;
+    }
+    if (close(descriptor) != 0) {
+        status = -1;
+    }
+    if (status != 0) {
+        unlinkat(coord, temporary, 0);
+        return -1;
+    }
+    if (renameat(coord, temporary, coord, request) != 0) {
+        unlinkat(coord, temporary, 0);
+        return -1;
+    }
+    if (fsync(coord) != 0) {
+        unlinkat(coord, request, 0);
+        (void)fsync(coord);
+        return -1;
+    }
+    return 0;
+}
+
+static int wait_for_server_restart(int coord, unsigned int generation) {
+    char ready[64];
+    char expected[64];
+    int ready_length = snprintf(ready, sizeof(ready),
+                                "server.restart.%u.ready", generation);
+    int expected_length = snprintf(expected, sizeof(expected), "generation=%u\n", generation);
+    uint64_t deadline = monotonic_millis() + RECONNECT_LIMIT_MS;
+    if (ready_length <= 0 || (size_t)ready_length >= sizeof(ready) ||
+        expected_length <= 0 || (size_t)expected_length >= sizeof(expected)) {
+        return -1;
+    }
+    while (monotonic_millis() < deadline) {
+        int descriptor = openat(coord, ready, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (descriptor >= 0) {
+            struct stat metadata;
+            char observed[64];
+            if (fstat(descriptor, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
+                metadata.st_uid != geteuid() || metadata.st_gid != getegid() ||
+                (metadata.st_mode & 0777U) != 0600U || metadata.st_nlink != 1 ||
+                metadata.st_size != expected_length) {
+                close(descriptor);
+                return -1;
+            }
+            if (read_exact_and_eof(descriptor, observed, (size_t)expected_length) != 0 ||
+                memcmp(observed, expected, (size_t)expected_length) != 0) {
+                close(descriptor);
+                return -1;
+            }
+            if (close(descriptor) != 0 || unlinkat(coord, ready, 0) != 0 ||
+                fsync(coord) != 0) {
+                return -1;
+            }
+            return 0;
+        }
+        if (errno != ENOENT || sleep_millis(SAMPLE_INTERVAL_MS) != 0) {
+            return -1;
+        }
+    }
+    return -1;
 }
 
 static Window create_focus_sink(Display *display) {
@@ -875,16 +1172,12 @@ int main(int argc, char **argv) {
     int minor;
     ViewerWindow viewer = {0};
     SourceHistory history = {0};
-    Window sink;
+    ProcessResources baseline_resources = {0};
+    ProcessResources current_resources = {0};
+    int coord = -1;
     uint64_t initial_fresh_ms;
     uint64_t initial_max_age;
-    uint64_t recovery_ms;
-    uint64_t recovery_max_age;
-    uint64_t blur_deadline;
-    int blurred_state;
-    uint64_t blurred_age = 0U;
-    ConnectionIdentity connection_before = {{0}, {0}, 0UL};
-    ConnectionIdentity connection_after = {{0}, {0}, 0UL};
+    ConnectionIdentity current_connection = {{0}, {0}, 0UL};
     PasswordPromptScan prompt_scan = {0};
 
     if (argc != 4) {
@@ -1029,68 +1322,193 @@ int main(int argc, char **argv) {
     }
     printf("FLUTTER_PEER_INITIAL_PIXELS_OK first_fresh_ms=%llu maximum_age_ms=%llu distinct=4\n",
            (unsigned long long)initial_fresh_ms, (unsigned long long)initial_max_age);
-    if (read_connection_identity(&connection_before) != 0) {
+    if (read_connection_identity(&current_connection) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL exact authenticated TCP identity unavailable\n", stderr);
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
     }
-
-    sink = create_focus_sink(display);
-    if (sink == 0) {
-        fputs("FLUTTER_PEER_X11_FAIL focus sink creation\n", stderr);
+    if (read_process_resources(viewer_pid, &baseline_resources) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL initial viewer resources unavailable\n", stderr);
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
     }
-    blur_deadline = monotonic_millis() + BLUR_HOLD_MS;
-    while (monotonic_millis() < blur_deadline) {
-        observe_source(source, &history, monotonic_millis());
-        if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) {
-            XDestroyWindow(display, sink);
+    print_resources("initial", 0U, &baseline_resources);
+
+    for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
+        Window sink = create_focus_sink(display);
+        uint64_t background_max_gap;
+        uint64_t background_max_age;
+        unsigned int background_distinct;
+        uint64_t recovery_ms;
+        uint64_t recovery_max_age;
+        ConnectionIdentity connection_after = {{0}, {0}, 0UL};
+
+        if (sink == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL focus sink creation\n", stderr);
+            close_viewer(display, viewer.window);
             XCloseDisplay(display);
             XCloseDisplay(source);
             return 1;
         }
-    }
-    blurred_state = viewer_state(display, &viewer);
-    (void)state_age(&history, blurred_state, monotonic_millis(), &blurred_age);
-    if (return_focus_with_pointer(display, &viewer) != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL real focus/pointer return\n", stderr);
+        if (observe_current_frames_for_duration(
+                source, display, &viewer, &history, blur_hold_ms[cycle],
+                &background_max_gap, &background_max_age, &background_distinct) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL background freshness exceeded %u ms "
+                    "cycle=%u blurred_ms=%u maximum_gap_ms=%llu distinct=%u\n",
+                    FRESH_LIMIT_MS, cycle + 1U, blur_hold_ms[cycle],
+                    (unsigned long long)background_max_gap, background_distinct);
+            XDestroyWindow(display, sink);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        printf("FLUTTER_PEER_BACKGROUND_FRESHNESS_OK cycle=%u blurred_ms=%u "
+               "maximum_gap_ms=%llu maximum_age_ms=%llu distinct=%u\n",
+               cycle + 1U, blur_hold_ms[cycle],
+               (unsigned long long)background_max_gap,
+               (unsigned long long)background_max_age, background_distinct);
+        if (return_focus_with_pointer(display, &viewer) != 0) {
+            fputs("FLUTTER_PEER_X11_FAIL real focus/pointer return\n", stderr);
+            XDestroyWindow(display, sink);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (wait_for_current_frames(source, display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
+                                    &recovery_ms, &recovery_max_age) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL focus recovery exceeded %u ms cycle=%u\n",
+                    RECOVERY_LIMIT_MS, cycle + 1U);
+            XDestroyWindow(display, sink);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (read_connection_identity(&connection_after) != 0 ||
+            same_connection(&current_connection, &connection_after) == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL focus cycle replaced the authenticated TCP connection\n",
+                  stderr);
+            XDestroyWindow(display, sink);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (read_process_resources(viewer_pid, &current_resources) != 0 ||
+            resources_are_bounded(&baseline_resources, &current_resources) == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded focus-cycle bounds\n",
+                  stderr);
+            XDestroyWindow(display, sink);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        print_resources("focus", cycle + 1U, &current_resources);
+        printf("FLUTTER_PEER_FOCUS_RECOVERY_OK cycle=%u blurred_ms=%u recovery_ms=%llu "
+               "maximum_age_ms=%llu real_pointer=true stable_connection=true\n",
+               cycle + 1U, blur_hold_ms[cycle], (unsigned long long)recovery_ms,
+               (unsigned long long)recovery_max_age);
         XDestroyWindow(display, sink);
+    }
+
+    coord = open_coord_root();
+    if (coord < 0) {
+        fputs("FLUTTER_PEER_X11_FAIL coordination authority unavailable\n", stderr);
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
     }
-    if (wait_for_current_frames(source, display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
-                                &recovery_ms, &recovery_max_age) != 0) {
-        fprintf(stderr,
-                "FLUTTER_PEER_X11_FAIL focus recovery exceeded %u ms blurred_age_ms=%llu\n",
-                RECOVERY_LIMIT_MS, (unsigned long long)blurred_age);
-        XDestroyWindow(display, sink);
+    for (unsigned int sequence = 1U; sequence <= RECONNECT_COUNT; ++sequence) {
+        unsigned int generation = sequence + 1U;
+        ConnectionIdentity replacement = {{0}, {0}, 0UL};
+        SourceHistory reconnect_history = {0};
+        ViewerWindow reconnected_viewer = {0};
+        uint64_t first_fresh_ms;
+        uint64_t maximum_age_ms;
+
+        if (request_server_restart(coord, generation) != 0 ||
+            wait_for_server_restart(coord, generation) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL server restart transaction generation=%u\n",
+                    generation);
+            close(coord);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (wait_for_replacement_connection(&current_connection, &replacement) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL viewer did not reconnect generation=%u\n",
+                    generation);
+            close(coord);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (find_viewer_window(display, viewer_pid, &reconnected_viewer) != 0 ||
+            reconnected_viewer.window != viewer.window) {
+            fputs("FLUTTER_PEER_X11_FAIL reconnect replaced the exact viewer window\n", stderr);
+            close(coord);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        viewer = reconnected_viewer;
+        if (wait_for_current_frames(source, display, &viewer, &reconnect_history,
+                                    AUTH_WAIT_MS, 4U, &first_fresh_ms,
+                                    &maximum_age_ms) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL current pixels unavailable after reconnect "
+                    "generation=%u\n",
+                    generation);
+            close(coord);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (read_process_resources(viewer_pid, &current_resources) != 0 ||
+            resources_are_bounded(&baseline_resources, &current_resources) == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded reconnect bounds\n", stderr);
+            close(coord);
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        print_resources("reconnect", sequence, &current_resources);
+        printf("FLUTTER_PEER_RECONNECT_OK sequence=%u generation=%u old_inode=%lu "
+               "new_inode=%lu first_fresh_ms=%llu maximum_age_ms=%llu "
+               "same_window=true cached_credential=true\n",
+               sequence, generation, current_connection.inode, replacement.inode,
+               (unsigned long long)first_fresh_ms,
+               (unsigned long long)maximum_age_ms);
+        current_connection = replacement;
+        history = reconnect_history;
+    }
+    if (close(coord) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL coordination authority close\n", stderr);
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
     }
-    if (read_connection_identity(&connection_after) != 0 ||
-        same_connection(&connection_before, &connection_after) == 0) {
-        fputs("FLUTTER_PEER_X11_FAIL focus cycle replaced the authenticated TCP connection\n",
-              stderr);
-        XDestroyWindow(display, sink);
-        close_viewer(display, viewer.window);
-        XCloseDisplay(display);
-        XCloseDisplay(source);
-        return 1;
-    }
-    printf("FLUTTER_PEER_FOCUS_RECOVERY_OK blurred_ms=%u blurred_age_ms=%llu recovery_ms=%llu "
-           "maximum_age_ms=%llu real_pointer=true stable_connection=true\n",
-           BLUR_HOLD_MS, (unsigned long long)blurred_age, (unsigned long long)recovery_ms,
-           (unsigned long long)recovery_max_age);
-    XDestroyWindow(display, sink);
+    coord = -1;
+    puts("FLUTTER_PEER_RESOURCE_BOUNDS_OK reconnects=3 focus_cycles=3 "
+         "threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072");
     if (close_viewer(display, viewer.window) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL WM_DELETE_WINDOW\n", stderr);
         XCloseDisplay(display);
@@ -1098,7 +1516,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     puts("FLUTTER_PEER_PRESENTATION_OK actual_peer=true password_prompt=true capture=true "
-         "transport=true decode=true flutter_texture=true x11_pixels=true focus_recovery=true");
+         "transport=true decode=true flutter_texture=true x11_pixels=true focus_recovery=true "
+         "background_freshness=true reconnects=3 resources=bounded");
     XCloseDisplay(display);
     XCloseDisplay(source);
     return 0;

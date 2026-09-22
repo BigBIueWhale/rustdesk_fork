@@ -667,8 +667,7 @@ def validate(sources: dict[str, str]) -> None:
             "export DISPLAY=:98 HOME=/tmp/server-home",
             "start_xvfb :98 640x480x24",
             '"$SOURCE_FIXTURE" >/tmp/source.log',
-            'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server',
-            'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"',
+            "start_server_generation 1",
             '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"',
             "--password-stdin",
             '"$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START"',
@@ -681,6 +680,31 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         stage,
         (
+            "start_server_generation() {",
+            'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server',
+            'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"',
+            "stop_server_generation() {",
+            '"$READY" --stop "$SERVER_PID" "$SERVER_START"',
+            'wait "$SERVER_PID"',
+        ),
+        "exact controlled-server generation ownership",
+    )
+    require_order(
+        stage,
+        (
+            'restart_request="$COORD/server.restart.$next_generation.request"',
+            'stop_server_generation "$previous_generation"',
+            'start_server_generation "$next_generation"',
+            '"$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START"',
+            "listener_is_exact",
+            'mv "$restart_ready.tmp" "$restart_ready"',
+            "FLUTTER_PEER_SERVER_RESTART_OK",
+        ),
+        "three-generation reconnect fixture",
+    )
+    require_order(
+        stage,
+        (
             '[ "${DISPLAY:-}" = :99 ]',
             '[ "${HOME:-}" = /tmp/viewer-home ]',
             '[ "${XDG_RUNTIME_DIR:-}" = /tmp/viewer-runtime ]',
@@ -688,7 +712,7 @@ def validate(sources: dict[str, str]) -> None:
             "start_xvfb :99 1280x800x24",
             '(cd /out/bundle && RUST_LOG=info exec "$APP" --connect 127.0.0.1)',
             '"$CONTROLLER" :98 :99 "$VIEWER_PID"',
-            "stable_connection=true",
+            "background_freshness=true reconnects=3 resources=bounded",
             "viewer did not retire after its real remote window closed",
             'mv "$COORD/stop.tmp" "$COORD/stop"',
             "FLUTTER_PEER_VIEWER_RUNTIME_OK",
@@ -798,6 +822,12 @@ def validate(sources: dict[str, str]) -> None:
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
     require(controller, "RECOVERY_LIMIT_MS 2500U", "focus-recovery bound")
+    require(controller, "RECONNECT_LIMIT_MS 45000U", "reconnect deadline")
+    require(controller, "FOCUS_CYCLE_COUNT 3U", "focus-cycle count")
+    require(controller, "RECONNECT_COUNT 3U", "reconnect count")
+    require(controller, "RESOURCE_THREAD_GROWTH_LIMIT 8U", "thread-growth bound")
+    require(controller, "RESOURCE_FD_GROWTH_LIMIT 16U", "descriptor-growth bound")
+    require(controller, "RESOURCE_RSS_GROWTH_KIB_LIMIT 131072ULL", "RSS-growth bound")
     require_order(
         controller,
         (
@@ -808,18 +838,37 @@ def validate(sources: dict[str, str]) -> None:
             "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)",
             "atspi_exit() != 0",
             "wait_for_current_frames(source, display, &viewer, &history, AUTH_WAIT_MS",
-            "read_connection_identity(&connection_before)",
-            "sink = create_focus_sink(display)",
+            "read_connection_identity(&current_connection)",
+            "read_process_resources(viewer_pid, &baseline_resources)",
+            "for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle)",
+            "Window sink = create_focus_sink(display)",
+            "observe_current_frames_for_duration(",
             "return_focus_with_pointer(display, &viewer)",
             "wait_for_current_frames(source, display, &viewer, &history, RECOVERY_LIMIT_MS",
             "read_connection_identity(&connection_after)",
-            "same_connection(&connection_before, &connection_after)",
+            "same_connection(&current_connection, &connection_after)",
+            "resources_are_bounded(&baseline_resources, &current_resources)",
+            "coord = open_coord_root()",
+            "for (unsigned int sequence = 1U; sequence <= RECONNECT_COUNT; ++sequence)",
+            "request_server_restart(coord, generation)",
+            "wait_for_server_restart(coord, generation)",
+            "wait_for_replacement_connection(&current_connection, &replacement)",
+            "find_viewer_window(display, viewer_pid, &reconnected_viewer)",
+            "wait_for_current_frames(source, display, &viewer, &reconnect_history",
+            "current_connection = replacement",
+            "close(coord) != 0",
             "close_viewer(display, viewer.window)",
         ),
-        "authenticated pixels, blur, pointer return, stable transport, and close",
+        "authenticated pixels, repeated focus, reconnect, resource, and close transaction",
     )
     require(controller, 'strcmp(remote, "0100007F:527E") == 0', "authenticated TCP tuple")
     require(controller, "left->inode == right->inode", "stable socket identity")
+    require(controller, 'open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)',
+            "descriptor-owned coordination root")
+    require(controller, "O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC",
+            "no-clobber restart request")
+    require(controller, "renameat(coord, temporary, coord, request)",
+            "atomic restart-request publication")
     require(controller, "WM_DELETE_WINDOW", "real viewer close")
     forbid(controller, "system(", "controller shell escape")
     forbid(controller, "Socket", "controller product-side probe socket")

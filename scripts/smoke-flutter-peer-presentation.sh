@@ -710,13 +710,15 @@ server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_
 
 [ "$viewer_status" -eq 0 ] || exit "$viewer_status"
 [ "$server_status" -eq 0 ] || die "controlled peer stage exited $server_status"
-grep -q '^FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_connection=true$' \
+grep -q '^FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded$' \
   "$WORKSPACE/viewer.log" || die 'viewer terminal verdict is missing'
-grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed$' \
+grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed replacements=3$' \
   "$WORKSPACE/server.log" || die 'server terminal verdict is missing'
-[ "$(<"$COORD/viewer.result")" = 'viewer=joined xvfb=joined stable_connection=true' ] \
+[ "$(<"$COORD/viewer.result")" = \
+  'viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded' ] \
   || die 'viewer result receipt differs'
-[ "$(<"$COORD/server.result")" = 'server=joined source=joined xvfb=joined listener=closed' ] \
+[ "$(<"$COORD/server.result")" = \
+  'server=joined source=joined xvfb=joined listener=closed replacements=3' ] \
   || die 'server result receipt differs'
 
 echo '== independently reverify every persistent build input after runtime =='
@@ -733,5 +735,5 @@ else
   [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = \
     "$SOURCE_ARCHIVE_SHA256" ] || die 'supplied source archive changed during the probe'
 fi
-printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s scope=linux-x11-full-peer-only network=owned-none-namespace\n' \
+printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace\n' \
   "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256"

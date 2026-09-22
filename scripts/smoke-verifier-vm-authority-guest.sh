@@ -1532,7 +1532,7 @@ run_flutter_peer_presentation() {
     [ "$(stat -c '%s' -- "$output")" -le 8388608 ] \
         || fail 'Flutter full-peer workload output exceeds its bound'
     [ "$(grep -Fxc \
-      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 scope=linux-x11-full-peer-only network=owned-none-namespace" \
+      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \

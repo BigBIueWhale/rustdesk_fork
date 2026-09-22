@@ -684,7 +684,7 @@ CFG
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
     mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
     mkdir -m 1777 /tmp/.X11-unix
-    XVFB_PID= XVFB_START= SOURCE_PID= SOURCE_START= SERVER_PID= SERVER_START=
+    XVFB_PID= XVFB_START= SOURCE_PID= SOURCE_START= SERVER_PID= SERVER_START= SERVER_LOG=
     cleanup_server() {
       local status=$? cleanup_status=0
       trap - EXIT HUP INT TERM
@@ -710,19 +710,38 @@ CFG
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
+    start_server_generation() {
+      local generation=$1
+      [ -z "$SERVER_PID" ] && [ -z "$SERVER_START" ] \
+        || fail 'cannot overlap controlled-server generations'
+      SERVER_LOG="/tmp/server.$generation.log"
+      (cd /out/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server) \
+        >"$SERVER_LOG" 2>&1 &
+      SERVER_PID=$!
+      SERVER_START=$("$READY" --identity "$SERVER_PID")
+      wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM" \
+        || fail "controlled server generation $generation did not map the manifested loopback bind shim"
+    }
+    stop_server_generation() {
+      local generation=$1
+      [ -n "$SERVER_PID" ] && [ -n "$SERVER_START" ] \
+        || fail 'controlled-server generation authority is absent'
+      "$READY" --stop "$SERVER_PID" "$SERVER_START"
+      wait "$SERVER_PID" \
+        || fail "controlled server generation $generation exited unsuccessfully"
+      SERVER_PID=
+      SERVER_START=
+      [ "$(tcp_listener_count)" -eq 0 ] && [ "$(udp_socket_count)" -eq 0 ] \
+        || fail "controlled server generation $generation retained a socket after teardown"
+    }
     start_xvfb :98 640x480x24 /tmp/server-xvfb.log
     "$SOURCE_FIXTURE" >/tmp/source.log 2>&1 &
     SOURCE_PID=$!
     SOURCE_START=$("$READY" --identity "$SOURCE_PID")
     "$READY" --wait-log "$SOURCE_PID" "$SOURCE_START" /tmp/source.log \
       FLUTTER_PEER_SOURCE_READY 'peer source readiness'
-    (cd /out/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server) \
-      >/tmp/server.log 2>&1 &
-    SERVER_PID=$!
-    SERVER_START=$("$READY" --identity "$SERVER_PID")
-    wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM" \
-      || fail 'controlled server did not map the manifested loopback bind shim'
-    "$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START" /tmp/server.log \
+    start_server_generation 1
+    "$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
       "$PROBE" "$(id -u)"
     set +e
     password_output="$(printf '%s\n' 'rustdesk-peer-9f2a7c4e' \
@@ -731,13 +750,13 @@ CFG
     set -e
     printf '%s\n' "$password_output"
     if [ "$password_status" -ne 0 ]; then
-      cat /tmp/server.log >&2
+      cat "$SERVER_LOG" >&2
       emit_runtime_logs SERVER "$HOME/.local/share/logs"
       fail "shipped password-stdin command exited $password_status"
     fi
     grep -qx 'Done!' <<<"$password_output" \
       || fail 'password-stdin completion marker differs'
-    "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" /tmp/server.log \
+    "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
       "$PROBE" "$(id -u)"
     listener_is_exact || fail 'server listener is not exactly 127.0.0.1:21118'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'server network namespace has a UDP socket'
@@ -746,26 +765,56 @@ CFG
     mv "$COORD/server.ready.tmp" "$COORD/server.ready"
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
     stop_seen=0
-    for _ in $(seq 1 1200); do
+    next_generation=2
+    for _ in $(seq 1 3000); do
       if [ -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
         stop_seen=1
         break
       fi
+      restart_request="$COORD/server.restart.$next_generation.request"
+      if [ -f "$restart_request" ] && [ ! -L "$restart_request" ]; then
+        expected_request="generation=$next_generation"
+        expected_size=$((${#expected_request} + 1))
+        [ "$(stat -c '%u:%g:%a:%h:%s' "$restart_request")" = \
+          "$(id -u):$(id -g):600:1:$expected_size" ] \
+          && [ "$(<"$restart_request")" = "$expected_request" ] \
+          || fail "server restart request $next_generation differs"
+        rm -- "$restart_request"
+        previous_generation=$((next_generation - 1))
+        stop_server_generation "$previous_generation"
+        start_server_generation "$next_generation"
+        "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
+          "$PROBE" "$(id -u)"
+        listener_is_exact \
+          || fail "replacement server generation $next_generation listener differs"
+        [ "$(udp_socket_count)" -eq 0 ] \
+          || fail "replacement server generation $next_generation opened a UDP socket"
+        restart_ready="$COORD/server.restart.$next_generation.ready"
+        [ ! -e "$restart_ready" ] && [ ! -L "$restart_ready" ] \
+          || fail "server restart receipt $next_generation was not freshly absent"
+        printf 'generation=%s\n' "$next_generation" > "$restart_ready.tmp"
+        mv "$restart_ready.tmp" "$restart_ready"
+        echo "FLUTTER_PEER_SERVER_RESTART_OK generation=$next_generation listener=127.0.0.1:21118 udp=0"
+        next_generation=$((next_generation + 1))
+        continue
+      fi
       "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
-        || { cat /tmp/server.log >&2; fail 'server exited before viewer completion'; }
+        || { cat "$SERVER_LOG" >&2; fail 'server exited before viewer completion'; }
       "$READY" --is-running "$SOURCE_PID" "$SOURCE_START" \
         || { cat /tmp/source.log >&2; fail 'source fixture exited before viewer completion'; }
       sleep 0.1
     done
     [ "$stop_seen" -eq 1 ] || fail 'viewer completion marker timed out'
-    "$READY" --stop "$SERVER_PID" "$SERVER_START"
-    wait "$SERVER_PID"
-    SERVER_PID= SERVER_START=
+    completed_restarts=$((next_generation - 2))
+    stop_server_generation "$((next_generation - 1))"
     if [ "$(<"$COORD/stop")" != viewer-complete ]; then
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
-      cat /tmp/server.log >&2
+      cat "$SERVER_LOG" >&2
       emit_runtime_logs SERVER "$HOME/.local/share/logs"
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_END' >&2
+    else
+      [ "$completed_restarts" -eq 3 ] \
+        || fail "successful viewer completed only $completed_restarts server restarts"
     fi
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
     wait "$SOURCE_PID"
@@ -777,10 +826,12 @@ CFG
     XVFB_PID= XVFB_START=
     [ "$(tcp_listener_count)" -eq 0 ] && [ "$(udp_socket_count)" -eq 0 ] \
       || fail 'server retained an INET listener or UDP socket after teardown'
-    printf 'server=joined source=joined xvfb=joined listener=closed\n' \
+    printf 'server=joined source=joined xvfb=joined listener=closed replacements=%s\n' \
+      "$completed_restarts" \
       > "$COORD/server.result.tmp"
     mv "$COORD/server.result.tmp" "$COORD/server.result"
-    echo 'FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed'
+    printf 'FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed replacements=%s\n' \
+      "$completed_restarts"
     trap - EXIT HUP INT TERM
     ;;
 
@@ -856,7 +907,7 @@ CFG
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     set +e
-    controller_output="$(timeout --signal=TERM --kill-after=3s 70s \
+    controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" :98 :99 "$VIEWER_PID" 2>&1)"
     controller_status=$?
     set -e
@@ -871,9 +922,18 @@ CFG
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    grep -Eq '^FLUTTER_PEER_FOCUS_RECOVERY_OK .* real_pointer=true stable_connection=true$' \
-      <<<"$controller_output" || fail 'stable-connection focus recovery verdict is missing'
-    grep -q '^FLUTTER_PEER_PRESENTATION_OK actual_peer=true password_prompt=true capture=true transport=true decode=true flutter_texture=true x11_pixels=true focus_recovery=true$' \
+    [ "$(grep -Ec '^FLUTTER_PEER_BACKGROUND_FRESHNESS_OK cycle=[123] ' \
+        <<<"$controller_output")" -eq 3 ] \
+      || fail 'three-cycle background freshness evidence is missing'
+    [ "$(grep -Ec '^FLUTTER_PEER_FOCUS_RECOVERY_OK cycle=[123] .* real_pointer=true stable_connection=true$' \
+        <<<"$controller_output")" -eq 3 ] \
+      || fail 'three-cycle stable-connection focus recovery evidence is missing'
+    [ "$(grep -Ec '^FLUTTER_PEER_RECONNECT_OK sequence=[123] generation=[234] .* same_window=true cached_credential=true$' \
+        <<<"$controller_output")" -eq 3 ] \
+      || fail 'three exact viewer reconnect results are missing'
+    grep -q '^FLUTTER_PEER_RESOURCE_BOUNDS_OK reconnects=3 focus_cycles=3 threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072$' \
+      <<<"$controller_output" || fail 'viewer resource-bound verdict is missing'
+    grep -q '^FLUTTER_PEER_PRESENTATION_OK actual_peer=true password_prompt=true capture=true transport=true decode=true flutter_texture=true x11_pixels=true focus_recovery=true background_freshness=true reconnects=3 resources=bounded$' \
       <<<"$controller_output" || fail 'full peer-presentation verdict is missing'
     for _ in $(seq 1 750); do
       "$READY" --is-running "$VIEWER_PID" "$VIEWER_START" || break
@@ -898,12 +958,12 @@ CFG
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID= XVFB_START=
-    printf 'viewer=joined xvfb=joined stable_connection=true\n' \
+    printf 'viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded\n' \
       > "$COORD/viewer.result.tmp"
     mv "$COORD/viewer.result.tmp" "$COORD/viewer.result"
     printf 'viewer-complete\n' > "$COORD/stop.tmp"
     mv "$COORD/stop.tmp" "$COORD/stop"
-    echo 'FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_connection=true'
+    echo 'FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded'
     trap - EXIT HUP INT TERM
     ;;
 

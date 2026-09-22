@@ -358,6 +358,9 @@ def validate_contract(repo):
             "def validate_rust_audit_identity_contract(spec: ImageSpec) -> None:",
             'elif spec.role == "rust-audit-candidate":',
             "unsupported Rust audit role",
+            'len(history) != 30',
+            'for position, item in enumerate(history[7:], start=7)',
+            'if item.get("created") != expected_created',
         ),
         "Rust audit runtime config identity",
     )

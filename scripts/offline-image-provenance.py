@@ -2395,10 +2395,22 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
                 "the nine-layer contract"
             )
         history = config_json.get("history")
-        if not isinstance(history, list) or len(history) != 29:
+        if not isinstance(history, list) \
+           or len(history) != 30 \
+           or any(not isinstance(item, dict) for item in history):
             fail(
                 "Docker archive Rust audit history differs from "
-                "the reviewed build topology"
+                "the reviewed 30-entry build topology"
+            )
+        wrong_created = [
+            f"history[{position}]={item.get('created')!r}"
+            for position, item in enumerate(history[7:], start=7)
+            if item.get("created") != expected_created
+        ]
+        if wrong_created:
+            fail(
+                "Docker archive Rust audit final history epochs differ "
+                f"from {expected_created}: " + ", ".join(wrong_created)
             )
         return
     if isinstance(spec, DartAuditSpec):
@@ -9039,7 +9051,13 @@ def create_rust_audit_fixture_archive(
             "architecture": "amd64",
             "config": preliminary.runtime_config,
             "created": "2026-07-17T15:52:38Z",
-            "history": [{} for _ in range(29)],
+            "history": [
+                *({} for _ in range(7)),
+                *(
+                    {"created": "2026-07-17T15:52:38Z"}
+                    for _ in range(23)
+                ),
+            ],
             "os": "linux",
             "rootfs": {
                 "type": "layers",

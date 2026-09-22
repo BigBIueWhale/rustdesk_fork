@@ -388,7 +388,9 @@ except (SyntaxError, ValueError) as exc:
     raise SystemExit(f"AT-SPI address reply is malformed: {exc}")
 if not isinstance(value, tuple) or len(value) != 1 or not isinstance(value[0], str):
     raise SystemExit("AT-SPI address reply has the wrong type")
-if re.fullmatch(r"unix:path=/tmp/atspi-runtime/at-spi/bus_97", value[0]) is None:
+if re.fullmatch(
+    r"unix:path=/tmp/atspi-runtime/at-spi/bus_97,guid=([0-9a-f]{32})", value[0]
+) is None:
     raise SystemExit(f"AT-SPI address differs: {value[0]!r}")
 print(value[0])
 PY

@@ -213,6 +213,7 @@ readonly COORD="$WORKSPACE/coord"
 readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
 readonly BUILD_INPUT_ROOT="$WORKSPACE/build-input-root"
 readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"
+readonly VIEWER_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"
 readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
 readonly SERVER_MACHINE_ID="$WORKSPACE/server.machine-id"
 readonly SERVER_MACHINE_ID_VALUE=727573746465736b2d73657276657231
@@ -234,12 +235,15 @@ touch "$BUILD_INPUT_ROOT/rust-${RUST_VERSION}.tar.xz" \
   "$BUILD_INPUT_ROOT/cargo-vendor-config.toml" \
   "$BUILD_INPUT_ROOT/frb-tool/bin/flutter_rust_bridge_codegen"
 chmod -R a-w "$BUILD_INPUT_ROOT"
-printf '%s\n' "$VIEWER_PASSWD_ENTRY" > "$VIEWER_PASSWD.tmp"
+printf '%s\n%s\n' "$VIEWER_PASSWD_ROOT_ENTRY" "$VIEWER_PASSWD_ENTRY" \
+  > "$VIEWER_PASSWD.tmp"
 chmod 0400 "$VIEWER_PASSWD.tmp"
 mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
 [ -f "$VIEWER_PASSWD" ] && [ ! -L "$VIEWER_PASSWD" ] \
   && [ "$(stat -c '%u:%g:%a:%h' "$VIEWER_PASSWD")" = "$HOST_UID:$HOST_GID:400:1" ] \
-  && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
+  && [ "$(wc -l < "$VIEWER_PASSWD")" -eq 2 ] \
+  && [ "$(sed -n '1p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ROOT_ENTRY" ] \
+  && [ "$(sed -n '2p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness creation failed'
 readonly VIEWER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")"
 printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
@@ -671,7 +675,9 @@ VIEWER_CID=$(<"$VIEWER_CID_FILE")
 [[ "$VIEWER_CID" =~ ^[0-9a-f]{64}$ ]] || die 'viewer container identity is malformed'
 inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
 [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ID" ] \
-  && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
+  && [ "$(wc -l < "$VIEWER_PASSWD")" -eq 2 ] \
+  && [ "$(sed -n '1p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ROOT_ENTRY" ] \
+  && [ "$(sed -n '2p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness changed during runtime'
 [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_ID" ] \
   && [ "$(<"$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_VALUE" ] \

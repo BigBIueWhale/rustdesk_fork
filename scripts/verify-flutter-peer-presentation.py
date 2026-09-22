@@ -200,10 +200,16 @@ def validate(sources: dict[str, str]) -> None:
     require(host, 'readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"', "private passwd witness")
     require(
         host,
+        'readonly VIEWER_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"',
+        "non-login root name for exact D-Bus policy parsing",
+    )
+    require(
+        host,
         'readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"',
         "exact numeric-nonroot passwd identity",
     )
     require(host, 'chmod 0400 "$VIEWER_PASSWD.tmp"', "private passwd witness mode")
+    require(host, '[ "$(wc -l < "$VIEWER_PASSWD")" -eq 2 ]', "two-entry passwd witness")
     require(
         host,
         'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
@@ -542,7 +548,7 @@ def validate(sources: dict[str, str]) -> None:
             "export LD_LIBRARY_PATH=/xvfb-root/usr/lib/x86_64-linux-gnu",
             "start_xvfb :97 640x480x24",
             "org.a11y.Bus.GetAddress",
-            "unix:path=/tmp/atspi-runtime/at-spi/bus_97",
+            "unix:path=/tmp/atspi-runtime/at-spi/bus_97,guid=([0-9a-f]{32})",
             "org.a11y.atspi.Registry",
             "exact_executable_process_count /usr/libexec/at-spi-bus-launcher",
             "exact_executable_process_count /usr/libexec/at-spi2-registryd",

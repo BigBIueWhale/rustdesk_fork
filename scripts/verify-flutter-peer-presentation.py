@@ -650,7 +650,17 @@ def validate(sources: dict[str, str]) -> None:
     require(stage, '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "private accessibility session")
     require(stage, 'readonly EXPECTED_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"', "viewer root-name policy witness")
     require(stage, '[ "$(getent passwd 0)" = "$EXPECTED_PASSWD_ROOT_ENTRY" ]', "viewer D-Bus root-name resolution")
-    require(stage, "FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true", "password prompt verdict")
+    require(
+        stage,
+        "FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true",
+        "complete count-only password input verdict",
+    )
+    require(
+        stage,
+        "FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true "
+        "retired=true typed_via_xtest=true",
+        "count-confirmed password prompt verdict",
+    )
     require_order(
         stage,
         (
@@ -758,7 +768,8 @@ def validate(sources: dict[str, str]) -> None:
     require(controller, 'strcmp(hint.res_class, "Rustdesk") != 0', "exact X11 class")
     if controller.count("XTestFakeKeyEvent") != 2:
         raise VerificationError("XTest key press/release calls are not exact")
-    require(controller, 'static const char password[] = "rustdesk-peer-9f2a7c4e";', "test credential")
+    require(controller, 'static const char test_password[] = "rustdesk-peer-9f2a7c4e";', "test credential")
+    require(controller, "sizeof(test_password) - 1U == 22U", "exact test credential length")
     require(controller, "atspi_init() != 0", "private AT-SPI initialization")
     require(controller, "atspi_get_desktop_count() != 1", "single accessibility desktop")
     if controller.count("role == ATSPI_ROLE_PASSWORD_TEXT") != 2:
@@ -771,7 +782,17 @@ def validate(sources: dict[str, str]) -> None:
     forbid(controller, "ATSPI_STATE_SHOWING", "impossible obscured-password showing state")
     require(controller, "scan.password_nodes == 1U && scan.visible_passwords == 1U", "singular password field")
     require(controller, "scan.password_nodes == 0U", "password-field retirement")
-    forbid(controller, "atspi_accessible_get_text", "accessible text/value disclosure")
+    require(controller, "atspi_accessible_get_text_iface(accessible)", "password text interface")
+    require(controller, "atspi_text_get_character_count(text, &error)", "count-only input completion")
+    require(controller, "scan.first_password_character_count == 0", "initially empty password field")
+    for disclosure_api in (
+        "atspi_text_get_text(",
+        "atspi_text_get_string_at_offset(",
+        "atspi_text_get_character_at_offset(",
+        "atspi_accessible_get_value_iface(",
+        "atspi_value_get_current_value(",
+    ):
+        forbid(controller, disclosure_api, "accessible text/value disclosure")
     require(controller, "g_free(name);", "accessible-name release")
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
@@ -782,6 +803,8 @@ def validate(sources: dict[str, str]) -> None:
         (
             "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)",
             "type_password(display)",
+            "wait_for_password_character_count((unsigned int)viewer_pid",
+            "fake_key(display, XK_Return)",
             "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)",
             "atspi_exit() != 0",
             "wait_for_current_frames(source, display, &viewer, &history, AUTH_WAIT_MS",

@@ -24,9 +24,11 @@
 
 #define WINDOW_WAIT_MS 45000U
 #define PASSWORD_PROMPT_WAIT_MS 30000U
+#define PASSWORD_INPUT_WAIT_MS 5000U
 #define PASSWORD_PROMPT_RETIRE_MS 10000U
 #define PASSWORD_PROMPT_SCAN_INTERVAL_MS 100U
 #define PASSWORD_PROMPT_RETIRE_STABLE_SCANS 5U
+#define PASSWORD_KEY_INTERVAL_MS 30U
 #define ACCESSIBLE_NODE_LIMIT 4096U
 #define ACCESSIBLE_CHILD_LIMIT 512
 #define ACCESSIBLE_DEPTH_LIMIT 64U
@@ -46,6 +48,9 @@ static const uint8_t palette[16][3] = {
     {196U, 92U, 44U},   {44U, 196U, 92U},   {92U, 44U, 196U},
     {196U, 196U, 196U},
 };
+
+static const char test_password[] = "rustdesk-peer-9f2a7c4e";
+_Static_assert(sizeof(test_password) - 1U == 22U, "test password length must remain exact");
 
 typedef struct {
     uint64_t first_seen_ms[256];
@@ -83,6 +88,7 @@ typedef struct {
     int first_password_visible;
     int first_password_focusable;
     int first_password_focused;
+    gint first_password_character_count;
 } PasswordPromptScan;
 
 static int sleep_millis(unsigned int millis) {
@@ -182,6 +188,21 @@ static int scan_password_prompt_node(AtspiAccessible *accessible, unsigned int e
     visible = atspi_state_set_contains(states, ATSPI_STATE_VISIBLE);
     focusable = atspi_state_set_contains(states, ATSPI_STATE_FOCUSABLE);
     if (role == ATSPI_ROLE_PASSWORD_TEXT) {
+        AtspiText *text = atspi_accessible_get_text_iface(accessible);
+        gint character_count;
+        if (text == NULL) {
+            g_object_unref(states);
+            return -1;
+        }
+        character_count = atspi_text_get_character_count(text, &error);
+        g_object_unref(text);
+        if (error != NULL || character_count < 0) {
+            if (error != NULL) {
+                g_error_free(error);
+            }
+            g_object_unref(states);
+            return -1;
+        }
         if (scan->password_nodes == 0U) {
             scan->first_password_editable = editable;
             scan->first_password_enabled = enabled;
@@ -189,6 +210,7 @@ static int scan_password_prompt_node(AtspiAccessible *accessible, unsigned int e
             scan->first_password_visible = visible;
             scan->first_password_focusable = focusable;
             scan->first_password_focused = focused;
+            scan->first_password_character_count = character_count;
         }
         scan->password_nodes += 1U;
     }
@@ -252,6 +274,7 @@ static int scan_password_prompt(unsigned int expected_pid, PasswordPromptScan *s
 
     memset(scan, 0, sizeof(*scan));
     scan->first_focused_role = ATSPI_ROLE_INVALID;
+    scan->first_password_character_count = -1;
     if (atspi_get_desktop_count() != 1) {
         return -1;
     }
@@ -302,16 +325,42 @@ static int wait_for_password_prompt(unsigned int expected_pid, PasswordPromptSca
     uint64_t deadline = monotonic_millis() + PASSWORD_PROMPT_WAIT_MS;
     memset(last_scan, 0, sizeof(*last_scan));
     last_scan->first_focused_role = ATSPI_ROLE_INVALID;
+    last_scan->first_password_character_count = -1;
     while (monotonic_millis() < deadline) {
         PasswordPromptScan scan;
         if (scan_password_prompt(expected_pid, &scan, 0) == 0) {
             *last_scan = scan;
             if (scan.password_nodes == 1U && scan.visible_passwords == 1U &&
-                scan.ready_passwords == 1U) {
+                scan.ready_passwords == 1U && scan.first_password_character_count == 0) {
                 return 0;
             }
             if (scan.password_nodes > 1U || scan.visible_passwords > 1U ||
                 scan.ready_passwords > 1U) {
+                return -1;
+            }
+        }
+        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) {
+            return -1;
+        }
+    }
+    return -1;
+}
+
+static int wait_for_password_character_count(unsigned int expected_pid, gint expected_count,
+                                             PasswordPromptScan *last_scan) {
+    uint64_t deadline = monotonic_millis() + PASSWORD_INPUT_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        PasswordPromptScan scan;
+        if (scan_password_prompt(expected_pid, &scan, 0) == 0) {
+            *last_scan = scan;
+            if (scan.password_nodes == 1U && scan.visible_passwords == 1U &&
+                scan.ready_passwords == 1U &&
+                scan.first_password_character_count == expected_count) {
+                return 0;
+            }
+            if (scan.password_nodes > 1U || scan.visible_passwords > 1U ||
+                scan.ready_passwords > 1U ||
+                scan.first_password_character_count > expected_count) {
                 return -1;
             }
         }
@@ -651,15 +700,14 @@ static int fake_key(Display *display, KeySym symbol) {
         return -1;
     }
     XSync(display, False);
-    return sleep_millis(12U);
+    return sleep_millis(PASSWORD_KEY_INTERVAL_MS);
 }
 
 static int type_password(Display *display) {
-    static const char password[] = "rustdesk-peer-9f2a7c4e";
     size_t index;
-    for (index = 0U; index < sizeof(password) - 1U; ++index) {
+    for (index = 0U; index < sizeof(test_password) - 1U; ++index) {
         KeySym symbol;
-        unsigned char character = (unsigned char)password[index];
+        unsigned char character = (unsigned char)test_password[index];
         if (character == '-') {
             symbol = XK_minus;
         } else if ((character >= 'a' && character <= 'z') ||
@@ -672,7 +720,7 @@ static int type_password(Display *display) {
             return -1;
         }
     }
-    return fake_key(display, XK_Return);
+    return 0;
 }
 
 static int wait_for_current_frames(Display *source, Display *display, const ViewerWindow *viewer,
@@ -898,13 +946,14 @@ int main(int argc, char **argv) {
                 "applications=%u nodes=%u password_nodes=%u visible_passwords=%u "
                 "ready_passwords=%u focused_nodes=%u first_focused_role=%d "
                 "first_password_states=editable:%d,enabled:%d,sensitive:%d,visible:%d,"
-                "focusable:%d,focused:%d\n",
+                "focusable:%d,focused:%d characters:%d\n",
                 prompt_scan.application_roots, prompt_scan.nodes, prompt_scan.password_nodes,
                 prompt_scan.visible_passwords, prompt_scan.ready_passwords,
                 prompt_scan.focused_nodes, (int)prompt_scan.first_focused_role,
                 prompt_scan.first_password_editable, prompt_scan.first_password_enabled,
                 prompt_scan.first_password_sensitive, prompt_scan.first_password_visible,
-                prompt_scan.first_password_focusable, prompt_scan.first_password_focused);
+                prompt_scan.first_password_focusable, prompt_scan.first_password_focused,
+                prompt_scan.first_password_character_count);
         if (scan_password_prompt((unsigned int)viewer_pid, &diagnostic_scan, 1) != 0) {
             fputs("FLUTTER_PEER_X11_FAIL accessibility tree diagnostic unavailable\n", stderr);
         }
@@ -915,10 +964,34 @@ int main(int argc, char **argv) {
     }
     printf("FLUTTER_PEER_PASSWORD_PROMPT_READY pid=%lu applications=%u nodes=%u "
            "role=password_text editable=true enabled=true sensitive=true visible=true "
-           "focusable=true focused=true\n",
+           "focusable=true focused=true characters=0\n",
            viewer_pid, prompt_scan.application_roots, prompt_scan.nodes);
     if (type_password(display) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL real password prompt input\n", stderr);
+        exit_atspi_after_failure();
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
+    if (wait_for_password_character_count((unsigned int)viewer_pid,
+                                          (gint)(sizeof(test_password) - 1U),
+                                          &prompt_scan) != 0) {
+        fprintf(stderr,
+                "FLUTTER_PEER_X11_FAIL password input was not complete "
+                "applications=%u nodes=%u password_nodes=%u visible_passwords=%u "
+                "ready_passwords=%u characters=%d expected=%zu\n",
+                prompt_scan.application_roots, prompt_scan.nodes, prompt_scan.password_nodes,
+                prompt_scan.visible_passwords, prompt_scan.ready_passwords,
+                prompt_scan.first_password_character_count, sizeof(test_password) - 1U);
+        exit_atspi_after_failure();
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
+    printf("FLUTTER_PEER_PASSWORD_INPUT_OK characters=%zu observed_without_value=true\n",
+           sizeof(test_password) - 1U);
+    if (fake_key(display, XK_Return) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL real password prompt submission\n", stderr);
         exit_atspi_after_failure();
         XCloseDisplay(display);
         XCloseDisplay(source);
@@ -928,9 +1001,10 @@ int main(int argc, char **argv) {
         fprintf(stderr,
                 "FLUTTER_PEER_X11_FAIL password prompt did not retire "
                 "applications=%u nodes=%u password_nodes=%u visible_passwords=%u "
-                "ready_passwords=%u\n",
+                "ready_passwords=%u characters=%d\n",
                 prompt_scan.application_roots, prompt_scan.nodes, prompt_scan.password_nodes,
-                prompt_scan.visible_passwords, prompt_scan.ready_passwords);
+                prompt_scan.visible_passwords, prompt_scan.ready_passwords,
+                prompt_scan.first_password_character_count);
         exit_atspi_after_failure();
         XCloseDisplay(display);
         XCloseDisplay(source);
@@ -942,8 +1016,8 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         return 1;
     }
-    puts("FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true "
-         "argv_password=false");
+    puts("FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true "
+         "retired=true typed_via_xtest=true argv_password=false");
 
     if (wait_for_current_frames(source, display, &viewer, &history, AUTH_WAIT_MS, 4U,
                                 &initial_fresh_ms, &initial_max_age) != 0) {

@@ -867,7 +867,9 @@ CFG
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true argv_password=false$' \
+    grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
+      <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
+    grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     grep -Eq '^FLUTTER_PEER_FOCUS_RECOVERY_OK .* real_pointer=true stable_connection=true$' \
       <<<"$controller_output" || fail 'stable-connection focus recovery verdict is missing'

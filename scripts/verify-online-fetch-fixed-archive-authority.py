@@ -774,6 +774,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "if len(specs) == 1:",
             "if len(specs) == 2:",
             "if len(specs) == 6:",
+            "if len(specs) == 8:",
             "if len(specs) == 14:",
             "if len(specs) == 33:",
             "is_debian_systemd_image_name(names[0])",
@@ -1044,6 +1045,12 @@ MUTATIONS = (
         "if len(specs) == 6:",
         "if len(specs) == 5:",
         "closed WiX manifest count",
+    ),
+    Mutation(
+        "helper",
+        "if len(specs) == 8:",
+        "if len(specs) == 9:",
+        "closed Flutter-peer manifest count",
     ),
     Mutation(
         "helper",

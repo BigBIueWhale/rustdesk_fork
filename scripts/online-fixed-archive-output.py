@@ -260,7 +260,13 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
                 "wixtoolset.util.wixext",
             )
         )
+        if names != expected_wix:
+            fail("the six-entry manifest is not the exact WiX source")
+        return
+    if len(specs) == 8:
         expected_flutter_peer = (
+            "atspi-debs/at-spi2-core.deb",
+            "atspi-debs/gsettings-desktop-schemas.deb",
             "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
             "xvfb-debs/libfontenc1.deb",
             "xvfb-debs/libxfont2.deb",
@@ -268,10 +274,10 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             "xvfb-debs/x11-xkb-utils.deb",
             "xvfb-debs/xvfb.deb",
         )
-        if names not in (expected_wix, expected_flutter_peer):
+        if names != expected_flutter_peer:
             fail(
-                "the six-entry manifest is neither the exact WiX source nor "
-                "the exact Linux full-peer vcpkg/Xvfb source"
+                "the eight-entry manifest is not the exact Linux full-peer "
+                "vcpkg/Xvfb/AT-SPI source"
             )
         return
     if len(specs) == 33:
@@ -298,8 +304,9 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     fail(
         "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
         "two Dart audit inputs, three Flutter model-test toolchain entries, "
-        "an admitted six-entry WiX or Linux full-peer source, seven Android build "
-        "toolchain entries, 14 toolchain entries, "
+        "an admitted six-entry WiX source, seven Android build entries, "
+        "an admitted eight-entry Linux full-peer source, "
+        "14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
     )
@@ -1469,6 +1476,8 @@ def test_wix_specs() -> tuple[ArchiveSpec, ...]:
 def test_flutter_peer_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name in (
+        "atspi-debs/at-spi2-core.deb",
+        "atspi-debs/gsettings-desktop-schemas.deb",
         "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
         "xvfb-debs/libfontenc1.deb",
         "xvfb-debs/libxfont2.deb",
@@ -1734,7 +1743,7 @@ def self_test() -> None:
 
         wix_specs = test_wix_specs()
         flutter_peer_specs = test_flutter_peer_specs()
-        if len(flutter_peer_specs) != 6:
+        if len(flutter_peer_specs) != 8:
             fail("Flutter-peer self-test lost its exact fixed-input manifest")
         substituted_flutter_peer_specs = [
             [
@@ -1746,7 +1755,7 @@ def self_test() -> None:
             ]
             for spec in flutter_peer_specs
         ]
-        substituted_flutter_peer_specs[-1][0] = "xvfb-debs/substituted.deb"
+        substituted_flutter_peer_specs[-1][0] = "atspi-debs/substituted.deb"
         try:
             parse_specs(substituted_flutter_peer_specs)
         except ContractError:

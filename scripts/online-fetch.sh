@@ -1803,6 +1803,7 @@ load_flutter_peer_fixed_archive_manifest() {
     local atspi_manifest_sha256 atspi_count=0
     local -a expected_names=(libfontenc1 libxfont2 libxkbfile1 x11-xkb-utils xvfb)
     local -a expected_atspi_names=(at-spi2-core gsettings-desktop-schemas)
+    local -a atspi_fixed_archive_args=() xvfb_fixed_archive_args=()
     [ "${#FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}" -eq 0 ] \
         || die "Flutter-peer fixed-archive manifest was loaded more than once"
     [ -f "$FLUTTER_PEER_PACKAGE_MANIFEST" ] \
@@ -1810,14 +1811,6 @@ load_flutter_peer_fixed_archive_manifest() {
         || die "Flutter-peer package manifest is not one real file"
     manifest_sha256="$(/usr/bin/sha256sum "$FLUTTER_PEER_PACKAGE_MANIFEST" \
         | /usr/bin/awk '{print $1}')"
-    FLUTTER_PEER_FIXED_ARCHIVE_ARGS=(
-        --entry
-        "vcpkg-${VCPKG_BASELINE}.tar.gz"
-        "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz"
-        "$SIZE_VCPKG_120DEAC3"
-        "$SHA256_VCPKG_120DEAC3"
-        "github.com,codeload.github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
-    )
     while IFS=$'\t' read -r name size digest url extra || [ -n "${name:-}" ]; do
         [ -n "${name:-}" ] || continue
         [[ "$name" == \#* ]] && continue
@@ -1834,7 +1827,7 @@ load_flutter_peer_fixed_archive_manifest() {
             https://security.debian.org/debian-security/pool/*.deb) host=security.debian.org ;;
             *) die "Flutter-peer package URL is outside the exact Debian HTTPS pools: $name" ;;
         esac
-        FLUTTER_PEER_FIXED_ARCHIVE_ARGS+=(
+        xvfb_fixed_archive_args+=(
             --entry "xvfb-debs/$name.deb" "$url" "$size" "$digest" "$host"
         )
         count=$((count + 1))
@@ -1864,7 +1857,7 @@ load_flutter_peer_fixed_archive_manifest() {
             https://deb.debian.org/debian/pool/*.deb) host=deb.debian.org ;;
             *) die "Flutter-peer AT-SPI package URL is outside the exact Debian HTTPS pool: $name" ;;
         esac
-        FLUTTER_PEER_FIXED_ARCHIVE_ARGS+=(
+        atspi_fixed_archive_args+=(
             --entry "atspi-debs/$name.deb" "$url" "$size" "$digest" "$host"
         )
         atspi_count=$((atspi_count + 1))
@@ -1874,6 +1867,16 @@ load_flutter_peer_fixed_archive_manifest() {
     [ "$(/usr/bin/sha256sum "$FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST" \
         | /usr/bin/awk '{print $1}')" = "$atspi_manifest_sha256" ] \
         || die "Flutter-peer AT-SPI package manifest changed while loading"
+    FLUTTER_PEER_FIXED_ARCHIVE_ARGS=(
+        "${atspi_fixed_archive_args[@]}"
+        --entry
+        "vcpkg-${VCPKG_BASELINE}.tar.gz"
+        "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz"
+        "$SIZE_VCPKG_120DEAC3"
+        "$SHA256_VCPKG_120DEAC3"
+        "github.com,codeload.github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+        "${xvfb_fixed_archive_args[@]}"
+    )
     readonly -a FLUTTER_PEER_FIXED_ARCHIVE_ARGS
 }
 

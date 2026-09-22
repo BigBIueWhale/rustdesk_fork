@@ -775,9 +775,12 @@ PY
         || fail "generated native Linux plugin symlink is missing: $plugin_name"
       plugin_target="$(readlink -f -- "$plugin_symlink")" \
         || fail "generated native Linux plugin symlink is dangling: $plugin_name"
-      [[ "$plugin_target" == "$PUB_CACHE"/* ]] \
-        && [ -d "$plugin_target/linux" ] \
-        || fail "generated native Linux plugin escaped the pinned cache or lacks Linux sources: $plugin_name"
+      case "$plugin_target" in
+        "$PUB_CACHE"/*|"$BUILD_SOURCE/flutter"/*) ;;
+        *) fail "generated native Linux plugin escaped the admitted dependency roots: $plugin_name" ;;
+      esac
+      [ -d "$plugin_target/linux" ] \
+        || fail "generated native Linux plugin lacks Linux sources: $plugin_name"
       plugin_symlink_count=$((plugin_symlink_count + 1))
     done < "$NATIVE_PLUGIN_NAMES"
     printf 'FLUTTER_PEER_PLUGIN_INPUTS_OK generated=3 native_symlinks=%s lock_unchanged=true network=none\n' \

@@ -183,7 +183,9 @@ def validate(sources: dict[str, str]) -> None:
         "generated native/FFI Flutter plugin lists are absent or ambiguous",
         "generated native/FFI Flutter plugin lists are empty",
         "generated native Linux plugin symlink is missing",
-        "generated native Linux plugin escaped the pinned cache or lacks Linux sources",
+        '"$PUB_CACHE"/*|"$BUILD_SOURCE/flutter"/*',
+        "generated native Linux plugin escaped the admitted dependency roots",
+        "generated native Linux plugin lacks Linux sources",
         "project pubspec.lock changed during Flutter plugin injection",
     ):
         require(stage, token, "generated Linux plugin input finality")

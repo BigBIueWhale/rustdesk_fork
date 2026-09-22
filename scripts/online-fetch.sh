@@ -4122,7 +4122,7 @@ maintenance_build_rust_audit_image_candidate() {
     local tag="rd-rust-audit-candidate:provenance-v1"
     local context="$ONLINE_FETCH_TMP/rust-audit-build-context"
     local directory="$ONLINE_DIR/verifier-images"
-    local first_archive="$ONLINE_FETCH_TMP/rust-audit-rebuild-a.docker.tar.gz"
+    local first_archive="$directory/.rust-audit-rebuild-a.docker.tar.gz.part"
     local second_archive="$directory/.rust-audit-candidate.docker.tar.gz.part"
     local candidate="$directory/rust-audit-candidate.docker.tar.gz"
     for name in "${names[@]}"; do require_image_pin "$name"; done
@@ -4159,6 +4159,8 @@ maintenance_build_rust_audit_image_candidate() {
         || die "another Rust advisory image archive transaction owns the archive root"
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || die "Rust advisory candidate archive already exists"
+    [ ! -e "$first_archive" ] && [ ! -L "$first_archive" ] \
+        || die "stale first Rust advisory rebuild staging exists"
     [ ! -e "$second_archive" ] && [ ! -L "$second_archive" ] \
         || die "stale Rust advisory candidate publication staging exists"
 
@@ -4179,7 +4181,7 @@ maintenance_build_rust_audit_image_candidate() {
     first_config="$(image_capture_field "$first_result" config_id)"
     second_config="$(image_capture_field "$second_result" config_id)"
     [ "$first_manifest:$first_config" = "$second_manifest:$second_config" ] \
-        || die "independent Rust advisory rebuilds produced different runtime identities"
+        || die "independent Rust advisory rebuilds produced different runtime identities: first=$first_manifest:$first_config second=$second_manifest:$second_config"
     archive_sha="$(image_capture_field "$second_result" sha256)"
     archive_size="$(image_capture_field "$second_result" bytes)"
     online_image_provenance maintenance-rename-noreplace \

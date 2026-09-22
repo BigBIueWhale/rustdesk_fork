@@ -329,6 +329,7 @@ def validate_contract(repo):
         (
             "independent Rust advisory rebuilds produced different runtime identities",
             "maintenance-rename-noreplace",
+            'first_archive="$directory/.rust-audit-rebuild-a.docker.tar.gz.part"',
             'candidate="$directory/rust-audit-candidate.docker.tar.gz"',
         ),
         "Rust audit recoverable candidate transaction",

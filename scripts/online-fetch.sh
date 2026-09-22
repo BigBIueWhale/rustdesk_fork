@@ -2065,7 +2065,7 @@ stage_flutter_peer_inputs() {
     stage_archive_bundle flutter-peer "$ONLINE_DIR" \
         .rustdesk-flutter-peer-archives \
         "pinned Linux full-peer vcpkg/Xvfb inputs" \
-        "$DEB_BUILDER_CONFIG_ID" deb-builder
+        "$ANDROID_BUILDER_CONFIG_ID" android-builder
     stage_vcpkg_distfiles
     stage_vcpkg_natives
     log "Linux full-peer acquisition inputs are exact and no-clobber published"

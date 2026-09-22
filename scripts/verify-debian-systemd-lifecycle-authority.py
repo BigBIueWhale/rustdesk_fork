@@ -119,7 +119,7 @@ def validate_stage(source: str) -> None:
     ):
         forbid(source, token, label)
     for token, label in (
-        ('image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID"', "content-ID image selection"),
+        ('image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_CONFIG_ID"', "runtime config-ID image selection"),
         ('ldd /input/rustdesk', "exact executable dependency discovery"),
         ('runtime library basename collision', "basename-collision rejection"),
         ('runtime-library count is outside 60..256', "output count bound"),

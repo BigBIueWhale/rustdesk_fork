@@ -191,13 +191,21 @@ def validate(repo: Path) -> None:
   aarch64-apple-ios
 )"""
     require(apple, expected_targets, "exact Apple target matrix")
-    require(apple, 'readonly IMG="$APPLE_CHECK_IMAGE_ID"', "immutable Apple image")
-    require(apple, '[[ "$IMG" =~ ^sha256:[0-9a-f]{64}$ ]]', "Apple image content-ID syntax")
+    require(
+        apple,
+        'readonly APPLE_RUNTIME_IMAGE_ID="$APPLE_CHECK_IMAGE_CONFIG_ID"',
+        "immutable Apple runtime image",
+    )
+    require(
+        apple,
+        '[[ "$APPLE_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
+        "Apple runtime config-ID syntax",
+    )
     require_order(
         apple,
         (
             'IMAGE_ID="$(verifier_vm_docker image inspect',
-            '[ "$IMAGE_ID" = "$IMG" ]',
+            '[ "$IMAGE_ID" = "$APPLE_RUNTIME_IMAGE_ID" ]',
             "verifier_vm_image_provenance verify-local",
             '--image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}"',
             'archive_current_source >"$APPLE_SOURCE_ARCHIVE"',

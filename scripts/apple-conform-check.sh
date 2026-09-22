@@ -44,7 +44,7 @@ readonly REPO=$REPO_ROOT
 
 note(){ echo "  $*"; }
 rc=0
-readonly IMG="$APPLE_CHECK_IMAGE_ID"
+readonly APPLE_RUNTIME_IMAGE_ID="$APPLE_CHECK_IMAGE_CONFIG_ID"
 readonly APPLE_TOOLCHAIN_ROOT=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu
 readonly APPLE_TOOLCHAIN_BIN="$APPLE_TOOLCHAIN_ROOT/bin"
 readonly APPLE_CHECK_PATH="$APPLE_TOOLCHAIN_BIN:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -291,8 +291,8 @@ apple_sdk_boundary_self_test
 : "${APPLE_TOOLCHAIN_CONTENT_BYTES:?APPLE_TOOLCHAIN_CONTENT_BYTES is unset}"
 : "${SHA256_CARGO_VENDOR_CLOSURE_V1:?SHA256_CARGO_VENDOR_CLOSURE_V1 is unset}"
 : "${SHA256_CARGO_VENDOR_CONFIG:?SHA256_CARGO_VENDOR_CONFIG is unset}"
-[[ "$IMG" =~ ^sha256:[0-9a-f]{64}$ ]] \
-  || die "malformed immutable Apple-check image ID"
+[[ "$APPLE_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || die "malformed immutable Apple-check runtime config ID"
 [[ "$APPLE_CHECK_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || die "malformed immutable Apple-check config ID"
 [[ "$APPLE_CHECK_IMAGE_MANIFEST_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
@@ -313,9 +313,10 @@ done
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || die "Cargo vendor source map differs from its reviewed pin"
 
-IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$IMG")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$APPLE_RUNTIME_IMAGE_ID")" \
   || die "immutable Apple-check image is not present locally"
-[ "$IMAGE_ID" = "$IMG" ] || die "local Apple-check image identity differs from its pin"
+[ "$IMAGE_ID" = "$APPLE_RUNTIME_IMAGE_ID" ] \
+  || die "local Apple-check runtime identity differs from its config pin"
 readonly IMAGE_ID
 
 APPLE_IMAGE_SPEC=(

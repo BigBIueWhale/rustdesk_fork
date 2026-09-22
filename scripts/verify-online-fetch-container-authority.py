@@ -58,6 +58,53 @@ def validate(repo: pathlib.Path) -> None:
         encoding="utf-8"
     )
 
+    devcheck_load = extract(
+        online,
+        "verify_or_load_devcheck_image() {",
+        "\n}\n\nprepare_devcheck_build_context()",
+        "devcheck online load",
+    )
+    devcheck_promotion = extract(
+        online,
+        "maintenance_promote_devcheck_image_candidate() {",
+        "\n}\n\napple_check_image_spec_args()",
+        "devcheck online promotion",
+    )
+    apple_load = extract(
+        online,
+        "verify_or_load_apple_check_image() {",
+        "\n}\n\nmaintenance_capture_apple_check_image()",
+        "Apple online load",
+    )
+    apple_capture = extract(
+        online,
+        "maintenance_capture_apple_check_image() {",
+        "\n}\n\ndart_audit_contract_spec_args()",
+        "Apple online capture",
+    )
+    apple_build = extract(
+        online,
+        "maintenance_build_apple_check_image_candidate() {",
+        "\n}\n\nprepare_dart_audit_build_context()",
+        "Apple online candidate build",
+    )
+    for source, label in (
+        (devcheck_load, "devcheck load"),
+        (devcheck_promotion, "devcheck promotion"),
+        (apple_load, "Apple load"),
+        (apple_capture, "Apple capture"),
+    ):
+        require(
+            source,
+            "--publication-index-runtime",
+            f"explicit containerd publication identity for {label}",
+        )
+    if apple_build.count("--publication-index-runtime") != 2:
+        raise AuthorityError(
+            "Apple candidate verification and capture must both select the "
+            "containerd publication identity"
+        )
+
     dispatch = 'if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then'
     require(online, dispatch, "outer VM dispatch")
     require(online, 'exec "$SCRIPT_DIR/online-fetch-vm.sh" "$@"', "sole outer entry")
@@ -530,8 +577,6 @@ def validate(repo: pathlib.Path) -> None:
         ('"rd-devcheck@${DEV_CHECK_IMAGE_ID}=oci-layout://${base_layout}@${DEV_CHECK_IMAGE_MANIFEST_ID}"', "Apple local OCI base context"),
     ):
         require(online, token, label)
-    if online.count("online_buildx_build") != 7:
-        raise AuthorityError("Buildx build-call inventory differs")
     for token, label in (
         ("online_docker buildx build", "unbound Buildx build"),
         ("online_docker_without_vcs buildx build", "unbound VCS-free Buildx build"),

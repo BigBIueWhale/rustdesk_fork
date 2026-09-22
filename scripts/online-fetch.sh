@@ -2545,6 +2545,7 @@ verify_or_load_devcheck_image() {
     local args=()
     mapfile -d '' args < <(devcheck_image_spec_args)
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz" \
         --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
@@ -2727,6 +2728,7 @@ maintenance_promote_devcheck_image_candidate() {
         --source "$candidate" --destination "$final" \
         || die "devcheck candidate promotion failed"
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$final" \
         --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
@@ -2824,6 +2826,7 @@ verify_or_load_apple_check_image() {
     local args=()
     mapfile -d '' args < <(apple_check_image_spec_args)
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/verifier-images/apple-check.docker.tar.gz" \
         --archive-sha "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" \
@@ -2851,6 +2854,7 @@ maintenance_capture_apple_check_image() {
     mapfile -d '' args < <(apple_check_image_spec_args)
     result="$(
         online_image_provenance maintenance-capture \
+            --publication-index-runtime \
             --output "$directory/apple-check.docker.tar.gz" \
             "${args[@]}"
     )" || die "Apple check image archive capture failed"
@@ -3935,10 +3939,12 @@ maintenance_build_apple_check_image_candidate() {
     [ "${args[position]:-}" = "--expected-id" ] \
         || die "Apple check candidate spec has no expected image identity"
     online_image_provenance verify-local \
+        --publication-index-runtime \
         --image-ref "$tag" "${args[@]}" \
         || die "Apple check candidate runtime verification failed"
     result="$(
         online_image_provenance maintenance-capture \
+            --publication-index-runtime \
             --output "$candidate_archive" \
             "${args[@]}"
     )" || die "Apple check candidate provenance capture failed"

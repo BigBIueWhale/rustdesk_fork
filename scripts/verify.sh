@@ -594,23 +594,24 @@ fi
 
 echo "== preparing the confined compile/test transaction (R-S11bg) =="
 : "${DEV_CHECK_IMAGE_ID:?verify: DEV_CHECK_IMAGE_ID is unset}"
+: "${DEV_CHECK_IMAGE_CONFIG_ID:?verify: DEV_CHECK_IMAGE_CONFIG_ID is unset}"
 : "${SHA256_DEV_CHECK_DOCKERFILE:?verify: SHA256_DEV_CHECK_DOCKERFILE is unset}"
 : "${SHA256_DEV_CHECK_CARGO:?verify: SHA256_DEV_CHECK_CARGO is unset}"
 : "${SHA256_DEV_CHECK_RUSTC:?verify: SHA256_DEV_CHECK_RUSTC is unset}"
 : "${SHA256_DEV_CHECK_DPKG_MANIFEST:?verify: SHA256_DEV_CHECK_DPKG_MANIFEST is unset}"
 : "${SHA256_CARGO_VENDOR_CLOSURE_V1:?verify: SHA256_CARGO_VENDOR_CLOSURE_V1 is unset}"
 : "${SHA256_CARGO_VENDOR_CONFIG:?verify: SHA256_CARGO_VENDOR_CONFIG is unset}"
-[[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-  || { echo "verify: malformed immutable devcheck image ID" >&2; exit 1; }
+[[ "$DEV_CHECK_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || { echo "verify: malformed immutable devcheck runtime config ID" >&2; exit 1; }
 [ "$(sha256sum scripts/Dockerfile.devcheck | awk '{print $1}')" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
   || { echo "verify: devcheck acquisition recipe differs from its reviewed pin" >&2; exit 1; }
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || { echo "verify: Cargo vendor source map differs from its pin" >&2; exit 1; }
 
-IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_CONFIG_ID")" \
   || { echo "verify: immutable devcheck image is not present locally" >&2; exit 1; }
-[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ] \
-  || { echo "verify: local devcheck image identity differs from its pin" >&2; exit 1; }
+[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_CONFIG_ID" ] \
+  || { echo "verify: local devcheck runtime identity differs from its config pin" >&2; exit 1; }
 readonly IMAGE_ID
 
 archive_current_source() {
@@ -7506,13 +7507,13 @@ grep -qF 'smoke_docker()' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-d
 grep -qF 'SMOKE_SERVER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 guest-authority-runtime-self-test-missing"
 grep -qF 'read_smoke_pin()' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-pin-reader-missing"
-for smoke_pin in DEV_CHECK_IMAGE_ID RUST_VERSION SHA256_CARGO_VENDOR_CLOSURE_V1 SHA256_CARGO_VENDOR_CONFIG; do
+for smoke_pin in DEV_CHECK_IMAGE_CONFIG_ID RUST_VERSION SHA256_CARGO_VENDOR_CLOSURE_V1 SHA256_CARGO_VENDOR_CONFIG; do
   grep -qF "$(printf 'read_smoke_pin %s' "$smoke_pin")" scripts/smoke-server.sh \
     || r_s11e64="$r_s11e64 smoke-pin-read-missing-$smoke_pin"
 done
-grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$EXPECTED_IMAGE_ID") || {' scripts/smoke-server.sh \
+grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$EXPECTED_RUNTIME_IMAGE_ID") || {' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 exact-local-image-resolution-missing"
-grep -qF 'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then' scripts/smoke-server.sh \
+grep -qF 'if [ "$IMAGE_ID" != "$EXPECTED_RUNTIME_IMAGE_ID" ]; then' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 exact-image-id-comparison-missing"
 grep -qF 'readonly IMAGE_ID' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-image-id-missing"
 for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_xvfb_run" "$smoke_video_run" "$smoke_sibling_run"; do

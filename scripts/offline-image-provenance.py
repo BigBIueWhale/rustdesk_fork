@@ -938,12 +938,9 @@ def validate_rust_audit_identity_contract(spec: ImageSpec) -> None:
 
 def runtime_image_id(spec: ImageSpec) -> str:
     """Return the immutable ID that a Docker daemon uses to run the image."""
-    if isinstance(spec, CertifiedBuilderSpec):
-        return spec.config_id
-    if isinstance(spec, DartAuditSpec) and spec.config_id is not None:
-        return spec.config_id
-    if isinstance(spec, RustAuditSpec) and spec.config_id is not None:
-        return spec.config_id
+    config_id = getattr(spec, "config_id", None)
+    if config_id is not None:
+        return config_id
     return spec.image_id
 
 
@@ -955,7 +952,13 @@ def selected_runtime_image_id(
     if publication_index_runtime:
         if not isinstance(
             spec,
-            (CertifiedBuilderSpec, DartAuditSpec, RustAuditSpec),
+            (
+                CertifiedBuilderSpec,
+                VerifierSpec,
+                AppleCheckSpec,
+                DartAuditSpec,
+                RustAuditSpec,
+            ),
         ) or getattr(spec, "config_id", None) is None:
             fail(
                 "publication-index runtime selection requires a final "
@@ -7014,9 +7017,13 @@ def capture(
     *,
     require_private: bool = False,
     layout_output: Path | None = None,
+    publication_index_runtime: bool = False,
 ) -> tuple[str, int, ArchiveIdentity | None, str | None]:
-    runtime_id = runtime_image_id(spec)
-    verify_local(runtime_id, spec)
+    runtime_id = selected_runtime_image_id(
+        spec,
+        publication_index_runtime,
+    )
+    verify_local(runtime_id, spec, publication_index_runtime)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
     private_archive = requires_private_archive(spec) or require_private
@@ -11819,8 +11826,11 @@ def self_test() -> None:
             verifier_spec,
             verifier_size,
         )
+        verifier_runtime_id = runtime_image_id(verifier_spec)
+        if verifier_runtime_id != verifier_spec.config_id:
+            fail("devcheck runtime did not select its pinned config identity")
         verifier_payload = {
-            "Id": verifier_spec.image_id,
+            "Id": verifier_runtime_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": {
@@ -11830,8 +11840,14 @@ def self_test() -> None:
                 "Labels": verifier_spec.labels,
             },
         }
-        validate_inspect(verifier_payload, verifier_spec.image_id, verifier_spec)
-        verifier_checks = 2
+        validate_inspect(verifier_payload, verifier_runtime_id, verifier_spec)
+        validate_inspect(
+            {**verifier_payload, "Id": verifier_spec.image_id},
+            verifier_spec.image_id,
+            verifier_spec,
+            publication_index_runtime=True,
+        )
+        verifier_checks = 3
 
         def verifier_failure(operation: Callable[[], object], label: str) -> None:
             nonlocal verifier_checks
@@ -11913,7 +11929,7 @@ def self_test() -> None:
                         "Env": DEV_CHECK_ENV[:-1],
                     },
                 },
-                verifier_spec.image_id,
+                verifier_runtime_id,
                 verifier_spec,
             ),
             "devcheck runtime environment",
@@ -11977,7 +11993,7 @@ def self_test() -> None:
             fail("no-replace collision changed archive bytes")
         verify_archive(verifier_archive, verifier_sha, verifier_spec, verifier_size)
         verifier_checks += 1
-        if verifier_checks != 16:
+        if verifier_checks != 17:
             fail(f"devcheck image self-test count differs: {verifier_checks}")
 
         apple_archive = Path(temporary) / "apple-check-image.tar.gz"
@@ -11991,18 +12007,27 @@ def self_test() -> None:
             apple_spec,
             apple_size,
         )
+        apple_runtime_id = runtime_image_id(apple_spec)
+        if apple_runtime_id != apple_spec.config_id:
+            fail("Apple check runtime did not select its pinned config identity")
         apple_payload = {
-            "Id": apple_spec.image_id,
+            "Id": apple_runtime_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": apple_spec.runtime_config,
         }
         validate_inspect(
             apple_payload,
-            apple_spec.image_id,
+            apple_runtime_id,
             apple_spec,
         )
-        apple_checks = 2
+        validate_inspect(
+            {**apple_payload, "Id": apple_spec.image_id},
+            apple_spec.image_id,
+            apple_spec,
+            publication_index_runtime=True,
+        )
+        apple_checks = 3
 
         def apple_failure(
             operation: Callable[[], object],
@@ -12106,7 +12131,7 @@ def self_test() -> None:
                         "Env": APPLE_CHECK_ENV[:-1],
                     },
                 },
-                apple_spec.image_id,
+                apple_runtime_id,
                 apple_spec,
             ),
             "Apple check runtime environment",
@@ -12248,7 +12273,7 @@ def self_test() -> None:
             apple_size,
         )
         apple_checks += 1
-        if apple_checks != 33:
+        if apple_checks != 34:
             fail(
                 f"Apple check image self-test count differs: {apple_checks}"
             )
@@ -12858,6 +12883,10 @@ def argument_parser() -> argparse.ArgumentParser:
     capture_parser = subparsers.add_parser("maintenance-capture")
     add_spec_arguments(capture_parser)
     capture_parser.add_argument("--output", type=Path, required=True)
+    capture_parser.add_argument(
+        "--publication-index-runtime",
+        action="store_true",
+    )
     bootstrap_capture = subparsers.add_parser(
         "maintenance-capture-bootstrap-candidate"
     )
@@ -12870,6 +12899,7 @@ def argument_parser() -> argparse.ArgumentParser:
     )
     estimate = subparsers.add_parser("maintenance-estimate")
     add_spec_arguments(estimate)
+    estimate.add_argument("--publication-index-runtime", action="store_true")
     return parser
 
 
@@ -13018,6 +13048,11 @@ def main() -> int:
                 == "maintenance-capture-bootstrap-candidate"
                 else None
             ),
+            publication_index_runtime=(
+                args.publication_index_runtime
+                if args.command == "maintenance-capture"
+                else False
+            ),
         )
         if args.command == "maintenance-capture-bootstrap-candidate" \
            and identity is None:
@@ -13032,9 +13067,17 @@ def main() -> int:
         print(f"sha256={archive_sha}")
         print(f"bytes={size}")
     elif args.command == "maintenance-estimate":
-        runtime_id = runtime_image_id(spec)
+        runtime_id = selected_runtime_image_id(
+            spec,
+            args.publication_index_runtime,
+        )
         payload = inspect_image(runtime_id)
-        validate_inspect(payload, runtime_id, spec)
+        validate_inspect(
+            payload,
+            runtime_id,
+            spec,
+            args.publication_index_runtime,
+        )
         size = payload.get("Size")
         if not isinstance(size, int) or size < 0:
             fail("docker inspect returned an invalid image size")

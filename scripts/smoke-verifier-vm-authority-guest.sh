@@ -312,7 +312,7 @@ run_debian_systemd_lifecycle() {
         && [ "${stage_receipt[0]}" = \
           "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" ] \
         || fail "runtime-library staging authority receipt differs: $stage_output"
-    if [[ "${stage_receipt[1]}" =~ ^DEBIAN_SYSTEMD_RUNTIME_LIBS=pass\ image=$DEV_CHECK_IMAGE_ID\ libraries=([0-9]+)\ bytes=([0-9]+)\ input=readonly\ output=private$ ]]; then
+    if [[ "${stage_receipt[1]}" =~ ^DEBIAN_SYSTEMD_RUNTIME_LIBS=pass\ runtime_image=$DEV_CHECK_IMAGE_CONFIG_ID\ libraries=([0-9]+)\ bytes=([0-9]+)\ input=readonly\ output=private$ ]]; then
         stage_count=${BASH_REMATCH[1]}
         stage_bytes=${BASH_REMATCH[2]}
     else

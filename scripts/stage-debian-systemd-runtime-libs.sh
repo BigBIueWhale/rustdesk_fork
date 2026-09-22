@@ -245,18 +245,18 @@ run_self_test() {
 }
 
 stage_runtime_libraries() {
-    local image_id binary_before binary_after count bytes library size bad
+    local runtime_image_id binary_before binary_after count bytes library size bad
     local library_metadata library_owner library_group library_mode library_links
     require_input_file "$BINARY" 'RustDesk lifecycle executable'
     require_empty_output "$OUTPUT"
-    [[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-        || fail 'pinned devcheck image ID is malformed'
-    image_id="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
-        || fail 'exact devcheck image is absent from the guest authority'
-    [ "$image_id" = "$DEV_CHECK_IMAGE_ID" ] \
-        || fail 'devcheck image identity differs from its content pin'
+    [[ "$DEV_CHECK_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || fail 'pinned devcheck runtime config ID is malformed'
+    runtime_image_id="$(verifier_vm_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_CONFIG_ID")" \
+        || fail 'exact devcheck runtime image is absent from the guest authority'
+    [ "$runtime_image_id" = "$DEV_CHECK_IMAGE_CONFIG_ID" ] \
+        || fail 'devcheck runtime image identity differs from its config pin'
     binary_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BINARY"):$(/usr/bin/sha256sum "$BINARY")"
-    runtime_library_stage_run "$DEV_CHECK_IMAGE_ID" "$BINARY" "$OUTPUT" \
+    runtime_library_stage_run "$DEV_CHECK_IMAGE_CONFIG_ID" "$BINARY" "$OUTPUT" \
         /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             stage_library() {
@@ -321,8 +321,8 @@ stage_runtime_libraries() {
     done < <(/usr/bin/find "$OUTPUT" -mindepth 1 -maxdepth 1 -type f -print0)
     [ "$bytes" -le 1073741824 ] \
         || fail "runtime-library output exceeds 1 GiB: $bytes bytes"
-    printf 'DEBIAN_SYSTEMD_RUNTIME_LIBS=pass image=%s libraries=%s bytes=%s input=readonly output=private\n' \
-        "$DEV_CHECK_IMAGE_ID" "$count" "$bytes"
+    printf 'DEBIAN_SYSTEMD_RUNTIME_LIBS=pass runtime_image=%s libraries=%s bytes=%s input=readonly output=private\n' \
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$count" "$bytes"
 }
 
 if [ "$SELF_TEST" -eq 1 ]; then

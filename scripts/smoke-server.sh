@@ -88,7 +88,7 @@ readonly SMOKE_DOCKER_CONFIG=$VERIFIER_VM_AUTHORITY_ROOT/docker-config
 read_smoke_pin() {
   local name=$1 line value= count=0
   case "$name" in
-    DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG|VERIFIER_VM_DOCKER_VERSION) ;;
+    DEV_CHECK_IMAGE_CONFIG_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG|VERIFIER_VM_DOCKER_VERSION) ;;
     *) echo "smoke: unsupported pin name $name" >&2; return 1 ;;
   esac
   while IFS= read -r line || [ -n "$line" ]; do
@@ -182,19 +182,19 @@ if [ "$SMOKE_MODE" = vm-authority-self-test ]; then
   exit 0
 fi
 
-EXPECTED_IMAGE_ID=$(read_smoke_pin DEV_CHECK_IMAGE_ID)
+EXPECTED_RUNTIME_IMAGE_ID=$(read_smoke_pin DEV_CHECK_IMAGE_CONFIG_ID)
 SMOKE_RUST_VERSION=$(read_smoke_pin RUST_VERSION)
 SMOKE_VENDOR_CLOSURE_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CLOSURE_V1)
 SMOKE_VENDOR_CONFIG_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CONFIG)
-[[ "$EXPECTED_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-  || { echo "smoke: DEV_CHECK_IMAGE_ID is not a canonical image ID" >&2; exit 1; }
+[[ "$EXPECTED_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || { echo "smoke: DEV_CHECK_IMAGE_CONFIG_ID is not a canonical runtime image ID" >&2; exit 1; }
 [[ "$SMOKE_RUST_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] \
   || { echo "smoke: RUST_VERSION is not a canonical major.minor version" >&2; exit 1; }
 [[ "$SMOKE_VENDOR_CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
   || { echo "smoke: Cargo vendor closure pin is not canonical SHA-256" >&2; exit 1; }
 [[ "$SMOKE_VENDOR_CONFIG_SHA256" =~ ^[0-9a-f]{64}$ ]] \
   || { echo "smoke: Cargo vendor config pin is not canonical SHA-256" >&2; exit 1; }
-readonly EXPECTED_IMAGE_ID SMOKE_RUST_VERSION SMOKE_VENDOR_CLOSURE_SHA256 SMOKE_VENDOR_CONFIG_SHA256
+readonly EXPECTED_RUNTIME_IMAGE_ID SMOKE_RUST_VERSION SMOKE_VENDOR_CLOSURE_SHA256 SMOKE_VENDOR_CONFIG_SHA256
 readonly SMOKE_RUSTUP_TOOLCHAIN="${SMOKE_RUST_VERSION}.0-x86_64-unknown-linux-gnu"
 
 smoke_source_tree_digest() {
@@ -421,12 +421,12 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE_ID") || {
-  echo "smoke: required pinned local image $EXPECTED_IMAGE_ID is absent" >&2
+IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' "$EXPECTED_RUNTIME_IMAGE_ID") || {
+  echo "smoke: required pinned local runtime image $EXPECTED_RUNTIME_IMAGE_ID is absent" >&2
   exit 1
 }
-if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then
-  echo "smoke: Docker did not resolve the exact pinned development image ID" >&2
+if [ "$IMAGE_ID" != "$EXPECTED_RUNTIME_IMAGE_ID" ]; then
+  echo "smoke: Docker did not resolve the exact pinned development runtime config ID" >&2
   exit 1
 fi
 readonly IMAGE_ID

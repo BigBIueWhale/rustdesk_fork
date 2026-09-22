@@ -2871,10 +2871,12 @@ verify_or_load_dart_audit_image() {
         "${args[@]}"
 }
 
-rust_audit_image_spec_args() {
+rust_audit_contract_spec_args() {
+    [ "$#" -eq 2 ] || die "internal Rust advisory contract specification error"
+    local role="$1" expected_id="$2"
     printf '%s\0' \
-        --role rust-audit \
-        --expected-id "$RUST_AUDIT_IMAGE_ID" \
+        --role "$role" \
+        --expected-id "$expected_id" \
         --base "rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}" \
         --dockerfile-sha "$SHA256_RUST_AUDIT_DOCKERFILE" \
         --rust-version "$RUST_AUDIT_RUST_VERSION" \
@@ -2893,9 +2895,19 @@ rust_audit_image_spec_args() {
         --cargo-audit-sha "$SHA256_RUST_AUDIT_CARGO_AUDIT" \
         --cargo-deny-sha "$SHA256_RUST_AUDIT_CARGO_DENY" \
         --advisory-db-sha "$ADVISORY_DB_COMMIT" \
-        --advisory-db-epoch "$ADVISORY_DB_COMMIT_EPOCH" \
+        --advisory-db-epoch "$ADVISORY_DB_COMMIT_EPOCH"
+}
+
+rust_audit_image_spec_args() {
+    rust_audit_contract_spec_args rust-audit "$RUST_AUDIT_IMAGE_ID"
+    printf '%s\0' \
         --config-id "$RUST_AUDIT_IMAGE_CONFIG_ID" \
         --manifest-id "$RUST_AUDIT_IMAGE_MANIFEST_ID"
+}
+
+rust_audit_candidate_spec_args() {
+    [ "$#" -eq 1 ] || die "internal Rust advisory candidate specification error"
+    rust_audit_contract_spec_args rust-audit "$1"
 }
 
 require_rust_audit_image_pins() {
@@ -2934,36 +2946,6 @@ verify_or_load_rust_audit_image() {
         --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
         "${args[@]}"
-}
-
-maintenance_capture_rust_audit_image() {
-    require_rust_audit_image_pins
-    local directory="$ONLINE_DIR/verifier-images"
-    if [ -e "$directory" ] || [ -L "$directory" ]; then
-        [ -d "$directory" ] && [ ! -L "$directory" ] \
-            || die "Rust advisory image archive root is not one real directory"
-        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
-          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-            || die "Rust advisory image archive root is not current-user-private mode 0700"
-    else
-        /usr/bin/install -d -m 0700 "$directory"
-    fi
-    local lock_fd
-    exec {lock_fd}<"$directory" \
-        || die "cannot open the Rust advisory image archive root for locking"
-    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
-        || die "another Rust advisory image archive transaction owns the archive root"
-    local args=() result
-    mapfile -d '' args < <(rust_audit_image_spec_args)
-    result="$(
-        online_image_provenance maintenance-capture \
-            --output "$directory/rust-audit.docker.tar.gz" \
-            "${args[@]}"
-    )" || die "Rust advisory image archive capture failed"
-    "$FLOCK_BIN" --unlock "$lock_fd" \
-        || die "cannot release the Rust advisory image archive lock"
-    exec {lock_fd}<&-
-    printf '%s\n' "$result"
 }
 
 # Networked bootstrap acquisition produces a private, non-authoritative
@@ -4084,6 +4066,42 @@ maintenance_promote_dart_audit_image_candidate() {
     printf 'promoted=%s\n' "$final"
 }
 
+build_rust_audit_image() {
+    [ "$#" -eq 2 ] || die "internal Rust advisory build error"
+    local context="$1" tag="$2"
+    online_buildx_build \
+        --network=default --pull=true --no-cache \
+        --platform=linux/amd64 --provenance=mode=max \
+        --output=type=docker,rewrite-timestamp=true \
+        --build-arg "RUST_AUDIT_RUST_VERSION=${RUST_AUDIT_RUST_VERSION}" \
+        --build-arg "BASE_DIGEST=${RUST_AUDIT_BASE_IMAGE_DIGEST}" \
+        --build-arg "SOURCE_DATE_EPOCH=${ADVISORY_DB_COMMIT_EPOCH}" \
+        --build-arg "CARGO_AUDIT_VERSION=${CARGO_AUDIT_VERSION}" \
+        --build-arg "CARGO_DENY_VERSION=${CARGO_DENY_VERSION}" \
+        --build-arg "CARGO_AUDIT_TAG_OBJECT=${CARGO_AUDIT_TAG_OBJECT}" \
+        --build-arg "CARGO_AUDIT_SOURCE_COMMIT=${CARGO_AUDIT_SOURCE_COMMIT}" \
+        --build-arg "CARGO_AUDIT_SOURCE_TREE=${CARGO_AUDIT_SOURCE_TREE}" \
+        --build-arg "SHA256_CARGO_AUDIT_SOURCE_ARCHIVE=${SHA256_CARGO_AUDIT_SOURCE_ARCHIVE}" \
+        --build-arg "CARGO_DENY_TAG_OBJECT=${CARGO_DENY_TAG_OBJECT}" \
+        --build-arg "CARGO_DENY_SOURCE_COMMIT=${CARGO_DENY_SOURCE_COMMIT}" \
+        --build-arg "CARGO_DENY_SOURCE_TREE=${CARGO_DENY_SOURCE_TREE}" \
+        --build-arg "SHA256_CARGO_DENY_SOURCE_ARCHIVE=${SHA256_CARGO_DENY_SOURCE_ARCHIVE}" \
+        --build-arg "ADVISORY_DB_SHA=${ADVISORY_DB_COMMIT}" \
+        --build-arg "ADVISORY_DB_COMMIT_EPOCH=${ADVISORY_DB_COMMIT_EPOCH}" \
+        --tag "$tag" \
+        --file "$context/Dockerfile.audit" \
+        "$context"
+}
+
+capture_rust_audit_rebuild() {
+    [ "$#" -eq 2 ] || die "internal Rust advisory rebuild capture error"
+    local output="$1" expected_id="$2"
+    local args=()
+    mapfile -d '' args < <(rust_audit_candidate_spec_args "$expected_id")
+    online_image_provenance maintenance-capture \
+        --output "$output" "${args[@]}"
+}
+
 maintenance_build_rust_audit_image_candidate() {
     local names=(
         RUST_AUDIT_BASE_IMAGE_DIGEST
@@ -4098,9 +4116,15 @@ maintenance_build_rust_audit_image_candidate() {
         ADVISORY_DB_COMMIT ADVISORY_DB_COMMIT_EPOCH
         SHA256_RUST_AUDIT_DOCKERFILE
     )
-    local name image_id
+    local name first_id second_id first_result second_result
+    local first_manifest second_manifest first_config second_config
+    local archive_sha archive_size lock_fd
     local tag="rd-rust-audit-candidate:provenance-v1"
     local context="$ONLINE_FETCH_TMP/rust-audit-build-context"
+    local directory="$ONLINE_DIR/verifier-images"
+    local first_archive="$ONLINE_FETCH_TMP/rust-audit-rebuild-a.docker.tar.gz"
+    local second_archive="$directory/.rust-audit-candidate.docker.tar.gz.part"
+    local candidate="$directory/rust-audit-candidate.docker.tar.gz"
     for name in "${names[@]}"; do require_image_pin "$name"; done
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.audit" | /usr/bin/awk '{print $1}')" \
        = "$SHA256_RUST_AUDIT_DOCKERFILE" ] \
@@ -4122,52 +4146,102 @@ maintenance_build_rust_audit_image_candidate() {
     [ "$(/usr/bin/sha256sum "$context/Dockerfile.audit" | /usr/bin/awk '{print $1}')" \
        = "$SHA256_RUST_AUDIT_DOCKERFILE" ] \
         || die "private Rust advisory Dockerfile bytes differ"
-    online_buildx_build \
-        --network=default --pull=true --no-cache \
-        --platform=linux/amd64 --provenance=mode=max --load \
-        --build-arg "RUST_AUDIT_RUST_VERSION=${RUST_AUDIT_RUST_VERSION}" \
-        --build-arg "BASE_DIGEST=${RUST_AUDIT_BASE_IMAGE_DIGEST}" \
-        --build-arg "CARGO_AUDIT_VERSION=${CARGO_AUDIT_VERSION}" \
-        --build-arg "CARGO_DENY_VERSION=${CARGO_DENY_VERSION}" \
-        --build-arg "CARGO_AUDIT_TAG_OBJECT=${CARGO_AUDIT_TAG_OBJECT}" \
-        --build-arg "CARGO_AUDIT_SOURCE_COMMIT=${CARGO_AUDIT_SOURCE_COMMIT}" \
-        --build-arg "CARGO_AUDIT_SOURCE_TREE=${CARGO_AUDIT_SOURCE_TREE}" \
-        --build-arg "SHA256_CARGO_AUDIT_SOURCE_ARCHIVE=${SHA256_CARGO_AUDIT_SOURCE_ARCHIVE}" \
-        --build-arg "CARGO_DENY_TAG_OBJECT=${CARGO_DENY_TAG_OBJECT}" \
-        --build-arg "CARGO_DENY_SOURCE_COMMIT=${CARGO_DENY_SOURCE_COMMIT}" \
-        --build-arg "CARGO_DENY_SOURCE_TREE=${CARGO_DENY_SOURCE_TREE}" \
-        --build-arg "SHA256_CARGO_DENY_SOURCE_ARCHIVE=${SHA256_CARGO_DENY_SOURCE_ARCHIVE}" \
-        --build-arg "ADVISORY_DB_SHA=${ADVISORY_DB_COMMIT}" \
-        --build-arg "ADVISORY_DB_COMMIT_EPOCH=${ADVISORY_DB_COMMIT_EPOCH}" \
-        --tag "$tag" \
-        --file "$context/Dockerfile.audit" \
-        "$context"
-    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
-        || die "cannot resolve the Rust advisory candidate"
-    online_image_provenance verify-local \
-        --image-ref "$tag" \
-        --role rust-audit \
-        --expected-id "$image_id" \
-        --base "rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}" \
-        --dockerfile-sha "$SHA256_RUST_AUDIT_DOCKERFILE" \
-        --rust-version "$RUST_AUDIT_RUST_VERSION" \
-        --rustc-version "$RUST_AUDIT_RUSTC_VERSION" \
-        --cargo-audit-version "$CARGO_AUDIT_VERSION" \
-        --cargo-deny-version "$CARGO_DENY_VERSION" \
-        --cargo-audit-tag-object "$CARGO_AUDIT_TAG_OBJECT" \
-        --cargo-audit-source-commit "$CARGO_AUDIT_SOURCE_COMMIT" \
-        --cargo-audit-source-tree "$CARGO_AUDIT_SOURCE_TREE" \
-        --cargo-audit-source-archive-sha "$SHA256_CARGO_AUDIT_SOURCE_ARCHIVE" \
-        --cargo-audit-signing-key-fingerprint "$CARGO_AUDIT_SIGNING_KEY_FINGERPRINT" \
-        --cargo-deny-tag-object "$CARGO_DENY_TAG_OBJECT" \
-        --cargo-deny-source-commit "$CARGO_DENY_SOURCE_COMMIT" \
-        --cargo-deny-source-tree "$CARGO_DENY_SOURCE_TREE" \
-        --cargo-deny-source-archive-sha "$SHA256_CARGO_DENY_SOURCE_ARCHIVE" \
-        --cargo-audit-sha "$SHA256_RUST_AUDIT_CARGO_AUDIT" \
-        --cargo-deny-sha "$SHA256_RUST_AUDIT_CARGO_DENY" \
-        --advisory-db-sha "$ADVISORY_DB_COMMIT" \
-        --advisory-db-epoch "$ADVISORY_DB_COMMIT_EPOCH"
-    printf 'RUST_AUDIT_IMAGE_ID="%s"\n' "$image_id"
+    if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+        /usr/bin/install -d -m 0700 "$directory"
+    fi
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "Rust advisory image archive root is not current-user-private mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the Rust advisory image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Rust advisory image archive transaction owns the archive root"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "Rust advisory candidate archive already exists"
+    [ ! -e "$second_archive" ] && [ ! -L "$second_archive" ] \
+        || die "stale Rust advisory candidate publication staging exists"
+
+    build_rust_audit_image "$context" "$tag"
+    first_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the first Rust advisory rebuild"
+    first_result="$(capture_rust_audit_rebuild "$first_archive" "$first_id")" \
+        || die "first Rust advisory rebuild capture failed"
+
+    build_rust_audit_image "$context" "$tag"
+    second_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the second Rust advisory rebuild"
+    second_result="$(capture_rust_audit_rebuild "$second_archive" "$second_id")" \
+        || die "second Rust advisory rebuild capture failed"
+
+    first_manifest="$(image_capture_field "$first_result" manifest_id)"
+    second_manifest="$(image_capture_field "$second_result" manifest_id)"
+    first_config="$(image_capture_field "$first_result" config_id)"
+    second_config="$(image_capture_field "$second_result" config_id)"
+    [ "$first_manifest:$first_config" = "$second_manifest:$second_config" ] \
+        || die "independent Rust advisory rebuilds produced different runtime identities"
+    archive_sha="$(image_capture_field "$second_result" sha256)"
+    archive_size="$(image_capture_field "$second_result" bytes)"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$second_archive" --destination "$candidate" \
+        || die "Rust advisory candidate publication failed"
+    /usr/bin/rm -f -- "$first_archive" \
+        || die "cannot retire the first verified Rust advisory rebuild archive"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Rust advisory image archive lock"
+    exec {lock_fd}<&-
+    printf 'RUST_AUDIT_IMAGE_ID="%s"\n' "$second_id"
+    printf 'RUST_AUDIT_IMAGE_CONFIG_ID="%s"\n' "$second_config"
+    printf 'RUST_AUDIT_IMAGE_MANIFEST_ID="%s"\n' "$second_manifest"
+    printf 'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="%s"\n' "$archive_sha"
+    printf 'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="%s"\n' "$archive_size"
+    printf 'reproducible_runtime=%s\n' "$second_manifest:$second_config"
+    printf 'candidate=%s\n' "$candidate"
+}
+
+maintenance_promote_rust_audit_image_candidate() {
+    require_rust_audit_image_pins
+    require_image_pin SHA256_RUST_AUDIT_IMAGE_ARCHIVE
+    require_image_pin SIZE_RUST_AUDIT_IMAGE_ARCHIVE
+    case "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" in
+        0|*[!0-9]*|'') die "SIZE_RUST_AUDIT_IMAGE_ARCHIVE is not one positive decimal integer" ;;
+    esac
+    local directory="$ONLINE_DIR/verifier-images"
+    local candidate="$directory/rust-audit-candidate.docker.tar.gz"
+    local final="$directory/rust-audit.docker.tar.gz"
+    local lock_fd args=()
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "Rust advisory image archive root is not current-user-private mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the Rust advisory image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Rust advisory image archive transaction owns the archive root"
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "Rust advisory candidate archive is absent or unsafe"
+    [ ! -e "$final" ] && [ ! -L "$final" ] \
+        || die "final Rust advisory archive already exists"
+    mapfile -d '' args < <(rust_audit_image_spec_args)
+    online_image_provenance verify-archive \
+        --archive "$candidate" \
+        --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
+        "${args[@]}" \
+        || die "Rust advisory candidate differs from the final pins"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$candidate" --destination "$final" \
+        || die "Rust advisory candidate promotion failed"
+    online_image_provenance verify-load \
+        --archive "$final" \
+        --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
+        "${args[@]}" \
+        || die "promoted Rust advisory archive verification failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Rust advisory image archive lock"
+    exec {lock_fd}<&-
+    printf 'promoted=%s\n' "$final"
 }
 
 promote_builder_bootstrap_candidate() {
@@ -7066,6 +7140,11 @@ main() {
             maintenance_build_rust_audit_image_candidate
             return 0
             ;;
+        --maintenance-promote-rust-audit-image-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-promote-rust-audit-image-candidate takes no arguments"
+            maintenance_promote_rust_audit_image_candidate
+            return 0
+            ;;
         --maintenance-discover-devcheck-image)
             [ "$#" -eq 1 ] || die "--maintenance-discover-devcheck-image takes no arguments"
             maintenance_discover_devcheck_image
@@ -7110,11 +7189,6 @@ main() {
         --maintenance-capture-apple-check-image)
             [ "$#" -eq 1 ] || die "--maintenance-capture-apple-check-image takes no arguments"
             maintenance_capture_apple_check_image
-            return 0
-            ;;
-        --maintenance-capture-rust-audit-image)
-            [ "$#" -eq 1 ] || die "--maintenance-capture-rust-audit-image takes no arguments"
-            maintenance_capture_rust_audit_image
             return 0
             ;;
         --devcheck-image)
@@ -7170,7 +7244,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

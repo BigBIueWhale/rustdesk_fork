@@ -93,6 +93,10 @@ def validate_container(block, label):
 def validate_contract(repo):
     shell = (repo / "scripts/audit.sh").read_text(encoding="utf-8")
     verify = (repo / "scripts/verify.sh").read_text(encoding="utf-8")
+    acquisition = (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8")
+    provenance = (repo / "scripts/offline-image-provenance.py").read_text(
+        encoding="utf-8"
+    )
 
     require_all(
         shell,
@@ -195,8 +199,10 @@ def validate_contract(repo):
             '--max-age-days "$ADVISORY_DB_MAX_AGE_DAYS"',
             "scripts/online-input-provenance.py verify-subtree",
             '--expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"',
-            'IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_ID")"',
-            '[ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_ID" ]',
+            ': "${RUST_AUDIT_IMAGE_CONFIG_ID:?audit.sh: RUST_AUDIT_IMAGE_CONFIG_ID unset in pins.env}"',
+            '[[ "$RUST_AUDIT_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
+            'IMAGE_ID="$(verifier_vm_docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_CONFIG_ID")"',
+            '[ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_CONFIG_ID" ]',
             'IMAGE_METADATA="$(verifier_vm_docker image inspect --format',
             '[ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ]',
             '[ "$IMAGE_PREFLIGHT_STATUS" -eq 0 ]',
@@ -306,6 +312,40 @@ def validate_contract(repo):
         "cargo-deny scanner",
     )
     require(deny.count("--mount ") == 3, "cargo-deny must have three read-only input mounts")
+
+    candidate, _ = extract(
+        acquisition,
+        "maintenance_build_rust_audit_image_candidate() {",
+        "\n}\n\nmaintenance_promote_rust_audit_image_candidate() {",
+        "Rust audit recoverable candidate transaction",
+    )
+    require(
+        candidate.count('build_rust_audit_image "$context" "$tag"') == 2
+        and candidate.count("capture_rust_audit_rebuild") == 2,
+        "Rust audit candidate must build and capture two complete images",
+    )
+    require_all(
+        candidate,
+        (
+            "independent Rust advisory rebuilds produced different runtime identities",
+            "maintenance-rename-noreplace",
+            'candidate="$directory/rust-audit-candidate.docker.tar.gz"',
+        ),
+        "Rust audit recoverable candidate transaction",
+    )
+    require(
+        "maintenance_capture_rust_audit_image" not in acquisition
+        and "--maintenance-capture-rust-audit-image" not in acquisition,
+        "Rust audit retained the unrecoverable separate-daemon capture path",
+    )
+    require_all(
+        provenance,
+        (
+            "if isinstance(spec, RustAuditSpec) and spec.config_id is not None:",
+            "return spec.config_id",
+        ),
+        "Rust audit runtime config identity",
+    )
 
     require_once(
         verify,

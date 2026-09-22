@@ -9,6 +9,7 @@
 # image content ID and runs without network or root authority.
 ARG RUST_AUDIT_RUST_VERSION=1.88
 ARG BASE_DIGEST=sha256:af306cfa71d987911a781c37b59d7d67d934f49684058f96cf72079c3626bfe0
+ARG SOURCE_DATE_EPOCH
 ARG CARGO_AUDIT_VERSION=0.22.2
 ARG CARGO_DENY_VERSION=0.20.2
 ARG CARGO_AUDIT_TAG_OBJECT
@@ -25,6 +26,7 @@ FROM rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST} AS builder
 
 ARG RUST_AUDIT_RUST_VERSION
 ARG BASE_DIGEST
+ARG SOURCE_DATE_EPOCH
 ARG CARGO_AUDIT_VERSION
 ARG CARGO_DENY_VERSION
 ARG CARGO_AUDIT_TAG_OBJECT
@@ -78,6 +80,7 @@ ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
 
 RUN --network=none [ "$(id -u)" = 1000 ] \
     && [ "$(id -g)" = 1000 ] \
+    && [ "$SOURCE_DATE_EPOCH" = "$ADVISORY_DB_COMMIT_EPOCH" ] \
     && umask 022 \
     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" "$AUDIT_ROOT/cargo-target" "$HOME"
 
@@ -163,6 +166,7 @@ FROM rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST} AS runtime
 
 ARG RUST_AUDIT_RUST_VERSION
 ARG BASE_DIGEST
+ARG SOURCE_DATE_EPOCH
 ARG CARGO_AUDIT_VERSION
 ARG CARGO_DENY_VERSION
 ARG CARGO_AUDIT_TAG_OBJECT
@@ -190,6 +194,7 @@ ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
 
 RUN --network=none [ "$(id -u)" = 1000 ] \
     && [ "$(id -g)" = 1000 ] \
+    && [ "$SOURCE_DATE_EPOCH" = "$ADVISORY_DB_COMMIT_EPOCH" ] \
     && umask 022 \
     && mkdir -p "$CARGO_HOME" "$HOME" "$CARGO_DENY_DB_PATH"
 
@@ -217,4 +222,5 @@ LABEL org.rustdesk.audit.base="rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_D
       org.rustdesk.audit.cargo-deny-source-tree="${CARGO_DENY_SOURCE_TREE}" \
       org.rustdesk.audit.advisory-db="${ADVISORY_DB_SHA}" \
       org.rustdesk.audit.advisory-db-epoch="${ADVISORY_DB_COMMIT_EPOCH}" \
+      org.rustdesk.audit.source-date-epoch="${SOURCE_DATE_EPOCH}" \
       org.rustdesk.audit.run-user="1000:1000"

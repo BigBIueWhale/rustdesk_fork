@@ -297,8 +297,8 @@ case "$REQUEST" in
     --maintenance-build-dart-audit-image-candidate|\
     --maintenance-promote-dart-audit-image-candidate|\
     --maintenance-build-rust-audit-image-candidate|\
+    --maintenance-promote-rust-audit-image-candidate|\
     --maintenance-capture-apple-check-image|\
-    --maintenance-capture-rust-audit-image|\
     --devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|\
     --maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|\
     --maintenance-write-online-closure|\

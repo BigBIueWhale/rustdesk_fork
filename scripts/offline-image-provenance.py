@@ -781,8 +781,12 @@ class RustAuditSpec:
         return None
 
     @property
-    def root_annotations(self) -> None:
-        return None
+    def root_annotations(self) -> dict[str, str]:
+        created = datetime.fromtimestamp(
+            self.advisory_db_epoch,
+            tz=timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"org.opencontainers.image.created": created}
 
     @property
     def labels(self) -> dict[str, str]:
@@ -792,6 +796,9 @@ class RustAuditSpec:
             ),
             "org.rustdesk.audit.advisory-db": self.advisory_db_sha,
             "org.rustdesk.audit.advisory-db-epoch": str(
+                self.advisory_db_epoch
+            ),
+            "org.rustdesk.audit.source-date-epoch": str(
                 self.advisory_db_epoch
             ),
             "org.rustdesk.audit.base": self.base,
@@ -894,6 +901,8 @@ def runtime_image_id(spec: ImageSpec) -> str:
     if isinstance(spec, CertifiedBuilderSpec):
         return spec.config_id
     if isinstance(spec, DartAuditSpec) and spec.config_id is not None:
+        return spec.config_id
+    if isinstance(spec, RustAuditSpec) and spec.config_id is not None:
         return spec.config_id
     return spec.image_id
 
@@ -2304,10 +2313,15 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
             )
         return
     if isinstance(spec, RustAuditSpec):
+        expected_created = datetime.fromtimestamp(
+            spec.advisory_db_epoch,
+            tz=timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
-           or config_json.get("os") != "linux":
-            fail("Docker archive Rust audit config platform is malformed")
+           or config_json.get("os") != "linux" \
+           or config_json.get("created") != expected_created:
+            fail("Docker archive Rust audit config platform or epoch is malformed")
         if config_json.get("config") != spec.runtime_config:
             fail(
                 "Docker archive Rust audit runtime config differs from "
@@ -4067,6 +4081,7 @@ def validate_rust_audit_attestation(
         "build-arg:ADVISORY_DB_COMMIT_EPOCH": str(spec.advisory_db_epoch),
         "build-arg:ADVISORY_DB_SHA": spec.advisory_db_sha,
         "build-arg:BASE_DIGEST": base_digest,
+        "build-arg:SOURCE_DATE_EPOCH": str(spec.advisory_db_epoch),
         "build-arg:CARGO_AUDIT_SOURCE_COMMIT": spec.cargo_audit_source_commit,
         "build-arg:CARGO_AUDIT_SOURCE_TREE": spec.cargo_audit_source_tree,
         "build-arg:CARGO_AUDIT_TAG_OBJECT": spec.cargo_audit_tag_object,
@@ -4227,6 +4242,7 @@ def validate_rust_audit_attestation(
         f"RUST_VERSION={spec.rustc_version}",
         f"RUST_AUDIT_RUST_VERSION={spec.rust_version}",
         f"BASE_DIGEST={base_digest}",
+        f"SOURCE_DATE_EPOCH={spec.advisory_db_epoch}",
         f"CARGO_AUDIT_VERSION={spec.cargo_audit_version}",
         f"CARGO_DENY_VERSION={spec.cargo_deny_version}",
         f"CARGO_AUDIT_TAG_OBJECT={spec.cargo_audit_tag_object}",
@@ -8907,9 +8923,9 @@ def create_rust_audit_fixture_archive(
         "fixture-runtime-validation",
     ]
     dockerfile = (
-        b"FROM rust:1.88-bookworm@sha256:"
+        b"ARG SOURCE_DATE_EPOCH\nFROM rust:1.88-bookworm@sha256:"
         + b"b" * 64
-        + b"\nCOPY <<EOF /etc/passwd\n"
+        + b"\nARG SOURCE_DATE_EPOCH\nCOPY <<EOF /etc/passwd\n"
         + RUST_AUDIT_PASSWD
         + b"EOF\n"
         + b"USER 1000:1000\n"
@@ -8919,7 +8935,7 @@ def create_rust_audit_fixture_archive(
         + b"RUN --network=default fixture-advisory-db-acquisition\n"
         + b"FROM rust:1.88-bookworm@sha256:"
         + b"b" * 64
-        + b"\nUSER 1000:1000\n"
+        + b"\nARG SOURCE_DATE_EPOCH\nUSER 1000:1000\n"
         + b"RUN --network=none fixture-runtime-setup\n"
         + b"RUN --network=none fixture-runtime-validation\n"
     )
@@ -8969,6 +8985,7 @@ def create_rust_audit_fixture_archive(
         {
             "architecture": "amd64",
             "config": preliminary.runtime_config,
+            "created": "2026-07-17T15:52:38Z",
             "history": [{} for _ in range(29)],
             "os": "linux",
             "rootfs": {
@@ -9003,6 +9020,9 @@ def create_rust_audit_fixture_archive(
         ),
         "build-arg:ADVISORY_DB_SHA": preliminary.advisory_db_sha,
         "build-arg:BASE_DIGEST": "sha256:" + base_digest,
+        "build-arg:SOURCE_DATE_EPOCH": str(
+            preliminary.advisory_db_epoch
+        ),
         "build-arg:CARGO_AUDIT_SOURCE_COMMIT": (
             preliminary.cargo_audit_source_commit
         ),
@@ -9043,6 +9063,7 @@ def create_rust_audit_fixture_archive(
         f"RUST_VERSION={preliminary.rustc_version}",
         f"RUST_AUDIT_RUST_VERSION={preliminary.rust_version}",
         "BASE_DIGEST=sha256:" + base_digest,
+        f"SOURCE_DATE_EPOCH={preliminary.advisory_db_epoch}",
         f"CARGO_AUDIT_VERSION={preliminary.cargo_audit_version}",
         f"CARGO_DENY_VERSION={preliminary.cargo_deny_version}",
         f"CARGO_AUDIT_TAG_OBJECT={preliminary.cargo_audit_tag_object}",
@@ -9492,6 +9513,7 @@ def create_rust_audit_fixture_archive(
         "mediaType": "application/vnd.oci.image.index.v1+json",
         "digest": spec.image_id,
         "size": len(image_index),
+        "annotations": spec.root_annotations,
     }
     if annotate_root:
         root_descriptor["annotations"] = {"unexpected": "authority"}
@@ -12335,13 +12357,14 @@ def self_test() -> None:
         rust_sha = hashlib.sha256(rust_bytes).hexdigest()
         rust_size = len(rust_bytes)
         verify_archive(rust_archive, rust_sha, rust_spec, rust_size)
+        rust_runtime_id = runtime_image_id(rust_spec)
         rust_payload = {
-            "Id": rust_spec.image_id,
+            "Id": rust_runtime_id,
             "Os": "linux",
             "Architecture": "amd64",
             "Config": rust_spec.runtime_config,
         }
-        validate_inspect(rust_payload, rust_spec.image_id, rust_spec)
+        validate_inspect(rust_payload, rust_runtime_id, rust_spec)
         rust_checks = 2
 
         def rust_failure(operation: Callable[[], object], label: str) -> None:
@@ -12479,7 +12502,7 @@ def self_test() -> None:
                         "User": "0:0",
                     },
                 },
-                rust_spec.image_id,
+                rust_runtime_id,
                 rust_spec,
             ),
             "Rust audit runtime config",

@@ -131,6 +131,7 @@ esac
 : "${ADVISORY_DB_COMMIT_EPOCH:?audit.sh: ADVISORY_DB_COMMIT_EPOCH unset in pins.env}"
 : "${ADVISORY_DB_MAX_AGE_DAYS:?audit.sh: ADVISORY_DB_MAX_AGE_DAYS unset in pins.env}"
 : "${RUST_AUDIT_IMAGE_ID:?audit.sh: RUST_AUDIT_IMAGE_ID unset in pins.env}"
+: "${RUST_AUDIT_IMAGE_CONFIG_ID:?audit.sh: RUST_AUDIT_IMAGE_CONFIG_ID unset in pins.env}"
 : "${RUST_AUDIT_RUST_VERSION:?audit.sh: RUST_AUDIT_RUST_VERSION unset in pins.env}"
 : "${RUST_AUDIT_RUSTC_VERSION:?audit.sh: RUST_AUDIT_RUSTC_VERSION unset in pins.env}"
 : "${RUST_AUDIT_TOOLCHAIN:?audit.sh: RUST_AUDIT_TOOLCHAIN unset in pins.env}"
@@ -141,6 +142,8 @@ esac
 : "${SHA256_CARGO_VENDOR_CONFIG:?audit.sh: cargo vendor config pin unset in pins.env}"
 [[ "$RUST_AUDIT_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || audit_die "RUST_AUDIT_IMAGE_ID is malformed"
+[[ "$RUST_AUDIT_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || audit_die "RUST_AUDIT_IMAGE_CONFIG_ID is malformed"
 [[ "$RUST_AUDIT_BASE_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || audit_die "RUST_AUDIT_BASE_IMAGE_DIGEST is malformed"
 [[ "$RUST_AUDIT_RUST_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] \
@@ -225,15 +228,15 @@ readonly SOURCE_LOCK_SHA SOURCE_POLICY_SHA SOURCE_VENDOR_CONFIG_SHA
   --tree "$VENDOR_DIR" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
   || audit_die "the Cargo vendor closure does not match its canonical pin"
 
-IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_ID")" \
+IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_CONFIG_ID")" \
   || audit_die "the pinned Rust advisory image is not present locally (no pull/build fallback)"
-[ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_ID" ] \
-  || audit_die "Docker did not resolve the exact pinned Rust advisory content ID"
+[ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_CONFIG_ID" ] \
+  || audit_die "Docker did not resolve the exact pinned Rust advisory runtime config"
 readonly IMAGE_ID
 
-IMAGE_METADATA="$(verifier_vm_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
+IMAGE_METADATA="$(verifier_vm_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.source-date-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
   || audit_die "could not inspect the pinned Rust advisory image metadata"
-EXPECTED_IMAGE_METADATA="$IMAGE_ID|linux|amd64|1000:1000|rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}|${RUST_AUDIT_RUST_VERSION}|${CARGO_AUDIT_VERSION}|${CARGO_AUDIT_SOURCE_COMMIT}|${CARGO_AUDIT_SOURCE_TREE}|${CARGO_DENY_VERSION}|${CARGO_DENY_SOURCE_COMMIT}|${CARGO_DENY_SOURCE_TREE}|${ADVISORY_DB_COMMIT}|${ADVISORY_DB_COMMIT_EPOCH}|1000:1000"
+EXPECTED_IMAGE_METADATA="$IMAGE_ID|linux|amd64|1000:1000|rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}|${RUST_AUDIT_RUST_VERSION}|${CARGO_AUDIT_VERSION}|${CARGO_AUDIT_SOURCE_COMMIT}|${CARGO_AUDIT_SOURCE_TREE}|${CARGO_DENY_VERSION}|${CARGO_DENY_SOURCE_COMMIT}|${CARGO_DENY_SOURCE_TREE}|${ADVISORY_DB_COMMIT}|${ADVISORY_DB_COMMIT_EPOCH}|${ADVISORY_DB_COMMIT_EPOCH}|1000:1000"
 [ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ] \
   || audit_die "the pinned Rust advisory image metadata does not match pins.env"
 readonly IMAGE_METADATA EXPECTED_IMAGE_METADATA

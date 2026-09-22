@@ -23,6 +23,7 @@ class VerificationError(RuntimeError):
 PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
+    "finalizer": "scripts/finalize-flutter-tools-offline.sh",
     "outer": "scripts/smoke-verifier-vm-authority.sh",
     "guest": "scripts/smoke-verifier-vm-authority-guest.sh",
     "pins": "scripts/pins.env",
@@ -65,6 +66,7 @@ def require_pin(source: str, name: str, pattern: str) -> None:
 def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
+    finalizer = sources["finalizer"]
     outer = sources["outer"]
     guest = sources["guest"]
     pins = sources["pins"]
@@ -93,7 +95,7 @@ def validate(sources: dict[str, str]) -> None:
         "Flutter presentation candidate metadata differs",
         "Flutter presentation candidate digest differs",
         "Flutter presentation candidate project lock differs",
-        "BUILD_FLUTTER_TOOLS_MODE=bundled-sdk-candidate",
+        "BUILD_FLUTTER_TOOLS_MODE=offline-resolved",
         "EVIDENCE_PUB_CACHE_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE",
         "BUILD_PROJECT_LOCK_MODE=candidate-pinned",
         "source=$BUILD_FLUTTER_ARCHIVE,target=/flutter-sdk.tar.xz,readonly",
@@ -131,13 +133,17 @@ def validate(sources: dict[str, str]) -> None:
             '[ "$RUSTDESK_FLUTTER_ARCHIVE" = /flutter-sdk.tar.xz ]',
             'verify_archive "$RUSTDESK_FLUTTER_ARCHIVE"',
             "build)",
-            "offline-resolved|bundled-sdk-candidate",
+            '[ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ]',
             'tar -C "$TOOLCHAIN" -xf "$RUSTDESK_FLUTTER_ARCHIVE"',
-            'if [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ]',
+            'if [ "$RUSTDESK_PROJECT_LOCK_MODE" = candidate-pinned ]',
             "RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION",
             "candidate Flutter version manifest digest differs",
             "candidate Flutter engine revision differs",
             "candidate Dart SDK version differs",
+            "FLUTTER_PEER_BUILD_PHASE=flutter-tools-offline-start",
+            "dart pub get --offline --enforce-lockfile",
+            '"$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh"',
+            "FLUTTER_PEER_BUILD_PHASE=flutter-tools-offline-complete",
             '"$REAL_FLUTTER" --suppress-analytics --version',
             "candidate Flutter invocation rebuilt or changed its pinned SDK state",
             "candidate-pinned)",
@@ -157,11 +163,21 @@ def validate(sources: dict[str, str]) -> None:
     )
     for token in ("curl ", "wget ", "apt-get", "--privileged", "sudo "):
         forbid(stage, token, "build/runtime acquisition or privilege fallback")
+    forbid(stage, "bundled-sdk-candidate", "candidate Flutter-tools freshness bypass")
     forbid(
         stage,
         '"$REAL_FLUTTER" pub get',
         "direct Flutter Pub wrapper in the no-NIC build",
     )
+    for token in (
+        "VERSION_MANIFEST=$FLUTTER_ROOT/bin/cache/flutter.version.json",
+        'for key in ("frameworkVersion", "flutterVersion")',
+        "Flutter version identity is absent or ambiguous",
+        "offline Pub package roots do not satisfy Flutter's freshness predicate",
+        'printf \'%s\' "$EXPECTED_VERSION" > "$marker_tmp"',
+        '&& [ "$(<"$MARKER")" = "$EXPECTED_VERSION" ]',
+    ):
+        require(finalizer, token, "cross-version Flutter-tools finalization")
 
     require_order(
         outer,

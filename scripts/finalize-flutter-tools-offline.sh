@@ -35,6 +35,7 @@ canonical_flutter_root="$(
 readonly canonical_flutter_root
 
 readonly VERSION_FILE=$FLUTTER_ROOT/version
+readonly VERSION_MANIFEST=$FLUTTER_ROOT/bin/cache/flutter.version.json
 readonly TOOLS_ROOT=$FLUTTER_ROOT/packages/flutter_tools
 readonly DART_TOOL_ROOT=$TOOLS_ROOT/.dart_tool
 readonly PUBSPEC=$TOOLS_ROOT/pubspec.yaml
@@ -48,7 +49,7 @@ for directory in "$FLUTTER_ROOT/packages" "$TOOLS_ROOT" "$DART_TOOL_ROOT"; do
     [ -d "$directory" ] && [ ! -L "$directory" ] \
         || fail "required Flutter-tools directory is absent or ambiguous: $directory"
 done
-for input in "$VERSION_FILE" "$PUBSPEC" "$LOCK" "$PACKAGE_CONFIG"; do
+for input in "$PUBSPEC" "$LOCK" "$PACKAGE_CONFIG"; do
     [ -f "$input" ] && [ ! -L "$input" ] \
         && [ "$(/usr/bin/stat -c '%h' -- "$input")" = 1 ] \
         || fail "required Flutter-tools input is absent or ambiguous: $input"
@@ -57,9 +58,38 @@ done
   "$CURRENT_UID:$CURRENT_GID
 $CURRENT_UID:$CURRENT_GID" ] \
     || fail 'offline Pub output is not owned by the invoking principal'
-[ "$(/usr/bin/stat -c '%s' -- "$VERSION_FILE")" = "${#EXPECTED_VERSION}" ] \
-    && [ "$(<"$VERSION_FILE")" = "$EXPECTED_VERSION" ] \
-    || fail 'Flutter version file differs from the expected version'
+if [ -e "$VERSION_FILE" ] || [ -L "$VERSION_FILE" ]; then
+    [ -f "$VERSION_FILE" ] && [ ! -L "$VERSION_FILE" ] \
+        && [ "$(/usr/bin/stat -c '%h:%s' -- "$VERSION_FILE")" = \
+             "1:${#EXPECTED_VERSION}" ] \
+        && [ "$(<"$VERSION_FILE")" = "$EXPECTED_VERSION" ] \
+        || fail 'Flutter version file differs from the expected version'
+else
+    [ -f "$VERSION_MANIFEST" ] && [ ! -L "$VERSION_MANIFEST" ] \
+        && [ "$(/usr/bin/stat -c '%h' -- "$VERSION_MANIFEST")" = 1 ] \
+        || fail 'Flutter version identity is absent or ambiguous'
+    /usr/bin/python3 -I -S - "$VERSION_MANIFEST" "$EXPECTED_VERSION" <<'PY' \
+        || fail 'Flutter version manifest differs from the expected version'
+import json
+import os
+import sys
+
+try:
+    path = sys.argv[1]
+    expected = sys.argv[2]
+    if os.path.getsize(path) > 4096:
+        raise ValueError
+    with open(path, "rb") as stream:
+        manifest = json.load(stream)
+    if not isinstance(manifest, dict):
+        raise ValueError
+    for key in ("frameworkVersion", "flutterVersion"):
+        if manifest.get(key) != expected:
+            raise ValueError
+except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+    sys.exit(1)
+PY
+fi
 [ "$(/usr/bin/sha256sum "$LOCK" | /usr/bin/awk '{ print $1 }')" = \
   "$EXPECTED_LOCK_SHA256" ] \
     || fail 'Flutter-tools lockfile differs from its expected digest'
@@ -127,15 +157,29 @@ if [ -e "$MARKER" ] || [ -L "$MARKER" ]; then
     [ -f "$MARKER" ] && [ ! -L "$MARKER" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$MARKER")" = \
              "$CURRENT_UID:$CURRENT_GID:644:1:${#EXPECTED_VERSION}" ] \
-        && /usr/bin/cmp -s -- "$VERSION_FILE" "$MARKER" \
+        && [ "$(<"$MARKER")" = "$EXPECTED_VERSION" ] \
         || fail 'existing Flutter-tools freshness marker is not exact'
 else
-    /usr/bin/install -m 0644 -- "$VERSION_FILE" "$MARKER" \
+    marker_tmp="$(/usr/bin/mktemp --tmpdir="$DART_TOOL_ROOT" '.version.XXXXXXXXXX')" \
+        || fail 'cannot allocate the Flutter-tools freshness marker'
+    cleanup_marker_tmp() {
+        if [ -n "${marker_tmp:-}" ]; then
+            /usr/bin/rm -f -- "$marker_tmp"
+        fi
+    }
+    trap cleanup_marker_tmp EXIT
+    printf '%s' "$EXPECTED_VERSION" > "$marker_tmp" \
+        || fail 'cannot write the Flutter-tools freshness marker'
+    /usr/bin/chmod 0644 -- "$marker_tmp" \
+        || fail 'cannot protect the Flutter-tools freshness marker'
+    /usr/bin/mv -T -- "$marker_tmp" "$MARKER" \
         || fail 'cannot publish the Flutter-tools freshness marker'
+    marker_tmp=
+    trap - EXIT
 fi
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$MARKER")" = \
   "$CURRENT_UID:$CURRENT_GID:644:1:${#EXPECTED_VERSION}" ] \
-    && /usr/bin/cmp -s -- "$VERSION_FILE" "$MARKER" \
+    && [ "$(<"$MARKER")" = "$EXPECTED_VERSION" ] \
     || fail 'published Flutter-tools freshness marker is not exact'
 
 printf 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=%s lock=%s implicit_pub=prevented\n' \

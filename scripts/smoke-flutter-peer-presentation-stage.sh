@@ -484,10 +484,8 @@ PY
       RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 RUSTDESK_PROJECT_LOCK_MODE; do
       [ -n "${!variable:-}" ] || fail "missing build identity: $variable"
     done
-    case "$RUSTDESK_FLUTTER_TOOLS_MODE" in
-      offline-resolved|bundled-sdk-candidate) ;;
-      *) fail 'Flutter tools mode differs' ;;
-    esac
+    [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ] \
+      || fail 'Flutter tools mode differs'
     verify_archive "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz" \
       "$RUSTDESK_RUST_SIZE" "$RUSTDESK_RUST_SHA256" Rust
     [ "$RUSTDESK_FLUTTER_ARCHIVE" = /flutter-sdk.tar.xz ] \
@@ -588,16 +586,7 @@ CFG
     cp "$BUILD_SOURCE/scripts/flutter-offline-shim.sh" "$SHIM/flutter"
     chmod 0700 "$SHIM/flutter"
     export PATH="$SHIM:$PATH"
-    if [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ]; then
-      (
-        cd "$FLUTTER_ROOT/packages/flutter_tools"
-        dart pub get --offline --enforce-lockfile >/dev/null
-      )
-      "$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh" \
-        "$FLUTTER_ROOT" \
-        "$RUSTDESK_FLUTTER_VERSION" \
-        "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
-    else
+    if [ "$RUSTDESK_PROJECT_LOCK_MODE" = candidate-pinned ]; then
       for variable in \
         RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION \
         RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION \
@@ -654,6 +643,27 @@ PY
       candidate_version_sha="$(
         sha256sum "$FLUTTER_ROOT/bin/cache/flutter.version.json" | awk '{print $1}'
       )"
+    fi
+    flutter_tools_lock_before="$(
+      sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}'
+    )"
+    printf 'FLUTTER_PEER_BUILD_PHASE=flutter-tools-offline-start version=%s network=none timeout_seconds=300\n' \
+      "$RUSTDESK_FLUTTER_VERSION"
+    (
+      cd "$FLUTTER_ROOT/packages/flutter_tools"
+      /usr/bin/timeout --signal=TERM --kill-after=10s 300s \
+        dart pub get --offline --enforce-lockfile
+    )
+    [ "$(sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}')" = \
+      "$flutter_tools_lock_before" ] \
+      || fail 'Flutter tools lockfile changed during offline resolution'
+    "$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh" \
+      "$FLUTTER_ROOT" \
+      "$RUSTDESK_FLUTTER_VERSION" \
+      "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+    printf 'FLUTTER_PEER_BUILD_PHASE=flutter-tools-offline-complete version=%s implicit_pub=prevented\n' \
+      "$RUSTDESK_FLUTTER_VERSION"
+    if [ "$RUSTDESK_PROJECT_LOCK_MODE" = candidate-pinned ]; then
       "$REAL_FLUTTER" --suppress-analytics --version > /tmp/flutter-candidate-version.out
       grep -Fq "Flutter $RUSTDESK_FLUTTER_VERSION" /tmp/flutter-candidate-version.out \
         || fail 'candidate Flutter executable reports a different version'
@@ -664,7 +674,7 @@ PY
         && [ "$(sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}')" = \
              "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ] \
         || fail 'candidate Flutter invocation rebuilt or changed its pinned SDK state'
-      printf 'FLUTTER_PEER_CANDIDATE_SDK_OK version=%s framework=%s engine=%s dart=%s snapshot_sha256=%s tools=bundled-unchanged network=none\n' \
+      printf 'FLUTTER_PEER_CANDIDATE_SDK_OK version=%s framework=%s engine=%s dart=%s snapshot_sha256=%s tools=offline-resolved network=none\n' \
         "$RUSTDESK_FLUTTER_VERSION" \
         "$RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION" \
         "$RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION" \
@@ -678,7 +688,7 @@ PY
           || fail 'source-current project lock is paired with the wrong Flutter mode or pin'
         ;;
       candidate-pinned)
-        [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = bundled-sdk-candidate ] \
+        [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ] \
           && [[ "${RUSTDESK_PROJECT_LOCK_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
           || fail 'candidate project lock identity is missing or paired with the wrong Flutter mode'
         verify_regular "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock"

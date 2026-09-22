@@ -148,6 +148,11 @@ GtkWidget *find_gl_area(GtkWidget *widget);
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
+  // Every secondary window owns a distinct Flutter engine. Install the same
+  // project policy before the primary engine can request any secondary one.
+  desktop_multi_window_plugin_set_project_configure_callback(
+      select_external_pixel_buffer_renderer);
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
   gtk_window_set_decorated(window, FALSE);

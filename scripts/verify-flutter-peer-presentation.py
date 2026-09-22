@@ -30,6 +30,7 @@ PATHS = {
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
     "runner": "flutter/linux/my_application.cc",
+    "multi_window": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc",
     "verify": "scripts/verify.sh",
 }
 
@@ -74,6 +75,7 @@ def validate(sources: dict[str, str]) -> None:
     controller = sources["controller"]
     pixel_source = sources["source"]
     runner = sources["runner"]
+    multi_window = sources["multi_window"]
 
     for token in (
         'dlsym(process, "fl_dart_project_set_enable_impeller")',
@@ -86,6 +88,7 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         runner,
         (
+            "desktop_multi_window_plugin_set_project_configure_callback(",
             "g_autoptr(FlDartProject) project = fl_dart_project_new();",
             "select_external_pixel_buffer_renderer(project);",
             "FlView* view = fl_view_new(project);",
@@ -93,6 +96,16 @@ def validate(sources: dict[str, str]) -> None:
         "pre-engine Linux renderer selection",
     )
     forbid(runner, "FLUTTER_ENGINE_SWITCH", "ambient renderer selection")
+    require_order(
+        multi_window,
+        (
+            "project = fl_dart_project_new();",
+            "if (_g_project_configure_callback == nullptr)",
+            "_g_project_configure_callback(project);",
+            "FlView* fl_view = fl_view_new(project);",
+        ),
+        "pre-engine secondary-window project policy",
+    )
 
     require_order(
         host,

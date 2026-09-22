@@ -20,6 +20,7 @@ namespace
 {
 
   WindowCreatedCallback _g_window_created_callback = nullptr;
+  FlutterProjectConfigureCallback _g_project_configure_callback = nullptr;
 
   struct PendingWindowDestroy
   {
@@ -82,6 +83,10 @@ FlutterWindow::FlutterWindow(
   }
   g_autoptr(FlDartProject)
       project = fl_dart_project_new();
+  if (_g_project_configure_callback == nullptr) {
+    g_error("Flutter project configuration authority is missing");
+  }
+  _g_project_configure_callback(project);
   const char *entrypoint_args[] = {"multi_window", g_strdup_printf("%ld", id_), args.c_str(), nullptr};
   fl_dart_project_set_dart_entrypoint_arguments(project, const_cast<char **>(entrypoint_args));
 
@@ -206,6 +211,12 @@ FlutterWindow::~FlutterWindow()
 void desktop_multi_window_plugin_set_window_created_callback(WindowCreatedCallback callback)
 {
   _g_window_created_callback = callback;
+}
+
+void desktop_multi_window_plugin_set_project_configure_callback(
+    FlutterProjectConfigureCallback callback)
+{
+  _g_project_configure_callback = callback;
 }
 
 void _emitEvent(const char *event_name, FlutterWindow *self)

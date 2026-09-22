@@ -22,9 +22,13 @@ FLUTTER_PLUGIN_EXPORT void desktop_multi_window_plugin_register_with_registrar(
     FlPluginRegistrar* registrar);
 
 typedef void (*WindowCreatedCallback)(FlPluginRegistry *registry);
+typedef void (*FlutterProjectConfigureCallback)(FlDartProject *project);
 
 FLUTTER_PLUGIN_EXPORT void desktop_multi_window_plugin_set_window_created_callback(
     WindowCreatedCallback callback);
+
+FLUTTER_PLUGIN_EXPORT void desktop_multi_window_plugin_set_project_configure_callback(
+    FlutterProjectConfigureCallback callback);
 
 
 G_END_DECLS

@@ -79,6 +79,7 @@ int main(void) {
     Window root;
     XSetWindowAttributes attributes;
     Window window;
+    Pixmap back_buffer;
     GC graphics;
     unsigned int frame = 0U;
 
@@ -129,6 +130,15 @@ int main(void) {
         XCloseDisplay(display);
         return 1;
     }
+    back_buffer = XCreatePixmap(display, window, SOURCE_WIDTH, SOURCE_HEIGHT,
+                                (unsigned int)DefaultDepth(display, screen));
+    if (back_buffer == 0) {
+        fputs("FLUTTER_PEER_SOURCE_FAIL back buffer creation\n", stderr);
+        XFreeGC(display, graphics);
+        XDestroyWindow(display, window);
+        XCloseDisplay(display);
+        return 1;
+    }
     XMapRaised(display, window);
     XSync(display, False);
     printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u states=256\n",
@@ -141,16 +151,25 @@ int main(void) {
         unsigned int marker_x = (frame * 17U) % (SOURCE_WIDTH - 24U);
 
         XSetForeground(display, graphics, rgb_pixel(visual, palette[low]));
-        XFillRectangle(display, window, graphics, 0, 0, SOURCE_WIDTH / 2U, SOURCE_HEIGHT);
+        XFillRectangle(display, back_buffer, graphics, 0, 0, SOURCE_WIDTH / 2U,
+                       SOURCE_HEIGHT);
         XSetForeground(display, graphics, rgb_pixel(visual, palette[high]));
-        XFillRectangle(display, window, graphics, SOURCE_WIDTH / 2U, 0,
+        XFillRectangle(display, back_buffer, graphics, SOURCE_WIDTH / 2U, 0,
                        SOURCE_WIDTH / 2U, SOURCE_HEIGHT);
         XSetForeground(display, graphics, BlackPixel(display, screen));
-        XFillRectangle(display, window, graphics, (int)marker_x, 8, 24U, 8U);
+        XFillRectangle(display, back_buffer, graphics, (int)marker_x, 8, 24U, 8U);
+        /*
+         * The observer and RustDesk capture are separate X clients. Publishing both color
+         * nibbles in one request prevents either client from observing a state torn between
+         * two same-cadence drawing requests.
+         */
+        XCopyArea(display, back_buffer, window, graphics, 0, 0, SOURCE_WIDTH, SOURCE_HEIGHT,
+                  0, 0);
         XSync(display, False);
         frame = (frame + 1U) & 255U;
         if (sleep_millis(FRAME_INTERVAL_MS) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);
+            XFreePixmap(display, back_buffer);
             XFreeGC(display, graphics);
             XDestroyWindow(display, window);
             XCloseDisplay(display);
@@ -159,6 +178,7 @@ int main(void) {
     }
 
     printf("FLUTTER_PEER_SOURCE_COMPLETE frames=%u\n", frame);
+    XFreePixmap(display, back_buffer);
     XFreeGC(display, graphics);
     XDestroyWindow(display, window);
     XCloseDisplay(display);

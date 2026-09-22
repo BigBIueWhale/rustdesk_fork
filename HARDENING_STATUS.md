@@ -10626,11 +10626,33 @@ successful production Linux plugin publication through changing observed X11 pix
 joined cleanup. That is Linux native runtime evidence, not installed-package, Windows/macOS, sustained-soak,
 or release-artifact evidence.
 
+Candidate Flutter 3.47.5 runs identified and corrected a separate Linux secondary-engine regression. The
+remote-desktop window is created by `desktop_multi_window` with its own `FlDartProject`; selecting the legacy
+external-pixel-buffer renderer only on the primary project left that actual window on Impeller and reduced
+texture consumption to roughly one copy per 1.1 seconds. Commit `61842d6c` applies one checked pre-engine
+project policy to primary and secondary projects. Exact no-NIC run `run.38gNPF0izl` then had no Impeller
+banner, presented initial current pixels, and copied every traced submission through its failure boundary.
+
+Follow-up exact run `run.DuaU2EktAy` at `f243f46ef533e303d0416c6186edc7214df09da0` added a native GTK draw
+observation. It built the exact 78-file candidate bundle, authenticated the real password prompt, presented
+initial pixels in 253 ms with 291 ms maximum age, passed a two-second unfocused interval with eight distinct
+states and 261 ms maximum age, and recovered focus without replacing the authenticated TCP connection. During
+the next interval, every copied frame was followed by a mapped, visible, drawable `FlViewRenderer` draw. The
+failure was therefore not a lost Flutter/GTK redraw. Decoded pixels instead showed `current low nibble + previous
+high nibble` after the 255-to-0 source wrap. The verifier source painted those nibbles in separate X requests at
+the same 250 ms cadence as capture, so capture phase after refresh could repeatedly observe the intentionally
+torn intermediate state. The current verifier correction composes off-screen and publishes one whole state with
+one X request. That correction requires a fresh VM run and is not evidence that the reported Android persistent-
+process or Windows focus/display-only delay is fixed.
+
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
 deselection, disposal, and pointer-replacement stress. Measure capture-through-
 compositor latency, queues, CPU, memory, and cleanup under sustained lifecycle
 soak. Physical Android lifecycle behavior remains open under its separate path.
+Rerun the corrected atomic-pixel-source transaction through all focus and reconnect cycles before drawing any
+further Linux presentation conclusion; do not substitute texture callbacks, redraw callbacks, or relaxed pixel
+freshness for actual presented-pixel evidence.
 Cross-version behavior, current signed artifacts, clean cold R-B2/R-B10 equality,
 independent reproduction, causation, external review, and proof that the complete
 connection flow is correct and performant remain open STOP-SHIP obligations.

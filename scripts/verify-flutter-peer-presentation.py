@@ -329,7 +329,17 @@ def validate(sources: dict[str, str]) -> None:
         "RECOVERY_LIMIT_MS 2500U",
     ):
         require(controller, token, "native presentation observer")
-    require(pixel_source, "frame = (frame + 1U) & 255U;", "changing source pixels")
+    require_order(
+        pixel_source,
+        (
+            "back_buffer = XCreatePixmap(",
+            "XFillRectangle(display, back_buffer, graphics",
+            "XCopyArea(display, back_buffer, window, graphics",
+            "XSync(display, False);",
+            "frame = (frame + 1U) & 255U;",
+        ),
+        "atomically published changing source pixels",
+    )
     forbid(controller, "system(", "controller shell escape")
 
     require(

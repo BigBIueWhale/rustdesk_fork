@@ -919,6 +919,23 @@ def requires_private_archive(spec: ImageSpec) -> bool:
     ) or (isinstance(spec, Spec) and spec.config_id is not None)
 
 
+def validate_rust_audit_identity_contract(spec: ImageSpec) -> None:
+    if not isinstance(spec, RustAuditSpec):
+        return
+    has_config = spec.config_id is not None
+    has_manifest = spec.manifest_id is not None
+    if has_config != has_manifest:
+        fail("Rust audit config and manifest pins must be supplied together")
+    if spec.role == "rust-audit":
+        if not has_config:
+            fail("final Rust audit config and manifest pins are required")
+    elif spec.role == "rust-audit-candidate":
+        if has_config:
+            fail("Rust audit candidate identities must be derived from its archive")
+    else:
+        fail(f"unsupported Rust audit role: {spec.role}")
+
+
 def runtime_image_id(spec: ImageSpec) -> str:
     """Return the immutable ID that a Docker daemon uses to run the image."""
     if isinstance(spec, CertifiedBuilderSpec):
@@ -1453,6 +1470,7 @@ def validate_inspect(
     spec: ImageSpec,
     certified_index_runtime: bool = False,
 ) -> None:
+    validate_rust_audit_identity_contract(spec)
     expected_runtime_id = selected_runtime_image_id(
         spec,
         certified_index_runtime,
@@ -4606,9 +4624,9 @@ def validate_modern_archive(
         (
             CertifiedBuilderSpec,
             AppleCheckSpec,
-            RustAuditSpec,
         ),
-    ) or (isinstance(spec, DartAuditSpec) and spec.manifest_id is not None) \
+    ) or (isinstance(spec, RustAuditSpec) and spec.role == "rust-audit") \
+       or (isinstance(spec, DartAuditSpec) and spec.manifest_id is not None) \
        or (isinstance(spec, VerifierSpec) and spec.manifest_id is not None) \
        or (isinstance(spec, Spec) and spec.manifest_id is not None):
         if spec.manifest_id is None:
@@ -4638,9 +4656,9 @@ def validate_modern_archive(
         (
             CertifiedBuilderSpec,
             AppleCheckSpec,
-            RustAuditSpec,
         ),
-    ) or (isinstance(spec, DartAuditSpec) and spec.config_id is not None) \
+    ) or (isinstance(spec, RustAuditSpec) and spec.role == "rust-audit") \
+       or (isinstance(spec, DartAuditSpec) and spec.config_id is not None) \
        or (isinstance(spec, VerifierSpec) and spec.config_id is not None) \
        or (isinstance(spec, Spec) and spec.config_id is not None):
         if spec.config_id is None:
@@ -5080,6 +5098,7 @@ def verify_archive_fd(
     *,
     require_private: bool = False,
 ) -> tuple[os.stat_result, ArchiveIdentity | None]:
+    validate_rust_audit_identity_contract(spec)
     expected_archive_sha = require_sha(expected_archive_sha, "image archive SHA-256")
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:

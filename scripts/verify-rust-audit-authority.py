@@ -354,8 +354,16 @@ def validate_contract(repo):
             "final Rust audit config and manifest pins are required",
             "def runtime_inspect_config(self) -> dict[str, object]:",
             "if config != spec.runtime_inspect_config:",
+            'isinstance(spec, RustAuditSpec) and spec.role == "rust-audit"',
+            "def validate_rust_audit_identity_contract(spec: ImageSpec) -> None:",
+            'elif spec.role == "rust-audit-candidate":',
+            "unsupported Rust audit role",
         ),
         "Rust audit runtime config identity",
+    )
+    require(
+        provenance.count("validate_rust_audit_identity_contract(spec)") == 2,
+        "Rust audit identity modes must guard both runtime and archive verification",
     )
 
     require_once(

@@ -94,6 +94,7 @@ def validate_contract(repo):
     shell = (repo / "scripts/audit.sh").read_text(encoding="utf-8")
     verify = (repo / "scripts/verify.sh").read_text(encoding="utf-8")
     acquisition = (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8")
+    dockerfile = (repo / "scripts/Dockerfile.audit").read_text(encoding="utf-8")
     provenance = (repo / "scripts/offline-image-provenance.py").read_text(
         encoding="utf-8"
     )
@@ -368,6 +369,33 @@ def validate_contract(repo):
     require(
         provenance.count("validate_rust_audit_identity_contract(spec)") == 2,
         "Rust audit identity modes must guard both runtime and archive verification",
+    )
+    require_all(
+        dockerfile,
+        (
+            "verify_advisory_worktree() {",
+            'git -C "$ADVISORY_DB" ls-files --others --exclude-standard',
+            'git -C "$ADVISORY_DB" ls-files --stage -z',
+            '[ "$mode" = 100644 ]',
+            'git -C "$ADVISORY_DB" hash-object -- "$path"',
+            'find "$ADVISORY_DB/.git/logs" -depth -delete',
+            'unlink "$ADVISORY_DB/.git/index"',
+            'git -C "$ADVISORY_DB" read-tree HEAD',
+            'git -C "$ADVISORY_DB" write-tree',
+            'git -C "$ADVISORY_DB" rev-parse \'HEAD^{tree}\'',
+            '[ ! -e "$ADVISORY_DB/.git/logs" ]',
+            'advisory_index_before="$(sha256sum "$ADVISORY_DB/.git/index"',
+        ),
+        "Rust advisory database deterministic Git representation",
+    )
+    require(
+        dockerfile.count("verify_advisory_worktree() {") == 2
+        and dockerfile.count("verify_advisory_worktree \\") == 2,
+        "Rust advisory worktree must be verified before and after its stage copy",
+    )
+    require(
+        dockerfile.count("status --porcelain --untracked-files=all") == 1,
+        "Rust advisory checkout cleanliness must precede normalization without a mutating runtime status",
     )
     rust_attestation, _ = extract(
         provenance,

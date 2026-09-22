@@ -154,13 +154,38 @@ RUN --network=none export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
     && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
     && rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"
 
-RUN --network=default git init -q "$ADVISORY_DB" \
+RUN --network=default verify_advisory_worktree() { \
+        local entry metadata mode expected stage path observed count=0; \
+        [ -z "$(git -C "$ADVISORY_DB" ls-files --others --exclude-standard)" ]; \
+        while IFS= read -r -d '' entry; do \
+            metadata="${entry%%$'\t'*}"; \
+            path="${entry#*$'\t'}"; \
+            read -r mode expected stage <<<"$metadata"; \
+            [ "$stage" = 0 ]; \
+            [ "$mode" = 100644 ]; \
+            observed="$(git -C "$ADVISORY_DB" hash-object -- "$path")"; \
+            [ "$observed" = "$expected" ]; \
+            count=$((count + 1)); \
+        done < <(git -C "$ADVISORY_DB" ls-files --stage -z); \
+        [ "$count" -gt 0 ]; \
+    } \
+    && git init -q "$ADVISORY_DB" \
     && git -C "$ADVISORY_DB" remote add origin https://github.com/RustSec/advisory-db \
     && git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q --depth=1 origin "$ADVISORY_DB_SHA" \
     && git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD \
     && [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = "$ADVISORY_DB_SHA" ] \
     && [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = "$ADVISORY_DB_COMMIT_EPOCH" ] \
-    && [ -z "$(git -C "$ADVISORY_DB" status --porcelain --untracked-files=all)" ]
+    && [ -z "$(git -C "$ADVISORY_DB" status --porcelain --untracked-files=all)" ] \
+    && find "$ADVISORY_DB/.git/logs" -depth -delete \
+    && unlink "$ADVISORY_DB/.git/index" \
+    && git -C "$ADVISORY_DB" read-tree HEAD \
+    && [ "$(git -C "$ADVISORY_DB" write-tree)" = \
+        "$(git -C "$ADVISORY_DB" rev-parse 'HEAD^{tree}')" ] \
+    && [ ! -e "$ADVISORY_DB/.git/logs" ] \
+    && advisory_index_before="$(sha256sum "$ADVISORY_DB/.git/index" | cut -d' ' -f1)" \
+    && verify_advisory_worktree \
+    && [ "$(sha256sum "$ADVISORY_DB/.git/index" | cut -d' ' -f1)" = \
+        "$advisory_index_before" ]
 
 FROM rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST} AS runtime
 
@@ -205,12 +230,33 @@ COPY --from=builder --chown=1000:1000 \
     /var/tmp/rustdesk-rust-audit/advisory-db \
     /var/tmp/rustdesk-rust-audit/advisory-db
 
-RUN --network=none ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR" \
+RUN --network=none verify_advisory_worktree() { \
+        local entry metadata mode expected stage path observed count=0; \
+        [ -z "$(git -C "$ADVISORY_DB" ls-files --others --exclude-standard)" ]; \
+        while IFS= read -r -d '' entry; do \
+            metadata="${entry%%$'\t'*}"; \
+            path="${entry#*$'\t'}"; \
+            read -r mode expected stage <<<"$metadata"; \
+            [ "$stage" = 0 ]; \
+            [ "$mode" = 100644 ]; \
+            observed="$(git -C "$ADVISORY_DB" hash-object -- "$path")"; \
+            [ "$observed" = "$expected" ]; \
+            count=$((count + 1)); \
+        done < <(git -C "$ADVISORY_DB" ls-files --stage -z); \
+        [ "$count" -gt 0 ]; \
+    } \
+    && ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR" \
     && [ "$(cargo-audit --version)" = "cargo-audit $CARGO_AUDIT_VERSION" ] \
     && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
     && [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = "$ADVISORY_DB_SHA" ] \
     && [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = "$ADVISORY_DB_COMMIT_EPOCH" ] \
-    && [ -z "$(git -C "$ADVISORY_DB" status --porcelain --untracked-files=all)" ]
+    && [ "$(git -C "$ADVISORY_DB" write-tree)" = \
+        "$(git -C "$ADVISORY_DB" rev-parse 'HEAD^{tree}')" ] \
+    && [ ! -e "$ADVISORY_DB/.git/logs" ] \
+    && advisory_index_before="$(sha256sum "$ADVISORY_DB/.git/index" | cut -d' ' -f1)" \
+    && verify_advisory_worktree \
+    && [ "$(sha256sum "$ADVISORY_DB/.git/index" | cut -d' ' -f1)" = \
+        "$advisory_index_before" ]
 
 LABEL org.rustdesk.audit.base="rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST}" \
       org.rustdesk.audit.rust="${RUST_AUDIT_RUST_VERSION}" \

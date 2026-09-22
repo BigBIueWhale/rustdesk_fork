@@ -10698,6 +10698,15 @@ pinned Linux embedder and secondary-engine disposal before changing lifetime or 
 source-occlusion false positive is resolved for this run; graceful viewer teardown and all original cross-platform
 delay/correctness/performance obligations remain open.
 
+A follow-up exact no-NIC run at `5fe510e4` loaded a temporary diagnostic `g_mutex_clear` interposer into only the
+guest viewer. It again passed the real password, focus/background, three reconnect, and resource transactions,
+and this time the viewer exited normally with joined cleanup and unchanged host listeners. No invalid-mutex trace
+was emitted. The successful run's workspace was automatically retired; only its terminal receipt, not its raw
+serial log, was retained. Because the interposer changes timing and a prior uninstrumented run aborted, this is
+**not** proof that the teardown defect is fixed or absent. The diagnostic was removed from the normal verifier;
+an uninstrumented repeatable close/cleanup probe with a source-bound reusable bundle and actionable native crash
+trace remains necessary before this STOP-SHIP item can close.
+
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
 deselection, disposal, and pointer-replacement stress. Measure capture-through-

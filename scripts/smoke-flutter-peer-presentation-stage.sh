@@ -190,7 +190,6 @@ verify_runtime_bundle() {
     || fail 'runtime bundle contains a symlink'
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
   verify_regular /out/smoke-bind-loopback.so
-  verify_regular /out/smoke-glib-mutex-trace.so
   for executable in \
     /out/bundle/rustdesk \
     /out/smoke-readiness \
@@ -502,8 +501,7 @@ PY
       /source/flutter/pubspec.lock \
       /source/scripts/flutter-offline-shim.sh \
       /source/scripts/flutter-peer-source-x11.c \
-      /source/scripts/flutter-peer-presentation-x11.c \
-      /source/scripts/smoke-glib-mutex-trace.c; do
+      /source/scripts/flutter-peer-presentation-x11.c; do
       verify_regular "$input"
     done
     for directory in /online/cargo-vendor /online/vcpkg; do
@@ -859,9 +857,6 @@ PY
     cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
       -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
-    cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
-      "$BUILD_SOURCE/scripts/smoke-glib-mutex-trace.c" \
-      -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-glib-mutex-trace.so
     verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
     cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle
@@ -882,7 +877,7 @@ PY
     (
       cd /out
       find bundle -type f -print0 | sort -z | xargs -0 sha256sum
-      sha256sum build.identity smoke-bind-loopback.so smoke-glib-mutex-trace.so smoke-readiness flutter-peer-source-x11 \
+      sha256sum build.identity smoke-bind-loopback.so smoke-readiness flutter-peer-source-x11 \
         flutter-peer-presentation-x11
     ) > /out/manifest.sha256
     chmod 0444 /out/manifest.sha256
@@ -1135,8 +1130,7 @@ PY
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
-    (cd /out/bundle && RUST_LOG=info LD_PRELOAD=/out/smoke-glib-mutex-trace.so \
-      exec "$APP" --connect 127.0.0.1) \
+    (cd /out/bundle && RUST_LOG=info exec "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")

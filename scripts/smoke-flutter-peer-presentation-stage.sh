@@ -519,6 +519,10 @@ PY
       || fail 'build output is not a private current-user directory'
     [ -z "$(find /out -mindepth 1 -maxdepth 1 -print -quit)" ] \
       || fail 'build output directory is not empty'
+    cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+      /source/scripts/smoke-abort-backtrace.c \
+      -Wl,-z,relro,-z,now,-z,noexecstack -o /out/smoke-abort-backtrace.so
+    echo 'FLUTTER_PEER_ABORT_TRACE_BUILD_OK phase=before-rust-and-flutter'
     [ -d /build-work ] && [ ! -L /build-work ] \
       && [ "$(stat -c '%u:%g:%a' /build-work)" = "$(id -u):$(id -g):700" ] \
       || fail 'build work is not a private current-user directory'
@@ -859,9 +863,6 @@ PY
     cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
       -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
-    cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
-      "$BUILD_SOURCE/scripts/smoke-abort-backtrace.c" \
-      -Wl,-z,relro,-z,now,-z,noexecstack -o /out/smoke-abort-backtrace.so
     verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
     cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle

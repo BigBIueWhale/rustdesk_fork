@@ -295,9 +295,12 @@ readonly VIEWER_MACHINE_ID_VALUE=727573746465736b2d76696577657231
   && [ "$SERVER_MACHINE_ID_VALUE" != "$VIEWER_MACHINE_ID_VALUE" ] \
   || die 'private endpoint machine identities are invalid or shared'
 BUILD_WORK="$WORKSPACE/build-work"
+readonly BUILD_PUB_CACHE="$BUILD_WORK/pub-cache"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
   "$ATSPI_DEBS" "$ATSPI_ROOT" \
   "$COORD" "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
+mkdir "$BUILD_PUB_CACHE" "$BUILD_PUB_CACHE/hosted" \
+  "$BUILD_PUB_CACHE/hosted-hashes" "$BUILD_PUB_CACHE/git"
 mkdir -p "$BUILD_INPUT_ROOT/cargo-vendor" "$BUILD_INPUT_ROOT/frb-tool/bin" \
   "$BUILD_INPUT_ROOT/vcpkg/installed/x64-linux"
 touch "$BUILD_INPUT_ROOT/rust-${RUST_VERSION}.tar.xz" \
@@ -603,7 +606,7 @@ cat "$WORKSPACE/atspi-check.log"
 grep -q '^FLUTTER_PEER_ATSPI_RUNTIME_OK session_bus=private accessibility_bus=unix launcher=exact registry=exact x11=joined inet=0 udp=0$' \
   "$WORKSPACE/atspi-check.log" || die 'private AT-SPI activation verdict is missing'
 
-echo '== copy and reverify the canonical exact-current Pub cache without mutating it =='
+echo '== verify the canonical selected Pub cache without copying or mutating it =='
 run_owned_container "$WORKSPACE/pub-cache.cid" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
@@ -617,7 +620,7 @@ run_owned_container "$WORKSPACE/pub-cache.cid" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache
 [ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
-  || die 'canonical evidence Pub-cache identity changed while copied'
+  || die 'canonical evidence Pub-cache identity changed while verified'
 
 echo '== build one exact full RustDesk Linux Flutter bundle without packaging =='
 run_owned_container "$WORKSPACE/build.cid" \
@@ -638,6 +641,9 @@ run_owned_container "$WORKSPACE/build.cid" \
   --mount "type=bind,source=$ONLINE_DIR/vcpkg/installed/x64-linux,target=/online/vcpkg/installed/x64-linux,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_WORK,target=/build-work,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_PUB_CACHE/hosted,target=/build-work/pub-cache/hosted,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_PUB_CACHE/hosted-hashes,target=/build-work/pub-cache/hosted-hashes,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_PUB_CACHE/git,target=/build-work/pub-cache/git,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,bind-recursive=disabled" \
   --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
   --env "RUSTDESK_RUST_SHA256=$SHA256_RUST_1_75" \
@@ -663,7 +669,7 @@ run_owned_container "$WORKSPACE/build.cid" \
   "$DEB_BUILDER_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh build
 
-echo '== reverify the exact evidence Pub-cache copy after the offline build =='
+echo '== reverify the canonical selected Pub cache after the offline build =='
 run_owned_container "$WORKSPACE/pub-cache-post.cid" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
@@ -671,6 +677,7 @@ run_owned_container "$WORKSPACE/pub-cache-post.cid" \
   --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \

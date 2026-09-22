@@ -147,7 +147,7 @@ fn restore_changed_resolutions<F>(
     mut restore: F,
 ) -> ResultType<()>
 where
-    F: FnMut(&str, i32, i32) -> ResultType<()>,
+    F: FnMut(&str, usize, usize) -> ResultType<()>,
 {
     let pending = changed_resolutions
         .read()
@@ -159,7 +159,16 @@ where
     for (name, resolution) in pending {
         let (w, h) = resolution.original;
         log::info!("Restore resolution of display '{}' to ({}, {})", name, w, h);
-        if let Err(error) = restore(&name, w, h) {
+        let (width, height) = match (usize::try_from(w), usize::try_from(h)) {
+            (Ok(width), Ok(height)) if width > 0 && height > 0 => (width, height),
+            _ => {
+                let error = format!("invalid stored resolution ({w},{h})");
+                log::error!("Refusing to restore display '{}': {}", name, error);
+                failures.push(format!("{name}: {error}"));
+                continue;
+            }
+        };
+        if let Err(error) = restore(&name, width, height) {
             log::error!(
                 "Failed to restore resolution of display '{}' to ({},{}): {}",
                 name,
@@ -598,6 +607,13 @@ mod tests {
                     changed: (1920, 1080),
                 },
             ),
+            (
+                "invalid".to_owned(),
+                ChangedResolution {
+                    original: (-1, 1080),
+                    changed: (800, 600),
+                },
+            ),
         ])));
         let callback_state = Arc::clone(&changed);
         let result = restore_changed_resolutions(changed.as_ref(), move |name, _, _| match name {
@@ -618,9 +634,11 @@ mod tests {
         let error = result.unwrap_err().to_string();
         assert!(error.contains("failed: injected native refusal"));
         assert!(error.contains("replaced: resolution record changed during restoration"));
+        assert!(error.contains("invalid: invalid stored resolution (-1,1080)"));
         let remaining = changed.read().unwrap();
         assert!(remaining.contains_key("failed"));
         assert!(!remaining.contains_key("restored"));
         assert_eq!(remaining["replaced"].changed, (1024, 768));
+        assert!(remaining.contains_key("invalid"));
     }
 }

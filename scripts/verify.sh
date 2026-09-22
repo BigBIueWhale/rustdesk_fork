@@ -8336,6 +8336,7 @@ for grab_binding in \
   'use hbb_common::SessionID;' \
   'struct GrabOwnerState {' \
   'owner: Option<SessionID>,' \
+  'fn apply_run_grab_if_owner(session_id: SessionID, disable_first: bool) {' \
   'pub fn change_grab_status(state: GrabState, keyboard_mode: &str, session_id: SessionID) {' \
   'if gs.owner == Some(session_id) {' \
   'if gs.owner != Some(session_id) {' \

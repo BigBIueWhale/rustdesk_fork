@@ -127,7 +127,7 @@ pub mod client {
     }
 
     #[cfg(target_os = "linux")]
-    fn apply_run_grab_if_owner(session_id: u128, disable_first: bool) {
+    fn apply_run_grab_if_owner(session_id: SessionID, disable_first: bool) {
         let _lock = GRAB_OP_LOCK.lock().unwrap();
         let gs = GRAB_STATE.lock().unwrap();
         if gs.owner != Some(session_id) {

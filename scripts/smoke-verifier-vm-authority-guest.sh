@@ -18,8 +18,11 @@ case "$#:${8:-}" in
     13:--dart-audit)
         MODE=dart-audit
         ;;
+    13:--rust-audit)
+        MODE=rust-audit
+        ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -45,6 +48,11 @@ readonly DART_SOURCE_COMMIT=${10:-}
 readonly DART_SOURCE_TREE=${11:-}
 readonly DART_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly DART_AUDIT_IMAGE_ARCHIVE=${13:-}
+readonly RUST_AUDIT_SOURCE_ARCHIVE=${9:-}
+readonly RUST_AUDIT_SOURCE_COMMIT=${10:-}
+readonly RUST_AUDIT_SOURCE_TREE=${11:-}
+readonly RUST_AUDIT_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly RUST_AUDIT_IMAGE_ARCHIVE=${13:-}
 readonly DEV_CHECK_ARCHIVE=${9:-}
 readonly LIFECYCLE_ARTIFACT=${10:-}
 readonly LIFECYCLE_ARTIFACT_SHA256=${11:-}
@@ -97,6 +105,7 @@ DAEMON_PID=
 CONTAINER_ID=
 LIFECYCLE_LIBS_MOUNTED=0
 SEALED_INPUTS_MOUNTED=0
+RUST_AUDIT_VENDOR_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -504,6 +513,237 @@ run_dart_audit() {
     printf 'DART_AUDIT_VM=pass commit=%s tree=%s image=%s runtime=%s lock=%s policy=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused source=readonly cleanup=joined\n' \
         "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" "$DART_AUDIT_IMAGE_ID" \
         "$DART_AUDIT_IMAGE_CONFIG_ID" "$lock_sha" "$policy_sha"
+}
+
+run_rust_audit() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/rust-audit-source
+    local vendor=$inputs/cargo-vendor
+    local vendor_config=$inputs/cargo-vendor-config.toml
+    local projected_vendor=$source_root/online/cargo-vendor
+    local projected_config=$source_root/online/cargo-vendor-config.toml
+    local audit_output entry_output load_output source_archive_sha source_before image_before
+    local input_mount_options vendor_mount_options lock_sha policy_sha
+    local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
+    local expected_green='VERIFY-AUDIT: green — immutable-image cargo-audit and cargo-deny completed offline against one current pinned RustSec snapshot with exact reasoned accepts (R-R3/R-S11bf)'
+
+    [[ "$RUST_AUDIT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Rust-audit source commit is malformed'
+    [[ "$RUST_AUDIT_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Rust-audit source tree is malformed'
+    [[ "$RUST_AUDIT_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Rust-audit source archive digest is malformed'
+    [ -f "$RUST_AUDIT_SOURCE_ARCHIVE" ] && [ ! -L "$RUST_AUDIT_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$RUST_AUDIT_SOURCE_ARCHIVE")" = \
+             1000:1000:400:1 ] \
+        || fail 'focused Rust-audit source archive metadata differs'
+    source_archive_sha="$(sha256sum "$RUST_AUDIT_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$RUST_AUDIT_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Rust-audit source archive digest differs'
+    [ -f "$RUST_AUDIT_IMAGE_ARCHIVE" ] && [ ! -L "$RUST_AUDIT_IMAGE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$RUST_AUDIT_IMAGE_ARCHIVE")" = \
+             "1000:1000:400:1:$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" ] \
+        || fail 'focused Rust-audit image archive metadata differs'
+    [ "$(sha256sum "$RUST_AUDIT_IMAGE_ARCHIVE" | awk '{ print $1 }')" = \
+      "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" ] \
+        || fail 'focused Rust-audit image archive digest differs'
+    image_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RUST_AUDIT_IMAGE_ARCHIVE"):$(sha256sum "$RUST_AUDIT_IMAGE_ARCHIVE")"
+
+    rm -rf -- "$source_root"
+    mkdir "$source_root"
+    tar -xf "$RUST_AUDIT_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$source_root" \
+        || fail 'cannot extract the exact focused Rust-audit source archive'
+    mkdir -p "$projected_vendor"
+    chmod -R u=rwX,go=rX "$source_root" \
+        || fail 'cannot seal the focused Rust-audit source as root-owned read-only input'
+    [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
+              | awk '{ print $1 }')" = \
+      "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
+        || fail 'focused Rust-audit source archive differs from its guest bootstrap'
+    for source_path in \
+        "$source_root/Cargo.lock" \
+        "$source_root/deny.toml" \
+        "$source_root/scripts/audit.sh" \
+        "$source_root/scripts/lib.sh" \
+        "$source_root/scripts/offline-image-provenance.py" \
+        "$source_root/scripts/online-input-provenance.py" \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/rust-audit-policy.py" \
+        "$source_root/scripts/verify-private-tree-closure.py" \
+        "$source_root/scripts/verify-vm-entry-preflight.sh"; do
+        [ -f "$source_path" ] && [ ! -L "$source_path" ] \
+            || fail "focused Rust-audit source is absent or ambiguous: $source_path"
+        [ "$(stat -c '%u:%g:%h' -- "$source_path")" = 0:0:1 ] \
+            || fail "focused Rust-audit source authority differs: $source_path"
+    done
+    [ -z "$(find "$source_root" -mindepth 1 \
+        \( -uid 1000 -o -gid 1000 -o -perm /022 \) -print -quit)" ] \
+        || fail 'focused Rust-audit extracted source is writable by the verifier principal'
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed Rust-audit input authority'
+    SEALED_INPUTS_MOUNTED=1
+    input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed Rust-audit input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Rust-audit inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Rust-audit inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Rust-audit inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Rust-audit inputs permit direct execution' ;; esac
+    [ -d "$vendor" ] && [ ! -L "$vendor" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$vendor")" = 1000:1000:500 ] \
+        || fail 'sealed Rust-audit Cargo vendor root metadata differs'
+    [ -f "$vendor_config" ] && [ ! -L "$vendor_config" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
+             "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
+        && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
+             "$SHA256_CARGO_VENDOR_CONFIG" ] \
+        || fail 'sealed Rust-audit Cargo vendor configuration differs'
+    install -o 0 -g 0 -m 0444 -- "$vendor_config" "$projected_config" \
+        || fail 'cannot stage the immutable Rust-audit Cargo vendor configuration'
+    mount --bind "$vendor" "$projected_vendor" \
+        || fail 'cannot project the sealed Rust-audit Cargo vendor closure'
+    RUST_AUDIT_VENDOR_MOUNTED=1
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$projected_vendor" \
+        || fail 'cannot seal the projected Rust-audit Cargo vendor closure'
+    vendor_mount_options="$(findmnt -n -o OPTIONS --target "$projected_vendor")" \
+        || fail 'projected Rust-audit Cargo vendor mount is absent'
+    case ",$vendor_mount_options," in *,ro,*) ;; *) fail 'projected Rust-audit Cargo vendor is writable' ;; esac
+    case ",$vendor_mount_options," in *,nodev,*) ;; *) fail 'projected Rust-audit Cargo vendor permits devices' ;; esac
+    case ",$vendor_mount_options," in *,nosuid,*) ;; *) fail 'projected Rust-audit Cargo vendor permits set-user-ID execution' ;; esac
+    case ",$vendor_mount_options," in *,noexec,*) ;; *) fail 'projected Rust-audit Cargo vendor permits execution' ;; esac
+
+    source_before="$source_archive_sha:$(sha256sum \
+        "$source_root/Cargo.lock" \
+        "$source_root/deny.toml" \
+        "$source_root/scripts/audit.sh" \
+        "$source_root/scripts/lib.sh" \
+        "$source_root/scripts/offline-image-provenance.py" \
+        "$source_root/scripts/online-input-provenance.py" \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/rust-audit-policy.py" \
+        "$source_root/scripts/verify-private-tree-closure.py" \
+        "$source_root/scripts/verify-vm-entry-preflight.sh" \
+        "$projected_config")"
+    lock_sha="$(sha256sum "$source_root/Cargo.lock" | awk '{ print $1 }')"
+    policy_sha="$(sha256sum "$source_root/deny.toml" | awk '{ print $1 }')"
+
+    entry_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/verify-vm-entry-preflight.sh"
+    )" || fail 'focused Rust-audit pre-load VM authority check failed'
+    [ "$entry_output" = "$expected_entry" ] \
+        || fail "focused Rust-audit pre-load authority receipt differs: $entry_output"
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$source_root/scripts/offline-image-provenance.py" \
+                verify-load \
+                --archive "$RUST_AUDIT_IMAGE_ARCHIVE" \
+                --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
+                --role rust-audit \
+                --expected-id "$RUST_AUDIT_IMAGE_ID" \
+                --base "rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}" \
+                --dockerfile-sha "$SHA256_RUST_AUDIT_DOCKERFILE" \
+                --rust-version "$RUST_AUDIT_RUST_VERSION" \
+                --rustc-version "$RUST_AUDIT_RUSTC_VERSION" \
+                --cargo-audit-version "$CARGO_AUDIT_VERSION" \
+                --cargo-deny-version "$CARGO_DENY_VERSION" \
+                --cargo-audit-tag-object "$CARGO_AUDIT_TAG_OBJECT" \
+                --cargo-audit-source-commit "$CARGO_AUDIT_SOURCE_COMMIT" \
+                --cargo-audit-source-tree "$CARGO_AUDIT_SOURCE_TREE" \
+                --cargo-audit-source-archive-sha "$SHA256_CARGO_AUDIT_SOURCE_ARCHIVE" \
+                --cargo-audit-signing-key-fingerprint "$CARGO_AUDIT_SIGNING_KEY_FINGERPRINT" \
+                --cargo-deny-tag-object "$CARGO_DENY_TAG_OBJECT" \
+                --cargo-deny-source-commit "$CARGO_DENY_SOURCE_COMMIT" \
+                --cargo-deny-source-tree "$CARGO_DENY_SOURCE_TREE" \
+                --cargo-deny-source-archive-sha "$SHA256_CARGO_DENY_SOURCE_ARCHIVE" \
+                --cargo-audit-sha "$SHA256_RUST_AUDIT_CARGO_AUDIT" \
+                --cargo-deny-sha "$SHA256_RUST_AUDIT_CARGO_DENY" \
+                --advisory-db-sha "$ADVISORY_DB_COMMIT" \
+                --advisory-db-epoch "$ADVISORY_DB_COMMIT_EPOCH" \
+                --config-id "$RUST_AUDIT_IMAGE_CONFIG_ID" \
+                --manifest-id "$RUST_AUDIT_IMAGE_MANIFEST_ID"
+    )" || fail 'focused Rust-audit image verification/load failed'
+    [ "$load_output" = "loaded and verified rust-audit $RUST_AUDIT_IMAGE_ID" ] \
+        || fail "focused Rust-audit image load receipt differs: $load_output"
+    entry_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/verify-vm-entry-preflight.sh"
+    )" || fail 'focused Rust-audit post-load VM authority check failed'
+    [ "$entry_output" = "$expected_entry" ] \
+        || fail "focused Rust-audit post-load authority receipt differs: $entry_output"
+
+    if /bin/bash "$source_root/scripts/audit.sh" \
+        >"$ROOT/root-rust-audit.out" 2>"$ROOT/root-rust-audit.err"; then
+        fail 'VM root passed the focused Rust-audit entry'
+    fi
+    [ ! -s "$ROOT/root-rust-audit.out" ] \
+        || fail 'root focused Rust-audit refusal produced standard output'
+    [ "$(<"$ROOT/root-rust-audit.err")" = \
+      'audit.sh: refuses host or container-root execution' ] \
+        || fail 'root focused Rust-audit refusal diagnostic differs'
+    if setpriv --reuid=4001 --regid=4001 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /bin/bash "$source_root/scripts/audit.sh" \
+        >"$ROOT/foreign-rust-audit.out" 2>"$ROOT/foreign-rust-audit.err"; then
+        fail 'foreign principal passed the focused Rust-audit entry'
+    fi
+    [ ! -s "$ROOT/foreign-rust-audit.out" ] \
+        || fail 'foreign focused Rust-audit refusal produced standard output'
+    [ "$(<"$ROOT/foreign-rust-audit.err")" = \
+      'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+        || fail 'foreign focused Rust-audit refusal diagnostic differs'
+
+    audit_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/audit.sh"
+    )" || fail 'focused Rust advisory scan failed'
+    [ "$(grep -Fxc "$expected_entry" <<<"$audit_output")" -eq 1 ] \
+        || fail 'focused Rust advisory authority receipt is absent or duplicated'
+    [ "$(grep -Fxc "$expected_green" <<<"$audit_output")" -eq 1 ] \
+        || fail 'focused Rust advisory green verdict is absent or duplicated'
+    [ "$(grep -Fxc "verified subtree $SHA256_CARGO_VENDOR_CLOSURE_V1" <<<"$audit_output")" -eq 2 ] \
+        || fail 'focused Rust advisory vendor pre/post receipts are absent or duplicated'
+    [ "$source_before" = "$source_archive_sha:$(sha256sum \
+        "$source_root/Cargo.lock" \
+        "$source_root/deny.toml" \
+        "$source_root/scripts/audit.sh" \
+        "$source_root/scripts/lib.sh" \
+        "$source_root/scripts/offline-image-provenance.py" \
+        "$source_root/scripts/online-input-provenance.py" \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/rust-audit-policy.py" \
+        "$source_root/scripts/verify-private-tree-closure.py" \
+        "$source_root/scripts/verify-vm-entry-preflight.sh" \
+        "$projected_config")" ] \
+        || fail 'focused Rust-audit source changed during execution'
+    [ "$image_before" = \
+      "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RUST_AUDIT_IMAGE_ARCHIVE"):$(sha256sum "$RUST_AUDIT_IMAGE_ARCHIVE")" ] \
+        || fail 'focused Rust-audit image archive changed during execution'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'focused Rust audit left a container behind'
+    "$CLIENT" --host "unix://$SOCK" image rm "$RUST_AUDIT_IMAGE_CONFIG_ID" >/dev/null \
+        || fail 'cannot retire the focused Rust-audit image'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'focused Rust audit left a Docker image behind'
+    stop_docker_authority
+    umount "$projected_vendor" \
+        || fail 'cannot retire the projected Rust-audit Cargo vendor mount'
+    RUST_AUDIT_VENDOR_MOUNTED=0
+    umount "$inputs" || fail 'cannot retire the sealed Rust-audit input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$audit_output"
+    printf 'RUST_AUDIT_VM=pass commit=%s tree=%s image=%s runtime=%s lock=%s policy=%s vendor=%s uid=1000 gid=1000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused source=readonly vendor_input=readonly-landlocked scanner_root=readonly caps=none nnp=on cleanup=joined\n' \
+        "$RUST_AUDIT_SOURCE_COMMIT" "$RUST_AUDIT_SOURCE_TREE" \
+        "$RUST_AUDIT_IMAGE_ID" "$RUST_AUDIT_IMAGE_CONFIG_ID" \
+        "$lock_sha" "$policy_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
 }
 
 run_hbb_common_fs() {
@@ -1135,6 +1375,10 @@ cleanup() {
         [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] || status=1
         DAEMON_PID=
     fi
+    if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then
+        umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1
+        RUST_AUDIT_VENDOR_MOUNTED=0
+    fi
     if [ "$SEALED_INPUTS_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1
         SEALED_INPUTS_MOUNTED=0
@@ -1359,7 +1603,8 @@ done
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
+   || [ "$MODE" = rust-audit ]; then
     docker_socket_gid=1000
 fi
 chown "0:$docker_socket_gid" "$SOCK"
@@ -1396,6 +1641,11 @@ fi
 
 if [ "$MODE" = dart-audit ]; then
     run_dart_audit
+    exit 0
+fi
+
+if [ "$MODE" = rust-audit ]; then
+    run_rust_audit
     exit 0
 fi
 

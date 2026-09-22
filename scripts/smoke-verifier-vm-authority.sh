@@ -43,6 +43,12 @@ case "$#:${1:-}" in
             || { echo 'focused Dart-audit input/run overrides are forbidden' >&2; exit 2; }
         MODE=dart-audit
         ;;
+    1:--rust-audit)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused Rust-audit input/run overrides are forbidden' >&2; exit 2; }
+        MODE=rust-audit
+        ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
             && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
@@ -57,7 +63,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --dart-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -83,6 +89,7 @@ readonly CARGO_VENDOR_ROOT="$ONLINE_INPUTS/cargo-vendor"
 readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
 readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar.gz"
 readonly DART_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/dart-audit.docker.tar.gz"
+readonly RUST_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/rust-audit.docker.tar.gz"
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
@@ -173,6 +180,10 @@ elif [ "$MODE" = dart-audit ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
+elif [ "$MODE" = rust-audit ]; then
+    readonly VM_TIMEOUT_SECONDS=600
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=4096
 else
     readonly VM_TIMEOUT_SECONDS=90
     readonly OVERLAY_SIZE=6G
@@ -558,6 +569,36 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
+elif [ "$MODE" = rust-audit ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Rust-audit input root metadata differs'
+    for input in \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
+        "$RUST_AUDIT_IMAGE_ARCHIVE:$SIZE_RUST_AUDIT_IMAGE_ARCHIVE:$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed Rust-audit input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Cargo vendor root metadata differs'
 elif [ "$MODE" = dart-audit ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -723,6 +764,27 @@ if [ "$MODE" = dart-audit ]; then
         || fail 'Git replacement refs are forbidden'
 fi
 
+RUST_AUDIT_SOURCE_COMMIT=
+RUST_AUDIT_SOURCE_TREE=
+RUST_AUDIT_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = rust-audit ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        || fail 'focused Rust audit requires the one checked-out master authority'
+    RUST_AUDIT_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve focused Rust-audit source commit'
+    RUST_AUDIT_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve focused Rust-audit source tree'
+    [ "$RUST_AUDIT_SOURCE_COMMIT" = \
+      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+        && [ "$RUST_AUDIT_SOURCE_COMMIT" = \
+             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
+        || fail 'focused Rust-audit source differs from pushed master'
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'focused Rust audit requires a clean source tree'
+    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+        || fail 'Git replacement refs are forbidden'
+fi
+
 LIFECYCLE_ARTIFACT_ID=
 DEV_CHECK_ARCHIVE_ID=
 if [ "$MODE" = debian-systemd-lifecycle ]; then
@@ -801,6 +863,7 @@ readonly NEW_AFTER=$RUN/listeners.new-after
 readonly HBB_SOURCE_ARCHIVE=$RUN/source.tar
 readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
 readonly DART_SOURCE_ARCHIVE=$RUN/dart-source.tar
+readonly RUST_AUDIT_SOURCE_ARCHIVE=$RUN/rust-audit-source.tar
 readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 
@@ -838,6 +901,14 @@ elif [ "$MODE" = dart-audit ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$DART_AUDIT_IMAGE_ARCHIVE"
         /usr/bin/sha256sum -- "$DART_AUDIT_IMAGE_ARCHIVE"
+    )"
+elif [ "$MODE" = rust-audit ]; then
+    focused_inputs_before="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$CARGO_VENDOR_CONFIG" "$RUST_AUDIT_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- \
+            "$CARGO_VENDOR_CONFIG" "$RUST_AUDIT_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 fi
 capture_listeners >"$LISTENERS_BEFORE"
@@ -898,6 +969,27 @@ elif [ "$MODE" = dart-audit ]; then
     DART_SOURCE_ARCHIVE_SHA256="$(
         /usr/bin/sha256sum "$DART_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
+elif [ "$MODE" = rust-audit ]; then
+    git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_AUDIT_SOURCE_COMMIT" \
+        >"$RUST_AUDIT_SOURCE_ARCHIVE" \
+        || fail 'cannot create the exact focused Rust-audit source archive'
+    /usr/bin/chmod 0400 "$RUST_AUDIT_SOURCE_ARCHIVE"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$RUST_AUDIT_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        || fail 'focused Rust-audit source archive metadata differs'
+    RUST_AUDIT_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$RUST_AUDIT_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
+    )"
+    /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
+    /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
+        || fail 'cannot extract the authenticated virtiofsd package privately'
+    VIRTIOFSD_BINARY="$RUN/virtiofsd-package/usr/libexec/virtiofsd"
+    [ -f "$VIRTIOFSD_BINARY" ] && [ ! -L "$VIRTIOFSD_BINARY" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h:%s' -- "$VIRTIOFSD_BINARY")" = \
+             "$HOST_UID:$HOST_GID:1:$SIZE_VERIFIER_VM_VIRTIOFSD_BINARY" ] \
+        || fail 'extracted virtiofsd binary is absent or ambiguous'
+    /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
+    verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 fi
 
 payload_identity=()
@@ -919,6 +1011,12 @@ elif [ "$MODE" = dart-audit ]; then
     lifecycle_payload_grafts=(
         "source.tar=$DART_SOURCE_ARCHIVE"
         "dart-audit.docker.tar.gz=$DART_AUDIT_IMAGE_ARCHIVE"
+    )
+elif [ "$MODE" = rust-audit ]; then
+    payload_identity=(-uid 1000 -gid 1000)
+    lifecycle_payload_grafts=(
+        "source.tar=$RUST_AUDIT_SOURCE_ARCHIVE"
+        "rust-audit.docker.tar.gz=$RUST_AUDIT_IMAGE_ARCHIVE"
     )
 fi
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
@@ -1012,6 +1110,8 @@ elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = dart-audit ]; then
     guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
+elif [ "$MODE" = rust-audit ]; then
+    guest_invocation+=" --rust-audit /mnt/rustdesk-verifier-inputs/source.tar $RUST_AUDIT_SOURCE_COMMIT $RUST_AUDIT_SOURCE_TREE $RUST_AUDIT_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/rust-audit.docker.tar.gz"
 fi
 printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -1058,7 +1158,8 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
     || fail 'retained initramfs descriptor identity differs'
 memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
+   || [ "$MODE" = rust-audit ]; then
     start_sealed_input_virtiofsd \
         "$VIRTIOFS_SOCKET" "$VIRTIOFSD_LOG" \
         "$(/usr/bin/stat -c '%d:%i' -- "$ONLINE_INPUTS")"
@@ -1126,7 +1227,8 @@ VM_PID="$(<"$QEMU_PIDFILE")"
 [ "$(/usr/bin/readlink -f "/proc/$VM_PID/exe")" = /usr/bin/qemu-system-x86_64 ] \
     || fail 'QEMU PID does not identify the fixed hypervisor'
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
+   || [ "$MODE" = rust-audit ]; then
     virtiofsd_seccomp_ready=0
     for _ in $(/usr/bin/seq 1 1000); do
         if virtiofsd_seccomp_enforced; then
@@ -1201,7 +1303,8 @@ capture_listeners >"$LISTENERS_AFTER"
 [ ! -s "$NEW_AFTER" ] || fail 'verifier VM left an unexpected host INET listener'
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
+   || [ "$MODE" = rust-audit ]; then
     reconcile_socket "$VIRTIOFS_SOCKET" \
         || fail 'sealed-input virtiofsd channel cleanup is ambiguous'
 fi
@@ -1423,6 +1526,21 @@ elif [ "$MODE" = dart-audit ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Dart-audit cloud-init completion marker'
+elif [ "$MODE" = rust-audit ]; then
+    require_exact_fixed_receipt \
+        'VERIFY-AUDIT: green — immutable-image cargo-audit and cargo-deny completed offline against one current pinned RustSec snapshot with exact reasoned accepts (R-R3/R-S11bf)' \
+        'focused Rust advisory verdict'
+    mapfile -t rust_audit_receipts < <(
+        /usr/bin/grep -Eo \
+            "RUST_AUDIT_VM=pass commit=$RUST_AUDIT_SOURCE_COMMIT tree=$RUST_AUDIT_SOURCE_TREE image=$RUST_AUDIT_IMAGE_ID runtime=$RUST_AUDIT_IMAGE_CONFIG_ID lock=[0-9a-f]{64} policy=[0-9a-f]{64} vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=1000 gid=1000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused source=readonly vendor_input=readonly-landlocked scanner_root=readonly caps=none nnp=on cleanup=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#rust_audit_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused Rust-audit receipt is absent or duplicated'; }
+    printf '%s\n' "${rust_audit_receipts[0]}"
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'focused Rust-audit cloud-init completion marker'
 else
     require_exact_fixed_receipt \
         "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=$FLUTTER_VERSION lock=$SHA256_FLUTTER_TOOLS_LOCK implicit_pub=prevented" \
@@ -1502,6 +1620,21 @@ elif [ "$MODE" = dart-audit ]; then
         && [ "$(/usr/bin/sha256sum "$DART_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$DART_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Dart-audit source archive changed during execution'
+elif [ "$MODE" = rust-audit ]; then
+    focused_inputs_after="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$CARGO_VENDOR_CONFIG" "$RUST_AUDIT_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- \
+            "$CARGO_VENDOR_CONFIG" "$RUST_AUDIT_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed Rust-audit inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$RUST_AUDIT_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$RUST_AUDIT_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$RUST_AUDIT_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Rust-audit source archive changed during execution'
 fi
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     [ "$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$LIFECYCLE_ARTIFACT")" = \
@@ -1530,6 +1663,10 @@ elif [ "$MODE" = dart-audit ]; then
     printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=unchanged inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" \
         "$DART_AUDIT_IMAGE_ID" "$DART_AUDIT_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
+elif [ "$MODE" = rust-audit ]; then
+    printf 'RUST_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=unchanged inputs=readonly-media,readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$RUST_AUDIT_SOURCE_COMMIT" "$RUST_AUDIT_SOURCE_TREE" \
+        "$RUST_AUDIT_IMAGE_ID" "$RUST_AUDIT_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
 else
     printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"

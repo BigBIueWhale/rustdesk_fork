@@ -98,6 +98,12 @@ def validate_contract(repo):
     provenance = (repo / "scripts/offline-image-provenance.py").read_text(
         encoding="utf-8"
     )
+    outer = (repo / "scripts/smoke-verifier-vm-authority.sh").read_text(
+        encoding="utf-8"
+    )
+    guest = (repo / "scripts/smoke-verifier-vm-authority-guest.sh").read_text(
+        encoding="utf-8"
+    )
 
     require_all(
         shell,
@@ -313,6 +319,42 @@ def validate_contract(repo):
         "cargo-deny scanner",
     )
     require(deny.count("--mount ") == 3, "cargo-deny must have three read-only input mounts")
+
+    require_all(
+        outer,
+        (
+            "1:--rust-audit)",
+            "MODE=rust-audit",
+            'readonly RUST_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/rust-audit.docker.tar.gz"',
+            '"$RUST_AUDIT_IMAGE_ARCHIVE:$SIZE_RUST_AUDIT_IMAGE_ARCHIVE:$SHA256_RUST_AUDIT_IMAGE_ARCHIVE"',
+            'git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_AUDIT_SOURCE_COMMIT"',
+            '"rust-audit.docker.tar.gz=$RUST_AUDIT_IMAGE_ARCHIVE"',
+            'guest_invocation+=" --rust-audit /mnt/rustdesk-verifier-inputs/source.tar',
+            "VERIFY-AUDIT: green — immutable-image cargo-audit and cargo-deny completed offline",
+            "RUST_AUDIT_VM_OUTER=pass",
+        ),
+        "focused Rust-audit outer transaction",
+    )
+    require_all(
+        guest,
+        (
+            "13:--rust-audit)",
+            "run_rust_audit() {",
+            'mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs"',
+            'mount --bind "$vendor" "$projected_vendor"',
+            'mount -o remount,bind,ro,nodev,nosuid,noexec "$projected_vendor"',
+            'python3 -I -S "$source_root/scripts/offline-image-provenance.py"',
+            "--role rust-audit",
+            "VM root passed the focused Rust-audit entry",
+            "foreign principal passed the focused Rust-audit entry",
+            '/bin/bash "$source_root/scripts/audit.sh"',
+            'image rm "$RUST_AUDIT_IMAGE_CONFIG_ID"',
+            'umount "$projected_vendor"',
+            "RUST_AUDIT_VM=pass commit=%s tree=%s image=%s runtime=%s",
+            "if [ \"$MODE\" = rust-audit ]; then\n    run_rust_audit",
+        ),
+        "focused Rust-audit guest transaction",
+    )
 
     candidate, _ = extract(
         acquisition,

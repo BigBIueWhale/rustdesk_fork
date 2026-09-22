@@ -2,6 +2,7 @@
 
 #include "bump_mouse.h"
 
+#include <dlfcn.h>
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -28,6 +29,44 @@ GtkWidget *find_gl_area(GtkWidget *widget);
 void try_set_transparent(GtkWindow* window, GdkScreen* screen, FlView* view);
 
 extern bool gIsConnectionManager;
+
+typedef void (*SetImpellerEnabled)(FlDartProject*, gboolean);
+typedef gboolean (*GetImpellerEnabled)(FlDartProject*);
+
+static void close_process_image(void* process) {
+  if (dlclose(process) != 0) {
+    g_error("Unable to release the linked Flutter renderer API handle");
+  }
+}
+
+static void select_external_pixel_buffer_renderer(FlDartProject* project) {
+  void* process = dlopen(nullptr, RTLD_NOW | RTLD_LOCAL);
+  if (process == nullptr) {
+    g_error("Unable to inspect the linked Flutter renderer API");
+  }
+
+  dlerror();
+  auto set_impeller = reinterpret_cast<SetImpellerEnabled>(
+      dlsym(process, "fl_dart_project_set_enable_impeller"));
+  const bool has_setter = dlerror() == nullptr && set_impeller != nullptr;
+  dlerror();
+  auto get_impeller = reinterpret_cast<GetImpellerEnabled>(
+      dlsym(process, "fl_dart_project_get_enable_impeller"));
+  const bool has_getter = dlerror() == nullptr && get_impeller != nullptr;
+
+  if (has_setter != has_getter) {
+    close_process_image(process);
+    g_error("The linked Flutter renderer API is incomplete");
+  }
+  if (has_setter) {
+    set_impeller(project, FALSE);
+    if (get_impeller(project)) {
+      close_process_image(process);
+      g_error("Flutter refused the required Linux renderer selection");
+    }
+  }
+  close_process_image(process);
+}
 
 // --- Side mouse button support (back/forward) ---
 // Flutter's Linux embedder doesn't deliver X11 button 8/9 events to Dart.
@@ -161,12 +200,10 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_set_opacity(GTK_WIDGET(window), 0);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
-#ifdef RUSTDESK_FLUTTER_HAS_IMPELLER_SWITCH
   // RustDesk requires every accepted external pixel-buffer update to remain
   // eligible for timely presentation, including while focus changes. Select
   // the Linux backend that provides that contract before creating the engine.
-  fl_dart_project_set_enable_impeller(project, FALSE);
-#endif
+  select_external_pixel_buffer_renderer(project);
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView* view = fl_view_new(project);

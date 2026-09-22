@@ -50,19 +50,6 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
-# Newer Flutter Linux SDKs default to Impeller, whose external pixel-buffer
-# scheduling contract is not suitable for RustDesk's continuously updated
-# desktop texture. Detect the public opt-out API from the SDK being linked so
-# the runner can select the same presentation backend across supported SDKs.
-set(FLUTTER_DART_PROJECT_HEADER
-  "${FLUTTER_MANAGED_DIR}/ephemeral/flutter_linux/fl_dart_project.h")
-if(NOT EXISTS "${FLUTTER_DART_PROJECT_HEADER}")
-  message(FATAL_ERROR "Flutter Dart-project public header is missing")
-endif()
-file(STRINGS "${FLUTTER_DART_PROJECT_HEADER}"
-  FLUTTER_IMPELLER_SETTER_DECLARATION
-  REGEX "fl_dart_project_set_enable_impeller")
-
 # System-level dependencies.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
@@ -135,11 +122,6 @@ add_executable(${BINARY_NAME}
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
-
-if(FLUTTER_IMPELLER_SETTER_DECLARATION)
-  target_compile_definitions(${BINARY_NAME} PRIVATE
-    RUSTDESK_FLUTTER_HAS_IMPELLER_SWITCH=1)
-endif()
 
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)

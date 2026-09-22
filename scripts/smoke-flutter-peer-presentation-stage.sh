@@ -587,7 +587,8 @@ CFG
     )
     [ "$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')" = \
       "$pub_lock_before" ] || fail 'project pubspec.lock changed during offline resolution'
-    (
+    readonly BUILD_ENTRY_DIRECTORY=$PWD
+    {
       cd "$BUILD_SOURCE"
       codegen_log=/tmp/flutter-peer-codegen.log
       set +e
@@ -602,8 +603,22 @@ CFG
       [ "$codegen_status" -eq 0 ] || fail "Flutter bridge generation exited $codegen_status"
       ! grep -Fq '[SEVERE]' "$codegen_log" \
         || fail 'Flutter bridge generation emitted a severe diagnostic'
-      cargo build --locked --features flutter,unix-file-copy-paste \
-        --lib --example smoke_readiness --release
+      cargo build --locked --offline --features flutter,unix-file-copy-paste \
+        --lib --release
+      readonly CORE_LIB=$BUILD_SOURCE/target/release/liblibrustdesk.so
+      verify_regular "$CORE_LIB"
+      readelf --wide --dyn-syms "$CORE_LIB" \
+        | grep -Eq '[[:space:]]rustdesk_core_main$' \
+        || fail 'Cargo library build does not export rustdesk_core_main'
+      CORE_LIB_SHA256="$(sha256sum "$CORE_LIB" | awk '{print $1}')"
+      readonly CORE_LIB_SHA256
+      cargo build --locked --offline --features flutter,unix-file-copy-paste \
+        --example smoke_readiness --release
+      [ "$(sha256sum "$CORE_LIB" | awk '{print $1}')" = "$CORE_LIB_SHA256" ] \
+        || fail 'example build replaced the verified Rust core library'
+      readelf --wide --dyn-syms "$CORE_LIB" \
+        | grep -Eq '[[:space:]]rustdesk_core_main$' \
+        || fail 'verified Rust core export disappeared after the example build'
       sed -i 's/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g' \
         flutter/lib/generated_bridge.dart
       (
@@ -611,11 +626,15 @@ CFG
         rm -rf build/linux
         "$REAL_FLUTTER" build linux --release --no-pub
       )
-    )
+    }
+    cd "$BUILD_ENTRY_DIRECTORY"
     readonly BUNDLE=$BUILD_SOURCE/flutter/build/linux/x64/release/bundle
     [ -x "$BUNDLE/rustdesk" ] || fail 'exact RustDesk Flutter runner is missing'
     verify_regular "$BUNDLE/lib/librustdesk.so"
     verify_regular "$BUNDLE/lib/libtexture_rgba_renderer_plugin.so"
+    [ "$(sha256sum "$BUNDLE/lib/librustdesk.so" | awk '{print $1}')" = \
+      "$CORE_LIB_SHA256" ] \
+      || fail 'Flutter bundle did not copy the exact verified Rust core library'
     readelf --wide --dyn-syms "$BUNDLE/lib/librustdesk.so" \
       | grep -Eq '[[:space:]]rustdesk_core_main$' \
       || fail 'Rust core library does not export rustdesk_core_main'

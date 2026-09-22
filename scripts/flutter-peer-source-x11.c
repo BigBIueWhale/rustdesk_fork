@@ -12,6 +12,8 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #define SOURCE_WIDTH 640U
@@ -51,6 +53,14 @@ static int sleep_millis(unsigned int millis) {
     return 0;
 }
 
+static uint64_t monotonic_micros(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return 0U;
+    }
+    return (uint64_t)now.tv_sec * 1000000U + (uint64_t)now.tv_nsec / 1000U;
+}
+
 static unsigned long component_pixel(uint8_t component, unsigned long mask) {
     unsigned int shift = 0U;
     unsigned long normalized;
@@ -82,6 +92,8 @@ int main(void) {
     Pixmap back_buffer;
     GC graphics;
     unsigned int frame = 0U;
+    const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
+    int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
 
     action.sa_handler = request_stop;
     sigemptyset(&action.sa_mask);
@@ -166,6 +178,12 @@ int main(void) {
         XCopyArea(display, back_buffer, window, graphics, 0, 0, SOURCE_WIDTH, SOURCE_HEIGHT,
                   0, 0);
         XSync(display, False);
+        if (trace_enabled != 0) {
+            printf("RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=%llu "
+                   "state=%u low=%u high=%u\n",
+                   (unsigned long long)monotonic_micros(), frame, low, high);
+            fflush(stdout);
+        }
         frame = (frame + 1U) & 255U;
         if (sleep_millis(FRAME_INTERVAL_MS) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);

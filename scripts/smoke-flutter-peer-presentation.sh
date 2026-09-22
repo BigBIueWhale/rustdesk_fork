@@ -704,6 +704,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
   --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
+  --env RUSTDESK_PRESENTATION_TRACE=1 \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh server \
   >/dev/null

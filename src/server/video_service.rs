@@ -42,10 +42,11 @@ use scrap::vram::{VRamEncoder, VRamEncoderConfig};
 // valid on Windows (the deleted portable_service.rs used `scrap::Capturer` there too).
 use scrap::Capturer;
 use scrap::{
-    codec::{Encoder, EncoderCfg},
+    codec::{Decoder, Encoder, EncoderCfg},
     record::{Recorder, RecorderContext},
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
-    CodecFormat, Display, EncodeInput, TraitCapturer, TraitPixelBuffer,
+    CodecFormat, Display, EncodeInput, EncodeYuvFormat, ImageFormat, ImageRgb, ImageTexture,
+    Pixfmt, TraitCapturer, TraitPixelBuffer,
 };
 #[cfg(windows)]
 use std::sync::Once;
@@ -53,7 +54,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::ErrorKind::WouldBlock,
     ops::{Deref, DerefMut},
-    sync::{Arc, Condvar, Mutex, Weak},
+    sync::{Arc, Condvar, Mutex, OnceLock, Weak},
     time::{self, Duration, Instant},
 };
 
@@ -62,6 +63,270 @@ pub const OPTION_REFRESH: &'static str = "refresh";
 const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;
 const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;
 const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;
+
+fn presentation_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("RUSTDESK_PRESENTATION_TRACE")
+            .as_deref()
+            .map_or(false, |value| value == "1")
+    })
+}
+
+struct PresentationVideoTrace {
+    decoder: Decoder,
+    rgb: ImageRgb,
+    texture: ImageTexture,
+    pixelbuffer: bool,
+    chroma: Option<Chroma>,
+}
+
+impl PresentationVideoTrace {
+    fn new(format: CodecFormat) -> Option<Self> {
+        if !presentation_trace_enabled() || !matches!(format, CodecFormat::VP8 | CodecFormat::VP9)
+        {
+            return None;
+        }
+        let decoder = Decoder::new(format, None);
+        if !decoder.valid() {
+            log::error!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-shadow-decoder-init codec={format:?} valid=false"
+            );
+            return None;
+        }
+        Some(Self {
+            decoder,
+            rgb: ImageRgb::new(ImageFormat::ABGR, crate::get_dst_align_rgba()),
+            texture: ImageTexture::default(),
+            pixelbuffer: true,
+            chroma: None,
+        })
+    }
+
+    fn sample_rgba(&self) -> Option<([u8; 4], [u8; 4])> {
+        let width = self.rgb.w;
+        let height = self.rgb.h;
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let row_bytes = width.checked_mul(4)?;
+        let stride = if self.rgb.align <= 1 {
+            row_bytes
+        } else {
+            let padding = self.rgb.align.checked_sub(1)?;
+            row_bytes
+                .checked_add(padding)?
+                .checked_div(self.rgb.align)?
+                .checked_mul(self.rgb.align)?
+        };
+        let y = height / 2;
+        let sample = |x: usize| -> Option<[u8; 4]> {
+            let offset = y.checked_mul(stride)?.checked_add(x.checked_mul(4)?)?;
+            let bytes = self.rgb.raw.get(offset..offset.checked_add(4)?)?;
+            Some([bytes[0], bytes[1], bytes[2], bytes[3]])
+        };
+        Some((
+            sample(width / 4)?,
+            sample(width.checked_mul(3)?.checked_div(4)?)?,
+        ))
+    }
+
+    fn trace_capture(&self, display: usize, service_ms: i64, frame: &scrap::Frame<'_>) {
+        let scrap::Frame::PixelBuffer(pixels) = frame else {
+            log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-capture display={display} service_ms={service_ms} storage=texture"
+            );
+            return;
+        };
+        let Some((left, right)) = pixelbuffer_rgb_samples(pixels) else {
+            log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-capture display={display} service_ms={service_ms} format={:?} dimensions={}x{} samples=unavailable",
+                pixels.pixfmt(),
+                pixels.width(),
+                pixels.height()
+            );
+            return;
+        };
+        log::info!(
+            "RUSTDESK_PRESENTATION_TRACE stage=server-capture display={display} service_ms={service_ms} format={:?} dimensions={}x{} left={:02x}{:02x}{:02x}{:02x} right={:02x}{:02x}{:02x}{:02x}",
+            pixels.pixfmt(),
+            pixels.width(),
+            pixels.height(),
+            left[0], left[1], left[2], left[3],
+            right[0], right[1], right[2], right[3]
+        );
+    }
+
+    fn trace_yuv(
+        &self,
+        display: usize,
+        service_ms: i64,
+        format: &EncodeYuvFormat,
+        frame: &EncodeInput<'_>,
+    ) {
+        let EncodeInput::YUV(data) = frame else {
+            log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-convert display={display} service_ms={service_ms} storage=texture"
+            );
+            return;
+        };
+        let Some((left, right)) = yuv_samples(data, format) else {
+            log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-convert display={display} service_ms={service_ms} format={:?} dimensions={}x{} samples=unavailable",
+                format.pixfmt,
+                format.w,
+                format.h
+            );
+            return;
+        };
+        log::info!(
+            "RUSTDESK_PRESENTATION_TRACE stage=server-convert display={display} service_ms={service_ms} format={:?} dimensions={}x{} left={:02x}{:02x}{:02x} right={:02x}{:02x}{:02x}",
+            format.pixfmt,
+            format.w,
+            format.h,
+            left[0], left[1], left[2],
+            right[0], right[1], right[2]
+        );
+    }
+
+    fn trace_encoded(&mut self, display: usize, service_ms: i64, frame: &VideoFrame) {
+        use video_frame::Union::*;
+        let Some(union) = frame.union.as_ref() else {
+            return;
+        };
+        let (codec, frames) = match union {
+            Vp8s(frames) => ("VP8", frames),
+            Vp9s(frames) => ("VP9", frames),
+            _ => return,
+        };
+        let packet_count = frames.frames.len();
+        let encoded_bytes = frames
+            .frames
+            .iter()
+            .fold(0usize, |total, encoded| total.saturating_add(encoded.data.len()));
+        let first_key = frames.frames.first().map_or(false, |encoded| encoded.key);
+        let first_pts = frames.frames.first().map_or(-1, |encoded| encoded.pts);
+        match self.decoder.handle_video_frame(
+            union,
+            &mut self.rgb,
+            &mut self.texture,
+            &mut self.pixelbuffer,
+            &mut self.chroma,
+        ) {
+            Ok(true) => {
+                if let Some((left, right)) = self.sample_rgba() {
+                    log::info!(
+                        "RUSTDESK_PRESENTATION_TRACE stage=server-encoded-decode display={display} service_ms={service_ms} codec={codec} packets={packet_count} bytes={encoded_bytes} first_key={first_key} first_pts={first_pts} dimensions={}x{} left={:02x}{:02x}{:02x}{:02x} right={:02x}{:02x}{:02x}{:02x}",
+                        self.rgb.w,
+                        self.rgb.h,
+                        left[0], left[1], left[2], left[3],
+                        right[0], right[1], right[2], right[3]
+                    );
+                } else {
+                    log::info!(
+                        "RUSTDESK_PRESENTATION_TRACE stage=server-encoded-decode display={display} service_ms={service_ms} codec={codec} packets={packet_count} bytes={encoded_bytes} first_key={first_key} first_pts={first_pts} samples=unavailable"
+                    );
+                }
+            }
+            Ok(false) => log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-encoded-decode display={display} service_ms={service_ms} codec={codec} packets={packet_count} bytes={encoded_bytes} first_key={first_key} first_pts={first_pts} output=none"
+            ),
+            Err(error) => log::error!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-encoded-decode display={display} service_ms={service_ms} codec={codec} packets={packet_count} bytes={encoded_bytes} first_key={first_key} first_pts={first_pts} error={error}"
+            ),
+        }
+    }
+}
+
+fn pixelbuffer_rgb_samples(pixels: &scrap::PixelBuffer<'_>) -> Option<([u8; 4], [u8; 4])> {
+    let width = pixels.width();
+    let height = pixels.height();
+    let strides = pixels.stride();
+    let stride = *strides.first()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let data = pixels.data();
+    let y = height / 2;
+    let sample = |x: usize| -> Option<[u8; 4]> {
+        let bytes_per_pixel = pixels.pixfmt().bytes_per_pixel();
+        let offset = y
+            .checked_mul(stride)?
+            .checked_add(x.checked_mul(bytes_per_pixel)?)?;
+        match pixels.pixfmt() {
+            Pixfmt::BGRA => {
+                let value = data.get(offset..offset.checked_add(4)?)?;
+                Some([value[2], value[1], value[0], value[3]])
+            }
+            Pixfmt::RGBA => {
+                let value = data.get(offset..offset.checked_add(4)?)?;
+                Some([value[0], value[1], value[2], value[3]])
+            }
+            Pixfmt::RGB565LE => {
+                let value = data.get(offset..offset.checked_add(2)?)?;
+                let packed = u16::from_le_bytes([value[0], value[1]]);
+                let red = ((packed >> 11) & 0x1f) as u8;
+                let green = ((packed >> 5) & 0x3f) as u8;
+                let blue = (packed & 0x1f) as u8;
+                Some([
+                    ((u16::from(red) * 255 + 15) / 31) as u8,
+                    ((u16::from(green) * 255 + 31) / 63) as u8,
+                    ((u16::from(blue) * 255 + 15) / 31) as u8,
+                    255,
+                ])
+            }
+            _ => None,
+        }
+    };
+    Some((
+        sample(width / 4)?,
+        sample(width.checked_mul(3)?.checked_div(4)?)?,
+    ))
+}
+
+fn yuv_samples(data: &[u8], format: &EncodeYuvFormat) -> Option<([u8; 3], [u8; 3])> {
+    if format.w == 0 || format.h == 0 {
+        return None;
+    }
+    let y_stride = *format.stride.first()?;
+    let uv_stride = *format.stride.get(1)?;
+    let y = format.h / 2;
+    let sample = |x: usize| -> Option<[u8; 3]> {
+        let luma = *data.get(y.checked_mul(y_stride)?.checked_add(x)?)?;
+        match format.pixfmt {
+            Pixfmt::I420 => {
+                let chroma_offset = (y / 2)
+                    .checked_mul(uv_stride)?
+                    .checked_add(x / 2)?;
+                Some([
+                    luma,
+                    *data.get(format.u.checked_add(chroma_offset)?)?,
+                    *data.get(format.v.checked_add(chroma_offset)?)?,
+                ])
+            }
+            Pixfmt::I444 => {
+                let chroma_offset = y.checked_mul(uv_stride)?.checked_add(x)?;
+                Some([
+                    luma,
+                    *data.get(format.u.checked_add(chroma_offset)?)?,
+                    *data.get(format.v.checked_add(chroma_offset)?)?,
+                ])
+            }
+            Pixfmt::NV12 => {
+                let chroma_offset = (y / 2)
+                    .checked_mul(uv_stride)?
+                    .checked_add((x / 2).checked_mul(2)?)?;
+                let u = format.u.checked_add(chroma_offset)?;
+                Some([luma, *data.get(u)?, *data.get(u.checked_add(1)?)?])
+            }
+            _ => None,
+        }
+    };
+    Some((
+        sample(format.w / 4)?,
+        sample(format.w.checked_mul(3)?.checked_div(4)?)?,
+    ))
+}
 
 lazy_static::lazy_static! {
     static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();
@@ -994,6 +1259,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut first_frame = true;
     let capture_width = c.width;
     let capture_height = c.height;
+    let mut presentation_trace = PresentationVideoTrace::new(codec_format);
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
 
     while sp.ok() {
@@ -1084,6 +1350,9 @@ fn run(vs: VideoService) -> ResultType<()> {
             Ok(frame) => {
                 repeat_encode_counter = 0;
                 if frame.valid() {
+                    if let Some(trace) = presentation_trace.as_ref() {
+                        trace.trace_capture(display_idx, ms, &frame);
+                    }
                     let screenshots = SCREENSHOTS
                         .lock()
                         .unwrap()
@@ -1165,7 +1434,11 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
 
-                    let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    let yuv_format = encoder.yuvfmt();
+                    let frame = frame.to(yuv_format.clone(), &mut yuv, &mut mid_data)?;
+                    if let Some(trace) = presentation_trace.as_ref() {
+                        trace.trace_yuv(display_idx, ms, &yuv_format, &frame);
+                    }
                     handle_one_frame(
                         display_idx,
                         &sp,
@@ -1178,6 +1451,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut first_frame,
                         capture_width,
                         capture_height,
+                        &mut presentation_trace,
                     )?;
                     send_counter += 1;
                 }
@@ -1237,6 +1511,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             &mut first_frame,
                             capture_width,
                             capture_height,
+                            &mut presentation_trace,
                         )?;
                         send_counter += 1;
                     }
@@ -1563,6 +1838,7 @@ fn handle_one_frame(
     first_frame: &mut bool,
     width: usize,
     height: usize,
+    presentation_trace: &mut Option<PresentationVideoTrace>,
 ) -> ResultType<()> {
     sp.snapshot(|sps| {
         // so that new sub and old sub share the same encoder after switch
@@ -1579,6 +1855,9 @@ fn handle_one_frame(
         Ok(mut vf) => {
             *encode_fail_counter = 0;
             vf.display = display as _;
+            if let Some(trace) = presentation_trace.as_mut() {
+                trace.trace_encoded(display, ms, &vf);
+            }
             let mut msg = Message::new();
             msg.set_video_frame(vf);
             recorder

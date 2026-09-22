@@ -10646,21 +10646,26 @@ two-second background cycle delivered nine distinct current states, and the next
 freshness bound at 1,023 ms while submissions, copies, and mapped GTK draws continued. The atomic-source result
 disproves that verifier explanation.
 
-The product refresh boundary currently purges queued predecessor frames and waits for a leading keyframe, but it
-does not reset the retained decoder before admitting the sequence produced by the restarted encoder. A reset
-control already has the required behavior and queue ordering elsewhere. The pending correction places one
-coalesced decoder-reset barrier in every explicit refresh transaction before any successor keyframe. It neither
-kills the persistent process nor reconnects the authenticated transport. This still requires a fresh VM run and
-is not evidence that the reported Android persistent-process or Windows focus/display-only delay is fixed.
+Commit `5d6cd9f8` made the product refresh boundary purge queued predecessor frames, enqueue one coalesced decoder
+reset, and await a leading successor keyframe without killing the persistent process or reconnecting the
+authenticated transport. Exact no-NIC run `run.hOuCXVG0jc` proved the intended order: the real viewer reset display
+zero's decoder at 20:32:46.225027 and the controlled server created the replacement VP9 encoder at
+20:32:46.300703. It also disproved the proposed causation. Initial pixels arrived in 85 ms with 300 ms maximum age,
+the two-second background cycle and same-connection focus recovery passed, and the six-second cycle still failed at
+a 1,017 ms actual-pixel gap while the reset had already completed. Retained decoder state is therefore not the cause
+of this reproduced Linux failure. The reset remains required refresh-epoch hygiene; it is not a symptom fix and is
+not evidence that the reported Android persistent-process or Windows focus/display-only delay is fixed. The next
+diagnostic must locate the first divergence across real server capture, pixel conversion, VP9 output, client frame
+admission, and decoded output instead of inferring that boundary from renderer callbacks.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
 deselection, disposal, and pointer-replacement stress. Measure capture-through-
 compositor latency, queues, CPU, memory, and cleanup under sustained lifecycle
 soak. Physical Android lifecycle behavior remains open under its separate path.
-Rerun the decoder-reset and atomic-pixel-source transaction through all focus and reconnect cycles before drawing any
-further Linux presentation conclusion; do not substitute texture callbacks, redraw callbacks, or relaxed pixel
-freshness for actual presented-pixel evidence.
+Trace the real capture-to-decode transaction through the failing focus cycle, then rerun all focus and reconnect
+cycles after the first proven product-owned divergence is corrected; do not substitute texture callbacks, redraw
+callbacks, source inspection, or relaxed pixel freshness for actual presented-pixel evidence.
 Cross-version behavior, current signed artifacts, clean cold R-B2/R-B10 equality,
 independent reproduction, causation, external review, and proof that the complete
 connection flow is correct and performant remain open STOP-SHIP obligations.

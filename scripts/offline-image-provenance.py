@@ -4089,13 +4089,44 @@ def validate_rust_audit_attestation(
     if contains_vcs_authority(statement):
         fail("Docker archive Rust audit provenance contains undeclared VCS authority")
     predicate = statement.get("predicate")
+    base_digest = spec.base.rsplit("@", 1)[1]
     if not isinstance(predicate, dict) \
-       or set(predicate) != {"buildDefinition", "runDetails"}:
-        fail("Docker archive Rust audit provenance predicate differs")
+       or set(predicate) != {
+           "builder",
+           "buildConfig",
+           "buildType",
+           "invocation",
+           "materials",
+           "metadata",
+       } \
+       or predicate.get("builder") != {"id": ""} \
+       or predicate.get("buildType") != (
+           "https://mobyproject.org/buildkit@v1"
+       ) \
+       or predicate.get("materials") != [
+           {
+               "uri": (
+                   f"pkg:docker/rust@{spec.rust_version}-bookworm?"
+                   f"digest={base_digest}&platform=linux%2Famd64"
+               ),
+               "digest": {
+                   "sha256": base_digest.removeprefix("sha256:")
+               },
+           }
+       ]:
+        fail(
+            "Docker archive Rust audit provenance does not bind the exact "
+            "v0.2 builder and Rust base"
+        )
+    metadata = predicate.get("metadata")
+    buildkit_metadata = (
+        metadata.get("https://mobyproject.org/buildkit@v1#metadata")
+        if isinstance(metadata, dict)
+        else None
+    )
     try:
         embedded_source = (
-            predicate["runDetails"]["metadata"]["buildkit_metadata"]
-            ["source"]["infos"][0]
+            buildkit_metadata["source"]["infos"][0]
         )
         embedded_dockerfile = base64.b64decode(
             embedded_source["data"],
@@ -4118,29 +4149,6 @@ def validate_rust_audit_attestation(
         "none",
     ]:
         fail("Docker archive Rust audit Dockerfile RUN network contract differs")
-    definition = predicate.get("buildDefinition")
-    base_digest = spec.base.rsplit("@", 1)[1]
-    if not isinstance(definition, dict) \
-       or set(definition) != {
-           "buildType",
-           "resolvedDependencies",
-           "externalParameters",
-           "internalParameters",
-       } \
-       or definition.get("buildType") != (
-           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
-           "slsa-definitions.md"
-       ) \
-       or definition.get("resolvedDependencies") != [
-           {
-               "uri": (
-                   f"pkg:docker/rust@{spec.rust_version}-bookworm?"
-                   f"digest={base_digest}&platform=linux%2Famd64"
-               ),
-               "digest": {"sha256": base_digest.removeprefix("sha256:")},
-           }
-       ]:
-        fail("Docker archive Rust audit provenance does not bind the exact Rust base")
     expected_args = {
         "build-arg:ADVISORY_DB_COMMIT_EPOCH": str(spec.advisory_db_epoch),
         "build-arg:ADVISORY_DB_SHA": spec.advisory_db_sha,
@@ -4163,29 +4171,20 @@ def validate_rust_audit_attestation(
         ),
         "no-cache": "",
     }
-    expected_request = {
+    expected_parameters = {
         "args": expected_args,
-        "compatibilityVersion": 30,
         "frontend": "dockerfile.v0",
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile.audit"},
-            "request": {"args": expected_args},
-        },
     }
-    if definition.get("externalParameters") != {
-        "configSource": {"path": "Dockerfile.audit"},
-        "request": expected_request,
+    if predicate.get("invocation") != {
+        "configSource": {"entryPoint": "Dockerfile.audit"},
+        "parameters": expected_parameters,
+        "environment": {"platform": "linux/amd64"},
     }:
         fail("Docker archive Rust audit provenance does not bind the reviewed recipe")
-    internal = definition.get("internalParameters")
-    build_config = internal.get("buildConfig") if isinstance(internal, dict) else None
+    build_config = predicate.get("buildConfig")
     llb = build_config.get("llbDefinition") if isinstance(build_config, dict) else None
-    if not isinstance(internal, dict) \
-       or set(internal) != {"buildConfig", "builderPlatform", "dockerfileVersion"} \
-       or internal.get("builderPlatform") != "linux/amd64" \
-       or internal.get("dockerfileVersion") != "1.25.0" \
-       or not isinstance(build_config, dict) \
+    if not isinstance(build_config, dict) \
        or set(build_config) != {"digestMapping", "llbDefinition"} \
        or not isinstance(build_config.get("digestMapping"), dict) \
        or not isinstance(llb, list) \
@@ -4432,26 +4431,37 @@ def validate_rust_audit_attestation(
         if operations[position].get("file") != expected_file:
             fail("Docker archive Rust audit stage-copy graph differs")
 
-    run_details = predicate.get("runDetails")
-    metadata = run_details.get("metadata") if isinstance(run_details, dict) else None
-    if not isinstance(run_details, dict) \
-       or set(run_details) != {"builder", "metadata"} \
-       or run_details.get("builder") != {"id": ""} \
-       or not isinstance(metadata, dict) \
+    if not isinstance(metadata, dict) \
        or set(metadata) != {
-           "buildkit_completeness",
-           "buildkit_metadata",
-           "finishedOn",
-           "invocationId",
-           "startedOn",
+           "buildFinishedOn",
+           "buildInvocationID",
+           "buildStartedOn",
+           "completeness",
+           "https://mobyproject.org/buildkit@v1#metadata",
+           "reproducible",
        } \
        or not all(
            isinstance(metadata.get(name), str) and metadata.get(name)
-           for name in ("finishedOn", "invocationId", "startedOn")
-       ):
+           for name in (
+               "buildFinishedOn",
+               "buildInvocationID",
+               "buildStartedOn",
+           )
+       ) \
+       or metadata.get("completeness") != {
+           "parameters": True,
+           "environment": True,
+           "materials": False,
+       } \
+       or metadata.get("reproducible") is not False:
         fail("Docker archive Rust audit provenance run metadata differs")
-    buildkit_metadata = metadata.get("buildkit_metadata")
-    completeness = metadata.get("buildkit_completeness")
+    completeness = metadata.get("completeness")
+    if completeness != {
+        "parameters": True,
+        "environment": True,
+        "materials": False,
+    }:
+        fail("Docker archive Rust audit provenance completeness differs")
     source = (
         buildkit_metadata.get("source")
         if isinstance(buildkit_metadata, dict)
@@ -4465,8 +4475,7 @@ def validate_rust_audit_attestation(
        or set(source) != {"infos", "locations"} \
        or not isinstance(source.get("locations"), dict) \
        or not isinstance(infos, list) \
-       or len(infos) != 1 \
-       or completeness != {"request": True, "resolvedDependencies": False}:
+       or len(infos) != 1:
         fail("Docker archive Rust audit provenance metadata differs")
     source_info = infos[0]
     digest_mapping = (
@@ -4834,7 +4843,12 @@ def validate_modern_archive(
             "https://slsa.dev/provenance/v0.2"
             if isinstance(
                 spec,
-                (CertifiedBuilderSpec, VerifierSpec, DartAuditSpec),
+                (
+                    CertifiedBuilderSpec,
+                    VerifierSpec,
+                    DartAuditSpec,
+                    RustAuditSpec,
+                ),
             )
             or raw_bootstrap_index
             else "https://slsa.dev/provenance/v1"
@@ -4843,7 +4857,12 @@ def validate_modern_archive(
             "https://in-toto.io/Statement/v0.1"
             if isinstance(
                 spec,
-                (CertifiedBuilderSpec, VerifierSpec, DartAuditSpec),
+                (
+                    CertifiedBuilderSpec,
+                    VerifierSpec,
+                    DartAuditSpec,
+                    RustAuditSpec,
+                ),
             )
             or raw_bootstrap_index
             else "https://in-toto.io/Statement/v1"
@@ -8960,7 +8979,7 @@ def create_rust_audit_fixture_archive(
     execution_user: str = "1000:1000",
     copy_user: int = 1000,
     annotate_root: bool = False,
-    statement_type: str = "https://in-toto.io/Statement/v1",
+    statement_type: str = "https://in-toto.io/Statement/v0.1",
 ) -> RustAuditSpec:
     def encoded(value: object) -> bytes:
         return json.dumps(value, sort_keys=True, separators=(",", ":")).encode(
@@ -9119,15 +9138,10 @@ def create_rust_audit_fixture_archive(
         ),
         "no-cache": "",
     }
-    request = {
+    parameters = {
         "args": build_args,
-        "compatibilityVersion": 30,
         "frontend": "dockerfile.v0",
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile.audit"},
-            "request": {"args": build_args},
-        },
     }
     common_environment = [
         "RUSTUP_HOME=/usr/local/rustup",
@@ -9467,7 +9481,7 @@ def create_rust_audit_fixture_archive(
     statement = encoded(
         {
             "_type": statement_type,
-            "predicateType": "https://slsa.dev/provenance/v1",
+            "predicateType": "https://slsa.dev/provenance/v0.2",
             "subject": [
                 {
                     "name": (
@@ -9482,46 +9496,40 @@ def create_rust_audit_fixture_archive(
                 }
             ],
             "predicate": {
-                "buildDefinition": {
-                    "buildType": (
-                        "https://github.com/moby/buildkit/blob/master/docs/"
-                        "attestations/slsa-definitions.md"
-                    ),
-                    "externalParameters": {
-                        "configSource": {"path": "Dockerfile.audit"},
-                        "request": request,
-                    },
-                    "internalParameters": {
-                        "buildConfig": {
-                            "digestMapping": {},
-                            "llbDefinition": llb_definition,
-                        },
-                        "builderPlatform": "linux/amd64",
-                        "dockerfileVersion": "1.25.0",
-                    },
-                    "resolvedDependencies": [
-                        {
-                            "digest": {"sha256": base_digest},
-                            "uri": (
-                                "pkg:docker/rust@1.88-bookworm?"
-                                f"digest=sha256:{base_digest}"
-                                "&platform=linux%2Famd64"
-                            ),
-                        }
-                    ],
+                "builder": {"id": ""},
+                "buildConfig": {
+                    "digestMapping": {},
+                    "llbDefinition": llb_definition,
                 },
-                "runDetails": {
-                    "builder": {"id": ""},
-                    "metadata": {
-                        "buildkit_completeness": {
-                            "request": True,
-                            "resolvedDependencies": False,
-                        },
-                        "buildkit_metadata": buildkit_metadata,
-                        "finishedOn": "2026-07-25T00:00:01Z",
-                        "invocationId": "fixture",
-                        "startedOn": "2026-07-25T00:00:00Z",
+                "buildType": "https://mobyproject.org/buildkit@v1",
+                "invocation": {
+                    "configSource": {"entryPoint": "Dockerfile.audit"},
+                    "parameters": parameters,
+                    "environment": {"platform": "linux/amd64"},
+                },
+                "materials": [
+                    {
+                        "digest": {"sha256": base_digest},
+                        "uri": (
+                            "pkg:docker/rust@1.88-bookworm?"
+                            f"digest=sha256:{base_digest}"
+                            "&platform=linux%2Famd64"
+                        ),
+                    }
+                ],
+                "metadata": {
+                    "buildFinishedOn": "2026-07-25T00:00:01Z",
+                    "buildInvocationID": "fixture",
+                    "buildStartedOn": "2026-07-25T00:00:00Z",
+                    "completeness": {
+                        "parameters": True,
+                        "environment": True,
+                        "materials": False,
                     },
+                    "https://mobyproject.org/buildkit@v1#metadata": (
+                        buildkit_metadata
+                    ),
+                    "reproducible": False,
                 },
             },
         }
@@ -9530,7 +9538,7 @@ def create_rust_audit_fixture_archive(
         statement,
         "application/vnd.in-toto+json",
         annotations={
-            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v0.2"
         },
     )
     attestation_config = encoded(
@@ -12681,7 +12689,7 @@ def self_test() -> None:
         reject_rust_fixture(
             "wrong-statement-rust-audit-image.tar.gz",
             "Rust audit in-toto statement type",
-            statement_type="https://in-toto.io/Statement/v0.1",
+            statement_type="https://in-toto.io/Statement/v1",
         )
         verify_archive(rust_archive, rust_sha, rust_spec, rust_size)
         rust_checks += 1

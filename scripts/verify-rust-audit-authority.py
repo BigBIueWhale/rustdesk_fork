@@ -368,6 +368,42 @@ def validate_contract(repo):
         provenance.count("validate_rust_audit_identity_contract(spec)") == 2,
         "Rust audit identity modes must guard both runtime and archive verification",
     )
+    rust_attestation, _ = extract(
+        provenance,
+        "def validate_rust_audit_attestation(",
+        "\n\ndef validate_modern_archive(",
+        "Rust audit provenance contract",
+    )
+    require_all(
+        rust_attestation,
+        (
+            '"https://mobyproject.org/buildkit@v1"',
+            '"https://mobyproject.org/buildkit@v1#metadata"',
+            '"configSource": {"entryPoint": "Dockerfile.audit"}',
+            '"parameters": expected_parameters',
+            '"environment": {"platform": "linux/amd64"}',
+            'set(predicate) != {',
+            '"builder",',
+            '"buildConfig",',
+            '"invocation",',
+            '"materials",',
+            '"metadata",',
+            '"reproducible",',
+        ),
+        "Rust audit SLSA v0.2 provenance contract",
+    )
+    for obsolete in (
+        '"buildDefinition"',
+        '"runDetails"',
+        '"externalParameters"',
+        '"internalParameters"',
+    ):
+        require(
+            obsolete not in rust_attestation,
+            "Rust audit provenance retained obsolete v1 field {!r}".format(
+                obsolete
+            ),
+        )
 
     require_once(
         verify,

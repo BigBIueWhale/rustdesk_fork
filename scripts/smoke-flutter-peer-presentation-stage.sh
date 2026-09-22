@@ -570,6 +570,7 @@ PY
       "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ] \
       || fail 'Flutter tools lockfile differs from its pin'
     export HOME CARGO_HOME CI=true PUB_CACHE=/build-work/pub-cache
+    export FLUTTER_SUPPRESS_ANALYTICS=true
     export REAL_FLUTTER="$FLUTTER_ROOT/bin/flutter"
     export VCPKG_ROOT=/online/vcpkg
     export LIBCLANG_PATH="$LLVM_ROOT/lib"
@@ -740,7 +741,13 @@ PY
       (
         cd flutter
         rm -rf build/linux
-        "$REAL_FLUTTER" build linux --release --no-pub
+        printf 'FLUTTER_PEER_BUILD_PHASE=flutter-build-start version=%s network=none pub=disabled timeout_seconds=1200\n' \
+          "$RUSTDESK_FLUTTER_VERSION"
+        /usr/bin/timeout --signal=TERM --kill-after=30s 1200s \
+          "$REAL_FLUTTER" --suppress-analytics --no-version-check --verbose \
+          build linux --release --no-pub
+        printf 'FLUTTER_PEER_BUILD_PHASE=flutter-build-complete version=%s\n' \
+          "$RUSTDESK_FLUTTER_VERSION"
       )
     }
     cd "$BUILD_ENTRY_DIRECTORY"

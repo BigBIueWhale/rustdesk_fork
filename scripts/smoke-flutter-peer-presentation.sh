@@ -519,8 +519,7 @@ run_owned_container "$WORKSPACE/atspi-check.cid" \
   --env XDG_RUNTIME_DIR=/tmp/atspi-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
-  dbus-run-session -- \
-  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh atspi-check \
+  bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh atspi-check \
   > "$WORKSPACE/atspi-check.log" 2>&1 || atspi_check_status=$?
 cat "$WORKSPACE/atspi-check.log"
 [ "$atspi_check_status" -eq 0 ] \
@@ -664,8 +663,7 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
-  dbus-run-session -- \
-  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh viewer \
+  bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer \
   > "$WORKSPACE/viewer.log" 2>&1
 viewer_status=$?
 set -e

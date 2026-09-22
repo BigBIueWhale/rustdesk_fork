@@ -37,6 +37,7 @@ def require_order(source: str, needles: tuple[str, ...], label: str) -> None:
 PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
+    "atspi_session": "scripts/smoke-private-atspi-session.sh",
     "atspi_prepare": "scripts/smoke-atspi-prepare.sh",
     "atspi_packages": "scripts/smoke-atspi-packages.tsv",
     "atspi_files": "scripts/smoke-atspi-files.tsv",
@@ -66,6 +67,7 @@ def load(repo: Path) -> dict[str, str]:
 def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
+    atspi_session = sources["atspi_session"]
     atspi_prepare = sources["atspi_prepare"]
     atspi_packages = sources["atspi_packages"]
     atspi_files = sources["atspi_files"]
@@ -132,7 +134,7 @@ def validate(sources: dict[str, str]) -> None:
             'run_input_check "$WORKSPACE/input-pre.cid"',
             "smoke-xvfb-prepare.sh",
             "smoke-atspi-prepare.sh",
-            "smoke-flutter-peer-presentation-stage.sh atspi-check",
+            "smoke-private-atspi-session.sh atspi-check",
             "smoke-flutter-peer-presentation-stage.sh pub-cache",
             "smoke-flutter-peer-presentation-stage.sh build",
             "smoke-flutter-peer-presentation-stage.sh pub-cache-check",
@@ -172,9 +174,9 @@ def validate(sources: dict[str, str]) -> None:
     )
     if host.count('run_input_check "$WORKSPACE/input-') != 2:
         raise VerificationError("persistent inputs need pre- and post-transaction checks")
-    require(host, "dbus-run-session --", "private accessibility sessions")
-    if host.count("dbus-run-session --") != 2:
-        raise VerificationError("the preflight and viewer each need one private accessibility session")
+    if host.count("smoke-private-atspi-session.sh") != 2:
+        raise VerificationError("the preflight and viewer must share the private session launcher")
+    forbid(host, "dbus-run-session --", "D-Bus launch before private directory creation")
     require_order(
         host,
         (
@@ -185,8 +187,7 @@ def validate(sources: dict[str, str]) -> None:
             "--env HOME=/tmp/atspi-home",
             "--env XDG_RUNTIME_DIR=/tmp/atspi-runtime",
             "--env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share",
-            "dbus-run-session --",
-            "smoke-flutter-peer-presentation-stage.sh atspi-check",
+            "smoke-private-atspi-session.sh atspi-check",
             'atspi_check_status=$?',
             'cat "$WORKSPACE/atspi-check.log"',
             "private AT-SPI activation preflight exited",
@@ -216,7 +217,7 @@ def validate(sources: dict[str, str]) -> None:
             'readonly VIEWER_CID_FILE="$WORKSPACE/viewer.cid"',
             'peer_vm_docker run --cidfile "$VIEWER_CID_FILE"',
             'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
-            "dbus-run-session --",
+            "smoke-private-atspi-session.sh viewer",
         ),
         "viewer passwd identity mount",
     )
@@ -408,6 +409,28 @@ def validate(sources: dict[str, str]) -> None:
     )
     for forbidden_installer in ("apt-get", "apt ", "dpkg -i", "curl ", "wget "):
         forbid(atspi_prepare, forbidden_installer, "AT-SPI package installation or network acquisition")
+    require_order(
+        atspi_session,
+        (
+            '[ "$(id -u)" -ne 0 ]',
+            'case "$1" in',
+            "atspi-check)",
+            '[ "${DISPLAY:-}" = :97 ]',
+            "viewer)",
+            '[ "${DISPLAY:-}" = :99 ]',
+            '[ "${XDG_DATA_DIRS:-}" = /atspi-root/usr/share:/usr/local/share:/usr/share ]',
+            'for directory in "$HOME" "$XDG_RUNTIME_DIR"; do',
+            '[ ! -e "$directory" ] && [ ! -L "$directory" ]',
+            'mkdir -m 0700 -- "$directory"',
+            '"$(id -u):$(id -g):700"',
+            "command -v dbus-run-session",
+            "exec dbus-run-session --",
+            'smoke-flutter-peer-presentation-stage.sh "$1"',
+        ),
+        "one private AT-SPI session-launch path",
+    )
+    if atspi_session.count("dbus-run-session --") != 1:
+        raise VerificationError("the shared private session launcher must exec D-Bus exactly once")
 
     require_order(
         vm_outer,

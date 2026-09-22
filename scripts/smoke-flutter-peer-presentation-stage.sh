@@ -345,7 +345,12 @@ case "$1" in
     done
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
-    mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    [ -d "$HOME" ] && [ ! -L "$HOME" ] \
+      && [ "$(stat -c '%u:%g:%a' "$HOME")" = "$(id -u):$(id -g):700" ] \
+      && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] \
+      && [ "$(stat -c '%u:%g:%a' "$XDG_RUNTIME_DIR")" = \
+        "$(id -u):$(id -g):700" ] \
+      || fail 'private AT-SPI preflight session directories differ'
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START=
     cleanup_atspi_check() {
@@ -669,7 +674,12 @@ CFG
     export DISPLAY=:98 HOME=/tmp/server-home XDG_RUNTIME_DIR=/tmp/server-runtime
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
-    mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    [ -d "$HOME" ] && [ ! -L "$HOME" ] \
+      && [ "$(stat -c '%u:%g:%a' "$HOME")" = "$(id -u):$(id -g):700" ] \
+      && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] \
+      && [ "$(stat -c '%u:%g:%a' "$XDG_RUNTIME_DIR")" = \
+        "$(id -u):$(id -g):700" ] \
+      || fail 'viewer private session directories differ'
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= SOURCE_PID= SOURCE_START= SERVER_PID= SERVER_START=
     cleanup_server() {

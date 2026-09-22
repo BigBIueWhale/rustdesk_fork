@@ -350,6 +350,7 @@ case "$1" in
     done
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
+    export LD_LIBRARY_PATH=/xvfb-root/usr/lib/x86_64-linux-gnu
     [ -d "$HOME" ] && [ ! -L "$HOME" ] \
       && [ "$(stat -c '%u:%g:%a' "$HOME")" = "$(id -u):$(id -g):700" ] \
       && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] \

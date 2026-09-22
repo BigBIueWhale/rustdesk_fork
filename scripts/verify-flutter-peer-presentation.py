@@ -539,6 +539,7 @@ def validate(sources: dict[str, str]) -> None:
             "atspi-check)",
             "verify_atspi_closure",
             "assert_loopback_only_interface",
+            "export LD_LIBRARY_PATH=/xvfb-root/usr/lib/x86_64-linux-gnu",
             "start_xvfb :97 640x480x24",
             "org.a11y.Bus.GetAddress",
             "unix:path=/tmp/atspi-runtime/at-spi/bus_97",

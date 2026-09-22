@@ -81,11 +81,10 @@ bool TextureRgba::MarkVideoFrameAvailable(const uint8_t* buffer,
   buffers_[background_index].swap(copied);
   width_[background_index] = width;
   height_[background_index] = height;
-  const bool notification_needed = !buffer_ready_;
   buffer_ready_ = true;
-  if (!notification_needed) {
-    return true;
-  }
+  // A pending buffer bounds storage, but it is not a durable scheduling edge:
+  // an obscured compositor may drop an earlier edge without copying pixels.
+  // Notify for every admitted update so a later frame can schedule rendering.
   if (texture_registrar_->MarkTextureFrameAvailable(texture_id_)) {
     return true;
   }

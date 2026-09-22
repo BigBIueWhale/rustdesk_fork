@@ -134,11 +134,12 @@ import Foundation
             )
         }
         data = pixelBuffer
-        let notificationNeeded = !framePending
         framePending = true
-        if notificationNeeded {
-            registry.textureFrameAvailable(textureId)
-        }
+        // A pending buffer bounds storage, but it is not a durable scheduling
+        // edge: an obscured compositor may drop an earlier edge without
+        // copying pixels. Notify for every admitted update so a later frame
+        // can schedule rendering.
+        registry.textureFrameAvailable(textureId)
         return true
     }
 

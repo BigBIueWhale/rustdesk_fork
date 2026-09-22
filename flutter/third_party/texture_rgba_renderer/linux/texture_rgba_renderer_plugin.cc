@@ -115,13 +115,11 @@ static gboolean texture_rgba_mark_frame(TextureRgba* self,
   self->buffer = copied.release();
   self->buffer_width = static_cast<uint32_t>(width);
   self->buffer_height = static_cast<uint32_t>(height);
-  const gboolean notification_needed = !self->buffer_ready;
   self->buffer_ready = TRUE;
   delete[] superseded;
-  if (!notification_needed) {
-    g_mutex_unlock(&self->mutex);
-    return TRUE;
-  }
+  // A pending buffer bounds storage, but it is not a durable scheduling edge:
+  // an obscured compositor may drop an earlier edge without copying pixels.
+  // Notify for every admitted update so a later frame can schedule rendering.
   const gboolean marked = fl_texture_registrar_mark_texture_frame_available(
       self->texture_registrar, FL_TEXTURE(self));
   if (!marked) {

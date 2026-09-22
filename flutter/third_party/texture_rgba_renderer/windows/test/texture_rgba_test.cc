@@ -81,11 +81,11 @@ int main() {
   passed &=
       check(texture.MarkVideoFrameAvailable(frame_b, sizeof(frame_b), 2, 2, 16),
             "latest pending frame was rejected");
-  passed &= check(registrar.mark_count == 1,
-                  "pending-frame notifications were not coalesced");
+  passed &= check(registrar.mark_count == 2,
+                  "each pending-frame update did not notify the registrar");
   passed &= check(texture.NotifyPendingFrame(),
                   "pending frame could not be re-notified");
-  passed &= check(registrar.mark_count == 2,
+  passed &= check(registrar.mark_count == 3,
                   "pending-frame re-notification did not reach the registrar");
 
   const FlutterDesktopPixelBuffer* copied = registrar.CopyBuffer();
@@ -99,7 +99,7 @@ int main() {
             "stride-packed latest frame bytes were incorrect");
   passed &= check(texture.NotifyPendingFrame(),
                   "idle live texture rejected re-notification");
-  passed &= check(registrar.mark_count == 2,
+  passed &= check(registrar.mark_count == 3,
                   "idle texture emitted a spurious frame notification");
 
   registrar.mark_result = false;

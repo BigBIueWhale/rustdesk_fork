@@ -1440,6 +1440,8 @@ run_flutter_peer_presentation() {
         *,ro,*) ;;
         *) fail 'Flutter-peer input projection remains writable' ;;
     esac
+    cmp -s "$peer_script" "$FLUTTER_PEER_SCRIPT" \
+        || fail 'sealed and exact-source Flutter-peer entries differ'
 
     load_output="$(
         setpriv --reuid=1000 --regid=1000 --clear-groups \
@@ -1488,9 +1490,7 @@ run_flutter_peer_presentation() {
     [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
         || fail "Debian-builder image receipt differs: $load_output"
 
-    if /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
-        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
-        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+    if /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
         >"$ROOT/flutter-peer-root.out" 2>"$ROOT/flutter-peer-root.err"; then
         fail 'VM root passed the Flutter full-peer workload entry'
     fi
@@ -1499,9 +1499,7 @@ run_flutter_peer_presentation() {
           'flutter peer presentation smoke refuses host or container-root execution' ] \
         || fail 'root Flutter full-peer workload refusal differs'
     if setpriv --reuid=4001 --regid=4001 --clear-groups \
-        /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
-        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
-        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
         >"$ROOT/flutter-peer-foreign.out" 2>"$ROOT/flutter-peer-foreign.err"; then
         fail 'foreign principal passed the Flutter full-peer workload entry'
     fi
@@ -1511,9 +1509,7 @@ run_flutter_peer_presentation() {
         || fail 'foreign Flutter full-peer workload refusal differs'
     if setpriv --reuid=1000 --regid=1000 --clear-groups \
         env DOCKER_HOST=unix:///tmp/forbidden-docker.sock \
-        /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
-        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
-        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
         >"$ROOT/flutter-peer-caller.out" 2>"$ROOT/flutter-peer-caller.err"; then
         fail 'caller Docker authority passed the Flutter full-peer workload entry'
     fi

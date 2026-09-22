@@ -12,7 +12,7 @@ fail() {
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
 [ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
-  || fail 'expected one stage: input-check, pub-cache, pub-cache-check, build, server, or viewer'
+  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build, server, or viewer'
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -50,6 +50,107 @@ verify_xvfb_closure() {
     count=$((count + 1))
   done < /source/scripts/smoke-xvfb-files.tsv
   [ "$count" -eq 5 ] || fail 'Xvfb closure file cardinality is not five'
+}
+
+verify_atspi_package_inputs() {
+  local count=0 name size digest url extra package
+  verify_regular /source/scripts/smoke-atspi-packages.tsv
+  [ -d /online/atspi-debs ] && [ ! -L /online/atspi-debs ] \
+    || fail 'offline AT-SPI package root is absent or ambiguous'
+  while IFS=$'\t' read -r name size digest url extra || [ -n "${name:-}" ]; do
+    [ -n "${name:-}" ] || continue
+    [[ "$name" == \#* ]] && continue
+    [ -z "${extra:-}" ] || fail "AT-SPI package manifest has extra fields: $name"
+    [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+      && [[ "$size" =~ ^[1-9][0-9]*$ ]] \
+      && [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+      || fail "AT-SPI package manifest row is malformed: $name"
+    case "$url" in
+      https://deb.debian.org/debian/pool/*.deb) ;;
+      *) fail "AT-SPI package URL is not an exact Debian pool URL: $name" ;;
+    esac
+    package="/online/atspi-debs/$name.deb"
+    [ -f "$package" ] && [ ! -L "$package" ] \
+      && [ "$(stat -c '%u:%g:%a:%h:%s' "$package")" = \
+        "$(id -u):$(id -g):400:1:$size" ] \
+      && [ "$(sha256sum "$package" | awk '{print $1}')" = "$digest" ] \
+      || fail "offline AT-SPI package differs from its manifest: $name"
+    count=$((count + 1))
+  done < /source/scripts/smoke-atspi-packages.tsv
+  [ "$count" -eq 2 ] || fail 'AT-SPI package cardinality is not two'
+}
+
+verify_atspi_closure() {
+  local count=0 relative size package_mode runtime_mode digest extra file
+  local package_manifest_sha file_manifest_sha compiler_version schema_size schema_sha
+  [ -d /atspi-root ] && [ ! -L /atspi-root ] \
+    && [ "$(stat -c '%u:%g:%a' /atspi-root)" = "$(id -u):$(id -g):500" ] \
+    || fail 'sealed AT-SPI runtime root is absent or ambiguous'
+  verify_regular /source/scripts/smoke-atspi-packages.tsv
+  verify_regular /source/scripts/smoke-atspi-files.tsv
+  verify_regular /atspi-root/closure.identity
+  [ "$(stat -c '%u:%g:%a:%h' /atspi-root/closure.identity)" = \
+    "$(id -u):$(id -g):400:1" ] \
+    && [ "$(wc -l < /atspi-root/closure.identity)" -eq 6 ] \
+    || fail 'AT-SPI closure identity metadata differs'
+  grep -qx 'contract=rustdesk-flutter-peer-atspi-v1' /atspi-root/closure.identity \
+    || fail 'AT-SPI closure contract differs'
+  package_manifest_sha="$(awk -F= '$1 == "package_manifest_sha256" {print $2}' \
+    /atspi-root/closure.identity)"
+  file_manifest_sha="$(awk -F= '$1 == "file_manifest_sha256" {print $2}' \
+    /atspi-root/closure.identity)"
+  compiler_version="$(awk -F= '$1 == "glib_compile_schemas_version" {print $2}' \
+    /atspi-root/closure.identity)"
+  schema_size="$(awk -F= '$1 == "schemas_size" {print $2}' /atspi-root/closure.identity)"
+  schema_sha="$(awk -F= '$1 == "schemas_sha256" {print $2}' /atspi-root/closure.identity)"
+  [ "$package_manifest_sha" = \
+    "$(sha256sum /source/scripts/smoke-atspi-packages.tsv | awk '{print $1}')" ] \
+    && [ "$file_manifest_sha" = \
+      "$(sha256sum /source/scripts/smoke-atspi-files.tsv | awk '{print $1}')" ] \
+    && [[ "$compiler_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    && [[ "$schema_size" =~ ^[1-9][0-9]*$ ]] \
+    && [[ "$schema_sha" =~ ^[0-9a-f]{64}$ ]] \
+    || fail 'AT-SPI closure identity values differ'
+  while IFS=$'\t' read -r relative size package_mode runtime_mode digest extra \
+    || [ -n "${relative:-}" ]; do
+    [ -n "${relative:-}" ] || continue
+    [[ "$relative" == \#* ]] && continue
+    [ -z "${extra:-}" ] \
+      && [[ "$relative" =~ ^[A-Za-z0-9._+/-]+$ ]] \
+      && [[ "$size" =~ ^[1-9][0-9]*$ ]] \
+      && [[ "$package_mode" =~ ^(644|755)$ ]] \
+      && [[ "$runtime_mode" =~ ^(400|500)$ ]] \
+      && [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+      || fail "AT-SPI runtime manifest row is malformed: $relative"
+    file="/atspi-root/$relative"
+    [ -f "$file" ] && [ ! -L "$file" ] \
+      && [ "$(stat -c '%u:%g:%a:%h:%s' "$file")" = \
+        "$(id -u):$(id -g):$runtime_mode:1:$size" ] \
+      && [ "$(sha256sum "$file" | awk '{print $1}')" = "$digest" ] \
+      || fail "AT-SPI runtime file differs from its manifest: $relative"
+    count=$((count + 1))
+  done < /source/scripts/smoke-atspi-files.tsv
+  [ "$count" -eq 5 ] || fail 'AT-SPI runtime file cardinality is not five'
+  file=/atspi-root/usr/share/glib-2.0/schemas/gschemas.compiled
+  [ -f "$file" ] && [ ! -L "$file" ] \
+    && [ "$(stat -c '%u:%g:%a:%h:%s' "$file")" = \
+      "$(id -u):$(id -g):400:1:$schema_size" ] \
+    && [ "$(sha256sum "$file" | awk '{print $1}')" = "$schema_sha" ] \
+    || fail 'compiled AT-SPI GSettings schema differs from its identity'
+  [ "$(find /atspi-root -xdev -type f | wc -l)" -eq 7 ] \
+    && [ "$(find /atspi-root -xdev -type d | wc -l)" -eq 11 ] \
+    && [ -z "$(find /atspi-root -xdev -type l -print -quit)" ] \
+    && [ -z "$(find /atspi-root -xdev -type f -perm /6000 -print -quit)" ] \
+    || fail 'sealed minimal AT-SPI runtime inventory differs'
+}
+
+exact_executable_process_count() {
+  local expected=$1 count=0 path target
+  for path in /proc/[0-9]*/exe; do
+    target="$(readlink "$path" 2>/dev/null)" || continue
+    [ "$target" != "$expected" ] || count=$((count + 1))
+  done
+  printf '%s\n' "$count"
 }
 
 verify_runtime_bundle() {
@@ -220,10 +321,80 @@ case "$1" in
     /usr/bin/python3 -I -S /source/scripts/online-input-provenance.py verify-subtree \
       --tree /online/vcpkg/installed/x64-linux \
       --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
-    printf 'FLUTTER_PEER_INPUTS_OK rust=%s flutter=%s llvm=%s frb=%s cargo_vendor=%s vcpkg_x64_linux=%s\n' \
+    verify_atspi_package_inputs
+    printf 'FLUTTER_PEER_INPUTS_OK rust=%s flutter=%s llvm=%s frb=%s cargo_vendor=%s vcpkg_x64_linux=%s atspi_packages=2\n' \
       "$RUSTDESK_RUST_SHA256" "$RUSTDESK_FLUTTER_SHA256" "$RUSTDESK_LLVM_SHA256" \
       "$RUSTDESK_FRB_SHA256" "$RUSTDESK_CARGO_VENDOR_SHA256" \
       "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
+    ;;
+
+  atspi-check)
+    verify_atspi_closure
+    verify_xvfb_closure
+    assert_loopback_only_interface
+    [ "${DISPLAY:-}" = :97 ] \
+      && [ "${HOME:-}" = /tmp/atspi-home ] \
+      && [ "${XDG_RUNTIME_DIR:-}" = /tmp/atspi-runtime ] \
+      && [ "${XDG_DATA_DIRS:-}" = \
+        /atspi-root/usr/share:/usr/local/share:/usr/share ] \
+      && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
+      || fail 'private AT-SPI preflight environment differs'
+    for command in gdbus python3; do
+      command -v "$command" >/dev/null \
+        || fail "AT-SPI preflight command is absent: $command"
+    done
+    readonly READY=/source/scripts/smoke-ready.sh
+    readonly XVFB=/xvfb-root/usr/bin/Xvfb
+    mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    mkdir -m 1777 /tmp/.X11-unix
+    XVFB_PID= XVFB_START=
+    cleanup_atspi_check() {
+      local status=$? cleanup_status=0
+      trap - EXIT HUP INT TERM
+      if [ -n "$XVFB_PID" ] && [ -n "$XVFB_START" ] \
+        && "$READY" --is-running "$XVFB_PID" "$XVFB_START"; then
+        "$READY" --stop "$XVFB_PID" "$XVFB_START" || cleanup_status=$?
+        wait "$XVFB_PID" 2>/dev/null || true
+      fi
+      [ "$cleanup_status" -eq 0 ] || status=125
+      exit "$status"
+    }
+    trap cleanup_atspi_check EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    start_xvfb :97 640x480x24 /tmp/atspi-xvfb.log
+    bus_reply="$(gdbus call --session --dest org.a11y.Bus \
+      --object-path /org/a11y/bus --method org.a11y.Bus.GetAddress)"
+    bus_address="$(/usr/bin/python3 -I -S - "$bus_reply" <<'PY'
+import ast
+import re
+import sys
+
+try:
+    value = ast.literal_eval(sys.argv[1])
+except (SyntaxError, ValueError) as exc:
+    raise SystemExit(f"AT-SPI address reply is malformed: {exc}")
+if not isinstance(value, tuple) or len(value) != 1 or not isinstance(value[0], str):
+    raise SystemExit("AT-SPI address reply has the wrong type")
+if re.fullmatch(r"unix:path=/tmp/atspi-runtime/at-spi/bus_97", value[0]) is None:
+    raise SystemExit(f"AT-SPI address differs: {value[0]!r}")
+print(value[0])
+PY
+)"
+    gdbus call --address "$bus_address" --dest org.a11y.atspi.Registry \
+      --object-path /org/a11y/atspi/registry \
+      --method org.freedesktop.DBus.Peer.Ping >/dev/null
+    [ "$(exact_executable_process_count /usr/libexec/at-spi-bus-launcher)" -eq 1 ] \
+      && [ "$(exact_executable_process_count /usr/libexec/at-spi2-registryd)" -eq 1 ] \
+      || fail 'private AT-SPI launcher or registry process identity differs'
+    [ "$(tcp_listener_count)" -eq 0 ] && [ "$(udp_socket_count)" -eq 0 ] \
+      || fail 'private AT-SPI preflight opened an INET listener or UDP socket'
+    "$READY" --stop "$XVFB_PID" "$XVFB_START"
+    wait "$XVFB_PID" 2>/dev/null || true
+    XVFB_PID= XVFB_START=
+    printf 'FLUTTER_PEER_ATSPI_RUNTIME_OK session_bus=private accessibility_bus=unix launcher=exact registry=exact x11=joined inet=0 udp=0\n'
+    trap - EXIT HUP INT TERM
     ;;
 
   pub-cache)
@@ -603,6 +774,7 @@ CFG
   viewer)
     verify_runtime_bundle
     verify_machine_identity
+    verify_atspi_closure
     assert_loopback_only_interface
     readonly EXPECTED_PASSWD_ENTRY="rustdesk-evidence:x:$(id -u):$(id -g):RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
     command -v getent >/dev/null \
@@ -614,6 +786,12 @@ CFG
       || fail 'viewer passwd identity witness differs'
     [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
       || fail 'viewer lacks its private D-Bus accessibility session'
+    [ "${DISPLAY:-}" = :99 ] \
+      && [ "${HOME:-}" = /tmp/viewer-home ] \
+      && [ "${XDG_RUNTIME_DIR:-}" = /tmp/viewer-runtime ] \
+      && [ "${XDG_DATA_DIRS:-}" = \
+        /atspi-root/usr/share:/usr/local/share:/usr/share ] \
+      || fail 'viewer accessibility activation environment differs'
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
     readonly APP=/out/bundle/rustdesk
@@ -623,7 +801,6 @@ CFG
       || fail 'server readiness authority is absent'
     [ ! -e "$COORD/stop" ] && [ ! -L "$COORD/stop" ] \
       || fail 'viewer stop marker was not freshly absent'
-    export DISPLAY=:99 HOME=/tmp/viewer-home XDG_RUNTIME_DIR=/tmp/viewer-runtime
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
     mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
@@ -707,6 +884,6 @@ CFG
     ;;
 
   *)
-    fail 'expected pub-cache, pub-cache-check, build, server, or viewer stage'
+    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build, server, or viewer stage'
     ;;
 esac

@@ -91,6 +91,7 @@ fi
 readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
 readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_PUB_CACHE_CLOSURE_V1"
 readonly XVFB_INPUTS="$ONLINE_DIR/xvfb-debs"
+readonly ATSPI_INPUTS="$ONLINE_DIR/atspi-debs"
 WORKSPACE=
 WORKSPACE_ID=
 BUILD_WORK=
@@ -181,6 +182,8 @@ done
   || die 'canonical current-lock evidence Pub cache is unavailable or has changed metadata'
 [ -d "$XVFB_INPUTS" ] && [ ! -L "$XVFB_INPUTS" ] \
   || die 'authenticated offline Xvfb package closure is missing or ambiguous'
+[ -d "$ATSPI_INPUTS" ] && [ ! -L "$ATSPI_INPUTS" ] \
+  || die 'authenticated offline AT-SPI package closure is missing or ambiguous'
 readonly EVIDENCE_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")"
 
 WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
@@ -204,6 +207,8 @@ readonly SOURCE_SNAPSHOT="$WORKSPACE/source"
 readonly BUILD_OUTPUT="$WORKSPACE/output"
 readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
 readonly XVFB_ROOT="$WORKSPACE/xvfb-root"
+readonly ATSPI_DEBS="$WORKSPACE/atspi-debs"
+readonly ATSPI_ROOT="$WORKSPACE/atspi-root"
 readonly COORD="$WORKSPACE/coord"
 readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
 readonly BUILD_INPUT_ROOT="$WORKSPACE/build-input-root"
@@ -219,6 +224,7 @@ readonly VIEWER_MACHINE_ID_VALUE=727573746465736b2d76696577657231
   || die 'private endpoint machine identities are invalid or shared'
 BUILD_WORK="$WORKSPACE/build-work"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
+  "$ATSPI_DEBS" "$ATSPI_ROOT" \
   "$COORD" "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
 mkdir -p "$BUILD_INPUT_ROOT/cargo-vendor" "$BUILD_INPUT_ROOT/frb-tool/bin" \
   "$BUILD_INPUT_ROOT/vcpkg/installed/x64-linux"
@@ -280,17 +286,20 @@ run_owned_container() {
 
 inspect_container_contract() {
   local cid=$1 expected_network=$2 label=$3
-  local expected_passwd_source= expected_machine_id_source= mounts_path
+  local expected_passwd_source= expected_machine_id_source= expected_atspi_mounts=0 mounts_path
   local record_kind source destination writable extra
   local network ipc pid uts privileged read_only user ports devices caps security
   local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0
   local passwd_mounts=0 machine_id_mounts=0
+  local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0
+  local atspi_defaults_mounts=0 atspi_services_mounts=0
   local receipt_ends=0
   case "$label" in
     server) expected_machine_id_source=$SERVER_MACHINE_ID ;;
     viewer)
       expected_passwd_source=$VIEWER_PASSWD
       expected_machine_id_source=$VIEWER_MACHINE_ID
+      expected_atspi_mounts=1
       ;;
     *) die "unknown inspected runtime label: $label" ;;
   esac
@@ -362,6 +371,35 @@ inspect_container_contract() {
           || die "$label coordination mount contract differs"
         coord_mounts=$((coord_mounts + 1))
         ;;
+      /atspi-root)
+        [ "$source" = "$ATSPI_ROOT" ] && [ "$writable" = false ] \
+          || die "$label AT-SPI root mount contract differs"
+        atspi_root_mounts=$((atspi_root_mounts + 1))
+        ;;
+      /usr/libexec/at-spi-bus-launcher)
+        [ "$source" = "$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher" ] \
+          && [ "$writable" = false ] \
+          || die "$label AT-SPI launcher mount contract differs"
+        atspi_launcher_mounts=$((atspi_launcher_mounts + 1))
+        ;;
+      /usr/libexec/at-spi2-registryd)
+        [ "$source" = "$ATSPI_ROOT/usr/libexec/at-spi2-registryd" ] \
+          && [ "$writable" = false ] \
+          || die "$label AT-SPI registry mount contract differs"
+        atspi_registry_mounts=$((atspi_registry_mounts + 1))
+        ;;
+      /usr/share/defaults/at-spi2)
+        [ "$source" = "$ATSPI_ROOT/usr/share/defaults/at-spi2" ] \
+          && [ "$writable" = false ] \
+          || die "$label AT-SPI defaults mount contract differs"
+        atspi_defaults_mounts=$((atspi_defaults_mounts + 1))
+        ;;
+      /usr/share/dbus-1/accessibility-services)
+        [ "$source" = "$ATSPI_ROOT/usr/share/dbus-1/accessibility-services" ] \
+          && [ "$writable" = false ] \
+          || die "$label AT-SPI services mount contract differs"
+        atspi_services_mounts=$((atspi_services_mounts + 1))
+        ;;
       /etc/passwd)
         [ -n "$expected_passwd_source" ] && [ "$source" = "$expected_passwd_source" ] \
           && [ "$writable" = false ] \
@@ -386,6 +424,12 @@ inspect_container_contract() {
   else
     [ "$passwd_mounts" -eq 0 ] || die 'non-viewer container received a passwd witness mount'
   fi
+  [ "$atspi_root_mounts" -eq "$expected_atspi_mounts" ] \
+    && [ "$atspi_launcher_mounts" -eq "$expected_atspi_mounts" ] \
+    && [ "$atspi_registry_mounts" -eq "$expected_atspi_mounts" ] \
+    && [ "$atspi_defaults_mounts" -eq "$expected_atspi_mounts" ] \
+    && [ "$atspi_services_mounts" -eq "$expected_atspi_mounts" ] \
+    || die "$label AT-SPI mount cardinality differs"
 }
 
 run_input_check() {
@@ -434,6 +478,52 @@ run_owned_container "$WORKSPACE/xvfb.cid" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh
+
+echo '== verify and extract the exact offline AT-SPI closure in one networkless non-root container =='
+run_owned_container "$WORKSPACE/atspi-prepare.cid" \
+  --pull=never --network=none --read-only \
+  --user "$HOST_UID:$HOST_GID" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=128m \
+  --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/work,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_INPUTS,target=/atspi-inputs,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_DEBS,target=/atspi-debs,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT,target=/atspi-root,bind-recursive=disabled" \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
+  bash --noprofile --norc /work/scripts/smoke-atspi-prepare.sh
+readonly ATSPI_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' "$ATSPI_ROOT"):$(
+  sha256sum "$ATSPI_ROOT/closure.identity" | awk '{print $1}'
+)"
+
+echo '== prove private D-Bus and AT-SPI activation before the expensive build =='
+run_owned_container "$WORKSPACE/atspi-check.cid" \
+  --pull=never --network=none --read-only \
+  --user "$HOST_UID:$HOST_GID" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=96 --memory=1g --memory-swap=1g --cpus=1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=128m \
+  --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT,target=/atspi-root,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher,target=/usr/libexec/at-spi-bus-launcher,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi2-registryd,target=/usr/libexec/at-spi2-registryd,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/share/defaults/at-spi2,target=/usr/share/defaults/at-spi2,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/share/dbus-1/accessibility-services,target=/usr/share/dbus-1/accessibility-services,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$VIEWER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
+  --env DISPLAY=:97 \
+  --env HOME=/tmp/atspi-home \
+  --env XDG_RUNTIME_DIR=/tmp/atspi-runtime \
+  --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
+  dbus-run-session -- \
+  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh atspi-check \
+  > "$WORKSPACE/atspi-check.log" 2>&1
+cat "$WORKSPACE/atspi-check.log"
+grep -q '^FLUTTER_PEER_ATSPI_RUNTIME_OK session_bus=private accessibility_bus=unix launcher=exact registry=exact x11=joined inet=0 udp=0$' \
+  "$WORKSPACE/atspi-check.log" || die 'private AT-SPI activation verdict is missing'
 
 echo '== copy and reverify the canonical exact-current Pub cache without mutating it =='
 run_owned_container "$WORKSPACE/pub-cache.cid" \
@@ -559,8 +649,17 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT,target=/atspi-root,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher,target=/usr/libexec/at-spi-bus-launcher,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi2-registryd,target=/usr/libexec/at-spi2-registryd,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/share/defaults/at-spi2,target=/usr/share/defaults/at-spi2,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ATSPI_ROOT/usr/share/dbus-1/accessibility-services,target=/usr/share/dbus-1/accessibility-services,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$VIEWER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
+  --env DISPLAY=:99 \
+  --env HOME=/tmp/viewer-home \
+  --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
+  --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   dbus-run-session -- \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh viewer \
@@ -578,6 +677,10 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
   && [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_MACHINE_ID")" = "$VIEWER_MACHINE_ID_ID" ] \
   && [ "$(<"$VIEWER_MACHINE_ID")" = "$VIEWER_MACHINE_ID_VALUE" ] \
   || die 'private endpoint machine identity changed during runtime'
+[ "$(stat -c '%d:%i:%u:%g:%a' "$ATSPI_ROOT"):$(
+    sha256sum "$ATSPI_ROOT/closure.identity" | awk '{print $1}'
+  )" = "$ATSPI_ROOT_ID" ] \
+  || die 'sealed AT-SPI runtime identity changed during runtime'
 cat "$WORKSPACE/viewer.log"
 if [ ! -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
   printf 'outer-retirement-after-viewer-status=%s\n' "$viewer_status" > "$COORD/stop.tmp"

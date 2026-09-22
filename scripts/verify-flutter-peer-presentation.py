@@ -37,6 +37,9 @@ def require_order(source: str, needles: tuple[str, ...], label: str) -> None:
 PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
+    "atspi_prepare": "scripts/smoke-atspi-prepare.sh",
+    "atspi_packages": "scripts/smoke-atspi-packages.tsv",
+    "atspi_files": "scripts/smoke-atspi-files.tsv",
     "flutter_tools_finalizer": "scripts/finalize-flutter-tools-offline.sh",
     "pins": "scripts/pins.env",
     "ready": "scripts/smoke-ready.sh",
@@ -63,6 +66,9 @@ def load(repo: Path) -> dict[str, str]:
 def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
+    atspi_prepare = sources["atspi_prepare"]
+    atspi_packages = sources["atspi_packages"]
+    atspi_files = sources["atspi_files"]
     flutter_tools_finalizer = sources["flutter_tools_finalizer"]
     pins = sources["pins"]
     ready = sources["ready"]
@@ -125,6 +131,8 @@ def validate(sources: dict[str, str]) -> None:
             "git archive --format=tar",
             'run_input_check "$WORKSPACE/input-pre.cid"',
             "smoke-xvfb-prepare.sh",
+            "smoke-atspi-prepare.sh",
+            "smoke-flutter-peer-presentation-stage.sh atspi-check",
             "smoke-flutter-peer-presentation-stage.sh pub-cache",
             "smoke-flutter-peer-presentation-stage.sh build",
             "smoke-flutter-peer-presentation-stage.sh pub-cache-check",
@@ -155,7 +163,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     if host.count("--network=bridge") != 0:
         raise VerificationError("the Xvfb preparation path retains a bridge network")
-    if host.count("--network=none") != 6:
+    if host.count("--network=none") != 8:
         raise VerificationError("the input checks/build/runtime network-none count changed")
     require(
         host,
@@ -164,9 +172,27 @@ def validate(sources: dict[str, str]) -> None:
     )
     if host.count('run_input_check "$WORKSPACE/input-') != 2:
         raise VerificationError("persistent inputs need pre- and post-transaction checks")
-    require(host, "dbus-run-session --", "private viewer accessibility session")
-    if host.count("dbus-run-session --") != 1:
-        raise VerificationError("the private accessibility session must be viewer-only")
+    require(host, "dbus-run-session --", "private accessibility sessions")
+    if host.count("dbus-run-session --") != 2:
+        raise VerificationError("the preflight and viewer each need one private accessibility session")
+    require_order(
+        host,
+        (
+            'run_owned_container "$WORKSPACE/atspi-prepare.cid"',
+            "smoke-atspi-prepare.sh",
+            'run_owned_container "$WORKSPACE/atspi-check.cid"',
+            "--env DISPLAY=:97",
+            "--env HOME=/tmp/atspi-home",
+            "--env XDG_RUNTIME_DIR=/tmp/atspi-runtime",
+            "--env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share",
+            "dbus-run-session --",
+            "smoke-flutter-peer-presentation-stage.sh atspi-check",
+            "FLUTTER_PEER_ATSPI_RUNTIME_OK",
+            "smoke-flutter-peer-presentation-stage.sh pub-cache",
+            "smoke-flutter-peer-presentation-stage.sh build",
+        ),
+        "fast private AT-SPI activation before the expensive build",
+    )
     require(host, 'readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"', "private passwd witness")
     require(
         host,
@@ -179,8 +205,8 @@ def validate(sources: dict[str, str]) -> None:
         'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
         "read-only viewer passwd mount",
     )
-    if host.count("target=/etc/passwd") != 1:
-        raise VerificationError("only the viewer may receive the passwd witness")
+    if host.count("target=/etc/passwd") != 2:
+        raise VerificationError("only the AT-SPI preflight and viewer may receive the passwd witness")
     require_order(
         host,
         (
@@ -189,7 +215,7 @@ def validate(sources: dict[str, str]) -> None:
             'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
             "dbus-run-session --",
         ),
-        "viewer-only passwd identity mount",
+        "viewer passwd identity mount",
     )
     require(host, "/etc/passwd)", "inspected passwd mount destination")
     require(host, '[ "$writable" = false ]', "inspected read-only passwd mount")
@@ -210,8 +236,8 @@ def validate(sources: dict[str, str]) -> None:
         '[ "$SERVER_MACHINE_ID_VALUE" != "$VIEWER_MACHINE_ID_VALUE" ]',
         "distinct endpoint machine identities",
     )
-    if host.count("target=/etc/machine-id") != 2:
-        raise VerificationError("each runtime endpoint needs one private machine identity")
+    if host.count("target=/etc/machine-id") != 3:
+        raise VerificationError("the preflight and each runtime endpoint need a private machine identity")
     require(host, "/etc/machine-id)", "inspected machine-id mount destination")
     require(host, "machine_id_mounts=0", "machine-id mount cardinality")
     require(host, '&& [ "$machine_id_mounts" -eq 1 ]', "one machine-id per endpoint")
@@ -232,11 +258,12 @@ def validate(sources: dict[str, str]) -> None:
         host,
         (
             "local cid=$1 expected_network=$2 label=$3",
-            "local expected_passwd_source= expected_machine_id_source= mounts_path",
+            "local expected_passwd_source= expected_machine_id_source= expected_atspi_mounts=0 mounts_path",
             "local record_kind source destination writable extra",
             "local network ipc pid uts privileged read_only user ports devices caps security",
             "local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0",
             "local passwd_mounts=0 machine_id_mounts=0",
+            "local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0",
             "local receipt_ends=0",
             "network=\"$(peer_vm_docker container inspect --format '{{.HostConfig.NetworkMode}}' \"$cid\")\"",
             'mounts_path="$WORKSPACE/$label.mounts.tsv"',
@@ -264,6 +291,11 @@ def validate(sources: dict[str, str]) -> None:
         '[ "$source" = "$XVFB_ROOT" ] && [ "$writable" = false ]',
         '[ "$source" = "$XVFB_ROOT/usr/bin/xkbcomp" ] && [ "$writable" = false ]',
         '[ "$source" = "$COORD" ] && [ "$writable" = true ]',
+        '[ "$source" = "$ATSPI_ROOT" ] && [ "$writable" = false ]',
+        '[ "$source" = "$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher" ]',
+        '[ "$source" = "$ATSPI_ROOT/usr/libexec/at-spi2-registryd" ]',
+        '[ "$source" = "$ATSPI_ROOT/usr/share/defaults/at-spi2" ]',
+        '[ "$source" = "$ATSPI_ROOT/usr/share/dbus-1/accessibility-services" ]',
     ):
         require(host, expected_mount, "exact inspected runtime mount")
     require(
@@ -275,6 +307,12 @@ def validate(sources: dict[str, str]) -> None:
         host,
         '[ "$receipt_ends" -eq 1 ] && [ "$source_mounts" -eq 1 ]',
         "exact runtime mount cardinality",
+    )
+    require(host, "expected_atspi_mounts=1", "viewer-only AT-SPI runtime projection")
+    require(
+        host,
+        '[ "$atspi_root_mounts" -eq "$expected_atspi_mounts" ]',
+        "zero-server/one-viewer AT-SPI mount cardinality",
     )
     require(host, 'require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"', "exact runtime builder image")
     require(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"', "exact verifier runtime image")
@@ -322,6 +360,51 @@ def validate(sources: dict[str, str]) -> None:
         "systemctl", "ufw ", "iptables", "nft ", "/dev/kvm",
     ):
         forbid(host, unsafe, "host authority expansion")
+
+    package_rows = tuple(
+        line for line in atspi_packages.splitlines() if line and not line.startswith("#")
+    )
+    if package_rows != (
+        "at-spi2-core\t57324\t42c3567bef2bd3e868a072acbdef1c3b0416b2a127a2e0fa2cbc600cedcd2a9a\thttps://deb.debian.org/debian/pool/main/a/at-spi2-core/at-spi2-core_2.46.0-5_amd64.deb",
+        "gsettings-desktop-schemas\t642864\t15cc7142c3ddea0551b834c53c4d3b5cd8f5485e695100966877f2be50def7af\thttps://deb.debian.org/debian/pool/main/g/gsettings-desktop-schemas/gsettings-desktop-schemas_43.0-1_all.deb",
+    ):
+        raise VerificationError("the exact AT-SPI package manifest changed")
+    file_rows = tuple(
+        line for line in atspi_files.splitlines() if line and not line.startswith("#")
+    )
+    if file_rows != (
+        "usr/libexec/at-spi-bus-launcher\t31032\t755\t500\t10d7d226ec4fa8c21f325f362af0dae7ac2c7134c3b18bd33d542cb06b417316",
+        "usr/libexec/at-spi2-registryd\t120824\t755\t500\t6998a81f0f04d8348f7e9879dbe5e02101c0f7e69744025d9aae735cc3304045",
+        "usr/share/dbus-1/services/org.a11y.Bus.service\t111\t644\t400\t73272e74cbaa6d7cff1e3ffef190c5cdc2e2060012b2ca373749fd78ad3bbf8c",
+        "usr/share/dbus-1/accessibility-services/org.a11y.atspi.Registry.service\t101\t644\t400\t1e3d75d456ba810e793879ea9d200dac54ff78d8b584a9506943deb95cfe1b36",
+        "usr/share/defaults/at-spi2/accessibility.conf\t1363\t644\t400\t898a83a8ccf0eec4c96470f23c8755b9e3a8600a0eb9b0ab7855f8fe44e05b01",
+    ):
+        raise VerificationError("the exact minimal AT-SPI file manifest changed")
+    require_order(
+        atspi_prepare,
+        (
+            '[ "$(id -u)" -ne 0 ]',
+            'findmnt -n -o OPTIONS --target "$INPUT_ROOT"',
+            "offline input mount is writable",
+            "declare -A expected_version=(",
+            "[at-spi2-core]=2.46.0-5",
+            "[gsettings-desktop-schemas]=43.0-1",
+            'dpkg-deb --extract "$output" "$STAGING"',
+            "extracted package closure contains a setuid or setgid file",
+            "extracted package closure contains a special file",
+            'glib-compile-schemas --strict --targetdir="$SCHEMA_A"',
+            'glib-compile-schemas --strict --targetdir="$SCHEMA_B"',
+            'cmp -s "$SCHEMA_A/gschemas.compiled" "$SCHEMA_B/gschemas.compiled"',
+            "contract=rustdesk-flutter-peer-atspi-v1",
+            'find "$TOOL_ROOT" -xdev -type d -exec chmod 0500 {} +',
+            "offline preparation container opened a TCP listener",
+            "offline preparation container retained a UDP socket",
+            "ATSPI_TOOL_CLOSURE_OK",
+        ),
+        "minimal offline AT-SPI closure construction",
+    )
+    for forbidden_installer in ("apt-get", "apt ", "dpkg -i", "curl ", "wget "):
+        forbid(atspi_prepare, forbidden_installer, "AT-SPI package installation or network acquisition")
 
     require_order(
         vm_outer,
@@ -411,10 +494,37 @@ def validate(sources: dict[str, str]) -> None:
             "/source/scripts/online-cargo-tool-output.py check-complete",
             '"$(sha256sum /online/frb-tool/bin/flutter_rust_bridge_codegen | awk \'{print $1}\')" = \\\n      "$RUSTDESK_FRB_SHA256"',
             '--tree /online/vcpkg/installed/x64-linux',
+            "verify_atspi_package_inputs",
             "FLUTTER_PEER_INPUTS_OK",
         ),
         "exact consumed-input validation",
     )
+    require_order(
+        stage,
+        (
+            "verify_atspi_package_inputs() {",
+            "/source/scripts/smoke-atspi-packages.tsv",
+            'package="/online/atspi-debs/$name.deb"',
+            "AT-SPI package cardinality is not two",
+            "verify_atspi_closure() {",
+            "contract=rustdesk-flutter-peer-atspi-v1",
+            "/atspi-root/usr/share/glib-2.0/schemas/gschemas.compiled",
+            "sealed minimal AT-SPI runtime inventory differs",
+            "atspi-check)",
+            "verify_atspi_closure",
+            "assert_loopback_only_interface",
+            "start_xvfb :97 640x480x24",
+            "org.a11y.Bus.GetAddress",
+            "unix:path=/tmp/atspi-runtime/at-spi/bus_97",
+            "org.a11y.atspi.Registry",
+            "exact_executable_process_count /usr/libexec/at-spi-bus-launcher",
+            "exact_executable_process_count /usr/libexec/at-spi2-registryd",
+            "FLUTTER_PEER_ATSPI_RUNTIME_OK",
+        ),
+        "real private AT-SPI activation preflight",
+    )
+    if stage.count("    verify_atspi_closure") != 2:
+        raise VerificationError("the AT-SPI preflight and viewer must both verify the closure")
     for pin_name in (
         "SHA256_PUB_CACHE_CLOSURE_V1",
         "SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1",
@@ -516,7 +626,10 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         stage,
         (
-            "export DISPLAY=:99 HOME=/tmp/viewer-home",
+            '[ "${DISPLAY:-}" = :99 ]',
+            '[ "${HOME:-}" = /tmp/viewer-home ]',
+            '[ "${XDG_RUNTIME_DIR:-}" = /tmp/viewer-runtime ]',
+            "/atspi-root/usr/share:/usr/local/share:/usr/share",
             "start_xvfb :99 1280x800x24",
             '(cd /out/bundle && RUST_LOG=info exec "$APP" --connect 127.0.0.1)',
             '"$CONTROLLER" :98 :99 "$VIEWER_PID"',

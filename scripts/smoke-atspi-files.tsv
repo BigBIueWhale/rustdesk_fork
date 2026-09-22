@@ -1,0 +1,6 @@
+# relative path<TAB>size<TAB>package mode<TAB>runtime mode<TAB>sha256
+usr/libexec/at-spi-bus-launcher	31032	755	500	10d7d226ec4fa8c21f325f362af0dae7ac2c7134c3b18bd33d542cb06b417316
+usr/libexec/at-spi2-registryd	120824	755	500	6998a81f0f04d8348f7e9879dbe5e02101c0f7e69744025d9aae735cc3304045
+usr/share/dbus-1/services/org.a11y.Bus.service	111	644	400	73272e74cbaa6d7cff1e3ffef190c5cdc2e2060012b2ca373749fd78ad3bbf8c
+usr/share/dbus-1/accessibility-services/org.a11y.atspi.Registry.service	101	644	400	1e3d75d456ba810e793879ea9d200dac54ff78d8b584a9506943deb95cfe1b36
+usr/share/defaults/at-spi2/accessibility.conf	1363	644	400	898a83a8ccf0eec4c96470f23c8755b9e3a8600a0eb9b0ab7855f8fe44e05b01

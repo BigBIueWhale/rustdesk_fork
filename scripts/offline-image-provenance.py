@@ -848,6 +848,29 @@ class RustAuditSpec:
             "Shell": ["/bin/bash", "-euo", "pipefail", "-c"],
         }
 
+    @property
+    def runtime_inspect_config(self) -> dict[str, object]:
+        return {
+            "AttachStderr": False,
+            "AttachStdin": False,
+            "AttachStdout": False,
+            "Cmd": ["bash"],
+            "Domainname": "",
+            "Entrypoint": None,
+            "Env": self.runtime_environment,
+            "Hostname": "",
+            "Image": "",
+            "Labels": self.labels,
+            "OnBuild": None,
+            "OpenStdin": False,
+            "Shell": ["/bin/bash", "-euo", "pipefail", "-c"],
+            "StdinOnce": False,
+            "Tty": False,
+            "User": "1000:1000",
+            "Volumes": None,
+            "WorkingDir": "",
+        }
+
 
 ImageSpec = Union[
     Spec,
@@ -1473,8 +1496,8 @@ def validate_inspect(
     if isinstance(spec, RustAuditSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Rust audit image platform must be exactly linux/amd64")
-        if config != spec.runtime_config:
-            expected = canonical_json(spec.runtime_config).decode("utf-8")
+        if config != spec.runtime_inspect_config:
+            expected = canonical_json(spec.runtime_inspect_config).decode("utf-8")
             actual = canonical_json(config).decode("utf-8")
             fail(
                 "Rust audit image runtime config differs from the reviewed "
@@ -12373,7 +12396,7 @@ def self_test() -> None:
             "Id": rust_runtime_id,
             "Os": "linux",
             "Architecture": "amd64",
-            "Config": rust_spec.runtime_config,
+            "Config": rust_spec.runtime_inspect_config,
         }
         validate_inspect(rust_payload, rust_runtime_id, rust_spec)
         rust_checks = 2
@@ -12509,7 +12532,7 @@ def self_test() -> None:
                 {
                     **rust_payload,
                     "Config": {
-                        **rust_spec.runtime_config,
+                        **rust_spec.runtime_inspect_config,
                         "User": "0:0",
                     },
                 },

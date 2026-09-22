@@ -352,6 +352,8 @@ def validate_contract(repo):
             'if args.role == "rust-audit-candidate"',
             "Rust audit candidate identities must be derived from its archive",
             "final Rust audit config and manifest pins are required",
+            "def runtime_inspect_config(self) -> dict[str, object]:",
+            "if config != spec.runtime_inspect_config:",
         ),
         "Rust audit runtime config identity",
     )

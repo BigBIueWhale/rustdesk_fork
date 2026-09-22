@@ -2135,24 +2135,28 @@ stage_flutter_presentation_candidate() {
 }
 
 produce_flutter_presentation_pub_discovery() {
-    local output="$1" builder="$DEB_BUILDER_CONFIG_ID"
-    [ -d "$output" ] && [ ! -L "$output" ] \
-        && [ -z "$(/usr/bin/find "$output" -mindepth 1 -maxdepth 1 -print -quit)" ] \
-        || die "Flutter presentation Pub discovery output is not one empty real directory"
+    local lock_output="$1" cache_output="$2" builder="$DEB_BUILDER_CONFIG_ID"
+    [ -d "$lock_output" ] && [ ! -L "$lock_output" ] \
+        && [ -z "$(/usr/bin/find "$lock_output" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+        || die "Flutter presentation Pub discovery lock output is not one empty real directory"
+    [ -d "$cache_output" ] && [ ! -L "$cache_output" ] \
+        && [ -z "$(/usr/bin/find "$cache_output" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+        || die "Flutter presentation Pub discovery cache output is not one empty real directory"
     online_docker_run \
         --mount "type=bind,source=$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$output,target=/candidate" \
+        --mount "type=bind,source=$lock_output,target=/candidate-lock" \
+        --mount "type=bind,source=$cache_output,target=/candidate-cache" \
         --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
         --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK" \
         --workdir /tmp \
         "$(online_fetch_builder_runtime_ref "$builder")" \
         /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
-        mkdir /tmp/toolchain /tmp/home /tmp/project /candidate/pub-cache
+        mkdir /tmp/toolchain /tmp/home /tmp/project
         tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
         cp -a /project-source/. /tmp/project/
         chmod -R u+rwX /tmp/project
-        export HOME=/tmp/home PUB_CACHE=/candidate/pub-cache CI=true
+        export HOME=/tmp/home PUB_CACHE=/candidate-cache CI=true
         export PUB_HOSTED_URL=https://pub.dev
         export FLUTTER_SUPPRESS_ANALYTICS=true
         export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0
@@ -2166,7 +2170,7 @@ produce_flutter_presentation_pub_discovery() {
         [ "$(sha256sum "$tools" | awk "{print \$1}")" = \
           "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
         [ "$(sha256sum "$snapshot" | awk "{print \$1}")" = "$snapshot_before" ]
-        install -m 0400 /tmp/project/pubspec.lock /candidate/pubspec.lock
+        install -m 0400 /tmp/project/pubspec.lock /candidate-lock/pubspec.lock
         rm -rf -- \
             "$PUB_CACHE/active_roots" \
             "$PUB_CACHE/_temp" \
@@ -2194,10 +2198,13 @@ produce_flutter_presentation_pub_discovery() {
 }
 
 verify_flutter_presentation_pub_discovery() {
-    local candidate="$1" expected_lock_sha256="$2" builder="$DEB_BUILDER_CONFIG_ID"
-    local runtime_cache="$candidate/replay-pub-cache"
-    [ -d "$candidate/pub-cache" ] && [ ! -L "$candidate/pub-cache" ] \
-        && [ -f "$candidate/pubspec.lock" ] && [ ! -L "$candidate/pubspec.lock" ] \
+    local lockfile="$1" cache="$2" runtime_cache="$3"
+    local expected_lock_sha256="$4" builder="$DEB_BUILDER_CONFIG_ID"
+    local lock_root="${lockfile%/*}"
+    [ -d "$cache" ] && [ ! -L "$cache" ] \
+        && [ -d "$lock_root" ] && [ ! -L "$lock_root" ] \
+        && [ "${lockfile##*/}" = pubspec.lock ] \
+        && [ -f "$lockfile" ] && [ ! -L "$lockfile" ] \
         || die "Flutter presentation Pub discovery candidate is incomplete"
     [ ! -e "$runtime_cache" ] && [ ! -L "$runtime_cache" ] \
         || die "Flutter presentation Pub replay cache path is occupied"
@@ -2206,11 +2213,11 @@ verify_flutter_presentation_pub_discovery() {
         "$runtime_cache/hosted-hashes" "$runtime_cache/git"
     online_docker_run_pub_semantic \
         --mount "type=bind,source=$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$candidate,target=/candidate,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$lock_root,target=/candidate,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$runtime_cache,target=/tmp/pub-cache,bind-recursive=disabled" \
-        --mount "type=bind,source=$candidate/pub-cache/hosted,target=/tmp/pub-cache/hosted,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$candidate/pub-cache/hosted-hashes,target=/tmp/pub-cache/hosted-hashes,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$candidate/pub-cache/git,target=/tmp/pub-cache/git,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$cache/hosted,target=/tmp/pub-cache/hosted,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$cache/hosted-hashes,target=/tmp/pub-cache/hosted-hashes,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$cache/git,target=/tmp/pub-cache/git,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter,target=/project-source,readonly,bind-recursive=disabled" \
         --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK" \
         --env "RUSTDESK_PROJECT_LOCK_SHA256=$expected_lock_sha256" \
@@ -2283,12 +2290,112 @@ publish_flutter_presentation_lock_discovery() {
         || die "published Flutter presentation discovery lock differs"
 }
 
+flutter_presentation_pub_provenance_args() {
+    printf '%s\0' \
+        --source-commit "$GRADLE_SOURCE_COMMIT" \
+        --source-tree "$GRADLE_SOURCE_TREE" \
+        --source-archive-sha256 "$GRADLE_SOURCE_ARCHIVE_SHA256" \
+        --flutter-version "$FLUTTER_PRESENTATION_CANDIDATE_VERSION" \
+        --flutter-archive-sha256 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+}
+
+retire_flutter_presentation_pub_staging() {
+    local staging="$1" staging_id="$2" disposition
+    disposition="$(
+        pub_cache_output_tool recover \
+            --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+    )" || die "cannot reconcile Flutter presentation Pub-cache staging"
+    case "$disposition" in
+        unpublished|published|unselected-while-occupied) ;;
+        *) die "Flutter presentation Pub-cache staging has an inadmissible disposition: $disposition" ;;
+    esac
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore Flutter presentation Pub-cache staging traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire Flutter presentation Pub-cache staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "Flutter presentation Pub-cache staging survived retirement"
+}
+
+recover_flutter_presentation_pub_staging() {
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" -mindepth 1 -maxdepth 1 \
+            -name '.rustdesk-pub-cache.*' -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Flutter presentation Pub-cache staging is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_flutter_presentation_pub_staging "$staging" "$staging_id"
+    done
+}
+
+prepare_flutter_presentation_pub_staging() {
+    local -a provenance=("$@")
+    FLUTTER_PRESENTATION_PUB_STAGING="$(
+        umask 077
+        /usr/bin/mktemp -d \
+            "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/.rustdesk-pub-cache.XXXXXXXXXX"
+    )" || die "cannot create Flutter presentation Pub-cache staging"
+    FLUTTER_PRESENTATION_PUB_STAGING_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$FLUTTER_PRESENTATION_PUB_STAGING"
+    )"
+    if ! pub_cache_output_tool prepare \
+        --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+        --staging "$FLUTTER_PRESENTATION_PUB_STAGING" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${provenance[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+            --root "$FLUTTER_PRESENTATION_PUB_STAGING" \
+            --expected-identity "$FLUTTER_PRESENTATION_PUB_STAGING_ID" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Flutter presentation Pub-cache preparation is not restorable"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+            --remove-private-root "$FLUTTER_PRESENTATION_PUB_STAGING" \
+            --expected-identity "$FLUTTER_PRESENTATION_PUB_STAGING_ID" \
+            || die "failed Flutter presentation Pub-cache preparation is not retirable"
+        die "cannot prepare Flutter presentation Pub-cache staging"
+    fi
+    FLUTTER_PRESENTATION_PUB_OUTPUT_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$FLUTTER_PRESENTATION_PUB_STAGING/output"
+    )"
+    readonly FLUTTER_PRESENTATION_PUB_STAGING \
+        FLUTTER_PRESENTATION_PUB_STAGING_ID FLUTTER_PRESENTATION_PUB_OUTPUT_ID
+}
+
+restore_flutter_presentation_pub_output_traversal() {
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$FLUTTER_PRESENTATION_PUB_STAGING/output" \
+        --expected-identity "$FLUTTER_PRESENTATION_PUB_OUTPUT_ID" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore Flutter presentation Pub-cache output traversal"
+}
+
 maintenance_discover_flutter_presentation_pub() {
-    local builder="$DEB_BUILDER_CONFIG_ID" lock_fd
-    local first="$ONLINE_FETCH_TMP/flutter-presentation-pub-a"
-    local second="$ONLINE_FETCH_TMP/flutter-presentation-pub-b"
-    local first_receipt second_receipt first_digest second_digest lock_sha256
-    local first_status=0 second_status=0 source_status=0 first_semantic=0 second_semantic=0
+    local builder="$DEB_BUILDER_CONFIG_ID" lock_fd current=0 publication="existing"
+    local first_lock="$ONLINE_FETCH_TMP/flutter-presentation-lock-a"
+    local second_lock="$ONLINE_FETCH_TMP/flutter-presentation-lock-b"
+    local first_cache="$ONLINE_FETCH_TMP/flutter-presentation-cache-a"
+    local second_cache="$ONLINE_FETCH_TMP/flutter-presentation-cache-b"
+    local first_replay="$ONLINE_FETCH_TMP/flutter-presentation-replay-a"
+    local second_replay="$ONLINE_FETCH_TMP/flutter-presentation-replay-b"
+    local first_receipt second_receipt current_receipt=""
+    local first_digest="" second_digest="" current_digest="" lock_sha256=""
+    local first_status=0 second_status=0 source_status=0 input_status=0
+    local first_output_status=0 second_output_status=0 comparison_status=0 pin_status=0
+    local first_semantic=0 second_semantic=0 publication_status=0
+    local -a candidate_provenance=()
     stage_flutter_presentation_candidate
     verify_or_load_deb_builder_image
     require_online_fetch_builder_image deb-builder "$builder"
@@ -2304,63 +2411,159 @@ maintenance_discover_flutter_presentation_pub() {
     verify_sha256 \
         "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz" \
         "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
-    /usr/bin/install -d -m 0700 -- "$first" "$second"
+    [ "$(/usr/bin/sha256sum "$GRADLE_SOURCE_AUTHORITY/scripts/flutter-presentation-candidate-pubspec.lock" \
+          | /usr/bin/awk '{print $1}')" = \
+      "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
+        || die "committed Flutter presentation candidate lock differs from its pin"
+    recover_flutter_presentation_pub_staging
+    mapfile -d '' candidate_provenance < <(flutter_presentation_pub_provenance_args)
+    if [ -e "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache" ] \
+       || [ -L "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache" ]; then
+        current_receipt="$(
+            pub_cache_output_tool check-complete \
+                --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+        )" || die "existing Flutter presentation Pub cache is not one completed publication"
+        [[ "$current_receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
+            || die "existing Flutter presentation Pub-cache receipt is malformed"
+        current_digest="${BASH_REMATCH[1]}"
+        current=1
+    else
+        prepare_flutter_presentation_pub_staging "${candidate_provenance[@]}"
+        first_cache="$FLUTTER_PRESENTATION_PUB_STAGING/output"
+        publication="new"
+    fi
+    /usr/bin/install -d -m 0700 -- "$first_lock" "$second_lock" "$second_cache"
+    if [ "$current" -eq 1 ]; then
+        /usr/bin/install -d -m 0700 -- "$first_cache"
+    fi
     log "resolving the Flutter presentation project twice from empty candidate Pub caches"
-    produce_flutter_presentation_pub_discovery "$first" || first_status=$?
+    produce_flutter_presentation_pub_discovery "$first_lock" "$first_cache" \
+        || first_status=$?
     if [ "$first_status" -eq 0 ]; then
-        produce_flutter_presentation_pub_discovery "$second" || second_status=$?
+        produce_flutter_presentation_pub_discovery "$second_lock" "$second_cache" \
+            || second_status=$?
     fi
     verify_gradle_source_unchanged || source_status=$?
     retire_gradle_source_build
+    verify_sha256 \
+        "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz" \
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" || input_status=$?
+    if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ]; then
+        if ! /usr/bin/cmp -s "$first_lock/pubspec.lock" "$second_lock/pubspec.lock" \
+           || ! /usr/bin/cmp -s "$first_lock/pubspec.lock" \
+                "$GRADLE_SOURCE_AUTHORITY/scripts/flutter-presentation-candidate-pubspec.lock";
+        then
+            pin_status=1
+        else
+            lock_sha256="$(
+                /usr/bin/sha256sum "$first_lock/pubspec.lock" | /usr/bin/awk '{print $1}'
+            )"
+            if [ "$lock_sha256" != "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ]; then
+                pin_status=1
+            fi
+        fi
+    fi
+    if [ "$first_status" -eq 0 ] && [ "$second_status" -eq 0 ] \
+       && [ "$source_status" -eq 0 ] && [ "$input_status" -eq 0 ] \
+       && [ "$pin_status" -eq 0 ]; then
+        if [ "$current" -eq 0 ]; then
+            restore_flutter_presentation_pub_output_traversal
+            first_receipt="$(
+                pub_cache_output_tool verify \
+                    --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+                    --staging "$FLUTTER_PRESENTATION_PUB_STAGING" \
+                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                    "${candidate_provenance[@]}"
+            )" || first_output_status=$?
+        else
+            first_receipt="$(
+                pub_cache_output_tool verify-reproduction \
+                    --cache "$first_cache" \
+                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+            )" || first_output_status=$?
+        fi
+        second_receipt="$(
+            pub_cache_output_tool verify-reproduction \
+                --cache "$second_cache" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+        )" || second_output_status=$?
+        if [[ "$first_receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then
+            first_digest="${BASH_REMATCH[1]}"
+        else
+            first_output_status=1
+        fi
+        if [[ "$second_receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then
+            second_digest="${BASH_REMATCH[1]}"
+        else
+            second_output_status=1
+        fi
+    fi
+    if [ -n "$first_digest" ] && [ -n "$second_digest" ]; then
+        pub_cache_output_tool compare-reproductions \
+            --first-cache "$first_cache" --second-cache "$second_cache" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            || comparison_status=$?
+        if [ "$first_digest" != "$second_digest" ]; then
+            comparison_status=1
+        fi
+    else
+        comparison_status=1
+    fi
+    if [ "$current" -eq 1 ] && [ -n "$first_digest" ] \
+       && [ "$current_digest" != "$first_digest" ]; then
+        comparison_status=1
+    fi
+    if [ "$first_output_status" -eq 0 ] && [ "$second_output_status" -eq 0 ] \
+       && [ "$comparison_status" -eq 0 ] && [ -n "$first_digest" ]; then
+        verify_flutter_presentation_pub_discovery \
+            "$first_lock/pubspec.lock" "$first_cache" "$first_replay" "$lock_sha256" \
+            || first_semantic=$?
+        verify_flutter_presentation_pub_discovery \
+            "$second_lock/pubspec.lock" "$second_cache" "$second_replay" "$lock_sha256" \
+            || second_semantic=$?
+    fi
+    if [ "$first_semantic" -eq 0 ] && [ "$second_semantic" -eq 0 ] \
+       && [ -n "$first_digest" ] && [ "$comparison_status" -eq 0 ]; then
+        publish_flutter_presentation_lock_discovery \
+            "$first_lock/pubspec.lock" "$lock_sha256"
+        if [ "$current" -eq 0 ]; then
+            pub_cache_output_tool publish \
+                --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+                --staging "$FLUTTER_PRESENTATION_PUB_STAGING" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${candidate_provenance[@]}" \
+                --expected-digest "$first_digest" \
+                || publication_status=$?
+        fi
+    fi
+    if [ "$current" -eq 0 ]; then
+        retire_flutter_presentation_pub_staging \
+            "$FLUTTER_PRESENTATION_PUB_STAGING" "$FLUTTER_PRESENTATION_PUB_STAGING_ID"
+    fi
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Flutter presentation candidate discovery lock"
+    exec {lock_fd}<&-
     [ "$source_status" -eq 0 ] \
         || die "Flutter presentation Pub discovery source postcondition failed"
+    [ "$input_status" -eq 0 ] \
+        || die "Flutter presentation Pub discovery SDK postcondition failed"
     [ "$first_status" -eq 0 ] \
         || die "first Flutter presentation Pub discovery failed"
     [ "$second_status" -eq 0 ] \
         || die "second Flutter presentation Pub discovery failed"
-    /usr/bin/cmp -s "$first/pubspec.lock" "$second/pubspec.lock" \
-        || die "independent Flutter presentation Pub resolutions produced different lockfiles"
-    lock_sha256="$(/usr/bin/sha256sum "$first/pubspec.lock" | /usr/bin/awk '{print $1}')"
-    [[ "$lock_sha256" =~ ^[0-9a-f]{64}$ ]] \
-        || die "Flutter presentation discovery lock digest is malformed"
-    first_receipt="$(
-        pub_cache_output_tool verify-reproduction \
-            --cache "$first/pub-cache" \
-            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
-    )" || die "first Flutter presentation Pub cache is structurally invalid"
-    second_receipt="$(
-        pub_cache_output_tool verify-reproduction \
-            --cache "$second/pub-cache" \
-            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
-    )" || die "second Flutter presentation Pub cache is structurally invalid"
-    [[ "$first_receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
-        || die "first Flutter presentation Pub-cache receipt is malformed"
-    first_digest="${BASH_REMATCH[1]}"
-    [[ "$second_receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
-        || die "second Flutter presentation Pub-cache receipt is malformed"
-    second_digest="${BASH_REMATCH[1]}"
-    if [ "$first_digest" != "$second_digest" ]; then
-        pub_cache_output_tool compare-reproductions \
-            --first-cache "$first/pub-cache" --second-cache "$second/pub-cache" \
-            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" || true
-        die "independent Flutter presentation Pub-cache closures differ: first=$first_digest second=$second_digest"
-    fi
-    pub_cache_output_tool compare-reproductions \
-        --first-cache "$first/pub-cache" --second-cache "$second/pub-cache" \
-        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
-        || die "independent Flutter presentation Pub-cache comparison failed"
-    verify_flutter_presentation_pub_discovery "$first" "$lock_sha256" \
-        || first_semantic=$?
-    verify_flutter_presentation_pub_discovery "$second" "$lock_sha256" \
-        || second_semantic=$?
+    [ "$pin_status" -eq 0 ] \
+        || die "Flutter presentation Pub resolutions differ from the committed lock"
+    [ "$first_output_status" -eq 0 ] && [ "$second_output_status" -eq 0 ] \
+        || die "Flutter presentation Pub cache is structurally invalid"
+    [ "$comparison_status" -eq 0 ] \
+        || die "Flutter presentation Pub-cache closures differ"
     [ "$first_semantic" -eq 0 ] && [ "$second_semantic" -eq 0 ] \
         || die "Flutter presentation Pub discovery failed networkless semantic replay"
-    publish_flutter_presentation_lock_discovery "$first/pubspec.lock" "$lock_sha256"
-    "$FLOCK_BIN" --unlock "$lock_fd" \
-        || die "cannot release the Flutter presentation candidate discovery lock"
-    exec {lock_fd}<&-
-    printf 'FLUTTER_PRESENTATION_PUB_DISCOVERY=pass flutter=%s lock_sha256=%s cache_sha256=%s reproductions=2 offline_replays=2 publication=lock-only\n' \
-        "$FLUTTER_PRESENTATION_CANDIDATE_VERSION" "$lock_sha256" "$first_digest"
+    [ "$publication_status" -eq 0 ] \
+        || die "Flutter presentation Pub-cache publication failed"
+    printf 'FLUTTER_PRESENTATION_PUB_DISCOVERY=pass flutter=%s lock_sha256=%s cache_sha256=%s reproductions=2 offline_replays=2 publication=%s\n' \
+        "$FLUTTER_PRESENTATION_CANDIDATE_VERSION" "$lock_sha256" "$first_digest" "$publication"
 }
 
 stage_flutter_peer_inputs() {

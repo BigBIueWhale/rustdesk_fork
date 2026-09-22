@@ -714,7 +714,7 @@ def validate(sources: Dict[str, str]) -> None:
             "session_id: SessionID",
             "client_owner_id: SessionID",
             "value: Vec<i32>",
-            ") -> ResultType<()>",
+            ") -> Result<()>",
             "sessions::session_switch_display(session_id, client_owner_id, value)",
         ),
         "connection and UI-owner FFI capability",
@@ -1541,10 +1541,18 @@ def validate(sources: Dict[str, str]) -> None:
             "return activeSessionId;",
             "ffiModel._beginDisplayTopologyMutation(activeSessionId)",
             "ffiModel.pi.currentDisplay = display;",
+            "textureModel.updateCurrentDisplay(display);",
             "stream = bind.sessionStart(",
         ),
-        "startup admission before local display commit and stream attach",
+        "startup admission before local display/texture commit and stream attach",
     )
+    dart_start = extract_braced_item(
+        sources["model_dart"], "SessionID start(", "Dart session startup"
+    )
+    if dart_start.count("textureModel.updateCurrentDisplay(") != 1:
+        raise VerificationError(
+            "fresh peers must not publish a desktop texture before initial display ownership"
+        )
     forbid(startup_dart, "sessionStartWithDisplays", "second Dart startup capture")
     forbid(sources["model_dart"], "bind.sessionSwitchDisplay(", "unawaited model display switch")
     require(

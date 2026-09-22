@@ -4958,14 +4958,17 @@ class FFI {
         return activeSessionId;
       }
       ffiModel.pi.currentDisplay = display;
-    }
-    if (isDesktop && connType == ConnType.defaultConn) {
-      textureModel.updateCurrentDisplay(display ?? 0);
-    }
-    // FIXME: separate cameras displays or shift all indices.
-    if (isDesktop && connType == ConnType.viewCamera) {
-      // FIXME: currently the default 0 is not used.
-      textureModel.updateCurrentDisplay(display ?? 0);
+      // This existing-window display owner was committed synchronously by
+      // sessionAddExistedSync above, so native texture publication may begin
+      // before cached peer state is replayed. A fresh peer has no selected
+      // native display yet: bind_initial_display_owner commits it before Rust
+      // emits peer_info, and the pi.isSet-guarded desktop view starts the
+      // texture only after consuming that event.
+      if (isDesktop &&
+          (connType == ConnType.defaultConn ||
+              connType == ConnType.viewCamera)) {
+        textureModel.updateCurrentDisplay(display);
+      }
     }
 
     if (isDesktop) {

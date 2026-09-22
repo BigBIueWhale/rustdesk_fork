@@ -35,7 +35,7 @@ not a claim that every target OS has executed them.
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
-| Linux full-peer presentation (`11b20830f5d1c5354cbcee872557b28b6923f8a1`) | Real capture-to-X11-pixel delivery, a bounded focus-loss cycle, responsive control, and joined teardown on Linux software rendering. It is not current Windows/Android/Apple, repeated reconnect/soak, or installed-service evidence. |
+| Exact-current Linux full-peer presentation (`76d8a32c2775f0d13c0c05a9fbc8d82939ad866e`) | Real password-prompt authentication, capture-to-X11-pixel delivery, a bounded focus-loss cycle, stable-connection recovery, and joined teardown on Linux software rendering. It is not Windows/Android/Apple, repeated reconnect/soak, or installed-service evidence. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`5c2fbfc9f78c8953a945283ef3c0cbef7f981064`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 12 focused suites and 103 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
@@ -4121,27 +4121,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
   network state was inspected or changed for this source slice.
 
-- **R-S11gc/R-S11e-216 Linux full-peer presentation — NAMED COMMITTED RUNTIME GREEN;
+- **R-S11gc/R-S11e-216 Linux full-peer presentation — EXACT-CURRENT PRODUCT RUNTIME GREEN;
   CURRENT ARTIFACT, INSTALLED, CROSS-PLATFORM, AND SOAK EVIDENCE OPEN.**
 
-  **What the retained runtime establishes.** Clean pushed commit
-  `11b20830f5d1c5354cbcee872557b28b6923f8a1`, tree
-  `53cc48bbd8991e153fce9bcdd519f864b0830811`, and canonical source archive SHA-256
-  `003ae61ec95769560f7f35f4d8c57867fc342ef707e841a76069406f515b2a38` built the
-  release Rust core and actual 79-file Linux Flutter bundle from the transaction’s exact pinned
-  offline inputs. The shipped nonroot server started credential-empty and parked, accepted the test
-  password only through redirected `--password-stdin` and authenticated same-user IPC, and then
-  became the same typed listening process. The real viewer authenticated through its accessible
-  password field using XTest; no password appeared in argv or environment.
+  **What the current runtime establishes.** No-NIC verifier-VM transaction `run.e47T6SGHQP` built
+  clean pushed product commit `76d8a32c2775f0d13c0c05a9fbc8d82939ad866e`, tree
+  `92e483393489c82b85d82017526013b1a25ae0af`, and canonical source archive SHA-256
+  `340cd5787d5a403667d643b87b9c896185c4dca0ba1225f4f1c5952d00b497c5` into the release Rust
+  core and actual 77-file Linux Flutter bundle from the exact pinned offline inputs. The shipped
+  nonroot server started credential-empty and parked, accepted the test password only through
+  redirected `--password-stdin` and authenticated same-user IPC, and then became the same typed
+  listening process. The real viewer entered all 22 password characters through XTest; a count-only
+  AT-SPI observation proved the field complete without reading its value, the prompt retired, and no
+  password appeared in argv or environment.
 
-  A changing 256-state X11 source traversed actual capture, software encode, keyed TCP, viewer
+  A changing 256-state X11 source traversed actual capture, software encode, keyed TCP, viewer VP9
   decode, Rust-to-Dart texture publication, the production Linux texture plugin, Flutter, and
-  observed X11 pixels. First fresh pixels arrived in 163 ms; four distinct current frames were
-  observed; blurred age during 2,000 ms of external focus loss was 82 ms; pointer-return recovery
-  was 0 ms; and total maximum age was 286 ms. The authenticated TCP tuple and inode stayed
-  identical, so reconnect could not explain recovery. Viewer, server, source, both Xvfb owners, and
-  listener reached their joined terminal receipts. One `dbus-run-session` unknown-child diagnostic
-  occurred during teardown, so this is not claimed as a diagnostic-clean run.
+  observed X11 pixels. First fresh pixels arrived in 83 ms; four distinct current frames were
+  observed; the initial observation's maximum age was 671 ms; blurred age during 2,000 ms of
+  external focus loss was 83 ms; pointer-return recovery was 0 ms; and the focus round's maximum age
+  was 252 ms. The authenticated TCP tuple and inode stayed identical, so reconnect could not explain
+  recovery. Viewer, server, source, both Xvfb owners, listener, guest Docker, QEMU, and virtiofsd
+  reached joined terminal receipts. The transaction completed in 762 seconds. One
+  `dbus-run-session` unknown-child diagnostic occurred during teardown, so this is not claimed as a
+  diagnostic-clean or sustained-performance run.
 
   **Confinement and claim boundary.** Controlled peer and viewer had separate process, IPC,
   home/configuration, and X11 state. The controlled peer used `--network=none` with only `lo`; the
@@ -4179,13 +4182,21 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   no product source/offline closure or builder images and therefore supplies no new full-peer,
   capture, pixel, focus, latency, artifact, or current-commit runtime evidence.
 
-  **Current rerun state (2026-09-15).** This checkout has no canonical `online/` input closure, exact
-  pinned Debian-builder/devcheck images, retained full-peer workspace, or current built bundle. A
-  current transaction therefore cannot honestly be run from the present local inputs; no substitute
-  image or unrelated Android container counts as evidence.
+  **Fresh-texture startup defect and correction (2026-09-22).** The immediately preceding real run
+  `run.1UMgis8X1F` authenticated successfully, negotiated and decoded VP9, and kept the server video
+  service active, but displayed no pixels. A fresh desktop `FFI.start` had requested display-0 texture
+  publication while its exact native handler still had an empty display set. Native ownership checks
+  correctly refused the pointer, but `LatestDesktopTextureSlot` correctly treated that stable demand's
+  failed activation as terminal; later peer-info display admission could not resurrect it. This was a
+  real presentation-only failure, not a password, transport, server-capture, or decoder failure. Fresh
+  peers now wait for Rust's initial-display commit and subsequent `peer_info` event; the existing
+  `pi.isSet` view boundary then creates the texture. Existing-window routes retain early creation only
+  after `sessionAddExistedSync` has synchronously committed their display owner. No timer, polling,
+  reconnect, permissive native publication, or blind retry was added. `run.e47T6SGHQP` is the exact
+  runtime confirmation of that corrected ordering.
 
-  **Open / STOP-SHIP.** Later source changes do not inherit this named-commit result. Release still
-  requires an exact-current artifact run plus installed Linux coverage; Android persistent-service,
+  **Open / STOP-SHIP.** Release still requires an exact-current artifact run plus installed Linux
+  coverage; Android persistent-service,
   task-swipe/reopen/Force-Stop, real-peer presentation, and resource-finality testing; native Windows
   focus/minimize/background/reconnect and display-latency testing; macOS/iOS; cross-version
   interoperability; concurrent control/file/audio operation; repeated reconnect and sustained
@@ -10546,10 +10557,10 @@ STOP-SHIP obligations.
 ### R-S11iv/R-S11e-285 — exact desktop texture withdrawal and native pointer publication
 
 **State:** Source implementation plus the exact clean Dart model regression and
-fresh bridge generation pass at `5c2fbfc9f78c8953a945283ef3c0cbef7f981064`.
-Exact-current Rust regression execution, native desktop execution, installed-
-platform behavior, performance and resource evidence, current artifacts,
-independent reproduction, and external review remain pending.
+fresh bridge generation pass at `5c2fbfc9f78c8953a945283ef3c0cbef7f981064` and exact-current Linux native
+full-peer execution at `76d8a32c2775f0d13c0c05a9fbc8d82939ad866e`. Exact-current Rust regression
+execution, Windows/macOS native execution, installed-platform behavior, sustained performance and resource
+evidence, current artifacts, independent reproduction, and external review remain pending.
 
 **Boundary and current implementation.** This is the Windows, Linux, and macOS
 outgoing-viewer texture lifecycle from Dart display demand through asynchronous
@@ -10563,6 +10574,13 @@ matching pointer. Dart exposes the Flutter texture ID only after native success 
 attempts one matching unpublication before plugin release. Android and iOS use the
 separate bounded software-RGBA path.
 
+Fresh connections do not create a desktop texture during `FFI.start`, when their native display set is
+necessarily empty. Rust commits the bounded initial display owner before publishing `peer_info`; the
+desktop view is guarded by the corresponding committed `pi.isSet` state and only then supplies texture
+demand. Existing-window routes may bootstrap a texture before cached-state replay only after their
+synchronous exact display-owner transaction succeeds. A refused publication remains terminal for that
+unchanged demand; the correction does not weaken owner checks or introduce retries.
+
 **Evidence.** `flutter/test/desktop_texture_lifecycle_test.dart` covers in-flight
 retirement, false/true demand, predecessor finality, and single retirement. Rust
 regression `r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact` covers
@@ -10570,12 +10588,14 @@ selected-display, collision, wrong-pointer, exact-removal, and retired-owner cas
 `scripts/dart-verify.sh` and `scripts/verify.sh` retain those executable tests;
 the independent workspace baseline supplies only supplementary source checks. The
 named clean transaction generated the bridges and executed the Dart suite under
-Flutter 3.24.5; it did not execute the Rust regression or a native plugin. This is
-source, Dart/model, and generated-bridge evidence, not native plugin or installed-
-artifact behavior evidence.
+Flutter 3.24.5; it did not execute the Rust regression or a native plugin. The later
+`run.e47T6SGHQP` transaction built the exact release bundle, authenticated a real viewer, and exercised
+successful production Linux plugin publication through changing observed X11 pixels and focus loss with
+joined cleanup. That is Linux native runtime evidence, not installed-package, Windows/macOS, sustained-soak,
+or release-artifact evidence.
 
-**Open evidence.** Run the exact current generated bridge and native Windows,
-Linux, and macOS plugins through focus/minimize, display-switch, window-transfer,
+**Open evidence.** Run the exact current generated bridge and native Windows and
+macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
 deselection, disposal, and pointer-replacement stress. Measure capture-through-
 compositor latency, queues, CPU, memory, and cleanup under sustained lifecycle
 soak. Physical Android lifecycle behavior remains open under its separate path.

@@ -301,7 +301,7 @@ def validate_online_fetch(source: str) -> None:
     )
     require_count(
         loader,
-        "--certified-index-runtime",
+        "--publication-index-runtime",
         2,
         "containerd-store release identity",
     )

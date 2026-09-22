@@ -345,6 +345,44 @@ def validate_contract(repo):
         and "--maintenance-capture-rust-audit-image" not in acquisition,
         "Rust audit retained the unrecoverable separate-daemon capture path",
     )
+    loader, _ = extract(
+        acquisition,
+        "verify_or_load_rust_audit_image() {",
+        "\n}\n\n# Networked bootstrap acquisition",
+        "Rust audit acquisition-store loader",
+    )
+    require_all(
+        loader,
+        (
+            "online_image_provenance verify-load",
+            "--publication-index-runtime",
+            '--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"',
+            '"${args[@]}"',
+        ),
+        "Rust audit acquisition-store loader",
+    )
+    promotion, _ = extract(
+        acquisition,
+        "maintenance_promote_rust_audit_image_candidate() {",
+        "\n}\n\npromote_builder_bootstrap_candidate() {",
+        "Rust audit recoverable promotion",
+    )
+    require_all(
+        promotion,
+        (
+            '[ -f "$candidate" ] && [ ! -L "$candidate" ]',
+            '[ ! -e "$final" ] && [ ! -L "$final" ]',
+            '[ ! -e "$candidate" ] && [ ! -L "$candidate" ]',
+            '[ -f "$final" ] && [ ! -L "$final" ]',
+            "promotion_state=renamed",
+            "promotion_state=resumed",
+            "maintenance-rename-noreplace",
+            "online_image_provenance verify-load",
+            "--publication-index-runtime",
+            'printf \'promotion_state=%s\\n\' "$promotion_state"',
+        ),
+        "Rust audit recoverable promotion",
+    )
     require_all(
         provenance,
         (
@@ -363,12 +401,27 @@ def validate_contract(repo):
             'len(history) != 30',
             'for position, item in enumerate(history[7:], start=7)',
             'if item.get("created") != expected_created',
+            "publication_index_runtime: bool = False",
+            "publication-index runtime selection requires a final",
+            "(CertifiedBuilderSpec, DartAuditSpec, RustAuditSpec)",
         ),
         "Rust audit runtime config identity",
     )
     require(
         provenance.count("validate_rust_audit_identity_contract(spec)") == 2,
         "Rust audit identity modes must guard both runtime and archive verification",
+    )
+    verify_local_start = provenance.index("def verify_local(")
+    rust_runtime, _ = extract(
+        provenance,
+        "if isinstance(spec, RustAuditSpec):",
+        "if isinstance(spec, DartAuditSpec):",
+        "Rust audit selected runtime reference",
+        verify_local_start,
+    )
+    require(
+        "image_ref," in rust_runtime and "spec.image_id," not in rust_runtime,
+        "Rust audit runtime must execute the exact identity selected for its Docker store",
     )
     require_all(
         dockerfile,

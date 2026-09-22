@@ -957,7 +957,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   40 Android, nine certified-Debian, and 22 Windows role/archive/direct-normalization decisions. The default classic-store
   profile rejects use of a certified builder's OCI-index digest as Docker's runtime reference and accepts only the
   separately pinned config digest. The fixed online-acquisition VM instead authenticates Docker's containerd image store
-  and uses the explicit certified-index runtime mode, which binds the separately pinned OCI-index digest that this store
+  and uses the explicit publication-index runtime mode, which binds the separately pinned OCI-index digest that this store
   resolves after loading the same archive; that exception is restricted to certified builders and is not an ambient
   fallback. At exact clean commit `dce876543d80b6f5e71aa2dce4d09dfc83e1fa8e`, the 48-second authority smoke also
   executed the production Windows-helper runtime's `small` profile against the real guest daemon: root and UID/GID-4001

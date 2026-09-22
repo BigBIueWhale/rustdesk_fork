@@ -2346,13 +2346,13 @@ verify_or_load_deb_builder_image() {
     local args=()
     mapfile -d '' args < <(deb_builder_image_spec_args)
     online_image_provenance verify-load \
-        --certified-index-runtime \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/build-images/deb-builder.docker.tar.gz" \
         --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
         --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --certified-index-runtime \
+        --publication-index-runtime \
         --image-ref "$DEB_BUILDER_IMAGE_ID" \
         "${args[@]}"
 }
@@ -2362,13 +2362,13 @@ verify_or_load_android_builder_image() {
     local args=()
     mapfile -d '' args < <(android_builder_image_spec_args)
     online_image_provenance verify-load \
-        --certified-index-runtime \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/build-images/android-builder.docker.tar.gz" \
         --archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
         --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --certified-index-runtime \
+        --publication-index-runtime \
         --image-ref "$ANDROID_BUILDER_IMAGE_ID" \
         "${args[@]}"
 }
@@ -2378,13 +2378,13 @@ verify_or_load_win_helper_image() {
     local args=()
     mapfile -d '' args < <(win_helper_image_spec_args)
     online_image_provenance verify-load \
-        --certified-index-runtime \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/build-images/win-helper.docker.tar.gz" \
         --archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
         --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}"
     online_image_provenance verify-local \
-        --certified-index-runtime \
+        --publication-index-runtime \
         --image-ref "$WIN_HELPER_IMAGE_ID" \
         "${args[@]}"
 }
@@ -2865,6 +2865,7 @@ verify_or_load_dart_audit_image() {
     local args=()
     mapfile -d '' args < <(dart_audit_image_spec_args)
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/verifier-images/dart-audit.docker.tar.gz" \
         --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
@@ -2942,6 +2943,7 @@ verify_or_load_rust_audit_image() {
     local args=()
     mapfile -d '' args < <(rust_audit_image_spec_args)
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz" \
         --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
@@ -4031,7 +4033,7 @@ maintenance_promote_dart_audit_image_candidate() {
     local directory="$ONLINE_DIR/verifier-images"
     local candidate="$directory/dart-audit-candidate.docker.tar.gz"
     local final="$directory/dart-audit.docker.tar.gz"
-    local lock_fd args=()
+    local lock_fd promotion_state args=()
     [ -d "$directory" ] && [ ! -L "$directory" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
            = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
@@ -4040,21 +4042,27 @@ maintenance_promote_dart_audit_image_candidate() {
         || die "cannot open the Dart advisory image archive root for locking"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
         || die "another Dart advisory image archive transaction owns the archive root"
-    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
-        || die "Dart advisory candidate archive is absent or unsafe"
-    [ ! -e "$final" ] && [ ! -L "$final" ] \
-        || die "final Dart advisory archive already exists"
     mapfile -d '' args < <(dart_audit_image_spec_args)
-    online_image_provenance verify-archive \
-        --archive "$candidate" \
-        --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
-        --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
-        "${args[@]}" \
-        || die "Dart advisory candidate differs from the final pins"
-    online_image_provenance maintenance-rename-noreplace \
-        --source "$candidate" --destination "$final" \
-        || die "Dart advisory candidate promotion failed"
+    if [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+       && [ ! -e "$final" ] && [ ! -L "$final" ]; then
+        online_image_provenance verify-archive \
+            --archive "$candidate" \
+            --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
+            --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
+            "${args[@]}" \
+            || die "Dart advisory candidate differs from the final pins"
+        online_image_provenance maintenance-rename-noreplace \
+            --source "$candidate" --destination "$final" \
+            || die "Dart advisory candidate promotion failed"
+        promotion_state=renamed
+    elif [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+         && [ -f "$final" ] && [ ! -L "$final" ]; then
+        promotion_state=resumed
+    else
+        die "Dart advisory promotion requires exactly one safe candidate or final archive"
+    fi
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$final" \
         --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
@@ -4063,6 +4071,7 @@ maintenance_promote_dart_audit_image_candidate() {
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the Dart advisory image archive lock"
     exec {lock_fd}<&-
+    printf 'promotion_state=%s\n' "$promotion_state"
     printf 'promoted=%s\n' "$final"
 }
 
@@ -4211,7 +4220,7 @@ maintenance_promote_rust_audit_image_candidate() {
     local directory="$ONLINE_DIR/verifier-images"
     local candidate="$directory/rust-audit-candidate.docker.tar.gz"
     local final="$directory/rust-audit.docker.tar.gz"
-    local lock_fd args=()
+    local lock_fd promotion_state args=()
     [ -d "$directory" ] && [ ! -L "$directory" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
            = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
@@ -4220,21 +4229,27 @@ maintenance_promote_rust_audit_image_candidate() {
         || die "cannot open the Rust advisory image archive root for locking"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
         || die "another Rust advisory image archive transaction owns the archive root"
-    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
-        || die "Rust advisory candidate archive is absent or unsafe"
-    [ ! -e "$final" ] && [ ! -L "$final" ] \
-        || die "final Rust advisory archive already exists"
     mapfile -d '' args < <(rust_audit_image_spec_args)
-    online_image_provenance verify-archive \
-        --archive "$candidate" \
-        --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
-        --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
-        "${args[@]}" \
-        || die "Rust advisory candidate differs from the final pins"
-    online_image_provenance maintenance-rename-noreplace \
-        --source "$candidate" --destination "$final" \
-        || die "Rust advisory candidate promotion failed"
+    if [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+       && [ ! -e "$final" ] && [ ! -L "$final" ]; then
+        online_image_provenance verify-archive \
+            --archive "$candidate" \
+            --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
+            --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
+            "${args[@]}" \
+            || die "Rust advisory candidate differs from the final pins"
+        online_image_provenance maintenance-rename-noreplace \
+            --source "$candidate" --destination "$final" \
+            || die "Rust advisory candidate promotion failed"
+        promotion_state=renamed
+    elif [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+         && [ -f "$final" ] && [ ! -L "$final" ]; then
+        promotion_state=resumed
+    else
+        die "Rust advisory promotion requires exactly one safe candidate or final archive"
+    fi
     online_image_provenance verify-load \
+        --publication-index-runtime \
         --archive "$final" \
         --archive-sha "$SHA256_RUST_AUDIT_IMAGE_ARCHIVE" \
         --archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE" \
@@ -4243,6 +4258,7 @@ maintenance_promote_rust_audit_image_candidate() {
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the Rust advisory image archive lock"
     exec {lock_fd}<&-
+    printf 'promotion_state=%s\n' "$promotion_state"
     printf 'promoted=%s\n' "$final"
 }
 
@@ -4379,7 +4395,7 @@ require_online_fetch_builder_image() {
     runtime_ref="$(online_fetch_builder_runtime_ref "$config_id")"
     assert_online_fetch_docker_authority
     online_image_provenance verify-local \
-        --certified-index-runtime --image-ref "$runtime_ref" \
+        --publication-index-runtime --image-ref "$runtime_ref" \
         "${args[@]}" >/dev/null
     assert_online_fetch_docker_authority
 }

@@ -2427,6 +2427,8 @@ maintenance_discover_flutter_presentation_pub() {
         [[ "$current_receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
             || die "existing Flutter presentation Pub-cache receipt is malformed"
         current_digest="${BASH_REMATCH[1]}"
+        [ "$current_digest" = "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
+            || die "existing Flutter presentation Pub cache differs from its pin"
         current=1
     else
         prepare_flutter_presentation_pub_staging "${candidate_provenance[@]}"
@@ -2498,6 +2500,10 @@ maintenance_discover_flutter_presentation_pub() {
         else
             second_output_status=1
         fi
+        if [ "$first_digest" != "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
+           || [ "$second_digest" != "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ]; then
+            pin_status=1
+        fi
     fi
     if [ -n "$first_digest" ] && [ -n "$second_digest" ]; then
         pub_cache_output_tool compare-reproductions \
@@ -2553,7 +2559,7 @@ maintenance_discover_flutter_presentation_pub() {
     [ "$second_status" -eq 0 ] \
         || die "second Flutter presentation Pub discovery failed"
     [ "$pin_status" -eq 0 ] \
-        || die "Flutter presentation Pub resolutions differ from the committed lock"
+        || die "Flutter presentation Pub resolutions differ from the committed lock or cache pin"
     [ "$first_output_status" -eq 0 ] && [ "$second_output_status" -eq 0 ] \
         || die "Flutter presentation Pub cache is structurally invalid"
     [ "$comparison_status" -eq 0 ] \

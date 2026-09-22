@@ -1418,14 +1418,26 @@ run_flutter_peer_presentation() {
             "$sealed_root/candidates/flutter-presentation")" = 1000:1000:700 ] \
             && [ "$(find "$sealed_root/candidates/flutter-presentation" \
                 -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" = \
-                 "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz" ] \
-            || fail 'candidate Flutter-peer archive namespace differs'
+                 $'flutter-'"${FLUTTER_PRESENTATION_CANDIDATE_VERSION}"$'.tar.xz\npub-cache\npubspec.lock.discovery' ] \
+            || fail 'candidate Flutter-peer closure namespace differs'
         candidate_archive="$sealed_root/candidates/flutter-presentation/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
+        candidate_lock="$sealed_root/candidates/flutter-presentation/pubspec.lock.discovery"
+        candidate_pub_cache="$sealed_root/candidates/flutter-presentation/pub-cache"
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
           "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
             && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
                  "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
             || fail 'candidate Flutter SDK archive differs'
+        [ -f "$candidate_lock" ] && [ ! -L "$candidate_lock" ] \
+            && [ "$(stat -c '%u:%g:%a:%h' -- "$candidate_lock")" = \
+                 1000:1000:400:1 ] \
+            && [ "$(sha256sum "$candidate_lock" | awk '{ print $1 }')" = \
+                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
+            || fail 'candidate Flutter project lock differs'
+        [ -d "$candidate_pub_cache" ] && [ ! -L "$candidate_pub_cache" ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_cache")" = \
+                 1000:1000:500 ] \
+            || fail 'candidate Flutter Pub cache metadata differs'
         inputs=$sealed_root/inputs
     else
         inputs=$sealed_root
@@ -1595,6 +1607,12 @@ run_flutter_peer_presentation() {
             && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
                  "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
             || fail 'candidate Flutter SDK archive changed during execution'
+        [ "$(stat -c '%u:%g:%a:%h' -- "$candidate_lock")" = 1000:1000:400:1 ] \
+            && [ "$(sha256sum "$candidate_lock" | awk '{ print $1 }')" = \
+                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_cache")" = \
+                 1000:1000:500 ] \
+            || fail 'candidate Flutter dependency closure changed during execution'
     fi
 
     stop_docker_authority

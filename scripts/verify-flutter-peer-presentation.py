@@ -92,7 +92,10 @@ def validate(sources: dict[str, str]) -> None:
         "--flutter-presentation-candidate",
         "Flutter presentation candidate metadata differs",
         "Flutter presentation candidate digest differs",
+        "Flutter presentation candidate project lock differs",
         "BUILD_FLUTTER_TOOLS_MODE=bundled-sdk-candidate",
+        "EVIDENCE_PUB_CACHE_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE",
+        "BUILD_PROJECT_LOCK_MODE=candidate-pinned",
         "source=$BUILD_FLUTTER_ARCHIVE,target=/flutter-sdk.tar.xz,readonly",
         "RUSTDESK_FLUTTER_ARCHIVE=/flutter-sdk.tar.xz",
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK",
@@ -137,7 +140,9 @@ def validate(sources: dict[str, str]) -> None:
             "candidate Dart SDK version differs",
             '"$REAL_FLUTTER" --suppress-analytics --version',
             "candidate Flutter invocation rebuilt or changed its pinned SDK state",
-            '"$REAL_FLUTTER" pub get --offline --enforce-lockfile',
+            "candidate-pinned)",
+            "committed candidate project lock differs from its pin",
+            "dart pub get --offline --enforce-lockfile",
             '"$FRB_CODEGEN" --rust-input ./src/flutter_ffi.rs',
             "cargo build --locked --offline --features flutter,unix-file-copy-paste",
             '"$REAL_FLUTTER" build linux --release --no-pub',
@@ -148,6 +153,11 @@ def validate(sources: dict[str, str]) -> None:
     )
     for token in ("curl ", "wget ", "apt-get", "--privileged", "sudo "):
         forbid(stage, token, "build/runtime acquisition or privilege fallback")
+    forbid(
+        stage,
+        '"$REAL_FLUTTER" pub get',
+        "direct Flutter Pub wrapper in the no-NIC build",
+    )
 
     require_order(
         outer,
@@ -157,6 +167,8 @@ def validate(sources: dict[str, str]) -> None:
             "SEALED_INPUT_ROOT=$REPO_ROOT/online",
             '--shared-dir "$SEALED_INPUT_ROOT"',
             "candidate Flutter-peer authority root inventory differs",
+            "candidate Flutter-peer project lock differs",
+            "sealed selected Flutter-peer Pub-cache root metadata differs",
             'guest_invocation+=" --flutter-peer-presentation-candidate',
             '-nic none',
             "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=",
@@ -188,6 +200,8 @@ def validate(sources: dict[str, str]) -> None:
             "mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs",
             "candidate Flutter-peer authority root inventory differs",
             "candidate Flutter SDK archive differs",
+            "candidate Flutter project lock differs",
+            "candidate Flutter Pub cache metadata differs",
             'mount --bind "$inputs" "$source_root/online/inputs"',
             'peer_args+=(--flutter-presentation-candidate "$candidate_archive")',
             "candidate Flutter SDK archive changed during execution",
@@ -217,6 +231,8 @@ def validate(sources: dict[str, str]) -> None:
     require_pin(pins, "FLUTTER_PRESENTATION_CANDIDATE_DART_VERSION", r"3\.13\.4")
     require_pin(pins, "SHA256_FLUTTER_PRESENTATION_CANDIDATE_VERSION_JSON", r"[0-9a-f]{64}")
     require_pin(pins, "SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK", r"[0-9a-f]{64}")
+    require_pin(pins, "SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK", r"[0-9a-f]{64}")
+    require_pin(pins, "SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE", r"[0-9a-f]{64}")
 
     for token in (
         "XGetImage(",

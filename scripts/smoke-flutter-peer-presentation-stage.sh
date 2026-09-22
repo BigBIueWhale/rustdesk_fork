@@ -453,7 +453,7 @@ PY
       check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
     [ "$cache_receipt" = "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" ] \
       || fail 'sealed evidence Pub-cache receipt differs'
-    printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-three-git-lock\n' \
+    printf 'sha256=%s source=canonical-pinned-online-copy semantics=exact-three-git-lock\n' \
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" > /evidence-online/pub-cache.identity
     chmod 0444 /evidence-online/pub-cache.identity
     chmod 0555 /evidence-online
@@ -465,7 +465,7 @@ PY
     : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
     verify_regular /evidence-online/pub-cache.identity
     [ "$(< /evidence-online/pub-cache.identity)" = \
-      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=canonical-pinned-online-copy semantics=current-three-git-lock" ] \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=canonical-pinned-online-copy semantics=exact-three-git-lock" ] \
       || fail 'evidence Pub-cache identity receipt differs'
     cache_receipt="$(/usr/bin/python3 -I -S /source/scripts/online-pub-cache-output.py \
       check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
@@ -483,7 +483,7 @@ PY
       RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
       RUSTDESK_FRB_SHA256 RUSTDESK_FRB_SIZE \
       RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256 RUSTDESK_FLUTTER_TOOLS_MODE \
-      RUSTDESK_EVIDENCE_PUB_CACHE_SHA256; do
+      RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 RUSTDESK_PROJECT_LOCK_MODE; do
       [ -n "${!variable:-}" ] || fail "missing build identity: $variable"
     done
     case "$RUSTDESK_FLUTTER_TOOLS_MODE" in
@@ -514,7 +514,7 @@ PY
     done
     verify_regular /evidence-online/pub-cache.identity
     [ "$(< /evidence-online/pub-cache.identity)" = \
-      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=canonical-pinned-online-copy semantics=current-three-git-lock" ] \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=canonical-pinned-online-copy semantics=exact-three-git-lock" ] \
       || fail 'build evidence Pub-cache identity differs'
     [ "$(stat -c '%u:%g:%a' /evidence-online/pub-cache)" = \
       "$(id -u):$(id -g):500" ] || fail 'build evidence Pub-cache root is not sealed'
@@ -663,13 +663,36 @@ PY
         "$RUSTDESK_FLUTTER_CANDIDATE_DART_VERSION" \
         "$candidate_snapshot_sha"
     fi
+    case "$RUSTDESK_PROJECT_LOCK_MODE" in
+      source-current)
+        [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ] \
+          && [ -z "${RUSTDESK_PROJECT_LOCK_SHA256:-}" ] \
+          || fail 'source-current project lock is paired with the wrong Flutter mode or pin'
+        ;;
+      candidate-pinned)
+        [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = bundled-sdk-candidate ] \
+          && [[ "${RUSTDESK_PROJECT_LOCK_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+          || fail 'candidate project lock identity is missing or paired with the wrong Flutter mode'
+        verify_regular "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock"
+        [ "$(sha256sum "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock" \
+              | awk '{print $1}')" = "$RUSTDESK_PROJECT_LOCK_SHA256" ] \
+          || fail 'committed candidate project lock differs from its pin'
+        install -m 0600 \
+          "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock" \
+          "$BUILD_SOURCE/flutter/pubspec.lock"
+        ;;
+      *) fail 'project Pub lock mode differs' ;;
+    esac
     pub_lock_before="$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')"
+    if [ -n "${RUSTDESK_PROJECT_LOCK_SHA256:-}" ]; then
+      [ "$pub_lock_before" = "$RUSTDESK_PROJECT_LOCK_SHA256" ] \
+        || fail 'selected project lock differs before offline resolution'
+    fi
     (
       cd "$BUILD_SOURCE/flutter"
-      dart pub get --offline --enforce-lockfile >/dev/null
       rm -rf linux/flutter/ephemeral/.plugin_symlinks \
         .flutter-plugins-dependencies .flutter-plugins
-      "$REAL_FLUTTER" pub get --offline --enforce-lockfile >/dev/null
+      dart pub get --offline --enforce-lockfile >/dev/null
     )
     [ "$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')" = \
       "$pub_lock_before" ] || fail 'project pubspec.lock changed during offline resolution'

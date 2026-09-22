@@ -97,6 +97,8 @@ readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
 readonly FLUTTER_PEER_CANDIDATE_ROOT="$REPO_ROOT/online/candidates/flutter-presentation"
 readonly FLUTTER_PEER_CANDIDATE_ARCHIVE="$FLUTTER_PEER_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
+readonly FLUTTER_PEER_CANDIDATE_LOCK="$FLUTTER_PEER_CANDIDATE_ROOT/pubspec.lock.discovery"
+readonly FLUTTER_PEER_CANDIDATE_PUB_CACHE="$FLUTTER_PEER_CANDIDATE_ROOT/pub-cache"
 readonly RUST_TEST_ARCHIVE="$ONLINE_INPUTS/rust-${RUST_VERSION}.tar.xz"
 readonly FLUTTER_TEST_ARCHIVE="$ONLINE_INPUTS/flutter-${FLUTTER_VERSION}.tar.xz"
 readonly LLVM_TEST_ARCHIVE="$ONLINE_INPUTS/llvm-${LLVM_VERSION}.tar.xz"
@@ -113,6 +115,7 @@ FLUTTER_PEER_FLUTTER_ARCHIVE=$FLUTTER_TEST_ARCHIVE
 FLUTTER_PEER_FLUTTER_SHA256=$SHA256_FLUTTER_3_24_5
 FLUTTER_PEER_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5
 FLUTTER_PEER_TOOLS_MODE=offline-resolved
+FLUTTER_PEER_PUB_CACHE_ROOT=$PUB_CACHE_ROOT
 SEALED_INPUT_ROOT=$ONLINE_INPUTS
 if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
     FLUTTER_PEER_FLUTTER_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_VERSION
@@ -120,11 +123,12 @@ if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
     FLUTTER_PEER_FLUTTER_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE
     FLUTTER_PEER_FLUTTER_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
     FLUTTER_PEER_TOOLS_MODE=bundled-sdk-candidate
+    FLUTTER_PEER_PUB_CACHE_ROOT=$FLUTTER_PEER_CANDIDATE_PUB_CACHE
     SEALED_INPUT_ROOT=$REPO_ROOT/online
 fi
 readonly FLUTTER_PEER_FLUTTER_VERSION FLUTTER_PEER_FLUTTER_ARCHIVE \
     FLUTTER_PEER_FLUTTER_SHA256 FLUTTER_PEER_FLUTTER_SIZE \
-    FLUTTER_PEER_TOOLS_MODE SEALED_INPUT_ROOT
+    FLUTTER_PEER_TOOLS_MODE FLUTTER_PEER_PUB_CACHE_ROOT SEALED_INPUT_ROOT
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
@@ -402,7 +406,7 @@ capture_listeners() {
 flutter_peer_input_inventory() {
     local -a directories=(
         "$ONLINE_INPUTS"
-        "$PUB_CACHE_ROOT"
+        "$FLUTTER_PEER_PUB_CACHE_ROOT"
         "$CARGO_VENDOR_ROOT"
         "$ONLINE_INPUTS/vcpkg/installed/x64-linux"
         "$ONLINE_INPUTS/xvfb-debs"
@@ -424,6 +428,10 @@ flutter_peer_input_inventory() {
     /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_PEER_FLUTTER_ARCHIVE" \
         "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
         "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FLUTTER_PEER_CANDIDATE_LOCK"
+        /usr/bin/sha256sum -- "$FLUTTER_PEER_CANDIDATE_LOCK"
+    fi
 }
 
 require_exact_fixed_receipt() {
@@ -664,8 +672,16 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
                 "$FLUTTER_PEER_CANDIDATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
             && [ "$(/usr/bin/find "$FLUTTER_PEER_CANDIDATE_ROOT" \
                 -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
-                 "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz" ] \
-            || fail 'candidate Flutter-peer archive namespace differs'
+                 $'flutter-'"${FLUTTER_PRESENTATION_CANDIDATE_VERSION}"$'.tar.xz\npub-cache\npubspec.lock.discovery' ] \
+            || fail 'candidate Flutter-peer closure namespace differs'
+        [ -f "$FLUTTER_PEER_CANDIDATE_LOCK" ] \
+            && [ ! -L "$FLUTTER_PEER_CANDIDATE_LOCK" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- \
+                "$FLUTTER_PEER_CANDIDATE_LOCK")" = "$HOST_UID:$HOST_GID:400:1" ] \
+            && [ "$(/usr/bin/sha256sum "$FLUTTER_PEER_CANDIDATE_LOCK" \
+                | /usr/bin/awk '{print $1}')" = \
+                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
+            || fail 'candidate Flutter-peer project lock differs'
     fi
     for input in \
         "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
@@ -696,10 +712,10 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
              "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
         || fail 'authenticated virtiofsd package identity differs'
-    [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
+    [ -d "$FLUTTER_PEER_PUB_CACHE_ROOT" ] && [ ! -L "$FLUTTER_PEER_PUB_CACHE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$FLUTTER_PEER_PUB_CACHE_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
-        || fail 'sealed Flutter-peer Pub-cache root metadata differs'
+        || fail 'sealed selected Flutter-peer Pub-cache root metadata differs'
     [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \

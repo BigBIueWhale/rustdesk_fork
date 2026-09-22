@@ -203,6 +203,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             is_debian_systemd_image_name(names[0])
             or names[0] in (
                 "flutter-3.24.5.tar.xz",
+                "flutter-3.47.5.tar.xz",
                 "rust-1.75.tar.xz",
             )
         ):
@@ -1530,6 +1531,22 @@ def test_flutter_archive_specs() -> tuple[ArchiveSpec, ...]:
     )
 
 
+def test_flutter_candidate_archive_specs() -> tuple[ArchiveSpec, ...]:
+    name = "flutter-3.47.5.tar.xz"
+    payload = b"flutter-presentation-candidate-fixture"
+    return parse_specs(
+        [
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        ]
+    )
+
+
 def test_flutter_model_archive_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name in (
@@ -1840,12 +1857,15 @@ def self_test() -> None:
 
         systemd_specs = test_systemd_image_specs()
         flutter_specs = test_flutter_archive_specs()
+        flutter_candidate_specs = test_flutter_candidate_archive_specs()
         flutter_model_specs = test_flutter_model_archive_specs()
         android_build_specs = test_android_build_archive_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:
             fail("systemd-image self-test lost its bounded large-image timeout")
         if download_timeout_seconds(flutter_specs[0]) != 120:
             fail("Flutter-archive self-test widened the ordinary download timeout")
+        if download_timeout_seconds(flutter_candidate_specs[0]) != 120:
+            fail("Flutter-candidate self-test widened the ordinary download timeout")
         if len(flutter_model_specs) != 3:
             fail("Flutter model-test self-test lost its exact toolchain manifest")
         if len(android_build_specs) != 7:

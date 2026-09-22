@@ -53,14 +53,29 @@ peer_vm_docker() {
 }
 
 PEER_VM_AUTHORITY_SELF_TEST=0
-case "$#" in
-  0) ;;
-  1)
-    [ "$1" = --self-test-vm-authority ] || die "unknown argument: $1"
+SOURCE_AUTHORITY=git
+SUPPLIED_SOURCE_ARCHIVE=
+SUPPLIED_SOURCE_COMMIT=
+SUPPLIED_SOURCE_TREE=
+SUPPLIED_SOURCE_ARCHIVE_SHA256=
+case "$#:${1:-}" in
+  0:) ;;
+  1:--self-test-vm-authority)
     PEER_VM_AUTHORITY_SELF_TEST=1
     ;;
-  *) die 'accepts no arguments except --self-test-vm-authority' ;;
+  8:--source-archive)
+    [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
+      || die 'source-archive authority argument order differs'
+    SOURCE_AUTHORITY=archive
+    SUPPLIED_SOURCE_ARCHIVE=$2
+    SUPPLIED_SOURCE_COMMIT=$4
+    SUPPLIED_SOURCE_TREE=$6
+    SUPPLIED_SOURCE_ARCHIVE_SHA256=$8
+    ;;
+  *) die 'accepts no arguments except --self-test-vm-authority or the exact source-archive authority' ;;
 esac
+readonly SOURCE_AUTHORITY SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
+  SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256
 if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(peer_vm_docker version \
     --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -117,16 +132,39 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-require_cmd git tar sha256sum stat find chmod
-assert_clean_worktree
-readonly SOURCE_COMMIT="$(git rev-parse HEAD)"
-readonly SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
+require_cmd git tar sha256sum stat find chmod readlink
+SOURCE_COMMIT=
+SOURCE_TREE=
+if [ "$SOURCE_AUTHORITY" = git ]; then
+  assert_clean_worktree
+  SOURCE_COMMIT="$(git rev-parse HEAD)"
+  SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
+else
+  case "$SUPPLIED_SOURCE_ARCHIVE" in /*) ;; *) die 'source archive path is not absolute' ;; esac
+  [ "$SUPPLIED_SOURCE_ARCHIVE" = "$(readlink -f -- "$SUPPLIED_SOURCE_ARCHIVE" 2>/dev/null)" ] \
+    || die 'source archive path is not canonical'
+  [[ "$SUPPLIED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+    && [[ "$SUPPLIED_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+    && [[ "$SUPPLIED_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || die 'supplied source identity is malformed'
+  [ -f "$SUPPLIED_SOURCE_ARCHIVE" ] && [ ! -L "$SUPPLIED_SOURCE_ARCHIVE" ] \
+    && [ "$(stat -c '%u:%g:%a:%h' -- "$SUPPLIED_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+    || die 'supplied source archive metadata differs'
+  [ "$(sha256sum "$SUPPLIED_SOURCE_ARCHIVE" | awk '{print $1}')" = \
+    "$SUPPLIED_SOURCE_ARCHIVE_SHA256" ] \
+    || die 'supplied source archive digest differs'
+  SOURCE_COMMIT=$SUPPLIED_SOURCE_COMMIT
+  SOURCE_TREE=$SUPPLIED_SOURCE_TREE
+fi
+readonly SOURCE_COMMIT SOURCE_TREE
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
   && [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
   || die 'source commit or tree identity is malformed'
 
 for pin in \
   DEB_BUILDER_IMAGE_ID DEB_BUILDER_CONFIG_ID DEV_CHECK_IMAGE_ID \
+  DEV_CHECK_IMAGE_CONFIG_ID \
   RUST_VERSION SHA256_RUST_1_75 SIZE_RUST_1_75 \
   FLUTTER_VERSION SHA256_FLUTTER_3_24_5 SIZE_FLUTTER_3_24_5 \
   LLVM_VERSION SHA256_LLVM_15_0_6 SIZE_LLVM_15_0_6 \
@@ -159,9 +197,9 @@ require_exact_local_image() {
 }
 
 require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"
-require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"
+require_exact_local_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 
-readonly SOURCE_ARCHIVE="$WORKSPACE/source.tar"
+SOURCE_ARCHIVE=
 readonly SOURCE_SNAPSHOT="$WORKSPACE/source"
 readonly BUILD_OUTPUT="$WORKSPACE/output"
 readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
@@ -190,10 +228,21 @@ mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
   && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness creation failed'
 readonly VIEWER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")"
-git archive --format=tar --output="$SOURCE_ARCHIVE" "$SOURCE_COMMIT"
+if [ "$SOURCE_AUTHORITY" = git ]; then
+  SOURCE_ARCHIVE="$WORKSPACE/source.tar"
+  git archive --format=tar --output="$SOURCE_ARCHIVE" "$SOURCE_COMMIT"
+else
+  SOURCE_ARCHIVE=$SUPPLIED_SOURCE_ARCHIVE
+fi
+readonly SOURCE_ARCHIVE
 readonly SOURCE_ARCHIVE_SHA256="$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')"
+[ "$SOURCE_AUTHORITY" = git ] \
+  || [ "$SOURCE_ARCHIVE_SHA256" = "$SUPPLIED_SOURCE_ARCHIVE_SHA256" ] \
+  || die 'source archive changed between admission and extraction'
 tar -xf "$SOURCE_ARCHIVE" -C "$SOURCE_SNAPSHOT"
 chmod -R a-w "$SOURCE_SNAPSHOT"
+[ -z "$(find "$SOURCE_SNAPSHOT" -perm /0222 -print -quit)" ] \
+  || die 'exact source snapshot remained writable'
 
 run_owned_container() {
   local cid_file=$1 run_status=0 cleanup_status=0
@@ -331,7 +380,7 @@ run_input_check() {
     --env "RUSTDESK_CARGO_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
     --env "RUSTDESK_CARGO_VENDOR_CONFIG_SIZE=$SIZE_CARGO_VENDOR_CONFIG" \
     --env "RUSTDESK_VCPKG_X64_LINUX_SHA256=$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" \
-    "$DEV_CHECK_IMAGE_ID" \
+    "$DEV_CHECK_IMAGE_CONFIG_ID" \
     bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh input-check
 }
 
@@ -349,7 +398,7 @@ run_owned_container "$WORKSPACE/xvfb.cid" \
   --mount "type=bind,source=$XVFB_INPUTS,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_DEBS,target=/xvfb-debs,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,bind-recursive=disabled" \
-  "$DEV_CHECK_IMAGE_ID" \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh
 
 echo '== copy and reverify the canonical exact-current Pub cache without mutating it =='
@@ -363,7 +412,7 @@ run_owned_container "$WORKSPACE/pub-cache.cid" \
   --mount "type=bind,source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,bind-recursive=disabled" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
-  "$DEV_CHECK_IMAGE_ID" \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache
 [ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
   || die 'canonical evidence Pub-cache identity changed while copied'
@@ -412,7 +461,7 @@ run_owned_container "$WORKSPACE/pub-cache-post.cid" \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
-  "$DEV_CHECK_IMAGE_ID" \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache-check
 [ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
   || die 'canonical evidence Pub-cache identity changed during the build'
@@ -436,7 +485,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
-  "$DEV_CHECK_IMAGE_ID" \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh server \
   >/dev/null
 SERVER_CID=$(<"$SERVER_CID_FILE")
@@ -474,7 +523,7 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
   --mount "type=bind,source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled" \
-  "$DEV_CHECK_IMAGE_ID" \
+  "$DEV_CHECK_IMAGE_CONFIG_ID" \
   dbus-run-session -- \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh viewer \
   > "$WORKSPACE/viewer.log" 2>&1
@@ -519,12 +568,17 @@ grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined
 
 echo '== independently reverify every persistent build input after runtime =='
 run_input_check "$WORKSPACE/input-post.cid"
-[ "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" ] \
-  && [ "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE" ] \
-  || die 'repository identity changed during the probe'
-assert_clean_worktree
-git archive --format=tar --output="$WORKSPACE/source-after.tar" "$SOURCE_COMMIT"
-[ "$(sha256sum "$WORKSPACE/source-after.tar" | awk '{print $1}')" = \
-  "$SOURCE_ARCHIVE_SHA256" ] || die 'exact source archive changed during the probe'
+if [ "$SOURCE_AUTHORITY" = git ]; then
+  [ "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" ] \
+    && [ "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE" ] \
+    || die 'repository identity changed during the probe'
+  assert_clean_worktree
+  git archive --format=tar --output="$WORKSPACE/source-after.tar" "$SOURCE_COMMIT"
+  [ "$(sha256sum "$WORKSPACE/source-after.tar" | awk '{print $1}')" = \
+    "$SOURCE_ARCHIVE_SHA256" ] || die 'exact source archive changed during the probe'
+else
+  [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = \
+    "$SOURCE_ARCHIVE_SHA256" ] || die 'supplied source archive changed during the probe'
+fi
 printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s scope=linux-x11-full-peer-only network=owned-none-namespace\n' \
   "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256"

@@ -103,6 +103,10 @@ def validate(sources: dict[str, str]) -> None:
         '--config "$VERIFIER_VM_DOCKER_CONFIG"',
         '--self-test-vm-authority',
         "prepost=replayed workload=unexecuted",
+        "8:--source-archive)",
+        "source-archive authority argument order differs",
+        "supplied source archive metadata differs",
+        "supplied source archive digest differs",
     ):
         require(host, authority_contract, "guest-only Docker authority")
     for forbidden_authority in (
@@ -117,7 +121,7 @@ def validate(sources: dict[str, str]) -> None:
         host,
         (
             "assert_clean_worktree",
-            'readonly SOURCE_COMMIT="$(git rev-parse HEAD)"',
+            'SOURCE_COMMIT="$(git rev-parse HEAD)"',
             "git archive --format=tar",
             'run_input_check "$WORKSPACE/input-pre.cid"',
             "smoke-xvfb-prepare.sh",
@@ -133,6 +137,21 @@ def validate(sources: dict[str, str]) -> None:
             "FLUTTER_PEER_PRESENTATION_SMOKE_OK",
         ),
         "exact-source build and separate-peer transaction",
+    )
+    require_order(
+        host,
+        (
+            "SOURCE_AUTHORITY=git",
+            "8:--source-archive)",
+            "SUPPLIED_SOURCE_ARCHIVE=$2",
+            'if [ "$SOURCE_AUTHORITY" = git ]; then',
+            "supplied source archive metadata differs",
+            "supplied source archive digest differs",
+            'SOURCE_ARCHIVE=$SUPPLIED_SOURCE_ARCHIVE',
+            'tar -xf "$SOURCE_ARCHIVE" -C "$SOURCE_SNAPSHOT"',
+            "supplied source archive changed during the probe",
+        ),
+        "exact archive-source authority and finality",
     )
     if host.count("--network=bridge") != 0:
         raise VerificationError("the Xvfb preparation path retains a bridge network")
@@ -235,7 +254,8 @@ def validate(sources: dict[str, str]) -> None:
         "exact runtime mount cardinality",
     )
     require(host, 'require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"', "exact runtime builder image")
-    require(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"', "exact verifier image")
+    require(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"', "exact verifier runtime image")
+    forbid(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"', "publication index used as a runtime image")
     if host.count('source=$ONLINE_DIR,target=/online,readonly') != 1:
         raise VerificationError("only the persistent-input verifier may mount the complete online root")
     require(
@@ -295,6 +315,23 @@ def validate(sources: dict[str, str]) -> None:
         "outer no-NIC VM payload, receipt, and final source replay",
     )
     require_order(
+        vm_outer,
+        (
+            "1:--flutter-peer-presentation)",
+            "MODE=flutter-peer-presentation",
+            "FLUTTER_PEER_SOURCE_COMMIT=",
+            "focused Flutter peer requires the one checked-out master authority",
+            "focused Flutter-peer source differs from pushed master",
+            "git_closed -C \"$REPO_ROOT\" archive --format=tar \"$FLUTTER_PEER_SOURCE_COMMIT\"",
+            "payload_identity=(-uid 1000 -gid 1000)",
+            'guest_invocation+=" --flutter-peer-presentation',
+            "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=",
+            "FLUTTER_PEER_PRESENTATION_VM=pass commit=",
+            "FLUTTER_PEER_PRESENTATION_VM_OUTER=pass",
+        ),
+        "focused no-NIC full-peer outer transaction",
+    )
+    require_order(
         vm_guest,
         (
             "smoke-flutter-peer-presentation.sh finalize-flutter-tools-offline.sh",
@@ -307,6 +344,29 @@ def validate(sources: dict[str, str]) -> None:
             "VERIFIER_VM_FLUTTER_PEER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused",
         ),
         "real guest authority decision matrix",
+    )
+    require_order(
+        vm_guest,
+        (
+            "12:--flutter-peer-presentation)",
+            "run_flutter_peer_presentation() {",
+            "mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs",
+            'mount -o remount,bind,ro,nodev,nosuid,noexec "$source_root"',
+            'mount -o remount,bind,ro,nodev,nosuid,noexec "$source_root/online/inputs"',
+            "--role devcheck",
+            'loaded and verified devcheck $DEV_CHECK_IMAGE_ID',
+            "--role deb-builder",
+            'loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID',
+            "VM root passed the Flutter full-peer workload entry",
+            "foreign principal passed the Flutter full-peer workload entry",
+            "caller Docker authority passed the Flutter full-peer workload entry",
+            'setpriv --reuid=1000 --regid=1000 --clear-groups',
+            '"$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_CONFIG_ID"',
+            "stop_docker_authority",
+            "FLUTTER_PEER_PRESENTATION_VM=pass commit=",
+            "run_flutter_peer_presentation",
+        ),
+        "real guest full-peer workload, refusal, image, and cleanup transaction",
     )
     require(
         sources["requirements"],

@@ -12,6 +12,9 @@ case "$#:${8:-}" in
     12:--flutter-model-tests)
         MODE=flutter-model-tests
         ;;
+    12:--flutter-peer-presentation)
+        MODE=flutter-peer-presentation
+        ;;
     12:--debian-systemd-lifecycle)
         MODE=debian-systemd-lifecycle
         ;;
@@ -22,7 +25,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -43,6 +46,10 @@ readonly FLUTTER_SOURCE_ARCHIVE=${9:-}
 readonly FLUTTER_SOURCE_COMMIT=${10:-}
 readonly FLUTTER_SOURCE_TREE=${11:-}
 readonly FLUTTER_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly FLUTTER_PEER_SOURCE_ARCHIVE=${9:-}
+readonly FLUTTER_PEER_SOURCE_COMMIT=${10:-}
+readonly FLUTTER_PEER_SOURCE_TREE=${11:-}
+readonly FLUTTER_PEER_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly DART_SOURCE_ARCHIVE=${9:-}
 readonly DART_SOURCE_COMMIT=${10:-}
 readonly DART_SOURCE_TREE=${11:-}
@@ -106,6 +113,8 @@ CONTAINER_ID=
 LIFECYCLE_LIBS_MOUNTED=0
 SEALED_INPUTS_MOUNTED=0
 RUST_AUDIT_VENDOR_MOUNTED=0
+FLUTTER_PEER_SOURCE_MOUNTED=0
+FLUTTER_PEER_ONLINE_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -1354,6 +1363,203 @@ run_flutter_model_tests() {
         "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
 }
 
+run_flutter_peer_presentation() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/flutter-peer-source
+    local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
+    local provenance=$source_root/scripts/offline-image-provenance.py
+    local devcheck_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
+    local output=$ROOT/flutter-peer-presentation.out
+    local source_archive_sha load_output mount_options peer_status=0
+
+    [[ "$FLUTTER_PEER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$FLUTTER_PEER_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Flutter-peer source identity is malformed'
+    [ -f "$FLUTTER_PEER_SOURCE_ARCHIVE" ] && [ ! -L "$FLUTTER_PEER_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FLUTTER_PEER_SOURCE_ARCHIVE")" = \
+             1000:1000:400:1 ] \
+        || fail 'focused Flutter-peer source archive metadata differs'
+    source_archive_sha="$(sha256sum "$FLUTTER_PEER_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Flutter-peer source archive digest differs'
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed Flutter-peer input authority'
+    SEALED_INPUTS_MOUNTED=1
+    mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed Flutter-peer input mount is absent'
+    case ",$mount_options," in *,ro,*) ;; *) fail 'sealed Flutter-peer inputs are writable' ;; esac
+    case ",$mount_options," in *,nodev,*) ;; *) fail 'sealed Flutter-peer inputs permit devices' ;; esac
+    case ",$mount_options," in *,nosuid,*) ;; *) fail 'sealed Flutter-peer inputs permit set-user-ID execution' ;; esac
+    case ",$mount_options," in *,noexec,*) ;; *) fail 'sealed Flutter-peer inputs permit direct execution' ;; esac
+
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$devcheck_archive")" = \
+      "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(sha256sum "$devcheck_archive" | awk '{ print $1 }')" = \
+             "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'sealed devcheck image archive differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
+      "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
+             "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Debian-builder image archive differs'
+
+    mkdir "$source_root"
+    tar -xf "$FLUTTER_PEER_SOURCE_ARCHIVE" --no-same-owner -C "$source_root" \
+        || fail 'cannot extract the exact Flutter-peer source archive'
+    chown -R 1000:1000 "$source_root"
+    install -d -m 0755 -o 1000 -g 1000 "$source_root/online/inputs"
+    [ -f "$peer_script" ] && [ ! -L "$peer_script" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$peer_script")" = 1000:1000:755:1 ] \
+        || fail 'exact Flutter-peer entry is absent or ambiguous'
+    [ -f "$provenance" ] && [ ! -L "$provenance" ] \
+        || fail 'exact offline-image verifier is absent or ambiguous'
+
+    mount --bind "$source_root" "$source_root" \
+        || fail 'cannot bind the exact Flutter-peer source read-only'
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$source_root" \
+        || fail 'cannot seal the exact Flutter-peer source mount'
+    FLUTTER_PEER_SOURCE_MOUNTED=1
+    mount --bind "$inputs" "$source_root/online/inputs" \
+        || fail 'cannot project sealed Flutter-peer inputs into the exact source'
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$source_root/online/inputs" \
+        || fail 'cannot seal the Flutter-peer input projection'
+    FLUTTER_PEER_ONLINE_MOUNTED=1
+    case ",$(findmnt -n -o OPTIONS --target "$source_root")," in
+        *,ro,*) ;;
+        *) fail 'exact Flutter-peer source remains writable' ;;
+    esac
+    case ",$(findmnt -n -o OPTIONS --target "$source_root/online/inputs")," in
+        *,ro,*) ;;
+        *) fail 'Flutter-peer input projection remains writable' ;;
+    esac
+
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$provenance" verify-load \
+                --archive "$devcheck_archive" \
+                --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+                --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" \
+                --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+                --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+                --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+                --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'devcheck archive verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail "devcheck archive verification/load receipt differs: $load_output"
+
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$provenance" verify-load \
+                --archive "$builder_archive" \
+                --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+                --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                --role deb-builder \
+                --expected-id "$DEB_BUILDER_IMAGE_ID" \
+                --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+                --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+                --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+                --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                --config-id "$DEB_BUILDER_CONFIG_ID" \
+                --manifest-id "$DEB_BUILDER_MANIFEST_ID"
+    )" || fail 'certified Debian-builder image verification/load failed'
+    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+        || fail "Debian-builder image receipt differs: $load_output"
+
+    if /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
+        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
+        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        >"$ROOT/flutter-peer-root.out" 2>"$ROOT/flutter-peer-root.err"; then
+        fail 'VM root passed the Flutter full-peer workload entry'
+    fi
+    [ ! -s "$ROOT/flutter-peer-root.out" ] \
+        && [ "$(<"$ROOT/flutter-peer-root.err")" = \
+          'flutter peer presentation smoke refuses host or container-root execution' ] \
+        || fail 'root Flutter full-peer workload refusal differs'
+    if setpriv --reuid=4001 --regid=4001 --clear-groups \
+        /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
+        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
+        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        >"$ROOT/flutter-peer-foreign.out" 2>"$ROOT/flutter-peer-foreign.err"; then
+        fail 'foreign principal passed the Flutter full-peer workload entry'
+    fi
+    [ ! -s "$ROOT/flutter-peer-foreign.out" ] \
+        && [ "$(<"$ROOT/flutter-peer-foreign.err")" = \
+          'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+        || fail 'foreign Flutter full-peer workload refusal differs'
+    if setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env DOCKER_HOST=unix:///tmp/forbidden-docker.sock \
+        /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
+        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
+        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        >"$ROOT/flutter-peer-caller.out" 2>"$ROOT/flutter-peer-caller.err"; then
+        fail 'caller Docker authority passed the Flutter full-peer workload entry'
+    fi
+    [ ! -s "$ROOT/flutter-peer-caller.out" ] \
+        && [ "$(<"$ROOT/flutter-peer-caller.err")" = \
+          'FATAL: caller DOCKER_HOST authority is forbidden' ] \
+        || fail 'caller-authority Flutter full-peer workload refusal differs'
+
+    set +e
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
+        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
+        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        2>&1 | tee "$output"
+    peer_status=${PIPESTATUS[0]}
+    set -e
+    [ "$peer_status" -eq 0 ] \
+        || { tail -n 240 "$output" >&2; fail "Flutter full-peer workload exited with status $peer_status"; }
+    [ "$(stat -c '%s' -- "$output")" -le 8388608 ] \
+        || fail 'Flutter full-peer workload output exceeds its bound'
+    [ "$(grep -Fxc \
+      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 scope=linux-x11-full-peer-only network=owned-none-namespace" \
+      "$output")" -eq 1 ] \
+        || fail 'Flutter full-peer product verdict is absent or duplicated'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'Flutter full-peer workload left a container'
+    "$CLIENT" --host "unix://$SOCK" image rm \
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_CONFIG_ID" >/dev/null \
+        || fail 'Flutter full-peer images could not be retired'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Flutter full-peer workload left an image'
+    [ "$(sha256sum "$FLUTTER_PEER_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
+      "$source_archive_sha" ] \
+        || fail 'focused Flutter-peer source archive changed during execution'
+
+    stop_docker_authority
+    umount "$source_root/online/inputs" \
+        || fail 'cannot retire the Flutter-peer input projection'
+    FLUTTER_PEER_ONLINE_MOUNTED=0
+    umount "$source_root" || fail 'cannot retire the read-only Flutter-peer source mount'
+    FLUTTER_PEER_SOURCE_MOUNTED=0
+    umount "$inputs" || fail 'cannot retire the sealed Flutter-peer input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
+        "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
+        "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" "$DEV_CHECK_IMAGE_ID" \
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+}
+
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
@@ -1374,6 +1580,14 @@ cleanup() {
         wait "$DAEMON_PID" 2>/dev/null || daemon_status=$?
         [ "$daemon_status" -eq 0 ] || [ "$daemon_status" -eq 143 ] || status=1
         DAEMON_PID=
+    fi
+    if [ "$FLUTTER_PEER_ONLINE_MOUNTED" -eq 1 ]; then
+        umount "$ROOT/flutter-peer-source/online/inputs" 2>/dev/null || status=1
+        FLUTTER_PEER_ONLINE_MOUNTED=0
+    fi
+    if [ "$FLUTTER_PEER_SOURCE_MOUNTED" -eq 1 ]; then
+        umount "$ROOT/flutter-peer-source" 2>/dev/null || status=1
+        FLUTTER_PEER_SOURCE_MOUNTED=0
     fi
     if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1
@@ -1604,6 +1818,7 @@ done
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
+   || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     docker_socket_gid=1000
 fi
@@ -1656,6 +1871,11 @@ fi
 
 if [ "$MODE" = flutter-model-tests ]; then
     run_flutter_model_tests
+    exit 0
+fi
+
+if [ "$MODE" = flutter-peer-presentation ]; then
+    run_flutter_peer_presentation
     exit 0
 fi
 

@@ -1,0 +1,7 @@
+# name<TAB>size<TAB>sha256<TAB>exact official Debian package URL
+#
+# Test-infrastructure input only: these packages supply the private AT-SPI session service used
+# to observe the real Flutter password field. They are extracted inside a network-none verifier
+# container and are never installed into the host, a pinned image, or a release artifact.
+at-spi2-core	57324	42c3567bef2bd3e868a072acbdef1c3b0416b2a127a2e0fa2cbc600cedcd2a9a	https://deb.debian.org/debian/pool/main/a/at-spi2-core/at-spi2-core_2.46.0-5_amd64.deb
+gsettings-desktop-schemas	642864	15cc7142c3ddea0551b834c53c4d3b5cd8f5485e695100966877f2be50def7af	https://deb.debian.org/debian/pool/main/g/gsettings-desktop-schemas/gsettings-desktop-schemas_43.0-1_all.deb

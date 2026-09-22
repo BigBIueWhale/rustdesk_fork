@@ -822,7 +822,8 @@ DEV_CHECK_ARCHIVE_ID=
 if [ "$MODE" = flutter-peer-presentation ]; then
     for required_directory in \
         "$ONLINE_INPUTS/vcpkg/installed/x64-linux" \
-        "$ONLINE_INPUTS/xvfb-debs"; do
+        "$ONLINE_INPUTS/xvfb-debs" \
+        "$ONLINE_INPUTS/atspi-debs"; do
         [ -d "$required_directory" ] && [ ! -L "$required_directory" ] \
             || fail "focused Flutter-peer input directory is absent or ambiguous: $required_directory"
     done
@@ -929,7 +930,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
             "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT" \
-            "$ONLINE_INPUTS/vcpkg/installed/x64-linux" "$ONLINE_INPUTS/xvfb-debs"
+            "$ONLINE_INPUTS/vcpkg/installed/x64-linux" "$ONLINE_INPUTS/xvfb-debs" \
+            "$ONLINE_INPUTS/atspi-debs"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
             "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
@@ -1704,7 +1706,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
             "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT" \
-            "$ONLINE_INPUTS/vcpkg/installed/x64-linux" "$ONLINE_INPUTS/xvfb-debs"
+            "$ONLINE_INPUTS/vcpkg/installed/x64-linux" "$ONLINE_INPUTS/xvfb-debs" \
+            "$ONLINE_INPUTS/atspi-debs"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
             "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \

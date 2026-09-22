@@ -249,6 +249,7 @@ readonly VCPKG_NATIVE_PRODUCER="$SCRIPT_DIR/build-vcpkg-native-output.sh"
 readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FLUTTER_PEER_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+readonly FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-atspi-packages.tsv"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_BUILDKIT_ENDPOINT=unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock
 readonly ONLINE_FETCH_BUILDX_BUILDER=rustdesk-online-fetch
@@ -1794,12 +1795,14 @@ vendor_cargo() {
 # final name. The host independently checks every exact length/digest before a
 # descriptor-relative no-clobber publication. The admitted manifests are the
 # fourteen toolchain/installer archives, the exact seven-archive Android build
-# projection, the two Dart-audit rebuild inputs, the vcpkg/Xvfb full-peer
+# projection, the two Dart-audit rebuild inputs, the vcpkg/Xvfb/AT-SPI full-peer
 # projection, six signed WiX packages, 33 vcpkg source/tool distfiles, and the
 # one dated Debian systemd image.
 load_flutter_peer_fixed_archive_manifest() {
     local name size digest url extra host manifest_sha256 count=0
+    local atspi_manifest_sha256 atspi_count=0
     local -a expected_names=(libfontenc1 libxfont2 libxkbfile1 x11-xkb-utils xvfb)
+    local -a expected_atspi_names=(at-spi2-core gsettings-desktop-schemas)
     [ "${#FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}" -eq 0 ] \
         || die "Flutter-peer fixed-archive manifest was loaded more than once"
     [ -f "$FLUTTER_PEER_PACKAGE_MANIFEST" ] \
@@ -1841,6 +1844,36 @@ load_flutter_peer_fixed_archive_manifest() {
     [ "$(/usr/bin/sha256sum "$FLUTTER_PEER_PACKAGE_MANIFEST" \
         | /usr/bin/awk '{print $1}')" = "$manifest_sha256" ] \
         || die "Flutter-peer package manifest changed while loading"
+    [ -f "$FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST" ] \
+        && [ ! -L "$FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST" ] \
+        || die "Flutter-peer AT-SPI package manifest is not one real file"
+    atspi_manifest_sha256="$(/usr/bin/sha256sum "$FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST" \
+        | /usr/bin/awk '{print $1}')"
+    while IFS=$'\t' read -r name size digest url extra || [ -n "${name:-}" ]; do
+        [ -n "${name:-}" ] || continue
+        [[ "$name" == \#* ]] && continue
+        [ -z "${extra:-}" ] \
+            || die "Flutter-peer AT-SPI package manifest has an extra field: $name"
+        [ "$atspi_count" -lt "${#expected_atspi_names[@]}" ] \
+            && [ "$name" = "${expected_atspi_names[$atspi_count]}" ] \
+            || die "Flutter-peer AT-SPI package manifest name/order differs: $name"
+        [[ "$size" =~ ^[1-9][0-9]*$ ]] \
+            && [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+            || die "Flutter-peer AT-SPI package size or digest is malformed: $name"
+        case "$url" in
+            https://deb.debian.org/debian/pool/*.deb) host=deb.debian.org ;;
+            *) die "Flutter-peer AT-SPI package URL is outside the exact Debian HTTPS pool: $name" ;;
+        esac
+        FLUTTER_PEER_FIXED_ARCHIVE_ARGS+=(
+            --entry "atspi-debs/$name.deb" "$url" "$size" "$digest" "$host"
+        )
+        atspi_count=$((atspi_count + 1))
+    done <"$FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST"
+    [ "$atspi_count" -eq "${#expected_atspi_names[@]}" ] \
+        || die "Flutter-peer AT-SPI manifest must contain exactly two packages"
+    [ "$(/usr/bin/sha256sum "$FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST" \
+        | /usr/bin/awk '{print $1}')" = "$atspi_manifest_sha256" ] \
+        || die "Flutter-peer AT-SPI package manifest changed while loading"
     readonly -a FLUTTER_PEER_FIXED_ARCHIVE_ARGS
 }
 
@@ -2065,7 +2098,7 @@ stage_flutter_peer_inputs() {
     load_flutter_peer_fixed_archive_manifest
     stage_archive_bundle flutter-peer "$ONLINE_DIR" \
         .rustdesk-flutter-peer-archives \
-        "pinned Linux full-peer vcpkg/Xvfb inputs" \
+        "pinned Linux full-peer vcpkg/Xvfb/AT-SPI inputs" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
     verify_or_load_deb_builder_image
     stage_vcpkg_distfiles

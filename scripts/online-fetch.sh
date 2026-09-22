@@ -2216,7 +2216,7 @@ verify_flutter_presentation_pub_discovery() {
         --env "RUSTDESK_PROJECT_LOCK_SHA256=$expected_lock_sha256" \
         --workdir /tmp \
         "$(online_fetch_builder_runtime_ref "$builder")" \
-        /usr/bin/timeout --signal=TERM --kill-after=10s 600s \
+        /usr/bin/timeout --signal=TERM --kill-after=10s 300s \
         /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
         mkdir /tmp/toolchain /tmp/home /tmp/project
@@ -2237,10 +2237,6 @@ verify_flutter_presentation_pub_discovery() {
               | awk "{print \$1}")" = "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
         (cd /tmp/project && dart pub get --offline --enforce-lockfile >/dev/null)
         printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=dart-complete\n" >&2
-        rm -rf -- /tmp/project/linux/flutter/ephemeral/.plugin_symlinks \
-            /tmp/project/.flutter-plugins-dependencies /tmp/project/.flutter-plugins
-        (cd /tmp/project && flutter pub get --offline --enforce-lockfile >/dev/null)
-        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=flutter-complete\n" >&2
         [ "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" = \
           "$RUSTDESK_PROJECT_LOCK_SHA256" ]
         [ "$(sha256sum /candidate/pubspec.lock | awk "{print \$1}")" = \

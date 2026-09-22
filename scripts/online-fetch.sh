@@ -5,9 +5,11 @@
 # script permitted to touch the network; it materializes every resource the repo
 # does not embed into ./online/inputs/ or the private verifier-VM input cache (both
 # git-ignored, NOT vendored — pinning != vendoring, R-R1), each verified against
-# its pin in scripts/pins.env. Any mismatch aborts fail-closed. The build scripts
-# then run with the network namespace removed (--network=none) and refuse to run
-# if ./online/inputs is incomplete or any SHA fails.
+# its pin in scripts/pins.env. Explicit maintenance trials live outside that
+# canonical closure under ./online/candidates/ and cannot become build inputs.
+# Any mismatch aborts fail-closed. The build scripts then run with the network
+# namespace removed (--network=none) and refuse to run if ./online/inputs is
+# incomplete or any SHA fails.
 #
 # This reconciles R-R1's "pinning != vendoring" with the offline build: the bulky
 # pinned world is CACHED, not committed — re-creatable from pins.env and
@@ -247,6 +249,8 @@ readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-o
 readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
 readonly VCPKG_NATIVE_PRODUCER="$SCRIPT_DIR/build-vcpkg-native-output.sh"
 readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
+readonly ONLINE_CANDIDATE_ROOT="$ONLINE_STATE_ROOT/candidates"
+readonly FLUTTER_PRESENTATION_CANDIDATE_ROOT="$ONLINE_CANDIDATE_ROOT/flutter-presentation"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FLUTTER_PEER_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-xvfb-packages.tsv"
 readonly FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-atspi-packages.tsv"
@@ -411,6 +415,14 @@ readonly -a FLUTTER_TEST_FIXED_ARCHIVE_ARGS=(
     "$SIZE_RUST_1_75"
     "$SHA256_RUST_1_75"
     "static.rust-lang.org"
+)
+readonly -a FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS=(
+    --entry
+    "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_PRESENTATION_CANDIDATE_VERSION}-stable.tar.xz"
+    "$SIZE_FLUTTER_PRESENTATION_CANDIDATE"
+    "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    "storage.googleapis.com"
 )
 readonly -a ANDROID_BUILD_FIXED_ARCHIVE_ARGS=(
     --entry
@@ -1944,6 +1956,7 @@ archive_bundle_tool() {
         android-build) archive_args=("${ANDROID_BUILD_FIXED_ARCHIVE_ARGS[@]}") ;;
         dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}") ;;
         flutter-peer) archive_args=("${FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}") ;;
+        flutter-presentation-candidate) archive_args=("${FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS[@]}") ;;
         flutter-test) archive_args=("${FLUTTER_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         rust-test) archive_args=("${RUST_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
@@ -2095,6 +2108,30 @@ stage_flutter_test_inputs() {
     vendor_cargo
     build_frb_codegen reproduce
     stage_pub_cache
+}
+
+stage_flutter_presentation_candidate() {
+    local directory
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$FLUTTER_PRESENTATION_CANDIDATE_ROOT"; do
+        if [ -e "$directory" ] || [ -L "$directory" ]; then
+            [ -d "$directory" ] && [ ! -L "$directory" ] \
+                || die "Flutter presentation candidate root is not one real directory: $directory"
+        else
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "Flutter presentation candidate root is not acquisition-identity-owned mode 0700: $directory"
+        [ "$(/usr/bin/stat -c '%d' -- "$directory")" \
+          = "$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" ] \
+            || die "Flutter presentation candidate root is not on the online-state filesystem: $directory"
+    done
+    verify_or_load_android_builder_image
+    stage_archive_bundle flutter-presentation-candidate \
+        "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+        .rustdesk-flutter-presentation-candidate \
+        "pinned Flutter Linux presentation candidate archive" \
+        "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 
 stage_flutter_peer_inputs() {
@@ -7342,6 +7379,12 @@ main() {
             maintenance_discover_osv_pub_database
             return 0
             ;;
+        --maintenance-stage-flutter-presentation-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-stage-flutter-presentation-candidate takes no arguments"
+            stage_flutter_presentation_candidate
+            return 0
+            ;;
         --maintenance-build-devcheck-image-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-build-devcheck-image-candidate takes no arguments"
             maintenance_build_devcheck_image_candidate
@@ -7440,7 +7483,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-stage-flutter-presentation-candidate|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

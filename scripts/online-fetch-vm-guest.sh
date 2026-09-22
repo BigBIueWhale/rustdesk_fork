@@ -277,7 +277,7 @@ for identity in "$ACQUISITION_UID" "$ACQUISITION_GID"; do
         || fail 'acquisition principal is malformed or root'
 done
 case "$REQUEST" in
-    __full__|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|\
+    __full__|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-stage-flutter-presentation-candidate|\
     --maintenance-build-deb-builder-bootstrap-candidate|\
     --maintenance-build-android-builder-bootstrap-candidate|\
     --maintenance-build-win-helper-bootstrap-candidate|\
@@ -528,10 +528,15 @@ if [ "$REQUEST" = __authority_smoke__ ]; then
         || fail 'focused cache-state export does not contain the exact inputs/retired layout'
     cache_directories+=("$REPO/online/retired")
 else
-    [ "$cache_inventory" = inputs ] || [ "$cache_inventory" = $'inputs\nretired' ] \
-        || fail 'cache-state export contains something other than inputs and its optional retired transaction root'
+    case "$cache_inventory" in
+        inputs|$'candidates\ninputs'|$'inputs\nretired'|$'candidates\ninputs\nretired') ;;
+        *) fail 'cache-state export contains something other than inputs, candidates, and its optional retired transaction root' ;;
+    esac
     if [ -e "$REPO/online/retired" ] || [ -L "$REPO/online/retired" ]; then
         cache_directories+=("$REPO/online/retired")
+    fi
+    if [ -e "$REPO/online/candidates" ] || [ -L "$REPO/online/candidates" ]; then
+        cache_directories+=("$REPO/online/candidates")
     fi
 fi
 for directory in "${cache_directories[@]}" \
@@ -1055,6 +1060,9 @@ verify_buildkit_daemon_generation "$buildkit_start" \
     || fail 'online-fetch result exceeded its output bound'
 /usr/bin/sync -f "$REPO/online"
 /usr/bin/sync -f "$REPO/online/inputs"
+if [ -d "$REPO/online/candidates" ] && [ ! -L "$REPO/online/candidates" ]; then
+    /usr/bin/sync -f "$REPO/online/candidates"
+fi
 if [ "$REQUEST" = __authority_smoke__ ]; then
     /usr/bin/sync -f "$REPO/online/retired"
 fi

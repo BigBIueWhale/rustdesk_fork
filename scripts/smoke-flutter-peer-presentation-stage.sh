@@ -220,7 +220,12 @@ start_xvfb() {
   local display=$1 geometry=$2 log=$3
   "$XVFB" "$display" -screen 0 "$geometry" -nolisten tcp -ac -noreset >"$log" 2>&1 &
   XVFB_PID=$!
-  XVFB_START=$("$READY" --identity "$XVFB_PID")
+  XVFB_START=
+  if ! XVFB_START=$("$READY" --identity "$XVFB_PID"); then
+    wait "$XVFB_PID" 2>/dev/null || true
+    cat "$log" >&2
+    fail "Xvfb $display exited before identity capture"
+  fi
   local socket="/tmp/.X11-unix/X${display#:}"
   for _ in $(seq 1 300); do
     [ -S "$socket" ] && break

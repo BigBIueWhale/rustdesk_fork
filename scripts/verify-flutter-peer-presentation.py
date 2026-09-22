@@ -623,6 +623,16 @@ def validate(sources: dict[str, str]) -> None:
     require(stage, '[ -z "${LD_PRELOAD:-}" ]', "ambient preload refusal")
     require(stage, "assert_loopback_only_interface", "loopback-only inspection")
     require(stage, '[ "$interfaces" = lo ]', "sole loopback interface")
+    require_order(
+        stage,
+        (
+            'XVFB_START=$("$READY" --identity "$XVFB_PID")',
+            'wait "$XVFB_PID" 2>/dev/null || true',
+            'cat "$log" >&2',
+            'fail "Xvfb $display exited before identity capture"',
+        ),
+        "early Xvfb failure diagnostics and join",
+    )
     require(stage, "0100007F:527E", "exact 127.0.0.1:21118 listener")
     require(stage, "verify_regular /out/smoke-bind-loopback.so", "manifested bind shim")
     require(stage, "verify_machine_identity", "private endpoint machine identity validation")

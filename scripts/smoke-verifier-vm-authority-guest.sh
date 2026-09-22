@@ -1411,6 +1411,10 @@ run_flutter_peer_presentation() {
     tar -xf "$FLUTTER_PEER_SOURCE_ARCHIVE" --no-same-owner -C "$source_root" \
         || fail 'cannot extract the exact Flutter-peer source archive'
     chown -R 1000:1000 "$source_root"
+    chmod -R go-w "$source_root"
+    [ -z "$(find "$source_root" -xdev ! -type l \
+        \( -perm /022 -o -perm /6000 \) -print -quit)" ] \
+        || fail 'exact Flutter-peer source has unsafe writable or special-bit metadata'
     install -d -m 0755 -o 1000 -g 1000 "$source_root/online/inputs"
     [ -f "$peer_script" ] && [ ! -L "$peer_script" ] \
         && [ "$(stat -c '%u:%g:%a:%h' -- "$peer_script")" = 1000:1000:755:1 ] \

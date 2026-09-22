@@ -819,6 +819,14 @@ fi
 
 LIFECYCLE_ARTIFACT_ID=
 DEV_CHECK_ARCHIVE_ID=
+if [ "$MODE" = flutter-peer-presentation ]; then
+    for required_directory in \
+        "$ONLINE_INPUTS/vcpkg/installed/x64-linux" \
+        "$ONLINE_INPUTS/xvfb-debs"; do
+        [ -d "$required_directory" ] && [ ! -L "$required_directory" ] \
+            || fail "focused Flutter-peer input directory is absent or ambiguous: $required_directory"
+    done
+fi
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     case "$LIFECYCLE_ARTIFACT:$DEV_CHECK_ARCHIVE" in
         /*:/*) ;;
@@ -929,7 +937,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
             "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
             "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-    )"
+    )" || fail 'cannot inventory the sealed Flutter full-peer inputs'
 elif [ "$MODE" = flutter-model-tests ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \

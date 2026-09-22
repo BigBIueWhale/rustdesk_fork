@@ -249,7 +249,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             fail("the fourteen-entry toolchain manifest has a non-win/ nested path")
         return
     if len(specs) == 6:
-        expected = tuple(
+        expected_wix = tuple(
             f"wix-nuget-packages/{package}.4.0.5.nupkg"
             for package in (
                 "wixtoolset.firewall.wixext",
@@ -260,8 +260,19 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
                 "wixtoolset.util.wixext",
             )
         )
-        if names != expected:
-            fail("the WiX manifest is not the exact sorted six-package 4.0.5 source")
+        expected_flutter_peer = (
+            "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
+            "xvfb-debs/libfontenc1.deb",
+            "xvfb-debs/libxfont2.deb",
+            "xvfb-debs/libxkbfile1.deb",
+            "xvfb-debs/x11-xkb-utils.deb",
+            "xvfb-debs/xvfb.deb",
+        )
+        if names not in (expected_wix, expected_flutter_peer):
+            fail(
+                "the six-entry manifest is neither the exact WiX source nor "
+                "the exact Linux full-peer vcpkg/Xvfb source"
+            )
         return
     if len(specs) == 33:
         source_names = tuple(
@@ -287,7 +298,8 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     fail(
         "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
         "two Dart audit inputs, three Flutter model-test toolchain entries, "
-        "six WiX packages, seven Android build toolchain entries, 14 toolchain entries, "
+        "an admitted six-entry WiX or Linux full-peer source, seven Android build "
+        "toolchain entries, 14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
     )
@@ -1454,6 +1466,29 @@ def test_wix_specs() -> tuple[ArchiveSpec, ...]:
     return parse_specs(records)
 
 
+def test_flutter_peer_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for name in (
+        "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
+        "xvfb-debs/libfontenc1.deb",
+        "xvfb-debs/libxfont2.deb",
+        "xvfb-debs/libxkbfile1.deb",
+        "xvfb-debs/x11-xkb-utils.deb",
+        "xvfb-debs/xvfb.deb",
+    ):
+        payload = f"{name}-fixture".encode("ascii")
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def test_systemd_image_specs() -> tuple[ArchiveSpec, ...]:
     name = "debian-12-genericcloud-amd64-20260712-2537.qcow2"
     payload = b"systemd-image-fixture"
@@ -1698,6 +1733,26 @@ def self_test() -> None:
             os.close(vcpkg_online_fd)
 
         wix_specs = test_wix_specs()
+        flutter_peer_specs = test_flutter_peer_specs()
+        if len(flutter_peer_specs) != 6:
+            fail("Flutter-peer self-test lost its exact fixed-input manifest")
+        substituted_flutter_peer_specs = [
+            [
+                spec.name,
+                spec.url,
+                str(spec.size),
+                spec.sha256,
+                ",".join(spec.redirect_hosts),
+            ]
+            for spec in flutter_peer_specs
+        ]
+        substituted_flutter_peer_specs[-1][0] = "xvfb-debs/substituted.deb"
+        try:
+            parse_specs(substituted_flutter_peer_specs)
+        except ContractError:
+            pass
+        else:
+            fail("Flutter-peer self-test accepted a substituted fixed input")
         wix_online = root / "wix-online"
         wix_staging = root / "wix-staging"
         wix_online.mkdir(mode=0o700)

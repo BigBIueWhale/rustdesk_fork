@@ -247,6 +247,7 @@ readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-o
 readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
 readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
+readonly FLUTTER_PEER_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-xvfb-packages.tsv"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_BUILDKIT_ENDPOINT=unix:///run/rustdesk-online-fetch-buildkit/buildkitd.sock
 readonly ONLINE_FETCH_BUILDX_BUILDER=rustdesk-online-fetch
@@ -506,6 +507,7 @@ readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(
     "api.nuget.org"
 )
 declare -a VCPKG_FIXED_ARCHIVE_ARGS=()
+declare -a FLUTTER_PEER_FIXED_ARCHIVE_ARGS=()
 readonly SYSTEMD_SMOKE_IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
 readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(
     --entry
@@ -1791,8 +1793,56 @@ vendor_cargo() {
 # final name. The host independently checks every exact length/digest before a
 # descriptor-relative no-clobber publication. The admitted manifests are the
 # fourteen toolchain/installer archives, the exact seven-archive Android build
-# projection, the two Dart-audit rebuild inputs, six signed WiX packages, 33
-# vcpkg source/tool distfiles, and the one dated Debian systemd image.
+# projection, the two Dart-audit rebuild inputs, the vcpkg/Xvfb full-peer
+# projection, six signed WiX packages, 33 vcpkg source/tool distfiles, and the
+# one dated Debian systemd image.
+load_flutter_peer_fixed_archive_manifest() {
+    local name size digest url extra host manifest_sha256 count=0
+    local -a expected_names=(libfontenc1 libxfont2 libxkbfile1 x11-xkb-utils xvfb)
+    [ "${#FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}" -eq 0 ] \
+        || die "Flutter-peer fixed-archive manifest was loaded more than once"
+    [ -f "$FLUTTER_PEER_PACKAGE_MANIFEST" ] \
+        && [ ! -L "$FLUTTER_PEER_PACKAGE_MANIFEST" ] \
+        || die "Flutter-peer package manifest is not one real file"
+    manifest_sha256="$(/usr/bin/sha256sum "$FLUTTER_PEER_PACKAGE_MANIFEST" \
+        | /usr/bin/awk '{print $1}')"
+    FLUTTER_PEER_FIXED_ARCHIVE_ARGS=(
+        --entry
+        "vcpkg-${VCPKG_BASELINE}.tar.gz"
+        "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz"
+        "$SIZE_VCPKG_120DEAC3"
+        "$SHA256_VCPKG_120DEAC3"
+        "github.com,codeload.github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    )
+    while IFS=$'\t' read -r name size digest url extra || [ -n "${name:-}" ]; do
+        [ -n "${name:-}" ] || continue
+        [[ "$name" == \#* ]] && continue
+        [ -z "${extra:-}" ] \
+            || die "Flutter-peer package manifest has an extra field: $name"
+        [ "$count" -lt "${#expected_names[@]}" ] \
+            && [ "$name" = "${expected_names[$count]}" ] \
+            || die "Flutter-peer package manifest name/order differs: $name"
+        [[ "$size" =~ ^[1-9][0-9]*$ ]] \
+            && [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+            || die "Flutter-peer package size or digest is malformed: $name"
+        case "$url" in
+            https://deb.debian.org/debian/pool/*.deb) host=deb.debian.org ;;
+            https://security.debian.org/debian-security/pool/*.deb) host=security.debian.org ;;
+            *) die "Flutter-peer package URL is outside the exact Debian HTTPS pools: $name" ;;
+        esac
+        FLUTTER_PEER_FIXED_ARCHIVE_ARGS+=(
+            --entry "xvfb-debs/$name.deb" "$url" "$size" "$digest" "$host"
+        )
+        count=$((count + 1))
+    done <"$FLUTTER_PEER_PACKAGE_MANIFEST"
+    [ "$count" -eq "${#expected_names[@]}" ] \
+        || die "Flutter-peer package manifest must contain exactly five packages"
+    [ "$(/usr/bin/sha256sum "$FLUTTER_PEER_PACKAGE_MANIFEST" \
+        | /usr/bin/awk '{print $1}')" = "$manifest_sha256" ] \
+        || die "Flutter-peer package manifest changed while loading"
+    readonly -a FLUTTER_PEER_FIXED_ARCHIVE_ARGS
+}
+
 load_vcpkg_fixed_archive_manifest() {
     local name size digest url hosts extra tool_name tool_hash tool_extra count=0
     local manifest_sha256
@@ -1856,6 +1906,7 @@ archive_bundle_tool() {
     case "$kind" in
         android-build) archive_args=("${ANDROID_BUILD_FIXED_ARCHIVE_ARGS[@]}") ;;
         dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}") ;;
+        flutter-peer) archive_args=("${FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}") ;;
         flutter-test) archive_args=("${FLUTTER_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         rust-test) archive_args=("${RUST_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
@@ -2007,6 +2058,17 @@ stage_flutter_test_inputs() {
     vendor_cargo
     build_frb_codegen reproduce
     stage_pub_cache
+}
+
+stage_flutter_peer_inputs() {
+    load_flutter_peer_fixed_archive_manifest
+    stage_archive_bundle flutter-peer "$ONLINE_DIR" \
+        .rustdesk-flutter-peer-archives \
+        "pinned Linux full-peer vcpkg/Xvfb inputs" \
+        "$DEB_BUILDER_CONFIG_ID" deb-builder
+    stage_vcpkg_distfiles
+    stage_vcpkg_natives
+    log "Linux full-peer acquisition inputs are exact and no-clobber published"
 }
 
 stage_android_build_inputs() {
@@ -7199,6 +7261,11 @@ main() {
             stage_flutter_test_inputs
             return 0
             ;;
+        --flutter-peer-inputs)
+            [ "$#" -eq 1 ] || die "--flutter-peer-inputs takes no arguments"
+            stage_flutter_peer_inputs
+            return 0
+            ;;
         --android-build-inputs)
             [ "$#" -eq 1 ] || die "--android-build-inputs takes no arguments"
             stage_android_build_inputs
@@ -7262,7 +7329,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

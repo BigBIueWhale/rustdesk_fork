@@ -422,7 +422,7 @@ if [ -n "$r_s11cs" ]; then
   echo "  FAIL R-S11cs fixed toolchain archive authority:$r_s11cs"
   rc=1
 else
-  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, two Dart advisory inputs, six signed WiX packages, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
+  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, two Dart advisory inputs, six full-peer inputs, six signed WiX packages, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
 fi
 
 echo "== (0j-wix) exact signed WiX NuGet authority (R-S11cz/R-S11e-118) =="

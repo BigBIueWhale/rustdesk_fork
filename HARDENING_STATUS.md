@@ -71,7 +71,7 @@ by their requirements and the STOP-SHIP matrices below.
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
 | Appendix C #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
-| Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub snapshot has a real no-NIC VM verdict recorded in R-S11df below; current RustSec execution, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
+| Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound, but the complete canonical input closure, stable Android signing material, a current APK/AAB, installation, lifecycle, peer, presentation, and device evidence are absent or open. |
 
@@ -1019,7 +1019,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has a pin-bound recoverable verifier image: two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. A current confined full product/source gate and a fresh independent-environment rebuild remain required; this infrastructure result supplies no product or native evidence. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Current `run.52py3CWymM` executed the real Android Rust, Gradle/Kotlin, warm-APK, and Gradle-seed publication path at `a73040d`, while its outer verdict was invalidated solely by disappearance of a pre-existing listener; clean `run.hutLn5juYg` then passed exact seed reuse, unchanged listeners, and joined finality. Android signing and retained release artifacts, installation/device lifecycle, advisory scans, Apple source work, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Current `run.52py3CWymM` executed the real Android Rust, Gradle/Kotlin, warm-APK, and Gradle-seed publication path at `a73040d`, while its outer verdict was invalidated solely by disappearance of a pre-existing listener; clean `run.hutLn5juYg` then passed exact seed reuse, unchanged listeners, and joined finality. Android signing and retained release artifacts, installation/device lifecycle, future advisory refreshes, Apple source work, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -5871,38 +5871,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   seconds and exercised the 31-decision result gate plus offline-image provenance fixtures. This closes the current
   Dart verdict only for that exact 2026-09-10 Pub snapshot, lockfile, policy, image, and source.
 
-  A separately administered independent reconstruction, current RustSec scan, analogous publication/runtime
-  identity assumptions in other Docker consumers, complete canonical closure/current cold artifacts, release and
+  A separately administered independent reconstruction, analogous publication/runtime identity assumptions in
+  other Docker consumers, complete canonical closure/current cold artifacts, release and
   signed artifacts, native/device behavior, display/session lifecycle, performance/soak, and external review remain
   open. Neither run used host/root Docker, host RustDesk or Haggai state, a published port, or host firewall/network
   mutation.
-- **R-S11dg/R-S11e-125 — Rust advisory execution authority — VM ENTRY IMPLEMENTED;
-  CURRENT RUSTSEC SCAN AND RELEASE EVIDENCE OPEN.** `scripts/audit.sh` now refuses
-  UID/GID zero and authenticates R-S11dh before reading repository audit inputs or
-  creating scratch. Both immutable-image inspections and all three bounded
-  preflight/scanner launches use only the fixed guest client, guest-private socket,
-  and root-owned canonical-empty read-only configuration in an empty environment,
-  with VM authority replay before and after every operation. The former host
-  `/var/run/docker.sock` route and its per-run host-client configuration lifecycle
-  are deleted; no host or rootless-host Docker fallback remains.
+- **R-S11dg/R-S11e-125 — Rust advisory execution authority — CURRENT NO-NIC
+  RUSTSEC SCAN PASS 2026-09-22; RELEASE EVIDENCE OPEN.** `scripts/audit.sh`
+  refuses UID/GID zero and authenticates R-S11dh before reading repository audit
+  inputs or creating scratch. Both immutable-image inspections and all three
+  bounded preflight/scanner launches use only the fixed guest client,
+  guest-private socket, and root-owned canonical-empty read-only configuration in
+  an empty environment, with VM authority replay before and after every operation.
+  The former host `/var/run/docker.sock` route and host-Docker fallbacks remain
+  absent. Mutable source-tree paths are masked only when they exist, so the gate
+  now works from an exact archive without requiring `.git`, `target`, harness, or
+  Flutter output residue; Cargo target state is guest-private tmpfs state.
 
-  The focused KVM harness carries the real entry on read-only media, refuses VM
-  root and UID/GID 4001, admits only UID/GID 4000, and completes an actual Docker
-  client/server version request. The current no-NIC run completed in 19 seconds
-  with unchanged host listener sets and joined residue-free cleanup. The former
-  1,053-line cross-subsystem mutation catalog is replaced by a compact check for
-  entry ordering, alternate-authority absence, transaction ordering, and the exact
-  three confined launch shapes; the same guest executes the separate 20-decision
-  policy/freshness/result behavioral test. Acquisition and OCI provenance retain
-  their own focused gates.
+  Commits `836bd57` and `48bc65e` add the real focused transaction. It admits one
+  exact clean pushed `master` archive, the authenticated Rust-audit image on
+  read-only ISO media, and the sealed Cargo vendor closure through nonroot
+  Landlocked read-only `virtiofsd`; QEMU has `-nic none`. Root and UID/GID 4001 are
+  refused, while the authenticated UID/GID 1000 principal loads the exact classic-
+  store runtime config and executes the unchanged production audit entry. The
+  compact source gate remains supplementary; the separate 20-decision policy,
+  freshness, and result test plus acquisition/OCI provenance retain their own
+  focused coverage.
 
-  The authenticated Rust audit image archive is not present in the VM inputs, so
-  neither scanner ran and no current RustSec verdict is claimed. The 2026-07-26
-  scan remains historical evidence for that older tree only. Exact image/input
-  transport, a current full scanner transaction, cold reproducible artifacts,
-  remaining Docker consumers, independent reproduction, and external review stay
-  open. This slice did not run RustDesk, touch host RustDesk or Haggai, use host
-  root/Docker, expose a listener, or change host firewall/network state.
+  Exact clean pushed-source run `run.UXY7Iyvbty` at
+  `48bc65eb9324ae7871d5ac43ab393b211247dd5c`, tree
+  `858bdc5758d6ec61ba1987874475c5a4b83c2b8e`, completed both real offline
+  scanners in 125 seconds and emitted the one exact green R-R3/R-S11bf verdict.
+  The emitted receipts bind publication index
+  `sha256:5e2a167b67cc0692974757bb4752583a57458e4c7f70693e0ba2b1ca2bf6cfbe`,
+  runtime config
+  `sha256:c7f8e0132b340dc41899b4dd25a342962f7ed97b0ea80814c4641539b67111a0`,
+  lock SHA-256 `077491c2f2588c6073bfd59988f63cfa354b69435f340194288cdb0c636ea3ab`,
+  policy SHA-256 `48c580d6c00024eb4de975bb557c81f94fd89db76a376e9662e1b92482fb40fa`,
+  and vendor closure
+  `b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6`.
+  Scanner containers had no network, read-only roots, no capabilities, and
+  no-new-privileges; source/image/vendor inputs remained read-only; host listeners
+  were unchanged; and image, containers, daemon, mounts, VM, capture, channels, and
+  the successful private run root were joined or retired.
+
+  This closes the current RustSec verdict only for the exact Cargo lock, reasoned
+  policy, vendor closure, audit image, RustSec commit
+  `b5fc89b8be99e96f79194d8a6f11e9b4143b99f0`, and source above while that database
+  remains inside the fixed 90-day freshness window. A separately administered
+  independent reconstruction, future snapshot refresh, remaining Docker consumers,
+  complete canonical closure/current cold artifacts, release/signed artifacts,
+  native/device and display/session behavior, performance/soak, independent release
+  reproduction, and external review remain open. No RustDesk product ran; no host
+  Docker/root/sudo, host or Haggai RustDesk state, published port, firewall, or host
+  network mutation was used.
 - **R-S11di/R-S11e-127 — Android signing-identity Docker authority — REAL VM
   AUTHORITY PASS 2026-09-15; ONE-TIME GENERATOR/IDENTITY, APK/DEVICE, COLD RELEASE,
   NATIVE, AND EXTERNAL-REVIEW EVIDENCE OPEN.**

@@ -19,6 +19,7 @@ LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
 DEV_CHECK_ARCHIVE=
+FLUTTER_PEER_CANDIDATE=0
 case "$#:${1:-}" in
     0:)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -55,6 +56,13 @@ case "$#:${1:-}" in
             || { echo 'focused Flutter peer input/run overrides are forbidden' >&2; exit 2; }
         MODE=flutter-peer-presentation
         ;;
+    1:--flutter-peer-presentation-candidate)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'candidate Flutter peer input/run overrides are forbidden' >&2; exit 2; }
+        MODE=flutter-peer-presentation
+        FLUTTER_PEER_CANDIDATE=1
+        ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
             && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
@@ -69,11 +77,12 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --flutter-peer-presentation | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
-readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT DEV_CHECK_ARCHIVE
+readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
+    DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE
 readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
 readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
@@ -86,6 +95,8 @@ readonly INITRD="$BOOT_ROOT/initrd.img"
 readonly VIRTIOFSD_PACKAGE="$INPUT_ROOT/virtiofsd_${VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION}_amd64.deb"
 readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
+readonly FLUTTER_PEER_CANDIDATE_ROOT="$REPO_ROOT/online/candidates/flutter-presentation"
+readonly FLUTTER_PEER_CANDIDATE_ARCHIVE="$FLUTTER_PEER_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
 readonly RUST_TEST_ARCHIVE="$ONLINE_INPUTS/rust-${RUST_VERSION}.tar.xz"
 readonly FLUTTER_TEST_ARCHIVE="$ONLINE_INPUTS/flutter-${FLUTTER_VERSION}.tar.xz"
 readonly LLVM_TEST_ARCHIVE="$ONLINE_INPUTS/llvm-${LLVM_VERSION}.tar.xz"
@@ -97,6 +108,23 @@ readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar
 readonly DEV_CHECK_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/devcheck.docker.tar.gz"
 readonly DART_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/dart-audit.docker.tar.gz"
 readonly RUST_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/rust-audit.docker.tar.gz"
+FLUTTER_PEER_FLUTTER_VERSION=$FLUTTER_VERSION
+FLUTTER_PEER_FLUTTER_ARCHIVE=$FLUTTER_TEST_ARCHIVE
+FLUTTER_PEER_FLUTTER_SHA256=$SHA256_FLUTTER_3_24_5
+FLUTTER_PEER_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5
+FLUTTER_PEER_TOOLS_MODE=offline-resolved
+SEALED_INPUT_ROOT=$ONLINE_INPUTS
+if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+    FLUTTER_PEER_FLUTTER_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_VERSION
+    FLUTTER_PEER_FLUTTER_ARCHIVE=$FLUTTER_PEER_CANDIDATE_ARCHIVE
+    FLUTTER_PEER_FLUTTER_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE
+    FLUTTER_PEER_FLUTTER_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
+    FLUTTER_PEER_TOOLS_MODE=bundled-sdk-candidate
+    SEALED_INPUT_ROOT=$REPO_ROOT/online
+fi
+readonly FLUTTER_PEER_FLUTTER_VERSION FLUTTER_PEER_FLUTTER_ARCHIVE \
+    FLUTTER_PEER_FLUTTER_SHA256 FLUTTER_PEER_FLUTTER_SIZE \
+    FLUTTER_PEER_TOOLS_MODE SEALED_INPUT_ROOT
 readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
@@ -324,7 +352,7 @@ start_sealed_input_virtiofsd() {
         --binary "$VIRTIOFSD_BINARY" \
         --binary-sha256 "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY" \
         --authority sealed-input \
-        --shared-dir "$ONLINE_INPUTS" --shared-identity "$shared_identity" \
+        --shared-dir "$SEALED_INPUT_ROOT" --shared-identity "$shared_identity" \
         --socket "$socket" --uid "$HOST_UID" --gid "$HOST_GID" \
         >"$log" 2>&1 &
     VIRTIOFSD_PID=$!
@@ -369,6 +397,33 @@ terminate_exact_vm_process() {
 
 capture_listeners() {
     /usr/bin/ss -H -lntu | LC_ALL=C /usr/bin/sort -u
+}
+
+flutter_peer_input_inventory() {
+    local -a directories=(
+        "$ONLINE_INPUTS"
+        "$PUB_CACHE_ROOT"
+        "$CARGO_VENDOR_ROOT"
+        "$ONLINE_INPUTS/vcpkg/installed/x64-linux"
+        "$ONLINE_INPUTS/xvfb-debs"
+        "$ONLINE_INPUTS/atspi-debs"
+    )
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        directories=(
+            "$SEALED_INPUT_ROOT"
+            "$REPO_ROOT/online/candidates"
+            "$FLUTTER_PEER_CANDIDATE_ROOT"
+            "${directories[@]}"
+        )
+    fi
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "${directories[@]}"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+        "$RUST_TEST_ARCHIVE" "$FLUTTER_PEER_FLUTTER_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
+        "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
+        "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_PEER_FLUTTER_ARCHIVE" \
+        "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
+        "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
 }
 
 require_exact_fixed_receipt() {
@@ -580,6 +635,75 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
+elif [ "$MODE" = flutter-peer-presentation ]; then
+    [ -d "$SEALED_INPUT_ROOT" ] && [ ! -L "$SEALED_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$SEALED_INPUT_ROOT")" = "$SEALED_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$SEALED_INPUT_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Flutter-peer authority root metadata differs'
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Flutter-peer input root metadata differs'
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        [ "$(/usr/bin/find "$SEALED_INPUT_ROOT" -mindepth 1 -maxdepth 1 \
+            -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = $'candidates\ninputs' ] \
+            || fail 'candidate Flutter-peer authority root inventory differs'
+        [ -d "$REPO_ROOT/online/candidates" ] \
+            && [ ! -L "$REPO_ROOT/online/candidates" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+                "$REPO_ROOT/online/candidates")" = "$HOST_UID:$HOST_GID:700" ] \
+            && [ "$(/usr/bin/find "$REPO_ROOT/online/candidates" \
+                -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+                 flutter-presentation ] \
+            || fail 'candidate Flutter-peer namespace differs'
+        [ -d "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
+            && [ ! -L "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+                "$FLUTTER_PEER_CANDIDATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+            && [ "$(/usr/bin/find "$FLUTTER_PEER_CANDIDATE_ROOT" \
+                -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+                 "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz" ] \
+            || fail 'candidate Flutter-peer archive namespace differs'
+    fi
+    for input in \
+        "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
+        "$FLUTTER_PEER_FLUTTER_ARCHIVE:$FLUTTER_PEER_FLUTTER_SIZE:$FLUTTER_PEER_FLUTTER_SHA256" \
+        "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
+        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+        "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed Flutter-peer input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
+             "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+        || fail "sealed Flutter-peer executable metadata differs: $FRB_CODEGEN"
+    verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Flutter-peer Pub-cache root metadata differs'
+    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Flutter-peer Cargo vendor root metadata differs'
 elif [ "$MODE" = rust-audit ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -927,19 +1051,8 @@ if [ "$MODE" = hbb-common-fs ]; then
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    focused_inputs_before="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
-            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT" \
-            "$ONLINE_INPUTS/vcpkg/installed/x64-linux" "$ONLINE_INPUTS/xvfb-debs" \
-            "$ONLINE_INPUTS/atspi-debs"
-        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
-            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
-            "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
-            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
-            "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-    )" || fail 'cannot inventory the sealed Flutter full-peer inputs'
+    focused_inputs_before="$(flutter_peer_input_inventory)" \
+        || fail 'cannot inventory the sealed Flutter full-peer inputs'
 elif [ "$MODE" = flutter-model-tests ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
@@ -1189,7 +1302,11 @@ elif [ "$MODE" = hbb-common-fs ]; then
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    guest_invocation+=" --flutter-peer-presentation /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        guest_invocation+=" --flutter-peer-presentation-candidate /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
+    else
+        guest_invocation+=" --flutter-peer-presentation /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
+    fi
 elif [ "$MODE" = dart-audit ]; then
     guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
 elif [ "$MODE" = rust-audit ]; then
@@ -1245,7 +1362,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = rust-audit ]; then
     start_sealed_input_virtiofsd \
         "$VIRTIOFS_SOCKET" "$VIRTIOFSD_LOG" \
-        "$(/usr/bin/stat -c '%d:%i' -- "$ONLINE_INPUTS")"
+        "$(/usr/bin/stat -c '%d:%i' -- "$SEALED_INPUT_ROOT")"
     focused_qemu_args=(
         -chardev "socket,id=sealed-input,path=$VIRTIOFS_SOCKET"
         -device "vhost-user-fs-pci,chardev=sealed-input,tag=rustdesk-sealed-inputs,queue-size=1024"
@@ -1598,10 +1715,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
         'focused Rust-test cloud-init completion marker'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     require_exact_fixed_receipt \
-        "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
+        "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
         'focused Flutter full-peer product verdict'
     require_exact_fixed_receipt \
-        "FLUTTER_PEER_PRESENTATION_VM=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined" \
+        "FLUTTER_PEER_PRESENTATION_VM=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE candidate=$FLUTTER_PEER_CANDIDATE devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined" \
         'focused Flutter full-peer VM verdict'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -1703,19 +1820,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
              "$FLUTTER_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Flutter-test source archive changed during execution'
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    focused_inputs_after="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
-            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT" \
-            "$ONLINE_INPUTS/vcpkg/installed/x64-linux" "$ONLINE_INPUTS/xvfb-debs" \
-            "$ONLINE_INPUTS/atspi-debs"
-        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
-            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
-            "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
-            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
-            "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-    )"
+    focused_inputs_after="$(flutter_peer_input_inventory)"
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
         || fail 'sealed Flutter full-peer inputs changed during execution'
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FLUTTER_PEER_SOURCE_ARCHIVE")" = \
@@ -1776,8 +1881,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$vm_elapsed_seconds"
+    printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
+        "$FLUTTER_PEER_FLUTTER_VERSION" "$FLUTTER_PEER_TOOLS_MODE" \
+        "$FLUTTER_PEER_CANDIDATE" "$vm_elapsed_seconds"
 elif [ "$MODE" = dart-audit ]; then
     printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=unchanged inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" \

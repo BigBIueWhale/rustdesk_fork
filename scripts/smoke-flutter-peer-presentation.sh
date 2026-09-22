@@ -58,6 +58,8 @@ SUPPLIED_SOURCE_ARCHIVE=
 SUPPLIED_SOURCE_COMMIT=
 SUPPLIED_SOURCE_TREE=
 SUPPLIED_SOURCE_ARCHIVE_SHA256=
+FLUTTER_PRESENTATION_CANDIDATE=0
+SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=
 case "$#:${1:-}" in
   0:) ;;
   1:--self-test-vm-authority)
@@ -72,10 +74,23 @@ case "$#:${1:-}" in
     SUPPLIED_SOURCE_TREE=$6
     SUPPLIED_SOURCE_ARCHIVE_SHA256=$8
     ;;
-  *) die 'accepts no arguments except --self-test-vm-authority or the exact source-archive authority' ;;
+  10:--source-archive)
+    [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
+      && [ "$9" = --flutter-presentation-candidate ] \
+      || die 'candidate source/archive authority argument order differs'
+    SOURCE_AUTHORITY=archive
+    SUPPLIED_SOURCE_ARCHIVE=$2
+    SUPPLIED_SOURCE_COMMIT=$4
+    SUPPLIED_SOURCE_TREE=$6
+    SUPPLIED_SOURCE_ARCHIVE_SHA256=$8
+    FLUTTER_PRESENTATION_CANDIDATE=1
+    SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=${10}
+    ;;
+  *) die 'accepts only --self-test-vm-authority or the exact source/archive authority' ;;
 esac
 readonly SOURCE_AUTHORITY SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
-  SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256
+  SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256 \
+  FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE
 if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(peer_vm_docker version \
     --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -163,11 +178,50 @@ readonly SOURCE_COMMIT SOURCE_TREE
   && [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
   || die 'source commit or tree identity is malformed'
 
+BUILD_FLUTTER_VERSION=$FLUTTER_VERSION
+BUILD_FLUTTER_SHA256=$SHA256_FLUTTER_3_24_5
+BUILD_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5
+BUILD_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK
+BUILD_FLUTTER_TOOLS_MODE=offline-resolved
+BUILD_FLUTTER_ARCHIVE="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
+if [ "$FLUTTER_PRESENTATION_CANDIDATE" -eq 1 ]; then
+  case "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" in
+    /*) ;;
+    *) die 'Flutter presentation candidate path is not absolute' ;;
+  esac
+  [ "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" = \
+    "$(readlink -f -- "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" 2>/dev/null)" ] \
+    || die 'Flutter presentation candidate path is not canonical'
+  [ -f "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" ] \
+    && [ ! -L "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" ] \
+    && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
+    || die 'Flutter presentation candidate metadata differs'
+  [ "$(sha256sum "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" | awk '{print $1}')" = \
+    "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
+    || die 'Flutter presentation candidate digest differs'
+  BUILD_FLUTTER_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_VERSION
+  BUILD_FLUTTER_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE
+  BUILD_FLUTTER_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
+  BUILD_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK
+  BUILD_FLUTTER_TOOLS_MODE=bundled-sdk-candidate
+  BUILD_FLUTTER_ARCHIVE=$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE
+fi
+readonly BUILD_FLUTTER_VERSION BUILD_FLUTTER_SHA256 BUILD_FLUTTER_SIZE \
+  BUILD_FLUTTER_TOOLS_LOCK_SHA256 BUILD_FLUTTER_TOOLS_MODE BUILD_FLUTTER_ARCHIVE
+
 for pin in \
   DEB_BUILDER_IMAGE_ID DEB_BUILDER_CONFIG_ID DEV_CHECK_IMAGE_ID \
   DEV_CHECK_IMAGE_CONFIG_ID \
   RUST_VERSION SHA256_RUST_1_75 SIZE_RUST_1_75 \
   FLUTTER_VERSION SHA256_FLUTTER_3_24_5 SIZE_FLUTTER_3_24_5 \
+  FLUTTER_PRESENTATION_CANDIDATE_VERSION SHA256_FLUTTER_PRESENTATION_CANDIDATE \
+  SIZE_FLUTTER_PRESENTATION_CANDIDATE \
+  FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION \
+  FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION \
+  FLUTTER_PRESENTATION_CANDIDATE_DART_VERSION \
+  SHA256_FLUTTER_PRESENTATION_CANDIDATE_VERSION_JSON \
+  SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK \
   LLVM_VERSION SHA256_LLVM_15_0_6 SIZE_LLVM_15_0_6 \
   FLUTTER_RUST_BRIDGE_VERSION SHA256_FLUTTER_TOOLS_LOCK \
   SHA256_CARGO_VENDOR_CLOSURE_V1 SHA256_CARGO_VENDOR_CONFIG \
@@ -230,7 +284,6 @@ mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
 mkdir -p "$BUILD_INPUT_ROOT/cargo-vendor" "$BUILD_INPUT_ROOT/frb-tool/bin" \
   "$BUILD_INPUT_ROOT/vcpkg/installed/x64-linux"
 touch "$BUILD_INPUT_ROOT/rust-${RUST_VERSION}.tar.xz" \
-  "$BUILD_INPUT_ROOT/flutter-${FLUTTER_VERSION}.tar.xz" \
   "$BUILD_INPUT_ROOT/llvm-${LLVM_VERSION}.tar.xz" \
   "$BUILD_INPUT_ROOT/cargo-vendor-config.toml" \
   "$BUILD_INPUT_ROOT/frb-tool/bin/flutter_rust_bridge_codegen"
@@ -446,12 +499,14 @@ run_input_check() {
     --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=128m \
     --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$BUILD_FLUTTER_ARCHIVE,target=/flutter-sdk.tar.xz,readonly,bind-recursive=disabled" \
     --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
     --env "RUSTDESK_RUST_SHA256=$SHA256_RUST_1_75" \
     --env "RUSTDESK_RUST_SIZE=$SIZE_RUST_1_75" \
-    --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
-    --env "RUSTDESK_FLUTTER_SHA256=$SHA256_FLUTTER_3_24_5" \
-    --env "RUSTDESK_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5" \
+    --env "RUSTDESK_FLUTTER_ARCHIVE=/flutter-sdk.tar.xz" \
+    --env "RUSTDESK_FLUTTER_VERSION=$BUILD_FLUTTER_VERSION" \
+    --env "RUSTDESK_FLUTTER_SHA256=$BUILD_FLUTTER_SHA256" \
+    --env "RUSTDESK_FLUTTER_SIZE=$BUILD_FLUTTER_SIZE" \
     --env "RUSTDESK_LLVM_VERSION=$LLVM_VERSION" \
     --env "RUSTDESK_LLVM_SHA256=$SHA256_LLVM_15_0_6" \
     --env "RUSTDESK_LLVM_SIZE=$SIZE_LLVM_15_0_6" \
@@ -558,7 +613,7 @@ run_owned_container "$WORKSPACE/build.cid" \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_INPUT_ROOT,target=/online,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz,target=/online/rust-${RUST_VERSION}.tar.xz,readonly,bind-recursive=disabled" \
-  --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/online/flutter-${FLUTTER_VERSION}.tar.xz,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$BUILD_FLUTTER_ARCHIVE,target=/flutter-sdk.tar.xz,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ONLINE_DIR/llvm-${LLVM_VERSION}.tar.xz,target=/online/llvm-${LLVM_VERSION}.tar.xz,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ONLINE_DIR/cargo-vendor,target=/online/cargo-vendor,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ONLINE_DIR/cargo-vendor-config.toml,target=/online/cargo-vendor-config.toml,readonly,bind-recursive=disabled" \
@@ -570,15 +625,21 @@ run_owned_container "$WORKSPACE/build.cid" \
   --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
   --env "RUSTDESK_RUST_SHA256=$SHA256_RUST_1_75" \
   --env "RUSTDESK_RUST_SIZE=$SIZE_RUST_1_75" \
-  --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
-  --env "RUSTDESK_FLUTTER_SHA256=$SHA256_FLUTTER_3_24_5" \
-  --env "RUSTDESK_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5" \
+  --env "RUSTDESK_FLUTTER_ARCHIVE=/flutter-sdk.tar.xz" \
+  --env "RUSTDESK_FLUTTER_VERSION=$BUILD_FLUTTER_VERSION" \
+  --env "RUSTDESK_FLUTTER_SHA256=$BUILD_FLUTTER_SHA256" \
+  --env "RUSTDESK_FLUTTER_SIZE=$BUILD_FLUTTER_SIZE" \
   --env "RUSTDESK_LLVM_VERSION=$LLVM_VERSION" \
   --env "RUSTDESK_LLVM_SHA256=$SHA256_LLVM_15_0_6" \
   --env "RUSTDESK_LLVM_SIZE=$SIZE_LLVM_15_0_6" \
   --env "RUSTDESK_FRB_SHA256=$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
   --env "RUSTDESK_FRB_SIZE=$SIZE_FLUTTER_PEER_FRB_CODEGEN" \
-  --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
+  --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$BUILD_FLUTTER_TOOLS_LOCK_SHA256" \
+  --env "RUSTDESK_FLUTTER_TOOLS_MODE=$BUILD_FLUTTER_TOOLS_MODE" \
+  --env "RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION=$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" \
+  --env "RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION=$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION" \
+  --env "RUSTDESK_FLUTTER_CANDIDATE_DART_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_DART_VERSION" \
+  --env "RUSTDESK_FLUTTER_CANDIDATE_VERSION_JSON_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_VERSION_JSON" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
   "$DEB_BUILDER_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh build
@@ -736,5 +797,6 @@ else
   [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = \
     "$SOURCE_ARCHIVE_SHA256" ] || die 'supplied source archive changed during the probe'
 fi
-printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace\n' \
-  "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256"
+printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s flutter=%s tools=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace\n' \
+  "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256" \
+  "$BUILD_FLUTTER_VERSION" "$BUILD_FLUTTER_TOOLS_MODE"

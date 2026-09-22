@@ -2,6 +2,7 @@
 set -euo pipefail
 umask 077
 
+FLUTTER_PEER_CANDIDATE=0
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -15,6 +16,10 @@ case "$#:${8:-}" in
     12:--flutter-peer-presentation)
         MODE=flutter-peer-presentation
         ;;
+    12:--flutter-peer-presentation-candidate)
+        MODE=flutter-peer-presentation
+        FLUTTER_PEER_CANDIDATE=1
+        ;;
     12:--debian-systemd-lifecycle)
         MODE=debian-systemd-lifecycle
         ;;
@@ -25,7 +30,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -37,7 +42,7 @@ readonly EXPECTED_SIZE=$4
 readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
-readonly MODE
+readonly MODE FLUTTER_PEER_CANDIDATE
 readonly HBB_SOURCE_ARCHIVE=${9:-}
 readonly HBB_SOURCE_COMMIT=${10:-}
 readonly HBB_SOURCE_TREE=${11:-}
@@ -1364,14 +1369,15 @@ run_flutter_model_tests() {
 }
 
 run_flutter_peer_presentation() {
-    local inputs=/mnt/rustdesk-sealed-inputs
+    local sealed_root=/mnt/rustdesk-sealed-inputs
+    local inputs=
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
     local provenance=$source_root/scripts/offline-image-provenance.py
-    local devcheck_archive=$inputs/verifier-images/devcheck.docker.tar.gz
-    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
+    local devcheck_archive= builder_archive= candidate_archive=
     local output=$ROOT/flutter-peer-presentation.out
     local source_archive_sha load_output mount_options peer_status=0
+    local -a peer_args=()
 
     [[ "$FLUTTER_PEER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$FLUTTER_PEER_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
@@ -1385,16 +1391,47 @@ run_flutter_peer_presentation() {
     [ "$source_archive_sha" = "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Flutter-peer source archive digest differs'
 
-    mkdir "$inputs"
-    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+    mkdir "$sealed_root"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$sealed_root" \
         || fail 'cannot mount the sealed Flutter-peer input authority'
     SEALED_INPUTS_MOUNTED=1
-    mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+    mount_options="$(findmnt -n -o OPTIONS --target "$sealed_root")" \
         || fail 'sealed Flutter-peer input mount is absent'
     case ",$mount_options," in *,ro,*) ;; *) fail 'sealed Flutter-peer inputs are writable' ;; esac
     case ",$mount_options," in *,nodev,*) ;; *) fail 'sealed Flutter-peer inputs permit devices' ;; esac
     case ",$mount_options," in *,nosuid,*) ;; *) fail 'sealed Flutter-peer inputs permit set-user-ID execution' ;; esac
     case ",$mount_options," in *,noexec,*) ;; *) fail 'sealed Flutter-peer inputs permit direct execution' ;; esac
+
+    [ "$(stat -c '%u:%g:%a' -- "$sealed_root")" = 1000:1000:700 ] \
+        || fail 'sealed Flutter-peer authority root metadata differs'
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        [ "$(find "$sealed_root" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+            | LC_ALL=C sort)" = $'candidates\ninputs' ] \
+            || fail 'candidate Flutter-peer authority root inventory differs'
+        [ "$(stat -c '%u:%g:%a' -- "$sealed_root/inputs")" = 1000:1000:700 ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$sealed_root/candidates")" = \
+                 1000:1000:700 ] \
+            && [ "$(find "$sealed_root/candidates" -mindepth 1 -maxdepth 1 \
+                -printf '%f\n' | LC_ALL=C sort)" = flutter-presentation ] \
+            || fail 'candidate Flutter-peer namespace differs'
+        [ "$(stat -c '%u:%g:%a' -- \
+            "$sealed_root/candidates/flutter-presentation")" = 1000:1000:700 ] \
+            && [ "$(find "$sealed_root/candidates/flutter-presentation" \
+                -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" = \
+                 "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz" ] \
+            || fail 'candidate Flutter-peer archive namespace differs'
+        candidate_archive="$sealed_root/candidates/flutter-presentation/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
+          "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
+            && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
+                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
+            || fail 'candidate Flutter SDK archive differs'
+        inputs=$sealed_root/inputs
+    else
+        inputs=$sealed_root
+    fi
+    devcheck_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+    builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
 
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$devcheck_archive")" = \
       "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
@@ -1518,12 +1555,19 @@ run_flutter_peer_presentation() {
           'FATAL: caller DOCKER_HOST authority is forbidden' ] \
         || fail 'caller-authority Flutter full-peer workload refusal differs'
 
+    peer_args=(
+        --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE"
+        --commit "$FLUTTER_PEER_SOURCE_COMMIT"
+        --tree "$FLUTTER_PEER_SOURCE_TREE"
+        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
+    )
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        peer_args+=(--flutter-presentation-candidate "$candidate_archive")
+    fi
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-        /bin/bash "$peer_script" --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE" \
-        --commit "$FLUTTER_PEER_SOURCE_COMMIT" --tree "$FLUTTER_PEER_SOURCE_TREE" \
-        --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        /bin/bash "$peer_script" "${peer_args[@]}" \
         2>&1 | tee "$output"
     peer_status=${PIPESTATUS[0]}
     set -e
@@ -1532,7 +1576,7 @@ run_flutter_peer_presentation() {
     [ "$(stat -c '%s' -- "$output")" -le 8388608 ] \
         || fail 'Flutter full-peer workload output exceeds its bound'
     [ "$(grep -Fxc \
-      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
+      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
@@ -1545,6 +1589,13 @@ run_flutter_peer_presentation() {
     [ "$(sha256sum "$FLUTTER_PEER_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
       "$source_archive_sha" ] \
         || fail 'focused Flutter-peer source archive changed during execution'
+    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
+          "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
+            && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
+                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
+            || fail 'candidate Flutter SDK archive changed during execution'
+    fi
 
     stop_docker_authority
     umount "$source_root/online/inputs" \
@@ -1552,11 +1603,12 @@ run_flutter_peer_presentation() {
     FLUTTER_PEER_ONLINE_MOUNTED=0
     umount "$source_root" || fail 'cannot retire the read-only Flutter-peer source mount'
     FLUTTER_PEER_SOURCE_MOUNTED=0
-    umount "$inputs" || fail 'cannot retire the sealed Flutter-peer input mount'
+    umount "$sealed_root" || fail 'cannot retire the sealed Flutter-peer input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
+    printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s flutter=%s tools=%s candidate=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
         "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
-        "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" "$DEV_CHECK_IMAGE_ID" \
+        "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" "$FLUTTER_PEER_RUNTIME_VERSION" \
+        "$FLUTTER_PEER_TOOLS_MODE" "$FLUTTER_PEER_CANDIDATE" "$DEV_CHECK_IMAGE_ID" \
         "$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
 }
 
@@ -1696,6 +1748,13 @@ done
     || fail 'installed-systemd lifecycle script metadata differs'
 # shellcheck source=/dev/null
 source "$VERIFY_REPO/scripts/pins.env"
+FLUTTER_PEER_RUNTIME_VERSION=$FLUTTER_VERSION
+FLUTTER_PEER_TOOLS_MODE=offline-resolved
+if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+    FLUTTER_PEER_RUNTIME_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_VERSION
+    FLUTTER_PEER_TOOLS_MODE=bundled-sdk-candidate
+fi
+readonly FLUTTER_PEER_RUNTIME_VERSION FLUTTER_PEER_TOOLS_MODE
 provision_git_runtime
 readonly RELEASE_PARENT_SCRIPT="$VERIFY_REPO/scripts/build-release.sh"
 readonly RELEASE_WORKSPACE_RUNTIME_TEST="$VERIFY_REPO/scripts/verify-release-workspace-runtime.sh"

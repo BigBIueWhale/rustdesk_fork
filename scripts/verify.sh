@@ -11259,9 +11259,9 @@ else
   rc=1
 fi
 if /usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo .; then
-  echo "  ok  R-S11gc/R-S11e-216 Linux full-peer harness retains its confined build, peer, presentation, freshness, and teardown source contract"
+  echo "  ok  R-S11gc/R-S11e-216 Linux full-peer harness retains its focused VM-isolation, candidate-input, and native-observer source guard"
 else
-  echo "  FAIL R-S11gc/R-S11e-216: Linux full-peer harness lost source finality, peer isolation, prompt authentication, current-pixel observation, stable-transport proof, or exact teardown"
+  echo "  FAIL R-S11gc/R-S11e-216: Linux full-peer harness lost its focused VM-isolation, candidate-input, or native-observer source guard (runtime behavior still requires the no-NIC VM transaction)"
   rc=1
 fi
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then

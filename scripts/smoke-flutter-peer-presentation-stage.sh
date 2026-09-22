@@ -281,7 +281,8 @@ case "$1" in
   input-check)
     for variable in \
       RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
-      RUSTDESK_FLUTTER_VERSION RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
+      RUSTDESK_FLUTTER_ARCHIVE RUSTDESK_FLUTTER_VERSION \
+      RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
       RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
       RUSTDESK_FRB_VERSION RUSTDESK_FRB_SHA256 RUSTDESK_FRB_SIZE \
       RUSTDESK_CARGO_VENDOR_SHA256 RUSTDESK_CARGO_VENDOR_CONFIG_SHA256 \
@@ -290,7 +291,9 @@ case "$1" in
     done
     verify_archive "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz" \
       "$RUSTDESK_RUST_SIZE" "$RUSTDESK_RUST_SHA256" Rust
-    verify_archive "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz" \
+    [ "$RUSTDESK_FLUTTER_ARCHIVE" = /flutter-sdk.tar.xz ] \
+      || fail 'Flutter archive projection path differs'
+    verify_archive "$RUSTDESK_FLUTTER_ARCHIVE" \
       "$RUSTDESK_FLUTTER_SIZE" "$RUSTDESK_FLUTTER_SHA256" Flutter
     verify_archive "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz" \
       "$RUSTDESK_LLVM_SIZE" "$RUSTDESK_LLVM_SHA256" LLVM
@@ -475,15 +478,23 @@ PY
   build)
     for variable in \
       RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
-      RUSTDESK_FLUTTER_VERSION RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
+      RUSTDESK_FLUTTER_ARCHIVE RUSTDESK_FLUTTER_VERSION \
+      RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
       RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
       RUSTDESK_FRB_SHA256 RUSTDESK_FRB_SIZE \
-      RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256 RUSTDESK_EVIDENCE_PUB_CACHE_SHA256; do
+      RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256 RUSTDESK_FLUTTER_TOOLS_MODE \
+      RUSTDESK_EVIDENCE_PUB_CACHE_SHA256; do
       [ -n "${!variable:-}" ] || fail "missing build identity: $variable"
     done
+    case "$RUSTDESK_FLUTTER_TOOLS_MODE" in
+      offline-resolved|bundled-sdk-candidate) ;;
+      *) fail 'Flutter tools mode differs' ;;
+    esac
     verify_archive "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz" \
       "$RUSTDESK_RUST_SIZE" "$RUSTDESK_RUST_SHA256" Rust
-    verify_archive "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz" \
+    [ "$RUSTDESK_FLUTTER_ARCHIVE" = /flutter-sdk.tar.xz ] \
+      || fail 'Flutter archive projection path differs'
+    verify_archive "$RUSTDESK_FLUTTER_ARCHIVE" \
       "$RUSTDESK_FLUTTER_SIZE" "$RUSTDESK_FLUTTER_SHA256" Flutter
     verify_archive "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz" \
       "$RUSTDESK_LLVM_SIZE" "$RUSTDESK_LLVM_SHA256" LLVM
@@ -527,7 +538,7 @@ PY
     cp -a /source/. "$BUILD_SOURCE/"
     chmod -R u+rwX "$BUILD_SOURCE"
     tar -C "$TOOLCHAIN" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"
-    tar -C "$TOOLCHAIN" -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+    tar -C "$TOOLCHAIN" -xf "$RUSTDESK_FLUTTER_ARCHIVE"
     tar -C "$TOOLCHAIN" -xf "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz"
     [ "$(stat -c %s /online/frb-tool/bin/flutter_rust_bridge_codegen)" = \
       "$RUSTDESK_FRB_SIZE" ] \
@@ -569,14 +580,89 @@ CFG
     cp "$BUILD_SOURCE/scripts/flutter-offline-shim.sh" "$SHIM/flutter"
     chmod 0700 "$SHIM/flutter"
     export PATH="$SHIM:$PATH"
-    (
-      cd "$FLUTTER_ROOT/packages/flutter_tools"
-      dart pub get --offline --enforce-lockfile >/dev/null
-    )
-    "$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh" \
-      "$FLUTTER_ROOT" \
-      "$RUSTDESK_FLUTTER_VERSION" \
-      "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+    if [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ]; then
+      (
+        cd "$FLUTTER_ROOT/packages/flutter_tools"
+        dart pub get --offline --enforce-lockfile >/dev/null
+      )
+      "$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh" \
+        "$FLUTTER_ROOT" \
+        "$RUSTDESK_FLUTTER_VERSION" \
+        "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+    else
+      for variable in \
+        RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION \
+        RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION \
+        RUSTDESK_FLUTTER_CANDIDATE_DART_VERSION \
+        RUSTDESK_FLUTTER_CANDIDATE_VERSION_JSON_SHA256; do
+        [ -n "${!variable:-}" ] || fail "missing candidate identity: $variable"
+      done
+      for input in \
+        "$FLUTTER_ROOT/bin/cache/flutter.version.json" \
+        "$FLUTTER_ROOT/bin/cache/dart-sdk/version" \
+        "$FLUTTER_ROOT/bin/cache/flutter_tools.snapshot" \
+        "$FLUTTER_ROOT/bin/internal/engine.version"; do
+        verify_regular "$input"
+      done
+      [ "$(sha256sum "$FLUTTER_ROOT/bin/cache/flutter.version.json" | awk '{print $1}')" = \
+        "$RUSTDESK_FLUTTER_CANDIDATE_VERSION_JSON_SHA256" ] \
+        || fail 'candidate Flutter version manifest digest differs'
+      [ "$(<"$FLUTTER_ROOT/bin/internal/engine.version")" = \
+        "$RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION" ] \
+        || fail 'candidate Flutter engine revision differs'
+      [ "$(<"$FLUTTER_ROOT/bin/cache/dart-sdk/version")" = \
+        "$RUSTDESK_FLUTTER_CANDIDATE_DART_VERSION" ] \
+        || fail 'candidate Dart SDK version differs'
+      /usr/bin/python3 -I -S - \
+        "$FLUTTER_ROOT/bin/cache/flutter.version.json" \
+        "$RUSTDESK_FLUTTER_VERSION" \
+        "$RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION" \
+        "$RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION" \
+        "$RUSTDESK_FLUTTER_CANDIDATE_DART_VERSION" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = pathlib.Path(sys.argv[1])
+if manifest.stat().st_size > 4096:
+    raise SystemExit("candidate Flutter version manifest exceeds its bound")
+data = json.loads(manifest.read_text(encoding="utf-8"))
+expected = {
+    "frameworkVersion": sys.argv[2],
+    "flutterVersion": sys.argv[2],
+    "channel": "stable",
+    "repositoryUrl": "https://github.com/flutter/flutter.git",
+    "frameworkRevision": sys.argv[3],
+    "engineRevision": sys.argv[4],
+    "dartSdkVersion": sys.argv[5],
+}
+for key, value in expected.items():
+    if data.get(key) != value:
+        raise SystemExit(f"candidate Flutter version field differs: {key}")
+PY
+      candidate_snapshot_sha="$(
+        sha256sum "$FLUTTER_ROOT/bin/cache/flutter_tools.snapshot" | awk '{print $1}'
+      )"
+      candidate_version_sha="$(
+        sha256sum "$FLUTTER_ROOT/bin/cache/flutter.version.json" | awk '{print $1}'
+      )"
+      "$REAL_FLUTTER" --suppress-analytics --version > /tmp/flutter-candidate-version.out
+      grep -Fq "Flutter $RUSTDESK_FLUTTER_VERSION" /tmp/flutter-candidate-version.out \
+        || fail 'candidate Flutter executable reports a different version'
+      [ "$(sha256sum "$FLUTTER_ROOT/bin/cache/flutter_tools.snapshot" | awk '{print $1}')" = \
+        "$candidate_snapshot_sha" ] \
+        && [ "$(sha256sum "$FLUTTER_ROOT/bin/cache/flutter.version.json" | awk '{print $1}')" = \
+             "$candidate_version_sha" ] \
+        && [ "$(sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}')" = \
+             "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ] \
+        || fail 'candidate Flutter invocation rebuilt or changed its pinned SDK state'
+      printf 'FLUTTER_PEER_CANDIDATE_SDK_OK version=%s framework=%s engine=%s dart=%s snapshot_sha256=%s tools=bundled-unchanged network=none\n' \
+        "$RUSTDESK_FLUTTER_VERSION" \
+        "$RUSTDESK_FLUTTER_CANDIDATE_FRAMEWORK_REVISION" \
+        "$RUSTDESK_FLUTTER_CANDIDATE_ENGINE_REVISION" \
+        "$RUSTDESK_FLUTTER_CANDIDATE_DART_VERSION" \
+        "$candidate_snapshot_sha"
+    fi
     pub_lock_before="$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')"
     (
       cd "$BUILD_SOURCE/flutter"
@@ -661,8 +747,9 @@ CFG
       || fail 'build output contains a symlink'
     [ -z "$(find /out -xdev -type f -perm /6000 -print -quit)" ] \
       || fail 'build output contains a setuid or setgid file'
-    printf 'rust=%s flutter=%s llvm=%s pub_cache_sha256=%s features=flutter,unix-file-copy-paste app=rustdesk\n' \
-      "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" "$RUSTDESK_LLVM_VERSION" \
+    printf 'rust=%s flutter=%s flutter_tools=%s llvm=%s pub_cache_sha256=%s features=flutter,unix-file-copy-paste app=rustdesk\n' \
+      "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" \
+      "$RUSTDESK_FLUTTER_TOOLS_MODE" "$RUSTDESK_LLVM_VERSION" \
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" \
       > /out/build.identity
     find /out -xdev -type f -exec chmod 0444 {} +
@@ -677,8 +764,9 @@ CFG
     ) > /out/manifest.sha256
     chmod 0444 /out/manifest.sha256
     find /out -xdev -type d -exec chmod 0555 {} +
-    printf 'FLUTTER_PEER_BUILD_OK rust=%s flutter=%s files=%s exact_runner=true exact_core=true\n' \
+    printf 'FLUTTER_PEER_BUILD_OK rust=%s flutter=%s tools=%s files=%s exact_runner=true exact_core=true\n' \
       "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" \
+      "$RUSTDESK_FLUTTER_TOOLS_MODE" \
       "$(wc -l < /out/manifest.sha256)"
     ;;
 

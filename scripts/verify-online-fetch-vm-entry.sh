@@ -376,10 +376,15 @@ if [ "$RETIRED_POLICY" = required ]; then
         || fail 'cache state root differs from the required inputs/retired layout'
     cache_paths+=("$REPO_ROOT/online/retired")
 else
-    [ "$cache_inventory" = inputs ] || [ "$cache_inventory" = $'inputs\nretired' ] \
-        || fail 'cache state root contains something other than inputs and its optional retired transaction root'
+    case "$cache_inventory" in
+        inputs|$'candidates\ninputs'|$'inputs\nretired'|$'candidates\ninputs\nretired') ;;
+        *) fail 'cache state root contains something other than inputs, candidates, and its optional retired transaction root' ;;
+    esac
     if [ -e "$REPO_ROOT/online/retired" ] || [ -L "$REPO_ROOT/online/retired" ]; then
         cache_paths+=("$REPO_ROOT/online/retired")
+    fi
+    if [ -e "$REPO_ROOT/online/candidates" ] || [ -L "$REPO_ROOT/online/candidates" ]; then
+        cache_paths+=("$REPO_ROOT/online/candidates")
     fi
 fi
 for path in "${cache_paths[@]}"; do
@@ -393,11 +398,11 @@ done
 [ "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online")" \
   = "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/inputs")" ] \
     || fail 'cache state and active-input roots do not share one atomic-rename filesystem'
-if [ "${#cache_paths[@]}" -eq 2 ]; then
+for path in "${cache_paths[@]:1}"; do
     [ "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/inputs")" \
-      = "$(/usr/bin/stat -c '%d' -- "$REPO_ROOT/online/retired")" ] \
-        || fail 'active and retired cache roots do not share one atomic-rename filesystem'
-fi
+      = "$(/usr/bin/stat -c '%d' -- "$path")" ] \
+        || fail "active and auxiliary cache roots do not share one atomic-rename filesystem: $path"
+done
 
 current_commit="$(
     /usr/bin/env -i PATH=/usr/bin:/bin HOME=/nonexistent GIT_CONFIG_NOSYSTEM=1 \

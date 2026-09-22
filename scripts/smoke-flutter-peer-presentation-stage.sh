@@ -733,17 +733,51 @@ PY
       "$BUILD_SOURCE/flutter/linux/flutter/generated_plugin_registrant.h"; do
       verify_regular "$generated_plugin_input"
     done
+    readonly NATIVE_PLUGIN_NAMES=/tmp/flutter-peer-native-plugin-names
+    /usr/bin/python3 -I -S - \
+      "$BUILD_SOURCE/flutter/linux/flutter/generated_plugins.cmake" \
+      > "$NATIVE_PLUGIN_NAMES" <<'PY'
+import pathlib
+import re
+import sys
+
+cmake = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+blocks = re.findall(
+    r"list\(APPEND FLUTTER_(?:FFI_)?PLUGIN_LIST\s*\n(.*?)\n\)",
+    cmake,
+    flags=re.DOTALL,
+)
+if len(blocks) != 2:
+    raise SystemExit("generated native/FFI Flutter plugin lists are absent or ambiguous")
+names = []
+for block in blocks:
+    for line in block.splitlines():
+        name = line.strip()
+        if not name:
+            continue
+        if re.fullmatch(r"[A-Za-z0-9_]+", name) is None:
+            raise SystemExit(f"generated Flutter plugin name is invalid: {name!r}")
+        names.append(name)
+if not names:
+    raise SystemExit("generated native/FFI Flutter plugin lists are empty")
+if len(names) != len(set(names)):
+    raise SystemExit("generated native/FFI Flutter plugin lists contain a duplicate")
+print(*names, sep="\n")
+PY
+    verify_regular "$NATIVE_PLUGIN_NAMES"
     plugin_symlink_count=0
-    while IFS= read -r -d '' plugin_symlink; do
-      plugin_symlink_count=$((plugin_symlink_count + 1))
+    while IFS= read -r plugin_name; do
+      plugin_symlink="$BUILD_SOURCE/flutter/linux/flutter/ephemeral/.plugin_symlinks/$plugin_name"
       [ -L "$plugin_symlink" ] \
-        && [ -d "$plugin_symlink/linux" ] \
-        || fail "generated Linux plugin symlink is dangling or lacks Linux sources: $plugin_symlink"
-    done < <(find "$BUILD_SOURCE/flutter/linux/flutter/ephemeral/.plugin_symlinks" \
-      -mindepth 1 -maxdepth 1 -type l -print0)
-    [ "$plugin_symlink_count" -gt 0 ] \
-      || fail 'Flutter plugin injection produced no Linux plugin symlinks'
-    printf 'FLUTTER_PEER_PLUGIN_INPUTS_OK generated=3 symlinks=%s lock_unchanged=true network=none\n' \
+        || fail "generated native Linux plugin symlink is missing: $plugin_name"
+      plugin_target="$(readlink -f -- "$plugin_symlink")" \
+        || fail "generated native Linux plugin symlink is dangling: $plugin_name"
+      [[ "$plugin_target" == "$PUB_CACHE"/* ]] \
+        && [ -d "$plugin_target/linux" ] \
+        || fail "generated native Linux plugin escaped the pinned cache or lacks Linux sources: $plugin_name"
+      plugin_symlink_count=$((plugin_symlink_count + 1))
+    done < "$NATIVE_PLUGIN_NAMES"
+    printf 'FLUTTER_PEER_PLUGIN_INPUTS_OK generated=3 native_symlinks=%s lock_unchanged=true network=none\n' \
       "$plugin_symlink_count"
     readonly BUILD_ENTRY_DIRECTORY=$PWD
     {

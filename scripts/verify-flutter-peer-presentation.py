@@ -180,8 +180,10 @@ def validate(sources: dict[str, str]) -> None:
         'generated_plugins.cmake"',
         'generated_plugin_registrant.cc"',
         'generated_plugin_registrant.h"',
-        "generated Linux plugin symlink is dangling or lacks Linux sources",
-        "Flutter plugin injection produced no Linux plugin symlinks",
+        "generated native/FFI Flutter plugin lists are absent or ambiguous",
+        "generated native/FFI Flutter plugin lists are empty",
+        "generated native Linux plugin symlink is missing",
+        "generated native Linux plugin escaped the pinned cache or lacks Linux sources",
         "project pubspec.lock changed during Flutter plugin injection",
     ):
         require(stage, token, "generated Linux plugin input finality")

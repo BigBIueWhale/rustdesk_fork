@@ -2254,15 +2254,17 @@ verify_flutter_presentation_pub_discovery() {
 publish_flutter_presentation_lock_discovery() {
     local lockfile="$1" expected_sha256="$2"
     local destination="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pubspec.lock.discovery"
-    local temporary
+    local replace=0 temporary
     if [ -e "$destination" ] || [ -L "$destination" ]; then
         [ -f "$destination" ] && [ ! -L "$destination" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$destination")" = \
                  "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" ] \
-            && [ "$(/usr/bin/sha256sum "$destination" | /usr/bin/awk '{print $1}')" = \
-                 "$expected_sha256" ] \
-            || die "existing Flutter presentation discovery lock differs"
-        return 0
+            || die "existing Flutter presentation discovery lock is ambiguous"
+        if [ "$(/usr/bin/sha256sum "$destination" | /usr/bin/awk '{print $1}')" = \
+             "$expected_sha256" ]; then
+            return 0
+        fi
+        replace=1
     fi
     temporary="$(
         umask 077
@@ -2278,9 +2280,15 @@ publish_flutter_presentation_lock_discovery() {
              "$expected_sha256" ] \
         || die "Flutter presentation discovery-lock staging differs"
     /usr/bin/sync -- "$temporary"
-    /usr/bin/ln -- "$temporary" "$destination" \
-        || die "Flutter presentation discovery lock no-clobber publication failed"
-    /usr/bin/rm -- "$temporary"
+    if [ "$replace" -eq 1 ]; then
+        /usr/bin/mv -T -- "$temporary" "$destination" \
+            || die "Flutter presentation discovery lock atomic replacement failed"
+    else
+        /usr/bin/ln -- "$temporary" "$destination" \
+            || die "Flutter presentation discovery lock no-clobber publication failed"
+        /usr/bin/rm -- "$temporary"
+    fi
+    /usr/bin/sync -- "$destination"
     /usr/bin/sync -f "$FLUTTER_PRESENTATION_CANDIDATE_ROOT"
     [ -f "$destination" ] && [ ! -L "$destination" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$destination")" = \

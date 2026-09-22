@@ -21,8 +21,9 @@ EXPECTED_SUITES = {
     "server_status_refresh_loop_test.dart",
     "session_event_queue_test.dart",
     "session_stream_finality_test.dart",
+    "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 103
+EXPECTED_TESTS = 107
 MAXIMUM_BYTES = 8 * 1024 * 1024
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024

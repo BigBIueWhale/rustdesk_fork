@@ -7,7 +7,6 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:xterm/xterm.dart';
 import '../../desktop/pages/terminal_connection_manager.dart';
 import '../../consts.dart';
@@ -44,11 +43,9 @@ class _TerminalPageState extends State<TerminalPage>
   double _swipeStartX = 0;
   double _swipeCurrentX = 0;
 
-  // For web only.
-  // 'monospace' does not work on web, use Google Fonts, `??` is only for null safety.
-  final String _robotoMonoFontFamily = isWeb
-      ? (GoogleFonts.robotoMono().fontFamily ?? 'monospace')
-      : 'monospace';
+  // The browser resolves the generic family locally; terminal rendering must
+  // not depend on an implicit network font fetch.
+  static const _terminalFontFamily = 'monospace';
 
   SessionID get sessionId => _ffi.sessionId;
 
@@ -429,7 +426,7 @@ class _TerminalPageState extends State<TerminalPage>
   TerminalStyle _getTerminalStyle() {
     return isWeb
         ? TerminalStyle(
-            fontFamily: _robotoMonoFontFamily,
+            fontFamily: _terminalFontFamily,
             fontSize: 14,
           )
         : const TerminalStyle();

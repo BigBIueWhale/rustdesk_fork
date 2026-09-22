@@ -1293,8 +1293,9 @@ run_flutter_model_tests() {
                     test/presentation_recovery_test.dart
                     test/rgba_publication_order_test.dart
                     test/custom_cursor_registry_test.dart
+                    test/start_ellipsis_text_test.dart
                 )
-                [ "${#tests[@]}" -eq 12 ]
+                [ "${#tests[@]}" -eq 13 ]
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
@@ -1335,7 +1336,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=12 tests=103' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=13 tests=107' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -1360,7 +1361,7 @@ run_flutter_model_tests() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=12 tests=103 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=13 tests=107 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

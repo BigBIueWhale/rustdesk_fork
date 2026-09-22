@@ -2168,6 +2168,7 @@ produce_flutter_presentation_pub_discovery() {
         [ "$(sha256sum "$snapshot" | awk "{print \$1}")" = "$snapshot_before" ]
         install -m 0400 /tmp/project/pubspec.lock /candidate/pubspec.lock
         rm -rf -- \
+            "$PUB_CACHE/active_roots" \
             "$PUB_CACHE/_temp" \
             "$PUB_CACHE/log" \
             "$PUB_CACHE/README.md" \
@@ -5217,6 +5218,7 @@ produce_pub_cache_candidate() {
         (cd /tmp/project && flutter pub get --enforce-lockfile)
         [ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]
         rm -rf -- \
+            "$PUB_CACHE/active_roots" \
             "$PUB_CACHE/_temp" \
             "$PUB_CACHE/log" \
             "$PUB_CACHE/README.md" \

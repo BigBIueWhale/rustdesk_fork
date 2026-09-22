@@ -245,6 +245,7 @@ readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
 readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-output.py"
 readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
+readonly VCPKG_NATIVE_PRODUCER="$SCRIPT_DIR/build-vcpkg-native-output.sh"
 readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FLUTTER_PEER_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-xvfb-packages.tsv"
@@ -5343,13 +5344,30 @@ vcpkg_native_output_tool() {
     /usr/bin/python3 -I -S "$SCRIPT_DIR/online-vcpkg-native-output.py" "$@"
 }
 
+vcpkg_native_output_pin() {
+    case "$1" in
+        x64-linux) printf '%s\n' "$VCPKG_X64_LINUX_OUTPUT_KEY_V1" ;;
+        arm64-android) printf '%s\n' "$VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1" ;;
+        *) die "unsupported vcpkg native output kind: $1" ;;
+    esac
+}
+
+checked_vcpkg_native_output_key() {
+    local kind=$1 builder=$2 actual expected
+    actual="$(vcpkg_native_output_key "$kind" "$builder")"
+    expected="$(vcpkg_native_output_pin "$kind")"
+    [ "$actual" = "$expected" ] \
+        || die "$kind vcpkg native producer-recipe key differs from its pin"
+    printf '%s\n' "$actual"
+}
+
 vcpkg_native_output_args() {
     local kind="$1" builder="$2"
     printf '%s\0' \
         --uid "$ONLINE_FETCH_UID" \
         --gid "$ONLINE_FETCH_GID" \
         --kind "$kind" \
-        --output-key "$(vcpkg_native_output_key "$kind" "$builder")" \
+        --output-key "$(checked_vcpkg_native_output_key "$kind" "$builder")" \
         --libvpx-key "$(libvpx_native_key)" \
         --builder "$builder"
 }
@@ -5444,33 +5462,16 @@ stage_vcpkg_natives() {
     online_docker_run \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$staging/output,target=/outputs/native" \
+        --env RUSTDESK_VCPKG_BASELINE="$VCPKG_BASELINE" \
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
-        --env VCPKG_NATIVE_OUTPUT_KEY="$(vcpkg_native_output_key x64-linux "$builder")" \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$(checked_vcpkg_native_output_key x64-linux "$builder")" \
         --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
-        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
-            export HOME=/tmp/home; mkdir -p "$HOME"
-            VR=/tmp/vcpkg; mkdir -p "$VR"
-            tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
-            export VCPKG_DISABLE_METRICS=1
-            export VCPKG_BINARY_SOURCES=clear
-            # Build the native codecs with the pinned gcc-8 toolchain used by the
-            # offline deb-builder image, keeping C/C++ object generation stable. The
-            # outputs are C-ABI static libs → link fine into the gcc/rust cargo build.
-            export CC=/usr/bin/gcc-8 CXX=/usr/bin/g++-8
-            "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
-            "$VR"/vcpkg install --triplet x64-linux --overlay-ports=/overlay \
-                libvpx libyuv opus
-            install -d -m 0700 /outputs/native/include /outputs/native/lib
-            cp -a "$VR"/installed/x64-linux/include/. /outputs/native/include/
-            for archive in libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do
-                cp -a "$VR/installed/x64-linux/lib/$archive" /outputs/native/lib/
-            done
-            printf "%s\n" "$VCPKG_NATIVE_OUTPUT_KEY" \
-                > /outputs/native/.rustdesk-vcpkg-native-output-key-v1
-            printf "%s\n" "$LIBVPX_NATIVE_KEY" \
-                > /outputs/native/.rustdesk-libvpx-native-key
-        ' || status=$?
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /bin/bash --noprofile --norc \
+            /producer/build-vcpkg-native-output.sh x64-linux \
+        || status=$?
     verify_libvpx_source_authority "after x64-linux vcpkg native production" \
         || source_status=$?
     vcpkg_native_output_tool verify \
@@ -5493,6 +5494,60 @@ stage_vcpkg_natives() {
     [ "$status" -eq 0 ] || die "x64-linux vcpkg native producer failed"
     [ "$publication_status" -eq 0 ] || die "x64-linux vcpkg native publication failed"
     log "x64-linux vcpkg natives checked and published (5 static libraries)"
+}
+
+maintenance_reproduce_vcpkg_x64() {
+    local builder="$DEB_BUILDER_CONFIG_ID"
+    local key lock_fd status=0 source_status=0
+    local output_args=()
+    verify_or_load_deb_builder_image
+    prepare_libvpx_source_authority
+    require_libvpx_distfiles
+    require_libyuv_distfile
+    verify_sha256 \
+        "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
+        "$SHA256_VCPKG_120DEAC3"
+    key="$(checked_vcpkg_native_output_key x64-linux "$builder")"
+    mapfile -d '' output_args < <(vcpkg_native_output_args x64-linux "$builder")
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for x64-linux reproducibility"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another online-output transaction already owns the online root"
+    vcpkg_native_output_tool check-complete \
+        --online "$ONLINE_DIR" "${output_args[@]}" \
+        || die "cached x64-linux vcpkg native output is incomplete, stale, or unsafe"
+    online_docker_run \
+        --tmpfs /outputs:rw,noexec,nosuid,nodev,mode=0700,size=64m \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$SCRIPT_DIR/online-input-provenance.py,target=/producer/online-input-provenance.py,readonly,bind-recursive=disabled" \
+        --env RUSTDESK_VCPKG_BASELINE="$VCPKG_BASELINE" \
+        --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$key" \
+        --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
+        --env RUSTDESK_VCPKG_X64_LINUX_SHA256="$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /bin/bash --noprofile --norc -euo pipefail -c '
+            install -d -m 0700 /outputs/native
+            /bin/bash /producer/build-vcpkg-native-output.sh x64-linux
+            /usr/bin/python3 -I -S /producer/online-input-provenance.py verify-subtree \
+                --tree /online/vcpkg/installed/x64-linux \
+                --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
+            /usr/bin/python3 -I -S /producer/online-input-provenance.py verify-subtree \
+                --tree /outputs/native \
+                --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
+            printf "VCPKG_X64_REPRODUCTION=pass sha256=%s output_key=%s builds=acquisition-cache+fresh\n" \
+                "$RUSTDESK_VCPKG_X64_LINUX_SHA256" "$VCPKG_NATIVE_OUTPUT_KEY"
+        ' || status=$?
+    verify_libvpx_source_authority "after x64-linux reproducibility build" \
+        || source_status=$?
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the x64-linux reproducibility lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] \
+        || die "committed libvpx source changed during x64-linux reproducibility"
+    [ "$status" -eq 0 ] || die "fresh x64-linux vcpkg reproduction differed"
 }
 
 # ── The Android NDK r28c, extracted for the cargo-ndk JNI cross-compile ─────────
@@ -5701,30 +5756,16 @@ stage_vcpkg_natives_arm64() {
     online_docker_run \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$staging/output,target=/outputs/native" \
+        --env RUSTDESK_VCPKG_BASELINE="$VCPKG_BASELINE" \
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
-        --env VCPKG_NATIVE_OUTPUT_KEY="$(vcpkg_native_output_key arm64-android "$builder")" \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$(checked_vcpkg_native_output_key arm64-android "$builder")" \
         --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
-        "$(online_fetch_builder_runtime_ref "$builder")" /bin/bash --noprofile --norc -euo pipefail -c '
-            export HOME=/tmp/home; mkdir -p "$HOME"
-            export ANDROID_NDK_HOME=/online/android-ndk
-            VR=/tmp/vcpkg; mkdir -p "$VR"
-            tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
-            export VCPKG_DISABLE_METRICS=1
-            export VCPKG_BINARY_SOURCES=clear
-            "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
-            "$VR"/vcpkg install --triplet arm64-android --overlay-ports=/overlay \
-                libvpx libyuv opus oboe
-            install -d -m 0700 /outputs/native/include /outputs/native/lib
-            cp -a "$VR"/installed/arm64-android/include/. /outputs/native/include/
-            for archive in libjpeg.a liboboe.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do
-                cp -a "$VR/installed/arm64-android/lib/$archive" /outputs/native/lib/
-            done
-            printf "%s\n" "$VCPKG_NATIVE_OUTPUT_KEY" \
-                > /outputs/native/.rustdesk-vcpkg-native-output-key-v1
-            printf "%s\n" "$LIBVPX_NATIVE_KEY" \
-                > /outputs/native/.rustdesk-libvpx-native-key
-        ' || status=$?
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /bin/bash --noprofile --norc \
+            /producer/build-vcpkg-native-output.sh arm64-android \
+        || status=$?
     verify_libvpx_source_authority "after arm64-android vcpkg native production" \
         || source_status=$?
     vcpkg_native_output_tool verify \
@@ -7308,6 +7349,11 @@ main() {
             python3 "$LIB_DIR/online-input-provenance.py" maintenance-print-root --tree "$ONLINE_DIR"
             return 0
             ;;
+        --maintenance-reproduce-vcpkg-x64)
+            [ "$#" -eq 1 ] || die "--maintenance-reproduce-vcpkg-x64 takes no arguments"
+            maintenance_reproduce_vcpkg_x64
+            return 0
+            ;;
         --maintenance-print-cargo-vendor-candidate)
             [ "$#" -eq 1 ] \
                 || die "--maintenance-print-cargo-vendor-candidate takes no arguments"
@@ -7336,7 +7382,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-capture-apple-check-image|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

@@ -61,7 +61,6 @@ def validate_lifecycle(
     *,
     kind: str,
     builder: str,
-    libraries: str,
 ) -> None:
     for token, label in (
         (builder, "immutable builder"),
@@ -81,9 +80,12 @@ def validate_lifecycle(
             "source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled",
             "read-only overlay input",
         ),
+        (
+            "source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled",
+            "read-only shared producer",
+        ),
         ("source=$staging/output,target=/outputs/native", "sole writable output"),
-        ("VCPKG_BINARY_SOURCES=clear", "ambient binary-cache exclusion"),
-        (libraries, "exact library projection"),
+        (f"/producer/build-vcpkg-native-output.sh {kind}", "shared producer invocation"),
         (
             f'verify_libvpx_source_authority "after {kind} vcpkg native production"',
             "committed-source postcheck",
@@ -101,6 +103,7 @@ def validate_lifecycle(
         require(lifecycle, token, f"{kind} {label}")
     require_count(lifecycle, "online_docker_run ", 1, f"{kind} producer launch")
     require_count(lifecycle, "target=/online", 1, f"{kind} online mount")
+    require_count(lifecycle, "target=/producer/build-vcpkg-native-output.sh", 1, f"{kind} producer mount")
     require_count(lifecycle, "target=/outputs/native", 1, f"{kind} output mount")
     for token, label in (
         ('source=$ONLINE_DIR,target=/online"', "writable online mount"),
@@ -130,11 +133,16 @@ def validate_lifecycle(
 
 def validate(repo: Path) -> None:
     shell = (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8")
+    producer = (repo / "scripts/build-vcpkg-native-output.sh").read_text(
+        encoding="utf-8"
+    )
     helper = (repo / "scripts/online-vcpkg-native-output.py").read_text(
         encoding="utf-8"
     )
     pins = (repo / "scripts/pins.env").read_text(encoding="utf-8")
     verify = (repo / "scripts/verify.sh").read_text(encoding="utf-8")
+    outer = (repo / "scripts/online-fetch-vm.sh").read_text(encoding="utf-8")
+    guest = (repo / "scripts/online-fetch-vm-guest.sh").read_text(encoding="utf-8")
     try:
         ast.parse(helper)
     except SyntaxError as error:
@@ -145,9 +153,16 @@ def validate(repo: Path) -> None:
     for name in ("SHA256_VCPKG_120DEAC3", "SHA256_ANDROID_NDK_R28C"):
         if re.fullmatch(r"[0-9a-f]{64}", pin(pins, name)) is None:
             raise AuthorityError(f"{name} is not one lowercase SHA-256 pin")
-    for name in ("DEB_BUILDER_IMAGE_ID", "ANDROID_BUILDER_IMAGE_ID"):
+    for name in ("DEB_BUILDER_CONFIG_ID", "ANDROID_BUILDER_CONFIG_ID"):
         if re.fullmatch(r"sha256:[0-9a-f]{64}", pin(pins, name)) is None:
             raise AuthorityError(f"{name} is not one immutable image ID")
+    for name in (
+        "VCPKG_X64_LINUX_OUTPUT_KEY_V1",
+        "VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1",
+        "SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1",
+    ):
+        if re.fullmatch(r"[0-9a-f]{64}", pin(pins, name)) is None:
+            raise AuthorityError(f"{name} is not one lowercase SHA-256 pin")
 
     for token, label in (
         ("vcpkg_native_output_key() {", "complete output key"),
@@ -169,13 +184,14 @@ def validate(repo: Path) -> None:
         ),
         ("printf 'OVERLAY_FILE\\0%s\\0' \"$file\"", "overlay path framing"),
         ("vcpkg_native_output_tool() {", "fixed helper routing"),
+        ("checked_vcpkg_native_output_key() {", "tracked recipe-key equality"),
         ("recover_vcpkg_native_output_staging() {", "reserved-state recovery"),
     ):
         require(shell, token, label)
     x64 = extract(
         shell,
         "stage_vcpkg_natives() {",
-        "\n}\n\n# ── The Android NDK",
+        "\n}\n\nmaintenance_reproduce_vcpkg_x64() {",
         "x64-linux lifecycle",
     )
     arm64 = extract(
@@ -188,16 +204,80 @@ def validate(repo: Path) -> None:
         x64,
         kind="x64-linux",
         builder='local builder="$DEB_BUILDER_CONFIG_ID"',
-        libraries="for archive in libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do",
     )
     validate_lifecycle(
         arm64,
         kind="arm64-android",
         builder='local builder="$ANDROID_BUILDER_CONFIG_ID"',
-        libraries=(
-            "for archive in libjpeg.a liboboe.a libopus.a libturbojpeg.a "
-            "libvpx.a libyuv.a; do"
+    )
+
+    for token, label in (
+        ('[ "$(id -u)" -ne 0 ]', "root refusal"),
+        ('export VCPKG_BINARY_SOURCES=clear', "ambient binary-cache exclusion"),
+        ('export CC=/usr/bin/gcc-8 CXX=/usr/bin/g++-8', "pinned Linux compiler"),
+        ('export ANDROID_NDK_HOME=/online/android-ndk', "pinned Android NDK root"),
+        ('readonly PORTS=(libvpx libyuv opus)', "exact Linux ports"),
+        ('readonly PORTS=(libvpx libyuv opus oboe)', "exact Android ports"),
+        (
+            'readonly LIBRARIES=(libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a)',
+            "exact Linux libraries",
         ),
+        (
+            'readonly LIBRARIES=(libjpeg.a liboboe.a libopus.a libturbojpeg.a libvpx.a libyuv.a)',
+            "exact Android libraries",
+        ),
+        ('"$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics', "fixed bootstrap"),
+        ('--triplet "$TRIPLET" --overlay-ports=/overlay', "fixed triplet and overlay"),
+        ('cp -a "$VCPKG_ROOT/installed/$TRIPLET/include/."', "header projection"),
+        ('.rustdesk-vcpkg-native-output-key-v1', "recipe-key receipt"),
+        ('.rustdesk-libvpx-native-key', "libvpx receipt"),
+    ):
+        require(producer, token, label)
+    for token, label in (
+        ("curl ", "direct download"),
+        ("git clone", "unbounded source acquisition"),
+        ("/var/run/docker.sock", "Docker authority"),
+    ):
+        forbid(producer, token, label)
+
+    reproduction = extract(
+        shell,
+        "maintenance_reproduce_vcpkg_x64() {",
+        "\n}\n\n# ── The Android NDK",
+        "x64-linux reproducibility transaction",
+    )
+    require_order(
+        reproduction,
+        (
+            "verify_or_load_deb_builder_image",
+            'key="$(checked_vcpkg_native_output_key x64-linux "$builder")"',
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "vcpkg_native_output_tool check-complete",
+            "online_docker_run",
+            "--tmpfs /outputs:rw,noexec,nosuid,nodev,mode=0700,size=64m",
+            "target=/online,readonly,bind-recursive=disabled",
+            "/producer/build-vcpkg-native-output.sh x64-linux",
+            "--tree /online/vcpkg/installed/x64-linux",
+            "--tree /outputs/native",
+            "VCPKG_X64_REPRODUCTION=pass",
+            'verify_libvpx_source_authority "after x64-linux reproducibility build"',
+        ),
+        "fresh acquisition-cache equality",
+    )
+    require(
+        shell,
+        "--maintenance-reproduce-vcpkg-x64)",
+        "inner reproducibility dispatch",
+    )
+    require(
+        outer,
+        "1:--maintenance-reproduce-vcpkg-x64",
+        "outer acquisition-VM reproducibility admission",
+    )
+    require(
+        guest,
+        "--maintenance-reproduce-vcpkg-x64",
+        "guest acquisition-VM reproducibility admission",
     )
 
     for token, label in (

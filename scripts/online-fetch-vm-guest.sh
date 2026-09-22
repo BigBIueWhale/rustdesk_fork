@@ -301,6 +301,7 @@ case "$REQUEST" in
     --maintenance-capture-apple-check-image|\
     --devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|\
     --maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|\
+    --maintenance-reproduce-vcpkg-x64|\
     --maintenance-write-online-closure|\
     --verify-offline-inputs|--debian-systemd-smoke-image|__authority_smoke__) ;;
     *) fail 'guest acquisition request is not one supported closed operation' ;;

@@ -10658,6 +10658,17 @@ not evidence that the reported Android persistent-process or Windows focus/displ
 diagnostic must locate the first divergence across real server capture, pixel conversion, VP9 output, client frame
 admission, and decoded output instead of inferring that boundary from renderer callbacks.
 
+Exact no-NIC run `run.73WWeSoMPn` at `bc4405bc` built and authenticated the current peer. Initial pixels arrived
+in 166 ms; the two-second unfocused cycle and same-TCP focus recovery passed. The six-second cycle still failed
+at a 1,024 ms actual-pixel freshness gap. Environment-gated traces showed changing server capture and I420 output,
+the actual encoded VP9 bytes shadow-decoding to changing pixels, matching viewer submissions, copied textures, and
+mapped GTK draws through the failure boundary. This excludes a blanket stopped capture, encoder, transport,
+decoder, or texture-copy explanation for that run, but it does not prove the final X11 pixels were current. The
+captured right-half sample was often near-white, a color absent from the controlled source palette; source-window
+occlusion or observer classification now needs direct evidence. The next verifier-only diagnostic records source
+publication and exact observer source/viewer states at each sample before assigning product causation. The failed
+runtime verdict and all Android/Windows, cross-version, sustained, installed, and release obligations remain open.
+
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
 deselection, disposal, and pointer-replacement stress. Measure capture-through-

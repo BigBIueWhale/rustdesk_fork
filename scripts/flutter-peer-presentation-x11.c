@@ -536,7 +536,7 @@ static int viewer_state(Display *display, const ViewerWindow *viewer) {
     return high * 16 + low;
 }
 
-static void observe_source(Display *source, SourceHistory *history, uint64_t now) {
+static int observe_source(Display *source, SourceHistory *history, uint64_t now) {
     int state = source_state(source);
     if (state >= 0) {
         if (history->initialized[state] == 0) {
@@ -545,6 +545,7 @@ static void observe_source(Display *source, SourceHistory *history, uint64_t now
         }
         history->last_seen_ms[state] = now;
     }
+    return state;
 }
 
 static int state_age(const SourceHistory *history, int state, uint64_t now, uint64_t *age) {
@@ -790,6 +791,8 @@ static int observe_current_frames_for_duration(Display *source, Display *display
     uint64_t deadline = start + duration_ms;
     uint64_t last_fresh = start;
     int last_state = -1;
+    const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
+    int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
 
     *maximum_gap_ms = 0U;
     *maximum_age_ms = 0U;
@@ -799,10 +802,15 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         uint64_t age;
         uint64_t gap;
         int state;
+        int observed_source_state;
+        int age_valid;
+        int fresh;
 
-        observe_source(source, history, now);
+        observed_source_state = observe_source(source, history, now);
         state = viewer_state(display, viewer);
-        if (state_age(history, state, now, &age) == 0 && age <= FRESH_LIMIT_MS) {
+        age_valid = state_age(history, state, now, &age) == 0;
+        fresh = age_valid && age <= FRESH_LIMIT_MS;
+        if (fresh) {
             last_fresh = now;
             if (age > *maximum_age_ms) {
                 *maximum_age_ms = age;
@@ -815,6 +823,14 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         gap = now - last_fresh;
         if (gap > *maximum_gap_ms) {
             *maximum_gap_ms = gap;
+        }
+        if (trace_enabled != 0) {
+            printf("RUSTDESK_PRESENTATION_TRACE stage=observer monotonic_ms=%llu "
+                   "source_state=%d viewer_state=%d age_ms=%lld fresh=%d gap_ms=%llu\n",
+                   (unsigned long long)now, observed_source_state, state,
+                   age_valid ? (long long)age : -1LL, fresh,
+                   (unsigned long long)gap);
+            fflush(stdout);
         }
         if (gap > FRESH_LIMIT_MS || sleep_millis(SAMPLE_INTERVAL_MS) != 0) {
             return -1;

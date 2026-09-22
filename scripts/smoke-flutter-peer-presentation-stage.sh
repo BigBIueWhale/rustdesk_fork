@@ -1034,6 +1034,9 @@ PY
     stop_server_generation "$((next_generation - 1))"
     if [ "$(<"$COORD/stop")" != viewer-complete ]; then
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
+      echo 'FLUTTER_PEER_SOURCE_DIAGNOSTIC_BEGIN' >&2
+      tail -n 160 /tmp/source.log >&2
+      echo 'FLUTTER_PEER_SOURCE_DIAGNOSTIC_END' >&2
       cat "$SERVER_LOG" >&2
       emit_runtime_logs SERVER "$HOME/.local/share/logs"
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_END' >&2

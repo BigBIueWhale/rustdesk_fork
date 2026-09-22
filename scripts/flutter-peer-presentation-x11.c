@@ -1354,14 +1354,22 @@ int main(int argc, char **argv) {
             XCloseDisplay(source);
             return 1;
         }
+        printf("FLUTTER_PEER_BACKGROUND_OBSERVATION_BEGIN cycle=%u blurred_ms=%u "
+               "monotonic_ms=%llu\n",
+               cycle + 1U, blur_hold_ms[cycle],
+               (unsigned long long)monotonic_millis());
+        fflush(stdout);
         if (observe_current_frames_for_duration(
                 source, display, &viewer, &history, blur_hold_ms[cycle],
                 &background_max_gap, &background_max_age, &background_distinct) != 0) {
             fprintf(stderr,
                     "FLUTTER_PEER_X11_FAIL background freshness exceeded %u ms "
-                    "cycle=%u blurred_ms=%u maximum_gap_ms=%llu distinct=%u\n",
+                    "cycle=%u blurred_ms=%u maximum_gap_ms=%llu maximum_age_ms=%llu "
+                    "distinct=%u monotonic_ms=%llu\n",
                     FRESH_LIMIT_MS, cycle + 1U, blur_hold_ms[cycle],
-                    (unsigned long long)background_max_gap, background_distinct);
+                    (unsigned long long)background_max_gap,
+                    (unsigned long long)background_max_age, background_distinct,
+                    (unsigned long long)monotonic_millis());
             XDestroyWindow(display, sink);
             close_viewer(display, viewer.window);
             XCloseDisplay(display);

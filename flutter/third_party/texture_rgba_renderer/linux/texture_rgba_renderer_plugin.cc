@@ -25,10 +25,56 @@ typedef struct _TextureRgba {
   uint32_t buffer_height;
   uint32_t prior_width;
   uint32_t prior_height;
+  uint64_t submitted_frames;
+  uint64_t pending_sequence;
+  uint64_t copied_frames;
+  uint64_t prior_sequence;
   gboolean buffer_ready;
   gboolean retired;
   GMutex mutex;
 } TextureRgba;
+
+static gboolean presentation_trace_enabled() {
+  static gsize initialized = 0;
+  static gboolean enabled = FALSE;
+  if (g_once_init_enter(&initialized)) {
+    const gchar* value = g_getenv("RUSTDESK_PRESENTATION_TRACE");
+    enabled = value != nullptr && std::strcmp(value, "1") == 0;
+    g_once_init_leave(&initialized, 1);
+  }
+  return enabled;
+}
+
+static void presentation_trace_samples(const uint8_t* buffer, uint32_t width,
+                                       uint32_t height, uint8_t left[4],
+                                       uint8_t right[4]) {
+  const size_t row_bytes = static_cast<size_t>(width) * 4;
+  const size_t row = static_cast<size_t>(height / 2) * row_bytes;
+  std::memcpy(left, buffer + row + static_cast<size_t>(width / 4) * 4, 4);
+  std::memcpy(right, buffer + row + static_cast<size_t>((width * 3) / 4) * 4,
+              4);
+}
+
+static void presentation_trace(const char* stage, TextureRgba* self,
+                               uint64_t sequence, const uint8_t* buffer,
+                               uint32_t width, uint32_t height,
+                               gboolean marked) {
+  if (!presentation_trace_enabled()) {
+    return;
+  }
+  uint8_t left[4];
+  uint8_t right[4];
+  presentation_trace_samples(buffer, width, height, left, right);
+  g_printerr(
+      "RUSTDESK_PRESENTATION_TRACE stage=%s monotonic_us=%" G_GINT64_FORMAT
+      " texture=%p sequence=%" G_GUINT64_FORMAT
+      " submitted=%" G_GUINT64_FORMAT " copied=%" G_GUINT64_FORMAT
+      " marked=%d dimensions=%ux%u left=%02x%02x%02x%02x"
+      " right=%02x%02x%02x%02x\n",
+      stage, g_get_monotonic_time(), self, sequence, self->submitted_frames,
+      self->copied_frames, marked, width, height, left[0], left[1], left[2],
+      left[3], right[0], right[1], right[2], right[3]);
+}
 
 G_DEFINE_TYPE(TextureRgba, texture_rgba, fl_pixel_buffer_texture_get_type())
 
@@ -115,6 +161,8 @@ static gboolean texture_rgba_mark_frame(TextureRgba* self,
   self->buffer = copied.release();
   self->buffer_width = static_cast<uint32_t>(width);
   self->buffer_height = static_cast<uint32_t>(height);
+  self->submitted_frames += 1;
+  self->pending_sequence = self->submitted_frames;
   self->buffer_ready = TRUE;
   delete[] superseded;
   // A pending buffer bounds storage, but it is not a durable scheduling edge:
@@ -122,11 +170,14 @@ static gboolean texture_rgba_mark_frame(TextureRgba* self,
   // Notify for every admitted update so a later frame can schedule rendering.
   const gboolean marked = fl_texture_registrar_mark_texture_frame_available(
       self->texture_registrar, FL_TEXTURE(self));
+  presentation_trace("submit", self, self->pending_sequence, self->buffer,
+                     self->buffer_width, self->buffer_height, marked);
   if (!marked) {
     delete[] self->buffer;
     self->buffer = nullptr;
     self->buffer_width = 0;
     self->buffer_height = 0;
+    self->pending_sequence = 0;
     self->buffer_ready = FALSE;
   }
   g_mutex_unlock(&self->mutex);
@@ -195,12 +246,18 @@ static gboolean texture_rgba_copy_pixels(FlPixelBufferTexture* texture,
     self->buffer = nullptr;
     self->prior_width = self->buffer_width;
     self->prior_height = self->buffer_height;
+    self->prior_sequence = self->pending_sequence;
+    self->copied_frames += 1;
     self->buffer_width = 0;
     self->buffer_height = 0;
+    self->pending_sequence = 0;
     *out_buffer = self->prior_buffer;
     *width = self->prior_width;
     *height = self->prior_height;
     self->buffer_ready = FALSE;
+    presentation_trace("copy", self, self->prior_sequence,
+                       self->prior_buffer, self->prior_width,
+                       self->prior_height, TRUE);
     g_mutex_unlock(&self->mutex);
     return TRUE;
   }
@@ -250,6 +307,10 @@ static void texture_rgba_init(TextureRgba* self) {
   self->buffer_height = 0;
   self->prior_width = 0;
   self->prior_height = 0;
+  self->submitted_frames = 0;
+  self->pending_sequence = 0;
+  self->copied_frames = 0;
+  self->prior_sequence = 0;
   self->buffer_ready = FALSE;
   self->retired = FALSE;
   g_mutex_init(&self->mutex);

@@ -666,6 +666,7 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --env HOME=/tmp/viewer-home \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
+  --env RUSTDESK_PRESENTATION_TRACE=1 \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer \
   > "$WORKSPACE/viewer.log" 2>&1

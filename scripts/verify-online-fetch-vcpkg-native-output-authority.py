@@ -254,7 +254,7 @@ def validate(repo: Path) -> None:
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
             "vcpkg_native_output_tool check-complete",
             "online_docker_run",
-            "--tmpfs /outputs:rw,noexec,nosuid,nodev,mode=0700,size=64m",
+            'mode=0700,uid=$ONLINE_FETCH_UID,gid=$ONLINE_FETCH_GID,size=64m',
             "target=/online,readonly,bind-recursive=disabled",
             "/producer/build-vcpkg-native-output.sh x64-linux",
             "--tree /online/vcpkg/installed/x64-linux",

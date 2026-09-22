@@ -5517,7 +5517,7 @@ maintenance_reproduce_vcpkg_x64() {
         --online "$ONLINE_DIR" "${output_args[@]}" \
         || die "cached x64-linux vcpkg native output is incomplete, stale, or unsafe"
     online_docker_run \
-        --tmpfs /outputs:rw,noexec,nosuid,nodev,mode=0700,size=64m \
+        --tmpfs "/outputs:rw,noexec,nosuid,nodev,mode=0700,uid=$ONLINE_FETCH_UID,gid=$ONLINE_FETCH_GID,size=64m" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \

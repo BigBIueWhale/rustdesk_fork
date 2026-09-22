@@ -2206,14 +2206,19 @@ verify_flutter_presentation_pub_discovery() {
         --env "RUSTDESK_PROJECT_LOCK_SHA256=$expected_lock_sha256" \
         --workdir /tmp \
         "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/timeout --signal=TERM --kill-after=10s 600s \
         /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
         mkdir /tmp/toolchain /tmp/home /tmp/project /tmp/pub-cache
+        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=extract\n" >&2
         tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
         cp -a /project-source/. /tmp/project/
-        cp -a /candidate/pub-cache/. /tmp/pub-cache/
+        ln -s /candidate/pub-cache/hosted /tmp/pub-cache/hosted
+        ln -s /candidate/pub-cache/hosted-hashes /tmp/pub-cache/hosted-hashes
+        ln -s /candidate/pub-cache/git /tmp/pub-cache/git
         chmod -R u+rwX /tmp/project
         cp /candidate/pubspec.lock /tmp/project/pubspec.lock
+        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=pub-cache-projected\n" >&2
         export HOME=/tmp/home PUB_CACHE=/tmp/pub-cache CI=true
         export PUB_HOSTED_URL=https://pub.dev
         export FLUTTER_SUPPRESS_ANALYTICS=true
@@ -2224,9 +2229,11 @@ verify_flutter_presentation_pub_discovery() {
         [ "$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock \
               | awk "{print \$1}")" = "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
         (cd /tmp/project && dart pub get --offline --enforce-lockfile >/dev/null)
+        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=dart-complete\n" >&2
         rm -rf -- /tmp/project/linux/flutter/ephemeral/.plugin_symlinks \
             /tmp/project/.flutter-plugins-dependencies /tmp/project/.flutter-plugins
         (cd /tmp/project && flutter pub get --offline --enforce-lockfile >/dev/null)
+        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=flutter-complete\n" >&2
         [ "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" = \
           "$RUSTDESK_PROJECT_LOCK_SHA256" ]
         [ "$(sha256sum /candidate/pubspec.lock | awk "{print \$1}")" = \

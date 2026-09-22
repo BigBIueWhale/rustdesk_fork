@@ -5498,7 +5498,8 @@ stage_vcpkg_natives() {
 
 maintenance_reproduce_vcpkg_x64() {
     local builder="$DEB_BUILDER_CONFIG_ID"
-    local key lock_fd status=0 source_status=0
+    local key lock_fd reproduction reproduction_id
+    local status=0 source_status=0 cached_status=0 fresh_status=0 cleanup_status=0
     local output_args=()
     verify_or_load_deb_builder_image
     prepare_libvpx_source_authority
@@ -5516,38 +5517,59 @@ maintenance_reproduce_vcpkg_x64() {
     vcpkg_native_output_tool check-complete \
         --online "$ONLINE_DIR" "${output_args[@]}" \
         || die "cached x64-linux vcpkg native output is incomplete, stale, or unsafe"
+    reproduction="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/vcpkg-x64-reproduction.XXXXXXXXXX"
+    )" || die "cannot create private x64-linux vcpkg reproduction root"
+    reproduction_id="$(/usr/bin/stat -c '%d:%i' -- "$reproduction")"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$reproduction")" = \
+      "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private x64-linux vcpkg reproduction root metadata differs"
     online_docker_run \
-        --tmpfs "/outputs:rw,noexec,nosuid,nodev,mode=0700,uid=$ONLINE_FETCH_UID,gid=$ONLINE_FETCH_GID,size=64m" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$SCRIPT_DIR/online-input-provenance.py,target=/producer/online-input-provenance.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$reproduction,target=/outputs,bind-recursive=disabled" \
         --env RUSTDESK_VCPKG_BASELINE="$VCPKG_BASELINE" \
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
         --env VCPKG_NATIVE_OUTPUT_KEY="$key" \
         --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
-        --env RUSTDESK_VCPKG_X64_LINUX_SHA256="$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" \
         "$(online_fetch_builder_runtime_ref "$builder")" \
         /bin/bash --noprofile --norc -euo pipefail -c '
             install -d -m 0700 /outputs/native
             /bin/bash /producer/build-vcpkg-native-output.sh x64-linux
-            /usr/bin/python3 -I -S /producer/online-input-provenance.py verify-subtree \
-                --tree /online/vcpkg/installed/x64-linux \
-                --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
-            /usr/bin/python3 -I -S /producer/online-input-provenance.py verify-subtree \
-                --tree /outputs/native \
-                --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
-            printf "VCPKG_X64_REPRODUCTION=pass sha256=%s output_key=%s builds=acquisition-cache+fresh\n" \
-                "$RUSTDESK_VCPKG_X64_LINUX_SHA256" "$VCPKG_NATIVE_OUTPUT_KEY"
         ' || status=$?
     verify_libvpx_source_authority "after x64-linux reproducibility build" \
         || source_status=$?
+    /usr/bin/python3 -I -S "$LIB_DIR/online-input-provenance.py" verify-subtree \
+        --tree "$ONLINE_DIR/vcpkg/installed/x64-linux" \
+        --expected "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" \
+        || cached_status=$?
+    if [ "$status" -eq 0 ]; then
+        /usr/bin/python3 -I -S "$LIB_DIR/online-input-provenance.py" verify-subtree \
+            --tree "$reproduction/native" \
+            --expected "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" \
+            || fresh_status=$?
+    else
+        fresh_status=$status
+    fi
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$cached_status" -eq 0 ] && [ "$fresh_status" -eq 0 ]; then
+        printf 'VCPKG_X64_REPRODUCTION=pass sha256=%s output_key=%s builds=acquisition-cache+fresh\n' \
+            "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$key"
+    fi
+    /usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$reproduction" --expected-identity "$reproduction_id" \
+        || cleanup_status=$?
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the x64-linux reproducibility lock"
     exec {lock_fd}<&-
     [ "$source_status" -eq 0 ] \
         || die "committed libvpx source changed during x64-linux reproducibility"
-    [ "$status" -eq 0 ] || die "fresh x64-linux vcpkg reproduction differed"
+    [ "$cached_status" -eq 0 ] || die "cached x64-linux vcpkg closure differs from its pin"
+    [ "$status" -eq 0 ] || die "fresh x64-linux vcpkg producer failed"
+    [ "$fresh_status" -eq 0 ] || die "fresh x64-linux vcpkg reproduction differed"
+    [ "$cleanup_status" -eq 0 ] || die "private x64-linux vcpkg reproduction cleanup failed"
 }
 
 # ── The Android NDK r28c, extracted for the cargo-ndk JNI cross-compile ─────────

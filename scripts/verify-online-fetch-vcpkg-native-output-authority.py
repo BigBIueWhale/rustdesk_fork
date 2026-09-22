@@ -253,17 +253,24 @@ def validate(repo: Path) -> None:
             'key="$(checked_vcpkg_native_output_key x64-linux "$builder")"',
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
             "vcpkg_native_output_tool check-complete",
+            'mktemp -d "$ONLINE_FETCH_TMP/vcpkg-x64-reproduction.XXXXXXXXXX"',
             "online_docker_run",
-            'mode=0700,uid=$ONLINE_FETCH_UID,gid=$ONLINE_FETCH_GID,size=64m',
             "target=/online,readonly,bind-recursive=disabled",
+            "source=$reproduction,target=/outputs,bind-recursive=disabled",
             "/producer/build-vcpkg-native-output.sh x64-linux",
-            "--tree /online/vcpkg/installed/x64-linux",
-            "--tree /outputs/native",
-            "VCPKG_X64_REPRODUCTION=pass",
             'verify_libvpx_source_authority "after x64-linux reproducibility build"',
+            '--tree "$ONLINE_DIR/vcpkg/installed/x64-linux"',
+            '--tree "$reproduction/native"',
+            "VCPKG_X64_REPRODUCTION=pass",
+            '--remove-private-root "$reproduction" --expected-identity "$reproduction_id"',
         ),
         "fresh acquisition-cache equality",
     )
+    for token, label in (
+        ("/producer/online-input-provenance.py", "builder-local canonical verifier"),
+        ("--tmpfs \"/outputs:", "container-private reproduction output"),
+    ):
+        forbid(reproduction, token, label)
     require(
         shell,
         "--maintenance-reproduce-vcpkg-x64)",

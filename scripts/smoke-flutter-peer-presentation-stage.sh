@@ -285,6 +285,7 @@ PY
       RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
       RUSTDESK_FLUTTER_VERSION RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
       RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
+      RUSTDESK_FRB_SHA256 RUSTDESK_FRB_SIZE \
       RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256 RUSTDESK_EVIDENCE_PUB_CACHE_SHA256; do
       [ -n "${!variable:-}" ] || fail "missing build identity: $variable"
     done
@@ -327,6 +328,7 @@ PY
 
     readonly TOOLCHAIN=/build-work/toolchain
     readonly BUILD_SOURCE=/build-work/source
+    readonly FRB_CODEGEN=$TOOLCHAIN/flutter_rust_bridge_codegen
     readonly HOME=/build-work/home
     readonly CARGO_HOME=/build-work/cargo-home
     mkdir -m 0700 "$TOOLCHAIN" "$BUILD_SOURCE" "$HOME" "$CARGO_HOME"
@@ -335,6 +337,18 @@ PY
     tar -C "$TOOLCHAIN" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"
     tar -C "$TOOLCHAIN" -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
     tar -C "$TOOLCHAIN" -xf "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz"
+    [ "$(stat -c %s /online/frb-tool/bin/flutter_rust_bridge_codegen)" = \
+      "$RUSTDESK_FRB_SIZE" ] \
+      || fail 'FRB codegen size differs before executable projection'
+    [ "$(sha256sum /online/frb-tool/bin/flutter_rust_bridge_codegen | awk '{print $1}')" = \
+      "$RUSTDESK_FRB_SHA256" ] \
+      || fail 'FRB codegen digest differs before executable projection'
+    install -m 0500 /online/frb-tool/bin/flutter_rust_bridge_codegen "$FRB_CODEGEN"
+    [ "$(stat -c '%u:%g:%a:%h:%s' "$FRB_CODEGEN")" = \
+      "$(id -u):$(id -g):500:1:$RUSTDESK_FRB_SIZE" ] \
+      || fail 'private FRB executable projection metadata differs'
+    [ "$(sha256sum "$FRB_CODEGEN" | awk '{print $1}')" = "$RUSTDESK_FRB_SHA256" ] \
+      || fail 'private FRB executable projection digest differs'
     "$TOOLCHAIN"/rust-1.*/install.sh --prefix="$TOOLCHAIN/rustinstall" \
       --disable-ldconfig \
       --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
@@ -350,7 +364,7 @@ PY
     export VCPKG_ROOT=/online/vcpkg
     export LIBCLANG_PATH="$LLVM_ROOT/lib"
     export CARGO_PROFILE_RELEASE_RPATH=false
-    export PATH="$FLUTTER_ROOT/bin:$FLUTTER_ROOT/bin/cache/dart-sdk/bin:$TOOLCHAIN/rustinstall/bin:/online/frb-tool/bin:$PATH"
+    export PATH="$FLUTTER_ROOT/bin:$FLUTTER_ROOT/bin/cache/dart-sdk/bin:$TOOLCHAIN/rustinstall/bin:$PATH"
     git config --global --add safe.directory '*'
     cat > "$CARGO_HOME/config.toml" <<'CFG'
 [net]
@@ -385,7 +399,7 @@ CFG
       cd "$BUILD_SOURCE"
       codegen_log=/tmp/flutter-peer-codegen.log
       set +e
-      flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
+      "$FRB_CODEGEN" --rust-input ./src/flutter_ffi.rs \
         --dart-output ./flutter/lib/generated_bridge.dart \
         --llvm-path "$LLVM_ROOT" \
         --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)" \

@@ -422,10 +422,13 @@ def validate(sources: dict[str, str]) -> None:
             'verify_archive "/online/rust-',
             'verify_archive "/online/flutter-',
             'verify_archive "/online/llvm-',
+            "FRB codegen digest differs before executable projection",
+            'install -m 0500 /online/frb-tool/bin/flutter_rust_bridge_codegen "$FRB_CODEGEN"',
+            "private FRB executable projection digest differs",
             "dart pub get --offline --enforce-lockfile",
             '"$BUILD_SOURCE/scripts/finalize-flutter-tools-offline.sh"',
             '"$REAL_FLUTTER" pub get --offline --enforce-lockfile',
-            "flutter_rust_bridge_codegen",
+            '"$FRB_CODEGEN" --rust-input ./src/flutter_ffi.rs',
             "! grep -Fq '[SEVERE]'",
             "cargo build --locked --features flutter,unix-file-copy-paste",
             "--lib --example smoke_readiness --release",
@@ -436,6 +439,11 @@ def validate(sources: dict[str, str]) -> None:
             "FLUTTER_PEER_BUILD_OK",
         ),
         "exact offline full-product bundle build",
+    )
+    forbid(
+        stage,
+        "/online/frb-tool/bin:$PATH",
+        "execution search path through the noexec persistent-input mount",
     )
     for token, label in (
         ("export PATH=/usr/bin:/bin", "fixed command authority"),

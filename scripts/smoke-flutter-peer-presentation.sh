@@ -279,7 +279,7 @@ readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
 readonly XVFB_ROOT="$WORKSPACE/xvfb-root"
 readonly ATSPI_DEBS="$WORKSPACE/atspi-debs"
 readonly ATSPI_ROOT="$WORKSPACE/atspi-root"
-readonly COORD="$WORKSPACE/coord"
+COORD=
 readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
 readonly BUILD_INPUT_ROOT="$WORKSPACE/build-input-root"
 readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"
@@ -297,7 +297,7 @@ BUILD_WORK="$WORKSPACE/build-work"
 readonly BUILD_PUB_CACHE="$BUILD_WORK/pub-cache"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
   "$ATSPI_DEBS" "$ATSPI_ROOT" \
-  "$COORD" "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
+  "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
 mkdir "$BUILD_PUB_CACHE" "$BUILD_PUB_CACHE/hosted" \
   "$BUILD_PUB_CACHE/hosted-hashes" "$BUILD_PUB_CACHE/git"
 mkdir -p "$BUILD_INPUT_ROOT/cargo-vendor" "$BUILD_INPUT_ROOT/frb-tool/bin" \
@@ -688,8 +688,19 @@ chmod -R u+rwX "$BUILD_WORK"
 rm -rf -- "$BUILD_WORK"
 BUILD_WORK=
 
-echo '== start the exact controlled peer in an external-interface-free namespace =='
-readonly SERVER_CID_FILE="$WORKSPACE/server.cid"
+for cycle in 1 2 3 4 5 6; do
+COORD="$WORKSPACE/coord.$cycle"
+mkdir "$COORD"
+SERVER_CID_FILE="$WORKSPACE/server.$cycle.cid"
+VIEWER_CID_FILE="$WORKSPACE/viewer.$cycle.cid"
+SERVER_LOG="$WORKSPACE/server.$cycle.log"
+VIEWER_LOG="$WORKSPACE/viewer.$cycle.log"
+if [ "$cycle" -le 3 ]; then
+  trace_abort=1
+else
+  trace_abort=0
+fi
+printf '== peer runtime cycle %s/6, abort_trace=%s, network=none ==\n' "$cycle" "$trace_abort"
 CID_FILES+=("$SERVER_CID_FILE")
 peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --pull=never --network=none --read-only \
@@ -721,13 +732,12 @@ for _ in $(seq 1 900); do
   sleep 0.1
 done
 if [ "$server_ready" -ne 1 ]; then
-  peer_vm_docker logs "$SERVER_CID" > "$WORKSPACE/server.log" 2>&1 || true
-  cat "$WORKSPACE/server.log" >&2
+  peer_vm_docker logs "$SERVER_CID" > "$SERVER_LOG" 2>&1 || true
+  cat "$SERVER_LOG" >&2
   die 'controlled peer did not become ready'
 fi
 
 echo '== authenticate through the real prompt and observe current pixels across focus loss =='
-readonly VIEWER_CID_FILE="$WORKSPACE/viewer.cid"
 CID_FILES+=("$VIEWER_CID_FILE")
 set +e
 peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
@@ -754,9 +764,10 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   --env RUSTDESK_PRESENTATION_TRACE=1 \
+  --env "RUSTDESK_ABORT_TRACE=$trace_abort" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer \
-  > "$WORKSPACE/viewer.log" 2>&1
+  > "$VIEWER_LOG" 2>&1
 viewer_status=$?
 set -e
 VIEWER_CID=$(<"$VIEWER_CID_FILE")
@@ -776,7 +787,7 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
     sha256sum "$ATSPI_ROOT/closure.identity" | awk '{print $1}'
   )" = "$ATSPI_ROOT_ID" ] \
   || die 'sealed AT-SPI runtime identity changed during runtime'
-cat "$WORKSPACE/viewer.log"
+cat "$VIEWER_LOG"
 if [ ! -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
   printf 'outer-retirement-after-viewer-status=%s\n' "$viewer_status" > "$COORD/stop.tmp"
   mv "$COORD/stop.tmp" "$COORD/stop"
@@ -790,8 +801,8 @@ for _ in $(seq 1 900); do
   fi
   sleep 0.1
 done
-peer_vm_docker logs "$SERVER_CID" > "$WORKSPACE/server.log" 2>&1 || true
-cat "$WORKSPACE/server.log"
+peer_vm_docker logs "$SERVER_CID" > "$SERVER_LOG" 2>&1 || true
+cat "$SERVER_LOG"
 [ "$server_stopped" -eq 1 ] || die 'controlled peer container did not retire'
 server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_CID")"
 [[ "$server_status" =~ ^[0-9]+$ ]] || die 'server exit status is malformed'
@@ -799,15 +810,21 @@ server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_
 [ "$viewer_status" -eq 0 ] || exit "$viewer_status"
 [ "$server_status" -eq 0 ] || die "controlled peer stage exited $server_status"
 grep -q '^FLUTTER_PEER_VIEWER_RUNTIME_OK viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded$' \
-  "$WORKSPACE/viewer.log" || die 'viewer terminal verdict is missing'
+  "$VIEWER_LOG" || die 'viewer terminal verdict is missing'
 grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed replacements=3$' \
-  "$WORKSPACE/server.log" || die 'server terminal verdict is missing'
+  "$SERVER_LOG" || die 'server terminal verdict is missing'
 [ "$(<"$COORD/viewer.result")" = \
   'viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded' ] \
   || die 'viewer result receipt differs'
 [ "$(<"$COORD/server.result")" = \
   'server=joined source=joined xvfb=joined listener=closed replacements=3' ] \
   || die 'server result receipt differs'
+cleanup_container "$VIEWER_CID_FILE"
+cleanup_container "$SERVER_CID_FILE"
+printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s abort_trace=%s viewer=joined server=joined\n' \
+  "$cycle" "$trace_abort"
+done
+echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 traced=3 baseline=3'
 
 echo '== independently reverify every persistent build input after runtime =='
 run_input_check "$WORKSPACE/input-post.cid"

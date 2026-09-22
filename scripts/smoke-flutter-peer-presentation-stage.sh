@@ -190,6 +190,7 @@ verify_runtime_bundle() {
     || fail 'runtime bundle contains a symlink'
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
   verify_regular /out/smoke-bind-loopback.so
+  verify_regular /out/smoke-abort-backtrace.so
   for executable in \
     /out/bundle/rustdesk \
     /out/smoke-readiness \
@@ -501,7 +502,8 @@ PY
       /source/flutter/pubspec.lock \
       /source/scripts/flutter-offline-shim.sh \
       /source/scripts/flutter-peer-source-x11.c \
-      /source/scripts/flutter-peer-presentation-x11.c; do
+      /source/scripts/flutter-peer-presentation-x11.c \
+      /source/scripts/smoke-abort-backtrace.c; do
       verify_regular "$input"
     done
     for directory in /online/cargo-vendor /online/vcpkg; do
@@ -857,6 +859,9 @@ PY
     cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
       -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
+    cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+      "$BUILD_SOURCE/scripts/smoke-abort-backtrace.c" \
+      -Wl,-z,relro,-z,now,-z,noexecstack -o /out/smoke-abort-backtrace.so
     verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
     cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle
@@ -877,7 +882,7 @@ PY
     (
       cd /out
       find bundle -type f -print0 | sort -z | xargs -0 sha256sum
-      sha256sum build.identity smoke-bind-loopback.so smoke-readiness flutter-peer-source-x11 \
+      sha256sum build.identity smoke-bind-loopback.so smoke-abort-backtrace.so smoke-readiness flutter-peer-source-x11 \
         flutter-peer-presentation-x11
     ) > /out/manifest.sha256
     chmod 0444 /out/manifest.sha256
@@ -1130,7 +1135,12 @@ PY
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
-    (cd /out/bundle && RUST_LOG=info exec "$APP" --connect 127.0.0.1) \
+    case "${RUSTDESK_ABORT_TRACE:-0}" in
+      0) APP_ENV=(RUST_LOG=info) ;;
+      1) APP_ENV=(RUST_LOG=info LD_PRELOAD=/out/smoke-abort-backtrace.so) ;;
+      *) fail 'viewer abort diagnostic selection is invalid' ;;
+    esac
+    (cd /out/bundle && exec env "${APP_ENV[@]}" "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
@@ -1177,6 +1187,10 @@ PY
     VIEWER_PID= VIEWER_START=
     [ "$viewer_status" -eq 0 ] \
       || { cat /tmp/viewer.log >&2; fail "viewer exited $viewer_status"; }
+    if [ "${RUSTDESK_ABORT_TRACE:-0}" = 1 ]; then
+      [ "$(grep -Fxc RUSTDESK_VIEWER_ABORT_TRACE_ARMED /tmp/viewer.log)" -eq 1 ] \
+        || fail 'viewer abort diagnostic was not armed exactly once'
+    fi
     if grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log; then
       cat /tmp/viewer.log >&2
       fail 'viewer used a Flutter messenger after engine retirement'

@@ -1377,7 +1377,7 @@ run_flutter_peer_presentation() {
     local provenance=$source_root/scripts/offline-image-provenance.py
     local devcheck_archive= builder_archive= candidate_archive=
     local output=$ROOT/flutter-peer-presentation.out
-    local source_archive_sha load_output mount_options peer_status=0
+    local source_archive_sha load_output mount_options peer_status=0 trace_abort
     local -a peer_args=()
 
     [[ "$FLUTTER_PEER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -1592,6 +1592,19 @@ run_flutter_peer_presentation() {
       "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
+    [ "$(grep -Fxc 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 traced=3 baseline=3' "$output")" -eq 1 ] \
+        || fail 'Flutter full-peer repeated lifecycle verdict is absent or duplicated'
+    for cycle in 1 2 3 4 5 6; do
+        if [ "$cycle" -le 3 ]; then
+            trace_abort=1
+        else
+            trace_abort=0
+        fi
+        [ "$(grep -Fxc \
+          "FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=$cycle abort_trace=$trace_abort viewer=joined server=joined" \
+          "$output")" -eq 1 ] \
+            || fail "Flutter full-peer lifecycle cycle $cycle is absent or duplicated"
+    done
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'Flutter full-peer workload left a container'
     "$CLIENT" --host "unix://$SOCK" image rm \

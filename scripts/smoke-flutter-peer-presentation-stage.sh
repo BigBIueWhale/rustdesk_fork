@@ -743,14 +743,17 @@ import sys
 
 cmake = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 blocks = re.findall(
-    r"list\(APPEND FLUTTER_(?:FFI_)?PLUGIN_LIST\s*\n(.*?)\n\)",
+    r"^list\(APPEND (FLUTTER_(?:FFI_)?PLUGIN_LIST)[ \t]*\n(.*?)^\)[ \t]*$",
     cmake,
-    flags=re.DOTALL,
+    flags=re.DOTALL | re.MULTILINE,
 )
-if len(blocks) != 2:
+if [kind for kind, _ in blocks] != [
+    "FLUTTER_PLUGIN_LIST",
+    "FLUTTER_FFI_PLUGIN_LIST",
+]:
     raise SystemExit("generated native/FFI Flutter plugin lists are absent or ambiguous")
 names = []
-for block in blocks:
+for _, block in blocks:
     for line in block.splitlines():
         name = line.strip()
         if not name:

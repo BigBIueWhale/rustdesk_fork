@@ -29,6 +29,8 @@ PATHS = {
     "pins": "scripts/pins.env",
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
+    "runner_cmake": "flutter/linux/CMakeLists.txt",
+    "runner": "flutter/linux/my_application.cc",
     "verify": "scripts/verify.sh",
 }
 
@@ -72,6 +74,26 @@ def validate(sources: dict[str, str]) -> None:
     pins = sources["pins"]
     controller = sources["controller"]
     pixel_source = sources["source"]
+    runner_cmake = sources["runner_cmake"]
+    runner = sources["runner"]
+
+    for token in (
+        '"${FLUTTER_MANAGED_DIR}/ephemeral/flutter_linux/fl_dart_project.h"',
+        'REGEX "fl_dart_project_set_enable_impeller"',
+        "RUSTDESK_FLUTTER_HAS_IMPELLER_SWITCH=1",
+    ):
+        require(runner_cmake, token, "SDK-bound Linux renderer selection")
+    require_order(
+        runner,
+        (
+            "g_autoptr(FlDartProject) project = fl_dart_project_new();",
+            "#ifdef RUSTDESK_FLUTTER_HAS_IMPELLER_SWITCH",
+            "fl_dart_project_set_enable_impeller(project, FALSE);",
+            "FlView* view = fl_view_new(project);",
+        ),
+        "pre-engine Linux renderer selection",
+    )
+    forbid(runner, "FLUTTER_ENGINE_SWITCH", "ambient renderer selection")
 
     require_order(
         host,

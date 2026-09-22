@@ -161,6 +161,12 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_set_opacity(GTK_WIDGET(window), 0);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+#ifdef RUSTDESK_FLUTTER_HAS_IMPELLER_SWITCH
+  // RustDesk requires every accepted external pixel-buffer update to remain
+  // eligible for timely presentation, including while focus changes. Select
+  // the Linux backend that provides that contract before creating the engine.
+  fl_dart_project_set_enable_impeller(project, FALSE);
+#endif
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView* view = fl_view_new(project);

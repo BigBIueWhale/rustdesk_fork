@@ -10681,9 +10681,22 @@ sample. Therefore the previous Linux 1-second failures in this fixture cannot be
 latency, nor do they prove or disprove decoder-reset causation for the user's deployed Android/Windows complaint.
 The verifier must keep the controlled source fully visible, reject occlusion, and rerun the exact focus/reconnect
 transaction before any product-owned failure or pass claim. The source fixture now raises its window on each
-publication and checks both published colors against root pixels; that correction is test-only and not yet runtime
-validated. The original Android/Windows delay, complete connection correctness, performance, and release evidence
-remain open STOP-SHIP obligations.
+publication and checks both published colors against root pixels; that correction is test-only. The original
+Android/Windows delay, complete connection correctness, performance, and release evidence remain open STOP-SHIP
+obligations.
+
+Exact no-NIC run `run.1TetmBoRPR` at `06141232` validated the corrected source and revealed a separate close-path
+STOP-SHIP failure. The real password prompt and four initial fresh states passed. All three unfocused intervals
+(2/6/12 seconds) maintained maximum gap 0 ms and 8/24/48 distinct current states, with maximum sampled age
+298/300/302 ms; each same-TCP focus recovery passed. Three server replacement/reconnect generations then obtained
+fresh pixels in 261/179/174 ms, and the measured resource bounds passed. The controller printed its full
+presentation verdict. But on closing the remote window the viewer aborted with exit 134 after successful pixelbuffer
+texture release: the log reports two invalid implicit-view removals, then `g_mutex_clear() called on uninitialised
+or locked mutex`. The outer authority correctly withheld its terminal smoke/VM receipts. This is **not a clean
+end-to-end pass**. The exact GLib object and ownership sequence causing the abort remain unproven; inspect the
+pinned Linux embedder and secondary-engine disposal before changing lifetime or mutating product cleanup. The
+source-occlusion false positive is resolved for this run; graceful viewer teardown and all original cross-platform
+delay/correctness/performance obligations remain open.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,

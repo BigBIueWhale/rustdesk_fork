@@ -2208,12 +2208,13 @@ verify_flutter_presentation_pub_discovery() {
         "$(online_fetch_builder_runtime_ref "$builder")" \
         /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
-        mkdir /tmp/toolchain /tmp/home /tmp/project
+        mkdir /tmp/toolchain /tmp/home /tmp/project /tmp/pub-cache
         tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
         cp -a /project-source/. /tmp/project/
+        cp -a /candidate/pub-cache/. /tmp/pub-cache/
         chmod -R u+rwX /tmp/project
         cp /candidate/pubspec.lock /tmp/project/pubspec.lock
-        export HOME=/tmp/home PUB_CACHE=/candidate/pub-cache CI=true
+        export HOME=/tmp/home PUB_CACHE=/tmp/pub-cache CI=true
         export PUB_HOSTED_URL=https://pub.dev
         export FLUTTER_SUPPRESS_ANALYTICS=true
         export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0

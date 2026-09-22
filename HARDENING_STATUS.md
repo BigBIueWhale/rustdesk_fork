@@ -10650,10 +10650,11 @@ Commit `5d6cd9f8` made the product refresh boundary purge queued predecessor fra
 reset, and await a leading successor keyframe without killing the persistent process or reconnecting the
 authenticated transport. Exact no-NIC run `run.hOuCXVG0jc` proved the intended order: the real viewer reset display
 zero's decoder at 20:32:46.225027 and the controlled server created the replacement VP9 encoder at
-20:32:46.300703. It also disproved the proposed causation. Initial pixels arrived in 85 ms with 300 ms maximum age,
+20:32:46.300703. It did not change the then-unrecognized verifier failure. Initial pixels arrived in 85 ms with 300 ms maximum age,
 the two-second background cycle and same-connection focus recovery passed, and the six-second cycle still failed at
-a 1,017 ms actual-pixel gap while the reset had already completed. Retained decoder state is therefore not the cause
-of this reproduced Linux failure. The reset remains required refresh-epoch hygiene; it is not a symptom fix and is
+a 1,017 ms verifier-reported pixel gap while the reset had already completed. That result cannot establish
+retained decoder state as a cause or non-cause, as the direct source/observer evidence below supersedes its verdict.
+The reset remains required refresh-epoch hygiene; it is not a symptom fix and is
 not evidence that the reported Android persistent-process or Windows focus/display-only delay is fixed. The next
 diagnostic must locate the first divergence across real server capture, pixel conversion, VP9 output, client frame
 admission, and decoded output instead of inferring that boundary from renderer callbacks.
@@ -10668,6 +10669,21 @@ captured right-half sample was often near-white, a color absent from the control
 occlusion or observer classification now needs direct evidence. The next verifier-only diagnostic records source
 publication and exact observer source/viewer states at each sample before assigning product causation. The failed
 runtime verdict and all Android/Windows, cross-version, sustained, installed, and release obligations remain open.
+
+Correction from exact no-NIC run `run.PR6gFPcq8E`: the reported 1,025 ms gap is a **verifier false positive**.
+At monotonic 914,628 ms the controlled fixture published frame 74 (low nibble 10, high nibble 4), but the
+source-screen and viewer pixel readers both reported state 250 (low 10, high 15). The server's right-half capture
+was near-white, not palette color 4. At 914,735 ms the source and viewer both still reported state 250, yet the
+observer classified it stale with `age_ms=3960` because it stores the marker's first-ever sighting. Occlusion of
+the fixture's right half reduced the 256-state sequence to 16 repeating low-nibble states; four seconds later,
+current pixels were falsely aged as old. The viewer continued following the **visible** source at the failed
+sample. Therefore the previous Linux 1-second failures in this fixture cannot be cited as product presentation
+latency, nor do they prove or disprove decoder-reset causation for the user's deployed Android/Windows complaint.
+The verifier must keep the controlled source fully visible, reject occlusion, and rerun the exact focus/reconnect
+transaction before any product-owned failure or pass claim. The source fixture now raises its window on each
+publication and checks both published colors against root pixels; that correction is test-only and not yet runtime
+validated. The original Android/Windows delay, complete connection correctness, performance, and release evidence
+remain open STOP-SHIP obligations.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,

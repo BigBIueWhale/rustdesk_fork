@@ -8,6 +8,7 @@
  * source state to distinguish a current picture from a merely changing but delayed picture.
  */
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
@@ -80,6 +81,18 @@ static unsigned long rgb_pixel(const Visual *visual, const uint8_t color[3]) {
            component_pixel(color[2], visual->blue_mask);
 }
 
+static int root_pixel_matches(Display *display, Window root, int x, int y,
+                              unsigned long expected) {
+    XImage *image = XGetImage(display, root, x, y, 1U, 1U, AllPlanes, ZPixmap);
+    unsigned long actual;
+    if (image == NULL) {
+        return 0;
+    }
+    actual = XGetPixel(image, 0, 0);
+    XDestroyImage(image);
+    return actual == expected;
+}
+
 int main(void) {
     Display *display = NULL;
     struct sigaction action = {0};
@@ -92,6 +105,7 @@ int main(void) {
     Pixmap back_buffer;
     GC graphics;
     unsigned int frame = 0U;
+    int exit_status = 0;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
 
@@ -175,9 +189,20 @@ int main(void) {
          * nibbles in one request prevents either client from observing a state torn between
          * two same-cadence drawing requests.
          */
+        XRaiseWindow(display, window);
         XCopyArea(display, back_buffer, window, graphics, 0, 0, SOURCE_WIDTH, SOURCE_HEIGHT,
                   0, 0);
         XSync(display, False);
+        if (!root_pixel_matches(display, root, (int)(SOURCE_WIDTH / 4U),
+                                (int)(SOURCE_HEIGHT / 2U),
+                                rgb_pixel(visual, palette[low])) ||
+            !root_pixel_matches(display, root, (int)(SOURCE_WIDTH * 3U / 4U),
+                                (int)(SOURCE_HEIGHT / 2U),
+                                rgb_pixel(visual, palette[high]))) {
+            fprintf(stderr, "FLUTTER_PEER_SOURCE_FAIL source window occluded frame=%u\n", frame);
+            exit_status = 1;
+            break;
+        }
         if (trace_enabled != 0) {
             printf("RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=%llu "
                    "state=%u low=%u high=%u\n",
@@ -195,10 +220,12 @@ int main(void) {
         }
     }
 
-    printf("FLUTTER_PEER_SOURCE_COMPLETE frames=%u\n", frame);
+    if (exit_status == 0) {
+        printf("FLUTTER_PEER_SOURCE_COMPLETE frames=%u\n", frame);
+    }
     XFreePixmap(display, back_buffer);
     XFreeGC(display, graphics);
     XDestroyWindow(display, window);
     XCloseDisplay(display);
-    return 0;
+    return exit_status;
 }

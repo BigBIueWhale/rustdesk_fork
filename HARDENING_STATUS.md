@@ -460,6 +460,38 @@ These reports prove neither a current-`master` regression nor one cause. They sh
 diverge and that wholesale state replacement masks the fault; they do not implicate Android's intentionally persistent
 controlled-side `MainService`, prove exploitation, or establish any host/service/network modification.
 
+**Exact-current Linux boundary evidence (2026-09-22; still failing).** The extended no-NIC full-peer transaction at
+commit `6c48ddf` built the exact release core and 77-file Flutter 3.24.5 bundle, authenticated the real prompt, and
+presented four current 640x480 source states with initial maximum age 250 ms. Its first two-second external-focus-loss
+cycle stayed fresh (`maximum_gap_ms=253`, `maximum_age_ms=295`) and recovered under a real pointer event in 0 ms on the
+same authenticated TCP connection. The second six-second cycle then failed at an actual X11 presentation gap of
+1012 ms, after only four distinct states; reconnect and replacement phases were therefore not reached. Initial resource
+sampling was 314752 KiB RSS, 47 threads, and 46 descriptors, but the early failure is not a resource-bound or soak pass.
+
+Environment-gated native trace at that exact failure narrows, but does not close, the defect. Every fresh decoded RGBA
+state through sequence 30 was accepted by the production Linux texture registrar (`marked=1`), and Flutter invoked the
+plugin's `copy_pixels` callback for every sequence, normally 2--18 ms after submission. Sequence 30 was copied at
+monotonic 788013584 us; X11 declared the stale-presentation failure at 788239 ms, about 225 ms later. Sampled source
+bytes changed with the controlled palette. Thus this Linux failure is downstream of transport, decode, plugin
+submission, and external-texture consumption: the remaining unobserved boundary is Flutter backing-store render,
+GTK redraw/composition, and actual X11 presentation. The trace disproves a permanently lost texture-notification
+hypothesis for this run; a texture callback is still not proof that the corresponding pixels were presented.
+
+This boundary has a strong, Linux-specific upstream match. Flutter PR
+<https://github.com/flutter/flutter/pull/192094> records that an engine OpenGL frame can be consumed from a different
+presentation context before rendering completes; PR <https://github.com/flutter/flutter/pull/192098> replaced a
+correct-but-blocking `glFinish` handoff with fences and a GTK-main-thread wait; and PR
+<https://github.com/flutter/flutter/pull/192150> later removed an unreachable shared-frame path on modern X11 while
+retaining separate Wayland synchronization. The current Flutter Linux tracking issue
+<https://github.com/flutter/flutter/issues/191245> still distinguishes requested/delivered frames from compositor
+presentation and says X11 and Wayland need separate strategies. This repository's pinned Flutter 3.24.5 engine
+(`a18df97ca57a249df5d8d68cd0820600223ce262`) predates those September 2026 changes. That is a strong mechanism match,
+not proof that a current Flutter upgrade is sufficient or safe, and not evidence that Windows or Android shares the
+same native cause. The next Linux correction must bind an audited engine/toolchain choice to the exact remaining
+handoff and rerun the full actual-pixel schedule; reconnect, relaxed freshness limits, or synchronization before the
+engine renders the backing store are not valid substitutes. The failed evidence remains retained and this item stays
+OPEN / STOP-SHIP.
+
 The binding product requirement is broader than either report: the complete connection flow must be correct and
 performant across every supported viewer and controlled platform. Focus, visibility, foreground/background, task,
 display-topology, congestion, network, reconnect, replacement, and teardown transitions must preserve exact authority,

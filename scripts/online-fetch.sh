@@ -2195,12 +2195,22 @@ produce_flutter_presentation_pub_discovery() {
 
 verify_flutter_presentation_pub_discovery() {
     local candidate="$1" expected_lock_sha256="$2" builder="$DEB_BUILDER_CONFIG_ID"
+    local runtime_cache="$candidate/replay-pub-cache"
     [ -d "$candidate/pub-cache" ] && [ ! -L "$candidate/pub-cache" ] \
         && [ -f "$candidate/pubspec.lock" ] && [ ! -L "$candidate/pubspec.lock" ] \
         || die "Flutter presentation Pub discovery candidate is incomplete"
+    [ ! -e "$runtime_cache" ] && [ ! -L "$runtime_cache" ] \
+        || die "Flutter presentation Pub replay cache path is occupied"
+    /usr/bin/install -d -m 0700 -- \
+        "$runtime_cache" "$runtime_cache/hosted" \
+        "$runtime_cache/hosted-hashes" "$runtime_cache/git"
     online_docker_run_pub_semantic \
         --mount "type=bind,source=$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$candidate,target=/candidate,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$runtime_cache,target=/tmp/pub-cache,bind-recursive=disabled" \
+        --mount "type=bind,source=$candidate/pub-cache/hosted,target=/tmp/pub-cache/hosted,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$candidate/pub-cache/hosted-hashes,target=/tmp/pub-cache/hosted-hashes,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$candidate/pub-cache/git,target=/tmp/pub-cache/git,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter,target=/project-source,readonly,bind-recursive=disabled" \
         --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK" \
         --env "RUSTDESK_PROJECT_LOCK_SHA256=$expected_lock_sha256" \
@@ -2209,16 +2219,13 @@ verify_flutter_presentation_pub_discovery() {
         /usr/bin/timeout --signal=TERM --kill-after=10s 600s \
         /bin/bash --noprofile --norc -euo pipefail -c '
         umask 077
-        mkdir /tmp/toolchain /tmp/home /tmp/project /tmp/pub-cache
+        mkdir /tmp/toolchain /tmp/home /tmp/project
         printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=extract\n" >&2
         tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
         cp -a /project-source/. /tmp/project/
-        ln -s /candidate/pub-cache/hosted /tmp/pub-cache/hosted
-        ln -s /candidate/pub-cache/hosted-hashes /tmp/pub-cache/hosted-hashes
-        ln -s /candidate/pub-cache/git /tmp/pub-cache/git
         chmod -R u+rwX /tmp/project
         cp /candidate/pubspec.lock /tmp/project/pubspec.lock
-        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=pub-cache-projected\n" >&2
+        printf "FLUTTER_PRESENTATION_PUB_REPLAY phase=pub-cache-mounted\n" >&2
         export HOME=/tmp/home PUB_CACHE=/tmp/pub-cache CI=true
         export PUB_HOSTED_URL=https://pub.dev
         export FLUTTER_SUPPRESS_ANALYTICS=true

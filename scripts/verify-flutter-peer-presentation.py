@@ -106,6 +106,13 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "pre-engine secondary-window project policy",
     )
+    for token in (
+        'g_getenv("RUSTDESK_PRESENTATION_TRACE")',
+        'g_strcmp0(type, "FlViewRenderer")',
+        'GTK_IS_DRAWING_AREA(widget)',
+        '"RUSTDESK_PRESENTATION_TRACE stage=gtk-draw monotonic_us=%"',
+    ):
+        require(multi_window, token, "environment-gated GTK presentation trace")
 
     require_order(
         host,

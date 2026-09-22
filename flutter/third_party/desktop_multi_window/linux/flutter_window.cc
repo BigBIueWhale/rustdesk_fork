@@ -40,6 +40,37 @@ namespace
     delete static_cast<PendingWindowDestroy *>(data);
   }
 
+  gboolean traceFlutterDraw(GtkWidget *widget, cairo_t *, gpointer data)
+  {
+    auto *window = static_cast<FlutterWindow *>(data);
+    g_printerr(
+        "RUSTDESK_PRESENTATION_TRACE stage=gtk-draw monotonic_us=%" G_GINT64_FORMAT
+        " window=%" G_GINT64_FORMAT " widget=%s mapped=%d visible=%d drawable=%d\n",
+        g_get_monotonic_time(), window->GetId(), G_OBJECT_TYPE_NAME(widget),
+        gtk_widget_get_mapped(widget), gtk_widget_get_visible(widget),
+        gtk_widget_is_drawable(widget));
+    return FALSE;
+  }
+
+  void attachFlutterDrawTrace(GtkWidget *widget, FlutterWindow *window)
+  {
+    const char *type = G_OBJECT_TYPE_NAME(widget);
+    if (GTK_IS_DRAWING_AREA(widget) || g_strcmp0(type, "FlViewRenderer") == 0)
+    {
+      g_signal_connect(widget, "draw", G_CALLBACK(traceFlutterDraw), window);
+    }
+    if (!GTK_IS_CONTAINER(widget))
+    {
+      return;
+    }
+    GList *children = gtk_container_get_children(GTK_CONTAINER(widget));
+    for (GList *child = children; child != nullptr; child = child->next)
+    {
+      attachFlutterDrawTrace(GTK_WIDGET(child->data), window);
+    }
+    g_list_free(children);
+  }
+
 }
 
 gboolean DrawCallback(GtkWidget* widget, cairo_t* cr, gpointer data) {
@@ -92,6 +123,9 @@ FlutterWindow::FlutterWindow(
 
   FlView* fl_view = fl_view_new(project);
   gtk_container_add(GTK_CONTAINER(window_), GTK_WIDGET(fl_view));
+  if (g_strcmp0(g_getenv("RUSTDESK_PRESENTATION_TRACE"), "1") == 0) {
+    attachFlutterDrawTrace(GTK_WIDGET(fl_view), this);
+  }
 
   // https://github.com/flutter/flutter/issues/152154
   // Remove this workaround when flutter version is updated.

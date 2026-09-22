@@ -209,6 +209,14 @@ readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
 readonly BUILD_INPUT_ROOT="$WORKSPACE/build-input-root"
 readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"
 readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
+readonly SERVER_MACHINE_ID="$WORKSPACE/server.machine-id"
+readonly SERVER_MACHINE_ID_VALUE=727573746465736b2d73657276657231
+readonly VIEWER_MACHINE_ID="$WORKSPACE/viewer.machine-id"
+readonly VIEWER_MACHINE_ID_VALUE=727573746465736b2d76696577657231
+[[ "$SERVER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
+  && [[ "$VIEWER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
+  && [ "$SERVER_MACHINE_ID_VALUE" != "$VIEWER_MACHINE_ID_VALUE" ] \
+  || die 'private endpoint machine identities are invalid or shared'
 BUILD_WORK="$WORKSPACE/build-work"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
   "$COORD" "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
@@ -228,6 +236,22 @@ mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
   && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness creation failed'
 readonly VIEWER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")"
+printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
+printf '%s\n' "$VIEWER_MACHINE_ID_VALUE" > "$VIEWER_MACHINE_ID.tmp"
+chmod 0400 "$SERVER_MACHINE_ID.tmp" "$VIEWER_MACHINE_ID.tmp"
+mv "$SERVER_MACHINE_ID.tmp" "$SERVER_MACHINE_ID"
+mv "$VIEWER_MACHINE_ID.tmp" "$VIEWER_MACHINE_ID"
+for endpoint in SERVER VIEWER; do
+  identity_path="${endpoint}_MACHINE_ID"
+  identity_value="${endpoint}_MACHINE_ID_VALUE"
+  [ -f "${!identity_path}" ] && [ ! -L "${!identity_path}" ] \
+    && [ "$(stat -c '%u:%g:%a:%h:%s' "${!identity_path}")" = \
+      "$HOST_UID:$HOST_GID:400:1:33" ] \
+    && [ "$(<"${!identity_path}")" = "${!identity_value}" ] \
+    || die "$endpoint private machine identity creation failed"
+done
+readonly SERVER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_MACHINE_ID")"
+readonly VIEWER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_MACHINE_ID")"
 if [ "$SOURCE_AUTHORITY" = git ]; then
   SOURCE_ARCHIVE="$WORKSPACE/source.tar"
   git archive --format=tar --output="$SOURCE_ARCHIVE" "$SOURCE_COMMIT"
@@ -256,14 +280,18 @@ run_owned_container() {
 
 inspect_container_contract() {
   local cid=$1 expected_network=$2 label=$3
-  local expected_passwd_source= mounts_path record_kind source destination writable extra
+  local expected_passwd_source= expected_machine_id_source= mounts_path
+  local record_kind source destination writable extra
   local network ipc pid uts privileged read_only user ports devices caps security
   local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0
-  local passwd_mounts=0
+  local passwd_mounts=0 machine_id_mounts=0
   local receipt_ends=0
   case "$label" in
-    server) ;;
-    viewer) expected_passwd_source=$VIEWER_PASSWD ;;
+    server) expected_machine_id_source=$SERVER_MACHINE_ID ;;
+    viewer)
+      expected_passwd_source=$VIEWER_PASSWD
+      expected_machine_id_source=$VIEWER_MACHINE_ID
+      ;;
     *) die "unknown inspected runtime label: $label" ;;
   esac
   network="$(peer_vm_docker container inspect --format '{{.HostConfig.NetworkMode}}' "$cid")"
@@ -340,12 +368,18 @@ inspect_container_contract() {
           || die "$label passwd witness source or read-only contract differs"
         passwd_mounts=$((passwd_mounts + 1))
         ;;
+      /etc/machine-id)
+        [ "$source" = "$expected_machine_id_source" ] && [ "$writable" = false ] \
+          || die "$label machine-id witness source or read-only contract differs"
+        machine_id_mounts=$((machine_id_mounts + 1))
+        ;;
       *) die "$label receives an unexpected mount destination: $destination" ;;
     esac
   done < "$mounts_path"
   [ "$receipt_ends" -eq 1 ] && [ "$source_mounts" -eq 1 ] \
     && [ "$output_mounts" -eq 1 ] && [ "$xvfb_root_mounts" -eq 1 ] \
     && [ "$xkbcomp_mounts" -eq 1 ] && [ "$coord_mounts" -eq 1 ] \
+    && [ "$machine_id_mounts" -eq 1 ] \
     || die "$label runtime mount cardinality differs"
   if [ -n "$expected_passwd_source" ]; then
     [ "$passwd_mounts" -eq 1 ] || die 'viewer passwd witness mount cardinality differs'
@@ -487,6 +521,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
+  --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh server \
   >/dev/null
@@ -525,6 +560,7 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
   --mount "type=bind,source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$VIEWER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   dbus-run-session -- \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh viewer \
@@ -537,6 +573,11 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
 [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ID" ] \
   && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness changed during runtime'
+[ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_ID" ] \
+  && [ "$(<"$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_VALUE" ] \
+  && [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_MACHINE_ID")" = "$VIEWER_MACHINE_ID_ID" ] \
+  && [ "$(<"$VIEWER_MACHINE_ID")" = "$VIEWER_MACHINE_ID_VALUE" ] \
+  || die 'private endpoint machine identity changed during runtime'
 cat "$WORKSPACE/viewer.log"
 if [ ! -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
   printf 'outer-retirement-after-viewer-status=%s\n' "$viewer_status" > "$COORD/stop.tmp"

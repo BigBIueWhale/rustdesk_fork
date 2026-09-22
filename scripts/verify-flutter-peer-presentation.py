@@ -194,6 +194,28 @@ def validate(sources: dict[str, str]) -> None:
     require(host, "/etc/passwd)", "inspected passwd mount destination")
     require(host, '[ "$writable" = false ]', "inspected read-only passwd mount")
     require(host, "private viewer passwd witness changed during runtime", "passwd witness finality")
+    for endpoint in ("SERVER", "VIEWER"):
+        require(
+            host,
+            f'readonly {endpoint}_MACHINE_ID="$WORKSPACE/{endpoint.lower()}.machine-id"',
+            f"private {endpoint.lower()} machine identity",
+        )
+        require(
+            host,
+            f'source=${endpoint}_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled',
+            f"read-only {endpoint.lower()} machine-id mount",
+        )
+    require(
+        host,
+        '[ "$SERVER_MACHINE_ID_VALUE" != "$VIEWER_MACHINE_ID_VALUE" ]',
+        "distinct endpoint machine identities",
+    )
+    if host.count("target=/etc/machine-id") != 2:
+        raise VerificationError("each runtime endpoint needs one private machine identity")
+    require(host, "/etc/machine-id)", "inspected machine-id mount destination")
+    require(host, "machine_id_mounts=0", "machine-id mount cardinality")
+    require(host, '&& [ "$machine_id_mounts" -eq 1 ]', "one machine-id per endpoint")
+    require(host, "private endpoint machine identity changed during runtime", "machine-id finality")
     require(host, 'readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"', "canonical Pub-cache input")
     require(
         host,
@@ -210,10 +232,11 @@ def validate(sources: dict[str, str]) -> None:
         host,
         (
             "local cid=$1 expected_network=$2 label=$3",
-            "local expected_passwd_source= mounts_path record_kind source destination writable extra",
+            "local expected_passwd_source= expected_machine_id_source= mounts_path",
+            "local record_kind source destination writable extra",
             "local network ipc pid uts privileged read_only user ports devices caps security",
             "local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0",
-            "local passwd_mounts=0",
+            "local passwd_mounts=0 machine_id_mounts=0",
             "local receipt_ends=0",
             "network=\"$(peer_vm_docker container inspect --format '{{.HostConfig.NetworkMode}}' \"$cid\")\"",
             'mounts_path="$WORKSPACE/$label.mounts.tsv"',
@@ -466,6 +489,9 @@ def validate(sources: dict[str, str]) -> None:
     require(stage, '[ "$interfaces" = lo ]', "sole loopback interface")
     require(stage, "0100007F:527E", "exact 127.0.0.1:21118 listener")
     require(stage, "verify_regular /out/smoke-bind-loopback.so", "manifested bind shim")
+    require(stage, "verify_machine_identity", "private endpoint machine identity validation")
+    if stage.count("    verify_machine_identity") != 2:
+        raise VerificationError("both runtime endpoints must validate their machine identity")
     require(stage, '[ "$(udp_socket_count)" -eq 0 ]', "zero UDP runtime surface")
     require(stage, "pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0", "controller link")
     require(stage, '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "private accessibility session")

@@ -26,6 +26,14 @@ verify_archive() {
     || fail "$label digest differs from its pin"
 }
 
+verify_machine_identity() {
+  [ -f /etc/machine-id ] && [ ! -L /etc/machine-id ] \
+    && [ "$(stat -c '%u:%g:%a:%h:%s' /etc/machine-id)" = \
+      "$(id -u):$(id -g):400:1:33" ] \
+    && grep -Eq '^[0-9a-f]{32}$' /etc/machine-id \
+    || fail 'private endpoint machine identity differs'
+}
+
 verify_xvfb_closure() {
   local count=0 relative size mode digest extra file
   verify_regular /source/scripts/smoke-xvfb-files.tsv
@@ -473,6 +481,7 @@ CFG
 
   server)
     verify_runtime_bundle
+    verify_machine_identity
     assert_loopback_only_interface
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
@@ -537,8 +546,11 @@ CFG
     password_status=$?
     set -e
     printf '%s\n' "$password_output"
-    [ "$password_status" -eq 0 ] \
-      || fail "shipped password-stdin command exited $password_status"
+    if [ "$password_status" -ne 0 ]; then
+      cat /tmp/server.log >&2
+      emit_runtime_logs SERVER "$HOME/.local/share/logs"
+      fail "shipped password-stdin command exited $password_status"
+    fi
     grep -qx 'Done!' <<<"$password_output" \
       || fail 'password-stdin completion marker differs'
     "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" /tmp/server.log \
@@ -590,6 +602,7 @@ CFG
 
   viewer)
     verify_runtime_bundle
+    verify_machine_identity
     assert_loopback_only_interface
     readonly EXPECTED_PASSWD_ENTRY="rustdesk-evidence:x:$(id -u):$(id -g):RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
     command -v getent >/dev/null \

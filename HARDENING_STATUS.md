@@ -10638,19 +10638,27 @@ observation. It built the exact 78-file candidate bundle, authenticated the real
 initial pixels in 253 ms with 291 ms maximum age, passed a two-second unfocused interval with eight distinct
 states and 261 ms maximum age, and recovered focus without replacing the authenticated TCP connection. During
 the next interval, every copied frame was followed by a mapped, visible, drawable `FlViewRenderer` draw. The
-failure was therefore not a lost Flutter/GTK redraw. Decoded pixels instead showed `current low nibble + previous
-high nibble` after the 255-to-0 source wrap. The verifier source painted those nibbles in separate X requests at
-the same 250 ms cadence as capture, so capture phase after refresh could repeatedly observe the intentionally
-torn intermediate state. The current verifier correction composes off-screen and publishes one whole state with
-one X request. That correction requires a fresh VM run and is not evidence that the reported Android persistent-
-process or Windows focus/display-only delay is fixed.
+failure was therefore not a lost Flutter/GTK redraw. Its decoded pixels showed `current low nibble + previous
+high nibble` after the 255-to-0 source wrap. Commit `8eeed293` changed the verifier source to compose off-screen
+and publish each complete state with one X request, eliminating a plausible torn-source explanation. Exact no-NIC
+run `run.j1fl3OE6Zz` then reproduced the defect: initial pixels arrived in 168 ms with 297 ms maximum age, the
+two-second background cycle delivered nine distinct current states, and the next cycle again exceeded the
+freshness bound at 1,023 ms while submissions, copies, and mapped GTK draws continued. The atomic-source result
+disproves that verifier explanation.
+
+The product refresh boundary currently purges queued predecessor frames and waits for a leading keyframe, but it
+does not reset the retained decoder before admitting the sequence produced by the restarted encoder. A reset
+control already has the required behavior and queue ordering elsewhere. The pending correction places one
+coalesced decoder-reset barrier in every explicit refresh transaction before any successor keyframe. It neither
+kills the persistent process nor reconnects the authenticated transport. This still requires a fresh VM run and
+is not evidence that the reported Android persistent-process or Windows focus/display-only delay is fixed.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,
 deselection, disposal, and pointer-replacement stress. Measure capture-through-
 compositor latency, queues, CPU, memory, and cleanup under sustained lifecycle
 soak. Physical Android lifecycle behavior remains open under its separate path.
-Rerun the corrected atomic-pixel-source transaction through all focus and reconnect cycles before drawing any
+Rerun the decoder-reset and atomic-pixel-source transaction through all focus and reconnect cycles before drawing any
 further Linux presentation conclusion; do not substitute texture callbacks, redraw callbacks, or relaxed pixel
 freshness for actual presented-pixel evidence.
 Cross-version behavior, current signed artifacts, clean cold R-B2/R-B10 equality,

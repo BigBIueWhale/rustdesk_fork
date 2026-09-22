@@ -2888,14 +2888,23 @@ impl VideoMailboxSender {
         if state.closed {
             return false;
         }
-        if state.awaiting_keyframe {
+        let open = if state.awaiting_keyframe {
             state.clear_frames();
             state.refresh_requested = true;
-            return true;
+            true
+        } else {
+            state.invalidate_frames()
+        };
+        if open {
+            state.work.retain(|work| {
+                !matches!(work, VideoWork::Control(VideoControl::Reset))
+            });
+            state.work.push_back(VideoWork::Control(VideoControl::Reset));
         }
-        let open = state.invalidate_frames();
         drop(state);
-        if !open {
+        if open {
+            self.shared.ready.notify_one();
+        } else {
             self.shared.ready.notify_all();
         }
         open
@@ -5804,14 +5813,55 @@ mod tests {
 
         assert!(sender.begin_refresh());
         assert_eq!(sender.pending_frames(), Some(0));
-        assert!(matches!(
-            receiver.recv(),
-            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(true)))
-        ));
         assert_eq!(
             admit_video_frame(&sender, video_frame(3), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
+        assert_eq!(
+            admit_video_frame(&sender, video_frame(4), true),
+            VideoFrameAdmission::Queued
+        );
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(true)))
+        ));
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::Reset))
+        ));
+        let recovered = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the post-refresh keyframe must follow the decoder reset"),
+        );
+        assert!(recovered.is_keyframe);
+        assert_eq!(recovered.frame.display, 4);
+    }
+
+    #[test]
+    fn r_s11ev_repeated_explicit_refresh_coalesces_the_decoder_reset_barrier() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            admit_video_frame(&sender, video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+
+        assert!(sender.begin_refresh());
+        assert!(sender.begin_refresh());
+        {
+            let state = sender.shared.state.lock().unwrap();
+            assert_eq!(state.work.len(), 1);
+            assert!(matches!(
+                state.work.front(),
+                Some(VideoWork::Control(VideoControl::Reset))
+            ));
+            assert_eq!(state.frame_count, 0);
+            assert!(state.awaiting_keyframe);
+        }
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::Reset))
+        ));
     }
 
     #[test]

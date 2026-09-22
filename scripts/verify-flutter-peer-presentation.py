@@ -148,7 +148,14 @@ def validate(sources: dict[str, str]) -> None:
             "candidate Flutter invocation rebuilt or changed its pinned SDK state",
             "candidate-pinned)",
             "committed candidate project lock differs from its pin",
+            "FLUTTER_PEER_BUILD_PHASE=project-dart-pub-start",
             "dart pub get --offline --enforce-lockfile",
+            "FLUTTER_PEER_BUILD_PHASE=project-dart-pub-complete",
+            "FLUTTER_PEER_BUILD_PHASE=plugin-injection-start",
+            '"$REAL_FLUTTER" --suppress-analytics --no-version-check',
+            "pub get --offline --enforce-lockfile",
+            "FLUTTER_PEER_BUILD_PHASE=plugin-injection-complete",
+            "FLUTTER_PEER_PLUGIN_INPUTS_OK",
             '"$FRB_CODEGEN" --rust-input ./src/flutter_ffi.rs',
             "cargo build --locked --offline --features flutter,unix-file-copy-paste",
             "FLUTTER_PEER_BUILD_PHASE=flutter-build-start",
@@ -164,11 +171,20 @@ def validate(sources: dict[str, str]) -> None:
     for token in ("curl ", "wget ", "apt-get", "--privileged", "sudo "):
         forbid(stage, token, "build/runtime acquisition or privilege fallback")
     forbid(stage, "bundled-sdk-candidate", "candidate Flutter-tools freshness bypass")
-    forbid(
+    require(
         stage,
-        '"$REAL_FLUTTER" pub get',
-        "direct Flutter Pub wrapper in the no-NIC build",
+        '"$REAL_FLUTTER" --suppress-analytics --no-version-check \\\n          pub get --offline --enforce-lockfile',
+        "bounded real Flutter offline plugin injection",
     )
+    for token in (
+        'generated_plugins.cmake"',
+        'generated_plugin_registrant.cc"',
+        'generated_plugin_registrant.h"',
+        "generated Linux plugin symlink is dangling or lacks Linux sources",
+        "Flutter plugin injection produced no Linux plugin symlinks",
+        "project pubspec.lock changed during Flutter plugin injection",
+    ):
+        require(stage, token, "generated Linux plugin input finality")
     for token in (
         "VERSION_MANIFEST=$FLUTTER_ROOT/bin/cache/flutter.version.json",
         'for key in ("frameworkVersion", "flutterVersion")',

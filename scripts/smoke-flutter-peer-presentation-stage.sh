@@ -710,10 +710,41 @@ PY
       cd "$BUILD_SOURCE/flutter"
       rm -rf linux/flutter/ephemeral/.plugin_symlinks \
         .flutter-plugins-dependencies .flutter-plugins
-      dart pub get --offline --enforce-lockfile >/dev/null
+      printf 'FLUTTER_PEER_BUILD_PHASE=project-dart-pub-start network=none timeout_seconds=300\n'
+      /usr/bin/timeout --signal=TERM --kill-after=10s 300s \
+        dart pub get --offline --enforce-lockfile >/dev/null
+      printf 'FLUTTER_PEER_BUILD_PHASE=project-dart-pub-complete network=none\n'
     )
     [ "$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')" = \
-      "$pub_lock_before" ] || fail 'project pubspec.lock changed during offline resolution'
+      "$pub_lock_before" ] || fail 'project pubspec.lock changed during Dart offline resolution'
+    (
+      cd "$BUILD_SOURCE/flutter"
+      printf 'FLUTTER_PEER_BUILD_PHASE=plugin-injection-start network=none timeout_seconds=300\n'
+      /usr/bin/timeout --signal=TERM --kill-after=10s 300s \
+        "$REAL_FLUTTER" --suppress-analytics --no-version-check \
+          pub get --offline --enforce-lockfile >/dev/null
+      printf 'FLUTTER_PEER_BUILD_PHASE=plugin-injection-complete network=none\n'
+    )
+    [ "$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" | awk '{print $1}')" = \
+      "$pub_lock_before" ] || fail 'project pubspec.lock changed during Flutter plugin injection'
+    for generated_plugin_input in \
+      "$BUILD_SOURCE/flutter/linux/flutter/generated_plugins.cmake" \
+      "$BUILD_SOURCE/flutter/linux/flutter/generated_plugin_registrant.cc" \
+      "$BUILD_SOURCE/flutter/linux/flutter/generated_plugin_registrant.h"; do
+      verify_regular "$generated_plugin_input"
+    done
+    plugin_symlink_count=0
+    while IFS= read -r -d '' plugin_symlink; do
+      plugin_symlink_count=$((plugin_symlink_count + 1))
+      [ -L "$plugin_symlink" ] \
+        && [ -d "$plugin_symlink/linux" ] \
+        || fail "generated Linux plugin symlink is dangling or lacks Linux sources: $plugin_symlink"
+    done < <(find "$BUILD_SOURCE/flutter/linux/flutter/ephemeral/.plugin_symlinks" \
+      -mindepth 1 -maxdepth 1 -type l -print0)
+    [ "$plugin_symlink_count" -gt 0 ] \
+      || fail 'Flutter plugin injection produced no Linux plugin symlinks'
+    printf 'FLUTTER_PEER_PLUGIN_INPUTS_OK generated=3 symlinks=%s lock_unchanged=true network=none\n' \
+      "$plugin_symlink_count"
     readonly BUILD_ENTRY_DIRECTORY=$PWD
     {
       cd "$BUILD_SOURCE"

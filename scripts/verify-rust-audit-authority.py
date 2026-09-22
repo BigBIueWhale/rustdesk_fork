@@ -201,6 +201,11 @@ def validate_contract(repo):
             '[ -f "$VENDOR_CONFIG" ] && [ ! -L "$VENDOR_CONFIG" ]',
             'AUDIT_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-rust-audit.XXXXXXXXXX)"',
             '--remove-private-root "$AUDIT_TMP" --expected-identity "$AUDIT_TMP_ID"',
+            "readonly SOURCE_MASK_DIR=$AUDIT_TMP/source-mask-directory",
+            "readonly SOURCE_MASK_FILE=$AUDIT_TMP/source-mask-file",
+            "SOURCE_MASK_FLAGS=()",
+            ".cargo .git .harness-state online target flutter/.dart_tool flutter/build",
+            'audit_die "source mask target is ambiguous: $relative_path"',
             "scripts/rust-audit-policy.py prepare",
             "scripts/rust-audit-policy.py check-freshness",
             '--max-age-days "$ADVISORY_DB_MAX_AGE_DAYS"',
@@ -309,16 +314,26 @@ def validate_contract(repo):
         (
             "--pids-limit=256 --memory=3g --memory-swap=3g --cpus=2",
             "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=512m",
+            "--env CARGO_TARGET_DIR=/tmp/cargo-target",
             '--mount "type=bind,source=$REPO_ROOT,target=/work,readonly"',
             '--mount "type=bind,source=$AUDIT_TMP,target=/audit,readonly"',
             '--mount "type=bind,source=$REPO_ROOT/$VENDOR_DIR,target=/vendor,readonly"',
+            '"${SOURCE_MASK_FLAGS[@]}"',
+            'mkdir -p "$db_root" /tmp/cargo-home /tmp/cargo-target /tmp/home',
             '"$AUDIT_TOOLS/bin/cargo-deny" --format json --locked --offline',
             "--config /audit/deny.runtime.toml check advisories",
             '>"$DENY_OUTPUT" 2>"$DENY_ERROR"',
         ),
         "cargo-deny scanner",
     )
-    require(deny.count("--mount ") == 3, "cargo-deny must have three read-only input mounts")
+    require(
+        deny.count("--mount ") == 3,
+        "cargo-deny must have three direct read-only input mounts",
+    )
+    require(
+        "--tmpfs /work/" not in deny,
+        "cargo-deny must not require ignored/generated mountpoints to exist",
+    )
 
     require_all(
         outer,

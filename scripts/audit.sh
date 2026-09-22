@@ -195,6 +195,38 @@ readonly AUDIT_TMP AUDIT_TMP_ID
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$AUDIT_UID:$AUDIT_GID:700" ] \
   || audit_die "private workspace is not current-user/current-group mode 0700"
 
+# Hide only mutable source-tree state that actually exists. Docker cannot
+# create a missing nested mountpoint beneath the read-only /work bind, so a
+# fixed list of tmpfs mounts made a clean archive fail merely because .git,
+# target, or Flutter output directories were correctly absent. Existing
+# paths are replaced by one private canonical-empty directory (or file for a
+# linked-worktree .git file); absent paths already expose nothing.
+readonly SOURCE_MASK_DIR=$AUDIT_TMP/source-mask-directory
+readonly SOURCE_MASK_FILE=$AUDIT_TMP/source-mask-file
+/usr/bin/mkdir "$SOURCE_MASK_DIR"
+: >"$SOURCE_MASK_FILE"
+/usr/bin/chmod 0500 "$SOURCE_MASK_DIR"
+/usr/bin/chmod 0400 "$SOURCE_MASK_FILE"
+SOURCE_MASK_FLAGS=()
+for relative_path in \
+  .cargo .git .harness-state online target flutter/.dart_tool flutter/build; do
+  source_path=$REPO_ROOT/$relative_path
+  if [ -d "$source_path" ] && [ ! -L "$source_path" ]; then
+    SOURCE_MASK_FLAGS+=(
+      --mount "type=bind,source=$SOURCE_MASK_DIR,target=/work/$relative_path,readonly"
+    )
+  elif [ -f "$source_path" ] && [ ! -L "$source_path" ] \
+       && [ "$relative_path" = .git ]; then
+    SOURCE_MASK_FLAGS+=(
+      --mount "type=bind,source=$SOURCE_MASK_FILE,target=/work/.git,readonly"
+    )
+  elif [ -e "$source_path" ] || [ -L "$source_path" ]; then
+    audit_die "source mask target is ambiguous: $relative_path"
+  fi
+done
+readonly SOURCE_MASK_DIR SOURCE_MASK_FILE
+readonly -a SOURCE_MASK_FLAGS
+
 # Validate policy and stage stable private copies after authenticating the VM.
 # The freshness check intentionally has no caller override; even a
 # deliberately refreshed pin becomes release-blocking after this fixed window.
@@ -320,25 +352,19 @@ run_bounded_docker run --rm --pull=never --network=none --read-only \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=256 --memory=3g --memory-swap=3g --cpus=2 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=512m \
-  --tmpfs /work/.cargo:rw,noexec,nosuid,nodev,mode=0700,size=1m \
-  --tmpfs /work/.git:rw,noexec,nosuid,nodev,mode=0700,size=1m \
-  --tmpfs /work/.harness-state:rw,noexec,nosuid,nodev,mode=0700,size=1m \
-  --tmpfs /work/online:rw,noexec,nosuid,nodev,mode=0700,size=1m \
-  --tmpfs /work/target:rw,noexec,nosuid,nodev,mode=0700,size=8m \
-  --tmpfs /work/flutter/.dart_tool:rw,noexec,nosuid,nodev,mode=0700,size=1m \
-  --tmpfs /work/flutter/build:rw,noexec,nosuid,nodev,mode=0700,size=1m \
   --env HOME=/tmp/home --env CARGO_HOME=/tmp/cargo-home \
-  --env CARGO_TARGET_DIR=/work/target --env CARGO_DENY_DB_PATH=/tmp/advisory-dbs \
+  --env CARGO_TARGET_DIR=/tmp/cargo-target --env CARGO_DENY_DB_PATH=/tmp/advisory-dbs \
   --env "RUSTUP_TOOLCHAIN=$RUST_AUDIT_TOOLCHAIN" \
   --mount "type=bind,source=$REPO_ROOT,target=/work,readonly" \
   --mount "type=bind,source=$AUDIT_TMP,target=/audit,readonly" \
   --mount "type=bind,source=$REPO_ROOT/$VENDOR_DIR,target=/vendor,readonly" \
+  "${SOURCE_MASK_FLAGS[@]}" \
   --workdir /work "$IMAGE_ID" /bin/bash --noprofile --norc -c '
     set -euo pipefail
     db_root="$CARGO_DENY_DB_PATH"
     [ "$db_root" = /tmp/advisory-dbs ]
     db="$db_root/$CARGO_DENY_DB_DIR"
-    mkdir -p "$db_root" /tmp/cargo-home /tmp/home
+    mkdir -p "$db_root" /tmp/cargo-home /tmp/cargo-target /tmp/home
     cp -a -- "$ADVISORY_DB" "$db"
     [ "$(git -c safe.directory="$db" -C "$db" rev-parse HEAD)" = "$1" ]
     [ "$(git -c safe.directory="$db" -C "$db" show -s --format=%ct HEAD)" = "$2" ]

@@ -6,6 +6,7 @@
 #   - build-android.sh  build_apk        APK_MODE=offline   (the --network=none .apk build)
 #   - online-fetch.sh   stage_gradle     APK_MODE=warm      (the ONE networked gradle warm)
 #   - android-rust-check.sh              APK_MODE=rust-check (the offline Android Rust gate)
+#   - android-emulator-app-check.sh      APK_MODE=emulator-test (x86_64 runtime-test APK)
 # It builds the Rust JNI lib (cargo-ndk) + the Flutter APK from the staged ./online cache:
 # host rust + the aarch64-linux-android cross-std, the NDK, the arm64-android vcpkg natives,
 # cargo-ndk, the offline cargo vendor, the offline flutter shim, the SDK, and the gradle cache.
@@ -17,10 +18,12 @@
 #            input closure, including the exact Android SDK, stays read-only.
 #   rust-check: generate the real Flutter bridge and type-check the aarch64 Android Rust library;
 #               Gradle is not entered.
+#   emulator-test: build the same application for x86_64 from the separately pinned candidate
+#                  std/native closure. The resulting debug-signed APK is runtime-test-only.
 set -euo pipefail
 case "${APK_MODE:-}" in
-    offline|warm|rust-check) ;;
-    *) echo "[FATAL] APK_MODE must be exactly offline, warm, or rust-check" >&2; exit 1 ;;
+    offline|warm|rust-check|emulator-test) ;;
+    *) echo "[FATAL] APK_MODE must be exactly offline, warm, rust-check, or emulator-test" >&2; exit 1 ;;
 esac
 [ -z "${RUSTDESK_GRADLE_OFFLINE+x}" ] \
     || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
@@ -38,6 +41,46 @@ else
     ANDROID_BUILD_SDK=/online/android-sdk
 fi
 readonly ANDROID_BUILD_SDK
+
+ANDROID_RUST_TARGET=aarch64-linux-android
+ANDROID_JNI_ABI=arm64-v8a
+ANDROID_CLANG_TARGET=aarch64-linux-android21
+ANDROID_NDK_LIB_TRIPLE=aarch64-linux-android
+FLUTTER_TARGET_PLATFORM=android-arm64
+ANDROID_STD_ARCHIVE=/online/rust-std-1.75-aarch64-linux-android.tar.xz
+ANDROID_STD_INSTALLER_NAME=rust-std-1.75.0-aarch64-linux-android
+ANDROID_VCPKG_ROOT=/online/vcpkg
+if [ "$APK_MODE" = emulator-test ]; then
+    [ -d /android-candidate ] && [ ! -L /android-candidate ] \
+        || { echo "[FATAL] x86_64 Android candidate root is absent or ambiguous" >&2; exit 1; }
+    [ -f /android-candidate/rust-std-1.75-x86_64-linux-android.tar.xz ] \
+        && [ ! -L /android-candidate/rust-std-1.75-x86_64-linux-android.tar.xz ] \
+        || { echo "[FATAL] x86_64 Android Rust std candidate is absent or ambiguous" >&2; exit 1; }
+    [ -d /android-candidate/vcpkg/installed/x64-android ] \
+        && [ ! -L /android-candidate/vcpkg/installed/x64-android ] \
+        || { echo "[FATAL] x86_64 Android native candidate is absent or ambiguous" >&2; exit 1; }
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- \
+        /android-candidate/rust-std-1.75-x86_64-linux-android.tar.xz)" = \
+      "$(id -u):$(id -g):400:1:${RUSTDESK_ANDROID_X86_STD_SIZE:?}" ] \
+        || { echo "[FATAL] x86_64 Android Rust std candidate metadata differs" >&2; exit 1; }
+    [ "$(sha256sum /android-candidate/rust-std-1.75-x86_64-linux-android.tar.xz \
+        | awk '{ print $1 }')" = "${RUSTDESK_ANDROID_X86_STD_SHA256:?}" ] \
+        || { echo "[FATAL] x86_64 Android Rust std candidate digest differs" >&2; exit 1; }
+    python3 -I -S /src/scripts/online-input-provenance.py verify-subtree \
+        --tree /android-candidate/vcpkg/installed/x64-android \
+        --expected "${RUSTDESK_ANDROID_X86_VCPKG_SHA256:?}"
+    ANDROID_RUST_TARGET=x86_64-linux-android
+    ANDROID_JNI_ABI=x86_64
+    ANDROID_CLANG_TARGET=x86_64-linux-android21
+    ANDROID_NDK_LIB_TRIPLE=x86_64-linux-android
+    FLUTTER_TARGET_PLATFORM=android-x64
+    ANDROID_STD_ARCHIVE=/android-candidate/rust-std-1.75-x86_64-linux-android.tar.xz
+    ANDROID_STD_INSTALLER_NAME=rust-std-1.75.0-x86_64-linux-android
+    ANDROID_VCPKG_ROOT=/android-candidate/vcpkg
+fi
+readonly ANDROID_RUST_TARGET ANDROID_JNI_ABI ANDROID_CLANG_TARGET \
+    ANDROID_NDK_LIB_TRIPLE FLUTTER_TARGET_PLATFORM ANDROID_STD_ARCHIVE \
+    ANDROID_STD_INSTALLER_NAME ANDROID_VCPKG_ROOT
 
 # Android SDK preferences are distinct from shell HOME: AGP runs in a JVM whose
 # user.home comes from the image account. In the pinned 30.3.1 tool stack, current
@@ -58,7 +101,7 @@ install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"
     || { echo "[FATAL] current Android preferences directory is not private to the build identity" >&2; exit 1; }
 
 prepare_offline_gradle_cache() {
-    [ "$APK_MODE" = offline ] || return 0
+    [ "$APK_MODE" = offline ] || [ "$APK_MODE" = emulator-test ] || return 0
     python3 -I -S /src/scripts/android-gradle-cache.py materialize \
         --source /online/gradle-home \
         --init-script /src/scripts/android-gradle-offline.init.gradle
@@ -78,9 +121,9 @@ TC=/tmp/tc; mkdir -p "$TC"
 # Install Rust and its Android cross-std before expanding Flutter and LLVM. The installer
 # payloads have no consumer after installation and must not overlap those larger toolchains.
 tar -C "$TC" -xf /online/rust-1.75.tar.xz
-tar -C "$TC" -xf /online/rust-std-1.75-aarch64-linux-android.tar.xz
+tar -C "$TC" -xf "$ANDROID_STD_ARCHIVE"
 RUST_INSTALLER_ROOT="$TC/rust-1.75.0-x86_64-unknown-linux-gnu"
-ANDROID_STD_INSTALLER_ROOT="$TC/rust-std-1.75.0-aarch64-linux-android"
+ANDROID_STD_INSTALLER_ROOT="$TC/$ANDROID_STD_INSTALLER_NAME"
 "$RUST_INSTALLER_ROOT/install.sh" --prefix="$TC/r" --disable-ldconfig \
     --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
 "$ANDROID_STD_INSTALLER_ROOT/install.sh" --prefix="$TC/r" --disable-ldconfig >/dev/null
@@ -99,8 +142,8 @@ LLVM_ROOT="$TC/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04"
 export LIBCLANG_PATH="$LLVM_ROOT/lib"
 export ANDROID_NDK_HOME=/online/android-ndk
 # bindgen (scrap) must parse the NDK android sysroot, not the host glibc headers.
-export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot --target=aarch64-linux-android21"
-export VCPKG_ROOT=/online/vcpkg
+export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot --target=$ANDROID_CLANG_TARGET"
+export VCPKG_ROOT="$ANDROID_VCPKG_ROOT"
 export ANDROID_SDK_ROOT="$ANDROID_BUILD_SDK" ANDROID_HOME="$ANDROID_BUILD_SDK"
 # Build-time CARGO_HOME (do NOT clobber the tracked /src/.cargo/config.toml).
 export CARGO_HOME=/tmp/cargo-home; mkdir -p "$CARGO_HOME"
@@ -173,12 +216,17 @@ if [ "$APK_MODE" = rust-check ]; then
 fi
 # The Rust JNI lib (cargo-ndk -> liblibrustdesk.so), copied into jniLibs as librustdesk.so
 # with the NDK libc++_shared.so, then the Flutter APK (gradle offline via the warm cache).
-bash ./flutter/ndk_arm64.sh
-mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
-cp ./target/aarch64-linux-android/release/liblibrustdesk.so \
-    ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
-cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so \
-    ./flutter/android/app/src/main/jniLibs/arm64-v8a/
+if [ "$APK_MODE" = emulator-test ]; then
+    cargo ndk --platform 21 --target "$ANDROID_RUST_TARGET" \
+        build --locked --release --features flutter
+else
+    bash ./flutter/ndk_arm64.sh
+fi
+mkdir -p "./flutter/android/app/src/main/jniLibs/$ANDROID_JNI_ABI"
+cp "./target/$ANDROID_RUST_TARGET/release/liblibrustdesk.so" \
+    "./flutter/android/app/src/main/jniLibs/$ANDROID_JNI_ABI/librustdesk.so"
+cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$ANDROID_NDK_LIB_TRIPLE/libc++_shared.so" \
+    "./flutter/android/app/src/main/jniLibs/$ANDROID_JNI_ABI/"
 # LLVM is required by bridge generation and the Rust JNI build, but not by the final Flutter/
 # Gradle packaging phase. Gradle still needs the installed Cargo for its tracked metadata query.
 rm -rf -- "$LLVM_ROOT"
@@ -188,4 +236,4 @@ if [ -e "$LLVM_ROOT" ] || [ -L "$LLVM_ROOT" ]; then
 fi
 unset LIBCLANG_PATH BINDGEN_EXTRA_CLANG_ARGS
 prepare_offline_gradle_cache
-cd flutter && flutter build apk --release --target-platform android-arm64 --split-per-abi
+cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi

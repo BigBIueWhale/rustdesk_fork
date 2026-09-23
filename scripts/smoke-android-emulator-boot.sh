@@ -8,12 +8,18 @@ fail() {
     exit 1
 }
 
-[ "$#" -eq 4 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT'
+[ "$#" -eq 4 ] || [ "$#" -eq 5 ] \
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
 readonly WORK_ROOT=$4
+readonly RUNTIME_TEST_APK=${5:-}
+if [ -n "$RUNTIME_TEST_APK" ]; then
+    readonly WORKLOAD=app
+else
+    readonly WORKLOAD=boot
+fi
 readonly SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
@@ -22,8 +28,13 @@ readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
 [ "$RUN_UID:$RUN_GID" = 1000:1000 ] \
     || fail 'the emulator workload requires numeric uid/gid 1000:1000'
-[ "$WORK_ROOT" = /tmp/android-emulator-boot ] \
-    || fail 'the emulator work root differs from the fixed private tmpfs path'
+if [ "$WORKLOAD" = app ]; then
+    [ "$WORK_ROOT" = /tmp/android-emulator-app ] \
+        || fail 'the emulator app work root differs from the fixed private tmpfs path'
+else
+    [ "$WORK_ROOT" = /tmp/android-emulator-boot ] \
+        || fail 'the emulator boot work root differs from the fixed private tmpfs path'
+fi
 [ ! -e "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \
     || fail 'the emulator work root is already occupied'
 
@@ -46,6 +57,23 @@ verify_regular_input \
 verify_regular_input \
     "$INPUT_ADB" 555 "$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" \
     "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" 'Android adb executable'
+APK_SHA256=
+if [ "$WORKLOAD" = app ]; then
+    [ -f "$RUNTIME_TEST_APK" ] && [ ! -L "$RUNTIME_TEST_APK" ] \
+        || fail 'runtime-test APK is absent or ambiguous'
+    apk_size="$(stat -c '%s' -- "$RUNTIME_TEST_APK")"
+    case "$apk_size" in
+        ''|*[!0-9]*) fail 'runtime-test APK size is malformed' ;;
+    esac
+    [ "$apk_size" -ge 1048576 ] && [ "$apk_size" -le 2147483648 ] \
+        || fail 'runtime-test APK size is outside the admitted range'
+    [ "$(stat -c '%u:%g:%a:%h' -- "$RUNTIME_TEST_APK")" = 1000:1000:400:1 ] \
+        || fail 'runtime-test APK metadata differs'
+    APK_SHA256="$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')"
+    [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'runtime-test APK digest is malformed'
+    readonly APK_SHA256 apk_size
+fi
 
 mkdir -m 0700 -- "$WORK_ROOT"
 readonly SDK_ROOT=$WORK_ROOT/sdk
@@ -359,6 +387,49 @@ readonly SELINUX="$(adb_shell_value getenforce)"
 [ "$ABI" = x86_64 ] || fail "booted Android ABI differs: $ABI"
 [ "$SELINUX" = Enforcing ] || fail "booted Android SELinux mode differs: $SELINUX"
 
+APP_PID=
+if [ "$WORKLOAD" = app ]; then
+    install_output="$(timeout --signal=TERM --kill-after=2s 180s \
+        "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
+        "$RUNTIME_TEST_APK")" \
+        || fail 'runtime-test APK installation failed'
+    [ "$install_output" = Success ] \
+        || fail "runtime-test APK install receipt differs: $install_output"
+    resolved_activity="$(adb_shell_value cmd package resolve-activity --brief \
+        com.carriez.flutter_hbb)"
+    [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \
+        || fail "runtime-test launcher activity differs: $resolved_activity"
+    "$ADB" -s "$SERIAL" logcat -c \
+        || fail 'cannot clear the runtime-test log before launch'
+    launch_output="$(timeout --signal=TERM --kill-after=2s 60s \
+        "$ADB" -s "$SERIAL" shell am start -W \
+        -n com.carriez.flutter_hbb/.MainActivity | tr -d '\r')" \
+        || fail 'runtime-test activity launch failed'
+    printf '%s\n' "$launch_output" | grep -qFx 'Status: ok' \
+        || fail 'runtime-test activity did not report a successful launch'
+    printf '%s\n' "$launch_output" \
+        | grep -qFx 'Activity: com.carriez.flutter_hbb/.MainActivity' \
+        || fail 'runtime-test launch resolved to a different activity'
+    for _ in $(seq 1 120); do
+        APP_PID="$(adb_shell_value pidof com.carriez.flutter_hbb 2>/dev/null || true)"
+        if [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]]; then
+            break
+        fi
+        APP_PID=
+        sleep 0.25
+    done
+    [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'runtime-test application process did not become live'
+    sleep 5
+    [ "$(adb_shell_value pidof com.carriez.flutter_hbb 2>/dev/null || true)" = \
+      "$APP_PID" ] \
+        || fail 'runtime-test application process did not survive initial rendering'
+    activity_state="$(adb_shell_value dumpsys activity activities)"
+    printf '%s\n' "$activity_state" \
+        | grep -Eq 'mResumedActivity:.*com\.carriez\.flutter_hbb/\.MainActivity|topResumedActivity=.*com\.carriez\.flutter_hbb/\.MainActivity' \
+        || fail 'runtime-test MainActivity is not the resumed activity'
+fi
+
 timeout --signal=TERM --kill-after=2s 20s \
     "$ADB" -s "$SERIAL" exec-out screencap -p >"$FRAMEBUFFER" \
     || fail 'cannot capture the booted Android framebuffer'
@@ -390,5 +461,13 @@ stop_emulator || fail 'Android emulator or adb did not stop within the bounded t
 [ -z "$(find /proc -maxdepth 2 -path '*/comm' -readable -exec \
     awk '$0 == "qemu-system-x86" { print FILENAME }' {} + 2>/dev/null)" ] \
     || fail 'an Android emulator process survived bounded teardown'
-printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
-    "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$framebuffer_dimensions" "$SELINUX"
+if [ "$WORKLOAD" = app ]; then
+    [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
+        || fail 'runtime-test APK changed during emulator execution'
+    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+        "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$APK_SHA256" \
+        "$framebuffer_dimensions" "$SELINUX"
+else
+    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+        "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$framebuffer_dimensions" "$SELINUX"
+fi

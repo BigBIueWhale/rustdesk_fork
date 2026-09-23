@@ -15558,13 +15558,25 @@ mapfile -t rr2c_flutter_build_commands < <(
 )
 if [ "${#rr2c_flutter_build_commands[@]}" -ne 1 ] \
   || [ "${rr2c_flutter_build_commands[0]:-}" != \
-       'cd flutter && flutter build apk --release --target-platform android-arm64 --split-per-abi' ]; then
+       'cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi' ]; then
   rr2c_bad="$rr2c_bad flutter-build-command"
 fi
+grep -qFx 'FLUTTER_TARGET_PLATFORM=android-arm64' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad release-flutter-target-default"
+grep -qFx 'ANDROID_RUST_TARGET=aarch64-linux-android' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad release-rust-target-default"
+grep -qFx 'ANDROID_JNI_ABI=arm64-v8a' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad release-jni-abi-default"
+grep -qFx '    FLUTTER_TARGET_PLATFORM=android-x64' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad emulator-flutter-target"
+grep -qFx '    ANDROID_RUST_TARGET=x86_64-linux-android' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad emulator-rust-target"
+grep -qFx '    ANDROID_JNI_ABI=x86_64' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad emulator-jni-abi"
 if [ -n "$rr2c_bad" ]; then
   echo "  FAIL R-R2/R-R2c: mobile build authority is not the exact script-owned Android arm64 path:$rr2c_bad"; rc=1
 else
-  echo "  ok  R-R2/R-R2c obsolete host/multi-target mobile helpers absent; sole Flutter shell is the container-consumed arm64 cargo-ndk helper"
+  echo "  ok  R-R2/R-R2c release defaults remain exact arm64; isolated emulator-test mode selects only the pinned x86_64 runtime target"
 fi
 
 # R-R1a/R-R2/R-R2d: there is no automated dependency rewrite authority, and

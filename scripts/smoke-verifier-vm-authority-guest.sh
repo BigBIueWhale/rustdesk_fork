@@ -25,6 +25,9 @@ case "$#:${8:-}" in
     12:--android-emulator-boot)
         MODE=android-emulator-boot
         ;;
+    12:--android-emulator-app)
+        MODE=android-emulator-app
+        ;;
     12:--apple-conform)
         MODE=apple-conform
         ;;
@@ -45,7 +48,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -131,6 +134,8 @@ readonly WINDOWS_HELPER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-windows-he
 readonly WINDOWS_HELPER_RUNTIME_TEST=$VERIFY_REPO/scripts/test-windows-helper-vm-runtime.sh
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly ANDROID_EMULATOR_BOOT_SCRIPT=$VERIFY_REPO/scripts/smoke-android-emulator-boot.sh
+readonly ANDROID_EMULATOR_APP_SCRIPT=$VERIFY_REPO/scripts/android-emulator-app-check.sh
+readonly ANDROID_EMULATOR_APK_VERIFIER=$VERIFY_REPO/scripts/verify-android-emulator-apk.py
 readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
 readonly APPLE_TOOLCHAIN_RELEASE=$VERIFY_REPO/scripts/apple-toolchain-release.py
 readonly ONLINE_PUB_CACHE_OUTPUT=$VERIFY_REPO/scripts/online-pub-cache-output.py
@@ -150,6 +155,7 @@ SEALED_INPUTS_MOUNTED=0
 RUST_AUDIT_VENDOR_MOUNTED=0
 APPLE_VENDOR_MOUNTED=0
 ANDROID_RUST_ONLINE_MOUNTED=0
+ANDROID_EMULATOR_ONLINE_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 
@@ -2370,6 +2376,254 @@ run_android_emulator_boot() {
         "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"
 }
 
+run_android_emulator_app() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/android-emulator-app-source
+    local source_copy=$ROOT/android-emulator-app-exact-source.tar
+    local online_mount=$source_root/online
+    local output=$ROOT/android-emulator-app.out
+    local emulator_archive=$inputs/candidates/android-emulator/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip
+    local system_archive=$inputs/candidates/android-emulator/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
+    local x86_std=$inputs/candidates/android-emulator/rust-std-1.75-x86_64-linux-android.tar.xz
+    local x86_vcpkg=$inputs/candidates/android-emulator/vcpkg/installed/x64-android
+    local adb=$inputs/inputs/android-sdk/platform-tools/adb
+    local builder_archive=$inputs/inputs/build-images/android-builder.docker.tar.gz
+    local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
+    local source_archive_sha input_mount_options online_mount_options
+    local builder_load runtime_load workload_status=0 source_before
+    local apk_receipt runtime_receipt check_receipt
+    local -a git_builder=(
+        setpriv --reuid=1000 --regid=1000 --clear-groups
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
+        GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+        GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0
+        GIT_NO_REPLACE_OBJECTS=1
+    )
+
+    [[ "$ANDROID_EMULATOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Android emulator app source commit is malformed'
+    [[ "$ANDROID_EMULATOR_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Android emulator app source tree is malformed'
+    [[ "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android emulator app source archive digest is malformed'
+    [ -f "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] \
+        && [ ! -L "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = \
+             4000:4000:400:1 ] \
+        || fail 'Android emulator app source archive metadata differs'
+    source_archive_sha="$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Android emulator app source archive digest differs'
+
+    rm -rf -- "$source_root"
+    mkdir "$source_root"
+    tar -xf "$ANDROID_EMULATOR_SOURCE_ARCHIVE" \
+        --no-same-owner --no-same-permissions -C "$source_root" \
+        || fail 'cannot extract the exact Android emulator app source archive'
+    [ -z "$(find "$source_root" -xdev \
+        \( ! -type d -a ! -type f \) -print -quit)" ] \
+        || fail 'Android emulator app source archive contains a non-file entry'
+    chown -R 1000:1000 "$source_root"
+    "${git_builder[@]}" /usr/bin/git -c init.defaultBranch=master \
+        -C "$source_root" init -q \
+        || fail 'cannot initialize the Android emulator app source index'
+    "${git_builder[@]}" /usr/bin/git -C "$source_root" add -f -- . \
+        || fail 'cannot index the exact Android emulator app source'
+    [ "$("${git_builder[@]}" /usr/bin/git -C "$source_root" write-tree)" = \
+      "$ANDROID_EMULATOR_SOURCE_TREE" ] \
+        || fail 'Android emulator app source archive tree differs from pushed master'
+    rm -rf -- "$source_root/.git"
+    [ "$(stat -c '%u:%g:%a:%h' -- \
+        "$source_root/scripts/android-emulator-app-check.sh" \
+        "$source_root/scripts/android-apk-build.sh" \
+        "$source_root/scripts/smoke-android-emulator-boot.sh" \
+        "$source_root/scripts/verify-android-emulator-apk.py")" = \
+      $'1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1' ] \
+        || fail 'Android emulator app workload metadata differs'
+    source_before="$source_archive_sha:$(sha256sum \
+        "$source_root/scripts/pins.env" \
+        "$source_root/scripts/android-emulator-app-check.sh" \
+        "$source_root/scripts/android-apk-build.sh" \
+        "$source_root/scripts/smoke-android-emulator-boot.sh" \
+        "$source_root/scripts/verify-android-emulator-apk.py")"
+
+    install -o 1000 -g 1000 -m 0400 -- \
+        "$ANDROID_EMULATOR_SOURCE_ARCHIVE" "$source_copy"
+    [ "$(sha256sum "$source_copy" | awk '{ print $1 }')" = "$source_archive_sha" ] \
+        || fail 'private Android emulator app source copy differs'
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed Android emulator app input authority'
+    SEALED_INPUTS_MOUNTED=1
+    input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed Android emulator app input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Android emulator app inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Android emulator app inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Android emulator app inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Android emulator app inputs permit direct execution' ;; esac
+
+    mkdir "$online_mount"
+    chown 1000:1000 "$online_mount"
+    mount --bind "$inputs" "$online_mount" \
+        || fail 'cannot project the sealed closure into the Android emulator app source'
+    ANDROID_EMULATOR_ONLINE_MOUNTED=1
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$online_mount" \
+        || fail 'cannot make the Android emulator app input projection read-only'
+    online_mount_options="$(findmnt -n -o OPTIONS --target "$online_mount")" \
+        || fail 'Android emulator app input projection is absent'
+    case ",$online_mount_options," in *,ro,*) ;; *) fail 'Android emulator app input projection is writable' ;; esac
+    case ",$online_mount_options," in *,nodev,*) ;; *) fail 'Android emulator app input projection permits devices' ;; esac
+    case ",$online_mount_options," in *,nosuid,*) ;; *) fail 'Android emulator app input projection permits set-user-ID execution' ;; esac
+    case ",$online_mount_options," in *,noexec,*) ;; *) fail 'Android emulator app input projection permits direct execution' ;; esac
+
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$emulator_archive")" = \
+      "1000:1000:400:1:$SIZE_ANDROID_EMULATOR_LINUX_X64" ] \
+        && [ "$(sha256sum "$emulator_archive" | awk '{ print $1 }')" = \
+             "$SHA256_ANDROID_EMULATOR_LINUX_X64" ] \
+        || fail 'sealed Android emulator archive differs for app execution'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$system_archive")" = \
+      "1000:1000:400:1:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64" ] \
+        && [ "$(sha256sum "$system_archive" | awk '{ print $1 }')" = \
+             "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64" ] \
+        || fail 'sealed Android system-image archive differs for app execution'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$x86_std")" = \
+      "1000:1000:400:1:$SIZE_RUST_STD_ANDROID_X86_64_1_75" ] \
+        && [ "$(sha256sum "$x86_std" | awk '{ print $1 }')" = \
+             "$SHA256_RUST_STD_ANDROID_X86_64_1_75" ] \
+        || fail 'sealed x86_64 Android Rust std differs'
+    python3 -I -S "$source_root/scripts/online-input-provenance.py" verify-subtree \
+        --tree "$x86_vcpkg" \
+        --expected "$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1" \
+        || fail 'sealed x86_64 Android vcpkg closure differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$adb")" = \
+      "1000:1000:555:1:$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" ] \
+        && [ "$(sha256sum "$adb" | awk '{ print $1 }')" = \
+             "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" ] \
+        || fail 'sealed Android adb executable differs for app execution'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
+      "1000:1000:400:1:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
+             "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Android-builder archive differs for app execution'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$runtime_archive")" = \
+      "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(sha256sum "$runtime_archive" | awk '{ print $1 }')" = \
+             "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Android runtime archive differs for app execution'
+
+    builder_load="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                --archive "$builder_archive" \
+                --archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
+                --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                --role android-builder \
+                --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
+                --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+                --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
+                --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+                --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
+                --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                --config-id "$ANDROID_BUILDER_CONFIG_ID" \
+                --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
+    )" || fail 'certified Android-builder image verification/load failed for app execution'
+    [ "$builder_load" = "loaded and verified android-builder $ANDROID_BUILDER_IMAGE_ID" ] \
+        || fail "Android-builder image receipt differs for app execution: $builder_load"
+    runtime_load="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                --archive "$runtime_archive" \
+                --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+                --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" \
+                --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+                --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+                --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+                --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'certified Android runtime image verification/load failed for app execution'
+    [ "$runtime_load" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail "Android runtime image receipt differs for app execution: $runtime_load"
+
+    set +e
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /bin/bash "$source_root/scripts/android-emulator-app-check.sh" \
+        "$source_copy" "$source_archive_sha" >"$output" 2>&1
+    workload_status=$?
+    set -e
+    [ "$workload_status" -eq 0 ] \
+        || { tail -n 320 "$output" >&2; fail "Android emulator app check exited with status $workload_status"; }
+    [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
+        || fail 'Android emulator app-check output exceeds its bound'
+    apk_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_APK=pass sha256=[0-9a-f]{64} package=com\.carriez\.flutter_hbb abi=x86_64 native_libraries=[1-9][0-9]* signer=[0-9A-F]{64} signing=test-only$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android emulator APK receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
+        || fail 'Android emulator APK receipt is duplicated'
+    runtime_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android emulator app runtime receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
+        || fail 'Android emulator app runtime receipt is duplicated'
+    check_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=[0-9a-f]{64} artifact=ephemeral-test-only source=exact-archive target=x86_64-linux-android builder=sha256:[0-9a-f]{64} runtime=sha256:[0-9a-f]{64} vm_network=none container_network=none inputs=readonly cleanup=joined$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android emulator app-check receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_APP_CHECK=' "$output")" -eq 1 ] \
+        || fail 'Android emulator app-check receipt is duplicated'
+
+    "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null \
+        || fail 'Android app builder image could not be retired'
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null \
+        || fail 'Android app runtime image could not be retired'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Android emulator app check left an image'
+
+    [ "$source_before" = \
+      "$source_archive_sha:$(sha256sum \
+          "$source_root/scripts/pins.env" \
+          "$source_root/scripts/android-emulator-app-check.sh" \
+          "$source_root/scripts/android-apk-build.sh" \
+          "$source_root/scripts/smoke-android-emulator-boot.sh" \
+          "$source_root/scripts/verify-android-emulator-apk.py")" ] \
+        || fail 'Android emulator app source inputs changed during execution'
+    [ "$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
+      "$source_archive_sha" ] \
+        || fail 'Android emulator app source archive changed during execution'
+    [ "$(sha256sum "$source_copy" | awk '{ print $1 }')" = "$source_archive_sha" ] \
+        || fail 'private Android emulator app source copy changed during execution'
+
+    umount "$online_mount" \
+        || fail 'cannot retire the Android emulator app input projection'
+    ANDROID_EMULATOR_ONLINE_MOUNTED=0
+    stop_docker_authority
+    umount "$inputs" \
+        || fail 'cannot retire the sealed Android emulator app input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$apk_receipt" "$runtime_receipt" "$check_receipt"
+    printf 'ANDROID_EMULATOR_APP_VM=pass commit=%s tree=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only artifact=ephemeral uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
+        "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
+        "$ANDROID_BUILDER_IMAGE_ID" "$ANDROID_BUILDER_CONFIG_ID" \
+        "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"
+}
+
 run_flutter_model_tests() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local source_root=$ROOT/flutter-model-source
@@ -3065,6 +3319,10 @@ cleanup() {
         umount "$ROOT/android-rust-target-source/online/inputs" 2>/dev/null || status=1
         ANDROID_RUST_ONLINE_MOUNTED=0
     fi
+    if [ "$ANDROID_EMULATOR_ONLINE_MOUNTED" -eq 1 ]; then
+        umount "$ROOT/android-emulator-app-source/online" 2>/dev/null || status=1
+        ANDROID_EMULATOR_ONLINE_MOUNTED=0
+    fi
     if [ "$SEALED_INPUTS_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1
         SEALED_INPUTS_MOUNTED=0
@@ -3147,7 +3405,8 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     online-pub-cache-output.py online-gradle-output.py \
     verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \
     android-rust-check.sh \
-    smoke-android-emulator-boot.sh \
+    smoke-android-emulator-boot.sh android-emulator-app-check.sh \
+    verify-android-emulator-apk.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -3305,6 +3564,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = android-emulator-boot ] \
+   || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     docker_socket_gid=1000
@@ -3378,6 +3638,11 @@ fi
 
 if [ "$MODE" = android-emulator-boot ]; then
     run_android_emulator_boot
+    exit 0
+fi
+
+if [ "$MODE" = android-emulator-app ]; then
+    run_android_emulator_app
     exit 0
 fi
 

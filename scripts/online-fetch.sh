@@ -3274,6 +3274,11 @@ apple_check_contract_spec_args() {
     printf '%s\0' \
         --base "rd-devcheck@${DEV_CHECK_IMAGE_ID}" \
         --base-manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID" \
+        --devcheck-base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+        --devcheck-dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+        --devcheck-debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --devcheck-security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --devcheck-source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
         --dockerfile-sha "$SHA256_APPLE_CHECK_DOCKERFILE" \
         --source-date-epoch "$APPLE_CHECK_SOURCE_DATE_EPOCH" \
         --release-helper-sha "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER" \
@@ -3310,6 +3315,9 @@ apple_check_candidate_spec_args() {
 require_apple_check_contract_pins() {
     local names=(
         DEV_CHECK_IMAGE_ID DEV_CHECK_IMAGE_MANIFEST_ID
+        DEV_CHECK_BASE_IMAGE_ID SHA256_DEV_CHECK_DOCKERFILE
+        DEV_CHECK_DEBIAN_SNAPSHOT DEV_CHECK_SECURITY_SNAPSHOT
+        DEV_CHECK_SOURCE_DATE_EPOCH
         SHA256_APPLE_CHECK_DOCKERFILE
         APPLE_CHECK_SOURCE_DATE_EPOCH
         SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER

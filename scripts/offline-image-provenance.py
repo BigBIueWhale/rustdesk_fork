@@ -585,6 +585,11 @@ class AppleCheckSpec:
     image_id: str
     base: str
     base_manifest_id: str
+    devcheck_base: str
+    devcheck_dockerfile_sha256: str
+    devcheck_debian_snapshot: str
+    devcheck_security_snapshot: str
+    devcheck_source_date_epoch: int
     dockerfile_sha256: str
     source_date_epoch: int
     release_helper_sha256: str
@@ -626,6 +631,21 @@ class AppleCheckSpec:
     @property
     def labels(self) -> dict[str, str]:
         return {
+            "org.rustdesk.devcheck.contract": "rustdesk-devcheck-image-v2",
+            "org.rustdesk.devcheck.base": self.devcheck_base,
+            "org.rustdesk.devcheck.debian-snapshot": (
+                self.devcheck_debian_snapshot
+            ),
+            "org.rustdesk.devcheck.security-snapshot": (
+                self.devcheck_security_snapshot
+            ),
+            "org.rustdesk.devcheck.source-date-epoch": str(
+                self.devcheck_source_date_epoch
+            ),
+            "org.rustdesk.devcheck.dockerfile-sha256": (
+                self.devcheck_dockerfile_sha256
+            ),
+            "org.rustdesk.devcheck.dpkg-manifest-sha256": self.dpkg_sha256,
             APPLE_CHECK_LABEL_PREFIX + "contract": (
                 "rustdesk-apple-check-image-v1"
             ),
@@ -689,6 +709,36 @@ class AppleCheckSpec:
             "User": "1000:1000",
             "Env": APPLE_CHECK_ENV,
             "Cmd": ["bash"],
+            "Labels": self.labels,
+            "Shell": [
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-euo",
+                "pipefail",
+                "-c",
+            ],
+        }
+
+    @property
+    def runtime_inspect_config(self) -> dict[str, object]:
+        return {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "1000:1000",
+            "AttachStdin": False,
+            "AttachStdout": False,
+            "AttachStderr": False,
+            "Tty": False,
+            "OpenStdin": False,
+            "StdinOnce": False,
+            "Env": APPLE_CHECK_ENV,
+            "Cmd": ["bash"],
+            "Image": "",
+            "Volumes": None,
+            "WorkingDir": "",
+            "Entrypoint": None,
+            "OnBuild": None,
             "Labels": self.labels,
             "Shell": [
                 "/bin/bash",
@@ -1071,6 +1121,22 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             fail("Apple check Rust signing fingerprint is unsupported")
         if args.source_date_epoch != 1725550767:
             fail("Apple check source-date epoch is unsupported")
+        if not re.fullmatch(
+            r"rust:1[.]75-slim@sha256:[0-9a-f]{64}",
+            args.devcheck_base or "",
+        ):
+            fail("Apple check inherited devcheck base identity is malformed")
+        for value, label in (
+            (args.devcheck_debian_snapshot, "Debian snapshot"),
+            (args.devcheck_security_snapshot, "security snapshot"),
+        ):
+            if not re.fullmatch(r"[0-9]{8}T[0-9]{6}Z", value or ""):
+                fail(f"Apple check inherited devcheck {label} is malformed")
+        if args.devcheck_source_date_epoch is None \
+           or args.devcheck_source_date_epoch <= 0:
+            fail(
+                "Apple check inherited devcheck source-date epoch is malformed"
+            )
         for value, label in (
             (args.toolchain_files, "toolchain file count"),
             (args.toolchain_directories, "toolchain directory count"),
@@ -1096,6 +1162,14 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
                 args.base_manifest_id or "",
                 "Apple check base manifest ID",
             ),
+            devcheck_base=args.devcheck_base,
+            devcheck_dockerfile_sha256=require_sha(
+                args.devcheck_dockerfile_sha or "",
+                "Apple check inherited devcheck Dockerfile SHA-256",
+            ),
+            devcheck_debian_snapshot=args.devcheck_debian_snapshot,
+            devcheck_security_snapshot=args.devcheck_security_snapshot,
+            devcheck_source_date_epoch=args.devcheck_source_date_epoch,
             dockerfile_sha256=require_sha(
                 args.dockerfile_sha,
                 "Dockerfile SHA-256",
@@ -1548,8 +1622,8 @@ def validate_inspect(
     if isinstance(spec, AppleCheckSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Apple check image platform must be exactly linux/amd64")
-        if config != spec.runtime_config:
-            expected = canonical_json(spec.runtime_config).decode("utf-8")
+        if config != spec.runtime_inspect_config:
+            expected = canonical_json(spec.runtime_inspect_config).decode("utf-8")
             actual = canonical_json(config).decode("utf-8")
             fail(
                 "Apple check image runtime config differs from the reviewed "
@@ -7921,6 +7995,11 @@ def create_apple_check_fixture_archive(
         image_id="sha256:" + "0" * 64,
         base="rd-devcheck@sha256:" + base_digest,
         base_manifest_id="sha256:" + "b" * 64,
+        devcheck_base="rust:1.75-slim@sha256:" + "c" * 64,
+        devcheck_dockerfile_sha256="d" * 64,
+        devcheck_debian_snapshot="20240901T000000Z",
+        devcheck_security_snapshot="20240901T000000Z",
+        devcheck_source_date_epoch=1725148800,
         dockerfile_sha256=hashlib.sha256(dockerfile).hexdigest(),
         source_date_epoch=1725550767,
         release_helper_sha256="c" * 64,
@@ -12121,7 +12200,7 @@ def self_test() -> None:
             "Id": apple_runtime_id,
             "Os": "linux",
             "Architecture": "amd64",
-            "Config": apple_spec.runtime_config,
+            "Config": apple_spec.runtime_inspect_config,
         }
         validate_inspect(
             apple_payload,
@@ -12233,6 +12312,13 @@ def self_test() -> None:
                 replace(
                     apple_spec,
                     base_manifest_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "inherited devcheck base",
+                replace(
+                    apple_spec,
+                    devcheck_base="rust:1.75-slim@sha256:" + "f" * 64,
                 ),
             ),
             (
@@ -12417,7 +12503,7 @@ def self_test() -> None:
             apple_size,
         )
         apple_checks += 1
-        if apple_checks != 38:
+        if apple_checks != 39:
             fail(
                 f"Apple check image self-test count differs: {apple_checks}"
             )
@@ -12925,6 +13011,11 @@ def add_spec_arguments(
     parser.add_argument("--config-id")
     parser.add_argument("--manifest-id")
     parser.add_argument("--base-manifest-id")
+    parser.add_argument("--devcheck-base")
+    parser.add_argument("--devcheck-dockerfile-sha")
+    parser.add_argument("--devcheck-debian-snapshot")
+    parser.add_argument("--devcheck-security-snapshot")
+    parser.add_argument("--devcheck-source-date-epoch", type=int)
     parser.add_argument("--bootstrap-image-id")
     parser.add_argument("--bootstrap-manifest-id")
     parser.add_argument("--source-date-epoch", type=int)

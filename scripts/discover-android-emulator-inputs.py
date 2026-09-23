@@ -33,7 +33,7 @@ SYSTEM_IMAGE_METADATA_URL = (
     "https://dl.google.com/android/repository/sys-img/android/sys-img2-3.xml"
 )
 EMULATOR_PACKAGE = "emulator"
-SYSTEM_IMAGE_PACKAGE = "system-images;android-34;default;arm64-v8a"
+SYSTEM_IMAGE_PACKAGE = "system-images;android-34;default;x86_64"
 USER_AGENT = "rustdesk-fork-android-emulator-input-discovery/1"
 METADATA_LIMIT = 32 * 1024 * 1024
 ARCHIVE_LIMIT = 5 * 1024 * 1024 * 1024
@@ -328,7 +328,7 @@ def required_layout_root(regular: set[str], role: str) -> str:
     required = {
         "emulator": {
             "emulator/emulator",
-            "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
+            "emulator/qemu/linux-x86_64/qemu-system-x86_64-headless",
         },
         "system-image": {
             "system.img",
@@ -496,7 +496,7 @@ def self_test() -> None:
             valid,
             (
                 "emulator/emulator",
-                "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
+                "emulator/qemu/linux-x86_64/qemu-system-x86_64-headless",
                 "emulator/NOTICE.txt",
             ),
         )
@@ -561,14 +561,14 @@ def self_test() -> None:
         make_zip(
             system_image,
             (
-                "arm64-v8a/system.img",
-                "arm64-v8a/ramdisk.img",
-                "arm64-v8a/kernel-ranchu",
-                "arm64-v8a/source.properties",
+                "x86_64/system.img",
+                "x86_64/ramdisk.img",
+                "x86_64/kernel-ranchu",
+                "x86_64/source.properties",
             ),
         )
         _, _, _, system_root = inspect_zip(system_image, "system-image")
-        if system_root != "arm64-v8a":
+        if system_root != "x86_64":
             raise fail("self-test prefixed system-image layout differs")
 
         traversal = os.path.join(root, "traversal.zip")
@@ -577,7 +577,7 @@ def self_test() -> None:
             (
                 "../escape",
                 "emulator/emulator",
-                "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
+                "emulator/qemu/linux-x86_64/qemu-system-x86_64-headless",
             ),
         )
         expect_failure(lambda: inspect_zip(traversal, "emulator"), "escapes")

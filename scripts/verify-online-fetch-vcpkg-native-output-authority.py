@@ -61,6 +61,7 @@ def validate_lifecycle(
     *,
     kind: str,
     builder: str,
+    staging_root: str = "$ONLINE_DIR",
 ) -> None:
     for token, label in (
         (builder, "immutable builder"),
@@ -70,7 +71,7 @@ def validate_lifecycle(
         ),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive lock"),
         (f'recover_vcpkg_native_output_staging {kind} "$builder"', "recovery"),
-        (f'$ONLINE_DIR/.rustdesk-vcpkg-native-{kind}.XXXXXXXXXX', "private staging"),
+        (f'{staging_root}/.rustdesk-vcpkg-native-{kind}.XXXXXXXXXX', "private staging"),
         ("vcpkg_native_output_tool prepare", "transaction preparation"),
         (
             "source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled",
@@ -159,6 +160,7 @@ def validate(repo: Path) -> None:
     for name in (
         "VCPKG_X64_LINUX_OUTPUT_KEY_V1",
         "VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1",
+        "VCPKG_X64_ANDROID_OUTPUT_KEY_V1",
         "SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1",
     ):
         if re.fullmatch(r"[0-9a-f]{64}", pin(pins, name)) is None:
@@ -197,8 +199,14 @@ def validate(repo: Path) -> None:
     arm64 = extract(
         shell,
         "stage_vcpkg_natives_arm64() {",
-        "\n}\n\n# ── cargo-ndk",
+        "\n}\n\nstage_vcpkg_natives_x64_android_candidate() {",
         "arm64-android lifecycle",
+    )
+    x64_android = extract(
+        shell,
+        "stage_vcpkg_natives_x64_android_candidate() {",
+        "\n}\n\n# ── cargo-ndk",
+        "x64-android lifecycle",
     )
     validate_lifecycle(
         x64,
@@ -210,6 +218,33 @@ def validate(repo: Path) -> None:
         kind="arm64-android",
         builder='local builder="$ANDROID_BUILDER_CONFIG_ID"',
     )
+    validate_lifecycle(
+        x64_android,
+        kind="x64-android",
+        builder='local builder="$ANDROID_BUILDER_CONFIG_ID"',
+        staging_root="$publication_root",
+    )
+    for token, label in (
+        (
+            'local publication_root="$ANDROID_EMULATOR_CANDIDATE_ROOT"',
+            "candidate publication root",
+        ),
+        (
+            'recover_vcpkg_native_output_staging x64-android "$builder" "$publication_root"',
+            "candidate-root recovery",
+        ),
+        ('--online "$publication_root"', "candidate-root validation"),
+        (
+            '"$staging" "$staging_id" x64-android "$builder" "$publication_root"',
+            "candidate-root retirement",
+        ),
+    ):
+        require(x64_android, token, f"x64-android {label}")
+    forbid(
+        x64_android,
+        '$ONLINE_DIR/vcpkg/installed/x64-android',
+        "x64-android canonical release-closure publication",
+    )
 
     for token, label in (
         ('[ "$(id -u)" -ne 0 ]', "root refusal"),
@@ -218,6 +253,7 @@ def validate(repo: Path) -> None:
         ('export ANDROID_NDK_HOME=/online/android-ndk', "pinned Android NDK root"),
         ('readonly PORTS=(libvpx libyuv opus)', "exact Linux ports"),
         ('readonly PORTS=(libvpx libyuv opus oboe)', "exact Android ports"),
+        ('arm64-android|x64-android)', "closed Android triplet cases"),
         (
             'readonly LIBRARIES=(libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a)',
             "exact Linux libraries",
@@ -286,6 +322,21 @@ def validate(repo: Path) -> None:
         "--maintenance-reproduce-vcpkg-x64",
         "guest acquisition-VM reproducibility admission",
     )
+    require(
+        shell,
+        "--maintenance-stage-vcpkg-x64-android)",
+        "inner x64-android staging dispatch",
+    )
+    require(
+        outer,
+        "1:--maintenance-stage-vcpkg-x64-android",
+        "outer acquisition-VM x64-android admission",
+    )
+    require(
+        guest,
+        "--maintenance-stage-vcpkg-x64-android",
+        "guest acquisition-VM x64-android admission",
+    )
 
     for token, label in (
         ('STATE_NAME = ".rustdesk-vcpkg-native-output-state-v2"', "current state"),
@@ -306,6 +357,7 @@ def validate(repo: Path) -> None:
         ('"legacy-moved"', "legacy move fixture"),
         ('"interrupted-selection"', "interrupted selection fixture"),
         ('"post-publication-rollback"', "rollback fixture"),
+        ('"x64-android": NativeSpec(', "x64-android output specification"),
         ("if arguments.uid <= 0 or arguments.gid <= 0:", "root refusal"),
     ):
         require(helper, token, label)

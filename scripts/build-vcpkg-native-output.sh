@@ -45,7 +45,7 @@ case "$1" in
         readonly LIBRARIES=(libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a)
         readonly PORTS=(libvpx libyuv opus)
         ;;
-    arm64-android)
+    arm64-android|x64-android)
         export ANDROID_NDK_HOME=/online/android-ndk
         [ -d "$ANDROID_NDK_HOME/toolchains" ] && [ ! -L "$ANDROID_NDK_HOME" ] \
             || fail 'Android NDK authority is absent or ambiguous'

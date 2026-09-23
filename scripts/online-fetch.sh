@@ -1461,7 +1461,7 @@ vcpkg_native_output_key() {
         x64-linux)
             ports="libvpx libyuv opus"
             ;;
-        arm64-android)
+        arm64-android|x64-android)
             ports="libvpx libyuv opus oboe"
             ;;
         *)
@@ -1486,7 +1486,7 @@ vcpkg_native_output_key() {
         printf 'LIBVPX_NATIVE_KEY=%s\n' "$(libvpx_native_key)"
         printf 'LIBYUV_COMMIT=%s\n' "$LIBYUV_COMMIT"
         printf 'SHA512_LIBYUV=%s\n' "$SHA512_LIBYUV"
-        if [ "$kind" = arm64-android ]; then
+        if [[ "$kind" = *-android ]]; then
             printf 'ANDROID_NDK_VERSION=%s\n' "$ANDROID_NDK_VERSION"
             printf 'SHA256_ANDROID_NDK=%s\n' "$SHA256_ANDROID_NDK_R28C"
         fi
@@ -6096,6 +6096,7 @@ vcpkg_native_output_pin() {
     case "$1" in
         x64-linux) printf '%s\n' "$VCPKG_X64_LINUX_OUTPUT_KEY_V1" ;;
         arm64-android) printf '%s\n' "$VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1" ;;
+        x64-android) printf '%s\n' "$VCPKG_X64_ANDROID_OUTPUT_KEY_V1" ;;
         *) die "unsupported vcpkg native output kind: $1" ;;
     esac
 }
@@ -6121,12 +6122,13 @@ vcpkg_native_output_args() {
 }
 
 retire_vcpkg_native_output_staging() {
-    local staging="$1" staging_id="$2" kind="$3" builder="$4" disposition
+    local staging="$1" staging_id="$2" kind="$3" builder="$4"
+    local publication_root="${5:-$ONLINE_DIR}" disposition
     local output_args=()
     mapfile -d '' output_args < <(vcpkg_native_output_args "$kind" "$builder")
     disposition="$(
         vcpkg_native_output_tool recover \
-            --online "$ONLINE_DIR" --staging "$staging" \
+            --online "$publication_root" --staging "$staging" \
             "${output_args[@]}"
     )" || die "cannot reconcile private $kind vcpkg native staging"
     log "$kind vcpkg native staging reconciliation: $disposition"
@@ -6144,17 +6146,18 @@ retire_vcpkg_native_output_staging() {
 }
 
 recover_vcpkg_native_output_staging() {
-    local kind="$1" builder="$2"
+    local kind="$1" builder="$2" publication_root="${3:-$ONLINE_DIR}"
     local stale=() staging staging_id
     mapfile -d '' stale < <(
-        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+        /usr/bin/find "$publication_root" -mindepth 1 -maxdepth 1 \
             -name ".rustdesk-vcpkg-native-${kind}.*" -print0
     )
     for staging in "${stale[@]}"; do
         [ -d "$staging" ] && [ ! -L "$staging" ] \
             || die "reserved $kind vcpkg native staging entry is not one real directory: $staging"
         staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
-        retire_vcpkg_native_output_staging "$staging" "$staging_id" "$kind" "$builder"
+        retire_vcpkg_native_output_staging \
+            "$staging" "$staging_id" "$kind" "$builder" "$publication_root"
     done
 }
 
@@ -6559,6 +6562,104 @@ stage_vcpkg_natives_arm64() {
     [ "$status" -eq 0 ] || die "arm64-android vcpkg native producer failed"
     [ "$publication_status" -eq 0 ] || die "arm64-android vcpkg native publication failed"
     log "arm64-android vcpkg natives checked and published (6 static libraries)"
+}
+
+stage_vcpkg_natives_x64_android_candidate() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    local publication_root="$ANDROID_EMULATOR_CANDIDATE_ROOT"
+    local status=0 source_status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id
+    local output_args=()
+    prepare_android_emulator_candidate_root
+    require_online_fetch_builder_image android-builder "$builder"
+    require_libvpx_distfiles
+    require_libyuv_distfile
+    [ -d "$ONLINE_DIR/android-ndk/toolchains" ] \
+        || die "android NDK not extracted — stage_android_ndk must run first"
+    verify_sha256 \
+        "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" \
+        "$SHA256_ANDROID_NDK_R28C"
+    verify_sha256 \
+        "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
+        "$SHA256_VCPKG_120DEAC3"
+    mapfile -d '' output_args < <(vcpkg_native_output_args x64-android "$builder")
+    exec {lock_fd}<"$publication_root" \
+        || die "cannot open the Android candidate root for x64-android vcpkg native serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Android candidate transaction already owns the candidate root"
+    recover_vcpkg_native_output_staging x64-android "$builder" "$publication_root"
+    if [ -e "$publication_root/vcpkg/installed/x64-android" ] \
+       || [ -L "$publication_root/vcpkg/installed/x64-android" ]; then
+        vcpkg_native_output_tool check-complete \
+            --online "$publication_root" "${output_args[@]}" \
+            || die "existing candidate x64-android vcpkg native output is incomplete, stale, or unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the x64-android vcpkg native transaction lock"
+        exec {lock_fd}<&-
+        log "candidate x64-android vcpkg native codecs already staged and structurally verified"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d \
+            "$publication_root/.rustdesk-vcpkg-native-x64-android.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private x64-android vcpkg native staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! vcpkg_native_output_tool prepare \
+        --online "$publication_root" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed x64-android preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed x64-android preparation left non-retirable private staging"
+        die "cannot prepare private x64-android vcpkg native staging"
+    fi
+    log "building the exact candidate x64-android vcpkg native consumer projection"
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$staging/output,target=/outputs/native" \
+        --env RUSTDESK_VCPKG_BASELINE="$VCPKG_BASELINE" \
+        --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$(checked_vcpkg_native_output_key x64-android "$builder")" \
+        --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /bin/bash --noprofile --norc \
+            /producer/build-vcpkg-native-output.sh x64-android \
+        || status=$?
+    verify_libvpx_source_authority "after x64-android vcpkg native production" \
+        || source_status=$?
+    vcpkg_native_output_tool verify \
+        --online "$publication_root" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ]; then
+        vcpkg_native_output_tool publish \
+            --online "$publication_root" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_vcpkg_native_output_staging \
+        "$staging" "$staging_id" x64-android "$builder" "$publication_root"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the x64-android vcpkg native transaction lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] \
+        || die "committed libvpx source changed during x64-android native production"
+    [ "$output_status" -eq 0 ] \
+        || die "x64-android vcpkg native output postcondition failed"
+    [ "$status" -eq 0 ] || die "x64-android vcpkg native producer failed"
+    [ "$publication_status" -eq 0 ] \
+        || die "x64-android vcpkg native publication failed"
+    log "candidate x64-android vcpkg natives checked and published (6 static libraries)"
 }
 
 # ── cargo-ndk (R-B7): the JNI cross-compile orchestrator, staged ───────────────────
@@ -8083,6 +8184,14 @@ main() {
             stage_rust_android_x86_input_candidate
             return 0
             ;;
+        --maintenance-stage-vcpkg-x64-android)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-stage-vcpkg-x64-android takes no arguments"
+            verify_or_load_android_builder_image
+            prepare_libvpx_source_authority
+            stage_vcpkg_natives_x64_android_candidate
+            return 0
+            ;;
         --maintenance-stage-flutter-presentation-candidate)
             [ "$#" -eq 1 ] \
                 || die "--maintenance-stage-flutter-presentation-candidate takes no arguments"
@@ -8188,7 +8297,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

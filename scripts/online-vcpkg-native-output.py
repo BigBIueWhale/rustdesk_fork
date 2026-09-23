@@ -23,7 +23,7 @@ LEGACY_STATE_VERSION = 1
 OUTPUT_MARKER = ".rustdesk-vcpkg-native-output-key-v1"
 LIBVPX_MARKER = ".rustdesk-libvpx-native-key"
 STAGING_PATTERN = re.compile(
-    r"\.rustdesk-vcpkg-native-(x64-linux|arm64-android)\.[A-Za-z0-9_]{8,}\Z"
+    r"\.rustdesk-vcpkg-native-(x64-linux|arm64-android|x64-android)\.[A-Za-z0-9_]{8,}\Z"
 )
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 IMAGE_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -133,6 +133,12 @@ SPECS = {
     "arm64-android": NativeSpec(
         "arm64-android",
         183,
+        COMMON_HEADERS | OBOE_HEADERS,
+        COMMON_LIBRARIES | {"liboboe.a"},
+    ),
+    "x64-android": NativeSpec(
+        "x64-android",
+        62,
         COMMON_HEADERS | OBOE_HEADERS,
         COMMON_LIBRARIES | {"liboboe.a"},
     ),

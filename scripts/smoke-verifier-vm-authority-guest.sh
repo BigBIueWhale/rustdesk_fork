@@ -298,7 +298,6 @@ run_debian_systemd_lifecycle() {
                 --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
                 --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
                 --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
-                --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
                 --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
                 --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
                 --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
@@ -2276,6 +2275,7 @@ run_android_emulator_boot() {
                 --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
                 --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
                 --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+                --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
                 --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
                 --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
                 --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \

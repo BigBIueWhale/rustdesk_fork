@@ -244,7 +244,7 @@ BUILD_CONTAINER="$(vm_docker create \
     --ulimit nofile=4096:4096 --ulimit core=0:0 \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --security-opt=apparmor=docker-default \
-    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g,uid=1000,gid=1000 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
     --env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH_PIN" \
     --env RUSTDESK_CANARY_OFFLINE=1 \
     --env APK_MODE=emulator-test \
@@ -295,7 +295,7 @@ VERIFY_CONTAINER="$(vm_docker create \
     --ulimit nofile=1024:1024 --ulimit core=0:0 \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --security-opt=apparmor=docker-default \
-    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g,uid=1000,gid=1000 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
     --mount "type=bind,source=$APK,target=/verify/app.apk,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$SOURCE_AUTHORITY,target=/source,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \

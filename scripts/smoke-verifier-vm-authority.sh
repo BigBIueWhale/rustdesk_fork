@@ -662,7 +662,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
              "$HOST_UID:$HOST_GID:700" ] \
         || fail 'sealed Android Rust-lifecycle input root metadata differs'
     for input in \
+        "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
+        "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
+        "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
         "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
+        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
         path=${input%%:*}
@@ -675,6 +679,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             || fail "sealed Android Rust-lifecycle input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
+    [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
+             "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+        || fail "sealed Android Rust-lifecycle executable metadata differs: $FRB_CODEGEN"
+    verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
     verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
@@ -685,6 +694,10 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
+    [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Pub-cache root metadata differs'
 elif [ "$MODE" = flutter-model-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -1207,11 +1220,15 @@ if [ "$MODE" = hbb-common-fs ]; then
     )"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     focused_inputs_before="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
+            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- \
-            "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
+            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
+            "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
+            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
+            "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     focused_inputs_before="$(flutter_peer_input_inventory)" \
@@ -1915,7 +1932,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         'focused Rust-test cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     require_exact_fixed_receipt \
-        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Android Rust-lifecycle receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -2016,11 +2033,15 @@ if [ "$MODE" = hbb-common-fs ]; then
         || fail 'focused Rust-test source archive changed during execution'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     focused_inputs_after="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
+            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- \
-            "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
+            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
+            "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
+            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
+            "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
         || fail 'sealed Android Rust-lifecycle inputs changed during execution'

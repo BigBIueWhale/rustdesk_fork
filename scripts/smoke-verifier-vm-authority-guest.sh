@@ -770,19 +770,247 @@ run_rust_audit() {
         "$lock_sha" "$policy_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
 }
 
+generate_focused_rust_flutter_bridge() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local codegen_source=$ROOT/focused-rust-codegen-source
+    local codegen_work=$ROOT/focused-rust-codegen-work
+    local bridge_root=$ROOT/focused-rust-bridge
+    local output=$ROOT/focused-rust-codegen.out
+    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
+    local load_output container_status=0 inspect namespace_inspect freshness_line
+
+    rm -rf -- "$codegen_source" "$codegen_work" "$bridge_root"
+    mkdir "$codegen_source" "$codegen_work" "$bridge_root"
+    tar -xf "$RUST_TEST_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$codegen_source" \
+        || fail 'cannot extract the exact focused Rust source for bridge generation'
+    chown -R 1000:1000 "$codegen_source" "$codegen_work" "$bridge_root"
+    chmod 0700 "$codegen_work" "$bridge_root"
+
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
+                --archive "$builder_archive" \
+                --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+                --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                --role deb-builder \
+                --expected-id "$DEB_BUILDER_IMAGE_ID" \
+                --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+                --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+                --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+                --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                --config-id "$DEB_BUILDER_CONFIG_ID" \
+                --manifest-id "$DEB_BUILDER_MANIFEST_ID"
+    )" || fail 'focused Rust bridge builder verification/load failed'
+    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+        || fail "focused Rust bridge builder receipt differs: $load_output"
+
+    CONTAINER_ID="$(
+        "$CLIENT" --host "unix://$SOCK" create \
+            --name rustdesk-android-rust-bridge-codegen \
+            --pull=never \
+            --network=none \
+            --read-only \
+            --pids-limit=1024 \
+            --memory=8g \
+            --memory-swap=8g \
+            --cpus=4 \
+            --ulimit nofile=8192:8192 \
+            --ulimit core=0:0 \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --security-opt=apparmor=docker-default \
+            --user 1000:1000 \
+            --mount "type=bind,source=$codegen_source,target=/source" \
+            --mount "type=bind,source=$codegen_work,target=/work" \
+            --mount "type=bind,source=$bridge_root,target=/bridge" \
+            --mount "type=bind,source=$inputs/pub-cache,target=/online/pub-cache,readonly" \
+            --mount "type=bind,source=$inputs/cargo-vendor,target=/online/cargo-vendor,readonly" \
+            --mount "type=bind,source=$inputs/rust-1.75.tar.xz,target=/inputs/rust.tar.xz,readonly" \
+            --mount "type=bind,source=$inputs/flutter-3.24.5.tar.xz,target=/inputs/flutter.tar.xz,readonly" \
+            --mount "type=bind,source=$inputs/llvm-15.0.6.tar.xz,target=/inputs/llvm.tar.xz,readonly" \
+            --mount "type=bind,source=$inputs/cargo-vendor-config.toml,target=/inputs/cargo-vendor-config.toml,readonly" \
+            --mount "type=bind,source=$inputs/frb-tool/bin/flutter_rust_bridge_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly" \
+            --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
+            --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+            --env "FRB_CODEGEN_SHA256=$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
+            --workdir /source \
+            "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+                set -- /sys/class/net/*
+                [ "$#" -eq 1 ] && [ "$1" = /sys/class/net/lo ]
+                uid= gid= cap= nnp= seccomp=
+                while IFS=":" read -r key value; do
+                    set -- $value
+                    case "$key" in
+                        Uid) uid="$1:$2:$3:$4" ;;
+                        Gid) gid="$1:$2:$3:$4" ;;
+                        CapEff) cap=$1 ;;
+                        NoNewPrivs) nnp=$1 ;;
+                        Seccomp) seccomp=$1 ;;
+                    esac
+                done </proc/self/status
+                [ "$uid" = 1000:1000:1000:1000 ]
+                [ "$gid" = 1000:1000:1000:1000 ]
+                [ "$cap" = 0000000000000000 ]
+                [ "$nnp" = 1 ]
+                [ "$seccomp" = 2 ]
+                IFS= read -r apparmor </proc/self/attr/current
+                case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
+                mkdir /work/toolchain /work/home /work/cargo-home /work/flutter-shim
+                tar -C /work/toolchain -xf /inputs/rust.tar.xz
+                tar -C /work/toolchain -xf /inputs/flutter.tar.xz
+                tar -C /work/toolchain -xf /inputs/llvm.tar.xz
+                mapfile -t rust_installer < <(
+                    find /work/toolchain -mindepth 2 -maxdepth 2 -type f -name install.sh -print
+                )
+                [ "${#rust_installer[@]}" -eq 1 ] && [ -f "${rust_installer[0]}" ]
+                "${rust_installer[0]}" --prefix=/work/toolchain/rustinstall \
+                    --disable-ldconfig \
+                    --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
+                    >/dev/null
+                llvm_roots=(/work/toolchain/clang+llvm-*)
+                [ "${#llvm_roots[@]}" -eq 1 ] && [ -d "${llvm_roots[0]}" ]
+                LLVM_ROOT="${llvm_roots[0]}"
+                mapfile -t clang_headers < <(
+                    find "$LLVM_ROOT/lib/clang" -mindepth 2 -maxdepth 2 -type d -name include -print
+                )
+                [ "${#clang_headers[@]}" -eq 1 ] && [ -d "${clang_headers[0]}" ]
+                cp /inputs/flutter_rust_bridge_codegen /work/toolchain/flutter_rust_bridge_codegen
+                chmod 0500 /work/toolchain/flutter_rust_bridge_codegen
+                export HOME=/work/home CARGO_HOME=/work/cargo-home
+                export PUB_CACHE=/online/pub-cache CI=true
+                export PUB_HOSTED_URL=https://pub.dev
+                export FLUTTER_SUPPRESS_ANALYTICS=true
+                export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+                export GIT_ATTR_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
+                export GIT_OPTIONAL_LOCKS=0
+                export LIBCLANG_PATH="$LLVM_ROOT/lib"
+                export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/work/toolchain/rustinstall/bin:/usr/bin:/bin
+                [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
+                {
+                    printf "[net]\noffline = true\n"
+                    sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
+                        /inputs/cargo-vendor-config.toml
+                } >"$CARGO_HOME/config.toml"
+                cp /source/scripts/flutter-offline-shim.sh /work/flutter-shim/flutter
+                chmod 0500 /work/flutter-shim/flutter
+                export REAL_FLUTTER=/work/toolchain/flutter/bin/flutter
+                export PATH=/work/flutter-shim:$PATH
+                project_lock="$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")"
+                tools_lock="$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
+                (cd /work/toolchain/flutter/packages/flutter_tools \
+                    && dart pub get --offline --enforce-lockfile)
+                /source/scripts/finalize-flutter-tools-offline.sh \
+                    /work/toolchain/flutter \
+                    "$RUSTDESK_FLUTTER_VERSION" \
+                    "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256"
+                "$REAL_FLUTTER" config --no-analytics >/work/flutter-config.out
+                (cd /source/flutter && flutter pub get --offline --enforce-lockfile)
+                [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+                [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                codegen_log=/work/codegen.log
+                if ! timeout --signal=TERM --kill-after=10s 900s \
+                    /work/toolchain/flutter_rust_bridge_codegen \
+                        --rust-input ./src/flutter_ffi.rs \
+                        --dart-output ./flutter/lib/generated_bridge.dart \
+                        --llvm-path "$LLVM_ROOT" \
+                        --llvm-compiler-opts="-I${clang_headers[0]}" \
+                    >"$codegen_log" 2>&1; then
+                    tail -n 160 "$codegen_log" >&2
+                    exit 1
+                fi
+                [ "$(stat -c %s "$codegen_log")" -le 1048576 ]
+                ! grep -Fq "[SEVERE]" "$codegen_log" \
+                    || { tail -n 160 "$codegen_log" >&2; exit 1; }
+                for generated in \
+                    /source/src/bridge_generated.rs \
+                    /source/src/bridge_generated.io.rs \
+                    /source/flutter/lib/generated_bridge.dart \
+                    /source/flutter/lib/generated_bridge.freezed.dart; do
+                    [ -s "$generated" ] && [ ! -L "$generated" ]
+                done
+                install -m 0444 /source/src/bridge_generated.rs /bridge/bridge_generated.rs
+                install -m 0444 /source/src/bridge_generated.io.rs /bridge/bridge_generated.io.rs
+                [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                printf "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s source=exact-pushed network=none outputs=readonly-publication\n" \
+                    "$FRB_CODEGEN_SHA256"
+            '
+    )"
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Rust bridge container ID is malformed'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
+        "$CONTAINER_ID")"
+    [ "$inspect" = \
+      'none|true|1000:1000|8589934592|8589934592|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+        || fail "focused Rust bridge container authority differs: $inspect"
+    namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
+        "$CONTAINER_ID")"
+    [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
+        || fail "focused Rust bridge container namespace/device/port authority differs: $namespace_inspect"
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+        >"$output" 2>&1 || container_status=$?
+    [ "$container_status" -eq 0 ] \
+        || { tail -n 200 "$output" >&2; fail "focused Rust bridge generation exited with status $container_status"; }
+    [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
+        || fail 'focused Rust bridge output exceeds its bound'
+    freshness_line="$(grep -Fx \
+        "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=$FLUTTER_VERSION lock=$SHA256_FLUTTER_TOOLS_LOCK implicit_pub=prevented" \
+        "$output")" \
+        || { tail -n 200 "$output" >&2; fail 'focused Rust bridge Flutter-tools receipt is absent'; }
+    [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
+        || fail 'focused Rust bridge Flutter-tools receipt is duplicated'
+    grep -Fxq \
+        "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN source=exact-pushed network=none outputs=readonly-publication" \
+        "$output" \
+        || { tail -n 200 "$output" >&2; fail 'focused Rust bridge receipt is absent'; }
+    [ "$(grep -Fc 'ANDROID_RUST_FRB=' "$output")" -eq 1 ] \
+        || fail 'focused Rust bridge receipt is duplicated'
+    [ "$(stat -c '%u:%g:%a:%h' -- \
+            "$bridge_root/bridge_generated.rs" \
+            "$bridge_root/bridge_generated.io.rs")" = \
+      $'1000:1000:444:1\n1000:1000:444:1' ] \
+        && [ -s "$bridge_root/bridge_generated.rs" ] \
+        && [ -s "$bridge_root/bridge_generated.io.rs" ] \
+        || fail 'focused Rust bridge publication metadata differs'
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'focused Rust bridge container did not exit cleanly'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
+    rm -rf -- "$codegen_source" "$codegen_work"
+    printf '%s\n' "$freshness_line"
+    printf 'ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s source=exact-pushed network=none outputs=readonly-publication\n' \
+        "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
+}
+
 run_focused_rust_tests() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local source_root=$ROOT/focused-rust-test-source
     local target_root=$ROOT/focused-rust-test-target
     local output=$ROOT/focused-rust-tests.out
     local rust_archive=$inputs/rust-1.75.tar.xz
+    local flutter_archive=$inputs/flutter-3.24.5.tar.xz
+    local llvm_archive=$inputs/llvm-15.0.6.tar.xz
+    local frb_codegen=$inputs/frb-tool/bin/flutter_rust_bridge_codegen
+    local pub_cache=$inputs/pub-cache
+    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local vendor=$inputs/cargo-vendor
     local vendor_config=$inputs/cargo-vendor-config.toml
+    local pub_validator=$source_root/scripts/online-pub-cache-output.py
     local image_archive image_config image_index toolchain_mode
     local load_output container_status=0 inspect namespace_inspect result_line passed tests_passed=0
     local container_name memory memory_bytes tmpfs_size source_fingerprints
-    local source_archive_sha source_before input_mount_options
-    local -a required_tests result_lines toolchain_mount
+    local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
+    local path remainder size digest
+    local -a required_tests result_lines toolchain_mount bridge_mounts
 
     if [ "$MODE" = hbb-common-fs ]; then
         container_name=rustdesk-hbb-common-fs
@@ -796,6 +1024,7 @@ run_focused_rust_tests() {
         toolchain_mount=(
             --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
         )
+        bridge_mounts=()
         source_fingerprints=(Cargo.lock libs/hbb_common/src/fs.rs)
         required_tests=(
             fs::tests::r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree
@@ -834,9 +1063,14 @@ run_focused_rust_tests() {
         toolchain_mount=()
         source_fingerprints=(
             Cargo.lock
+            flutter/pubspec.lock
+            scripts/finalize-flutter-tools-offline.sh
+            scripts/flutter-offline-shim.sh
+            scripts/online-pub-cache-output.py
             src/lib.rs
             src/android_listener_lifecycle.rs
             src/direct_service.rs
+            src/flutter_ffi.rs
             src/privacy_mode.rs
             src/server/connection.rs
             src/server/display_service.rs
@@ -889,6 +1123,16 @@ run_focused_rust_tests() {
         -C "$source_root" \
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
+    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+        install -o 1000 -g 1000 -m 0444 /dev/null \
+            "$source_root/src/bridge_generated.rs"
+        install -o 1000 -g 1000 -m 0444 /dev/null \
+            "$source_root/src/bridge_generated.io.rs"
+        source_fingerprints+=(
+            src/bridge_generated.rs
+            src/bridge_generated.io.rs
+        )
+    fi
     mkdir "$target_root"
     chown 1000:1000 "$target_root"
     chmod 0700 "$target_root"
@@ -959,6 +1203,36 @@ run_focused_rust_tests() {
         [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
             || fail "Debian-builder image receipt differs: $load_output"
     else
+        for input in \
+            "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
+            "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
+            "$llvm_archive:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
+            "$builder_archive:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"; do
+            path=${input%%:*}
+            remainder=${input#*:}
+            size=${remainder%%:*}
+            digest=${remainder#*:}
+            [ "$(stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+              "1000:1000:400:1:$size" ] \
+                && [ "$(sha256sum "$path" | awk '{ print $1 }')" = "$digest" ] \
+                || fail "sealed Android Rust bridge input differs: $path"
+        done
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
+          "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+            && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
+                 "$SHA256_FLUTTER_PEER_FRB_CODEGEN" ] \
+            || fail 'sealed Android Rust FRB generator differs'
+        [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
+            || fail 'sealed Android Rust Pub-cache root metadata differs'
+        pub_receipt="$(
+            setpriv --reuid=1000 --regid=1000 --clear-groups \
+                env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+                python3 -I -S "$pub_validator" \
+                    check-complete --online "$inputs" --uid 1000 --gid 1000
+        )" || fail 'sealed Android Rust Pub-cache closure validation failed'
+        [ "$pub_receipt" = "sha256=$SHA256_PUB_CACHE_CLOSURE_V1" ] \
+            || fail "sealed Android Rust Pub-cache receipt differs: $pub_receipt"
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
           "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
             && [ "$(sha256sum "$image_archive" | awk '{ print $1 }')" = \
@@ -987,6 +1261,11 @@ run_focused_rust_tests() {
         )" || fail 'development-check image verification/load failed'
         [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
             || fail "development-check image receipt differs: $load_output"
+        generate_focused_rust_flutter_bridge
+        bridge_mounts=(
+            --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
+            --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.io.rs,target=/source/src/bridge_generated.io.rs,readonly"
+        )
     fi
 
     CONTAINER_ID="$(
@@ -1013,6 +1292,7 @@ run_focused_rust_tests() {
             --mount "type=bind,source=$vendor,target=/vendor,readonly" \
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly" \
             "${toolchain_mount[@]}" \
+            "${bridge_mounts[@]}" \
             --tmpfs "/tmp:rw,exec,nosuid,nodev,size=$tmpfs_size,mode=700,uid=1000,gid=1000" \
             --workdir /source \
             "$image_config" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -1133,6 +1413,16 @@ run_focused_rust_tests() {
           sha256sum "${source_fingerprints[@]}"
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
+    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+        post_pub_receipt="$(
+            setpriv --reuid=1000 --regid=1000 --clear-groups \
+                env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+                python3 -I -S "$pub_validator" \
+                    check-complete --online "$inputs" --uid 1000 --gid 1000
+        )" || fail 'sealed Android Rust Pub-cache postcondition validation failed'
+        [ "$post_pub_receipt" = "$pub_receipt" ] \
+            || fail 'sealed Android Rust Pub-cache closure changed during execution'
+    fi
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
@@ -1145,9 +1435,11 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq 24 ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
-            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_CONFIG_ID" "$image_index" "$image_config"
     fi
 }
 

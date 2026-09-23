@@ -38,6 +38,7 @@ not a claim that every target OS has executed them.
 | Exact-current Linux full-peer presentation (`5f4c4bd4b5d22bfff04cfea49b598c9ac93a5a67`) | Six uninstrumented lifecycles from one exact Flutter 3.47.5 bundle each exercised the real password prompt, capture-to-X11-pixel delivery, 2/6/12-second focus-loss cycles, same-connection recovery, three server-generation reconnects, bounded resources, and joined viewer/server teardown. It is not Windows/Android/Apple, sustained soak, cross-version, installed-service, or release-artifact evidence. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`5c2fbfc9f78c8953a945283ef3c0cbef7f981064`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 12 focused suites and 103 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
+| Exact Android voice-owner state (`0eae13ed3871738658c42c66cc8878c5025bb83d`) | A zero-NIC VM and networkless guest-only container compiled the exact production `VoiceCallOwnerState.kt` with pinned Kotlin 2.0.21 and passed seven scenarios with 93 assertions over service/registry generations, connection-ID ABA, concurrent controlled owners, outgoing resume/exactness, cross-domain teardown, and Activity invalidation. This is process-owner state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
 | Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for the named older source parents. No current APK installation, Activity/foreground-service lifecycle, task swipe/reopen/Force Stop, real peer, presentation, or device result exists. |
 | Apple and iOS checks | Source/portable checks only. No signed installed macOS or current iOS package/device result exists. |
@@ -2040,12 +2041,24 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The deleted 5,638-line aggregate Android source verifier did not execute this lifecycle and no longer counts
   as evidence. The shared gate retains a narrow source backstop and relevant Rust behavior-test invocations.
-  No standalone Android-free Kotlin owner fixture remains: the files were outside Gradle test source sets and the
-  current gate only searched their prose rather than compiling them. Historical target-local APK
-  assembly binds only its named older source. Exact-current package installation must still exercise concurrent
-  controlled calls, controlled/outgoing overlap, Activity replacement, task swipe/reopen with the persistent
-  service retained, Force Stop, projection replacement/revocation, injected permission/buffer/start/read
-  failures, peer reconnect/presentation, and exact thread/audio/projection cleanup.
+  Exact pushed commit `0eae13ed3871738658c42c66cc8878c5025bb83d` adds one focused executable in the
+  standard Kotlin test source set. In 28 seconds, an ordinary-user QEMU VM with no NIC and a networkless,
+  read-only-root guest-only container compiled the exact production `VoiceCallOwnerState.kt` with the pinned
+  Kotlin 2.0.21 compiler and passed seven scenarios with 93 assertions. The scenarios cover controlled service
+  generation monotonicity, registry-generation connection-ID ABA, concurrent controlled owners, exact outgoing
+  admission/retirement, same-session newer-generation resume, independent controlled/outgoing teardown in both
+  orders, and Activity invalidation preserving controlled demand. Host listener inventories were unchanged and
+  VM/container cleanup joined. The compiler closure came from the read-only sealed Gradle authority; because
+  Kotlin memory-maps classpath JARs and this virtiofs share rejects that operation, the guest verified and copied
+  exactly eight pinned JARs to VM-local storage, made the copy read-only, and re-inventoried the sealed source after
+  execution.
+
+  This focused result executes only the pure production owner state; it does not instantiate the coordinator,
+  Android framework, Activity/service lifecycle, MediaProjection, `AudioRecord`, JNI, Rust connection, APK, or
+  device. Historical target-local APK assembly binds only its named older source. Exact-current package
+  installation must still exercise concurrent controlled calls, controlled/outgoing overlap, Activity replacement,
+  task swipe/reopen with the persistent service retained, Force Stop, projection replacement/revocation, injected
+  permission/buffer/start/read failures, peer reconnect/presentation, and exact thread/audio/projection cleanup.
 - **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit — SOURCE IMPLEMENTED AND CONFINED
   FOCUSED/WORKSPACE VERIFIED 2026-07-22; EXACT INSTALLED ARTIFACTS PENDING.** Platform: Linux and macOS pathname
   Unix-domain listeners.
@@ -11149,15 +11162,17 @@ unchanged-snapshot inertness, canonical generation order, and whole-snapshot dup
 Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
 payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.
 These state tests do not exercise the complete rendered Flutter window or native event stream.
-Android owner-state evidence is limited to supplementary checks of production Kotlin topology. No retained Kotlin
-unit/instrumentation test or installed package currently executes `ControlledConnectionType`,
-`ControlledCaptureOwnerState`, `ControlledInputOwner`, `ExactOwnerBoundedQueue`, `VoiceCallOwnerState`,
+Android owner-state evidence now includes the focused no-NIC VM execution of the exact production
+`VoiceCallOwnerState` described in R-S11br: seven pure-Kotlin scenarios and 93 assertions compile and run from the
+standard test source set. No retained Kotlin unit/instrumentation test or installed package currently executes
+`ControlledConnectionType`, `ControlledCaptureOwnerState`, `ControlledInputOwner`, `ExactOwnerBoundedQueue`,
 `MainServiceGenerationOwner`, or `MainServiceStatusOwner` through their replacement, retirement, stale-generation,
-and cleanup cases. Five standalone owner `main()` programs outside Gradle test source sets are deleted rather than
-retained as tests; the last four deletions removed six shell prose searches plus the workspace meta-verifier's
-twelve repeated assertions and three source loads. The shared
-source gate still checks the retained Android child future, exact generation transfer, terminal/connection finality,
-RAII registry retirement, and selected production owner topology without treating model text as behavior.
+and cleanup cases, and the focused voice-owner executable does not run its coordinator or any Android framework,
+JNI, recorder, service, Activity, package, or device lifecycle. Five standalone owner `main()` programs outside
+Gradle test source sets are deleted rather than retained as tests; the last four deletions removed six shell prose
+searches plus the workspace meta-verifier's twelve repeated assertions and three source loads. The shared source
+gate still checks the retained Android child future, exact generation transfer, terminal/connection finality, RAII
+registry retirement, and selected production owner topology without treating model text as behavior.
 
 The activation, child-future, registry, file-owner, and Dart cases have not been executed against the
 current dependency closure: the fixed rootless Docker socket, repository Cargo vendor closure,

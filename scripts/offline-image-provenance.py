@@ -625,8 +625,12 @@ class AppleCheckSpec:
         return None
 
     @property
-    def root_annotations(self) -> None:
-        return None
+    def root_annotations(self) -> dict[str, str]:
+        created = datetime.fromtimestamp(
+            self.source_date_epoch,
+            timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {"org.opencontainers.image.created": created}
 
     @property
     def labels(self) -> dict[str, str]:
@@ -8626,6 +8630,7 @@ def create_apple_check_fixture_archive(
         "mediaType": "application/vnd.oci.image.index.v1+json",
         "digest": image_id,
         "size": len(image_index),
+        "annotations": spec.root_annotations,
     }
     if annotate_root:
         root_descriptor["annotations"] = {

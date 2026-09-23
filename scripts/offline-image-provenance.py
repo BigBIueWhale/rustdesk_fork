@@ -1549,7 +1549,12 @@ def validate_inspect(
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Apple check image platform must be exactly linux/amd64")
         if config != spec.runtime_config:
-            fail("Apple check image runtime config differs from the reviewed contract")
+            expected = canonical_json(spec.runtime_config).decode("utf-8")
+            actual = canonical_json(config).decode("utf-8")
+            fail(
+                "Apple check image runtime config differs from the reviewed "
+                f"contract: expected={expected[:4096]}, actual={actual[:4096]}"
+            )
         return
     if isinstance(spec, RustAuditSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
@@ -2378,9 +2383,12 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
            or config_json.get("created") != "2024-09-05T15:39:27Z":
             fail("Docker archive Apple check config platform or epoch is malformed")
         if config_json.get("config") != spec.runtime_config:
+            expected = canonical_json(spec.runtime_config).decode("utf-8")
+            actual = canonical_json(config_json.get("config")).decode("utf-8")
             fail(
                 "Docker archive Apple check runtime config differs from "
-                "the reviewed contract"
+                f"the reviewed contract: expected={expected[:4096]}, "
+                f"actual={actual[:4096]}"
             )
         rootfs = config_json.get("rootfs")
         if not isinstance(rootfs, dict) or rootfs.get("type") != "layers":

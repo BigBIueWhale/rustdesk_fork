@@ -210,11 +210,19 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             fail("the one-entry fixed-archive manifest has a noncanonical destination")
         return
     if len(specs) == 2:
-        if names != (
+        dart_audit = (
             "dart-audit-inputs/Pub-all.zip",
             "dart-audit-inputs/osv-scanner",
-        ):
-            fail("the Dart audit manifest is not the exact two-input rebuild source")
+        )
+        android_emulator = (
+            "arm64-v8a-34_r04.zip",
+            "emulator-linux_x64-15917651.zip",
+        )
+        if names not in (dart_audit, android_emulator):
+            fail(
+                "the two-entry manifest is neither the exact Dart-audit source "
+                "nor the exact Android-emulator runtime source"
+            )
         return
     if len(specs) == 3:
         if names != (
@@ -304,7 +312,8 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         return
     fail(
         "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
-        "two Dart audit inputs, three Flutter model-test toolchain entries, "
+        "an admitted two-entry Dart-audit or Android-emulator source, "
+        "three Flutter model-test toolchain entries, "
         "an admitted six-entry WiX source, seven Android build entries, "
         "an admitted eight-entry Linux full-peer source, "
         "14 toolchain entries, "

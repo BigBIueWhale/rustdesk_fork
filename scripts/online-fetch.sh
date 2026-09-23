@@ -252,6 +252,7 @@ readonly VCPKG_NATIVE_PRODUCER="$SCRIPT_DIR/build-vcpkg-native-output.sh"
 readonly RETIRED_ONLINE_INPUT_ROOT="$ONLINE_STATE_ROOT/retired"
 readonly ONLINE_CANDIDATE_ROOT="$ONLINE_STATE_ROOT/candidates"
 readonly FLUTTER_PRESENTATION_CANDIDATE_ROOT="$ONLINE_CANDIDATE_ROOT/flutter-presentation"
+readonly ANDROID_EMULATOR_CANDIDATE_ROOT="$ONLINE_CANDIDATE_ROOT/android-emulator"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FLUTTER_PEER_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-xvfb-packages.tsv"
 readonly FLUTTER_PEER_ATSPI_PACKAGE_MANIFEST="$SCRIPT_DIR/smoke-atspi-packages.tsv"
@@ -424,6 +425,20 @@ readonly -a FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS=(
     "$SIZE_FLUTTER_PRESENTATION_CANDIDATE"
     "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
     "storage.googleapis.com"
+)
+readonly -a ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS=(
+    --entry
+    "arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
+    "https://dl.google.com/android/repository/sys-img/android/arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
+    "$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64"
+    "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64"
+    "dl.google.com"
+    --entry
+    "emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip"
+    "https://dl.google.com/android/repository/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip"
+    "$SIZE_ANDROID_EMULATOR_LINUX_X64"
+    "$SHA256_ANDROID_EMULATOR_LINUX_X64"
+    "dl.google.com"
 )
 readonly -a ANDROID_BUILD_FIXED_ARCHIVE_ARGS=(
     --entry
@@ -1968,6 +1983,7 @@ archive_bundle_tool() {
     shift 6
     case "$kind" in
         android-build) archive_args=("${ANDROID_BUILD_FIXED_ARCHIVE_ARGS[@]}") ;;
+        android-emulator) archive_args=("${ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS[@]}") ;;
         dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}") ;;
         flutter-peer) archive_args=("${FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}") ;;
         flutter-presentation-candidate) archive_args=("${FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS[@]}") ;;
@@ -2145,6 +2161,28 @@ stage_flutter_presentation_candidate() {
         "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
         .rustdesk-flutter-presentation-candidate \
         "pinned Flutter Linux presentation candidate archive" \
+        "$ANDROID_BUILDER_CONFIG_ID" android-builder
+}
+
+stage_android_emulator_inputs_candidate() {
+    local directory
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$ANDROID_EMULATOR_CANDIDATE_ROOT"; do
+        if [ -e "$directory" ] || [ -L "$directory" ]; then
+            [ -d "$directory" ] && [ ! -L "$directory" ] \
+                || die "Android Emulator candidate root is not one real directory: $directory"
+        else
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "Android Emulator candidate root is not acquisition-identity-owned mode 0700: $directory"
+        [ "$(/usr/bin/stat -c '%d' -- "$directory")" \
+          = "$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" ] \
+            || die "Android Emulator candidate root is not on the online-state filesystem: $directory"
+    done
+    stage_archive_bundle android-emulator "$ANDROID_EMULATOR_CANDIDATE_ROOT" \
+        .rustdesk-android-emulator-archives \
+        "pinned Android Emulator runtime candidate archives" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 
@@ -7972,6 +8010,12 @@ main() {
             maintenance_discover_android_emulator_inputs
             return 0
             ;;
+        --maintenance-stage-android-emulator-inputs)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-stage-android-emulator-inputs takes no arguments"
+            stage_android_emulator_inputs_candidate
+            return 0
+            ;;
         --maintenance-stage-flutter-presentation-candidate)
             [ "$#" -eq 1 ] \
                 || die "--maintenance-stage-flutter-presentation-candidate takes no arguments"
@@ -8077,7 +8121,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-stage-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

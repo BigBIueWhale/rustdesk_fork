@@ -2453,7 +2453,7 @@ run_android_emulator_app() {
         || fail 'private Android emulator app source copy differs'
 
     mkdir "$inputs"
-    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+    mount -t virtiofs -o ro,nodev,nosuid rustdesk-sealed-inputs "$inputs" \
         || fail 'cannot mount the sealed Android emulator app input authority'
     SEALED_INPUTS_MOUNTED=1
     input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
@@ -2461,21 +2461,25 @@ run_android_emulator_app() {
     case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Android emulator app inputs are writable' ;; esac
     case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Android emulator app inputs permit devices' ;; esac
     case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Android emulator app inputs permit set-user-ID execution' ;; esac
-    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Android emulator app inputs permit direct execution' ;; esac
+    case ",$input_mount_options," in
+        *,noexec,*) fail 'sealed Android emulator app build inputs unexpectedly forbid the authenticated toolchain' ;;
+    esac
 
     mkdir "$online_mount"
     chown 1000:1000 "$online_mount"
     mount --bind "$inputs" "$online_mount" \
         || fail 'cannot project the sealed closure into the Android emulator app source'
     ANDROID_EMULATOR_ONLINE_MOUNTED=1
-    mount -o remount,bind,ro,nodev,nosuid,noexec "$online_mount" \
+    mount -o remount,bind,ro,nodev,nosuid "$online_mount" \
         || fail 'cannot make the Android emulator app input projection read-only'
     online_mount_options="$(findmnt -n -o OPTIONS --target "$online_mount")" \
         || fail 'Android emulator app input projection is absent'
     case ",$online_mount_options," in *,ro,*) ;; *) fail 'Android emulator app input projection is writable' ;; esac
     case ",$online_mount_options," in *,nodev,*) ;; *) fail 'Android emulator app input projection permits devices' ;; esac
     case ",$online_mount_options," in *,nosuid,*) ;; *) fail 'Android emulator app input projection permits set-user-ID execution' ;; esac
-    case ",$online_mount_options," in *,noexec,*) ;; *) fail 'Android emulator app input projection permits direct execution' ;; esac
+    case ",$online_mount_options," in
+        *,noexec,*) fail 'Android emulator app build projection unexpectedly forbids the authenticated toolchain' ;;
+    esac
 
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$emulator_archive")" = \
       "1000:1000:400:1:$SIZE_ANDROID_EMULATOR_LINUX_X64" ] \

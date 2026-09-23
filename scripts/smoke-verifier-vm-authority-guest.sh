@@ -2655,7 +2655,8 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     Dockerfile.win-helper Dockerfile.builder-bootstrap-seal \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
-    online-fetch.sh verify-online-fetch-container-authority.py \
+    online-fetch.sh online-fetch-vm.sh online-fetch-vm-guest.sh \
+    verify-online-fetch-vm-entry.sh verify-online-fetch-container-authority.py \
     verify-online-fetch-virtiofs-rename.py launch-landlocked-virtiofsd.py \
     online-pub-cache-output.py online-gradle-output.py \
     verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \

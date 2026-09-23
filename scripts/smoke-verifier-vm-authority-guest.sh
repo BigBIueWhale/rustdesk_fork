@@ -1026,7 +1026,7 @@ run_android_voice_owner_tests() {
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
         || fail 'Android voice-owner source archive differs from its guest bootstrap'
     [ "$(stat -c '%u:%g:%a:%h' -- \
-        "$source_root/scripts/test-android-voice-owner-state.sh")" = 1000:1000:755:1 ] \
+        "$source_root/scripts/test-android-voice-owner-state.sh")" = 1000:1000:700:1 ] \
         || fail 'Android voice-owner executable test entry metadata differs'
     source_before="$source_archive_sha:$(sha256sum \
         "$source_root/scripts/pins.env" \

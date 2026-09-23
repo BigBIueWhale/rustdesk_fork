@@ -23,7 +23,7 @@ case "$#:${1:-}" in
         MODE=authority-smoke
         REQUEST=__authority_smoke__
         ;;
-    1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
+    1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-build-android-builder-bootstrap-candidate|\
     1:--maintenance-build-win-helper-bootstrap-candidate|\
@@ -53,7 +53,7 @@ case "$#:${1:-}" in
         REQUEST=$1
         ;;
     *)
-        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-stage-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
+        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
         exit 2
         ;;
 esac
@@ -513,6 +513,7 @@ verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
 for source in "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$BOOT_DERIVER" \
     "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" \
     "$SCRIPT_DIR/discover-android-emulator-inputs.py" \
+    "$SCRIPT_DIR/discover-rust-android-x86-input.py" \
     "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py"; do
     [ -f "$source" ] && [ ! -L "$source" ] || fail "VM source is absent or ambiguous: $source"
 done
@@ -716,7 +717,7 @@ git_package_before="$(/usr/bin/sha256sum "$GIT_PACKAGE")"
 virtiofsd_package_before="$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")"
 kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/sha256sum "$INITRD")"
-source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
+source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
 capture_listeners >"$LISTENERS_BEFORE"
 
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_ONLINE_FETCH \
@@ -984,7 +985,7 @@ fi
     && [ "$(/usr/bin/sha256sum "$KERNEL")" = "$kernel_before" ] \
     && [ "$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'authenticated VM input changed during acquisition'
-[ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
+[ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
     || fail 'live orchestration source changed during acquisition'
 [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" = "$SOURCE_COMMIT" ] \
     && [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" = "$SOURCE_TREE" ] \

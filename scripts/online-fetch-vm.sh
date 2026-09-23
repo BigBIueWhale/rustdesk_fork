@@ -48,6 +48,7 @@ case "$#:${1:-}" in
     1:--devcheck-image|1:--apple-check-image|1:--dart-audit-image|1:--rust-audit-image|\
     1:--maintenance-print-online-closure|1:--maintenance-print-cargo-vendor-candidate|\
     1:--maintenance-reproduce-vcpkg-x64|\
+    1:--maintenance-reproduce-vcpkg-x64-android|\
     1:--maintenance-write-online-closure|\
     1:--verify-offline-inputs|1:--debian-systemd-smoke-image)
         REQUEST=$1

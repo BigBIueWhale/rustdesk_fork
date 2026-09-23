@@ -161,6 +161,7 @@ def validate(repo: Path) -> None:
         "VCPKG_X64_LINUX_OUTPUT_KEY_V1",
         "VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1",
         "VCPKG_X64_ANDROID_OUTPUT_KEY_V1",
+        "SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1",
         "SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1",
     ):
         if re.fullmatch(r"[0-9a-f]{64}", pin(pins, name)) is None:
@@ -205,7 +206,7 @@ def validate(repo: Path) -> None:
     x64_android = extract(
         shell,
         "stage_vcpkg_natives_x64_android_candidate() {",
-        "\n}\n\n# ── cargo-ndk",
+        "\n}\n\nmaintenance_reproduce_vcpkg_x64_android() {",
         "x64-android lifecycle",
     )
     validate_lifecycle(
@@ -244,6 +245,38 @@ def validate(repo: Path) -> None:
         x64_android,
         '$ONLINE_DIR/vcpkg/installed/x64-android',
         "x64-android canonical release-closure publication",
+    )
+    x64_android_reproduction = extract(
+        shell,
+        "maintenance_reproduce_vcpkg_x64_android() {",
+        "\n}\n\n# ── cargo-ndk",
+        "x64-android reproducibility transaction",
+    )
+    require_order(
+        x64_android_reproduction,
+        (
+            'local publication_root="$ANDROID_EMULATOR_CANDIDATE_ROOT"',
+            "verify_or_load_android_builder_image",
+            'key="$(checked_vcpkg_native_output_key x64-android "$builder")"',
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "vcpkg_native_output_tool check-complete",
+            '"$ONLINE_FETCH_TMP/vcpkg-x64-android-reproduction.XXXXXXXXXX"',
+            "online_docker_run",
+            "target=/online,readonly,bind-recursive=disabled",
+            "source=$reproduction,target=/outputs,bind-recursive=disabled",
+            "/producer/build-vcpkg-native-output.sh x64-android",
+            'verify_libvpx_source_authority "after x64-android reproducibility build"',
+            '--tree "$publication_root/vcpkg/installed/x64-android"',
+            '--tree "$reproduction/native"',
+            "VCPKG_X64_ANDROID_REPRODUCTION=pass",
+            '--remove-private-root "$reproduction" --expected-identity "$reproduction_id"',
+        ),
+        "fresh x64-android candidate equality",
+    )
+    forbid(
+        x64_android_reproduction,
+        '$ONLINE_DIR/vcpkg/installed/x64-android',
+        "x64-android reproduction canonical release-closure reference",
     )
 
     for token, label in (
@@ -336,6 +369,21 @@ def validate(repo: Path) -> None:
         guest,
         "--maintenance-stage-vcpkg-x64-android",
         "guest acquisition-VM x64-android admission",
+    )
+    require(
+        shell,
+        "--maintenance-reproduce-vcpkg-x64-android)",
+        "inner x64-android reproducibility dispatch",
+    )
+    require(
+        outer,
+        "1:--maintenance-reproduce-vcpkg-x64-android",
+        "outer acquisition-VM x64-android reproducibility admission",
+    )
+    require(
+        guest,
+        "--maintenance-reproduce-vcpkg-x64-android",
+        "guest acquisition-VM x64-android reproducibility admission",
     )
 
     for token, label in (

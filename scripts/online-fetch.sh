@@ -6662,6 +6662,91 @@ stage_vcpkg_natives_x64_android_candidate() {
     log "candidate x64-android vcpkg natives checked and published (6 static libraries)"
 }
 
+maintenance_reproduce_vcpkg_x64_android() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    local publication_root="$ANDROID_EMULATOR_CANDIDATE_ROOT"
+    local key lock_fd reproduction reproduction_id
+    local status=0 source_status=0 cached_status=0 fresh_status=0 cleanup_status=0
+    local output_args=()
+    prepare_android_emulator_candidate_root
+    verify_or_load_android_builder_image
+    prepare_libvpx_source_authority
+    require_libvpx_distfiles
+    require_libyuv_distfile
+    verify_sha256 \
+        "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" \
+        "$SHA256_ANDROID_NDK_R28C"
+    verify_sha256 \
+        "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
+        "$SHA256_VCPKG_120DEAC3"
+    key="$(checked_vcpkg_native_output_key x64-android "$builder")"
+    mapfile -d '' output_args < <(vcpkg_native_output_args x64-android "$builder")
+    exec {lock_fd}<"$publication_root" \
+        || die "cannot open the Android candidate root for x64-android reproducibility"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Android candidate transaction already owns the candidate root"
+    vcpkg_native_output_tool check-complete \
+        --online "$publication_root" "${output_args[@]}" \
+        || die "cached candidate x64-android vcpkg output is incomplete, stale, or unsafe"
+    reproduction="$(
+        umask 077
+        /usr/bin/mktemp -d \
+            "$ONLINE_FETCH_TMP/vcpkg-x64-android-reproduction.XXXXXXXXXX"
+    )" || die "cannot create private x64-android vcpkg reproduction root"
+    reproduction_id="$(/usr/bin/stat -c '%d:%i' -- "$reproduction")"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$reproduction")" = \
+      "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private x64-android vcpkg reproduction root metadata differs"
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$VCPKG_NATIVE_PRODUCER,target=/producer/build-vcpkg-native-output.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$reproduction,target=/outputs,bind-recursive=disabled" \
+        --env RUSTDESK_VCPKG_BASELINE="$VCPKG_BASELINE" \
+        --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$key" \
+        --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /bin/bash --noprofile --norc -euo pipefail -c '
+            install -d -m 0700 /outputs/native
+            /bin/bash /producer/build-vcpkg-native-output.sh x64-android
+        ' || status=$?
+    verify_libvpx_source_authority "after x64-android reproducibility build" \
+        || source_status=$?
+    /usr/bin/python3 -I -S "$LIB_DIR/online-input-provenance.py" verify-subtree \
+        --tree "$publication_root/vcpkg/installed/x64-android" \
+        --expected "$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1" \
+        || cached_status=$?
+    if [ "$status" -eq 0 ]; then
+        /usr/bin/python3 -I -S "$LIB_DIR/online-input-provenance.py" verify-subtree \
+            --tree "$reproduction/native" \
+            --expected "$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1" \
+            || fresh_status=$?
+    else
+        fresh_status=$status
+    fi
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$cached_status" -eq 0 ] && [ "$fresh_status" -eq 0 ]; then
+        printf 'VCPKG_X64_ANDROID_REPRODUCTION=pass sha256=%s output_key=%s builds=acquisition-cache+fresh publication=candidate-only\n' \
+            "$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1" "$key"
+    fi
+    /usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$reproduction" --expected-identity "$reproduction_id" \
+        || cleanup_status=$?
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the x64-android reproducibility lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] \
+        || die "committed libvpx source changed during x64-android reproducibility"
+    [ "$cached_status" -eq 0 ] \
+        || die "cached candidate x64-android vcpkg closure differs from its pin"
+    [ "$status" -eq 0 ] || die "fresh x64-android vcpkg producer failed"
+    [ "$fresh_status" -eq 0 ] \
+        || die "fresh x64-android vcpkg reproduction differed"
+    [ "$cleanup_status" -eq 0 ] \
+        || die "private x64-android vcpkg reproduction cleanup failed"
+}
+
 # ── cargo-ndk (R-B7): the JNI cross-compile orchestrator, staged ───────────────────
 # ndk_arm64.sh runs `cargo ndk ... build` to cross-compile librustdesk.so for android;
 # cargo-ndk is NOT in the main cargo-vendor set, so `cargo install` it HERE (networked) in
@@ -8190,6 +8275,12 @@ main() {
             verify_or_load_android_builder_image
             prepare_libvpx_source_authority
             stage_vcpkg_natives_x64_android_candidate
+            return 0
+            ;;
+        --maintenance-reproduce-vcpkg-x64-android)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-reproduce-vcpkg-x64-android takes no arguments"
+            maintenance_reproduce_vcpkg_x64_android
             return 0
             ;;
         --maintenance-stage-flutter-presentation-candidate)

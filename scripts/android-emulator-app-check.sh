@@ -45,8 +45,10 @@ readonly SYSTEM_IMAGE_ZIP=$CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE
 readonly X86_STD=$CANDIDATE_ROOT/rust-std-1.75-x86_64-linux-android.tar.xz
 readonly X86_VCPKG=$CANDIDATE_ROOT/vcpkg/installed/x64-android
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
+ANDROID_PUB_CACHE_RECEIPT=
 
 verify_android_online_inputs() {
+    local pub_cache_receipt
     [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
         || die 'Android online input root is absent or ambiguous'
     verify_online_shas \
@@ -59,9 +61,18 @@ verify_android_online_inputs() {
     python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
         --tree "$ONLINE_DIR/cargo-vendor" \
         --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
-    python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
-        --tree "$ONLINE_DIR/pub-cache" \
-        --expected "$SHA256_PUB_CACHE_CLOSURE_V1"
+    pub_cache_receipt="$(
+        python3 -I -S "$SCRIPT_DIR/online-pub-cache-output.py" check-complete \
+            --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID"
+    )" || die 'Android Pub-cache structure is incomplete or unsafe'
+    [[ "$pub_cache_receipt" =~ ^sha256=[0-9a-f]{64}$ ]] \
+        || die 'Android Pub-cache structural receipt is malformed'
+    if [ -z "$ANDROID_PUB_CACHE_RECEIPT" ]; then
+        ANDROID_PUB_CACHE_RECEIPT=$pub_cache_receipt
+    else
+        [ "$pub_cache_receipt" = "$ANDROID_PUB_CACHE_RECEIPT" ] \
+            || die 'Android Pub-cache changed during app execution'
+    fi
     python3 -I -S "$SCRIPT_DIR/online-cargo-tool-output.py" check-complete \
         --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
         --kind frb --tool-version "$FLUTTER_RUST_BRIDGE_VERSION" \

@@ -183,7 +183,7 @@ def archive_matches(archive: ElementTree.Element, role: str) -> bool:
     if role == "emulator":
         if host_os != "linux":
             return False
-        if host_arch not in (None, "x86", "x86_64"):
+        if host_arch not in (None, "x86", "x64", "x86_64"):
             return False
         if host_bits not in (None, "64"):
             return False
@@ -517,6 +517,16 @@ def self_test() -> None:
         )
         if x86_spec != spec:
             raise fail("self-test 64-bit x86 archive selection differs")
+        one_child(x86_archive, "host-arch").text = "x64"
+        x86_archive.remove(one_child(x86_archive, "host-bits"))
+        x64_spec = parse_package(
+            ElementTree.tostring(x86_root),
+            EMULATOR_METADATA_URL,
+            EMULATOR_PACKAGE,
+            "emulator",
+        )
+        if x64_spec != spec:
+            raise fail("self-test x64 archive selection differs")
         entries, _, symlinks = inspect_zip(valid, "emulator")
         if entries != 3 or symlinks != 0:
             raise fail("self-test valid ZIP result differs")
@@ -544,7 +554,7 @@ def self_test() -> None:
             lambda: package_url(EMULATOR_METADATA_URL, "../escape.zip"),
             "escapes",
         )
-    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=6")
+    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=7")
 
 
 def discover() -> None:

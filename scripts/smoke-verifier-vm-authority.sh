@@ -38,6 +38,12 @@ case "$#:${1:-}" in
             || { echo 'focused Android Rust-lifecycle input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-rust-lifecycle-tests
         ;;
+    1:--android-rust-target-check)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android Rust target-check input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-target-check
+        ;;
     1:--flutter-model-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -89,7 +95,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --flutter-model-tests | --android-owner-tests | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -221,6 +227,10 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     readonly VM_TIMEOUT_SECONDS=2400
+    readonly OVERLAY_SIZE=40G
+    readonly VM_MEMORY=16384
+elif [ "$MODE" = android-rust-target-check ]; then
+    readonly VM_TIMEOUT_SECONDS=3600
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = hbb-common-fs ]; then
@@ -488,6 +498,13 @@ android_owner_input_inventory() {
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
 }
 
+android_rust_target_input_inventory() {
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+        "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    /usr/bin/sha256sum -- "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+}
+
 require_exact_fixed_receipt() {
     local expected=$1 label=$2
     local -a receipts=()
@@ -698,6 +715,33 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Pub-cache root metadata differs'
+elif [ "$MODE" = android-rust-target-check ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Android Rust target-check input root metadata differs'
+    for input in \
+        "$ANDROID_BUILDER_ARCHIVE:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed Android Rust target-check input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    android_rust_target_input_inventory >/dev/null \
+        || fail 'cannot inventory Android Rust target-check inputs'
 elif [ "$MODE" = flutter-model-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -985,20 +1029,21 @@ verify_sha256 "$INITRD" "$SHA256_VERIFIER_VM_INITRD"
 RUST_TEST_SOURCE_COMMIT=
 RUST_TEST_SOURCE_TREE=
 RUST_TEST_SOURCE_ARCHIVE_SHA256=
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
-        || fail 'focused Rust tests require the one checked-out master authority'
+        || fail 'focused Rust workloads require the one checked-out master authority'
     RUST_TEST_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
-        || fail 'cannot resolve focused Rust-test source commit'
+        || fail 'cannot resolve focused Rust-workload source commit'
     RUST_TEST_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
-        || fail 'cannot resolve focused Rust-test source tree'
+        || fail 'cannot resolve focused Rust-workload source tree'
     [ "$RUST_TEST_SOURCE_COMMIT" = \
       "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
         && [ "$RUST_TEST_SOURCE_COMMIT" = \
              "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
-        || fail 'focused Rust-test source differs from pushed master'
+        || fail 'focused Rust-workload source differs from pushed master'
     [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
-        || fail 'focused Rust tests require a clean source tree'
+        || fail 'focused Rust workloads require a clean source tree'
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
 fi
@@ -1230,6 +1275,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
             "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
+elif [ "$MODE" = android-rust-target-check ]; then
+    focused_inputs_before="$(android_rust_target_input_inventory)" \
+        || fail 'cannot inventory the sealed Android Rust target-check inputs'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     focused_inputs_before="$(flutter_peer_input_inventory)" \
         || fail 'cannot inventory the sealed Flutter full-peer inputs'
@@ -1268,14 +1316,15 @@ capture_listeners >"$LISTENERS_BEFORE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
 
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ]; then
     git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_TEST_SOURCE_COMMIT" \
         >"$RUST_TEST_SOURCE_ARCHIVE" \
-        || fail 'cannot create the exact focused Rust-test source archive'
+        || fail 'cannot create the exact focused Rust-workload source archive'
     /usr/bin/chmod 0400 "$RUST_TEST_SOURCE_ARCHIVE"
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$RUST_TEST_SOURCE_ARCHIVE")" = \
       "$HOST_UID:$HOST_GID:400:1" ] \
-        || fail 'focused Rust-test source archive metadata differs'
+        || fail 'focused Rust-workload source archive metadata differs'
     RUST_TEST_SOURCE_ARCHIVE_SHA256="$(
         /usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
@@ -1394,7 +1443,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
         "devcheck.docker.tar.gz=$DEV_CHECK_ARCHIVE"
         "artifact/rustdesk-x86_64.deb=$LIFECYCLE_ARTIFACT"
     )
-elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ]; then
+elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$RUST_TEST_SOURCE_ARCHIVE")
 elif [ "$MODE" = flutter-model-tests ]; then
@@ -1508,6 +1558,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     guest_invocation+=" --android-rust-lifecycle-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = android-rust-target-check ]; then
+    guest_invocation+=" --android-rust-target-check /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-owner-tests ]; then
@@ -1569,6 +1621,7 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
 memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -1641,6 +1694,7 @@ VM_PID="$(<"$QEMU_PIDFILE")"
     || fail 'QEMU PID does not identify the fixed hypervisor'
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -1720,6 +1774,7 @@ capture_listeners >"$LISTENERS_AFTER"
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -1937,6 +1992,19 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Android Rust-lifecycle cloud-init completion marker'
+elif [ "$MODE" = android-rust-target-check ]; then
+    require_exact_fixed_receipt \
+        "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$VERIFIER_VM_DOCKER_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \
+        'Android Rust target-check entry-authority receipt'
+    require_exact_fixed_receipt \
+        'ANDROID-RUST-CHECK: aarch64 Android Rust library is GREEN' \
+        'Android Rust target-check production verdict'
+    require_exact_fixed_receipt \
+        "ANDROID_RUST_TARGET_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE target=aarch64-linux-android profile=release-check builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID online=$SHA256_ONLINE_CLOSURE_V1 uid=1000 gid=1000 root=refused foreign=refused vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed offline_canary=pass cleanup=joined" \
+        'Android Rust target-check VM receipt'
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'Android Rust target-check cloud-init completion marker'
 elif [ "$MODE" = android-owner-tests ]; then
     require_exact_fixed_receipt \
         "ANDROID_OWNER_STATE_VM=pass commit=$ANDROID_OWNER_SOURCE_COMMIT tree=$ANDROID_OWNER_SOURCE_TREE classes=7 scenarios=15 assertions=293 kotlin=$ANDROID_KOTLIN_VERSION builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
@@ -2050,6 +2118,16 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Android Rust-lifecycle source archive changed during execution'
+elif [ "$MODE" = android-rust-target-check ]; then
+    focused_inputs_after="$(android_rust_target_input_inventory)" \
+        || fail 'cannot re-inventory the sealed Android Rust target-check inputs'
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed Android Rust target-check inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$RUST_TEST_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Android Rust target-check source archive changed during execution'
 elif [ "$MODE" = flutter-model-tests ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
@@ -2142,6 +2220,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+        "$vm_elapsed_seconds"
+elif [ "$MODE" = android-rust-target-check ]; then
+    printf 'ANDROID_RUST_TARGET_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=aarch64-linux-android profile=release-check network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=production-cargo-ndk-check cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-owner-tests ]; then

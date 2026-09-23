@@ -13,6 +13,9 @@ case "$#:${8:-}" in
     12:--android-rust-lifecycle-tests)
         MODE=android-rust-lifecycle-tests
         ;;
+    12:--android-rust-target-check)
+        MODE=android-rust-target-check
+        ;;
     12:--flutter-model-tests)
         MODE=flutter-model-tests
         ;;
@@ -36,7 +39,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -128,6 +131,7 @@ CONTAINER_ID=
 LIFECYCLE_LIBS_MOUNTED=0
 SEALED_INPUTS_MOUNTED=0
 RUST_AUDIT_VENDOR_MOUNTED=0
+ANDROID_RUST_ONLINE_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 
@@ -1444,6 +1448,208 @@ run_focused_rust_tests() {
     fi
 }
 
+run_android_rust_target_check() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/android-rust-target-source
+    local online_mount=$source_root/online/inputs
+    local output=$ROOT/android-rust-target-check.out
+    local builder_archive=$inputs/build-images/android-builder.docker.tar.gz
+    local source_archive_sha source_tree_before source_tree_after
+    local input_mount_options online_mount_options load_output workload_status=0
+    local entry_count online_verification_count
+    local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
+    local -a git_builder=(
+        setpriv --reuid=1000 --regid=1000 --clear-groups
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
+        GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+        GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0
+        GIT_NO_REPLACE_OBJECTS=1
+    )
+
+    [[ "$RUST_TEST_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Android Rust target-check source commit is malformed'
+    [[ "$RUST_TEST_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Android Rust target-check source tree is malformed'
+    [[ "$RUST_TEST_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android Rust target-check source archive digest is malformed'
+    [ -f "$RUST_TEST_SOURCE_ARCHIVE" ] && [ ! -L "$RUST_TEST_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$RUST_TEST_SOURCE_ARCHIVE")" = \
+             4000:4000:400:1 ] \
+        || fail 'Android Rust target-check source archive metadata differs'
+    source_archive_sha="$(sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Android Rust target-check source archive digest differs'
+
+    rm -rf -- "$source_root"
+    mkdir "$source_root"
+    tar -xf "$RUST_TEST_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$source_root" \
+        || fail 'cannot extract the exact Android Rust target-check source archive'
+    [ -z "$(find "$source_root" -xdev \
+        \( ! -type d -a ! -type f \) -print -quit)" ] \
+        || fail 'Android Rust target-check source archive contains a special entry'
+    chown -R 1000:1000 "$source_root"
+    chmod -R u=rwX,go=rX "$source_root"
+    [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
+              | awk '{ print $1 }')" = \
+      "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
+        || fail 'Android Rust target-check source archive differs from its guest bootstrap'
+    [ "$(stat -c '%u:%g:%a:%h' -- \
+            "$source_root/scripts/android-rust-check.sh" \
+            "$source_root/scripts/android-apk-build.sh" \
+            "$source_root/scripts/verify-vm-entry-preflight.sh" \
+            "$source_root/scripts/verify-android-build-source.py" \
+            "$source_root/scripts/verify-private-tree-closure.py" \
+            "$source_root/scripts/offline-image-provenance.py" \
+            "$source_root/scripts/online-input-provenance.py")" = \
+      $'1000:1000:755:1\n1000:1000:755:1\n1000:1000:755:1\n1000:1000:755:1\n1000:1000:755:1\n1000:1000:755:1\n1000:1000:755:1' ] \
+        || fail 'Android Rust target-check production entry metadata differs'
+
+    "${git_builder[@]}" /usr/bin/git -c core.hooksPath=/dev/null \
+        -c init.defaultBranch=master -C "$source_root" init -q \
+        || fail 'cannot initialize the exact Android Rust target-check Git index'
+    "${git_builder[@]}" /usr/bin/git -c core.hooksPath=/dev/null \
+        -C "$source_root" add -f -- . \
+        || fail 'cannot index the exact Android Rust target-check source'
+    source_tree_before="$(
+        "${git_builder[@]}" /usr/bin/git -c core.hooksPath=/dev/null \
+            -C "$source_root" write-tree
+    )" || fail 'cannot resolve the Android Rust target-check source tree'
+    [ "$source_tree_before" = "$RUST_TEST_SOURCE_TREE" ] \
+        || fail 'Android Rust target-check reconstructed source tree differs'
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed Android Rust target-check input authority'
+    SEALED_INPUTS_MOUNTED=1
+    input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed Android Rust target-check input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Android Rust target-check inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Android Rust target-check inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Android Rust target-check inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Android Rust target-check inputs permit direct execution' ;; esac
+
+    install -d -o 1000 -g 1000 -m 0755 -- "$source_root/online" "$online_mount"
+    mount --bind "$inputs" "$online_mount" \
+        || fail 'cannot project the sealed closure into the Android Rust target-check source'
+    ANDROID_RUST_ONLINE_MOUNTED=1
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$online_mount" \
+        || fail 'cannot make the Android Rust target-check input projection read-only'
+    online_mount_options="$(findmnt -n -o OPTIONS --target "$online_mount")" \
+        || fail 'Android Rust target-check input projection is absent'
+    case ",$online_mount_options," in *,ro,*) ;; *) fail 'Android Rust target-check input projection is writable' ;; esac
+    case ",$online_mount_options," in *,nodev,*) ;; *) fail 'Android Rust target-check input projection permits devices' ;; esac
+    case ",$online_mount_options," in *,nosuid,*) ;; *) fail 'Android Rust target-check input projection permits set-user-ID execution' ;; esac
+    case ",$online_mount_options," in *,noexec,*) ;; *) fail 'Android Rust target-check input projection permits direct execution' ;; esac
+
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
+      "1000:1000:400:1:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
+             "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Android-builder image archive differs'
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
+                --archive "$builder_archive" \
+                --archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
+                --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                --role android-builder \
+                --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
+                --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+                --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
+                --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+                --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
+                --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                --config-id "$ANDROID_BUILDER_CONFIG_ID" \
+                --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
+    )" || fail 'certified Android-builder image verification/load failed'
+    [ "$load_output" = "loaded and verified android-builder $ANDROID_BUILDER_IMAGE_ID" ] \
+        || fail "Android-builder image receipt differs: $load_output"
+
+    if /bin/bash "$source_root/scripts/android-rust-check.sh" \
+        >"$ROOT/root-android-rust-target.out" \
+        2>"$ROOT/root-android-rust-target.err"; then
+        fail 'VM root passed the Android Rust target-check entry'
+    fi
+    [ ! -s "$ROOT/root-android-rust-target.out" ] \
+        || fail 'root Android Rust target-check refusal produced standard output'
+    [ "$(<"$ROOT/root-android-rust-target.err")" = \
+      'Android Rust release check refuses host or container-root execution' ] \
+        || fail 'root Android Rust target-check refusal diagnostic differs'
+    if setpriv --reuid=4001 --regid=4001 --clear-groups \
+        /bin/bash "$source_root/scripts/android-rust-check.sh" \
+        >"$ROOT/foreign-android-rust-target.out" \
+        2>"$ROOT/foreign-android-rust-target.err"; then
+        fail 'foreign principal passed the Android Rust target-check entry'
+    fi
+    [ ! -s "$ROOT/foreign-android-rust-target.out" ] \
+        || fail 'foreign Android Rust target-check refusal produced standard output'
+    [ "$(<"$ROOT/foreign-android-rust-target.err")" = \
+      'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+        || fail 'foreign Android Rust target-check refusal diagnostic differs'
+
+    set +e
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /bin/bash "$source_root/scripts/android-rust-check.sh" \
+        >"$output" 2>&1
+    workload_status=$?
+    set -e
+    [ "$workload_status" -eq 0 ] \
+        || { tail -n 240 "$output" >&2; fail "Android Rust target check exited with status $workload_status"; }
+    [ "$(stat -c '%s' -- "$output")" -le 16777216 ] \
+        || fail 'Android Rust target-check output exceeds its bound'
+    entry_count="$(grep -Fxc "$expected_entry" "$output")"
+    [ "$entry_count" -ge 1 ] \
+        && [ "$(grep -Fc 'VERIFIER_VM_ENTRY_AUTHORITY=' "$output")" -eq "$entry_count" ] \
+        || { tail -n 240 "$output" >&2; fail 'Android Rust target-check entry-authority receipts differ'; }
+    [ "$(grep -Fxc 'ANDROID-RUST-CHECK: aarch64 Android Rust library is GREEN' "$output")" -eq 1 ] \
+        || { tail -n 240 "$output" >&2; fail 'Android Rust target-check production verdict is absent or duplicated'; }
+    [ "$(grep -Fc 'R-B10 canary: build confirmed network-isolated (offline compile stage).' "$output")" -ge 1 ] \
+        || { tail -n 240 "$output" >&2; fail 'Android Rust target check did not execute its offline network canary'; }
+    online_verification_count="$(grep -Fxc "verified $SHA256_ONLINE_CLOSURE_V1" "$output")"
+    [ "$online_verification_count" -eq 2 ] \
+        || { tail -n 240 "$output" >&2; fail 'Android Rust target check did not verify the full online closure before and after execution'; }
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'Android Rust target check left a container'
+    "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null \
+        || fail 'Android Rust target-check image could not be retired'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Android Rust target check left an image'
+
+    source_tree_after="$(
+        "${git_builder[@]}" /usr/bin/git -c core.hooksPath=/dev/null \
+            -C "$source_root" write-tree
+    )" || fail 'cannot re-resolve the Android Rust target-check source tree'
+    [ "$source_tree_after" = "$source_tree_before" ] \
+        && [ "$source_tree_after" = "$RUST_TEST_SOURCE_TREE" ] \
+        || fail 'Android Rust target-check Git index changed during execution'
+    "${git_builder[@]}" /usr/bin/git -c core.hooksPath=/dev/null \
+        -C "$source_root" diff-files --quiet -- \
+        || fail 'Android Rust target-check tracked source changed during execution'
+    [ "$(sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
+      "$source_archive_sha" ] \
+        || fail 'Android Rust target-check source archive changed during execution'
+
+    stop_docker_authority
+    umount "$online_mount" \
+        || fail 'cannot retire the Android Rust target-check input projection'
+    ANDROID_RUST_ONLINE_MOUNTED=0
+    umount "$inputs" \
+        || fail 'cannot retire the sealed Android Rust target-check input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$expected_entry"
+    printf 'ANDROID-RUST-CHECK: aarch64 Android Rust library is GREEN\n'
+    printf 'ANDROID_RUST_TARGET_VM=pass commit=%s tree=%s target=aarch64-linux-android profile=release-check builder_index=%s builder_runtime=%s online=%s uid=1000 gid=1000 root=refused foreign=refused vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed offline_canary=pass cleanup=joined\n' \
+        "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+        "$ANDROID_BUILDER_IMAGE_ID" "$ANDROID_BUILDER_CONFIG_ID" \
+        "$SHA256_ONLINE_CLOSURE_V1"
+}
+
 stage_android_owner_kotlin_jar() {
     local source_home=$1 staged_home=$2 group=$3 artifact=$4 version=$5
     local size=$6 digest=$7 source_root relative destination
@@ -2369,6 +2575,10 @@ cleanup() {
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1
         RUST_AUDIT_VENDOR_MOUNTED=0
     fi
+    if [ "$ANDROID_RUST_ONLINE_MOUNTED" -eq 1 ]; then
+        umount "$ROOT/android-rust-target-source/online/inputs" 2>/dev/null || status=1
+        ANDROID_RUST_ONLINE_MOUNTED=0
+    fi
     if [ "$SEALED_INPUTS_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1
         SEALED_INPUTS_MOUNTED=0
@@ -2600,6 +2810,7 @@ done
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+   || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -2655,6 +2866,11 @@ fi
 
 if [ "$MODE" = android-rust-lifecycle-tests ]; then
     run_focused_rust_tests
+    exit 0
+fi
+
+if [ "$MODE" = android-rust-target-check ]; then
+    run_android_rust_target_check
     exit 0
 fi
 

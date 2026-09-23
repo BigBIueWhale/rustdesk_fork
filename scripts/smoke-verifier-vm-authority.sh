@@ -38,11 +38,11 @@ case "$#:${1:-}" in
             || { echo 'focused Flutter-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=flutter-model-tests
         ;;
-    1:--android-voice-owner-tests)
+    1:--android-owner-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
-            || { echo 'focused Android voice-owner input/run overrides are forbidden' >&2; exit 2; }
-        MODE=android-voice-owner-tests
+            || { echo 'focused Android owner-state input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-owner-tests
         ;;
     1:--dart-audit)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -83,7 +83,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --android-voice-owner-tests | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --flutter-model-tests | --android-owner-tests | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -221,7 +221,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
     readonly VM_TIMEOUT_SECONDS=1800
     readonly OVERLAY_SIZE=24G
     readonly VM_MEMORY=8192
-elif [ "$MODE" = android-voice-owner-tests ]; then
+elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
@@ -263,30 +263,30 @@ fail() {
     exit 1
 }
 
-ANDROID_VOICE_KOTLIN_JARS=()
-append_android_voice_kotlin_jar() {
+ANDROID_OWNER_KOTLIN_JARS=()
+append_android_owner_kotlin_jar() {
     local group=$1 artifact=$2 version=$3 root
     local -a matches=()
     root="$ONLINE_INPUTS/gradle-home/caches/modules-2/files-2.1/$group/$artifact/$version"
     [ -d "$root" ] && [ ! -L "$root" ] \
-        || fail "focused Android voice-owner artifact root is absent: $group:$artifact:$version"
+        || fail "focused Android owner-state artifact root is absent: $group:$artifact:$version"
     mapfile -t matches < <(/usr/bin/find "$root" -mindepth 2 -maxdepth 2 -type f \
         -name "$artifact-$version.jar" -print | LC_ALL=C /usr/bin/sort)
     [ "${#matches[@]}" -eq 1 ] \
-        || fail "expected one focused Android voice-owner artifact: $group:$artifact:$version"
-    ANDROID_VOICE_KOTLIN_JARS+=("${matches[0]}")
+        || fail "expected one focused Android owner-state artifact: $group:$artifact:$version"
+    ANDROID_OWNER_KOTLIN_JARS+=("${matches[0]}")
 }
-if [ "$MODE" = android-voice-owner-tests ]; then
-    append_android_voice_kotlin_jar org.jetbrains.kotlin kotlin-compiler-embeddable "$ANDROID_KOTLIN_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains.kotlin kotlin-stdlib "$ANDROID_KOTLIN_STDLIB_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains.kotlin kotlin-script-runtime "$ANDROID_KOTLIN_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains.kotlin kotlin-reflect "$ANDROID_KOTLIN_COMPILER_REFLECT_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains.kotlin kotlin-daemon-embeddable "$ANDROID_KOTLIN_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains.intellij.deps trove4j "$ANDROID_KOTLIN_COMPILER_TROVE_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains.kotlinx kotlinx-coroutines-core-jvm "$ANDROID_KOTLIN_COMPILER_COROUTINES_VERSION"
-    append_android_voice_kotlin_jar org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION"
+if [ "$MODE" = android-owner-tests ]; then
+    append_android_owner_kotlin_jar org.jetbrains.kotlin kotlin-compiler-embeddable "$ANDROID_KOTLIN_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains.kotlin kotlin-stdlib "$ANDROID_KOTLIN_STDLIB_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains.kotlin kotlin-script-runtime "$ANDROID_KOTLIN_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains.kotlin kotlin-reflect "$ANDROID_KOTLIN_COMPILER_REFLECT_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains.kotlin kotlin-daemon-embeddable "$ANDROID_KOTLIN_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains.intellij.deps trove4j "$ANDROID_KOTLIN_COMPILER_TROVE_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains.kotlinx kotlinx-coroutines-core-jvm "$ANDROID_KOTLIN_COMPILER_COROUTINES_VERSION"
+    append_android_owner_kotlin_jar org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION"
 fi
-readonly -a ANDROID_VOICE_KOTLIN_JARS
+readonly -a ANDROID_OWNER_KOTLIN_JARS
 
 git_closed() {
     /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -469,13 +469,13 @@ flutter_peer_input_inventory() {
     fi
 }
 
-android_voice_input_inventory() {
+android_owner_input_inventory() {
     /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$ONLINE_INPUTS/gradle-home"
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
         "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE" \
-        "${ANDROID_VOICE_KOTLIN_JARS[@]}"
+        "${ANDROID_OWNER_KOTLIN_JARS[@]}"
     /usr/bin/sha256sum -- "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE" \
-        "${ANDROID_VOICE_KOTLIN_JARS[@]}"
+        "${ANDROID_OWNER_KOTLIN_JARS[@]}"
 }
 
 require_exact_fixed_receipt() {
@@ -687,16 +687,16 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
-elif [ "$MODE" = android-voice-owner-tests ]; then
+elif [ "$MODE" = android-owner-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
              "$HOST_UID:$HOST_GID:700" ] \
-        || fail 'sealed Android voice-owner input root metadata differs'
+        || fail 'sealed Android owner-state input root metadata differs'
     [ -d "$ONLINE_INPUTS/gradle-home" ] && [ ! -L "$ONLINE_INPUTS/gradle-home" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS/gradle-home")" = \
              "$HOST_UID:$HOST_GID:500" ] \
-        || fail 'sealed Android voice-owner Gradle root metadata differs'
+        || fail 'sealed Android owner-state Gradle root metadata differs'
     for input in \
         "$ANDROID_BUILDER_ARCHIVE:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
@@ -707,7 +707,7 @@ elif [ "$MODE" = android-voice-owner-tests ]; then
         [ -f "$path" ] && [ ! -L "$path" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
                  "$HOST_UID:$HOST_GID:400:1:$size" ] \
-            || fail "sealed Android voice-owner input metadata differs: $path"
+            || fail "sealed Android owner-state input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
     verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
@@ -716,10 +716,10 @@ elif [ "$MODE" = android-voice-owner-tests ]; then
              "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
         || fail 'authenticated virtiofsd package identity differs'
-    [ "${#ANDROID_VOICE_KOTLIN_JARS[@]}" -eq 8 ] \
-        || fail 'focused Android voice-owner Kotlin compiler closure differs'
-    android_voice_input_inventory >/dev/null \
-        || fail 'cannot inventory focused Android voice-owner inputs'
+    [ "${#ANDROID_OWNER_KOTLIN_JARS[@]}" -eq 8 ] \
+        || fail 'focused Android owner-state Kotlin compiler closure differs'
+    android_owner_input_inventory >/dev/null \
+        || fail 'cannot inventory focused Android owner-state inputs'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     [ -d "$SEALED_INPUT_ROOT" ] && [ ! -L "$SEALED_INPUT_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$SEALED_INPUT_ROOT")" = "$SEALED_INPUT_ROOT" ] \
@@ -971,23 +971,23 @@ if [ "$MODE" = flutter-model-tests ]; then
         || fail 'Git replacement refs are forbidden'
 fi
 
-ANDROID_VOICE_SOURCE_COMMIT=
-ANDROID_VOICE_SOURCE_TREE=
-ANDROID_VOICE_SOURCE_ARCHIVE_SHA256=
-if [ "$MODE" = android-voice-owner-tests ]; then
+ANDROID_OWNER_SOURCE_COMMIT=
+ANDROID_OWNER_SOURCE_TREE=
+ANDROID_OWNER_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = android-owner-tests ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
-        || fail 'focused Android voice-owner tests require the one checked-out master authority'
-    ANDROID_VOICE_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
-        || fail 'cannot resolve focused Android voice-owner source commit'
-    ANDROID_VOICE_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
-        || fail 'cannot resolve focused Android voice-owner source tree'
-    [ "$ANDROID_VOICE_SOURCE_COMMIT" = \
+        || fail 'focused Android owner-state tests require the one checked-out master authority'
+    ANDROID_OWNER_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve focused Android owner-state source commit'
+    ANDROID_OWNER_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve focused Android owner-state source tree'
+    [ "$ANDROID_OWNER_SOURCE_COMMIT" = \
       "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
-        && [ "$ANDROID_VOICE_SOURCE_COMMIT" = \
+        && [ "$ANDROID_OWNER_SOURCE_COMMIT" = \
              "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
-        || fail 'focused Android voice-owner source differs from pushed master'
+        || fail 'focused Android owner-state source differs from pushed master'
     [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
-        || fail 'focused Android voice-owner tests require a clean source tree'
+        || fail 'focused Android owner-state tests require a clean source tree'
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
 fi
@@ -1141,7 +1141,7 @@ readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
 readonly HBB_SOURCE_ARCHIVE=$RUN/source.tar
 readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
-readonly ANDROID_VOICE_SOURCE_ARCHIVE=$RUN/android-voice-source.tar
+readonly ANDROID_OWNER_SOURCE_ARCHIVE=$RUN/android-owner-source.tar
 readonly FLUTTER_PEER_SOURCE_ARCHIVE=$RUN/flutter-peer-source.tar
 readonly DART_SOURCE_ARCHIVE=$RUN/dart-source.tar
 readonly RUST_AUDIT_SOURCE_ARCHIVE=$RUN/rust-audit-source.tar
@@ -1180,9 +1180,9 @@ elif [ "$MODE" = flutter-model-tests ]; then
             "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
-elif [ "$MODE" = android-voice-owner-tests ]; then
-    focused_inputs_before="$(android_voice_input_inventory)" \
-        || fail 'cannot inventory the sealed Android voice-owner inputs'
+elif [ "$MODE" = android-owner-tests ]; then
+    focused_inputs_before="$(android_owner_input_inventory)" \
+        || fail 'cannot inventory the sealed Android owner-state inputs'
 elif [ "$MODE" = dart-audit ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
@@ -1245,16 +1245,16 @@ elif [ "$MODE" = flutter-model-tests ]; then
         || fail 'extracted virtiofsd binary is absent or ambiguous'
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
-elif [ "$MODE" = android-voice-owner-tests ]; then
-    git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_VOICE_SOURCE_COMMIT" \
-        >"$ANDROID_VOICE_SOURCE_ARCHIVE" \
-        || fail 'cannot create the exact focused Android voice-owner source archive'
-    /usr/bin/chmod 0400 "$ANDROID_VOICE_SOURCE_ARCHIVE"
-    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_VOICE_SOURCE_ARCHIVE")" = \
+elif [ "$MODE" = android-owner-tests ]; then
+    git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_OWNER_SOURCE_COMMIT" \
+        >"$ANDROID_OWNER_SOURCE_ARCHIVE" \
+        || fail 'cannot create the exact focused Android owner-state source archive'
+    /usr/bin/chmod 0400 "$ANDROID_OWNER_SOURCE_ARCHIVE"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_OWNER_SOURCE_ARCHIVE")" = \
       "$HOST_UID:$HOST_GID:400:1" ] \
-        || fail 'focused Android voice-owner source archive metadata differs'
-    ANDROID_VOICE_SOURCE_ARCHIVE_SHA256="$(
-        /usr/bin/sha256sum "$ANDROID_VOICE_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
+        || fail 'focused Android owner-state source archive metadata differs'
+    ANDROID_OWNER_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$ANDROID_OWNER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
     /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
     /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
@@ -1335,9 +1335,9 @@ elif [ "$MODE" = hbb-common-fs ]; then
 elif [ "$MODE" = flutter-model-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_SOURCE_ARCHIVE")
-elif [ "$MODE" = android-voice-owner-tests ]; then
+elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
-    lifecycle_payload_grafts=("source.tar=$ANDROID_VOICE_SOURCE_ARCHIVE")
+    lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
 elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
@@ -1443,8 +1443,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $HBB_SOURCE_COMMIT $HBB_SOURCE_TREE $HBB_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
-elif [ "$MODE" = android-voice-owner-tests ]; then
-    guest_invocation+=" --android-voice-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_VOICE_SOURCE_COMMIT $ANDROID_VOICE_SOURCE_TREE $ANDROID_VOICE_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = android-owner-tests ]; then
+    guest_invocation+=" --android-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_OWNER_SOURCE_COMMIT $ANDROID_OWNER_SOURCE_TREE $ANDROID_OWNER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         guest_invocation+=" --flutter-peer-presentation-candidate /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
@@ -1502,7 +1502,7 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
 memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
-   || [ "$MODE" = android-voice-owner-tests ] \
+   || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     start_sealed_input_virtiofsd \
@@ -1573,7 +1573,7 @@ VM_PID="$(<"$QEMU_PIDFILE")"
     || fail 'QEMU PID does not identify the fixed hypervisor'
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
-   || [ "$MODE" = android-voice-owner-tests ] \
+   || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     virtiofsd_seccomp_ready=0
@@ -1651,7 +1651,7 @@ capture_listeners >"$LISTENERS_AFTER"
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
-   || [ "$MODE" = android-voice-owner-tests ] \
+   || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     reconcile_socket "$VIRTIOFS_SOCKET" \
@@ -1860,13 +1860,13 @@ elif [ "$MODE" = hbb-common-fs ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Rust-test cloud-init completion marker'
-elif [ "$MODE" = android-voice-owner-tests ]; then
+elif [ "$MODE" = android-owner-tests ]; then
     require_exact_fixed_receipt \
-        "ANDROID_VOICE_OWNER_STATE_VM=pass commit=$ANDROID_VOICE_SOURCE_COMMIT tree=$ANDROID_VOICE_SOURCE_TREE scenarios=7 assertions=93 kotlin=$ANDROID_KOTLIN_VERSION builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
-        'focused Android voice-owner state-test receipt'
+        "ANDROID_OWNER_STATE_VM=pass commit=$ANDROID_OWNER_SOURCE_COMMIT tree=$ANDROID_OWNER_SOURCE_TREE classes=7 scenarios=15 assertions=293 kotlin=$ANDROID_KOTLIN_VERSION builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused Android owner-state test receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
-        'focused Android voice-owner cloud-init completion marker'
+        'focused Android owner-state cloud-init completion marker'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     require_exact_fixed_receipt \
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
@@ -1973,16 +1973,16 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/sha256sum "$FLUTTER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$FLUTTER_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Flutter-test source archive changed during execution'
-elif [ "$MODE" = android-voice-owner-tests ]; then
-    focused_inputs_after="$(android_voice_input_inventory)" \
-        || fail 'cannot re-inventory the sealed Android voice-owner inputs'
+elif [ "$MODE" = android-owner-tests ]; then
+    focused_inputs_after="$(android_owner_input_inventory)" \
+        || fail 'cannot re-inventory the sealed Android owner-state inputs'
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
-        || fail 'sealed Android voice-owner inputs changed during execution'
-    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_VOICE_SOURCE_ARCHIVE")" = \
+        || fail 'sealed Android owner-state inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_OWNER_SOURCE_ARCHIVE")" = \
       "$HOST_UID:$HOST_GID:400:1" ] \
-        && [ "$(/usr/bin/sha256sum "$ANDROID_VOICE_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
-             "$ANDROID_VOICE_SOURCE_ARCHIVE_SHA256" ] \
-        || fail 'focused Android voice-owner source archive changed during execution'
+        && [ "$(/usr/bin/sha256sum "$ANDROID_OWNER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$ANDROID_OWNER_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Android owner-state source archive changed during execution'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     focused_inputs_after="$(flutter_peer_input_inventory)"
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
@@ -2044,9 +2044,9 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
-elif [ "$MODE" = android-voice-owner-tests ]; then
-    printf 'ANDROID_VOICE_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machine cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$ANDROID_VOICE_SOURCE_COMMIT" "$ANDROID_VOICE_SOURCE_TREE" \
+elif [ "$MODE" = android-owner-tests ]; then
+    printf 'ANDROID_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machines cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \

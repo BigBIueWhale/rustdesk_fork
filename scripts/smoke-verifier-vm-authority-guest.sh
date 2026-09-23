@@ -13,8 +13,8 @@ case "$#:${8:-}" in
     12:--flutter-model-tests)
         MODE=flutter-model-tests
         ;;
-    12:--android-voice-owner-tests)
-        MODE=android-voice-owner-tests
+    12:--android-owner-tests)
+        MODE=android-owner-tests
         ;;
     12:--flutter-peer-presentation)
         MODE=flutter-peer-presentation
@@ -33,7 +33,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-voice-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -54,10 +54,10 @@ readonly FLUTTER_SOURCE_ARCHIVE=${9:-}
 readonly FLUTTER_SOURCE_COMMIT=${10:-}
 readonly FLUTTER_SOURCE_TREE=${11:-}
 readonly FLUTTER_SOURCE_ARCHIVE_SHA256=${12:-}
-readonly ANDROID_VOICE_SOURCE_ARCHIVE=${9:-}
-readonly ANDROID_VOICE_SOURCE_COMMIT=${10:-}
-readonly ANDROID_VOICE_SOURCE_TREE=${11:-}
-readonly ANDROID_VOICE_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly ANDROID_OWNER_SOURCE_ARCHIVE=${9:-}
+readonly ANDROID_OWNER_SOURCE_COMMIT=${10:-}
+readonly ANDROID_OWNER_SOURCE_TREE=${11:-}
+readonly ANDROID_OWNER_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly FLUTTER_PEER_SOURCE_ARCHIVE=${9:-}
 readonly FLUTTER_PEER_SOURCE_COMMIT=${10:-}
 readonly FLUTTER_PEER_SOURCE_TREE=${11:-}
@@ -992,91 +992,98 @@ run_hbb_common_fs() {
         "$DEB_BUILDER_CONFIG_ID"
 }
 
-stage_android_voice_kotlin_jar() {
+stage_android_owner_kotlin_jar() {
     local source_home=$1 staged_home=$2 group=$3 artifact=$4 version=$5
     local size=$6 digest=$7 source_root relative destination
     local -a matches=()
 
     source_root="$source_home/caches/modules-2/files-2.1/$group/$artifact/$version"
     [ -d "$source_root" ] && [ ! -L "$source_root" ] \
-        || fail "sealed Android voice-owner artifact root is absent: $group:$artifact:$version"
+        || fail "sealed Android owner-state artifact root is absent: $group:$artifact:$version"
     mapfile -t matches < <(find "$source_root" -mindepth 2 -maxdepth 2 -type f \
         -name "$artifact-$version.jar" -print | LC_ALL=C sort)
     [ "${#matches[@]}" -eq 1 ] \
-        || fail "expected one sealed Android voice-owner artifact: $group:$artifact:$version"
+        || fail "expected one sealed Android owner-state artifact: $group:$artifact:$version"
     [ ! -L "${matches[0]}" ] \
         && [ "$(stat -c '%u:%g:%a:%h:%s' -- "${matches[0]}")" = \
              "1000:1000:400:1:$size" ] \
         && [ "$(sha256sum "${matches[0]}" | awk '{ print $1 }')" = "$digest" ] \
-        || fail "sealed Android voice-owner artifact differs: $group:$artifact:$version"
+        || fail "sealed Android owner-state artifact differs: $group:$artifact:$version"
     relative=${matches[0]#"$source_home"/}
     [ "$relative" != "${matches[0]}" ] && [ -n "$relative" ] \
-        || fail "sealed Android voice-owner artifact escaped its root: $group:$artifact:$version"
+        || fail "sealed Android owner-state artifact escaped its root: $group:$artifact:$version"
     destination="$staged_home/$relative"
     install -D -o 1000 -g 1000 -m 0400 -- "${matches[0]}" "$destination"
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$destination")" = \
       "1000:1000:400:1:$size" ] \
         && [ "$(sha256sum "$destination" | awk '{ print $1 }')" = "$digest" ] \
-        || fail "staged Android voice-owner artifact differs: $group:$artifact:$version"
+        || fail "staged Android owner-state artifact differs: $group:$artifact:$version"
 }
 
-run_android_voice_owner_tests() {
+run_android_owner_tests() {
     local inputs=/mnt/rustdesk-sealed-inputs
-    local source_root=$ROOT/android-voice-owner-source
-    local output=$ROOT/android-voice-owner-tests.out
+    local source_root=$ROOT/android-owner-source
+    local output=$ROOT/android-owner-tests.out
     local builder_archive=$inputs/build-images/android-builder.docker.tar.gz
     local gradle_home=$inputs/gradle-home
-    local staged_gradle_home=$ROOT/android-voice-gradle-home
+    local staged_gradle_home=$ROOT/android-owner-gradle-home
     local load_output container_status=0 inspect namespace_inspect result_line
     local source_archive_sha input_mount_options source_before
 
-    [[ "$ANDROID_VOICE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
-        || fail 'focused Android voice-owner source commit is malformed'
-    [[ "$ANDROID_VOICE_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
-        || fail 'focused Android voice-owner source tree is malformed'
-    [[ "$ANDROID_VOICE_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
-        || fail 'focused Android voice-owner source archive digest is malformed'
-    [ -f "$ANDROID_VOICE_SOURCE_ARCHIVE" ] && [ ! -L "$ANDROID_VOICE_SOURCE_ARCHIVE" ] \
-        && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_VOICE_SOURCE_ARCHIVE")" = \
+    [[ "$ANDROID_OWNER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Android owner-state source commit is malformed'
+    [[ "$ANDROID_OWNER_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'focused Android owner-state source tree is malformed'
+    [[ "$ANDROID_OWNER_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'focused Android owner-state source archive digest is malformed'
+    [ -f "$ANDROID_OWNER_SOURCE_ARCHIVE" ] && [ ! -L "$ANDROID_OWNER_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_OWNER_SOURCE_ARCHIVE")" = \
              4000:4000:400:1 ] \
-        || fail 'focused Android voice-owner source archive metadata differs'
-    source_archive_sha="$(sha256sum "$ANDROID_VOICE_SOURCE_ARCHIVE" | awk '{ print $1 }')"
-    [ "$source_archive_sha" = "$ANDROID_VOICE_SOURCE_ARCHIVE_SHA256" ] \
-        || fail 'focused Android voice-owner source archive digest differs'
+        || fail 'focused Android owner-state source archive metadata differs'
+    source_archive_sha="$(sha256sum "$ANDROID_OWNER_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$ANDROID_OWNER_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'focused Android owner-state source archive digest differs'
 
     rm -rf -- "$source_root"
     mkdir "$source_root"
-    tar -xf "$ANDROID_VOICE_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+    tar -xf "$ANDROID_OWNER_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
         -C "$source_root" \
-        || fail 'cannot extract the exact Android voice-owner source archive'
+        || fail 'cannot extract the exact Android owner-state source archive'
     chown -R 1000:1000 "$source_root"
     [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
               | awk '{ print $1 }')" = \
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
-        || fail 'Android voice-owner source archive differs from its guest bootstrap'
+        || fail 'Android owner-state source archive differs from its guest bootstrap'
     [ "$(stat -c '%u:%g:%a:%h' -- \
-        "$source_root/scripts/test-android-voice-owner-state.sh")" = 1000:1000:700:1 ] \
-        || fail 'Android voice-owner executable test entry metadata differs'
+        "$source_root/scripts/test-android-owner-state.sh")" = 1000:1000:700:1 ] \
+        || fail 'Android owner-state executable test entry metadata differs'
     source_before="$source_archive_sha:$(sha256sum \
         "$source_root/scripts/pins.env" \
-        "$source_root/scripts/test-android-voice-owner-state.sh" \
+        "$source_root/scripts/test-android-owner-state.sh" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ExactOwnerBoundedQueue.kt" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceGenerationOwner.kt" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt" \
         "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt" \
+        "$source_root/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/AndroidOwnerStateTest.kt" \
         "$source_root/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerStateTest.kt")"
 
     mkdir "$inputs"
     mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
-        || fail 'cannot mount the sealed Android voice-owner input authority'
+        || fail 'cannot mount the sealed Android owner-state input authority'
     SEALED_INPUTS_MOUNTED=1
     input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
-        || fail 'sealed Android voice-owner input mount is absent'
-    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Android voice-owner inputs are writable' ;; esac
-    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Android voice-owner inputs permit devices' ;; esac
-    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Android voice-owner inputs permit set-user-ID execution' ;; esac
-    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Android voice-owner inputs permit direct execution' ;; esac
+        || fail 'sealed Android owner-state input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Android owner-state inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Android owner-state inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Android owner-state inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Android owner-state inputs permit direct execution' ;; esac
 
     [ -d "$gradle_home" ] && [ ! -L "$gradle_home" ] \
         && [ "$(stat -c '%u:%g:%a' -- "$gradle_home")" = 1000:1000:500 ] \
-        || fail 'sealed Android voice-owner Gradle seed metadata differs'
+        || fail 'sealed Android owner-state Gradle seed metadata differs'
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
       "1000:1000:400:1:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
         && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
@@ -1084,30 +1091,30 @@ run_android_voice_owner_tests() {
         || fail 'sealed Android-builder image archive differs'
 
     [ ! -e "$staged_gradle_home" ] && [ ! -L "$staged_gradle_home" ] \
-        || fail 'private Android voice-owner compiler staging root is occupied'
+        || fail 'private Android owner-state compiler staging root is occupied'
     mkdir "$staged_gradle_home"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.kotlin kotlin-compiler-embeddable "$ANDROID_KOTLIN_VERSION" \
         "$SIZE_ANDROID_KOTLIN_COMPILER_EMBEDDABLE" "$SHA256_ANDROID_KOTLIN_COMPILER_EMBEDDABLE"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.kotlin kotlin-stdlib "$ANDROID_KOTLIN_STDLIB_VERSION" \
         "$SIZE_ANDROID_KOTLIN_STDLIB" "$SHA256_ANDROID_KOTLIN_STDLIB"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.kotlin kotlin-script-runtime "$ANDROID_KOTLIN_VERSION" \
         "$SIZE_ANDROID_KOTLIN_SCRIPT_RUNTIME" "$SHA256_ANDROID_KOTLIN_SCRIPT_RUNTIME"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.kotlin kotlin-reflect "$ANDROID_KOTLIN_COMPILER_REFLECT_VERSION" \
         "$SIZE_ANDROID_KOTLIN_REFLECT" "$SHA256_ANDROID_KOTLIN_REFLECT"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.kotlin kotlin-daemon-embeddable "$ANDROID_KOTLIN_VERSION" \
         "$SIZE_ANDROID_KOTLIN_DAEMON_EMBEDDABLE" "$SHA256_ANDROID_KOTLIN_DAEMON_EMBEDDABLE"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.intellij.deps trove4j "$ANDROID_KOTLIN_COMPILER_TROVE_VERSION" \
         "$SIZE_ANDROID_KOTLIN_COMPILER_TROVE" "$SHA256_ANDROID_KOTLIN_COMPILER_TROVE"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains.kotlinx kotlinx-coroutines-core-jvm "$ANDROID_KOTLIN_COMPILER_COROUTINES_VERSION" \
         "$SIZE_ANDROID_KOTLIN_COMPILER_COROUTINES" "$SHA256_ANDROID_KOTLIN_COMPILER_COROUTINES"
-    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION" \
         "$SIZE_ANDROID_KOTLIN_COMPILER_ANNOTATIONS" "$SHA256_ANDROID_KOTLIN_COMPILER_ANNOTATIONS"
     find "$staged_gradle_home" -type d -exec chmod 0555 {} +
@@ -1116,7 +1123,7 @@ run_android_voice_owner_tests() {
            -o \( -type d -a \( ! -uid 0 -o ! -gid 0 -o ! -perm 0555 \) \) \
            -o \( -type f -a \( ! -uid 1000 -o ! -gid 1000 -o ! -perm 0400 -o -links +1 \) \) \) \
         -print -quit)" ] \
-        || fail 'private Android voice-owner compiler staging closure is ambiguous'
+        || fail 'private Android owner-state compiler staging closure is ambiguous'
 
     load_output="$(
         setpriv --reuid=1000 --regid=1000 --clear-groups \
@@ -1143,7 +1150,7 @@ run_android_voice_owner_tests() {
 
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
-            --name rustdesk-android-voice-owner-tests \
+            --name rustdesk-android-owner-tests \
             --pull=never \
             --network=none \
             --read-only \
@@ -1163,55 +1170,62 @@ run_android_voice_owner_tests() {
             --workdir /source \
             "$ANDROID_BUILDER_CONFIG_ID" \
             /bin/bash --noprofile --norc \
-                /source/scripts/test-android-voice-owner-state.sh \
-                /online/gradle-home /tmp/android-voice-owner-test
+                /source/scripts/test-android-owner-state.sh \
+                /online/gradle-home /tmp/android-owner-state-test
     )"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] \
-        || fail 'focused Android voice-owner container ID is malformed'
+        || fail 'focused Android owner-state container ID is malformed'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
         "$CONTAINER_ID")"
     [ "$inspect" = \
       'none|true|1000:1000|1073741824|1073741824|2000000000|128|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
-        || fail "focused Android voice-owner container authority differs: $inspect"
+        || fail "focused Android owner-state container authority differs: $inspect"
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
         "$CONTAINER_ID")"
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
-        || fail "focused Android voice-owner container namespace/device/port authority differs: $namespace_inspect"
+        || fail "focused Android owner-state container namespace/device/port authority differs: $namespace_inspect"
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \
-        || { tail -n 160 "$output" >&2; fail "focused Android voice-owner tests exited with status $container_status"; }
+        || { tail -n 160 "$output" >&2; fail "focused Android owner-state tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
-        || fail 'focused Android voice-owner output exceeds its bound'
+        || fail 'focused Android owner-state output exceeds its bound'
     result_line="$(grep -Fx \
-        'ANDROID_VOICE_OWNER_STATE_TEST=pass scenarios=7 assertions=93 kotlin=2.0.21' \
+        'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=293 kotlin=2.0.21' \
         "$output")" \
-        || { tail -n 160 "$output" >&2; fail 'focused Android voice-owner success receipt is absent'; }
-    [ "$(grep -Fc 'ANDROID_VOICE_OWNER_STATE_TEST=' "$output")" -eq 1 ] \
-        || fail 'focused Android voice-owner success receipt is duplicated'
+        || { tail -n 160 "$output" >&2; fail 'focused Android owner-state success receipt is absent'; }
+    [ "$(grep -Fc 'ANDROID_OWNER_STATE_SUITE=' "$output")" -eq 1 ] \
+        || fail 'focused Android owner-state success receipt is duplicated'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
-        || fail 'focused Android voice-owner container did not exit cleanly'
+        || fail 'focused Android owner-state container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null
     [ "$source_before" = \
       "$source_archive_sha:$(sha256sum \
           "$source_root/scripts/pins.env" \
-          "$source_root/scripts/test-android-voice-owner-state.sh" \
+          "$source_root/scripts/test-android-owner-state.sh" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ExactOwnerBoundedQueue.kt" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceGenerationOwner.kt" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt" \
           "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt" \
+          "$source_root/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/AndroidOwnerStateTest.kt" \
           "$source_root/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerStateTest.kt")" ] \
-        || fail 'focused Android voice-owner source inputs changed during execution'
-    [ "$(sha256sum "$ANDROID_VOICE_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
+        || fail 'focused Android owner-state source inputs changed during execution'
+    [ "$(sha256sum "$ANDROID_OWNER_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
       "$source_archive_sha" ] \
-        || fail 'focused Android voice-owner source archive changed during execution'
+        || fail 'focused Android owner-state source archive changed during execution'
     stop_docker_authority
-    umount "$inputs" || fail 'cannot retire the sealed Android voice-owner input mount'
+    umount "$inputs" || fail 'cannot retire the sealed Android owner-state input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'ANDROID_VOICE_OWNER_STATE_VM=pass commit=%s tree=%s scenarios=7 assertions=93 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
-        "$ANDROID_VOICE_SOURCE_COMMIT" "$ANDROID_VOICE_SOURCE_TREE" \
+    printf 'ANDROID_OWNER_STATE_VM=pass commit=%s tree=%s classes=7 scenarios=15 assertions=293 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$ANDROID_KOTLIN_VERSION" "$ANDROID_BUILDER_IMAGE_ID" \
         "$ANDROID_BUILDER_CONFIG_ID"
 }
@@ -2134,7 +2148,7 @@ done
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
-   || [ "$MODE" = android-voice-owner-tests ] \
+   || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     docker_socket_gid=1000
@@ -2186,8 +2200,8 @@ if [ "$MODE" = hbb-common-fs ]; then
     exit 0
 fi
 
-if [ "$MODE" = android-voice-owner-tests ]; then
-    run_android_voice_owner_tests
+if [ "$MODE" = android-owner-tests ]; then
+    run_android_owner_tests
     exit 0
 fi
 

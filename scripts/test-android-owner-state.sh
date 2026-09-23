@@ -4,7 +4,7 @@ umask 077
 export PATH=/usr/bin:/bin
 
 [ "$#" -eq 2 ] \
-    || { echo 'usage: test-android-voice-owner-state.sh GRADLE_HOME WORK_ROOT' >&2; exit 2; }
+    || { echo 'usage: test-android-owner-state.sh GRADLE_HOME WORK_ROOT' >&2; exit 2; }
 [ "$(/usr/bin/id -u)" -ne 0 ] && [ "$(/usr/bin/id -g)" -ne 0 ] \
     || { echo 'Android voice owner-state test refuses root' >&2; exit 1; }
 
@@ -15,14 +15,27 @@ source "$SCRIPT_DIR/pins.env"
 
 readonly GRADLE_HOME="$1"
 readonly WORK_ROOT="$2"
-readonly PRODUCTION_SOURCE="$REPO_ROOT/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt"
-readonly TEST_SOURCE="$REPO_ROOT/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerStateTest.kt"
+readonly KOTLIN_SOURCE_ROOT="$REPO_ROOT/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb"
+readonly KOTLIN_TEST_ROOT="$REPO_ROOT/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb"
+readonly -a PRODUCTION_SOURCES=(
+    "$KOTLIN_SOURCE_ROOT/ControlledConnectionType.kt"
+    "$KOTLIN_SOURCE_ROOT/ControlledCaptureOwnerState.kt"
+    "$KOTLIN_SOURCE_ROOT/ControlledInputOwner.kt"
+    "$KOTLIN_SOURCE_ROOT/ExactOwnerBoundedQueue.kt"
+    "$KOTLIN_SOURCE_ROOT/MainServiceGenerationOwner.kt"
+    "$KOTLIN_SOURCE_ROOT/MainServiceStatusOwner.kt"
+    "$KOTLIN_SOURCE_ROOT/VoiceCallOwnerState.kt"
+)
+readonly -a TEST_SOURCES=(
+    "$KOTLIN_TEST_ROOT/AndroidOwnerStateTest.kt"
+    "$KOTLIN_TEST_ROOT/VoiceCallOwnerStateTest.kt"
+)
 
 [ -d "$GRADLE_HOME" ] && [ ! -L "$GRADLE_HOME" ] \
     || { echo 'Gradle seed root is absent or ambiguous' >&2; exit 1; }
 [ ! -e "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \
     || { echo 'test work root must be freshly absent' >&2; exit 1; }
-for source in "$PRODUCTION_SOURCE" "$TEST_SOURCE"; do
+for source in "${PRODUCTION_SOURCES[@]}" "${TEST_SOURCES[@]}"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || { echo "test source is absent or ambiguous: $source" >&2; exit 1; }
 done
@@ -79,9 +92,9 @@ compile_status=0
     /usr/bin/java -Xms32m -Xmx512m -Djava.io.tmpdir="$WORK_ROOT" \
         -cp "$COMPILER_CLASSPATH" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
         -no-stdlib -no-reflect -Werror -jvm-target 1.8 -Xjdk-release=8 \
-        -module-name rustdesk_android_voice_owner_state_test \
+        -module-name rustdesk_android_owner_state_test \
         -classpath "$TEST_CLASSPATH" -d "$WORK_ROOT/classes" \
-        "$PRODUCTION_SOURCE" "$TEST_SOURCE" \
+        "${PRODUCTION_SOURCES[@]}" "${TEST_SOURCES[@]}" \
         >"$WORK_ROOT/compiler.out" 2>"$WORK_ROOT/compiler.err" || compile_status=$?
 if [ "$compile_status" -ne 0 ]; then
     /usr/bin/tail -n 120 "$WORK_ROOT/compiler.out" "$WORK_ROOT/compiler.err" >&2
@@ -91,7 +104,23 @@ fi
     && [ "$(/usr/bin/stat -c '%s' -- "$WORK_ROOT/compiler.err")" -le 65536 ] \
     || { echo 'Kotlin compiler output exceeded its bound' >&2; exit 1; }
 
-/usr/bin/timeout --signal=TERM --kill-after=2s 10s \
-    /usr/bin/java -ea -Xms16m -Xmx64m -Djava.io.tmpdir="$WORK_ROOT" \
-        -cp "$WORK_ROOT/classes:$TEST_CLASSPATH" \
-        com.carriez.flutter_hbb.VoiceCallOwnerStateTestKt
+voice_result="$(
+    /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
+        /usr/bin/java -ea -Xms16m -Xmx64m -Djava.io.tmpdir="$WORK_ROOT" \
+            -cp "$WORK_ROOT/classes:$TEST_CLASSPATH" \
+            com.carriez.flutter_hbb.VoiceCallOwnerStateTestKt
+)"
+[ "$voice_result" = \
+  'ANDROID_VOICE_OWNER_STATE_TEST=pass scenarios=7 assertions=93 kotlin=2.0.21' ] \
+    || { echo "Android voice-owner result differs: $voice_result" >&2; exit 1; }
+owner_result="$(
+    /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
+        /usr/bin/java -ea -Xms16m -Xmx64m -Djava.io.tmpdir="$WORK_ROOT" \
+            -cp "$WORK_ROOT/classes:$TEST_CLASSPATH" \
+            com.carriez.flutter_hbb.AndroidOwnerStateTestKt
+)"
+[ "$owner_result" = \
+  'ANDROID_OWNER_STATE_TEST=pass scenarios=8 assertions=200 kotlin=2.0.21' ] \
+    || { echo "Android owner-state result differs: $owner_result" >&2; exit 1; }
+printf '%s\n' "$voice_result" "$owner_result"
+printf 'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=293 kotlin=2.0.21\n'

@@ -2218,7 +2218,7 @@ run_android_emulator_boot() {
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
         || fail 'Android emulator source archive differs from its guest bootstrap'
     [ "$(stat -c '%a:%h' -- \
-        "$source_root/scripts/smoke-android-emulator-boot.sh")" = 755:1 ] \
+        "$source_root/scripts/smoke-android-emulator-boot.sh")" = 700:1 ] \
         || fail 'Android emulator boot workload metadata differs'
     source_before="$source_archive_sha:$(sha256sum \
         "$source_root/scripts/pins.env" \

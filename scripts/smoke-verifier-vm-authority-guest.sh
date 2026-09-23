@@ -1026,9 +1026,11 @@ run_focused_rust_tests() {
                         export RUSTUP_HOME=/nonexistent PATH=/tmp/rust/bin:/usr/bin:/bin
                         ;;
                     devcheck-image)
+                        toolchain_bin=/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin
+                        [ -x "$toolchain_bin/cargo" ] && [ -x "$toolchain_bin/rustc" ]
                         unset RUSTUP_TOOLCHAIN
-                        export RUSTUP_HOME=/usr/local/rustup \
-                            PATH=/usr/local/cargo/bin:/usr/bin:/bin
+                        export RUSTUP_HOME=/nonexistent RUSTC="$toolchain_bin/rustc" \
+                            PATH="$toolchain_bin:/usr/bin:/bin"
                         ;;
                     *) exit 94 ;;
                 esac

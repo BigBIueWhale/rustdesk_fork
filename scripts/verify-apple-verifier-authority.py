@@ -105,6 +105,12 @@ def validate(repo: Path) -> None:
     guest = read_regular(repo, "scripts/smoke-verifier-vm-authority-guest.sh", executable=True)
     pins = read_regular(repo, "scripts/pins.env")
     dockerfile = read_regular(repo, "scripts/Dockerfile.apple-check")
+    guest_apple = section(
+        guest,
+        "run_apple_conform() {",
+        "\n}\n\ngenerate_focused_rust_flutter_bridge() {",
+        "guest Apple-conformance workload",
+    )
 
     require_order(
         apple,
@@ -322,7 +328,6 @@ def validate(repo: Path) -> None:
         'readonly APPLE_CHECK_SCRIPT="$VERIFY_REPO/scripts/apple-conform-check.sh"',
         "12:--apple-conform)",
         "run_apple_conform() {",
-        "verify-load --publication-index-runtime",
         '/bin/bash "$source_root/scripts/apple-conform-check.sh"',
         '/bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority',
         "setpriv --reuid=4001 --regid=4001 --clear-groups",
@@ -334,6 +339,18 @@ def validate(repo: Path) -> None:
         "APPLE_CONFORM_VM=pass commit=%s tree=%s targets=3",
     ):
         require(guest, value, "guest VM Apple-check probe")
+    for value in (
+        "verify-load \\",
+        '--expected-id "$APPLE_CHECK_IMAGE_ID"',
+        '--config-id "$APPLE_CHECK_IMAGE_CONFIG_ID"',
+        '--manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"',
+    ):
+        require(guest_apple, value, "guest VM Apple image load")
+    forbid(
+        guest_apple,
+        "--publication-index-runtime",
+        "Apple OCI publication index used as a classic-Docker runtime",
+    )
 
 
 def main() -> None:

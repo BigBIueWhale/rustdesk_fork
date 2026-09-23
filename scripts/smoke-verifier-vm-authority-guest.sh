@@ -943,7 +943,7 @@ run_apple_conform() {
             env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
             DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
             python3 -I -S "$source_root/scripts/offline-image-provenance.py" \
-                verify-load --publication-index-runtime \
+                verify-load \
                 --archive "$private_image" \
                 --archive-sha "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" \
                 --archive-size "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" \

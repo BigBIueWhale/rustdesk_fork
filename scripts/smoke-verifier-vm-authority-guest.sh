@@ -120,6 +120,7 @@ readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.
 readonly ONLINE_PUB_CACHE_OUTPUT=$VERIFY_REPO/scripts/online-pub-cache-output.py
 readonly ONLINE_GRADLE_OUTPUT=$VERIFY_REPO/scripts/online-gradle-output.py
 readonly ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-online-fetch-gradle-output-authority.py
+readonly ONLINE_FETCH_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-online-fetch-container-authority.py
 readonly DART_AUDIT_SCRIPT=$VERIFY_REPO/scripts/dart-audit.sh
 readonly IMAGE=rustdesk-verifier-authority-probe:v1
 readonly CONTAINER=rustdesk-verifier-authority-probe
@@ -2635,7 +2636,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     verify-release-workspace-runtime.sh apple-conform-check.sh \
     smoke-flutter-peer-presentation.sh finalize-flutter-tools-offline.sh \
     frb-codegen.sh dart-verify.sh smoke-server.sh \
-    audit.sh rust-audit-policy.py verify-rust-audit-authority.py \
+    audit.sh rust-audit-policy.py verify-rust-audit-authority.py Dockerfile.audit \
     gen-android-keystore.sh android-keystore-generate.sh \
     verify-android-keystore-authority.py \
     build-android.sh android-apk-build.sh verify-android-builder-authority.py \
@@ -2654,7 +2655,9 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     Dockerfile.win-helper Dockerfile.builder-bootstrap-seal \
     Dockerfile.android-builder-certify Dockerfile.deb-builder-certify \
     Dockerfile.win-helper-certify offline-image-provenance.py \
-    online-fetch.sh online-pub-cache-output.py online-gradle-output.py \
+    online-fetch.sh verify-online-fetch-container-authority.py \
+    verify-online-fetch-virtiofs-rename.py launch-landlocked-virtiofsd.py \
+    online-pub-cache-output.py online-gradle-output.py \
     verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \
     android-rust-check.sh \
     dart-audit.sh dart-audit-result.py \
@@ -3485,6 +3488,21 @@ online_gradle_source_output="$(
     || fail "online Gradle output source-gate result differs: $online_gradle_source_output"
 printf '%s\n' "$online_gradle_source_output"
 printf 'VERIFIER_VM_ONLINE_GRADLE_SOURCE_GATE=pass uid=4000 gid=4000\n'
+
+online_fetch_authority_status=0
+online_fetch_authority_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$ONLINE_FETCH_AUTHORITY_CHECKER" \
+        --repo "$VERIFY_REPO"
+)" || online_fetch_authority_status=$?
+[ "${#online_fetch_authority_output}" -le 4096 ] \
+    || fail 'online-fetch authority diagnostic exceeded its bound'
+[ "$online_fetch_authority_status" -eq 0 ] \
+    || fail "online-fetch authority source gate failed: $online_fetch_authority_output"
+[ "$online_fetch_authority_output" = 'online-fetch VM authority: PASS' ] \
+    || fail "online-fetch authority result differs: $online_fetch_authority_output"
+printf '%s\n' "$online_fetch_authority_output"
+printf 'VERIFIER_VM_ONLINE_FETCH_SOURCE_GATE=pass uid=4000 gid=4000\n'
 
 pub_cache_output_status=0
 pub_cache_output_result="$(

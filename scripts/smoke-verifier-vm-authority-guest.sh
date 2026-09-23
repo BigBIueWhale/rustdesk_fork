@@ -10,8 +10,8 @@ case "$#:${8:-}" in
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
-    12:--android-listener-rust-tests)
-        MODE=android-listener-rust-tests
+    12:--android-rust-lifecycle-tests)
+        MODE=android-rust-lifecycle-tests
         ;;
     12:--flutter-model-tests)
         MODE=flutter-model-tests
@@ -36,7 +36,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-listener-rust-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -821,9 +821,9 @@ run_focused_rust_tests() {
             fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
         )
     else
-        [ "$MODE" = android-listener-rust-tests ] \
+        [ "$MODE" = android-rust-lifecycle-tests ] \
             || fail "unknown focused Rust-test mode: $MODE"
-        container_name=rustdesk-android-listener-rust-tests
+        container_name=rustdesk-android-rust-lifecycle-tests
         memory=12g
         memory_bytes=12884901888
         tmpfs_size=3g
@@ -837,12 +837,36 @@ run_focused_rust_tests() {
             src/lib.rs
             src/android_listener_lifecycle.rs
             src/direct_service.rs
+            src/privacy_mode.rs
+            src/server/connection.rs
+            src/server/display_service.rs
+            src/ui_cm_interface.rs
         )
         required_tests=(
             android_listener_lifecycle::tests::stale_network_callback_cannot_advance_replacement_generation_epoch
             android_listener_lifecycle::tests::worker_must_be_registered_and_converged_before_replacement
             android_listener_lifecycle::tests::invalid_exhausted_and_thread_creation_failure_edges_fail_closed
             direct_service::direct_connection_task_tests::parent_cancellation_converges_every_owned_child_before_listener_completion
+            privacy_mode::tests::r_s11iu_privacy_resource_owner_distinguishes_same_id_token_replacement
+            privacy_mode::tests::r_s11iu_privacy_activation_commits_only_after_prepare
+            privacy_mode::tests::r_s11iu_privacy_activation_deadline_cancels_and_drains_before_return
+            privacy_mode::tests::r_s11iu_privacy_activation_future_drop_refuses_late_commit
+            privacy_mode::tests::r_s11iu_r_s19a_privacy_retirement_dispatcher_owns_work_off_caller_thread
+            server::connection::final_remote_cleanup_state_tests::r_s11iu_final_remote_unclaimed_cleanup_is_superseded_by_admission
+            server::connection::final_remote_cleanup_state_tests::r_s11iu_final_remote_claim_blocks_successor_until_completion
+            server::connection::final_remote_cleanup_state_tests::r_s11iu_final_remote_cleanup_waits_for_the_last_live_lease
+            server::connection::final_remote_cleanup_state_tests::r_s11iu_final_remote_failure_has_one_retry_per_admission
+            server::connection::final_remote_cleanup_state_tests::r_s11iu_stale_final_remote_lease_retirement_is_inert
+            server::connection::final_remote_cleanup_state_tests::r_s11iu_authenticated_registry_refuses_id_overlap_and_stale_removal
+            server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
+            ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
+            ui_cm_interface::tests::r_s11iu_android_cm_future_cancellation_retires_its_registry_owner
+            ui_cm_interface::tests::r_s11iu_superseded_android_cm_owner_cannot_dispatch_filesystem_work
+            ui_cm_interface::tests::r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id
+            ui_cm_interface::tests::r_s11iu_registry_rejects_stale_and_same_source_active_collisions
+            ui_cm_interface::tests::r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement
+            ui_cm_interface::tests::r_s11iu_generation_exhaustion_does_not_commit_a_client
+            ui_cm_interface::tests::r_s11iu_file_log_publication_requires_exact_current_owner
         )
     fi
 
@@ -1043,11 +1067,13 @@ run_focused_rust_tests() {
                         cargo test --offline --locked -p hbb_common --lib \
                             fs::tests:: --color never -- --test-threads=1
                         ;;
-                    android-listener-rust-tests)
+                    android-rust-lifecycle-tests)
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             android_listener_lifecycle::tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             direct_service::direct_connection_task_tests:: --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config,flutter \
+                            r_s11iu_ --color never -- --test-threads=1
                         ;;
                     *) exit 93 ;;
                 esac
@@ -1072,7 +1098,7 @@ run_focused_rust_tests() {
         || { tail -n 200 "$output" >&2; fail "focused Rust tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Rust-test output exceeds its bound'
-    if [ "$MODE" = android-listener-rust-tests ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ]; then
         grep -Fq 'R-B10 canary: build confirmed network-isolated (offline compile stage).' "$output" \
             || { tail -n 200 "$output" >&2; fail 'focused Rust build did not execute its offline network canary'; }
     fi
@@ -1083,8 +1109,8 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 2 ] \
-            || { tail -n 200 "$output" >&2; fail 'Android listener Rust-test summary count differs'; }
+        [ "${#result_lines[@]}" -eq 3 ] \
+            || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
         || fail 'focused Rust-test output contains a non-success result summary'
@@ -1117,9 +1143,9 @@ run_focused_rust_tests() {
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 4 ] \
-            || fail "Android listener Rust-test count differs: $tests_passed"
-        printf 'ANDROID_LISTENER_RUST_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=android-listener-generation-and-child-convergence rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        [ "$tests_passed" -eq 24 ] \
+            || fail "Android Rust-lifecycle test count differs: $tests_passed"
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
     fi
@@ -2280,7 +2306,7 @@ done
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-listener-rust-tests ] \
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -2334,7 +2360,7 @@ if [ "$MODE" = hbb-common-fs ]; then
     exit 0
 fi
 
-if [ "$MODE" = android-listener-rust-tests ]; then
+if [ "$MODE" = android-rust-lifecycle-tests ]; then
     run_focused_rust_tests
     exit 0
 fi

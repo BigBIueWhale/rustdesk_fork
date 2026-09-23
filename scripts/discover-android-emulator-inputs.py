@@ -66,6 +66,7 @@ class ArchiveReceipt:
     zip_entries: int
     zip_uncompressed_bytes: int
     zip_symlinks: int
+    zip_root: str
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -323,7 +324,45 @@ def normalized_symlink_target(name: PurePosixPath, target: str) -> None:
             depth += 1
 
 
-def inspect_zip(path: str, role: str) -> tuple[int, int, int]:
+def required_layout_root(regular: set[str], role: str) -> str:
+    required = {
+        "emulator": {
+            "emulator/emulator",
+            "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
+        },
+        "system-image": {
+            "system.img",
+            "ramdisk.img",
+            "kernel-ranchu",
+            "source.properties",
+        },
+    }[role]
+    if role == "emulator":
+        missing = sorted(required - regular)
+        if missing:
+            raise fail(f"ZIP is missing required {role} files: {missing}")
+        return "emulator"
+    prefixes = {""}
+    prefixes.update(
+        name.split("/", 1)[0]
+        for name in regular
+        if "/" in name
+    )
+    matches = [
+        prefix
+        for prefix in sorted(prefixes)
+        if all((f"{prefix}/{name}" if prefix else name) in regular for name in required)
+    ]
+    if len(matches) != 1:
+        visible = sorted(prefixes)[:32]
+        raise fail(
+            f"ZIP has {len(matches)} complete {role} layout roots; "
+            f"top-level candidates={visible} total={len(prefixes)}"
+        )
+    return matches[0] or "."
+
+
+def inspect_zip(path: str, role: str) -> tuple[int, int, int, str]:
     try:
         with zipfile.ZipFile(path, "r") as archive:
             entries = archive.infolist()
@@ -359,25 +398,11 @@ def inspect_zip(path: str, role: str) -> tuple[int, int, int]:
                     raise fail("ZIP contains a device, socket, or other special entry")
                 elif not is_directory:
                     regular.add(canonical)
-            required = {
-                "emulator": {
-                    "emulator/emulator",
-                    "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
-                },
-                "system-image": {
-                    "system.img",
-                    "ramdisk.img",
-                    "kernel-ranchu",
-                    "source.properties",
-                },
-            }[role]
-            missing = sorted(required - regular)
-            if missing:
-                raise fail(f"ZIP is missing required {role} files: {missing}")
+            layout_root = required_layout_root(regular, role)
             bad = archive.testzip()
             if bad is not None:
                 raise fail(f"ZIP CRC validation failed at {bad!r}")
-            return len(entries), total, symlinks
+            return len(entries), total, symlinks, layout_root
     except (OSError, UnicodeError, zipfile.BadZipFile) as error:
         raise fail(f"ZIP validation failed: {error}") from error
 
@@ -417,7 +442,7 @@ def download_and_verify(spec: PackageArchive, role: str, directory: str) -> Arch
     observed_sha1 = sha1.hexdigest()
     if observed_sha1 != spec.publisher_checksum:
         raise fail("archive bytes differ from the publisher SHA-1")
-    entries, uncompressed, symlinks = inspect_zip(destination, role)
+    entries, uncompressed, symlinks, layout_root = inspect_zip(destination, role)
     receipt = ArchiveReceipt(
         package=spec.package,
         revision=spec.revision,
@@ -428,6 +453,7 @@ def download_and_verify(spec: PackageArchive, role: str, directory: str) -> Arch
         zip_entries=entries,
         zip_uncompressed_bytes=uncompressed,
         zip_symlinks=symlinks,
+        zip_root=layout_root,
     )
     os.unlink(destination)
     return receipt
@@ -527,9 +553,23 @@ def self_test() -> None:
         )
         if x64_spec != spec:
             raise fail("self-test x64 archive selection differs")
-        entries, _, symlinks = inspect_zip(valid, "emulator")
-        if entries != 3 or symlinks != 0:
+        entries, _, symlinks, layout_root = inspect_zip(valid, "emulator")
+        if entries != 3 or symlinks != 0 or layout_root != "emulator":
             raise fail("self-test valid ZIP result differs")
+
+        system_image = os.path.join(root, "system-image.zip")
+        make_zip(
+            system_image,
+            (
+                "arm64-v8a/system.img",
+                "arm64-v8a/ramdisk.img",
+                "arm64-v8a/kernel-ranchu",
+                "arm64-v8a/source.properties",
+            ),
+        )
+        _, _, _, system_root = inspect_zip(system_image, "system-image")
+        if system_root != "arm64-v8a":
+            raise fail("self-test prefixed system-image layout differs")
 
         traversal = os.path.join(root, "traversal.zip")
         make_zip(
@@ -554,7 +594,7 @@ def self_test() -> None:
             lambda: package_url(EMULATOR_METADATA_URL, "../escape.zip"),
             "escapes",
         )
-    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=7")
+    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=8")
 
 
 def discover() -> None:

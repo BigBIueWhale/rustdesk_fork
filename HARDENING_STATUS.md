@@ -39,7 +39,7 @@ not a claim that every target OS has executed them.
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`5c2fbfc9f78c8953a945283ef3c0cbef7f981064`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 12 focused suites and 103 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
 | Exact Android owner states (`c02e795b71809eaa86e4b294c7cd45b74fcf788e`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
-| Exact Android listener Rust lifecycle (`9bd2eed71cb2ce0ee9668243217c3feb435f5c79`) | A zero-NIC VM and networkless guest-only container compiled the complete Linux-host Rust library with the certified devcheck image and executed four exact production tests for generation/rebuild refusal, startup/stop/convergence edges, exhaustion/thread-start rollback, and parent cancellation joining every accepted child. The offline canary, read-only source/vendor inputs, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, socket/peer, APK/device, task-swipe, Force Stop, or presentation evidence. |
+| Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
 | Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for the named older source parents. No current APK installation, Activity/foreground-service lifecycle, task swipe/reopen/Force Stop, real peer, presentation, or device result exists. |
 | Apple and iOS checks | Source/portable checks only. No signed installed macOS or current iOS package/device result exists. |
@@ -607,9 +607,10 @@ Activation is not released until the worker is registered; stop cancels only the
 replacement is refused until exit and convergence; and zero, stale, wrong-phase, or exhausted rebuilds
 cannot alter replacement state. Kotlin publishes the exact positive generation cross-thread, JNI proves
 the exact retained `MainService` object, and the listener observes only an active exact-generation epoch
-snapshot. At exact pushed commit `9bd2eed71cb2ce0ee9668243217c3feb435f5c79`, the no-NIC verifier VM
-compiled the complete Linux-host Rust library and passed the three production lifecycle tests plus the
-production listener-child cancellation/drain test. They cover stale replacement callbacks, registration and
+snapshot. At exact pushed commit `ceec168e8a25d231156e59c25b08365a29fef5d7`, the no-NIC verifier VM
+freshly generated the pinned Flutter bridge, compiled the complete Linux-host Rust library, and passed the
+three production lifecycle tests plus the production listener-child cancellation/drain test as part of a
+24-test exact-owner lane. Those four cover stale replacement callbacks, registration and
 convergence ordering, invalid/exhausted edges, thread-start failure, child isolation, parent cancellation,
 complete join, and an empty postcondition. This proves those Linux-target Rust owner/drain behaviors only—not
 Android-target compilation, JNI/Android lifecycle, real socket cleanup, reconnect, or device behavior. Current
@@ -9766,9 +9767,10 @@ authority, notification, and cleanup plan while blocking replacement; task
 removal does not stop the foreground service and Force Stop is not a recovery
 mechanism.
 
-**Evidence.** Exact pushed commit `9bd2eed71cb2ce0ee9668243217c3feb435f5c79`, tree
-`39ebe398f7410905b025abe931e1390cc9782cc8`, compiled the complete Linux-host Rust library and passed all four
-focused production tests in 236 seconds. The three lifecycle regressions exercise start-before-registration
+**Evidence.** Exact pushed commit `ceec168e8a25d231156e59c25b08365a29fef5d7`, tree
+`77196a66051884a2e90a14b19588171a93eb2407`, freshly generated the pinned Flutter bridge, compiled the complete
+Linux-host Rust library, and passed all four focused listener/child tests as part of a 24-test exact-owner lane
+in 509 seconds. The three lifecycle regressions exercise start-before-registration
 refusal, stop-request versus inactivity, terminal convergence before replacement, stale-generation refusal,
 rebuild exhaustion, and thread-creation rollback. The `JoinSet` regression executes parent-to-child
 cancellation, child isolation, complete join, and the empty postcondition. The ordinary-user QEMU VM had
@@ -10958,9 +10960,8 @@ shape is not promoted to native or lifecycle proof.
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
 **CORE REGISTRY, SNAPSHOT RECONCILIATION, CM FILE-LOG, AND FINAL-REMOTE CLEANUP SOURCE
-IMPLEMENTED; OTHER SIDE-EFFECT LIFETIME WORK REMAINS; FOCUSED RUST AND DART REGRESSIONS
-RETAINED OR AUTHORED;
-ANDROID RUST FIXTURES ARE NOT EXECUTED; CURRENT DEVICE/NATIVE EVIDENCE OPEN.**
+IMPLEMENTED; OTHER SIDE-EFFECT LIFETIME WORK REMAINS; FOCUSED LINUX RUST REGRESSIONS
+EXECUTED; CURRENT DART, ANDROID-TARGET, DEVICE, AND NATIVE WINDOWS EVIDENCE OPEN.**
 `CmClientRegistry` owns a checked process-lifetime
 generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
 authority tokens, stale source generations, active same-source collisions, and exhaustion
@@ -11154,8 +11155,15 @@ Six additional Rust state regressions cover unclaimed-cleanup supersession, clai
 admission blocking, last-live-lease finality, exact-revision retry isolation, stale cleanup-lease
 retirement, and authenticated same-ID collision/stale-removal refusal. A focused resolution regression executes partial failure and
 concurrent-record replacement against the real restoration transaction helper. They are selected by
-the existing serial `r_s11iu_` target lanes but have not run for this source.
-The shared runner uses
+the existing serial `r_s11iu_` target lanes. Exact pushed commit
+`ceec168e8a25d231156e59c25b08365a29fef5d7`, tree
+`77196a66051884a2e90a14b19588171a93eb2407`, passed all 20 of these named Rust tests on the Linux target.
+The zero-NIC VM freshly generated the exact source's bridge with pinned Flutter 3.24.5, Rust 1.75.0,
+LLVM 15.0.6, and FRB, then compiled the complete library in a separate networkless devcheck container.
+That execution also passed the four listener/owned-child tests described in R-S11el/R-S11hq, for 24 exact
+tests total. Both containers were UID/GID 1000 with read-only roots, no capabilities, no-new-privileges,
+AppArmor, no devices or ports, and read-only sealed inputs; the build-time offline canary, before/after
+Cargo/Pub closure checks, unchanged host listeners, and joined cleanup passed. The shared runner uses
 `cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never -- --test-threads=1`
 because these regressions intentionally exercise one process-global activation admission gate.
 The pinned offline Windows artifact lane now runs the same filter serially before packaging, so the
@@ -11182,11 +11190,12 @@ meta-verifier's twelve repeated assertions and three source loads. The shared so
 Android child future, exact generation transfer, terminal/connection finality, RAII registry retirement, and
 selected production owner topology without treating model text as behavior.
 
-The activation, child-future, registry, file-owner, and Dart cases have not been executed against the
-current dependency closure: the fixed rootless Docker socket, repository Cargo vendor closure,
-repository Flutter cache, and repository Windows image are absent. Host execution was not used as
-a fallback, and static review is not their result. Required evidence remains exact Rust and Dart
-execution, the complete native-to-rendered Flutter event path, an Android target
+The 20 Rust activation, child-future, registry, file-owner, privacy, final-cleanup, and resolution cases have
+now executed against the current pinned Cargo-vendor, Pub-cache, Flutter, LLVM, FRB, and certified-image
+sub-closures. This is real Linux-target Rust behavior, not Android-target, Dart/rendered-UI, Android framework,
+or native Windows behavior. The complete canonical release input closure and repository Windows image remain
+absent, and the current Dart cases have not been rerun at `ceec168e`; host execution was not used as a fallback.
+Required evidence remains exact-current Dart execution, the complete native-to-rendered Flutter event path, an Android target
 compile, plus current Android package execution for same-ID supersession, stale/duplicate
 callbacks, input, queued/delayed
 actions, voice/recorder demand, capture, notification, task swipe, reopen, Force Stop,

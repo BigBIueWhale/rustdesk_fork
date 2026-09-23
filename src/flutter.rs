@@ -4562,6 +4562,7 @@ pub fn retire_android_client_owner(generation: u64, session_id: &SessionID) -> (
 mod mobile_session_lifecycle_tests {
     use super::*;
     use crate::client::io_loop::{viewer_video_refresh_channel, ViewerVideoRefreshRequest};
+    use hbb_common::tokio;
     use std::sync::{atomic::AtomicBool, Arc};
     use std::time::Duration;
 

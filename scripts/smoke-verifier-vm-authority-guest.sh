@@ -1070,6 +1070,7 @@ run_focused_rust_tests() {
             src/lib.rs
             src/android_listener_lifecycle.rs
             src/direct_service.rs
+            src/flutter.rs
             src/flutter_ffi.rs
             src/privacy_mode.rs
             src/server/connection.rs

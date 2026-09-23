@@ -11,6 +11,7 @@ receipt and add pins in a later commit; nothing here writes canonical inputs.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -136,12 +137,20 @@ def parse_revision(package: ElementTree.Element) -> str:
     return ".".join(str(part) for part in parts)
 
 
-def ensure_stable(package: ElementTree.Element) -> None:
+def is_stable(package: ElementTree.Element) -> bool:
     references = children(package, "channelRef")
     if len(references) > 1:
         raise fail("package has multiple channel references")
-    if references and references[0].get("ref") != "channel-0":
-        raise fail("package is not on the stable Android repository channel")
+    return not references or references[0].get("ref") == "channel-0"
+
+
+def is_current(package: ElementTree.Element) -> bool:
+    obsolete = package.get("obsolete")
+    if obsolete is None:
+        return True
+    if obsolete == "true":
+        return False
+    raise fail("package has a malformed obsolete attribute")
 
 
 def package_url(metadata_url: str, relative: str) -> str:
@@ -189,16 +198,23 @@ def parse_package(
         root = ElementTree.fromstring(document)
     except ElementTree.ParseError as error:
         raise fail(f"Android repository metadata is not well-formed XML: {error}") from error
-    matches = [
+    path_matches = [
         element
         for element in root.iter()
         if local_name(element.tag) == "remotePackage"
         and element.get("path") == package_path
     ]
+    matches = [
+        package
+        for package in path_matches
+        if is_current(package) and is_stable(package)
+    ]
     if len(matches) != 1:
-        raise fail(f"package {package_path!r} has {len(matches)} metadata matches")
+        raise fail(
+            f"package {package_path!r} has {len(path_matches)} path matches "
+            f"but {len(matches)} current stable matches"
+        )
     package = matches[0]
-    ensure_stable(package)
     revision = parse_revision(package)
     archives_parent = one_child(package, "archives")
     candidates = [
@@ -456,6 +472,23 @@ def self_test() -> None:
         spec = parse_package(document, EMULATOR_METADATA_URL, EMULATOR_PACKAGE, "emulator")
         if spec.revision != "35.2.1" or spec.size != len(payload):
             raise fail("self-test valid metadata result differs")
+        document_root = ElementTree.fromstring(document)
+        stable_package = next(
+            element
+            for element in document_root
+            if local_name(element.tag) == "remotePackage"
+        )
+        beta_package = copy.deepcopy(stable_package)
+        one_child(beta_package, "channelRef").set("ref", "channel-1")
+        obsolete_package = copy.deepcopy(stable_package)
+        obsolete_package.set("obsolete", "true")
+        document_root.extend((beta_package, obsolete_package))
+        alternatives = ElementTree.tostring(document_root)
+        alternative_spec = parse_package(
+            alternatives, EMULATOR_METADATA_URL, EMULATOR_PACKAGE, "emulator"
+        )
+        if alternative_spec != spec:
+            raise fail("self-test stable package selection differs")
         entries, _, symlinks = inspect_zip(valid, "emulator")
         if entries != 3 or symlinks != 0:
             raise fail("self-test valid ZIP result differs")
@@ -477,13 +510,13 @@ def self_test() -> None:
                 EMULATOR_PACKAGE,
                 "emulator",
             ),
-            "stable",
+            "current stable",
         )
         expect_failure(
             lambda: package_url(EMULATOR_METADATA_URL, "../escape.zip"),
             "escapes",
         )
-    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=4")
+    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=5")
 
 
 def discover() -> None:

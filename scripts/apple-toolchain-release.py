@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import io
 import os
@@ -41,6 +42,9 @@ LOWER_HEX_256 = re.compile(r"[0-9a-f]{64}")
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 DOWNLOAD_TIMEOUT_SECONDS = 20
 DOWNLOAD_DEADLINE_SECONDS = 600
+ASCII_ARMOR_BYTE_LIMIT = 1024 * 1024
+ARMOR_BEGIN = "-----BEGIN PGP PUBLIC KEY BLOCK-----"
+ARMOR_END = "-----END PGP PUBLIC KEY BLOCK-----"
 ALLOWED_DOWNLOAD_URLS = frozenset(
     {
         "https://static.rust-lang.org/rust-key.gpg.ascii",
@@ -155,6 +159,10 @@ def fetch_release_input(
                 fail(f"cannot create download output: {exc}")
             created = os.fstat(output_fd)
             output_identity = (created.st_dev, created.st_ino)
+            if not stat.S_ISREG(created.st_mode) or created.st_nlink != 1 \
+               or created.st_uid != os.getuid() \
+               or created.st_gid != os.getgid():
+                fail("new download output authority differs")
             digest = hashlib.sha256()
             byte_count = 0
             deadline = time.monotonic() + DOWNLOAD_DEADLINE_SECONDS
@@ -188,8 +196,18 @@ def fetch_release_input(
             final = os.fstat(output_fd)
             if (final.st_dev, final.st_ino) != output_identity \
                or stat.S_IMODE(final.st_mode) != 0o400 \
+               or final.st_nlink != 1 \
                or final.st_size != byte_count:
                 fail("download output identity or metadata changed")
+            path_final = os.lstat(output)
+            if (path_final.st_dev, path_final.st_ino) != output_identity \
+               or not stat.S_ISREG(path_final.st_mode) \
+               or path_final.st_nlink != 1 \
+               or path_final.st_uid != os.getuid() \
+               or path_final.st_gid != os.getgid() \
+               or stat.S_IMODE(path_final.st_mode) != 0o400 \
+               or path_final.st_size != byte_count:
+                fail("download output edge or authority changed")
             os.close(output_fd)
             output_fd = -1
     except BaseException:
@@ -211,6 +229,193 @@ def fetch_release_input(
                     os.unlink(output)
                 except OSError as exc:
                     fail(f"cannot remove failed download output: {exc}")
+        raise
+
+
+def crc24(payload: bytes) -> int:
+    value = 0xB704CE
+    for octet in payload:
+        value ^= octet << 16
+        for _ in range(8):
+            value <<= 1
+            if value & 0x1000000:
+                value ^= 0x1864CFB
+    return value & 0xFFFFFF
+
+
+def read_private_regular(path: pathlib.Path, max_bytes: int, label: str) -> bytes:
+    if not path.is_absolute() or path.name in {"", ".", ".."}:
+        fail(f"{label} must be one absolute ordinary filename")
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        fail(f"cannot open {label}: {exc}")
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 \
+           or before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+           or stat.S_IMODE(before.st_mode) != 0o400 \
+           or before.st_size <= 0 or before.st_size > max_bytes:
+            fail(f"{label} authority or size differs")
+        chunks: list[bytes] = []
+        count = 0
+        while True:
+            try:
+                block = os.read(descriptor, min(65536, max_bytes - count + 1))
+            except OSError as exc:
+                fail(f"cannot read {label}: {exc}")
+            if not block:
+                break
+            count += len(block)
+            if count > max_bytes:
+                fail(f"{label} exceeds its byte bound")
+            chunks.append(block)
+        after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_gid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if any(
+            getattr(before, field) != getattr(after, field)
+            for field in stable_fields
+        ) or count != before.st_size:
+            fail(f"{label} changed while it was read")
+        path_after = os.lstat(path)
+        if (path_after.st_dev, path_after.st_ino) != (
+            before.st_dev,
+            before.st_ino,
+        ):
+            fail(f"{label} edge changed while it was read")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def decode_public_key_armor(source: bytes) -> bytes:
+    try:
+        lines = source.decode("ascii").splitlines()
+    except UnicodeDecodeError as exc:
+        fail(f"OpenPGP public-key armor is not ASCII: {exc}")
+    if len(lines) < 5 or lines[0] != ARMOR_BEGIN or lines[-1] != ARMOR_END:
+        fail("OpenPGP public-key armor boundary differs")
+    position = 1
+    seen_headers: set[str] = set()
+    while position < len(lines) and lines[position] != "":
+        header = lines[position]
+        match = re.fullmatch(r"([A-Za-z0-9-]+): ([ -~]*)", header)
+        if match is None or match.group(1).lower() in seen_headers \
+           or len(seen_headers) >= 16:
+            fail("OpenPGP public-key armor header is malformed")
+        seen_headers.add(match.group(1).lower())
+        position += 1
+    if position >= len(lines) or lines[position] != "":
+        fail("OpenPGP public-key armor header terminator is absent")
+    position += 1
+    armored_body = lines[position:-1]
+    if len(armored_body) < 2:
+        fail("OpenPGP public-key armor body is absent")
+    checksum_line = armored_body[-1]
+    encoded_lines = armored_body[:-1]
+    if re.fullmatch(r"=[A-Za-z0-9+/]{4}", checksum_line) is None \
+       or any(
+           re.fullmatch(r"[A-Za-z0-9+/]{1,76}={0,2}", line) is None
+           for line in encoded_lines
+       ):
+        fail("OpenPGP public-key armor payload is malformed")
+    encoded = "".join(encoded_lines)
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+        checksum = base64.b64decode(checksum_line[1:], validate=True)
+    except ValueError as exc:
+        fail(f"OpenPGP public-key armor base64 is malformed: {exc}")
+    if not decoded or len(decoded) > ASCII_ARMOR_BYTE_LIMIT \
+       or base64.b64encode(decoded).decode("ascii") != encoded \
+       or len(checksum) != 3 \
+       or int.from_bytes(checksum, "big") != crc24(decoded):
+        fail("OpenPGP public-key armor payload or CRC-24 differs")
+    return decoded
+
+
+def dearmor_public_key(source: pathlib.Path, output: pathlib.Path) -> None:
+    decoded = decode_public_key_armor(
+        read_private_regular(
+            source,
+            ASCII_ARMOR_BYTE_LIMIT,
+            "OpenPGP public-key armor",
+        )
+    )
+    validate_download_parent(output)
+    if output.exists() or output.is_symlink():
+        fail("refusing to replace an existing dearmored public key")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = -1
+    identity: tuple[int, int] | None = None
+    try:
+        try:
+            descriptor = os.open(output, flags, 0o600)
+        except OSError as exc:
+            fail(f"cannot create dearmored public key: {exc}")
+        created = os.fstat(descriptor)
+        identity = (created.st_dev, created.st_ino)
+        if not stat.S_ISREG(created.st_mode) or created.st_nlink != 1 \
+           or created.st_uid != os.getuid() or created.st_gid != os.getgid():
+            fail("new dearmored public-key authority differs")
+        view = memoryview(decoded)
+        while view:
+            try:
+                written = os.write(descriptor, view)
+            except OSError as exc:
+                fail(f"cannot write dearmored public key: {exc}")
+            if written <= 0:
+                fail("short write while saving dearmored public key")
+            view = view[written:]
+        os.fchmod(descriptor, 0o400)
+        os.fsync(descriptor)
+        final = os.fstat(descriptor)
+        path_final = os.lstat(output)
+        if (final.st_dev, final.st_ino) != identity \
+           or (path_final.st_dev, path_final.st_ino) != identity \
+           or not stat.S_ISREG(path_final.st_mode) \
+           or final.st_nlink != 1 or path_final.st_nlink != 1 \
+           or final.st_uid != os.getuid() or final.st_gid != os.getgid() \
+           or stat.S_IMODE(final.st_mode) != 0o400 \
+           or stat.S_IMODE(path_final.st_mode) != 0o400 \
+           or final.st_size != len(decoded) \
+           or path_final.st_size != len(decoded):
+            fail("dearmored public-key output identity or metadata changed")
+        os.close(descriptor)
+        descriptor = -1
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+            descriptor = -1
+        if identity is not None:
+            try:
+                current = os.lstat(output)
+            except FileNotFoundError:
+                current = None
+            except OSError as exc:
+                fail(f"cannot inspect failed dearmored public key: {exc}")
+            if current is not None:
+                if (current.st_dev, current.st_ino) != identity \
+                   or not stat.S_ISREG(current.st_mode):
+                    fail("failed dearmored public-key output identity changed")
+                try:
+                    os.unlink(output)
+                except OSError as exc:
+                    fail(f"cannot remove failed dearmored public key: {exc}")
         raise
 
 
@@ -357,6 +562,45 @@ def self_test() -> None:
         root.chmod(0o700)
         download_payload = b"authenticated fixture\n"
         download_sha256 = hashlib.sha256(download_payload).hexdigest()
+
+        public_key_fixture = b"\x99\x01\x02\x03fixture-openpgp-key"
+        encoded_public_key = base64.b64encode(public_key_fixture).decode("ascii")
+        encoded_checksum = base64.b64encode(
+            crc24(public_key_fixture).to_bytes(3, "big")
+        ).decode("ascii")
+        armored_public_key = root / "public-key.asc"
+        armored_public_key.write_text(
+            f"{ARMOR_BEGIN}\n\n{encoded_public_key}\n"
+            f"={encoded_checksum}\n{ARMOR_END}\n",
+            encoding="ascii",
+        )
+        armored_public_key.chmod(0o400)
+        binary_public_key = root / "public-key.gpg"
+        dearmor_public_key(armored_public_key, binary_public_key)
+        binary_metadata = os.lstat(binary_public_key)
+        if binary_public_key.read_bytes() != public_key_fixture \
+           or stat.S_IMODE(binary_metadata.st_mode) != 0o400 \
+           or binary_metadata.st_nlink != 1:
+            fail("self-test dearmored public key differs")
+        bad_armored_public_key = root / "bad-public-key.asc"
+        bad_armored_public_key.write_text(
+            f"{ARMOR_BEGIN}\n\n{encoded_public_key}\n"
+            f"=AAAA\n{ARMOR_END}\n",
+            encoding="ascii",
+        )
+        bad_armored_public_key.chmod(0o400)
+        rejected_binary_public_key = root / "bad-public-key.gpg"
+        try:
+            dearmor_public_key(
+                bad_armored_public_key,
+                rejected_binary_public_key,
+            )
+        except VerificationError:
+            if rejected_binary_public_key.exists() \
+               or rejected_binary_public_key.is_symlink():
+                fail("self-test failed dearmor retained output")
+        else:
+            fail("self-test accepted wrong OpenPGP armor CRC-24")
 
         class FixtureResponse:
             def __init__(self, url: str, payload: bytes) -> None:
@@ -531,6 +775,9 @@ def parse_args() -> argparse.Namespace:
     fetch.add_argument("--output", type=pathlib.Path, required=True)
     fetch.add_argument("--sha256", required=True)
     fetch.add_argument("--max-bytes", type=int, required=True)
+    dearmor = subparsers.add_parser("dearmor")
+    dearmor.add_argument("--input", type=pathlib.Path, required=True)
+    dearmor.add_argument("--output", type=pathlib.Path, required=True)
     subparsers.add_parser("self-test")
     return parser.parse_args()
 
@@ -552,6 +799,9 @@ def main() -> int:
                 args.max_bytes,
             )
             print("apple-toolchain-release: fetch ok")
+        elif args.command == "dearmor":
+            dearmor_public_key(args.input, args.output)
+            print("apple-toolchain-release: dearmor ok")
         else:
             self_test()
         return 0

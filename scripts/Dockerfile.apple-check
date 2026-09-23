@@ -106,11 +106,13 @@ RUN --network=default \
         "${RUST_RELEASE_MANIFEST_SIGNATURE_SHA256}" \
         "${APPLE_BUILD_ROOT}/downloads/channel.toml.asc" \
         | sha256sum --check --strict --status - \
+    && python3 /usr/local/libexec/apple-toolchain-release.py dearmor \
+        --input "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg.ascii" \
+        --output "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg" \
     && signature_status="$(gpgv --status-fd=1 \
-        --keyring "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg.ascii" \
+        --keyring "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg" \
         "${APPLE_BUILD_ROOT}/downloads/channel.toml.asc" \
-        "${APPLE_BUILD_ROOT}/downloads/channel.toml" \
-        2>/dev/null)" \
+        "${APPLE_BUILD_ROOT}/downloads/channel.toml")" \
     && signature_identity="$(printf '%s\n' "${signature_status}" \
         | awk -v expected="${RUST_RELEASE_SIGNING_FINGERPRINT}" \
             '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { \

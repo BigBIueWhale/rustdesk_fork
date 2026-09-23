@@ -635,6 +635,8 @@ class AppleCheckSpec:
             APPLE_CHECK_LABEL_PREFIX
             + "dockerfile-sha256": self.dockerfile_sha256,
             APPLE_CHECK_LABEL_PREFIX
+            + "dpkg-manifest-sha256": self.dpkg_sha256,
+            APPLE_CHECK_LABEL_PREFIX
             + "source-date-epoch": str(self.source_date_epoch),
             APPLE_CHECK_LABEL_PREFIX
             + "release-helper-sha256": self.release_helper_sha256,
@@ -1942,7 +1944,12 @@ def verify_local(
             "\"$(sha256sum /usr/local/libexec/apple-toolchain-provenance.py "
             "| cut -d' ' -f1)\"; "
             "printf 'dpkg-sha=%s\\n' "
-            "\"$(dpkg-query -W | LC_ALL=C sort | sha256sum | cut -d' ' -f1)\"; "
+            "\"$(dpkg-query -W -f='${binary:Package}\\t${Version}\\n' "
+            "| LC_ALL=C sort | sha256sum | cut -d' ' -f1)\"; "
+            "printf 'embedded-dpkg-sha=%s\\n' "
+            "\"$(sha256sum /usr/local/share/"
+            "rustdesk-devcheck-provenance/dpkg-manifest.tsv "
+            "| cut -d' ' -f1)\"; "
             "printf 'targets=%s\\n' "
             "\"$(find \"$toolchain/lib/rustlib\" -mindepth 2 -maxdepth 2 "
             "-type d -name lib -printf '%h\\n' "
@@ -1995,6 +2002,7 @@ def verify_local(
             f"release-helper-sha={spec.release_helper_sha256}\n"
             f"provenance-helper-sha={spec.provenance_helper_sha256}\n"
             f"dpkg-sha={spec.dpkg_sha256}\n"
+            f"embedded-dpkg-sha={spec.dpkg_sha256}\n"
             "targets=aarch64-apple-darwin,aarch64-apple-ios,"
             "x86_64-apple-darwin,x86_64-unknown-linux-gnu\n"
             f'{{"content_bytes":{spec.toolchain_content_bytes},'
@@ -3402,6 +3410,7 @@ def validate_apple_check_attestation(
         )
     expected_args = {
         "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": spec.dockerfile_sha256,
+        "build-arg:APPLE_CHECK_DPKG_MANIFEST_SHA256": spec.dpkg_sha256,
         "build-arg:APPLE_TOOLCHAIN_CONTENT_BYTES": (
             str(spec.toolchain_content_bytes)
         ),
@@ -3744,6 +3753,7 @@ def validate_apple_check_attestation(
         f"DEV_CHECK_IMAGE_MANIFEST_ID={spec.base_manifest_id}",
         f"SOURCE_DATE_EPOCH={spec.source_date_epoch}",
         f"APPLE_CHECK_DOCKERFILE_SHA256={spec.dockerfile_sha256}",
+        f"APPLE_CHECK_DPKG_MANIFEST_SHA256={spec.dpkg_sha256}",
         (
             "APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256="
             f"{spec.release_helper_sha256}"
@@ -8003,6 +8013,9 @@ def create_apple_check_fixture_archive(
         "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": (
             preliminary.dockerfile_sha256
         ),
+        "build-arg:APPLE_CHECK_DPKG_MANIFEST_SHA256": (
+            preliminary.dpkg_sha256
+        ),
         "build-arg:APPLE_TOOLCHAIN_CONTENT_BYTES": str(
             preliminary.toolchain_content_bytes
         ),
@@ -8090,6 +8103,10 @@ def create_apple_check_fixture_archive(
         (
             "APPLE_CHECK_DOCKERFILE_SHA256="
             f"{preliminary.dockerfile_sha256}"
+        ),
+        (
+            "APPLE_CHECK_DPKG_MANIFEST_SHA256="
+            f"{preliminary.dpkg_sha256}"
         ),
         (
             "APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256="

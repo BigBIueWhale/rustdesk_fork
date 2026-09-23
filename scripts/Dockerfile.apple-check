@@ -31,6 +31,7 @@ ARG DEV_CHECK_IMAGE_ID
 ARG DEV_CHECK_IMAGE_MANIFEST_ID
 ARG SOURCE_DATE_EPOCH
 ARG APPLE_CHECK_DOCKERFILE_SHA256
+ARG APPLE_CHECK_DPKG_MANIFEST_SHA256
 ARG APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256
 ARG APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256
 ARG RUST_RELEASE_VERSION
@@ -193,6 +194,7 @@ ARG DEV_CHECK_IMAGE_ID
 ARG DEV_CHECK_IMAGE_MANIFEST_ID
 ARG SOURCE_DATE_EPOCH
 ARG APPLE_CHECK_DOCKERFILE_SHA256
+ARG APPLE_CHECK_DPKG_MANIFEST_SHA256
 ARG APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256
 ARG APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256
 ARG RUST_RELEASE_VERSION
@@ -232,6 +234,11 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN --network=none \
     [ "$(id -u)" = 1000 ] \
     && [ "$(id -g)" = 1000 ] \
+    && [ "${#APPLE_CHECK_DPKG_MANIFEST_SHA256}" = 64 ] \
+    && case "${APPLE_CHECK_DPKG_MANIFEST_SHA256}" in \
+        *[!0-9a-f]*) false ;; \
+        *) true ;; \
+    esac \
     && [ "$(sha256sum /usr/local/libexec/apple-toolchain-release.py | cut -d' ' -f1)" \
         = "${APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256}" ] \
     && [ "$(sha256sum /usr/local/libexec/apple-toolchain-provenance.py | cut -d' ' -f1)" \
@@ -260,15 +267,19 @@ RUN --network=none \
         --files "${APPLE_TOOLCHAIN_FILES}" \
         --directories "${APPLE_TOOLCHAIN_DIRECTORIES}" \
         --content-bytes "${APPLE_TOOLCHAIN_CONTENT_BYTES}" \
-    && [ "$(dpkg-query -W \
+    && [ "$(sha256sum \
+        /usr/local/share/rustdesk-devcheck-provenance/dpkg-manifest.tsv \
+        | cut -d' ' -f1)" = "${APPLE_CHECK_DPKG_MANIFEST_SHA256}" ] \
+    && [ "$(dpkg-query -W -f='${binary:Package}\t${Version}\n' \
         | LC_ALL=C sort | sha256sum | cut -d' ' -f1)" = \
-        '6aef89cdf99e9f69ae645354c4ca3f7229d0a5adfa3f97f6d9fa47e3d2317c5b' ]
+        "${APPLE_CHECK_DPKG_MANIFEST_SHA256}" ]
 
 LABEL org.rustdesk.apple-check.contract="rustdesk-apple-check-image-v1" \
       org.rustdesk.apple-check.base-reference="${DEV_CHECK_IMAGE_REF}" \
       org.rustdesk.apple-check.base-index="${DEV_CHECK_IMAGE_ID}" \
       org.rustdesk.apple-check.base-manifest="${DEV_CHECK_IMAGE_MANIFEST_ID}" \
       org.rustdesk.apple-check.dockerfile-sha256="${APPLE_CHECK_DOCKERFILE_SHA256}" \
+      org.rustdesk.apple-check.dpkg-manifest-sha256="${APPLE_CHECK_DPKG_MANIFEST_SHA256}" \
       org.rustdesk.apple-check.source-date-epoch="${SOURCE_DATE_EPOCH}" \
       org.rustdesk.apple-check.release-helper-sha256="${APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256}" \
       org.rustdesk.apple-check.provenance-helper-sha256="${APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256}" \

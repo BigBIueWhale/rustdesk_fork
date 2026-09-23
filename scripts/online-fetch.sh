@@ -428,16 +428,16 @@ readonly -a FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS=(
 )
 readonly -a ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS=(
     --entry
-    "arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
-    "https://dl.google.com/android/repository/sys-img/android/arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
-    "$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64"
-    "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64"
-    "dl.google.com"
-    --entry
     "emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip"
     "https://dl.google.com/android/repository/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip"
     "$SIZE_ANDROID_EMULATOR_LINUX_X64"
     "$SHA256_ANDROID_EMULATOR_LINUX_X64"
+    "dl.google.com"
+    --entry
+    "x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
+    "https://dl.google.com/android/repository/sys-img/android/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
+    "$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
+    "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
     "dl.google.com"
 )
 readonly -a ANDROID_BUILD_FIXED_ARCHIVE_ARGS=(
@@ -2165,7 +2165,7 @@ stage_flutter_presentation_candidate() {
 }
 
 stage_android_emulator_inputs_candidate() {
-    local directory
+    local directory obsolete
     for directory in "$ONLINE_CANDIDATE_ROOT" "$ANDROID_EMULATOR_CANDIDATE_ROOT"; do
         if [ -e "$directory" ] || [ -L "$directory" ]; then
             [ -d "$directory" ] && [ ! -L "$directory" ] \
@@ -2184,6 +2184,19 @@ stage_android_emulator_inputs_candidate() {
         .rustdesk-android-emulator-archives \
         "pinned Android Emulator runtime candidate archives" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
+    obsolete="$ANDROID_EMULATOR_CANDIDATE_ROOT/arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
+    if [ -e "$obsolete" ] || [ -L "$obsolete" ]; then
+        [ -f "$obsolete" ] && [ ! -L "$obsolete" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$obsolete")" = \
+                 "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64" ] \
+            || die "obsolete ARM64 emulator candidate is not the exact retired archive"
+        verify_sha256 "$obsolete" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64"
+        /usr/bin/rm -- "$obsolete" \
+            || die "cannot retire the exact obsolete ARM64 emulator candidate"
+        [ ! -e "$obsolete" ] && [ ! -L "$obsolete" ] \
+            || die "obsolete ARM64 emulator candidate remains after retirement"
+        log "retired the exact obsolete ARM64 emulator candidate after x86_64 publication"
+    fi
 }
 
 produce_flutter_presentation_pub_discovery() {

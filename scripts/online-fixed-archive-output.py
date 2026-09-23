@@ -215,8 +215,8 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             "dart-audit-inputs/osv-scanner",
         )
         android_emulator = (
-            "arm64-v8a-34_r04.zip",
             "emulator-linux_x64-15917651.zip",
+            "x86_64-34_r04.zip",
         )
         if names not in (dart_audit, android_emulator):
             fail(

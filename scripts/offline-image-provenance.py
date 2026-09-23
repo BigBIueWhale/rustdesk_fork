@@ -3460,6 +3460,12 @@ def validate_apple_check_attestation(
             return any(contains_vcs_authority(item) for item in value)
         return False
 
+    def diagnostic_value(value: object) -> str:
+        rendered = canonical_json(value).decode("utf-8")
+        if len(rendered) > 4096:
+            return rendered[:4096] + "...<truncated>"
+        return rendered
+
     expected_digest = str(image_manifest_id).removeprefix("sha256:")
     if not isinstance(statement, dict) \
        or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
@@ -3482,36 +3488,51 @@ def validate_apple_check_attestation(
             "VCS authority"
         )
     predicate = statement.get("predicate")
-    if not isinstance(predicate, dict) \
-       or set(predicate) != {"buildDefinition", "runDetails"}:
-        fail("Docker archive Apple check provenance predicate differs")
-    definition = predicate.get("buildDefinition")
+    expected_predicate_keys = {
+        "builder",
+        "buildConfig",
+        "buildType",
+        "invocation",
+        "materials",
+        "metadata",
+    }
     base_digest = spec.base_image_id
-    if not isinstance(definition, dict) \
-       or set(definition) != {
-           "buildType",
-           "resolvedDependencies",
-           "externalParameters",
-           "internalParameters",
-       } \
-       or definition.get("buildType") != (
-           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
-           "slsa-definitions.md"
+    expected_materials = [
+        {
+            "uri": (
+                "pkg:docker/rd-devcheck?"
+                f"digest={base_digest}&platform=linux%2Famd64"
+            ),
+            "digest": {
+                "sha256": base_digest.removeprefix("sha256:")
+            },
+        }
+    ]
+    if not isinstance(predicate, dict) \
+       or set(predicate) != expected_predicate_keys \
+       or predicate.get("builder") != {"id": ""} \
+       or predicate.get("buildType") != (
+           "https://mobyproject.org/buildkit@v1"
        ) \
-       or definition.get("resolvedDependencies") != [
-           {
-               "uri": (
-                   "pkg:docker/rd-devcheck?"
-                   f"digest={base_digest}&platform=linux%2Famd64"
-               ),
-               "digest": {
-                   "sha256": base_digest.removeprefix("sha256:")
-               },
-           }
-       ]:
+       or predicate.get("materials") != expected_materials:
+        actual_summary = (
+            {
+                "keys": sorted(predicate),
+                "builder": predicate.get("builder"),
+                "buildType": predicate.get("buildType"),
+                "materials": predicate.get("materials"),
+            }
+            if isinstance(predicate, dict)
+            else {"type": type(predicate).__name__}
+        )
         fail(
-            "Docker archive Apple check provenance does not bind the "
-            "exact devcheck base"
+            "Docker archive Apple check provenance does not bind the exact "
+            "v0.2 builder and devcheck base: "
+            f"expected keys={sorted(expected_predicate_keys)!r} "
+            "builder={'id': ''} "
+            "buildType='https://mobyproject.org/buildkit@v1' "
+            f"materials={diagnostic_value(expected_materials)}; "
+            f"actual={diagnostic_value(actual_summary)}"
         )
     expected_args = {
         "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": spec.dockerfile_sha256,
@@ -3538,28 +3559,24 @@ def validate_apple_check_attestation(
         "build-arg:SOURCE_DATE_EPOCH": str(spec.source_date_epoch),
         "no-cache": "",
     }
-    expected_request = {
+    expected_parameters = {
         "args": expected_args,
         "frontend": "dockerfile.v0",
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile"},
-            "request": {"args": expected_args},
-        },
-        "compatibilityVersion": 30,
     }
-    if definition.get("externalParameters") != {
-        "configSource": {"path": "Dockerfile"},
-        "request": expected_request,
-    }:
+    expected_invocation = {
+        "configSource": {"entryPoint": "Dockerfile"},
+        "parameters": expected_parameters,
+        "environment": {"platform": "linux/amd64"},
+    }
+    if predicate.get("invocation") != expected_invocation:
         fail(
             "Docker archive Apple check provenance does not bind the "
-            "reviewed private recipe"
+            "reviewed private recipe: expected="
+            f"{diagnostic_value(expected_invocation)}, actual="
+            f"{diagnostic_value(predicate.get('invocation'))}"
         )
-    internal = definition.get("internalParameters")
-    build_config = (
-        internal.get("buildConfig") if isinstance(internal, dict) else None
-    )
+    build_config = predicate.get("buildConfig")
     digest_mapping = (
         build_config.get("digestMapping")
         if isinstance(build_config, dict)
@@ -3570,15 +3587,7 @@ def validate_apple_check_attestation(
         if isinstance(build_config, dict)
         else None
     )
-    if not isinstance(internal, dict) \
-       or set(internal) != {
-           "buildConfig",
-           "builderPlatform",
-           "dockerfileVersion",
-       } \
-       or internal.get("builderPlatform") != "linux/amd64" \
-       or internal.get("dockerfileVersion") != "1.25.0" \
-       or not isinstance(build_config, dict) \
+    if not isinstance(build_config, dict) \
        or set(build_config) != {"digestMapping", "llbDefinition"} \
        or not isinstance(digest_mapping, dict) \
        or len(digest_mapping) != 9 \
@@ -3591,7 +3600,10 @@ def validate_apple_check_attestation(
        } \
        or not isinstance(llb, list) \
        or len(llb) != 9:
-        fail("Docker archive Apple check provenance builder contract differs")
+        fail(
+            "Docker archive Apple check provenance builder contract differs: "
+            f"{diagnostic_value(build_config)}"
+        )
 
     expected_inputs: list[list[str] | None] = [
         None,
@@ -3646,7 +3658,10 @@ def validate_apple_check_attestation(
            ) \
            or not isinstance(operation, dict) \
            or set(operation) != expected_kinds[position]:
-            fail("Docker archive Apple check provenance input graph differs")
+            fail(
+                "Docker archive Apple check provenance input graph differs at "
+                f"step {position}: {diagnostic_value(item)}"
+            )
         operations.append(operation)
     if operations[0].get("source") != {
         "attrs": {"image.resolvemode": "local"},
@@ -3716,12 +3731,9 @@ def validate_apple_check_attestation(
             "Docker archive Apple check provenance stage-copy graph differs"
         )
 
-    run_details = predicate.get("runDetails")
-    metadata = (
-        run_details.get("metadata") if isinstance(run_details, dict) else None
-    )
+    metadata = predicate.get("metadata")
     buildkit_metadata = (
-        metadata.get("buildkit_metadata")
+        metadata.get("https://mobyproject.org/buildkit@v1#metadata")
         if isinstance(metadata, dict)
         else None
     )
@@ -3731,25 +3743,29 @@ def validate_apple_check_attestation(
         else None
     )
     infos = source.get("infos") if isinstance(source, dict) else None
-    if not isinstance(run_details, dict) \
-       or set(run_details) != {"builder", "metadata"} \
-       or run_details.get("builder") != {"id": ""} \
-       or not isinstance(metadata, dict) \
+    if not isinstance(metadata, dict) \
        or set(metadata) != {
-           "buildkit_completeness",
-           "buildkit_metadata",
-           "finishedOn",
-           "invocationId",
-           "startedOn",
+           "buildFinishedOn",
+           "buildInvocationID",
+           "buildStartedOn",
+           "completeness",
+           "https://mobyproject.org/buildkit@v1#metadata",
+           "reproducible",
        } \
        or any(
            not isinstance(metadata.get(name), str) or not metadata.get(name)
-           for name in ("finishedOn", "invocationId", "startedOn")
+           for name in (
+               "buildFinishedOn",
+               "buildInvocationID",
+               "buildStartedOn",
+           )
        ) \
-       or metadata.get("buildkit_completeness") != {
-           "request": True,
-           "resolvedDependencies": False,
+       or metadata.get("completeness") != {
+           "parameters": True,
+           "environment": True,
+           "materials": False,
        } \
+       or metadata.get("reproducible") is not False \
        or not isinstance(buildkit_metadata, dict) \
        or set(buildkit_metadata) != {"layers", "source"} \
        or not isinstance(buildkit_metadata.get("layers"), dict) \
@@ -3768,7 +3784,10 @@ def validate_apple_check_attestation(
        } \
        or not isinstance(infos, list) \
        or len(infos) != 1:
-        fail("Docker archive Apple check provenance run metadata differs")
+        fail(
+            "Docker archive Apple check provenance run metadata differs: "
+            f"{diagnostic_value(metadata)}"
+        )
     source_info = infos[0]
     source_digest_mapping = (
         source_info.get("digestMapping")
@@ -4984,6 +5003,7 @@ def validate_modern_archive(
                 (
                     CertifiedBuilderSpec,
                     VerifierSpec,
+                    AppleCheckSpec,
                     DartAuditSpec,
                     RustAuditSpec,
                 ),
@@ -4998,6 +5018,7 @@ def validate_modern_archive(
                 (
                     CertifiedBuilderSpec,
                     VerifierSpec,
+                    AppleCheckSpec,
                     DartAuditSpec,
                     RustAuditSpec,
                 ),
@@ -8142,15 +8163,10 @@ def create_apple_check_fixture_archive(
     }
     if add_vcs:
         build_args["vcs:source"] = "https://example.invalid/unreviewed.git"
-    request = {
+    parameters = {
         "args": build_args,
         "frontend": "dockerfile.v0",
         "locals": [{"name": "context"}, {"name": "dockerfile"}],
-        "root": {
-            "configSource": {"path": "Dockerfile"},
-            "request": {"args": build_args},
-        },
-        "compatibilityVersion": 30,
     }
     copy_owner = {
         "group": {"User": {"byId": helper_copy_user}},
@@ -8477,8 +8493,8 @@ def create_apple_check_fixture_archive(
     }
     statement = encoded(
         {
-            "_type": "https://in-toto.io/Statement/v1",
-            "predicateType": "https://slsa.dev/provenance/v1",
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v0.2",
             "subject": [
                 {
                     "name": (
@@ -8497,77 +8513,69 @@ def create_apple_check_fixture_archive(
                 }
             ],
             "predicate": {
-                "buildDefinition": {
-                    "buildType": (
-                        "https://github.com/moby/buildkit/blob/master/"
-                        "docs/attestations/slsa-definitions.md"
-                    ),
-                    "resolvedDependencies": [
-                        {
-                            "uri": (
-                                "pkg:docker/rd-devcheck?"
-                                f"digest={preliminary.base_image_id}"
-                                "&platform=linux%2Famd64"
-                            ),
-                            "digest": {"sha256": base_digest},
-                        }
-                    ],
-                    "externalParameters": {
-                        "configSource": {"path": "Dockerfile"},
-                        "request": request,
-                    },
-                    "internalParameters": {
-                        "buildConfig": {
-                            "digestMapping": internal_mapping,
-                            "llbDefinition": llb,
-                        },
-                        "builderPlatform": "linux/amd64",
-                        "dockerfileVersion": "1.25.0",
-                    },
+                "builder": {"id": ""},
+                "buildType": "https://mobyproject.org/buildkit@v1",
+                "materials": [
+                    {
+                        "uri": (
+                            "pkg:docker/rd-devcheck?"
+                            f"digest={preliminary.base_image_id}"
+                            "&platform=linux%2Famd64"
+                        ),
+                        "digest": {"sha256": base_digest},
+                    }
+                ],
+                "invocation": {
+                    "configSource": {"entryPoint": "Dockerfile"},
+                    "parameters": parameters,
+                    "environment": {"platform": "linux/amd64"},
                 },
-                "runDetails": {
-                    "builder": {"id": ""},
-                    "metadata": {
-                        "buildkit_completeness": {
-                            "request": True,
-                            "resolvedDependencies": False,
-                        },
-                        "buildkit_metadata": {
-                            "layers": {
-                                name: []
-                                for name in (
-                                    "step0:0",
-                                    "step2:0",
-                                    "step3:0",
-                                    "step6:0",
-                                    "step7:0",
-                                )
-                            },
-                            "source": {
-                                "infos": [
-                                    {
-                                        "data": base64.b64encode(
-                                            source_dockerfile
-                                        ).decode("ascii"),
-                                        "digestMapping": {
-                                            "sha256:" + "e" * 64: "step0",
-                                            "sha256:" + "f" * 64: "step1",
-                                        },
-                                        "filename": "Dockerfile",
-                                        "language": "Dockerfile",
-                                        "llbDefinition": source_llb,
-                                    }
-                                ],
-                                "locations": {
-                                    f"step{position}": {}
-                                    for position in range(8)
-                                },
-                            },
-                        },
-                        "finishedOn": "2026-07-25T00:00:01Z",
-                        "invocationId": "apple-fixture-invocation",
-                        "startedOn": "2026-07-25T00:00:00Z",
+                "buildConfig": {
+                    "digestMapping": internal_mapping,
+                    "llbDefinition": llb,
+                },
+                "metadata": {
+                    "completeness": {
+                        "parameters": True,
+                        "environment": True,
+                        "materials": False,
                     },
+                    "reproducible": False,
+                    "https://mobyproject.org/buildkit@v1#metadata": {
+                        "layers": {
+                            name: []
+                            for name in (
+                                "step0:0",
+                                "step2:0",
+                                "step3:0",
+                                "step6:0",
+                                "step7:0",
+                            )
+                        },
+                        "source": {
+                            "infos": [
+                                {
+                                    "data": base64.b64encode(
+                                        source_dockerfile
+                                    ).decode("ascii"),
+                                    "digestMapping": {
+                                        "sha256:" + "e" * 64: "step0",
+                                        "sha256:" + "f" * 64: "step1",
+                                    },
+                                    "filename": "Dockerfile",
+                                    "language": "Dockerfile",
+                                    "llbDefinition": source_llb,
+                                }
+                            ],
+                            "locations": {
+                                f"step{position}": {}
+                                for position in range(8)
+                            },
+                        },
+                    },
+                    "buildFinishedOn": "2026-07-25T00:00:01Z",
+                    "buildInvocationID": "apple-fixture-invocation",
+                    "buildStartedOn": "2026-07-25T00:00:00Z",
                 },
             },
         }
@@ -8576,7 +8584,7 @@ def create_apple_check_fixture_archive(
         statement,
         "application/vnd.in-toto+json",
         annotations={
-            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v0.2"
         },
     )
     attestation_config = encoded(

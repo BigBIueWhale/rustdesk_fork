@@ -608,8 +608,8 @@ class AppleCheckSpec:
     toolchain_files: int
     toolchain_directories: int
     toolchain_content_bytes: int
-    config_id: str
-    manifest_id: str
+    config_id: str | None
+    manifest_id: str | None
 
     @property
     def base_image_id(self) -> str:
@@ -936,8 +936,26 @@ def validate_rust_audit_identity_contract(spec: ImageSpec) -> None:
         fail(f"unsupported Rust audit role: {spec.role}")
 
 
+def validate_apple_check_identity_contract(spec: ImageSpec) -> None:
+    if not isinstance(spec, AppleCheckSpec):
+        return
+    has_config = spec.config_id is not None
+    has_manifest = spec.manifest_id is not None
+    if has_config != has_manifest:
+        fail("Apple check config and manifest pins must be supplied together")
+    if spec.role == "apple-check":
+        if not has_config:
+            fail("final Apple check config and manifest pins are required")
+    elif spec.role == "apple-check-candidate":
+        if has_config:
+            fail("Apple check candidate identities must be derived from its archive")
+    else:
+        fail(f"unsupported Apple check role: {spec.role}")
+
+
 def runtime_image_id(spec: ImageSpec) -> str:
     """Return the immutable ID that a Docker daemon uses to run the image."""
+    validate_apple_check_identity_contract(spec)
     config_id = getattr(spec, "config_id", None)
     if config_id is not None:
         return config_id
@@ -949,17 +967,25 @@ def selected_runtime_image_id(
     publication_index_runtime: bool = False,
 ) -> str:
     """Select one exact daemon-store identity for runtime inspection/use."""
+    validate_apple_check_identity_contract(spec)
     if publication_index_runtime:
-        if not isinstance(
-            spec,
-            (
-                CertifiedBuilderSpec,
-                VerifierSpec,
-                AppleCheckSpec,
-                DartAuditSpec,
-                RustAuditSpec,
-            ),
-        ) or getattr(spec, "config_id", None) is None:
+        candidate_index = (
+            isinstance(spec, AppleCheckSpec)
+            and spec.role == "apple-check-candidate"
+        )
+        if not candidate_index and (
+            not isinstance(
+                spec,
+                (
+                    CertifiedBuilderSpec,
+                    VerifierSpec,
+                    AppleCheckSpec,
+                    DartAuditSpec,
+                    RustAuditSpec,
+                ),
+            )
+            or getattr(spec, "config_id", None) is None
+        ):
             fail(
                 "publication-index runtime selection requires a final "
                 "provenance-bearing image with a separate config identity"
@@ -1027,7 +1053,7 @@ def certified_builder_input_from_args(
 
 
 def spec_from_args(args: argparse.Namespace) -> ImageSpec:
-    if args.role == "apple-check":
+    if args.role in {"apple-check", "apple-check-candidate"}:
         if not re.fullmatch(
             r"rd-devcheck@sha256:[0-9a-f]{64}",
             args.base,
@@ -1050,7 +1076,17 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
         ):
             if value is None or value <= 0:
                 fail(f"Apple check {label} must be positive")
-        return AppleCheckSpec(
+        config_id = (
+            require_image_id(args.config_id, "Apple check config ID")
+            if args.config_id
+            else None
+        )
+        manifest_id = (
+            require_image_id(args.manifest_id, "Apple check manifest ID")
+            if args.manifest_id
+            else None
+        )
+        spec = AppleCheckSpec(
             role=args.role,
             image_id=require_image_id(args.expected_id, "expected image ID"),
             base=args.base,
@@ -1129,15 +1165,11 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             toolchain_files=args.toolchain_files,
             toolchain_directories=args.toolchain_directories,
             toolchain_content_bytes=args.toolchain_content_bytes,
-            config_id=require_image_id(
-                args.config_id or "",
-                "Apple check config ID",
-            ),
-            manifest_id=require_image_id(
-                args.manifest_id or "",
-                "Apple check manifest ID",
-            ),
+            config_id=config_id,
+            manifest_id=manifest_id,
         )
+        validate_apple_check_identity_contract(spec)
+        return spec
     if args.role in {"rust-audit", "rust-audit-candidate"}:
         if not re.fullmatch(
             r"rust:1[.]88-bookworm@sha256:[0-9a-f]{64}",
@@ -4559,6 +4591,7 @@ def validate_modern_archive(
     allow_unreferenced_blobs: bool = False,
     expected_bootstrap_layers: list[dict[str, object]] | None = None,
 ) -> ArchiveIdentity:
+    validate_apple_check_identity_contract(spec)
     if "repositories" in files:
         fail("content-addressed Docker archive must not contain legacy repositories metadata")
     layout = parse_json(metadata.get("oci-layout"), "oci-layout")
@@ -4646,13 +4679,9 @@ def validate_modern_archive(
     image_descriptor = image_descriptors[0]
     if image_descriptor.get("mediaType") != "application/vnd.oci.image.manifest.v1+json":
         fail("Docker archive image manifest media type is unsupported")
-    if isinstance(
-        spec,
-        (
-            CertifiedBuilderSpec,
-            AppleCheckSpec,
-        ),
-    ) or (isinstance(spec, RustAuditSpec) and spec.role == "rust-audit") \
+    if isinstance(spec, CertifiedBuilderSpec) \
+       or (isinstance(spec, AppleCheckSpec) and spec.manifest_id is not None) \
+       or (isinstance(spec, RustAuditSpec) and spec.role == "rust-audit") \
        or (isinstance(spec, DartAuditSpec) and spec.manifest_id is not None) \
        or (isinstance(spec, VerifierSpec) and spec.manifest_id is not None) \
        or (isinstance(spec, Spec) and spec.manifest_id is not None):
@@ -4678,13 +4707,9 @@ def validate_modern_archive(
     if direct_bootstrap_manifest \
        and config_descriptor.get("digest") != spec.image_id:
         fail("Docker archive bootstrap image config differs from its immutable image ID")
-    if isinstance(
-        spec,
-        (
-            CertifiedBuilderSpec,
-            AppleCheckSpec,
-        ),
-    ) or (isinstance(spec, RustAuditSpec) and spec.role == "rust-audit") \
+    if isinstance(spec, CertifiedBuilderSpec) \
+       or (isinstance(spec, AppleCheckSpec) and spec.config_id is not None) \
+       or (isinstance(spec, RustAuditSpec) and spec.role == "rust-audit") \
        or (isinstance(spec, DartAuditSpec) and spec.config_id is not None) \
        or (isinstance(spec, VerifierSpec) and spec.config_id is not None) \
        or (isinstance(spec, Spec) and spec.config_id is not None):
@@ -12084,7 +12109,31 @@ def self_test() -> None:
             apple_spec,
             publication_index_runtime=True,
         )
-        apple_checks = 3
+        apple_candidate_spec = replace(
+            apple_spec,
+            role="apple-check-candidate",
+            config_id=None,
+            manifest_id=None,
+        )
+        apple_candidate_identity = verify_archive(
+            apple_archive,
+            apple_sha,
+            apple_candidate_spec,
+            apple_size,
+        )
+        if apple_candidate_identity != ArchiveIdentity(
+            image_id=apple_spec.image_id,
+            manifest_id=apple_spec.manifest_id,
+            config_id=apple_spec.config_id,
+        ):
+            fail("Apple check candidate archive identity derivation differs")
+        validate_inspect(
+            {**apple_payload, "Id": apple_spec.image_id},
+            apple_spec.image_id,
+            apple_candidate_spec,
+            publication_index_runtime=True,
+        )
+        apple_checks = 5
 
         def apple_failure(
             operation: Callable[[], object],
@@ -12093,6 +12142,19 @@ def self_test() -> None:
             nonlocal apple_checks
             expect_failure(operation, label)
             apple_checks += 1
+
+        apple_failure(
+            lambda: runtime_image_id(
+                replace(apple_spec, role="apple-check-candidate")
+            ),
+            "Apple check candidate preselected runtime identities",
+        )
+        apple_failure(
+            lambda: runtime_image_id(
+                replace(apple_spec, config_id=None, manifest_id=None)
+            ),
+            "final Apple check missing runtime identities",
+        )
 
         apple_failure(
             lambda: verify_archive(
@@ -12330,7 +12392,7 @@ def self_test() -> None:
             apple_size,
         )
         apple_checks += 1
-        if apple_checks != 34:
+        if apple_checks != 38:
             fail(
                 f"Apple check image self-test count differs: {apple_checks}"
             )

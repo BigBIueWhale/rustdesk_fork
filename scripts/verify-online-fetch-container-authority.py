@@ -120,6 +120,26 @@ def validate(repo: pathlib.Path) -> None:
         raise AuthorityError(
             "Apple candidate transaction must capture both independent builds"
         )
+    require(
+        apple_build,
+        "require_apple_check_contract_pins",
+        "Apple candidate recipe contract",
+    )
+    forbid(
+        apple_build,
+        "require_apple_check_image_pins",
+        "stale final Apple identities during candidate construction",
+    )
+    require(
+        apple_capture,
+        'apple_check_candidate_spec_args "$expected_id"',
+        "derived Apple candidate runtime identities",
+    )
+    forbid(
+        apple_capture,
+        "apple_check_image_spec_args",
+        "preselected final Apple candidate identities",
+    )
     for token, label in (
         ("--network=default --pull=false --no-cache", "no-cache networked build"),
         ("--provenance=mode=max", "max provenance"),

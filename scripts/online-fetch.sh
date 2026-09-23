@@ -3263,7 +3263,15 @@ maintenance_promote_devcheck_image_candidate() {
 apple_check_image_spec_args() {
     printf '%s\0' \
         --role apple-check \
-        --expected-id "$APPLE_CHECK_IMAGE_ID" \
+        --expected-id "$APPLE_CHECK_IMAGE_ID"
+    apple_check_contract_spec_args
+    printf '%s\0' \
+        --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID" \
+        --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
+}
+
+apple_check_contract_spec_args() {
+    printf '%s\0' \
         --base "rd-devcheck@${DEV_CHECK_IMAGE_ID}" \
         --base-manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID" \
         --dockerfile-sha "$SHA256_APPLE_CHECK_DOCKERFILE" \
@@ -3288,16 +3296,21 @@ apple_check_image_spec_args() {
         --toolchain-tree-sha "$APPLE_TOOLCHAIN_TREE_SHA256" \
         --toolchain-files "$APPLE_TOOLCHAIN_FILES" \
         --toolchain-directories "$APPLE_TOOLCHAIN_DIRECTORIES" \
-        --toolchain-content-bytes "$APPLE_TOOLCHAIN_CONTENT_BYTES" \
-        --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID" \
-        --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
+        --toolchain-content-bytes "$APPLE_TOOLCHAIN_CONTENT_BYTES"
 }
 
-require_apple_check_image_pins() {
+apple_check_candidate_spec_args() {
+    [ "$#" -eq 1 ] || die "internal Apple check candidate specification error"
+    printf '%s\0' \
+        --role apple-check-candidate \
+        --expected-id "$1"
+    apple_check_contract_spec_args
+}
+
+require_apple_check_contract_pins() {
     local names=(
-        APPLE_CHECK_IMAGE_ID APPLE_CHECK_IMAGE_CONFIG_ID
-        APPLE_CHECK_IMAGE_MANIFEST_ID DEV_CHECK_IMAGE_ID
-        DEV_CHECK_IMAGE_MANIFEST_ID SHA256_APPLE_CHECK_DOCKERFILE
+        DEV_CHECK_IMAGE_ID DEV_CHECK_IMAGE_MANIFEST_ID
+        SHA256_APPLE_CHECK_DOCKERFILE
         APPLE_CHECK_SOURCE_DATE_EPOCH
         SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER
         SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER
@@ -3334,6 +3347,15 @@ require_apple_check_image_pins() {
     [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/apple-toolchain-provenance.py" \
         | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER" ] \
         || die "current Apple provenance helper differs from the archived image input"
+}
+
+require_apple_check_image_pins() {
+    require_apple_check_contract_pins
+    local name
+    for name in APPLE_CHECK_IMAGE_ID APPLE_CHECK_IMAGE_CONFIG_ID \
+        APPLE_CHECK_IMAGE_MANIFEST_ID; do
+        require_image_pin "$name"
+    done
 }
 
 verify_or_load_apple_check_image() {
@@ -4349,7 +4371,7 @@ build_apple_check_image() {
 
 maintenance_build_apple_check_image_candidate() {
     require_devcheck_image_pins
-    require_apple_check_image_pins
+    require_apple_check_contract_pins
     verify_or_load_devcheck_image
     local directory="$ONLINE_DIR/verifier-images"
     local context="$ONLINE_FETCH_TMP/apple-check-build-context"
@@ -4485,16 +4507,8 @@ maintenance_build_apple_check_image_candidate() {
 capture_apple_check_rebuild() {
     [ "$#" -eq 2 ] || die "internal Apple check rebuild capture error"
     local output="$1" expected_id="$2"
-    local args=() position
-    mapfile -d '' args < <(apple_check_image_spec_args)
-    for ((position = 0; position + 1 < ${#args[@]}; position++)); do
-        if [ "${args[position]}" = "--expected-id" ]; then
-            args[position + 1]="$expected_id"
-            break
-        fi
-    done
-    [ "${args[position]:-}" = "--expected-id" ] \
-        || die "Apple check candidate spec has no expected image identity"
+    local args=()
+    mapfile -d '' args < <(apple_check_candidate_spec_args "$expected_id")
     online_image_provenance maintenance-capture \
         --publication-index-runtime \
         --output "$output" \

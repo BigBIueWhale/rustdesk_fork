@@ -158,6 +158,7 @@ readonly RELEASE_FINALIZER_SOURCE="$SCRIPT_DIR/finalize-release-set.py"
 readonly RELEASE_WORKSPACE_RUNTIME_TEST="$SCRIPT_DIR/verify-release-workspace-runtime.sh"
 readonly FORK_VERSION_SOURCE="$SCRIPT_DIR/fork-version.sh"
 readonly APPLE_CHECK_SOURCE="$SCRIPT_DIR/apple-conform-check.sh"
+readonly APPLE_TOOLCHAIN_RELEASE_SOURCE="$SCRIPT_DIR/apple-toolchain-release.py"
 readonly FLUTTER_PEER_SOURCE="$SCRIPT_DIR/smoke-flutter-peer-presentation.sh"
 readonly FLUTTER_TOOLS_FINALIZER_SOURCE="$SCRIPT_DIR/finalize-flutter-tools-offline.sh"
 readonly VERIFY_SCAN_SOURCE="$SCRIPT_DIR/verify-scan.sh"
@@ -1489,6 +1490,7 @@ fi
     "repo/scripts/verify-release-workspace-runtime.sh=$RELEASE_WORKSPACE_RUNTIME_TEST" \
     "repo/scripts/fork-version.sh=$FORK_VERSION_SOURCE" \
     "repo/scripts/apple-conform-check.sh=$APPLE_CHECK_SOURCE" \
+    "repo/scripts/apple-toolchain-release.py=$APPLE_TOOLCHAIN_RELEASE_SOURCE" \
     "repo/scripts/smoke-flutter-peer-presentation.sh=$FLUTTER_PEER_SOURCE" \
     "repo/scripts/finalize-flutter-tools-offline.sh=$FLUTTER_TOOLS_FINALIZER_SOURCE" \
     "repo/scripts/frb-codegen.sh=$FRB_CODEGEN_SOURCE" \
@@ -1960,6 +1962,11 @@ printf 'VERIFIER_VM_ANDROID_GRADLE_SOURCE_GATE=pass\n'
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Android Gradle verifier-VM runtime marker is absent'; }
 printf 'VERIFIER_VM_ANDROID_GRADLE_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profiles=mount-rejection,semantics runtime=real source=untouched online=untouched gradle=unexecuted cleanup=joined\n' \
     "$VERIFIER_VM_DOCKER_VERSION"
+/usr/bin/grep -Fq \
+    'VERIFIER_VM_APPLE_TOOLCHAIN_RELEASE=pass uid=4000 gid=4000 network=none' \
+    "$SERIAL_LOG" \
+    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Apple toolchain release-helper behavior marker is absent'; }
+printf 'VERIFIER_VM_APPLE_TOOLCHAIN_RELEASE=pass uid=4000 gid=4000 network=none\n'
 /usr/bin/grep -Fq \
     'VERIFIER_VM_OFFLINE_IMAGE_PROVENANCE=pass uid=4000 gid=4000 android_decisions=40 debian_decisions=9 windows_decisions=22' \
     "$SERIAL_LOG" \

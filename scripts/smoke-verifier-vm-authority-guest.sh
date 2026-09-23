@@ -117,6 +117,7 @@ readonly WINDOWS_HELPER_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-windows-he
 readonly WINDOWS_HELPER_RUNTIME_TEST=$VERIFY_REPO/scripts/test-windows-helper-vm-runtime.sh
 readonly ANDROID_RUST_SCRIPT=$VERIFY_REPO/scripts/android-rust-check.sh
 readonly OFFLINE_IMAGE_PROVENANCE=$VERIFY_REPO/scripts/offline-image-provenance.py
+readonly APPLE_TOOLCHAIN_RELEASE=$VERIFY_REPO/scripts/apple-toolchain-release.py
 readonly ONLINE_PUB_CACHE_OUTPUT=$VERIFY_REPO/scripts/online-pub-cache-output.py
 readonly ONLINE_GRADLE_OUTPUT=$VERIFY_REPO/scripts/online-gradle-output.py
 readonly ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER=$VERIFY_REPO/scripts/verify-online-fetch-gradle-output-authority.py
@@ -2634,6 +2635,7 @@ done
 for verify_source in verify.sh verify-release.sh build-release.sh \
     publish-github-release.sh finalize-release-set.py \
     verify-release-workspace-runtime.sh apple-conform-check.sh \
+    apple-toolchain-release.py \
     smoke-flutter-peer-presentation.sh finalize-flutter-tools-offline.sh \
     frb-codegen.sh dart-verify.sh smoke-server.sh \
     audit.sh rust-audit-policy.py verify-rust-audit-authority.py Dockerfile.audit \
@@ -3459,6 +3461,21 @@ windows_helper_source_gate_output="$(
     || fail "Windows helper source-gate result differs: $windows_helper_source_gate_output"
 printf '%s\n' "$windows_helper_source_gate_output"
 printf 'VERIFIER_VM_WINDOWS_HELPER_SOURCE_GATE=pass\n'
+
+apple_toolchain_release_status=0
+apple_toolchain_release_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$APPLE_TOOLCHAIN_RELEASE" self-test
+)" || apple_toolchain_release_status=$?
+[ "${#apple_toolchain_release_output}" -le 4096 ] \
+    || fail 'Apple toolchain release-helper self-test diagnostic exceeded its bound'
+[ "$apple_toolchain_release_status" -eq 0 ] \
+    || fail "Apple toolchain release-helper self-test failed: $apple_toolchain_release_output"
+[ "$apple_toolchain_release_output" = \
+  'apple-toolchain-release: self-test ok' ] \
+    || fail "Apple toolchain release-helper result differs: $apple_toolchain_release_output"
+printf '%s\n' "$apple_toolchain_release_output"
+printf 'VERIFIER_VM_APPLE_TOOLCHAIN_RELEASE=pass uid=4000 gid=4000 network=none\n'
 
 offline_image_provenance_status=0
 offline_image_provenance_output="$(

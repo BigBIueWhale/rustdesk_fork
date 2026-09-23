@@ -183,9 +183,11 @@ def archive_matches(archive: ElementTree.Element, role: str) -> bool:
     if role == "emulator":
         if host_os != "linux":
             return False
-        if host_arch not in (None, "x86_64"):
+        if host_arch not in (None, "x86", "x86_64"):
             return False
-        return host_bits in (None, "64")
+        if host_bits not in (None, "64"):
+            return False
+        return host_arch != "x86" or host_bits == "64"
     if role == "system-image":
         return host_os in (None, "linux") and host_arch in (None, "x86_64")
     raise fail(f"unknown archive role: {role}")
@@ -223,7 +225,18 @@ def parse_package(
         if archive_matches(archive, role)
     ]
     if len(candidates) != 1:
-        raise fail(f"package {package_path!r} has {len(candidates)} matching archives")
+        filters = [
+            {
+                "host_os": optional_text(archive, "host-os"),
+                "host_arch": optional_text(archive, "host-arch"),
+                "host_bits": optional_text(archive, "host-bits"),
+            }
+            for archive in children(archives_parent, "archive")
+        ]
+        raise fail(
+            f"package {package_path!r} has {len(candidates)} matching archives; "
+            f"available filters={json.dumps(filters, sort_keys=True, separators=(',', ':'))}"
+        )
     complete = one_child(candidates[0], "complete")
     size = parse_positive_decimal(one_text(complete, "size"), "archive size", ARCHIVE_LIMIT)
     checksums = children(complete, "checksum")
@@ -489,6 +502,21 @@ def self_test() -> None:
         )
         if alternative_spec != spec:
             raise fail("self-test stable package selection differs")
+        x86_root = ElementTree.fromstring(document)
+        x86_package = next(
+            element for element in x86_root if local_name(element.tag) == "remotePackage"
+        )
+        x86_archive = one_child(one_child(x86_package, "archives"), "archive")
+        one_child(x86_archive, "host-arch").text = "x86"
+        ElementTree.SubElement(x86_archive, "host-bits").text = "64"
+        x86_spec = parse_package(
+            ElementTree.tostring(x86_root),
+            EMULATOR_METADATA_URL,
+            EMULATOR_PACKAGE,
+            "emulator",
+        )
+        if x86_spec != spec:
+            raise fail("self-test 64-bit x86 archive selection differs")
         entries, _, symlinks = inspect_zip(valid, "emulator")
         if entries != 3 or symlinks != 0:
             raise fail("self-test valid ZIP result differs")
@@ -516,7 +544,7 @@ def self_test() -> None:
             lambda: package_url(EMULATOR_METADATA_URL, "../escape.zip"),
             "escapes",
         )
-    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=5")
+    print("ANDROID_EMULATOR_DISCOVERY_SELF_TEST=pass cases=6")
 
 
 def discover() -> None:

@@ -443,8 +443,9 @@ def validate_contract(repo):
     require_all(
         provenance,
         (
-            "if isinstance(spec, RustAuditSpec) and spec.config_id is not None:",
-            "return spec.config_id",
+            'config_id = getattr(spec, "config_id", None)',
+            "if config_id is not None:",
+            "return config_id",
             'if args.role in {"rust-audit", "rust-audit-candidate"}:',
             'if args.role == "rust-audit-candidate"',
             "Rust audit candidate identities must be derived from its archive",
@@ -460,7 +461,7 @@ def validate_contract(repo):
             'if item.get("created") != expected_created',
             "publication_index_runtime: bool = False",
             "publication-index runtime selection requires a final",
-            "(CertifiedBuilderSpec, DartAuditSpec, RustAuditSpec)",
+            "selected_runtime_image_id(",
         ),
         "Rust audit runtime config identity",
     )

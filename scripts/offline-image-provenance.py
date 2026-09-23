@@ -3693,24 +3693,48 @@ def validate_apple_check_attestation(
                 f"step {position}: {diagnostic_value(item)}"
             )
         operations.append(operation)
-    if operations[0].get("source") != {
-        "attrs": {"image.resolvemode": "local"},
+    base_source = operations[0].get("source")
+    base_source_attributes = (
+        base_source.get("attrs")
+        if isinstance(base_source, dict)
+        else None
+    )
+    oci_session = (
+        base_source_attributes.get("oci.session")
+        if isinstance(base_source_attributes, dict)
+        else None
+    )
+    expected_base_source = {
+        "attrs": {
+            "oci.session": oci_session,
+            "oci.store": context_match.group(1),
+        },
         "identifier": (
-            "docker-image://docker.io/library/"
-            f"rd-devcheck@{base_digest}"
+            "oci-layout://docker.io/library/"
+            f"rd-devcheck@{spec.base_manifest_id}"
         ),
-    } \
-       or operations[1].get("source") != {
-           "attrs": {
-               "local.followpaths": (
-                   '["apple-toolchain-provenance.py",'
-                   '"apple-toolchain-release.py"]'
-               ),
-               "local.sharedkeyhint": "context",
-           },
-           "identifier": "local://context",
-       }:
-        fail("Docker archive Apple check provenance source operations differ")
+    }
+    expected_context_source = {
+        "attrs": {
+            "local.followpaths": (
+                '["apple-toolchain-provenance.py",'
+                '"apple-toolchain-release.py"]'
+            ),
+            "local.sharedkeyhint": "context",
+        },
+        "identifier": "local://context",
+    }
+    if base_source != expected_base_source \
+       or not isinstance(oci_session, str) \
+       or re.fullmatch(r"[a-z0-9]{20,64}", oci_session) is None \
+       or operations[1].get("source") != expected_context_source:
+        fail(
+            "Docker archive Apple check provenance source operations differ: "
+            f"expected base={diagnostic_value(expected_base_source)} "
+            f"context={diagnostic_value(expected_context_source)}, actual "
+            f"base={diagnostic_value(base_source)} context="
+            f"{diagnostic_value(operations[1].get('source'))}"
+        )
 
     copy_owner = {
         "group": {"User": {"byId": 1000}},
@@ -8157,8 +8181,10 @@ def create_apple_check_fixture_archive(
         platform={"architecture": "amd64", "os": "linux"},
     )
     context_key = "context:" + preliminary.base
+    context_store = "applefixturestore00000000"
+    context_session = "applefixturesession000000"
     context_value = (
-        "oci-layout://applefixturestore00000000:latest@"
+        f"oci-layout://{context_store}:latest@"
         f"{preliminary.base_manifest_id}"
     )
     build_args = {
@@ -8364,10 +8390,13 @@ def create_apple_check_fixture_archive(
             "op": {
                 "Op": {
                     "source": {
-                        "attrs": {"image.resolvemode": "local"},
+                        "attrs": {
+                            "oci.session": context_session,
+                            "oci.store": context_store,
+                        },
                         "identifier": (
-                            "docker-image://docker.io/library/"
-                            f"rd-devcheck@{preliminary.base_image_id}"
+                            "oci-layout://docker.io/library/"
+                            f"rd-devcheck@{preliminary.base_manifest_id}"
                         ),
                     }
                 },

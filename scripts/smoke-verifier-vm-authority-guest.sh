@@ -992,12 +992,41 @@ run_hbb_common_fs() {
         "$DEB_BUILDER_CONFIG_ID"
 }
 
+stage_android_voice_kotlin_jar() {
+    local source_home=$1 staged_home=$2 group=$3 artifact=$4 version=$5
+    local size=$6 digest=$7 source_root relative destination
+    local -a matches=()
+
+    source_root="$source_home/caches/modules-2/files-2.1/$group/$artifact/$version"
+    [ -d "$source_root" ] && [ ! -L "$source_root" ] \
+        || fail "sealed Android voice-owner artifact root is absent: $group:$artifact:$version"
+    mapfile -t matches < <(find "$source_root" -mindepth 2 -maxdepth 2 -type f \
+        -name "$artifact-$version.jar" -print | LC_ALL=C sort)
+    [ "${#matches[@]}" -eq 1 ] \
+        || fail "expected one sealed Android voice-owner artifact: $group:$artifact:$version"
+    [ ! -L "${matches[0]}" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "${matches[0]}")" = \
+             "1000:1000:400:1:$size" ] \
+        && [ "$(sha256sum "${matches[0]}" | awk '{ print $1 }')" = "$digest" ] \
+        || fail "sealed Android voice-owner artifact differs: $group:$artifact:$version"
+    relative=${matches[0]#"$source_home"/}
+    [ "$relative" != "${matches[0]}" ] && [ -n "$relative" ] \
+        || fail "sealed Android voice-owner artifact escaped its root: $group:$artifact:$version"
+    destination="$staged_home/$relative"
+    install -D -o 1000 -g 1000 -m 0400 -- "${matches[0]}" "$destination"
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$destination")" = \
+      "1000:1000:400:1:$size" ] \
+        && [ "$(sha256sum "$destination" | awk '{ print $1 }')" = "$digest" ] \
+        || fail "staged Android voice-owner artifact differs: $group:$artifact:$version"
+}
+
 run_android_voice_owner_tests() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local source_root=$ROOT/android-voice-owner-source
     local output=$ROOT/android-voice-owner-tests.out
     local builder_archive=$inputs/build-images/android-builder.docker.tar.gz
     local gradle_home=$inputs/gradle-home
+    local staged_gradle_home=$ROOT/android-voice-gradle-home
     local load_output container_status=0 inspect namespace_inspect result_line
     local source_archive_sha input_mount_options source_before
 
@@ -1054,6 +1083,41 @@ run_android_voice_owner_tests() {
              "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" ] \
         || fail 'sealed Android-builder image archive differs'
 
+    [ ! -e "$staged_gradle_home" ] && [ ! -L "$staged_gradle_home" ] \
+        || fail 'private Android voice-owner compiler staging root is occupied'
+    mkdir "$staged_gradle_home"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.kotlin kotlin-compiler-embeddable "$ANDROID_KOTLIN_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_COMPILER_EMBEDDABLE" "$SHA256_ANDROID_KOTLIN_COMPILER_EMBEDDABLE"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.kotlin kotlin-stdlib "$ANDROID_KOTLIN_STDLIB_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_STDLIB" "$SHA256_ANDROID_KOTLIN_STDLIB"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.kotlin kotlin-script-runtime "$ANDROID_KOTLIN_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_SCRIPT_RUNTIME" "$SHA256_ANDROID_KOTLIN_SCRIPT_RUNTIME"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.kotlin kotlin-reflect "$ANDROID_KOTLIN_COMPILER_REFLECT_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_REFLECT" "$SHA256_ANDROID_KOTLIN_REFLECT"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.kotlin kotlin-daemon-embeddable "$ANDROID_KOTLIN_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_DAEMON_EMBEDDABLE" "$SHA256_ANDROID_KOTLIN_DAEMON_EMBEDDABLE"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.intellij.deps trove4j "$ANDROID_KOTLIN_COMPILER_TROVE_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_COMPILER_TROVE" "$SHA256_ANDROID_KOTLIN_COMPILER_TROVE"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains.kotlinx kotlinx-coroutines-core-jvm "$ANDROID_KOTLIN_COMPILER_COROUTINES_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_COMPILER_COROUTINES" "$SHA256_ANDROID_KOTLIN_COMPILER_COROUTINES"
+    stage_android_voice_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION" \
+        "$SIZE_ANDROID_KOTLIN_COMPILER_ANNOTATIONS" "$SHA256_ANDROID_KOTLIN_COMPILER_ANNOTATIONS"
+    find "$staged_gradle_home" -type d -exec chmod 0555 {} +
+    [ -z "$(find "$staged_gradle_home" -xdev \
+        \( \( ! -type d -a ! -type f \) \
+           -o \( -type d -a \( ! -uid 0 -o ! -gid 0 -o ! -perm 0555 \) \) \
+           -o \( -type f -a \( ! -uid 1000 -o ! -gid 1000 -o ! -perm 0400 -o -links +1 \) \) \) \
+        -print -quit)" ] \
+        || fail 'private Android voice-owner compiler staging closure is ambiguous'
+
     load_output="$(
         setpriv --reuid=1000 --regid=1000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -1094,7 +1158,7 @@ run_android_voice_owner_tests() {
             --security-opt=apparmor=docker-default \
             --user 1000:1000 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
-            --mount "type=bind,source=$gradle_home,target=/online/gradle-home,readonly" \
+            --mount "type=bind,source=$staged_gradle_home,target=/online/gradle-home,readonly" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
             --workdir /source \
             "$ANDROID_BUILDER_CONFIG_ID" \
@@ -1146,7 +1210,7 @@ run_android_voice_owner_tests() {
     umount "$inputs" || fail 'cannot retire the sealed Android voice-owner input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'ANDROID_VOICE_OWNER_STATE_VM=pass commit=%s tree=%s scenarios=7 assertions=93 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'ANDROID_VOICE_OWNER_STATE_VM=pass commit=%s tree=%s scenarios=7 assertions=93 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_VOICE_SOURCE_COMMIT" "$ANDROID_VOICE_SOURCE_TREE" \
         "$ANDROID_KOTLIN_VERSION" "$ANDROID_BUILDER_IMAGE_ID" \
         "$ANDROID_BUILDER_CONFIG_ID"

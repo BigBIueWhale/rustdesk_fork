@@ -1862,7 +1862,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         'focused Rust-test cloud-init completion marker'
 elif [ "$MODE" = android-voice-owner-tests ]; then
     require_exact_fixed_receipt \
-        "ANDROID_VOICE_OWNER_STATE_VM=pass commit=$ANDROID_VOICE_SOURCE_COMMIT tree=$ANDROID_VOICE_SOURCE_TREE scenarios=7 assertions=93 kotlin=$ANDROID_KOTLIN_VERSION builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_VOICE_OWNER_STATE_VM=pass commit=$ANDROID_VOICE_SOURCE_COMMIT tree=$ANDROID_VOICE_SOURCE_TREE scenarios=7 assertions=93 kotlin=$ANDROID_KOTLIN_VERSION builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Android voice-owner state-test receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -2045,7 +2045,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-voice-owner-tests ]; then
-    printf 'ANDROID_VOICE_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=compiled-production-state-machine cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_VOICE_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machine cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_VOICE_SOURCE_COMMIT" "$ANDROID_VOICE_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then

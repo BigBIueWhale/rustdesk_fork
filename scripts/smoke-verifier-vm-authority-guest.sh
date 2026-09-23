@@ -778,17 +778,24 @@ run_focused_rust_tests() {
     local rust_archive=$inputs/rust-1.75.tar.xz
     local vendor=$inputs/cargo-vendor
     local vendor_config=$inputs/cargo-vendor-config.toml
-    local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
+    local image_archive image_config image_index toolchain_mode
     local load_output container_status=0 inspect namespace_inspect result_line passed tests_passed=0
     local container_name memory memory_bytes tmpfs_size source_fingerprints
     local source_archive_sha source_before input_mount_options
-    local -a required_tests result_lines
+    local -a required_tests result_lines toolchain_mount
 
     if [ "$MODE" = hbb-common-fs ]; then
         container_name=rustdesk-hbb-common-fs
         memory=8g
         memory_bytes=8589934592
         tmpfs_size=3g
+        image_archive=$inputs/build-images/deb-builder.docker.tar.gz
+        image_config=$DEB_BUILDER_CONFIG_ID
+        image_index=$DEB_BUILDER_IMAGE_ID
+        toolchain_mode=archive
+        toolchain_mount=(
+            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
+        )
         source_fingerprints=(Cargo.lock libs/hbb_common/src/fs.rs)
         required_tests=(
             fs::tests::r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree
@@ -820,6 +827,11 @@ run_focused_rust_tests() {
         memory=12g
         memory_bytes=12884901888
         tmpfs_size=3g
+        image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+        image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+        image_index=$DEV_CHECK_IMAGE_ID
+        toolchain_mode=devcheck-image
+        toolchain_mount=()
         source_fingerprints=(
             Cargo.lock
             src/lib.rs
@@ -876,10 +888,6 @@ run_focused_rust_tests() {
     case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed focused-test inputs permit set-user-ID execution' ;; esac
     case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed focused-test inputs permit direct execution' ;; esac
 
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
-      "1000:1000:400:1:$SIZE_RUST_1_75" ] \
-        && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = "$SHA256_RUST_1_75" ] \
-        || fail 'sealed Rust 1.75 archive differs'
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
       "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
         && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
@@ -894,34 +902,68 @@ run_focused_rust_tests() {
             verify-subtree --tree "$vendor" \
             --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         || fail 'sealed Cargo vendor closure differs'
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
-      "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
-        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
-             "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" ] \
-        || fail 'sealed Debian-builder image archive differs'
-
-    load_output="$(
-        setpriv --reuid=1000 --regid=1000 --clear-groups \
-            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
-            python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
-                --archive "$builder_archive" \
-                --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
-                --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
-                --role deb-builder \
-                --expected-id "$DEB_BUILDER_IMAGE_ID" \
-                --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
-                --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
-                --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
-                --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
-                --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
-                --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
-                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
-                --config-id "$DEB_BUILDER_CONFIG_ID" \
-                --manifest-id "$DEB_BUILDER_MANIFEST_ID"
-    )" || fail 'certified Debian-builder image verification/load failed'
-    [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
-        || fail "Debian-builder image receipt differs: $load_output"
+    if [ "$MODE" = hbb-common-fs ]; then
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
+          "1000:1000:400:1:$SIZE_RUST_1_75" ] \
+            && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = "$SHA256_RUST_1_75" ] \
+            || fail 'sealed Rust 1.75 archive differs'
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
+          "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
+            && [ "$(sha256sum "$image_archive" | awk '{ print $1 }')" = \
+                 "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" ] \
+            || fail 'sealed Debian-builder image archive differs'
+        load_output="$(
+            setpriv --reuid=1000 --regid=1000 --clear-groups \
+                env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+                python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
+                    --archive "$image_archive" \
+                    --archive-sha "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+                    --archive-size "$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" \
+                    --role deb-builder \
+                    --expected-id "$DEB_BUILDER_IMAGE_ID" \
+                    --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+                    --dockerfile-sha "$SHA256_DEB_BUILDER_CERTIFICATION_DOCKERFILE" \
+                    --recipe-sha "$SHA256_DEB_BUILDER_DOCKERFILE" \
+                    --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST" \
+                    --bootstrap-image-id "$DEB_BUILDER_BOOTSTRAP_IMAGE_ID" \
+                    --bootstrap-manifest-id "$DEB_BUILDER_BOOTSTRAP_MANIFEST_ID" \
+                    --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+                    --config-id "$DEB_BUILDER_CONFIG_ID" \
+                    --manifest-id "$DEB_BUILDER_MANIFEST_ID"
+        )" || fail 'certified Debian-builder image verification/load failed'
+        [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
+            || fail "Debian-builder image receipt differs: $load_output"
+    else
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
+          "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+            && [ "$(sha256sum "$image_archive" | awk '{ print $1 }')" = \
+                 "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+            || fail 'sealed development-check image archive differs'
+        load_output="$(
+            setpriv --reuid=1000 --regid=1000 --clear-groups \
+                env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+                python3 -I -S "$VERIFY_REPO/scripts/offline-image-provenance.py" verify-load \
+                    --archive "$image_archive" \
+                    --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                    --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+                    --role devcheck \
+                    --expected-id "$DEV_CHECK_IMAGE_ID" \
+                    --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                    --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+                    --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                    --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+                    --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                    --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+                    --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                    --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                    --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+                    --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+        )" || fail 'development-check image verification/load failed'
+        [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+            || fail "development-check image receipt differs: $load_output"
+    fi
 
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
@@ -940,15 +982,16 @@ run_focused_rust_tests() {
             --security-opt=apparmor=docker-default \
             --user 1000:1000 \
             --env "RUST_TEST_MODE=$MODE" \
+            --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
             --mount "type=bind,source=$target_root,target=/cargo-target" \
             --mount "type=bind,source=$vendor,target=/vendor,readonly" \
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly" \
-            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly" \
+            "${toolchain_mount[@]}" \
             --tmpfs "/tmp:rw,exec,nosuid,nodev,size=$tmpfs_size,mode=700,uid=1000,gid=1000" \
             --workdir /source \
-            "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+            "$image_config" /bin/bash --noprofile --norc -euo pipefail -c '
                 set -- /sys/class/net/*
                 [ "$#" -eq 1 ] && [ "$1" = /sys/class/net/lo ]
                 uid= gid= cap= nnp= seccomp=
@@ -969,17 +1012,28 @@ run_focused_rust_tests() {
                 [ "$seccomp" = 2 ]
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
-                mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home
-                tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
-                /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
-                    --prefix=/tmp/rust --disable-ldconfig >/dev/null
+                mkdir /tmp/home /tmp/cargo-home
                 sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
                     /inputs/config.toml >/tmp/cargo-home/config.toml
                 [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
+                case "$RUST_TOOLCHAIN_MODE" in
+                    archive)
+                        mkdir /tmp/toolchain /tmp/rust
+                        tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
+                        /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
+                            --prefix=/tmp/rust --disable-ldconfig >/dev/null
+                        unset RUSTUP_TOOLCHAIN
+                        export RUSTUP_HOME=/nonexistent PATH=/tmp/rust/bin:/usr/bin:/bin
+                        ;;
+                    devcheck-image)
+                        unset RUSTUP_TOOLCHAIN
+                        export RUSTUP_HOME=/usr/local/rustup \
+                            PATH=/usr/local/cargo/bin:/usr/bin:/bin
+                        ;;
+                    *) exit 94 ;;
+                esac
                 export HOME=/tmp/home CARGO_HOME=/tmp/cargo-home \
-                    CARGO_TARGET_DIR=/cargo-target RUSTUP_HOME=/nonexistent \
-                    RUSTUP_TOOLCHAIN= PATH=/tmp/rust/bin:/usr/bin:/bin \
-                    LANG=C LC_ALL=C CARGO_NET_OFFLINE=true
+                    CARGO_TARGET_DIR=/cargo-target LANG=C LC_ALL=C CARGO_NET_OFFLINE=true
                 [ "$(rustc --version)" = "rustc 1.75.0 (82e1608df 2023-12-21)" ]
                 [ "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)" ]
                 case "$RUST_TEST_MODE" in
@@ -1044,7 +1098,7 @@ run_focused_rust_tests() {
         || fail 'focused Rust-test container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
-    "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
+    "$CLIENT" --host "unix://$SOCK" image rm "$image_config" >/dev/null
     [ "$source_before" = \
       "$source_archive_sha:$(
           cd "$source_root"
@@ -1063,10 +1117,9 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq 4 ] \
             || fail "Android listener Rust-test count differs: $tests_passed"
-        printf 'ANDROID_LISTENER_RUST_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=android-listener-generation-and-child-convergence rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_LISTENER_RUST_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=android-listener-generation-and-child-convergence rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
-            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
-            "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
     fi
 }
 

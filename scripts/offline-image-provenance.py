@@ -4833,18 +4833,10 @@ def validate_modern_archive(
            and set(descriptor) != {"digest", "mediaType", "size"}:
             fail("Docker archive bootstrap image layer descriptor is malformed")
         if isinstance(spec, AppleCheckSpec):
-            expected_annotations = (
-                None
-                if position < 4
-                else {
-                    "buildkit/rewritten-timestamp": (
-                        str(spec.source_date_epoch)
-                    )
-                }
-            )
-            expected_keys = {"digest", "mediaType", "size"}
-            if expected_annotations is not None:
-                expected_keys.add("annotations")
+            expected_annotations = {
+                "buildkit/rewritten-timestamp": str(spec.source_date_epoch)
+            }
+            expected_keys = {"annotations", "digest", "mediaType", "size"}
             if set(descriptor) != expected_keys \
                or descriptor.get("annotations") != expected_annotations:
                 fail(
@@ -8043,17 +8035,11 @@ def create_apple_check_fixture_archive(
         blob_descriptor(
             layer,
             "application/vnd.oci.image.layer.v1.tar+gzip",
-            **(
-                {}
-                if position < 4
-                else {
-                    "annotations": {
-                        "buildkit/rewritten-timestamp": str(layer_epoch)
-                    }
-                }
-            ),
+            annotations={
+                "buildkit/rewritten-timestamp": str(layer_epoch)
+            },
         )
-        for position, layer in enumerate(layers)
+        for layer in layers
     ]
     runtime_config = dict(preliminary.runtime_config)
     runtime_config["User"] = runtime_user
